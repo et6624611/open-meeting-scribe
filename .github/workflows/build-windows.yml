@@ -11,6 +11,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write  # 允许创建 Release
     
     steps:
     - name: 检出代码
