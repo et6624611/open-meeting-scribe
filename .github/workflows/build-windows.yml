@@ -61,8 +61,14 @@ jobs:
         # 复制启动器
         Copy-Item "build/launcher.bat" "$distDir/启动.bat"
         
-        # 复制 .env 模板
+        # 复制 .env 模板并注入服务端密钥
         Copy-Item ".env.example" "$distDir/.env"
+        if ($env:ALIBABA_CLOUD_ACCESS_KEY_ID) {
+            (Get-Content "$distDir/.env" -Raw) -replace 'ALIBABA_CLOUD_ACCESS_KEY_ID=', "ALIBABA_CLOUD_ACCESS_KEY_ID=$env:ALIBABA_CLOUD_ACCESS_KEY_ID" | Set-Content "$distDir/.env" -NoNewline
+        }
+        if ($env:ALIBABA_CLOUD_ACCESS_KEY_SECRET) {
+            (Get-Content "$distDir/.env" -Raw) -replace 'ALIBABA_CLOUD_ACCESS_KEY_SECRET=', "ALIBABA_CLOUD_ACCESS_KEY_SECRET=$env:ALIBABA_CLOUD_ACCESS_KEY_SECRET" | Set-Content "$distDir/.env" -NoNewline
+        }
         
         # 创建数据目录
         New-Item -ItemType Directory -Force -Path "$distDir/data/output" | Out-Null
@@ -71,6 +77,9 @@ jobs:
         New-Item -ItemType Directory -Force -Path "$distDir/data/uploads" | Out-Null
         
         Write-Host "分发物组装完成"
+      env:
+        ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+        ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
     
     - name: 创建 ZIP 包
       shell: pwsh
