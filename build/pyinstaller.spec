@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # 项目根目录
-ROOT = Path(SPECPATH).parent.parent
+ROOT = Path(SPECPATH).parent
 
 block_cipher = None
 
