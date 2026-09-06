@@ -1,0 +1,134 @@
+"""
+core/upload.py — 本地文件 → DashScope 临时存储 → oss:// 临时 URL
+
+职责：
+  1. 获取上传凭证（getPolicy）
+  2. POST 上传到 OSS
+  3. 返回 oss:// 临时 URL（≤1GB / 48h 有效）
+
+硬约束（详见 docs/API_CONTRACTS.md §1）：
+  - 转写 API 只认公网 URL，本地文件必须先上传
+  - 上传凭证接口限流 100 QPS
+"""
+
+import os
+import logging
+import requests
+from pathlib import Path
+from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
+
+DASHSCOPE_BASE = "https://dashscope.aliyuncs.com"
+
+
+def _get_api_key() -> str:
+    """从设置或环境变量读取 ASR API Key"""
+    from app.store import get_asr_config
+    key = get_asr_config()["api_key"]
+    if not key:
+        raise RuntimeError("未设置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")
+    return key
+
+
+def get_upload_policy(model: str = "paraformer-v2") -> dict:
+    """
+    获取上传凭证。
+
+    Returns:
+        dict: {
+            upload_host, upload_dir, oss_access_key_id,
+            policy, signature, x_oss_object_acl, x_oss_forbid_overwrite
+        }
+    """
+    api_key = _get_api_key()
+    url = f"{DASHSCOPE_BASE}/api/v1/uploads"
+    params = {"action": "getPolicy", "model": model}
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    logger.debug(f"获取上传凭证: model={model}")
+    resp = requests.get(url, params=params, headers=headers, timeout=30)
+    resp.raise_for_status()
+
+    data = resp.json()
+    if "data" not in data:
+        raise RuntimeError(f"获取上传凭证失败: {data}")
+
+    return data["data"]
+
+
+def upload_file(
+    file_path: str | Path,
+    model: str = "paraformer-v2",
+) -> str:
+    """
+    上传本地文件到 DashScope 临时存储，返回 oss:// URL。
+
+    Args:
+        file_path: 本地文件路径
+        model: 模型名（凭证与模型绑定）
+
+    Returns:
+        oss:// 临时 URL（48h 有效）
+
+    Raises:
+        FileNotFoundError: 文件不存在
+        RuntimeError: 上传失败或文件超限（>1GB）
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"文件不存在: {file_path}")
+
+    file_size = file_path.stat().st_size
+    if file_size > 1024 * 1024 * 1024:  # 1GB
+        raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
+
+    logger.info(f"上传文件: {file_path.name} ({file_size / 1024 / 1024:.1f} MB)")
+
+    # 1. 获取上传凭证
+    policy = get_upload_policy(model)
+    upload_host = policy["upload_host"]
+    upload_dir = policy["upload_dir"]
+
+    # 2. 构造 OSS key（文件与模型名+主账号绑定）
+    oss_key = f"{upload_dir}/{file_path.name}"
+
+    # 3. POST 上传到 OSS（multipart）
+    form_data = {
+        "key": oss_key,
+        "OSSAccessKeyId": policy["oss_access_key_id"],
+        "policy": policy["policy"],
+        "Signature": policy["signature"],
+        "x-oss-object-acl": policy["x_oss_object_acl"],
+        "x-oss-forbid-overwrite": policy["x_oss_forbid_overwrite"],
+        "success_action_status": "200",
+    }
+
+    with open(file_path, "rb") as f:
+        files = {"file": (file_path.name, f)}
+        resp = requests.post(upload_host, data=form_data, files=files, timeout=600)
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"上传失败: HTTP {resp.status_code} — {resp.text}")
+
+    oss_url = f"oss://{oss_key}"
+    logger.info(f"上传成功: {oss_url}")
+    return oss_url
+
+
+def encode_oss_url(oss_url: str) -> str:
+    """
+    对 oss:// URL 进行编码（含空格/中文时必须）。
+
+    DashScope 要求 URL 中的特殊字符必须 URL 编码，
+    否则报 InvalidFile.DownloadFailed。
+    """
+    # oss://bucket/path/filename → 只编码路径部分
+    prefix = "oss://"
+    if oss_url.startswith(prefix):
+        path = oss_url[len(prefix):]
+        # 按 / 分割，逐段编码
+        parts = path.split("/")
+        encoded_parts = [quote(p, safe="") for p in parts]
+        return prefix + "/".join(encoded_parts)
+    return oss_url

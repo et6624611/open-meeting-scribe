@@ -1,0 +1,16 @@
+{
+  "llm": {
+    "provider": "DashScope（通义千问）",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "api_key": "sk-ws-H.PMLLREP.KzXs.MEQCIBVG5NYe-hShIn3R1raG8-oeK_nbciwJyEjl-4Tgf6phAiArSDUQgIMQO9VJ9k73nWsQrFzryF8PvYQBgUctyJVBFQ",
+    "model": "qwen-plus"
+  },
+  "output_dir": "data/output/",
+  "voiceprint": {
+    "provider": "cloud",
+    "cloud": {
+      "base_url": "http://47.116.10.194:8100/api/v1",
+      "api_key": "sk-vp-oms-voiceprint-2026"
+    }
+  }
+}

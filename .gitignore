@@ -1,0 +1,50 @@
+# 密钥（严禁入库）
+.env
+
+# 运行时数据
+data/output/
+data/uploads/
+data/recordings/
+data/tasks/
+data/projects.json
+data/project_index/
+data/speakers.json
+data/users.json
+data/meeting_mappings.json
+data/hotword_mappings.txt
+data/voiceprint_registry.json
+data/*.wav
+data/*.mp3
+data/*.m4a
+data/*.raw
+
+# 测试音频（大文件，不入库；需要共享请走 LFS 或外部存储）
+samples/*.mp3
+samples/*.wav
+samples/*.m4a
+samples/*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地模型缓存（v1 纯云，理论上不产生）
+*.onnx
+models/
+
+# 日志
+logs/
+
+# macOS
+.DS_Store
+
+# 截图（调试/测试用，不入库）
+/*.png
+docs/screenshots/

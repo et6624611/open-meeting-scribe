@@ -1,0 +1,262 @@
+"""
+app/routers/auth.py — 认证路由
+
+职责：
+  1. GitHub OAuth 登录流程（发起 → 回调 → 签发 JWT）
+  2. 手机号短信验证码登录（发送 → 核验 → 签发 JWT）
+  3. 当前用户信息查询
+  4. 登出
+
+端点：
+  GET  /auth/github      — 发起 GitHub OAuth，重定向到 GitHub 授权页
+  GET  /auth/callback    — OAuth 回调，换 token → 创建/查找用户 → 签发 JWT
+  POST /auth/sms/send    — 发送短信验证码
+  POST /auth/sms/verify  — 核验验证码并登录
+  GET  /auth/me          — 获取当前登录用户信息
+  POST /auth/logout      — 登出（清除 cookie）
+"""
+
+import logging
+
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
+
+from core.auth import (
+    create_oauth_state,
+    verify_oauth_state,
+    get_github_authorize_url,
+    exchange_github_code,
+    fetch_github_user_info,
+    create_jwt,
+    verify_jwt,
+)
+from core.users import find_or_create_oauth_user, find_or_create_sms_user, get_user_by_id, clear_current_user
+from core.sms import validate_phone, can_send, send_verify_code, check_verify_code
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/auth", tags=["认证"])
+
+# JWT cookie 名称
+SESSION_COOKIE = "oms_session"
+
+
+@router.get("/github")
+def github_login(request: Request):
+    """
+    发起 GitHub OAuth 登录。
+    生成 state 后重定向到 GitHub 授权页。
+    """
+    state = create_oauth_state()
+    authorize_url = get_github_authorize_url(state)
+    logger.info(f"GitHub OAuth 发起: state={state[:8]}...")
+    return RedirectResponse(url=authorize_url)
+
+
+@router.get("/callback")
+async def oauth_callback(request: Request, code: str = "", state: str = ""):
+    """
+    OAuth 回调端点。
+
+    流程：
+    1. 验证 state（CSRF 防护）
+    2. 用 code 换 access_token
+    3. 用 access_token 获取用户信息
+    4. 在本地创建/查找用户记录
+    5. 签发 JWT，设置 httpOnly cookie
+    6. 重定向到首页
+    """
+    # 检查错误参数
+    error = request.query_params.get("error")
+    if error:
+        error_desc = request.query_params.get("error_description", "未知错误")
+        logger.warning(f"OAuth 回调错误: {error} - {error_desc}")
+        raise HTTPException(400, f"OAuth 授权失败: {error_desc}")
+
+    # 验证 state
+    if not state or not verify_oauth_state(state):
+        logger.warning("OAuth state 验证失败（可能过期或 CSRF 攻击）")
+        raise HTTPException(400, "安全验证失败，请重新登录")
+
+    # 检查 code
+    if not code:
+        raise HTTPException(400, "缺少授权码")
+
+    # 用 code 换 access_token
+    try:
+        access_token = await exchange_github_code(code)
+    except ValueError as e:
+        logger.error(f"换取 access_token 失败: {e}")
+        raise HTTPException(400, f"授权码交换失败: {e}")
+
+    # 获取用户信息
+    try:
+        user_info = await fetch_github_user_info(access_token)
+    except ValueError as e:
+        logger.error(f"获取用户信息失败: {e}")
+        raise HTTPException(400, f"获取用户信息失败: {e}")
+
+    # 创建/查找本地用户
+    display_name = user_info.name or user_info.login
+    user = find_or_create_oauth_user(
+        provider="github",
+        provider_id=user_info.id,
+        name=display_name,
+        avatar_url=user_info.avatar_url,
+        email=user_info.email or "",
+    )
+
+    # 签发 JWT
+    jwt_token = create_jwt(
+        user_id=user["id"],
+        name=user["name"],
+        role=user.get("role", "personal"),
+    )
+
+    logger.info(f"用户登录成功: {display_name} (github/{user_info.id})")
+
+    # 重定向到首页，同时设置 httpOnly cookie
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=jwt_token,
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 3600,  # 7 天
+        path="/",
+    )
+    return response
+
+
+@router.get("/me")
+def get_me(request: Request):
+    """
+    获取当前登录用户信息。
+    从 cookie 中的 JWT 解析用户 ID，再查本地数据。
+    """
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        raise HTTPException(401, "未登录")
+
+    payload = verify_jwt(token)
+    if not payload:
+        raise HTTPException(401, "登录已过期，请重新登录")
+
+    user_id = payload.get("sub")
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(401, "用户不存在")
+
+    return {
+        "id": user["id"],
+        "name": user["name"],
+        "avatar_url": user.get("avatar_url", ""),
+        "email": user.get("email", ""),
+        "role": user.get("role", "personal"),
+        "provider": user.get("provider", ""),
+        "prefs": user.get("prefs", {}),
+    }
+
+
+@router.post("/logout")
+def logout(request: Request):
+    """登出：清除 cookie 和本地登录状态"""
+    clear_current_user()
+    response = JSONResponse({"message": "已登出"})
+    response.delete_cookie(key=SESSION_COOKIE, path="/")
+    logger.info("用户已登出")
+    return response
+
+
+# ============================================================
+# 手机号短信验证码登录
+# ============================================================
+
+from pydantic import BaseModel, Field
+
+
+class SmsSendRequest(BaseModel):
+    phone: str = Field(..., description="国内 11 位手机号")
+
+
+class SmsVerifyRequest(BaseModel):
+    phone: str = Field(..., description="国内 11 位手机号")
+    code: str = Field(..., description="用户输入的验证码")
+
+
+@router.post("/sms/send")
+def sms_send(req: SmsSendRequest):
+    """
+    发送短信验证码。
+
+    流程：
+    1. 校验手机号格式
+    2. 检查频率限制（60 秒冷却 + 每天 10 次）
+    3. 调用阿里云 PNVS SendSmsVerifyCode
+    """
+    phone = req.phone.strip()
+
+    # 格式校验
+    if not validate_phone(phone):
+        return JSONResponse(status_code=400, content={"success": False, "message": "请输入正确的手机号"})
+
+    # 频率限制
+    allowed, reason = can_send(phone)
+    if not allowed:
+        return JSONResponse(status_code=400, content={"success": False, "message": reason})
+
+    # 发送验证码
+    try:
+        result = send_verify_code(phone)
+        return result
+    except RuntimeError as e:
+        logger.error(f"短信发送失败: {e}")
+        return JSONResponse(status_code=400, content={"success": False, "message": str(e)})
+
+
+@router.post("/sms/verify")
+def sms_verify(req: SmsVerifyRequest):
+    """
+    核验短信验证码并登录。
+
+    流程：
+    1. 调用阿里云 PNVS CheckSmsVerifyCode 核验
+    2. 核验通过 → 创建/查找 SMS 用户 → 签发 JWT → 设置 httpOnly cookie
+    """
+    phone = req.phone.strip()
+    code = req.code.strip()
+
+    if not validate_phone(phone):
+        return JSONResponse(status_code=400, content={"success": False, "message": "请输入正确的手机号"})
+
+    if not code:
+        return JSONResponse(status_code=400, content={"success": False, "message": "请输入验证码"})
+
+    # 核验验证码
+    passed, reason = check_verify_code(phone, code)
+    if not passed:
+        return JSONResponse(status_code=400, content={"success": False, "message": reason})
+
+    # 创建/查找用户
+    user = find_or_create_sms_user(phone)
+
+    # 签发 JWT
+    jwt_token = create_jwt(
+        user_id=user["id"],
+        name=user["name"],
+        role=user.get("role", "personal"),
+    )
+
+    logger.info(f"SMS 用户登录成功: {phone[:3]}****{phone[-4:]}")
+
+    # 设置 cookie 并返回
+    response = JSONResponse({"success": True})
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=jwt_token,
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 3600,
+        path="/",
+    )
+    return response

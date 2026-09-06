@@ -1,0 +1,308 @@
+"""
+app/routers/speakers.py — 说话人 CRUD + 会议级绑定/纪要生成
+"""
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+
+from app.store import (
+    tasks, save_task_to_disk, run_stage2_task,
+)
+from core import speakers, voiceprint, joblog
+from core import users as user_module
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["speakers"])
+
+
+class SpeakerCreate(BaseModel):
+    name: str
+    role: str = ""
+    note: str = ""
+
+
+class SpeakerUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    note: Optional[str] = None
+
+
+class SaveMappingRequest(BaseModel):
+    meeting_id: str
+    meeting_name: str
+    mapping: dict[str, str]  # {"0": "uuid1", "1": "uuid2"}
+
+
+class TaskSpeakerMapping(BaseModel):
+    mapping: dict[str, str]  # {"0": "uuid1", "1": "uuid2"}
+
+
+@router.get("/api/speakers")
+def list_speakers():
+    """获取说话人列表（读 speakers.json）"""
+    speaker_list = speakers.load_speakers()
+    return {"speakers": [s.to_dict() for s in speaker_list]}
+
+
+@router.post("/api/speakers")
+def create_speaker(data: SpeakerCreate):
+    """添加说话人（写 speakers.json）"""
+    if not data.name.strip():
+        raise HTTPException(400, "姓名不能为空")
+    speaker = speakers.add_speaker(
+        name=data.name.strip(),
+        role=data.role.strip(),
+        note=data.note.strip(),
+    )
+    return speaker.to_dict()
+
+
+@router.put("/api/speakers/{speaker_id}")
+def update_speaker(speaker_id: str, data: SpeakerUpdate):
+    """更新说话人（写 speakers.json）"""
+    speaker = speakers.update_speaker(
+        speaker_id=speaker_id,
+        name=data.name.strip() if data.name else None,
+        role=data.role.strip() if data.role is not None else None,
+        note=data.note.strip() if data.note is not None else None,
+    )
+    if not speaker:
+        raise HTTPException(404, "说话人不存在")
+    return speaker.to_dict()
+
+
+@router.delete("/api/speakers/{speaker_id}")
+def delete_speaker(speaker_id: str):
+    """删除说话人（写 speakers.json）"""
+    if not speakers.delete_speaker(speaker_id):
+        raise HTTPException(404, "说话人不存在")
+    return {"deleted": True}
+
+
+@router.put("/api/speakers/{speaker_id}/set-as-me")
+def set_speaker_as_me(speaker_id: str):
+    """
+    将说话人设为当前用户（切换式）。
+
+    若该说话人已关联当前用户，则取消关联；
+    否则将当前用户关联到该说话人（自动解除旧关联）。
+    """
+    user = user_module.get_current_user()
+    if not user:
+        raise HTTPException(400, "请先设置用户信息")
+
+    speaker = speakers.get_speaker_by_id(speaker_id)
+    if not speaker:
+        raise HTTPException(404, "说话人不存在")
+
+    if speaker.linked_user_id == user["id"]:
+        result = speakers.clear_linked_user(speaker_id)
+    else:
+        result = speakers.set_linked_user(speaker_id, user["id"])
+
+    if not result:
+        raise HTTPException(500, "操作失败")
+    return result.to_dict()
+
+
+@router.get("/api/speakers/mapping/latest")
+def get_latest_mapping():
+    """获取最近一次会议映射（读 mappings.json）"""
+    mapping = speakers.get_latest_mapping()
+    if not mapping:
+        return {"mapping": None}
+    # 补充说话人姓名
+    name_map = speakers.get_speaker_name_map()
+    mapping_with_names = {}
+    for sid, speaker_uuid in mapping.mapping.items():
+        name = name_map.get(speaker_uuid, f"说话人{sid + 1}")
+        mapping_with_names[str(sid)] = {
+            "speaker_uuid": speaker_uuid,
+            "name": name,
+        }
+    return {
+        "mapping": {
+            "meeting_id": mapping.meeting_id,
+            "meeting_name": mapping.meeting_name,
+            "created_at": mapping.created_at,
+            "details": mapping_with_names,
+        }
+    }
+
+
+@router.post("/api/speakers/mapping")
+def save_mapping(data: SaveMappingRequest):
+    """保存会议映射（写 mappings.json）"""
+    # 转换 key 为 int
+    mapping = {int(k): v for k, v in data.mapping.items()}
+    result = speakers.save_meeting_mapping(
+        meeting_id=data.meeting_id,
+        meeting_name=data.meeting_name,
+        mapping=mapping,
+    )
+    return {
+        "meeting_id": result.meeting_id,
+        "meeting_name": result.meeting_name,
+        "created_at": result.created_at,
+    }
+
+
+@router.put("/api/tasks/{task_id}/speaker-mapping")
+def update_speaker_mapping(
+    task_id: str,
+    data: TaskSpeakerMapping,
+):
+    """
+    增量保存说话人映射（不触发纪要生成）。
+
+    用于用户在前端绑定说话人时实时持久化，
+    避免离开页面后绑定丢失。
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "任务不存在")
+
+    task = tasks[task_id]
+    if task["status"] not in ("awaiting_mapping", "completed"):
+        raise HTTPException(400, "当前状态不允许设置说话人映射")
+
+    # 转换 key 为 int
+    mapping = {int(k): v for k, v in data.mapping.items()}
+
+    # 仅更新映射并持久化，不改变状态、不触发纪要生成
+    tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    save_task_to_disk(task_id)
+
+    return {"status": "ok", "mapping": tasks[task_id]["speaker_uuid_mapping"]}
+
+
+def _register_voiceprints_bg(
+    task_id: str,
+    normalized_path: str,
+    dialogue: list,
+    mapping: dict,
+):
+    """后台：按已确认绑定补录声纹（自动注册闭环，失败不影响纪要主链路）"""
+    try:
+        results = voiceprint.register_from_binding(
+            audio_path=normalized_path,
+            dialogue=dialogue,
+            mapping=mapping,
+            meeting_id=task_id,
+        )
+        ok = sum(1 for r in results.values() if r["status"] == "registered")
+        logger.info(f"[{task_id[:8]}] 声纹自动注册: {ok}/{len(mapping)} 位说话人")
+    except Exception as e:
+        logger.warning(f"[{task_id[:8]}] 声纹自动注册失败（不影响纪要）: {e}")
+
+
+@router.post("/api/tasks/{task_id}/speaker-mapping")
+def set_speaker_mapping(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    data: TaskSpeakerMapping,
+):
+    """
+    设置说话人映射并触发纪要生成。
+
+    在转写完成后调用，将 speaker_id 绑定到具体说话人，
+    然后自动生成纪要。
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "任务不存在")
+
+    task = tasks[task_id]
+    if task["status"] not in ("awaiting_mapping", "completed"):
+        raise HTTPException(400, "当前状态不允许设置说话人映射")
+
+    # 转换 key 为 int
+    mapping = {int(k): v for k, v in data.mapping.items()}
+
+    # 保存会议映射（用于历史复用）
+    audio_name = task.get("audio_name", task_id)
+    speakers.save_meeting_mapping(
+        meeting_id=task_id,
+        meeting_name=audio_name,
+        mapping=mapping,
+    )
+
+    # 更新任务状态（提前写入 speaker_uuid_mapping，确保刷新后绑定不丢失）
+    tasks[task_id]["status"] = "processing"
+    tasks[task_id]["progress"] = 75
+    tasks[task_id]["message"] = "正在生成纪要..."
+    tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    # 作业日志：记录确认绑定（含姓名，便于会议助手回溯）
+    names = []
+    for uuid in mapping.values():
+        spk = speakers.get_speaker_by_id(uuid)
+        names.append(spk.name if spk else uuid[:8])
+    joblog.append_event(
+        task_id, joblog.STAGE_BIND,
+        f"确认绑定 {len(mapping)} 位说话人（{'、'.join(names)}），触发纪要生成",
+    )
+    save_task_to_disk(task_id)
+
+    # 后台运行第二阶段
+    audio_path = Path(task["audio_path"])
+    background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
+
+    # V3：按确认的绑定补录声纹，供后续会议自动匹配（纪要完成后执行，不阻塞）
+    normalized_path = task.get("normalized_path")
+    if not normalized_path:
+        # 兼容旧任务（未持久化该字段）：按命名约定推导归一化音频
+        candidate = audio_path.with_stem(f"{audio_path.stem}_normalized").with_suffix(".wav")
+        normalized_path = str(candidate) if candidate.exists() else None
+    dialogue = task.get("dialogue") or []
+    if normalized_path and dialogue:
+        background_tasks.add_task(
+            _register_voiceprints_bg, task_id, normalized_path, dialogue, mapping,
+        )
+
+    return {"status": "processing", "message": "正在生成纪要..."}
+
+
+@router.post("/api/tasks/{task_id}/regenerate-summary")
+def regenerate_summary(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+):
+    """
+    使用当前说话人映射重新生成纪要。
+
+    用于用户修改说话人绑定后重新生成纪要。
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "任务不存在")
+
+    task = tasks[task_id]
+    if task["status"] != "completed":
+        raise HTTPException(400, "任务尚未完成")
+
+    # 获取 UUID 映射（优先）或从姓名映射反查
+    uuid_mapping = task.get("speaker_uuid_mapping", {})
+    if not uuid_mapping:
+        # 尝试从姓名映射反查 UUID
+        name_mapping = task.get("speaker_mapping", {})
+        if not name_mapping:
+            raise HTTPException(400, "未设置说话人映射")
+        name_to_uuid = {s.name: s.speaker_id for s in speakers.load_speakers()}
+        uuid_mapping = {sid: name_to_uuid[name] for sid, name in name_mapping.items() if name in name_to_uuid}
+
+    # 转换回 {int: str} 格式
+    mapping = {int(k): v for k, v in uuid_mapping.items()}
+
+    # 更新任务状态
+    tasks[task_id]["status"] = "processing"
+    tasks[task_id]["progress"] = 75
+    tasks[task_id]["message"] = "正在重新生成纪要..."
+    save_task_to_disk(task_id)
+
+    # 后台运行第二阶段
+    audio_path = Path(task["audio_path"])
+    background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
+
+    return {"status": "processing", "message": "正在重新生成纪要..."}
