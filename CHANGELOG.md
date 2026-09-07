@@ -2,6 +2,20 @@
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 
+## [v1.x-sms-proxy] - 2026-09-07
+
+### 新增
+- **SMS 代理服务**（`sms-proxy/`）：独立 FastAPI 服务，部署于 47.116.10.194:8080，持有阿里云 AccessKey 并调用 PNVS SDK，为客户端提供短信发送/核验中转。含签名校验（HMAC-SHA256 + 时间戳防重放）、systemd 部署脚本、完整 README。
+
+### 变更
+- **短信代理改造**：`core/sms.py` 从直调阿里云 PNVS SDK 改为 HTTP 调用云端代理（47.116.10.194:8080），阿里云 AccessKey 从 `.env` 完全移除，密钥不落地。客户端通过 HMAC-SHA256 签名 + 共享密钥与代理通信，防未授权调用。
+- **`.env` / `.env.example`**：移除 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`、`SMS_SIGN_NAME`、`SMS_TEMPLATE_CODE` 等 PNVS 配置，新增 `SMS_PROXY_URL` 和 `SMS_PROXY_TOKEN`。
+- **依赖简化**：不再需要 `alibabacloud_dypnsapi20170525` SDK（代理端持有，客户端仅用标准库 `urllib` 发 HTTP 请求）。
+
+### 决策
+- 短信代理通信协议：POST JSON + `X-SMS-Timestamp` / `X-SMS-Sign` 请求头，签名有效期 5 分钟防重放。详见 ADR-0010。
+
+
 ## [v1.x-remote-config] - 2026-09-06
 
 ### 新增

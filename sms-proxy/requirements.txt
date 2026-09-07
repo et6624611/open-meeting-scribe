@@ -1,0 +1,6 @@
+# SMS 代理服务依赖
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+alibabacloud_dypnsapi20170525>=1.0.0
+alibabacloud_tea_openapi>=0.3.0
+python-dotenv>=1.0.0

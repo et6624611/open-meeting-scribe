@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSoc
 from pydantic import BaseModel
 
 from app.store import (
-    tasks, RECORD_DEVICE, RECORDINGS_DIR,
+    tasks, RECORD_DEVICE, RECORDINGS_DIR, TASKS_DIR,
     realtime_queues, realtime_transcribers, realtime_diarizers,
     realtime_summarizers, realtime_chapter_generators, realtime_speaker_maps,
     save_task_to_disk, push_realtime_msg, resolve_realtime_speaker_name,
@@ -393,6 +393,65 @@ async def resume_record():
         raise HTTPException(400, str(e))
 
 
+@router.post("/api/record/abandon")
+def abandon_record():
+    """放弃录音：停止录制并删除所有相关数据和文件"""
+    if not is_stream_recording():
+        raise HTTPException(400, "未在录制中")
+
+    task_id = None
+    try:
+        # 1. 停止录音
+        result = stop_recording_with_stream()
+        task_id = result.get("task_id")
+
+        # 2. 清理实时资源
+        if task_id:
+            transcriber = realtime_transcribers.pop(task_id, None)
+            if transcriber:
+                try:
+                    transcriber.stop()
+                except Exception as e:
+                    logger.warning(f"放弃-转写停止异常: {e}")
+
+            diarizer = realtime_diarizers.pop(task_id, None)
+            if diarizer:
+                try:
+                    diarizer.stop()
+                except Exception as e:
+                    logger.warning(f"放弃-聚类停止异常: {e}")
+
+            summarizer = realtime_summarizers.pop(task_id, None)
+            if summarizer:
+                summarizer.stop()
+
+            chapter_gen = realtime_chapter_generators.pop(task_id, None)
+            if chapter_gen:
+                chapter_gen.stop()
+
+            realtime_speaker_maps.pop(task_id, None)
+            realtime_queues.pop(task_id, None)
+
+        # 3. 删除音频文件
+        audio_path = result.get("output_path")
+        if audio_path and Path(audio_path).exists():
+            Path(audio_path).unlink()
+
+        # 4. 删除任务记录
+        if task_id and task_id in tasks:
+            tasks.pop(task_id)
+        if task_id:
+            task_file = TASKS_DIR / f"{task_id}.json"
+            if task_file.exists():
+                task_file.unlink()
+
+        logger.info(f"[录制] 放弃: task={task_id[:8] if task_id else 'unknown'}")
+        return {"abandoned": True, "task_id": task_id}
+
+    except RuntimeError as e:
+        raise HTTPException(500, f"放弃录音失败: {e}")
+
+
 # ============================================================
 # 实时总结控制
 # ============================================================
@@ -428,7 +487,7 @@ async def resume_summary():
 # ============================================================
 
 class RealtimeBindSpeakerRequest(BaseModel):
-    speaker_id: int         # ASR 说话人编号（1, 2, 3...）
+    speaker_id: int         # ASR 说话人编号（0, 1, 2...）
     speaker_uuid: str       # speakers.json 中的说话人 UUID
 
 
@@ -528,7 +587,7 @@ async def websocket_transcript(websocket: WebSocket, task_id: str):
         logger.info(f"[WebSocket] 回放历史: task={task_id[:8]}, {len(history)} 条句子")
         for item in history:
             # 回放时重新解析说话人姓名（可能已被绑定）
-            sid = item.get("speaker_id", 1)
+            sid = item.get("speaker_id", 0)
             speaker_name = resolve_realtime_speaker_name(task_id, sid) if sid else ""
             await websocket.send_json({
                 "type": "history",

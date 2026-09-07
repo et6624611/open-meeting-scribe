@@ -863,62 +863,36 @@ class TestSmsVerifyValidation:
 class TestSmsSendHappyPath:
     """POST /auth/sms/send 有效号码发送路径
 
-    回归背景：曾因给 SendSmsVerifyCodeRequest 传了不存在的参数 expire_time（正确为 valid_time），
-    在 try 块外抛 TypeError，导致端点返回 500 纯文本，前端误报“网络异常”。
-    以下用例覆盖之前缺失的有效号码关键路径。
+    回归背景：短信服务改为云端代理模式后，需确保代理返回成功时正确传递结果，
+    代理返回失败时正确抛出错误而非 500。
     """
 
-    def test_valid_phone_returns_success_and_valid_time(self, client, monkeypatch):
-        """有效手机号应成功构造请求并返回 success=True，且请求携带 ValidTime 字段"""
+    def test_valid_phone_returns_success(self, client, monkeypatch):
+        """有效手机号且代理返回 success=True 时应成功"""
         from core import sms
-
-        captured = {}
-
-        class _FakeBody:
-            code = "OK"
-            message = "mock"
-
-        class _FakeResp:
-            body = _FakeBody()
-
-        class _FakeClient:
-            def send_sms_verify_code(self, request):
-                captured["map"] = request.to_map()
-                return _FakeResp()
 
         # 隔离频率限制与真实网络调用
         monkeypatch.setattr(sms, "_sms_rate_limits", {})
-        monkeypatch.setattr(sms, "_get_pnvs_client", lambda: _FakeClient())
+        monkeypatch.setattr(sms, "_proxy_request", lambda path, payload: {
+            "success": True,
+            "expire_minutes": 5,
+        })
 
         resp = client.post("/auth/sms/send", json={"phone": "13312343103"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        req_map = captured["map"]
-        # 回归断言：TemplateParam 必填（缺失会报 MissingTemplateParam），验证码位用 ##code## 占位符
-        assert "##code##" in req_map.get("TemplateParam", "")
-        # 传占位符时 CodeType 必填
-        assert req_map.get("CodeType") == sms.SMS_CODE_TYPE
-        # ValidTime 单位是秒（SMS_EXPIRE_MINUTES 分钟 ×60），而非已废弃的 expire_time
-        assert req_map.get("ValidTime") == sms.SMS_EXPIRE_MINUTES * 60
+        assert data["expire_minutes"] == 5
 
-    def test_pnvs_error_returns_400_json_not_500(self, client, monkeypatch):
-        """PNVS 返回非 OK 时应转为 400 JSON，而非未捕获异常导致 500 纯文本"""
+    def test_proxy_error_returns_400_json(self, client, monkeypatch):
+        """代理返回 success=False 时应转为 400 JSON，而非 500"""
         from core import sms
 
-        class _FakeBody:
-            code = "isv.SMS_TEMPLATE_ILLEGAL"
-            message = "模板不合法"
-
-        class _FakeResp:
-            body = _FakeBody()
-
-        class _FakeClient:
-            def send_sms_verify_code(self, request):
-                return _FakeResp()
-
         monkeypatch.setattr(sms, "_sms_rate_limits", {})
-        monkeypatch.setattr(sms, "_get_pnvs_client", lambda: _FakeClient())
+        monkeypatch.setattr(sms, "_proxy_request", lambda path, payload: {
+            "success": False,
+            "message": "模板不合法",
+        })
 
         resp = client.post("/auth/sms/send", json={"phone": "13312343103"})
         assert resp.status_code == 400
@@ -928,53 +902,43 @@ class TestSmsSendHappyPath:
 
 
 class TestSmsCheckVerifyCode:
-    """core.sms.check_verify_code 核验结果解析
+    """core.sms.check_verify_code 代理模式核验结果解析
 
-    回归背景：PNVS CheckSmsVerifyCode 的核验结果只在 Model.VerifyResult（PASS/UNKNOWN），
-    旧代码误读 body.pass_/body.Pass（不存在），导致无论验证码对错都恒判失败。
+    回归背景：短信服务改为云端代理后，核验结果由代理返回，
+    需确保 success=true/false 正确映射为通过/失败。
     """
 
-    def _patch_client(self, monkeypatch, *, api_code="OK", verify_result=None):
+    def _patch_proxy(self, monkeypatch, *, success=True, message=""):
         from core import sms
 
-        class _FakeModel:
-            def __init__(self, vr):
-                self.verify_result = vr
+        def fake_proxy(path, payload):
+            return {"success": success, "message": message}
 
-        class _FakeBody:
-            def __init__(self):
-                self.code = api_code
-                self.message = "成功" if api_code == "OK" else "接口错误"
-                self.model = _FakeModel(verify_result) if verify_result is not None else None
-
-        class _FakeResp:
-            def __init__(self):
-                self.body = _FakeBody()
-
-        class _FakeClient:
-            def check_sms_verify_code(self, request):
-                return _FakeResp()
-
-        monkeypatch.setattr(sms, "_get_pnvs_client", lambda: _FakeClient())
+        monkeypatch.setattr(sms, "_proxy_request", fake_proxy)
         return sms
 
-    def test_verify_result_pass_returns_true(self, monkeypatch):
-        """VerifyResult=PASS 应判定核验通过"""
-        sms = self._patch_client(monkeypatch, verify_result="PASS")
+    def test_proxy_success_returns_true(self, monkeypatch):
+        """代理返回 success=True 应判定核验通过"""
+        sms = self._patch_proxy(monkeypatch, success=True)
         passed, reason = sms.check_verify_code("13312343103", "123456")
         assert passed is True
         assert reason == ""
 
-    def test_verify_result_unknown_returns_false(self, monkeypatch):
-        """VerifyResult=UNKNOWN 应判定核验失败"""
-        sms = self._patch_client(monkeypatch, verify_result="UNKNOWN")
+    def test_proxy_failure_returns_false(self, monkeypatch):
+        """代理返回 success=False 应判定核验失败"""
+        sms = self._patch_proxy(monkeypatch, success=False, message="验证码错误或已过期")
         passed, reason = sms.check_verify_code("13312343103", "000000")
         assert passed is False
         assert reason == "验证码错误或已过期"
 
-    def test_api_code_not_ok_returns_service_error(self, monkeypatch):
-        """接口返回非 OK 应视为服务异常，而非核验失败"""
-        sms = self._patch_client(monkeypatch, api_code="isv.SYSTEM_ERROR")
+    def test_proxy_connection_error_returns_service_error(self, monkeypatch):
+        """代理连接失败应视为服务异常，而非核验失败"""
+        from core import sms
+
+        def fake_proxy(path, payload):
+            raise RuntimeError("短信代理连接失败: Connection refused")
+
+        monkeypatch.setattr(sms, "_proxy_request", fake_proxy)
         passed, reason = sms.check_verify_code("13312343103", "123456")
         assert passed is False
         assert reason == "验证服务异常，请稍后重试"

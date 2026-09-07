@@ -309,7 +309,7 @@ class SpeakerDiarizer:
 
         # 说话人档案：speaker_id → SpeakerProfile
         self._profiles: dict[int, SpeakerProfile] = {}
-        self._next_speaker_id = 1
+        self._next_speaker_id = 0
 
         # 连续音频缓冲区
         self._audio_buffer = bytearray()
@@ -505,7 +505,7 @@ class SpeakerDiarizer:
                     best_similarity = similarity
                     best_id = sid
 
-            return best_id if best_id is not None else 1
+            return best_id if best_id is not None else 0
 
     def get_speaker_count(self) -> int:
         """当前识别到的说话人数量（原始值，不含后处理合并）"""
@@ -620,7 +620,7 @@ class SpeakerDiarizer:
         """重置所有状态（新会议时调用）"""
         with self._lock:
             self._profiles.clear()
-            self._next_speaker_id = 1
+            self._next_speaker_id = 0
             self._audio_buffer = bytearray()
             self._feature_timeline.clear()
             self._read_pos = 0

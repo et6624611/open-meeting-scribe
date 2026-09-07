@@ -377,8 +377,8 @@ class CreateMessageRequest(BaseModel):
     enabled: bool = Field(default=True, description="是否启用")
     dismiss_mode: str = Field(default="delayed", description="关闭策略: session/delayed/permanent")
     dismiss_delay_days: int = Field(default=7, description="延迟重现天数")
-    schedule_start: str = Field(default=None, description="生效开始时间（ISO 8601）")
-    schedule_end: str = Field(default=None, description="生效结束时间（ISO 8601，null=长期）")
+    schedule_start: str | None = Field(default=None, description="生效开始时间（ISO 8601）")
+    schedule_end: str | None = Field(default=None, description="生效结束时间（ISO 8601，null=长期）")
 
 
 class UpdateMessageRequest(BaseModel):
@@ -392,8 +392,8 @@ class UpdateMessageRequest(BaseModel):
     enabled: bool = Field(default=None, description="是否启用")
     dismiss_mode: str = Field(default=None, description="关闭策略")
     dismiss_delay_days: int = Field(default=None, description="延迟重现天数")
-    schedule_start: str = Field(default=None, description="生效开始时间")
-    schedule_end: str = Field(default=None, description="生效结束时间")
+    schedule_start: str | None = Field(default=None, description="生效开始时间")
+    schedule_end: str | None = Field(default=None, description="生效结束时间")
 
 
 @router.get("/config/messages")

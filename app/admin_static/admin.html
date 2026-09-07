@@ -738,7 +738,19 @@ async function api(method, path, body) {
   }
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(err.detail || '请求失败');
+    // FastAPI 422 验证错误：detail 是对象数组
+    let msg = '请求失败';
+    if (typeof err.detail === 'string') {
+      msg = err.detail;
+    } else if (Array.isArray(err.detail)) {
+      msg = err.detail.map(e => {
+        const loc = (e.loc || []).slice(1).join('.') || '字段';
+        return `${loc}: ${e.msg || '验证失败'}`;
+      }).join('; ');
+    } else if (err.detail) {
+      msg = String(err.detail);
+    }
+    throw new Error(msg);
   }
   return resp.json();
 }

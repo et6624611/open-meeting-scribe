@@ -13,6 +13,10 @@ data/users.json
 data/meeting_mappings.json
 data/hotword_mappings.txt
 data/voiceprint_registry.json
+data/settings.json
+data/philosophies.json
+data/hotwords.txt
+data/usage/
 data/*.wav
 data/*.mp3
 data/*.m4a
@@ -48,3 +52,6 @@ logs/
 # 截图（调试/测试用，不入库）
 /*.png
 docs/screenshots/
+
+# AI 生成的文档索引（可随时重建，不入库）
+.qoder/

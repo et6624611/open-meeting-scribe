@@ -77,11 +77,12 @@ tar czf /tmp/meeting-scribe-src.tar.gz \
 # 2. 上传
 scp /tmp/meeting-scribe-src.tar.gz root@47.116.10.194:/tmp/
 
-# 3. 服务器端解压 + 重启
+# 3. 服务器端解压 + 重启（主服务 + 管理后台）
 ssh root@47.116.10.194
 cd /opt/meeting-scribe
 tar xzf /tmp/meeting-scribe-src.tar.gz
 systemctl restart meeting-scribe
+systemctl restart meeting-scribe-admin
 ```
 
 ## 七、API 调用路径

@@ -1,22 +1,28 @@
 """
-core/sms.py — 阿里云短信认证服务 (PNVS) 封装
+core/sms.py — 短信认证服务（云端代理模式）
 
 职责：
-  1. 调用 SendSmsVerifyCode 发送验证码短信
-  2. 调用 CheckSmsVerifyCode 核验用户输入的验证码
+  1. 通过云端 SMS 代理发送验证码短信
+  2. 通过云端 SMS 代理核验用户输入的验证码
   3. 本地频率限制（60 秒冷却 + 每天 10 次上限）
 
 设计：
+  - 阿里云 AccessKey 不落地客户端，由云端代理（47.116.10.194）持有
+  - 客户端通过 HTTP + 共享密钥（SMS_PROXY_TOKEN）调用代理端点
+  - 代理负责调用阿里云 PNVS SDK（SendSmsVerifyCode / CheckSmsVerifyCode）
   - 验证码由阿里云 PNVS 全权托管（生成、发送、有效期、核验）
   - 频率限制用内存字典，与 _oauth_states 同一模式（单实例够用）
-  - SDK 调用为同步阻塞，路由层用 def（FastAPI 自动线程池化）
 """
 
 import os
 import re
 import time
+import hmac
+import hashlib
 import logging
-from datetime import datetime, timezone
+import urllib.request
+import urllib.error
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -24,30 +30,17 @@ logger = logging.getLogger(__name__)
 # 配置
 # ============================================================
 
-ALI_ACCESS_KEY_ID = os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID", "")
-ALI_ACCESS_KEY_SECRET = os.getenv("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "")
-SMS_SIGN_NAME = os.getenv("SMS_SIGN_NAME", "恒创联众")
-SMS_TEMPLATE_CODE = os.getenv("SMS_TEMPLATE_CODE", "100001")
+# 云端 SMS 代理地址（代理持有阿里云 AccessKey，密钥不落地）
+SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "http://47.116.10.194:8080").rstrip("/")
 
-# 验证码有效期（分钟）；注意 PNVS 的 ValidTime 单位是「秒」，下发时需 ×60
+# 代理共享密钥（用于请求签名，防止未授权调用）
+SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "")
+
+# 签名有效期（秒），防重放
+SMS_SIGN_TTL = 300
+
+# 验证码有效期（分钟）
 SMS_EXPIRE_MINUTES = 5
-
-# 短信模板参数（JSON 字符串，TemplateParam 必填）：
-#   - 缺失 → 报 MissingTemplateParam
-#   - 变量名/个数须与赠送模板内容完全一致 → 否则报「请检查模板内容与模板参数是否匹配」
-# 默认适配 PNVS 赠送模板 100001（内容形如「您的验证码是${code}，有效期${min}分钟，请勿告诉他人」）：
-#   - code 用占位符 ##code##，由 PNVS 动态生成并托管，CheckSmsVerifyCode 方可核验
-#   - min 与 SMS_EXPIRE_MINUTES 保持一致
-# 若你的模板变量名不同（如 ${number}）或没有 ${min}，在 .env 覆盖 SMS_TEMPLATE_PARAM。
-SMS_TEMPLATE_PARAM = os.getenv(
-    "SMS_TEMPLATE_PARAM",
-    '{"code":"##code##","min":"%d"}' % SMS_EXPIRE_MINUTES,
-)
-
-# 验证码生成规则（传入 ##code## 占位符时 CodeType 必填）：1=纯数字，详见 PNVS 文档
-SMS_CODE_TYPE = int(os.getenv("SMS_CODE_TYPE", "1"))
-# 验证码长度：4~8 位，默认 6 位（与前端输入框 maxlength 一致）
-SMS_CODE_LENGTH = int(os.getenv("SMS_CODE_LENGTH", "6"))
 
 # 手机号正则：国内 11 位，1[3-9] 开头
 PHONE_REGEX = re.compile(r"^1[3-9]\d{9}$")
@@ -105,25 +98,75 @@ def _record_send(phone: str) -> None:
     _sms_rate_limits.setdefault(phone, []).append(time.time())
 
 
-def _get_pnvs_client():
-    """懒加载 PNVS SDK 客户端（避免启动时 import 失败）"""
-    from alibabacloud_dypnsapi20170525.client import Client as DypnsapiClient
-    from alibabacloud_tea_openapi.models import Config
+# ============================================================
+# 代理通信
+# ============================================================
 
-    if not ALI_ACCESS_KEY_ID or not ALI_ACCESS_KEY_SECRET:
-        raise RuntimeError("未配置 ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET")
+def _make_sign(timestamp: str) -> str:
+    """
+    生成请求签名：HMAC-SHA256(token, timestamp)。
+    代理端用相同 token + timestamp 校验，timestamp 超过 TTL 视为过期。
+    """
+    if not SMS_PROXY_TOKEN:
+        raise RuntimeError("未配置 SMS_PROXY_TOKEN，无法调用短信代理")
+    return hmac.new(
+        SMS_PROXY_TOKEN.encode(),
+        timestamp.encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
-    config = Config(
-        access_key_id=ALI_ACCESS_KEY_ID,
-        access_key_secret=ALI_ACCESS_KEY_SECRET,
-        endpoint="dypnsapi.aliyuncs.com",
+
+def _proxy_request(path: str, payload: dict) -> dict:
+    """
+    向 SMS 代理发送 POST 请求。
+
+    Args:
+        path: 代理端点路径（如 /sms/send）
+        payload: 请求体（JSON）
+
+    Returns:
+        代理返回的 JSON dict
+    """
+    url = f"{SMS_PROXY_URL}{path}"
+    timestamp = str(int(time.time()))
+    sign = _make_sign(timestamp)
+
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-SMS-Timestamp": timestamp,
+            "X-SMS-Sign": sign,
+        },
+        method="POST",
     )
-    return DypnsapiClient(config)
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+            return data
+    except urllib.error.HTTPError as e:
+        # 尝试读取错误响应体
+        try:
+            err_body = json.loads(e.read().decode())
+            msg = err_body.get("message", str(e))
+        except Exception:
+            msg = f"HTTP {e.code}"
+        logger.error(f"SMS 代理请求失败: {path} → {msg}")
+        raise RuntimeError(f"短信代理返回错误: {msg}")
+    except urllib.error.URLError as e:
+        logger.error(f"SMS 代理连接失败: {path} → {e.reason}")
+        raise RuntimeError(f"短信代理连接失败: {e.reason}")
+    except Exception as e:
+        logger.error(f"SMS 代理请求异常: {path} → {e}")
+        raise RuntimeError(f"短信服务异常: {e}")
 
 
 def send_verify_code(phone: str) -> dict:
     """
-    调用 PNVS SendSmsVerifyCode 发送验证码短信。
+    通过云端代理发送验证码短信。
 
     Args:
         phone: 国内 11 位手机号
@@ -132,52 +175,24 @@ def send_verify_code(phone: str) -> dict:
         {"success": True, "expire_minutes": 5}
         或抛出 RuntimeError（发送失败时）
     """
-    from alibabacloud_dypnsapi20170525.models import SendSmsVerifyCodeRequest
+    result = _proxy_request("/sms/send", {"phone": phone})
 
-    client = _get_pnvs_client()
-    out_id = f"oms_{int(time.time())}"
+    if not result.get("success"):
+        msg = result.get("message", "发送失败")
+        logger.error(f"代理发送失败: phone={phone[:3]}****{phone[-4:]}, message={msg}")
+        raise RuntimeError(f"短信发送失败: {msg}")
 
-    try:
-        request = SendSmsVerifyCodeRequest(
-            phone_number=phone,
-            sign_name=SMS_SIGN_NAME,
-            template_code=SMS_TEMPLATE_CODE,
-            template_param=SMS_TEMPLATE_PARAM,   # 必填，否则报 MissingTemplateParam
-            code_type=SMS_CODE_TYPE,             # 传 ##code## 占位符时必填（1=纯数字）
-            code_length=SMS_CODE_LENGTH,
-            valid_time=SMS_EXPIRE_MINUTES * 60,  # ValidTime 单位是秒（默认 300），不是分钟
-            out_id=out_id,
-        )
-        response = client.send_sms_verify_code(request)
-        body = response.body
-        code = getattr(body, "code", "") or ""
-        message = getattr(body, "message", "") or ""
-
-        if code != "OK":
-            logger.error(f"PNVS 发送失败: code={code}, message={message}, phone={phone[:3]}****{phone[-4:]}")
-            # 模板参数不匹配时给出可操作提示：模板变量名/个数须与控制台赠送模板一致
-            hint = ""
-            if "模板" in message or "TEMPLATE" in code.upper():
-                hint = (
-                    f"（当前 TemplateParam={SMS_TEMPLATE_PARAM}；请核对控制台赠送模板 "
-                    f"{SMS_TEMPLATE_CODE} 的变量名与个数，必要时在 .env 覆盖 SMS_TEMPLATE_PARAM）"
-                )
-            raise RuntimeError(f"短信发送失败: {message or code}{hint}")
-
-        _record_send(phone)
-        logger.info(f"验证码已发送: phone={phone[:3]}****{phone[-4:]}")
-        return {"success": True, "expire_minutes": SMS_EXPIRE_MINUTES}
-
-    except RuntimeError:
-        raise
-    except Exception as e:
-        logger.error(f"PNVS API 调用异常: {e}")
-        raise RuntimeError(f"短信服务异常: {e}")
+    _record_send(phone)
+    logger.info(f"验证码已发送: phone={phone[:3]}****{phone[-4:]}")
+    return {
+        "success": True,
+        "expire_minutes": result.get("expire_minutes", SMS_EXPIRE_MINUTES),
+    }
 
 
 def check_verify_code(phone: str, code: str) -> tuple[bool, str]:
     """
-    调用 PNVS CheckSmsVerifyCode 核验验证码。
+    通过云端代理核验验证码。
 
     Args:
         phone: 手机号
@@ -186,39 +201,15 @@ def check_verify_code(phone: str, code: str) -> tuple[bool, str]:
     Returns:
         (是否通过, 原因说明)
     """
-    from alibabacloud_dypnsapi20170525.models import CheckSmsVerifyCodeRequest
-
-    client = _get_pnvs_client()
-
-    request = CheckSmsVerifyCodeRequest(
-        phone_number=phone,
-        verify_code=code,
-    )
-
     try:
-        response = client.check_sms_verify_code(request)
-        body = response.body
-        api_code = getattr(body, "code", "") or ""
-        message = getattr(body, "message", "") or ""
-
-        # 接口请求本身失败（非 OK）→ 视为服务异常
-        if api_code != "OK":
-            logger.warning(f"PNVS 核验接口错误: code={api_code}, message={message}")
-            return False, "验证服务异常，请稍后重试"
-
-        # 核验结果只以 Model.VerifyResult 为准：PASS=通过，UNKNOWN=失败。
-        # 官方明确：Code=OK / Success=true 仅代表请求成功，不代表核验通过；
-        # 旧代码误读 body.pass_/body.Pass（字段不存在）导致恒判失败。
-        model = getattr(body, "model", None)
-        verify_result = (getattr(model, "verify_result", "") or "") if model else ""
-
-        if verify_result == "PASS":
-            logger.info(f"验证码核验通过: phone={phone[:3]}****{phone[-4:]}")
-            return True, ""
-        else:
-            logger.info(f"验证码核验失败: phone={phone[:3]}****{phone[-4:]}, verify_result={verify_result!r}")
-            return False, "验证码错误或已过期"
-
-    except Exception as e:
-        logger.error(f"PNVS 核验 API 调用异常: {e}")
+        result = _proxy_request("/sms/verify", {"phone": phone, "code": code})
+    except RuntimeError:
         return False, "验证服务异常，请稍后重试"
+
+    if result.get("success"):
+        logger.info(f"验证码核验通过: phone={phone[:3]}****{phone[-4:]}")
+        return True, ""
+    else:
+        msg = result.get("message", "验证码错误或已过期")
+        logger.info(f"验证码核验失败: phone={phone[:3]}****{phone[-4:]}, message={msg}")
+        return False, msg
