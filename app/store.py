@@ -1,6 +1,10 @@
 """
 app/store.py — 共享状态层
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 集中管理所有跨路由的共享状态、配置常量与辅助函数。
 各 router 模块通过 import 引用，避免循环依赖。
 """
@@ -8,6 +12,7 @@ app/store.py — 共享状态层
 import os
 import json
 import time
+import struct
 import asyncio
 import logging
 from pathlib import Path
@@ -28,6 +33,7 @@ from core.diarization import SpeakerDiarizer
 from core.errors import is_transient_error, classify_error
 from core import speakers
 from core import voiceprint
+from core import text_bridge
 from core import joblog
 
 # speaker_count 估算范围上下限
@@ -83,6 +89,7 @@ realtime_diarizers: dict[str, SpeakerDiarizer] = {}  # 声纹聚类器
 realtime_summarizers: dict[str, RealtimeSummarizer] = {}  # 实时总结器
 realtime_chapter_generators: dict[str, RealtimeChapterGenerator] = {}  # 实时章节生成器
 realtime_transcript_buffers: dict[str, list[dict]] = {}  # 实时转写缓冲（task_id → 最近 N 条句子）
+realtime_full_transcripts: dict[str, list[dict]] = {}  # 全量实时转写（task_id → 所有句子，供文本桥接匹配）
 realtime_speaker_maps: dict[str, dict[int, str]] = {}  # 实时说话人绑定（task_id → {speaker_id: speaker_uuid}）
 event_loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
 
@@ -107,6 +114,77 @@ def save_task_to_disk(task_id: str) -> None:
             json.dump(task_for_disk, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"保存任务到磁盘失败: {e}")
+
+
+def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
+    """
+    尝试恢复孤儿录音：将 raw PCM 文件转为 WAV，保留任务供用户后续处理。
+
+    Returns:
+        True 表示恢复成功，False 表示无可恢复的音频数据。
+    """
+    audio_path_str = task.get("audio_path", "")
+    if not audio_path_str:
+        return False
+
+    audio_path = Path(audio_path_str)
+    # 推导 raw 文件路径（与 wav 同目录，同前缀，扩展名 .raw）
+    raw_path = audio_path.with_suffix(".raw")
+
+    if not raw_path.exists() or raw_path.stat().st_size == 0:
+        return False
+
+    # 将 raw PCM 转为 WAV（16kHz, mono, 16-bit）
+    sample_rate = 16000
+    channels = 1
+    bits = 16
+    data_size = raw_path.stat().st_size
+    duration = data_size / (sample_rate * channels * bits // 8)
+
+    byte_rate = sample_rate * channels * bits // 8
+    block_align = channels * bits // 8
+
+    try:
+        with open(raw_path, "rb") as fin, open(audio_path, "wb") as fout:
+            fout.write(b"RIFF")
+            fout.write(struct.pack("<I", 36 + data_size))
+            fout.write(b"WAVE")
+            fout.write(b"fmt ")
+            fout.write(struct.pack("<I", 16))
+            fout.write(struct.pack("<H", 1))  # PCM
+            fout.write(struct.pack("<H", channels))
+            fout.write(struct.pack("<I", sample_rate))
+            fout.write(struct.pack("<I", byte_rate))
+            fout.write(struct.pack("<H", block_align))
+            fout.write(struct.pack("<H", bits))
+            fout.write(b"data")
+            fout.write(struct.pack("<I", data_size))
+            while True:
+                chunk = fin.read(65536)
+                if not chunk:
+                    break
+                fout.write(chunk)
+
+        # 删除 raw 文件
+        raw_path.unlink(missing_ok=True)
+
+        # 更新任务状态为 pending，供用户触发处理
+        task["status"] = "pending"
+        task["progress"] = 0
+        task["message"] = "服务重启前正在录制，音频已恢复，等待处理"
+        task["audio_duration"] = round(duration, 1)
+        task["_recovered_from_orphan"] = True
+        tasks[task_id] = task
+        save_task_to_disk(task_id)
+
+        logger.info(
+            f"[恢复] {task_id[:8]}: raw → WAV 完成，时长 {duration:.0f}s ({duration/60:.1f} 分钟)"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"[恢复] {task_id[:8]}: raw → WAV 失败: {e}")
+        return False
 
 
 def load_tasks_from_disk() -> None:
@@ -147,10 +225,14 @@ def load_tasks_from_disk() -> None:
                             json.dump(task, fw, ensure_ascii=False, indent=2)
                         speaker_count_fixed += 1
                         logger.info(f"[迁移] {task_id[:8]} speaker_count: {old} → {correct_count}")
-                # 清理孤儿录音：服务重启后实时资源已丢失，残留 recording 状态无法恢复，直接删除文件
+                # 恢复孤儿录音：服务重启后实时资源已丢失，但 raw 音频数据可能仍在
                 if task.get("status") == "recording":
+                    recovered = _try_recover_orphan_recording(task, task_id)
+                    if recovered:
+                        orphan_recording += 1  # 复用计数器，日志中标记为"已恢复"
+                        continue
+                    # 无可用音频数据，清理任务文件
                     task_file.unlink(missing_ok=True)
-                    # 同步清理关联的 joblog 文件
                     joblog_file = TASKS_DIR / f"{task_id}.joblog.jsonl"
                     joblog_file.unlink(missing_ok=True)
                     orphan_recording += 1
@@ -174,7 +256,12 @@ def load_tasks_from_disk() -> None:
         if speaker_count_fixed:
             logger.info(f"已修正 {speaker_count_fixed} 个任务的说话人计数")
         if orphan_recording:
-            logger.warning(f"已清理 {orphan_recording} 个孤儿录音任务（服务重启导致录音中断）")
+            recovered_count = sum(1 for t in tasks.values() if t.get("_recovered_from_orphan"))
+            deleted_count = orphan_recording - recovered_count
+            if recovered_count:
+                logger.info(f"已恢复 {recovered_count} 个孤儿录音（服务重启前正在录制，音频已保留）")
+            if deleted_count:
+                logger.warning(f"已清理 {deleted_count} 个孤儿录音任务（无可用音频数据）")
     except Exception as e:
         logger.error(f"从磁盘加载任务失败: {e}")
 
@@ -300,17 +387,21 @@ def push_realtime_msg(task_id: str, msg: dict) -> None:
 
     # 定稿句子自动写入缓冲区（供 AI 对话上下文注入）
     if msg.get("type") == "sentence":
-        buf = realtime_transcript_buffers.setdefault(task_id, [])
-        buf.append({
+        sentence_entry = {
             "text": msg.get("text", ""),
             "speaker_id": msg.get("speaker_id"),
             "speaker_name": msg.get("speaker_name", ""),
             "begin_time": msg.get("begin_time", 0),
             "end_time": msg.get("end_time", 0),
-        })
+        }
+        buf = realtime_transcript_buffers.setdefault(task_id, [])
+        buf.append(sentence_entry)
         # 只保留最近 N 条
         if len(buf) > REALTIME_BUFFER_MAX:
             realtime_transcript_buffers[task_id] = buf[-REALTIME_BUFFER_MAX:]
+        # 同步写入全量转写（无上限，供文本桥接匹配）
+        full = realtime_full_transcripts.setdefault(task_id, [])
+        full.append(sentence_entry)
 
 
 def resolve_realtime_speaker_name(task_id: str, speaker_id: int) -> str:
@@ -601,6 +692,7 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 0
     tasks[task_id]["retry_count"] = 0
+    task_start = time.perf_counter()
     joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "开始转写（stage1）")
 
     # 自动重试循环（仅针对瞬时错误）
@@ -658,7 +750,7 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 save_task_to_disk(task_id)
                 _run_stage2_for_task(task_id, audio_path, speaker_mapping)
             else:
-                # V3：尝试声纹自动匹配
+                # V3++ 分层匹配策略：P0 文本桥接 → P1 声纹匹配 → P2 手动绑定
                 normalized_path = result.get("normalized_path")
                 if not normalized_path and pre_normalized:
                     normalized_path = str(pre_normalized)
@@ -666,36 +758,113 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 tasks[task_id]["normalized_path"] = normalized_path
                 dialogue = result.get("dialogue", [])
                 auto_mapping = {}
+                match_sources = []  # 记录匹配来源（用于日志和提示）
+
+                # ── P0：文本桥接匹配（确定性证据） ──
+                realtime_full_transcript = tasks[task_id].get("realtime_full_transcript")
+                realtime_speaker_binding = tasks[task_id].get("realtime_speaker_binding")
+                text_bridge_matched = 0
+                if realtime_full_transcript and realtime_speaker_binding and dialogue:
+                    try:
+                        tb_start = time.perf_counter()
+                        # 构建说话人姓名映射
+                        speaker_names = {}
+                        for uuid in set(realtime_speaker_binding.values()):
+                            spk = speakers.get_speaker_by_id(uuid)
+                            if spk:
+                                speaker_names[uuid] = spk.name
+                        tb_results, tb_mapping = text_bridge.text_bridge_match(
+                            realtime_full_transcript=realtime_full_transcript,
+                            realtime_speaker_binding=realtime_speaker_binding,
+                            dialogue=dialogue,
+                            speaker_names=speaker_names,
+                        )
+                        tb_elapsed = time.perf_counter() - tb_start
+                        text_bridge_matched = len(tb_mapping)
+                        logger.info(f"[PERF] {task_id[:8]} P0 文本桥接匹配: {tb_elapsed:.3f}s, {text_bridge_matched} 位")
+                        if tb_mapping:
+                            auto_mapping.update(tb_mapping)
+                            match_sources.append(f"文本桥接({text_bridge_matched}位)")
+                            tasks[task_id]["text_bridge_match"] = [r.to_dict() for r in tb_results]
+                            logger.info(
+                                f"[{task_id[:8]}] P0 文本桥接匹配: "
+                                f"{text_bridge_matched} 位说话人识别成功"
+                            )
+                            joblog.append_event(
+                                task_id, joblog.STAGE_VOICEPRINT,
+                                f"P0 文本桥接匹配命中 {text_bridge_matched} 位说话人",
+                            )
+                    except Exception as e:
+                        logger.warning(f"[{task_id[:8]}] P0 文本桥接匹配失败: {e}")
+                        joblog.append_event(
+                            task_id, joblog.STAGE_VOICEPRINT,
+                            f"P0 文本桥接匹配失败: {e}", level="warn",
+                        )
+
+                # ── P1：声纹向量匹配（概率性证据） ──
+                # 仅对文本桥接未覆盖的说话人执行声纹匹配
                 if normalized_path and dialogue:
                     try:
+                        vp_start = time.perf_counter()
                         vp_results = voiceprint.auto_identify_speakers(
                             audio_path=normalized_path,
                             dialogue=dialogue,
                         )
-                        auto_mapping = voiceprint.build_auto_mapping(vp_results)
-                        tasks[task_id]["voiceprint_match"] = [r.to_dict() for r in vp_results]
-                        tasks[task_id]["voiceprint_auto_mapping"] = {str(k): v for k, v in auto_mapping.items()}
-                        matched_count = len(auto_mapping)
-                        if matched_count > 0:
-                            logger.info(f"[{task_id[:8]}] 声纹自动匹配: {matched_count} 位说话人识别成功")
-                            joblog.append_event(
-                                task_id, joblog.STAGE_VOICEPRINT,
-                                f"声纹自动匹配命中 {matched_count} 位说话人",
+                        vp_elapsed = time.perf_counter() - vp_start
+                        vp_mapping = voiceprint.build_auto_mapping(vp_results)
+                        logger.info(f"[PERF] {task_id[:8]} P1 声纹匹配: {vp_elapsed:.3f}s")
+                        # 合并：声纹匹配仅补充文本桥接未覆盖的 speaker_id
+                        new_vp_matches = {
+                            sid: uuid for sid, uuid in vp_mapping.items()
+                            if sid not in auto_mapping
+                        }
+                        if new_vp_matches:
+                            auto_mapping.update(new_vp_matches)
+                            match_sources.append(f"声纹匹配({len(new_vp_matches)}位)")
+                            logger.info(
+                                f"[{task_id[:8]}] P1 声纹匹配补充: "
+                                f"{len(new_vp_matches)} 位说话人"
                             )
-                        else:
+                        # 始终记录声纹匹配结果（供前端展示）
+                        tasks[task_id]["voiceprint_match"] = [r.to_dict() for r in vp_results]
+                        tasks[task_id]["voiceprint_auto_mapping"] = {str(k): v for k, v in vp_mapping.items()}
+                        if not new_vp_matches and not text_bridge_matched:
                             joblog.append_event(
                                 task_id, joblog.STAGE_VOICEPRINT,
-                                "声纹自动匹配 0 命中，降级为手动绑定", level="warn",
+                                "P0+P1 均无匹配，降级为手动绑定", level="warn",
                             )
                     except Exception as e:
-                        logger.warning(f"[{task_id[:8]}] 声纹自动匹配失败（降级为手动绑定）: {e}")
+                        logger.warning(f"[{task_id[:8]}] P1 声纹匹配失败: {e}")
                         joblog.append_event(
                             task_id, joblog.STAGE_VOICEPRINT,
-                            f"声纹自动匹配失败（降级手动绑定）: {e}", level="error",
+                            f"P1 声纹匹配失败: {e}", level="error",
                         )
 
+                if match_sources:
+                    logger.info(
+                        f"[{task_id[:8]}] 分层匹配完成: {len(auto_mapping)} 位说话人, "
+                        f"来源: {', '.join(match_sources)}"
+                    )
+
                 if auto_mapping:
-                    # 有自动匹配结果，直接运行第二阶段
+                    # 有自动匹配结果，自动注册/更新声纹（时长加权）
+                    if normalized_path and dialogue:
+                        try:
+                            reg_results = voiceprint.register_from_binding(
+                                audio_path=normalized_path,
+                                dialogue=dialogue,
+                                mapping=auto_mapping,
+                                meeting_id=task_id,
+                            )
+                            reg_ok = sum(1 for r in reg_results.values() if r["status"] == "registered")
+                            if reg_ok > 0:
+                                logger.info(
+                                    f"[{task_id[:8]}] 自动匹配后声纹更新: "
+                                    f"{reg_ok}/{len(auto_mapping)} 位说话人"
+                                )
+                        except Exception as e:
+                            logger.warning(f"[{task_id[:8]}] 自动声纹更新失败（不影响主流程）: {e}")
+                    # 直接运行第二阶段
                     save_task_to_disk(task_id)
                     _run_stage2_for_task(task_id, audio_path, auto_mapping)
                 else:
@@ -730,9 +899,15 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 on_failure(e)
                 return
 
+    # 记录任务总耗时（无论成功失败）
+    task_elapsed = time.perf_counter() - task_start
+    logger.info(f"[PERF] {task_id[:8]} 管线任务总计: {task_elapsed:.3f}s")
+
 
 def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict = None):
     """为指定任务运行管线第二阶段（纪要生成）。含瞬时错误自动重试。"""
+    stage2_start = time.perf_counter()
+
     def on_progress(p: PipelineProgress):
         tasks[task_id]["progress"] = p.percent
         tasks[task_id]["message"] = p.message
@@ -819,14 +994,8 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
             save_task_to_disk(task_id)
 
-            # 自动同步会议纪要到项目文件夹
-            try:
-                from core.projects import sync_meeting_to_folders
-                written = sync_meeting_to_folders(tasks[task_id])
-                if written:
-                    logger.info(f"[{task_id[:8]}] 会议纪要已同步到 {len(written)} 个文件夹")
-            except Exception as e:
-                logger.warning(f"[{task_id[:8]}] 会议纪要同步失败（不影响主流程）: {e}")
+            stage2_elapsed = time.perf_counter() - stage2_start
+            logger.info(f"[PERF] {task_id[:8]} 纪要任务总计: {stage2_elapsed:.3f}s")
 
             return  # 成功
 
@@ -955,37 +1124,24 @@ def get_llm_config() -> dict:
 
 def get_asr_config() -> dict:
     """
-    获取 ASR（语音转写）配置（从 settings.json）。
+    获取 ASR（语音转写）配置。
 
+    代理模式下，客户端不再持有 DashScope API Key，所有 ASR 请求通过代理服务器中转。
     返回格式：
       {
         "provider": "DashScope",
-        "base_url": "https://dashscope.aliyuncs.com",
-        "api_key": "sk-...",  # 明文（仅内部使用）
+        "proxy_url": "http://47.116.10.194:8200",
         "model": "paraformer-v2",
-        "source": "platform" | "user"  # Key 来源（计量判定用）
+        "source": "platform"  # 始终为 platform（代理模式）
       }
 
-    ASR 与 LLM 使用独立的 API Key，互不干扰。
-    若未单独配置 ASR Key，回退到环境变量 DASHSCOPE_API_KEY。
+    详见 docs/adr/0012-ASR转写走云端代理.md
     """
-    settings = load_settings()
-    asr_config = settings.get("asr", {})
-
-    # API Key 回退链：asr.api_key → 环境变量
-    asr_key = asr_config.get("api_key", "")
-    if asr_key:
-        source = "user"  # 用户在设置页自行配置
-    else:
-        asr_key = os.getenv("DASHSCOPE_API_KEY", "")
-        source = "platform"  # 平台预设（环境变量）
-
     return {
-        "provider": asr_config.get("provider", "DashScope"),
-        "base_url": asr_config.get("base_url", "https://dashscope.aliyuncs.com"),
-        "api_key": asr_key,
-        "model": asr_config.get("model", "paraformer-v2"),
-        "source": source,
+        "provider": "DashScope",
+        "proxy_url": os.getenv("ASR_PROXY_URL", "http://47.116.10.194:8200"),
+        "model": "paraformer-v2",
+        "source": "platform",
     }
 
 
@@ -1015,4 +1171,28 @@ def get_voiceprint_config() -> dict:
             "base_url": cloud_config.get("base_url", ""),
             "api_key": cloud_config.get("api_key", ""),
         },
+    }
+
+
+def get_feature_flags() -> dict:
+    """
+    获取功能开关配置（从 settings.json）。
+
+    返回格式：
+      {
+        "realtime_chapters": true,   # 实时章节生成
+        "realtime_summary": true,    # 实时总结生成
+        "realtime_summary_interval": 60,  # 总结间隔（秒），可选 30/60/120/300
+        "update_check": true         # 软件更新提示
+      }
+
+    未配置的字段默认启用（true）。
+    """
+    settings = load_settings()
+    ff = settings.get("feature_flags", {})
+    return {
+        "realtime_chapters": ff.get("realtime_chapters", True),
+        "realtime_summary": ff.get("realtime_summary", True),
+        "realtime_summary_interval": ff.get("realtime_summary_interval", 60),
+        "update_check": ff.get("update_check", True),
     }

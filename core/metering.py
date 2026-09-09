@@ -37,26 +37,18 @@ def is_metered() -> bool:
     """
     判断当前用户是否需要计量。
 
-    不需要计量的情况：
-      - 未登录（本地模式）
-      - 自带 ASR API Key（用户自己承担费用）
-      - 平台 Key 未配置（回退到自带 Key 模式）
+    代理模式下（详见 docs/adr/0012），所有 ASR 请求通过云端代理中转，
+    客户端不再持有 API Key，因此所有已登录用户均走计量模式。
 
     Returns:
         True = 需要计量（消耗平台配额）
-        False = 不计量（用户自费或未启用平台服务）
+        False = 未登录（本地模式）
     """
     from core.users import get_current_user
-    from app.store import get_asr_config
 
     user = get_current_user()
     if not user:
         return False  # 未登录 = 本地模式，不计量
-
-    asr_config = get_asr_config()
-    # 如果 ASR Key 来自用户自行配置（非平台预设），不计量
-    if asr_config.get("source") == "user":
-        return False
 
     # 有订阅信息且档位为有效档位 → 需要计量
     subscription = user.get("subscription", {})

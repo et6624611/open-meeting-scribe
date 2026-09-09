@@ -142,12 +142,20 @@ def get_or_create_vocabulary(
 
 # ── 热词映射（后处理纠正） ──
 
+# 模块级缓存：(file_path, mtime) → (mappings, compiled_patterns)
+_mappings_cache: dict[str, tuple[float, list[tuple[str, str]], list[tuple[re.Pattern, str]]]] = {}
+
+
+def invalidate_hotword_mappings_cache() -> None:
+    """清除热词映射缓存（文件被外部修改后调用）"""
+    _mappings_cache.clear()
+
 
 def load_hotword_mappings(
     file_path: str | Path = "data/hotword_mappings.txt",
 ) -> list[tuple[str, str]]:
     """
-    从文件加载热词映射列表。
+    从文件加载热词映射列表（带 mtime 缓存）。
 
     格式：每行一条，`错误识别→正确文本`，# 开头为注释，空行忽略。
 
@@ -155,9 +163,17 @@ def load_hotword_mappings(
         [(asr_text, correct_text), ...]，按左串长度降序排列（长匹配优先）
     """
     file_path = Path(file_path)
+    key = str(file_path)
+
     if not file_path.exists():
+        _mappings_cache.pop(key, None)
         logger.debug(f"热词映射文件不存在: {file_path}")
         return []
+
+    mtime = file_path.stat().st_mtime
+    cached = _mappings_cache.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
 
     mappings = []
     with open(file_path, "r", encoding="utf-8") as f:
@@ -177,7 +193,28 @@ def load_hotword_mappings(
     # 长匹配优先：按左串长度降序排列
     mappings.sort(key=lambda x: len(x[0]), reverse=True)
     logger.info(f"加载热词映射: {len(mappings)} 条")
+
+    # 预编译正则（英文词用 \b 词边界，中文用直接替换）
+    compiled = []
+    for asr_text, correct_text in mappings:
+        if _is_ascii_word(asr_text):
+            compiled.append((
+                re.compile(r"\b" + re.escape(asr_text) + r"\b", re.IGNORECASE),
+                correct_text,
+            ))
+
+    _mappings_cache[key] = (mtime, mappings, compiled)
     return mappings
+
+
+def _get_compiled_patterns(
+    file_path: str | Path = "data/hotword_mappings.txt",
+) -> list[tuple[re.Pattern, str]]:
+    """获取预编译的正则映射（与 load_hotword_mappings 共享缓存）"""
+    # 确保缓存已填充
+    load_hotword_mappings(file_path)
+    cached = _mappings_cache.get(str(Path(file_path)))
+    return cached[2] if cached else []
 
 
 def _is_ascii_word(pattern: str) -> bool:
@@ -199,24 +236,37 @@ def apply_hotword_mappings(
 
     Args:
         text: 待处理文本
-        mappings: 映射列表，为 None 时自动从文件加载
+        mappings: 映射列表，为 None 时自动从文件加载（带缓存）
         mappings_file: 映射文件路径（仅 mappings 为 None 时使用）
 
     Returns:
         替换后的文本
     """
-    if mappings is None:
-        mappings = load_hotword_mappings(mappings_file)
-    if not mappings:
+    if mappings is not None:
+        # 调用方显式传入 mappings，走原逻辑（每次编译正则）
+        for asr_text, correct_text in mappings:
+            if _is_ascii_word(asr_text):
+                pattern = re.compile(r"\b" + re.escape(asr_text) + r"\b", re.IGNORECASE)
+                text = pattern.sub(correct_text, text)
+            else:
+                text = text.replace(asr_text, correct_text)
         return text
 
-    for asr_text, correct_text in mappings:
+    # 使用缓存：预编译正则，避免每次重复读文件 + 编译
+    raw_mappings = load_hotword_mappings(mappings_file)
+    if not raw_mappings:
+        return text
+
+    compiled = _get_compiled_patterns(mappings_file)
+    # raw_mappings 与 compiled 中英文条目顺序一致，用索引同步遍历
+    ci = 0  # compiled 列表指针
+    for asr_text, correct_text in raw_mappings:
         if _is_ascii_word(asr_text):
-            # 纯英文词：词边界匹配，大小写不敏感
-            pattern = re.compile(r"\b" + re.escape(asr_text) + r"\b", re.IGNORECASE)
-            text = pattern.sub(correct_text, text)
+            if ci < len(compiled):
+                pat, _ = compiled[ci]
+                text = pat.sub(correct_text, text)
+                ci += 1
         else:
-            # 含中文或其他字符：直接子串替换
             text = text.replace(asr_text, correct_text)
 
     return text

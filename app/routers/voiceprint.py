@@ -40,6 +40,7 @@ class VoiceprintStatusResponse(BaseModel):
     registered_at: Optional[str] = None
     updated_at: Optional[str] = None
     sample_count: int = 0
+    total_sample_duration: float = 0.0
 
 
 @router.get("/registry")
@@ -59,6 +60,7 @@ def list_voiceprint_registry():
             "registered_at": record.registered_at,
             "updated_at": record.updated_at,
             "sample_count": record.sample_count,
+            "total_sample_duration": round(record.total_sample_duration, 1),
             "source_meeting_id": record.source_meeting_id,
         })
     return {"voiceprints": items, "total": len(items)}
@@ -76,6 +78,7 @@ def get_voiceprint_status(speaker_uuid: str):
             registered_at=record.registered_at,
             updated_at=record.updated_at,
             sample_count=record.sample_count,
+            total_sample_duration=round(record.total_sample_duration, 1),
         )
     return VoiceprintStatusResponse(
         speaker_uuid=speaker_uuid,

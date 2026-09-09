@@ -1,6 +1,10 @@
 """
 core/voiceprint.py — 声纹提取与自动识别（云端 embedding + per-meeting 统筹分配）
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 职责：
   1. 从音频片段提取声纹嵌入向量（192 维，云端 CAM++ 服务）
   2. 声纹注册：将说话人的声纹向量持久化到注册表
@@ -65,6 +69,18 @@ def _is_compatible_version(record_version: str) -> bool:
     return record_version in compatible
 
 
+# 各模型版本的嵌入维度（用于过滤维度不一致的注册记录）
+_MODEL_EMBEDDING_DIM: dict[str, int] = {
+    "cam++-v1": 192,
+    "cam++-v1-cloud": 192,
+}
+
+
+def _get_expected_embedding_dimension() -> int:
+    """返回当前 encoder 版本的嵌入维度"""
+    return _MODEL_EMBEDDING_DIM.get(VOICEPRINT_MODEL_VERSION, 192)
+
+
 # 余弦相似度阈值（CAM++ 在中文语料上判别力显著优于旧版 GE2E，
 # 不再需要 cohort centering 补丁；阈值待离线评测集标定后微调）
 MATCH_THRESHOLD = 0.50
@@ -124,7 +140,8 @@ class VoiceprintRecord:
     embedding: list[float]                     # 192 维嵌入向量（JSON 序列化用 list）
     registered_at: str = ""                    # 首次注册时间
     updated_at: str = ""                       # 最近更新时间
-    sample_count: int = 1                      # 注册时使用的音频样本数
+    sample_count: int = 1                      # 注册次数（历史兼容）
+    total_sample_duration: float = 0.0         # 累积声纹样本总时长（秒），用于时长加权
     source_meeting_id: str = ""               # 注册来源会议 ID
     model_version: str = VOICEPRINT_MODEL_VERSION  # 提取 encoder 版本
 
@@ -135,6 +152,7 @@ class VoiceprintRecord:
             "registered_at": self.registered_at,
             "updated_at": self.updated_at,
             "sample_count": self.sample_count,
+            "total_sample_duration": self.total_sample_duration,
             "source_meeting_id": self.source_meeting_id,
             "model_version": self.model_version,
         }
@@ -147,6 +165,7 @@ class VoiceprintRecord:
             registered_at=data.get("registered_at", ""),
             updated_at=data.get("updated_at", ""),
             sample_count=data.get("sample_count", 1),
+            total_sample_duration=data.get("total_sample_duration", 0.0),
             source_meeting_id=data.get("source_meeting_id", ""),
             model_version=data.get("model_version", "legacy"),
         )
@@ -187,6 +206,7 @@ def register_voiceprint(
     source_meeting_id: str = "",
     accumulate: bool = True,
     sample_count: Optional[int] = None,
+    duration_sec: float = 0.0,
 ) -> VoiceprintRecord:
     """
     注册/更新说话人声纹。
@@ -195,10 +215,11 @@ def register_voiceprint(
         speaker_uuid: 说话人 UUID
         embedding: 192 维嵌入向量
         source_meeting_id: 注册来源会议
-        accumulate: 已有声纹时是否按样本数加权累积（多会议样本平均可
+        accumulate: 已有声纹时是否按时长加权累积（多会议样本平均可
             抑制单场录音的信道偏置，提升跨会议判别力）；False 为整体覆盖
         sample_count: 显式指定样本数（跨会议重建时一次写入多场样本数）；
             None 表示在原有基础上 +1
+        duration_sec: 本次注册的音频时长（秒），用于时长加权累积平均
 
     Returns:
         注册记录
@@ -216,19 +237,31 @@ def register_voiceprint(
             record.embedding = embedding.tolist()
             record.model_version = VOICEPRINT_MODEL_VERSION
             record.sample_count = sample_count if sample_count is not None else 1
+            record.total_sample_duration = duration_sec
         elif accumulate:
             old = np.array(record.embedding, dtype=np.float32)
-            n = max(record.sample_count, 1)
-            merged = _l2((old * n + embedding) / (n + 1))
+            # 时长加权累积：按音频时长而非样本数加权，更准确反映信息量
+            old_dur = record.total_sample_duration
+            if old_dur > 0 and duration_sec > 0:
+                # 按时长加权平均
+                total_dur = old_dur + duration_sec
+                merged = _l2((old * old_dur + embedding * duration_sec) / total_dur)
+                record.total_sample_duration = total_dur
+            else:
+                # 降级到样本数加权（旧数据无时长信息）
+                n = max(record.sample_count, 1)
+                merged = _l2((old * n + embedding) / (n + 1))
+                record.total_sample_duration = duration_sec if duration_sec > 0 else old_dur
             record.embedding = merged.tolist()
             record.sample_count = sample_count if sample_count is not None else record.sample_count + 1
         else:
             record.embedding = embedding.tolist()
             record.sample_count = sample_count if sample_count is not None else record.sample_count + 1
+            record.total_sample_duration = duration_sec
             record.model_version = VOICEPRINT_MODEL_VERSION
         record.updated_at = now
         record.source_meeting_id = source_meeting_id
-        mode = f"累积第 {record.sample_count} 个样本" if accumulate else "覆盖"
+        mode = f"累积第 {record.sample_count} 个样本（{record.total_sample_duration:.1f}s）" if accumulate else "覆盖"
         logger.info(f"[声纹] 更新声纹: speaker={speaker_uuid[:8]}...（{mode}）")
     else:
         record = VoiceprintRecord(
@@ -237,11 +270,12 @@ def register_voiceprint(
             registered_at=now,
             updated_at=now,
             sample_count=sample_count if sample_count is not None else 1,
+            total_sample_duration=duration_sec,
             source_meeting_id=source_meeting_id,
             model_version=VOICEPRINT_MODEL_VERSION,
         )
         registry[speaker_uuid] = record
-        logger.info(f"[声纹] 注册声纹: speaker={speaker_uuid[:8]}...")
+        logger.info(f"[声纹] 注册声纹: speaker={speaker_uuid[:8]}...（{duration_sec:.1f}s）")
 
     save_registry(registry)
     return record
@@ -333,6 +367,13 @@ def match_voiceprint_detail(
         logger.info(
             f"[声纹] 注册表无匹配当前 encoder ({VOICEPRINT_MODEL_VERSION}) 的记录"
         )
+        return MatchDetail()
+
+    # 维度过滤：剔除维度不一致的记录（避免 np.stack 崩溃）
+    _expected_dim = _get_expected_embedding_dimension()
+    valid = {u: r for u, r in valid.items() if len(r.embedding) == _expected_dim}
+    if not valid:
+        logger.warning(f"[声纹] 维度过滤后注册表为空（期望 {_expected_dim} 维）")
         return MatchDetail()
 
     uuids = list(valid.keys())
@@ -527,6 +568,20 @@ def auto_identify_speakers(
     }
     if not valid_registry:
         logger.info("[声纹] 注册表为空或无当前 encoder 版本记录，跳过自动匹配")
+        return []
+
+    # 维度过滤：剔除与当前 encoder 输出维度不一致的记录（如 MFCC 降级 14 维 vs CAM++ 192 维）
+    _expected_dim = _get_expected_embedding_dimension()
+    dim_filtered = {
+        u: r for u, r in valid_registry.items()
+        if len(r.embedding) == _expected_dim
+    }
+    if len(dim_filtered) < len(valid_registry):
+        skipped = len(valid_registry) - len(dim_filtered)
+        logger.warning(f"[声纹] 跳过 {skipped} 条维度不一致的注册记录（期望 {_expected_dim} 维）")
+        valid_registry = dim_filtered
+    if not valid_registry:
+        logger.info("[声纹] 维度过滤后注册表为空，跳过自动匹配")
         return []
 
     # 加载音频
@@ -803,7 +858,7 @@ def register_from_binding(
                 logger.warning(f"[声纹] 注册失败: speaker={uuid[:8]}..., 嵌入提取失败")
             continue
 
-        register_voiceprint(uuid, embedding, source_meeting_id=meeting_id)
+        register_voiceprint(uuid, embedding, source_meeting_id=meeting_id, duration_sec=acc)
         results[uuid] = {"status": "registered", "duration_sec": round(acc, 1)}
 
     registered = sum(1 for r in results.values() if r["status"] == "registered")

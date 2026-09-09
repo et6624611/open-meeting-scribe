@@ -6,16 +6,19 @@
 <title>Open Meeting Scribe — 管理后台</title>
 <style>
 :root {
-  --bg: #f8f9fa;
+  --sidebar-bg: #1e293b;
+  --sidebar-fg: #e2e8f0;
+  --sidebar-border: #334155;
+  --bg: #f1f5f9;
   --surface: #ffffff;
-  --fg: #1a1a2e;
-  --muted: #6c757d;
-  --border: #dee2e6;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --danger: #dc3545;
-  --success: #28a745;
-  --warning: #ffc107;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --border: #cbd5e1;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
@@ -91,8 +94,8 @@ body {
 .app-container.active { display: block; }
 
 .topbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  border-bottom: none;
   padding: 0 24px;
   height: 56px;
   display: flex;
@@ -105,18 +108,18 @@ body {
 .topbar-brand {
   font-size: 16px;
   font-weight: 600;
-  color: var(--fg);
+  color: var(--sidebar-fg);
 }
-.topbar-brand span { color: var(--muted); font-weight: 400; }
+.topbar-brand span { color: #94a3b8; font-weight: 400; }
 .topbar-actions { display: flex; gap: 12px; align-items: center; }
 .topbar-actions button {
   padding: 6px 14px;
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--sidebar-border);
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--sidebar-fg);
   transition: all 0.2s;
 }
 .topbar-actions button:hover {
@@ -134,11 +137,11 @@ body {
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
   margin-bottom: 24px;
 }
 .tab {
-  padding: 10px 20px;
+  padding: 12px 20px;
   font-size: 14px;
   color: var(--muted);
   cursor: pointer;
@@ -148,12 +151,13 @@ body {
   border-top: none;
   border-left: none;
   border-right: none;
+  margin-bottom: -2px;
 }
 .tab:hover { color: var(--fg); }
 .tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* ── 概览卡片 ── */
@@ -391,7 +395,7 @@ tr:last-child td { border-bottom: none; }
   padding: 60px 20px;
   color: var(--muted);
 }
-.empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state .icon { margin-bottom: 16px; display: flex; justify-content: center; }
 
 /* ── Toast ── */
 .toast {
@@ -421,6 +425,14 @@ tr:last-child td { border-bottom: none; }
   .table-toolbar input { width: 100%; }
   td, th { padding: 10px 12px; font-size: 13px; }
 }
+
+/* ─── 图标系统（Lucide / Feather 风格） ─── */
+.ic { flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 14px; height: 14px; }
+.ic-md { width: 16px; height: 16px; }
+.ic-lg { width: 20px; height: 20px; }
+.ic-xl { width: 24px; height: 24px; }
+.ic-xxl { width: 48px; height: 48px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -529,7 +541,7 @@ tr:last-child td { border-bottom: none; }
           </tbody>
         </table>
         <div class="empty-state" id="emptyState" style="display:none;">
-          <div class="icon">📭</div>
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div>
           <p>暂无用户数据</p>
         </div>
       </div>
@@ -635,7 +647,7 @@ tr:last-child td { border-bottom: none; }
           </tbody>
         </table>
         <div class="empty-state" id="messagesEmptyState" style="display:none;">
-          <div class="icon">📢</div>
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div>
           <p>暂无消息，点击「新建消息」创建</p>
         </div>
       </div>
@@ -702,7 +714,7 @@ tr:last-child td { border-bottom: none; }
           </tbody>
         </table>
         <div class="empty-state" id="flagsEmptyState" style="display:none;">
-          <div class="icon">🎛️</div>
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></div>
           <p>暂无功能开关，点击「新建开关」创建</p>
         </div>
       </div>

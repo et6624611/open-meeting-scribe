@@ -23,6 +23,7 @@ from app.store import (
     REALTIME_BUFFER_MAX,
     push_realtime_msg, resolve_realtime_speaker_name,
     run_pipeline_task, run_stage2_task, save_task_to_disk,
+    get_feature_flags,
 )
 from core.audio import (
     start_recording_with_stream, stop_recording_with_stream,
@@ -31,7 +32,7 @@ from core.audio import (
 )
 from core.realtime_asr import RealtimeTranscriber
 from core.realtime_summary import RealtimeSummarizer
-from core.diarization import SpeakerDiarizer
+from core.diarization import create_realtime_diarizer
 from core import speakers, projects, hotwords, joblog
 from core.llm import async_chat_completion
 
@@ -128,15 +129,19 @@ def _execute_action(action: ActionDef, data: "ChatRequest") -> dict:
             task_id = str(uuid.uuid4())
             queue: asyncio.Queue = asyncio.Queue()
             realtime_queues[task_id] = queue
-            diarizer = SpeakerDiarizer()
+            diarizer = create_realtime_diarizer()
             realtime_diarizers[task_id] = diarizer
             realtime_speaker_maps[task_id] = {}
-            summarizer = RealtimeSummarizer(
-                on_summary=lambda content: push_realtime_msg(task_id, {"type": "summary_update", "content": content}),
-                on_status=lambda status: push_realtime_msg(task_id, {"type": "summary_status", "status": status}),
-            )
-            realtime_summarizers[task_id] = summarizer
-            summarizer.start()
+            # 根据功能开关决定是否启动实时总结
+            feature_flags = get_feature_flags()
+            summarizer = None
+            if feature_flags["realtime_summary"]:
+                summarizer = RealtimeSummarizer(
+                    on_summary=lambda content: push_realtime_msg(task_id, {"type": "summary_update", "content": content}),
+                    on_status=lambda status: push_realtime_msg(task_id, {"type": "summary_status", "status": status}),
+                )
+                realtime_summarizers[task_id] = summarizer
+                summarizer.start()
 
             transcriber_ref: dict[str, RealtimeTranscriber | None] = {"ref": None}
             _pcm_call_count = 0
@@ -155,7 +160,8 @@ def _execute_action(action: ActionDef, data: "ChatRequest") -> dict:
                 speaker_id = diarizer.get_speaker(begin_time=s.get("begin_time", 0) / 1000.0, end_time=s.get("end_time", 0) / 1000.0)
                 speaker_name = resolve_realtime_speaker_name(task_id, speaker_id)
                 push_realtime_msg(task_id, {"type": "sentence", "text": s["text"], "begin_time": s.get("begin_time", 0), "end_time": s.get("end_time", 0), "speaker_id": speaker_id, "speaker_name": speaker_name})
-                summarizer.feed_sentence({**s, "speaker_name": speaker_name})
+                if summarizer:
+                    summarizer.feed_sentence({**s, "speaker_name": speaker_name})
 
             transcriber = RealtimeTranscriber(
                 on_partial=lambda text: push_realtime_msg(task_id, {"type": "partial", "text": text, "speaker_id": diarizer.get_speaker(), "speaker_name": resolve_realtime_speaker_name(task_id, diarizer.get_speaker())}),

@@ -1,6 +1,10 @@
 """
 core/audio.py — 音频归一化（ffmpeg）+ macOS 系统内录（BlackHole）
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 职责：
   1. 将任意音频文件归一化为 16kHz / 单声道 / WAV（DashScope 转写最优格式）
   2. 说话人分离仅支持单声道，必须在此步强制下混
@@ -54,6 +58,11 @@ def normalize_audio(
     if not input_path.exists():
         raise FileNotFoundError(f"音频文件不存在: {input_path}")
 
+    # 幂等性检查：如果文件名已含 _normalized 后缀且为 WAV，说明已经归一化过，直接返回
+    if input_path.stem.endswith("_normalized") and input_path.suffix.lower() == ".wav":
+        logger.info(f"音频已归一化，跳过: {input_path.name}")
+        return input_path
+
     if output_path is None:
         output_path = input_path.with_stem(f"{input_path.stem}_normalized")
         output_path = output_path.with_suffix(".wav")
@@ -79,6 +88,7 @@ def normalize_audio(
     logger.info(f"音频归一化: {input_path.name} → {output_path.name} "
                 f"({sample_rate}Hz, {channels}ch)")
 
+    start = time.perf_counter()
     try:
         result = subprocess.run(
             cmd,
@@ -94,8 +104,9 @@ def normalize_audio(
     except FileNotFoundError:
         raise RuntimeError("ffmpeg 未安装，请先安装 ffmpeg")
 
-    logger.info(f"归一化完成: {output_path} "
-                f"({output_path.stat().st_size / 1024 / 1024:.1f} MB)")
+    elapsed = time.perf_counter() - start
+    logger.info(f"[PERF] ffmpeg 归一化: {elapsed:.3f}s, "
+                f"输出 {output_path.stat().st_size / 1024 / 1024:.1f} MB")
     return output_path
 
 

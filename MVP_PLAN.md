@@ -1,3 +1,12 @@
+---
+title: MVP 建设方案
+description: Mac 端 v1 云方案施工蓝图
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-07
+status: published
+---
+
 # Open Meeting Scribe — Mac 端 MVP 建设方案（云方案 v1）
 
 > 目标：本机（Apple M3 Pro / 18GB / macOS 26.6.2）跑通「音频 → 云端转写+说话人分离 → 结构化纪要」链路，提供本地 Web UI，并支持实时系统内录。

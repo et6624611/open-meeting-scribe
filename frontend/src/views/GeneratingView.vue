@@ -1,0 +1,1634 @@
+<template>
+  <div class="gen-view">
+    <!-- 紧凑图标工具栏 -->
+    <div class="gen-toolbar">
+      <div class="gen-toolbar-left">
+        <div class="gen-breadcrumb" id="genBreadcrumb">
+          <span class="gen-breadcrumb-current">{{ task?.title || task?.audio_name || '会议纪要' }}</span>
+        </div>
+      </div>
+      <div class="gen-toolbar-right">
+        <button class="gen-toolbar-icon" @click="onCopy" title="复制">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span class="tb-tip">复制</span>
+        </button>
+        <button class="gen-toolbar-icon" @click="onExport" title="导出与分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          <span class="tb-tip">导出</span>
+        </button>
+        <button class="gen-toolbar-icon" @click="onFullscreen" title="全屏">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <span class="tb-tip">全屏</span>
+        </button>
+        <div class="gen-toolbar-divider"></div>
+        <div class="gen-toolbar-more-wrap">
+          <button class="gen-toolbar-icon" @click="toggleGenMoreMenu" aria-label="更多">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          </button>
+          <div ref="genMoreDropdown" class="gen-toolbar-more-menu" :class="{ 'is-open': showMoreMenu }">
+            <button class="gen-toolbar-more-item" @click="onEditSummary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              编辑
+            </button>
+            <button class="gen-toolbar-more-item" @click="onRetrySummary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              重新生成纪要
+            </button>
+            <button class="gen-toolbar-more-item" @click="onRetranscribe">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              重新识别
+            </button>
+            <div class="gen-toolbar-more-divider"></div>
+            <button class="gen-toolbar-more-item" @click="onArchiveConfirm">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+              归档
+            </button>
+            <button class="gen-toolbar-more-item is-danger" @click="onDelete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 元信息行 + 说话人区 -->
+    <div class="gen-meta" id="genMeta">
+      <div class="gen-meta-row">
+        <div class="gen-meta-group">
+          <span class="gen-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span class="gen-meta-val">{{ metaDuration }}</span>
+          </span>
+          <span class="gen-meta-sep"></span>
+          <span class="gen-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <span class="gen-meta-val">{{ speakerNames.length }}</span> 人
+          </span>
+          <span class="gen-meta-sep"></span>
+          <span class="gen-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <span class="gen-meta-val gen-meta-date-btn" title="点击修改会议日期" @click.stop="openDatePicker">{{ metaDateShort }}</span>
+          </span>
+        </div>
+        <span class="gen-meta-project" v-if="projects.length > 0">
+          <span class="gen-meta-project-chip" :class="{ 'is-unbound': !task?.project_id }" role="button" tabindex="0" @click.stop="showProjectDropdown = !showProjectDropdown">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>{{ currentProjectName }}</span>
+          </span>
+          <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
+            <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
+              {{ p.name }}
+            </button>
+            <div class="gen-meta-proj-divider"></div>
+            <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
+              不关联项目
+            </button>
+          </div>
+        </span>
+      </div>
+
+      <!-- 说话人名单（含占比横条） -->
+      <div class="gen-speaker-zone" v-if="speakerStats.length > 0">
+        <div class="gen-speaker-labels" id="genSpeakerLabels">
+          <span v-for="(sp, idx) in speakerStats" :key="idx" class="gen-spk-label">
+            <span class="gen-spk-name" :style="{ color: sp.color }">{{ sp.name }}</span>
+            <span class="gen-spk-bar"><span class="gen-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 说话人身份关联横幅（还原 1.0 版本） -->
+    <div class="gen-binding-bar" :class="{ hidden: task?.status !== 'awaiting_mapping' || bindingBarHidden }">
+      <div class="gbb-main">
+        <div class="gbb-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="gbb-body">
+          <div class="gbb-title">为说话人关联真实身份</div>
+          <div class="gbb-desc">
+            系统识别到 {{ bindingLegend.length }} 位说话人<span v-if="unboundCount > 0" class="gbb-unbound-hint">，{{ unboundCount }} 位未关联</span>，点击说话人标签为其关联姓名。
+          </div>
+          <div class="gbb-legend" v-if="bindingLegend.length > 0">
+            <div v-for="item in bindingLegend" :key="item.sid"
+                 class="binding-legend-item"
+                 :class="{ 'is-bound': item.bound }"
+                 :style="{ background: getSpeakerBg(item.sid) }"
+                 @click="openBindingDropdown($event, item.sid)">
+              <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || '未关联' }}</span>
+              <span class="bl-locate" title="定位到该说话人的发言" @click.stop="toggleLocateSpeaker(item.sid)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="gbb-actions">
+          <a class="gbb-skip" href="javascript:void(0)" @click="skipMapping">暂不关联</a>
+          <button class="btn btn-primary btn-sm" @click="confirmMapping">确认关联</button>
+          <button class="gbb-close" @click="bindingBarHidden = true" title="关闭">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="gbb-hint-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>点击说话人标签可关联已有身份或新建身份，关联后系统将自动生成纪要</span>
+      </div>
+    </div>
+
+    <!-- 绑定下拉框（Teleport 到 body） -->
+    <Teleport to="body">
+      <div v-if="bindingDropdown.visible" class="bt-dropdown" :style="{ left: bindingDropdown.x + 'px', top: bindingDropdown.y + 'px' }" @click.stop>
+        <div class="bt-dd-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="搜索说话人..." autocomplete="off" v-model="bindingDropdown.search" @keydown="onDropdownKeydown">
+        </div>
+        <div class="bt-dd-list">
+          <!-- 不关联选项（无搜索词时显示） -->
+          <template v-if="!bindingDropdown.search">
+            <div class="bt-dropdown-item" :class="{ 'is-selected': !currentBindingMapping[bindingDropdown.speakerId] }" @click="selectBinding(bindingDropdown.speakerId, '')">
+              <span class="bt-di-name">不关联</span>
+            </div>
+            <div class="bt-dropdown-sep"></div>
+          </template>
+          <!-- 说话人列表 -->
+          <template v-if="dropdownSpeakers.length > 0">
+            <div v-for="(s, idx) in dropdownSpeakers" :key="s.id"
+                 class="bt-dropdown-item"
+                 :class="{ 'is-selected': currentBindingMapping[bindingDropdown.speakerId] === s.id, 'is-focused': bindingDropdown.focusIdx === idx }"
+                 @click="selectBinding(bindingDropdown.speakerId, s.id)">
+              <span class="bt-di-name" :style="{ color: currentBindingMapping[bindingDropdown.speakerId] === s.id ? getSpeakerColor(String(bindingDropdown.speakerId)) : undefined }">{{ s.name }}<span v-if="s.role" class="bt-di-role">({{ s.role }})</span></span>
+            </div>
+          </template>
+          <div v-else class="bt-dd-empty">无匹配结果</div>
+        </div>
+        <div class="bt-dd-footer">
+          <div class="bt-dropdown-item" :class="{ 'is-focused': bindingDropdown.focusIdx === dropdownSpeakers.length }" @click="createAndBind(bindingDropdown.speakerId, bindingDropdown.search)" style="color: var(--accent)">
+            <span style="font-weight: 500">{{ bindingDropdown.search ? `+ 新建"${bindingDropdown.search}"` : '+ 新建说话人' }}</span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 控制区：Tab + 音频控件 -->
+    <div class="gen-control-zone">
+      <div class="gen-tabs" id="genTabsContainer">
+        <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" @click="switchTab(tab.id)">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
+          <span class="tab-label">{{ tab.label }}</span>
+          <span class="tab-dot" :class="dotClass(tab.id)"></span>
+        </button>
+      </div>
+      <!-- 转写原文显示/隐藏切换按钮 -->
+      <button class="transcript-toggle" :class="{ 'is-active': showTranscriptLines }" @click="showTranscriptLines = !showTranscriptLines" title="切换转写原文显示">
+        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="13" y2="17"/>
+        </svg>
+        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="13" y2="17"/>
+          <line x1="4" y1="4" x2="20" y2="20" stroke-width="2"/>
+        </svg>
+        <span class="toggle-label">转写原文</span>
+      </button>
+      <!-- 音频播放条 -->
+      <div class="gen-audio-bar" v-if="audioUrl">
+        <button class="gen-audio-ctrl gen-audio-play" @click="toggleAudio" aria-label="播放">
+          <svg v-if="!audioPlaying" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+          <svg v-else viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>
+        </button>
+        <span class="gen-audio-time">{{ audioTimeStr }}</span>
+        <div class="gen-audio-progress" @click="seekAudio">
+          <div class="gen-audio-progress-fill" :style="{ width: audioProgress + '%' }"></div>
+        </div>
+        <button class="gen-audio-speed" @click="cycleSpeed">{{ audioSpeed }}×</button>
+      </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="gen-content">
+      <!-- 转写面板 -->
+      <div class="gen-panel spk-layout-active" v-show="activeTab === 'transcript'">
+        <div class="spk-transcript-layout">
+          <div class="spk-transcript-area" id="spkTranscriptArea" ref="transcriptAreaEl">
+            <!-- 章节导航条 -->
+            <div class="chapter-overview" v-if="chapters.length > 0" id="chapterOverview">
+              <span class="chapter-overview-label">章节</span>
+              <div class="chapter-nav-dots" id="chapterNavDots">
+                <div v-for="(ch, i) in chapters" :key="i" class="chapter-nav-dot" :class="{ 'is-active': activeChapterIdx === i, 'is-done': i < activeChapterIdx }" @click="scrollToChapter(i)">
+                  <span class="chapter-nav-tooltip">{{ ch.title }}</span>
+                </div>
+              </div>
+              <div class="chapter-current-info">
+                <span>第</span>
+                <span class="ch-name">{{ activeChapterIdx + 1 }}</span>
+                <span>章 / 共 {{ chapters.length }} 章</span>
+              </div>
+            </div>
+            <!-- 章节生成中提示 -->
+            <div class="chapter-loading" v-if="task?.status === 'completed' && !chapters.length">
+              <div class="chapter-loading-spinner"></div>
+              <span>章节划分中...</span>
+            </div>
+
+            <!-- 聚焦模式横幅 -->
+            <div class="spk-solo-banner" v-if="speakerFilterSet.size === 1 && focusSpeaker">
+              <div class="spk-solo-id">
+                <span class="spk-solo-name" :style="{ color: focusSpeaker.color }">{{ focusSpeaker.name }}</span>
+                <span class="spk-solo-count">· {{ focusSpeaker.turns }} 条</span>
+              </div>
+              <div class="spk-solo-sep"></div>
+              <div class="spk-solo-nav">
+                <button class="spk-solo-nav-btn" title="上一条" @click="navFocusLine(-1)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+                </button>
+                <span class="spk-solo-pos">{{ focusLineIdx + 1 }} / {{ focusSpeaker.turns }}</span>
+                <button class="spk-solo-nav-btn" title="下一条" @click="navFocusLine(1)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
+              <div class="spk-solo-sep"></div>
+              <button class="spk-solo-close" title="退出聚焦" @click="clearSpeakerFilter">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div class="gen-loading" v-if="!flatTranscript.length">
+              <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>转写内容整理中...</div>
+              <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
+            </div>
+            <div class="gen-transcript-list" v-show="showTranscriptLines" v-else ref="transcriptListEl">
+              <template v-for="item in transcriptItems" :key="item.type === 'chapter' ? 'ch-' + item.chapterIdx : 'line-' + item.lineIdx">
+                <!-- 章节分隔卡片 -->
+                <div v-if="item.type === 'chapter'" class="chapter-divider" :class="{ 'is-current': item.chapterIdx === activeChapterIdx, 'is-expanded': expandedChapters.has(item.chapterIdx) }" :data-chapter="item.chapterIdx">
+                  <div class="chapter-header" @click="toggleChapterExpand(item.chapterIdx)">
+                    <div class="chapter-number">{{ chapters[item.chapterIdx].id }}</div>
+                    <div class="chapter-info">
+                      <div class="chapter-title">{{ chapters[item.chapterIdx].title }}</div>
+                      <div class="chapter-meta">
+                        <span>{{ formatTimeMs(chapters[item.chapterIdx].start_ms) }} – {{ formatTimeMs(chapters[item.chapterIdx].end_ms) }}</span>
+                        <span class="sep">·</span>
+                        <span>{{ (chapters[item.chapterIdx].key_points || []).length }} 个要点</span>
+                      </div>
+                      <div v-if="chapters[item.chapterIdx].summary" class="chapter-summary-text">{{ chapters[item.chapterIdx].summary }}</div>
+                    </div>
+                    <div class="chapter-chevron">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                  </div>
+                  <div class="chapter-progress-bar">
+                    <div class="chapter-progress-fill" :style="{ width: chapterProgress(item.chapterIdx) + '%' }"></div>
+                  </div>
+                  <div class="chapter-body">
+                    <div class="chapter-body-inner">
+                      <div class="chapter-key-points" v-if="chapters[item.chapterIdx].key_points?.length">
+                        <div class="chapter-key-points-title">关键要点</div>
+                        <div v-for="(p, pi) in chapters[item.chapterIdx].key_points" :key="pi" class="chapter-key-point">{{ p }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 转写行 -->
+                <div v-else class="ts-line" 
+                  :class="{ 
+                    'is-me': isMeSpeakerId(flatTranscript[item.lineIdx].speaker_id),
+                    'is-located': isLineLocated(flatTranscript[item.lineIdx].speaker_id),
+                    'is-dimmed': isLineDimmed(flatTranscript[item.lineIdx].speaker_id)
+                  }"
+                  :data-begin-time="flatTranscript[item.lineIdx].begin_time">
+                  <div class="ts-line-head">
+                    <span class="spk-wrapper">
+                      <span class="spk"
+                        :class="[
+                          getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) ? 'spk-bound' : 'spk-unbound',
+                          { 'spk-bindable': task?.status === 'awaiting_mapping' }
+                        ]"
+                        :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
+                        @click="onSpeakerLabelClick($event, flatTranscript[item.lineIdx].speaker_id)">
+                        {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || `说话人${flatTranscript[item.lineIdx].speaker_id + 1}` }}
+                      </span>
+                      <button class="spk-locate-btn"
+                        v-if="task?.status !== 'awaiting_mapping'"
+                        @click.stop="toggleLocateSpeaker(flatTranscript[item.lineIdx].speaker_id)"
+                        title="定位此说话人">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                      <span class="spk-bind-arrow" v-if="task?.status === 'awaiting_mapping'">▾</span>
+                    </span>
+                    <span class="ts" @click="seekToTime(flatTranscript[item.lineIdx].begin_time)">{{ formatTimeMs(flatTranscript[item.lineIdx].begin_time) }}</span>
+                  </div>
+                  <div class="ts-line-body">
+                    <span class="txt">{{ flatTranscript[item.lineIdx].text }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- 右侧说话人面板 -->
+          <div class="spk-panel" v-if="speakerPanelVisible">
+            <div class="spk-panel-head">
+              <span class="spk-panel-title">
+                说话人
+                <span class="spk-count-toggle">{{ panelSpeakerList.length }}</span>
+              </span>
+              <button class="spk-panel-btn" title="收起面板" @click="speakerPanelVisible = false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+            </div>
+            <div class="spk-search">
+              <div class="spk-search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" class="spk-search-input" placeholder="搜索说话人..." v-model="speakerPanelSearch">
+              </div>
+            </div>
+            <div class="spk-list">
+              <div v-for="sp in panelSpeakerList" :key="sp.speakerId"
+                   class="spk-item"
+                   :class="{ 'is-on': speakerFilterSet.has(sp.speakerId), 'is-active': locateSpeakerId === sp.speakerId }"
+                   @click="toggleSpeakerFilter(sp.speakerId)">
+                <div class="spk-item-check">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="spk-item-info">
+                  <div class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</div>
+                  <div class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? '● 我' : (sp.role || '') }}</div>
+                </div>
+                <div class="spk-item-stats">
+                  <span class="spk-item-dur">{{ sp.durationStr }}</span>
+                  <span class="spk-item-sep">|</span>
+                  <span class="spk-item-turns">{{ sp.turns }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="spk-panel-footer">
+              <span class="spk-footer-summary">
+                合计 <span>{{ panelTotalDuration }}</span> · <span>{{ panelTotalTurns }}</span> 条发言
+              </span>
+            </div>
+          </div>
+
+          <!-- 面板收起时的展开按钮 -->
+          <button class="spk-panel-toggle" v-if="!speakerPanelVisible" @click="speakerPanelVisible = true" title="展开说话人面板">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 纪要面板 -->
+      <div class="gen-panel" v-show="activeTab === 'summary'" :class="{ hidden: activeTab !== 'summary' }">
+        <div class="gen-loading" v-if="!task?.summary && task?.status === 'awaiting_mapping'">
+          <div class="gen-loading-hint gen-loading-actionable">
+            <svg class="gen-loading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div class="gen-loading-text">
+              <strong>请先在上方绑定栏关联说话人身份</strong>
+              <span>关联完成后点击「确认关联」，系统将自动生成纪要</span>
+            </div>
+          </div>
+        </div>
+        <div class="gen-loading" v-else-if="!task?.summary && task?.status !== 'completed'">
+          <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>等待原文校正后，为你总结更详细的纪要内容...</div>
+          <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
+        </div>
+        <MdBlockEditor
+          v-else-if="task?.summary"
+          :markdown="summaryMd"
+          @change="onSummaryChange"
+          ref="summaryEditor"
+        />
+        <!-- 章节回顾卡片 -->
+        <div class="sum-section" v-if="task?.summary && chapters.length > 0">
+          <div class="sum-section-label">章节回顾</div>
+          <div v-for="(ch, idx) in chapters" :key="'sum-ch-' + idx"
+               class="sum-chapter-card"
+               :class="{ 'is-open': summaryExpandedChapters.has(idx) }">
+            <button class="sum-chapter-header" @click="toggleSummaryChapter(idx)">
+              <div class="sum-chapter-num">{{ ch.id || idx + 1 }}</div>
+              <div class="sum-chapter-info">
+                <div class="sum-chapter-title">{{ ch.title }}</div>
+                <div class="sum-chapter-meta">
+                  <span>{{ formatTimeMs(ch.start_ms) }} – {{ formatTimeMs(ch.end_ms) }}</span>
+                  <span class="sep">·</span>
+                  <span>{{ (ch.key_points || []).length }} 个要点</span>
+                </div>
+              </div>
+              <div class="sum-chapter-chevron">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </button>
+            <ul class="sum-chapter-points" v-if="ch.key_points?.length">
+              <li v-for="(p, pi) in ch.key_points" :key="pi">{{ p }}</li>
+            </ul>
+          </div>
+        </div>
+        <!-- 行动项入口 -->
+        <div class="sum-section" v-if="task?.summary">
+          <div class="sum-section-label">行动项</div>
+          <button class="sum-todos-link" @click="switchTab('todos')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            <span>本次会议共产生 <span class="count">{{ todos.length || '—' }}</span> 项待办，已完成 <span class="count">{{ todos.filter(t => t.done).length || '0' }}</span> 项</span>
+            <span class="go">查看待办
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </span>
+          </button>
+        </div>
+        <div class="gen-pending" v-else>
+          <div class="gen-pending-text">纪要尚未生成</div>
+        </div>
+      </div>
+
+      <!-- 笔记面板 -->
+      <div class="gen-panel" v-show="activeTab === 'notes'" :class="{ hidden: activeTab !== 'notes' }">
+        <div class="md-toolbar">
+          <button class="md-toolbar-btn" @click="insertMd('bold')" title="加粗"><strong>B</strong></button>
+          <button class="md-toolbar-btn" @click="insertMd('italic')" title="斜体"><em>I</em></button>
+          <button class="md-toolbar-btn" @click="insertMd('code')" title="代码">&lt;/&gt;</button>
+          <span class="md-toolbar-sep"></span>
+          <button class="md-toolbar-btn" @click="insertMd('heading')" title="标题">H</button>
+          <button class="md-toolbar-btn" @click="insertMd('list')" title="列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </button>
+          <button class="md-toolbar-btn" @click="insertMd('quote')" title="引用">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>
+          </button>
+          <span class="md-toolbar-hint">双击文本块可逐块编辑 · 选中文字可呼出操作栏</span>
+        </div>
+        <MdBlockEditor
+          :markdown="notesContent"
+          @change="onNotesChange"
+          ref="notesEditor"
+          empty-text="在此记录笔记…"
+        />
+        <span class="task-notes-saved" :class="{ show: notesSaved }">已保存</span>
+      </div>
+
+      <!-- 待办面板 -->
+      <div class="gen-panel" v-show="activeTab === 'todos'" :class="{ hidden: activeTab !== 'todos' }">
+        <div class="todos-summary" v-if="todos.length">
+          <span>共 <span class="count">{{ todos.length }}</span> 项，已完成 <span class="count">{{ todos.filter(t => t.done).length }}</span> 项</span>
+        </div>
+        <div class="todos-list" v-if="todos.length">
+          <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
+            <input type="checkbox" :checked="todo.done" @change="onToggleTodo(todo)">
+            <span class="todo-text">{{ todo.text }}</span>
+            <span v-if="todo.assignee" class="todo-assignee">{{ todo.assignee }}</span>
+            <span v-if="todo.source" class="todo-source-badge" :class="'source-' + todo.source">{{ todo.source === 'ai' ? 'AI' : '手动' }}</span>
+            <button class="todo-locate-btn" title="定位到转写原文" @click="locateTodoSource(todo)" aria-label="定位到转写原文">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="todos-empty" v-else>暂无待办事项</div>
+        <div class="todos-add-bar">
+          <button class="todos-add-btn" @click="showAddForm = !showAddForm" v-if="!showAddForm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            添加待办事项
+          </button>
+          <div class="todos-add-form" v-if="showAddForm">
+            <textarea v-model="newTodoText" placeholder="待办内容…" rows="2"></textarea>
+            <div class="add-form-row">
+              <input type="text" v-model="newTodoAssignee" placeholder="执行人（可选）" style="flex:1">
+            </div>
+            <div class="add-form-actions">
+              <button class="btn-cancel" @click="showAddForm = false">取消</button>
+              <button class="btn-submit" @click="onAddTodo">添加</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 浮动选中工具栏 -->
+    <SelectionToolbar
+      container-selector=".gen-content"
+      @action="onSelectionAction"
+    />
+
+    <!-- 说话人绑定引导弹窗 -->
+    <div v-if="showOnboarding" class="spk-onboarding-overlay" @click.self="closeOnboarding">
+      <div class="spk-onboarding-card">
+        <div class="spk-ob-visual">
+          <div class="spk-ob-visual-inner">
+            <div class="spk-ob-speaker-tag">
+              <span :style="{ color: getSpeakerColor('0') }">说话人 1</span>
+            </div>
+            <span class="spk-ob-arrow">→</span>
+            <div class="spk-ob-person-tag">张三</div>
+          </div>
+        </div>
+        <div class="spk-ob-body">
+          <h3>认识一下「关联身份」</h3>
+          <p>系统通过声音识别出了几位说话人，但还不知道他们是谁。关联身份后，纪要中会显示真实姓名，方便你回顾和分享。</p>
+          <div class="spk-ob-steps">
+            <div class="spk-ob-step">
+              <span class="spk-ob-step-num">1</span>
+              <span>点击说话人标签（如 <strong>「说话人 1」</strong>）</span>
+            </div>
+            <div class="spk-ob-step">
+              <span class="spk-ob-step-num">2</span>
+              <span>从列表中选择已有说话人，或<strong>新建</strong>一个</span>
+            </div>
+            <div class="spk-ob-step">
+              <span class="spk-ob-step-num">3</span>
+              <span>全部关联后点击<strong>「确认关联」</strong>，系统开始生成纪要</span>
+            </div>
+          </div>
+        </div>
+        <div class="spk-ob-footer">
+          <label class="spk-ob-dont-show">
+            <input type="checkbox" v-model="dontShowAgain"> 不再显示
+          </label>
+          <button class="spk-ob-got-it" @click="closeOnboarding">我知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 归档确认对话框 -->
+    <div v-if="showArchiveDialog" class="archive-dialog-overlay" @click.self="showArchiveDialog = false">
+      <div class="archive-dialog">
+        <div class="archive-dialog-header">
+          <h3>确认归档</h3>
+          <button class="archive-dialog-close" @click="showArchiveDialog = false" title="关闭">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+          </button>
+        </div>
+        <div class="archive-dialog-body">
+          <p>确定要将此会议归档吗？归档后将移至归档列表。</p>
+        </div>
+        <div class="archive-dialog-footer">
+          <button class="btn-cancel" @click="showArchiveDialog = false">取消</button>
+          <button class="btn-submit" @click="onArchive">确认归档</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useTaskStore } from '@/stores/task'
+import { useUserStore } from '@/stores/user'
+import { usePolling } from '@/composables/usePolling'
+import { fetchTask, deleteTask, retranscribe, retrySummary, updateTask } from '@/api/tasks'
+import { fetchNotes, saveNotes, fetchTodos, toggleTodo, createTodo } from '@/api/notes'
+import { fetchSpeakers, createSpeaker, submitSpeakerMapping, saveSpeakerMapping, type Speaker } from '@/api/speakers'
+import { fetchProjects, type Project } from '@/api/projects'
+import { useQuoteRef } from '@/composables/useQuoteRef'
+import { getSpeakerColor } from '@/utils/speakerColors'
+import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine } from '@/api/types'
+import MdBlockEditor from '@/components/MdBlockEditor.vue'
+import SelectionToolbar from '@/components/SelectionToolbar.vue'
+
+const TABS = [
+  { id: 'transcript', label: '转写', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
+  { id: 'notes', label: '笔记', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+  { id: 'summary', label: '纪要', icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
+  { id: 'todos', label: '待办', icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
+]
+
+const route = useRoute()
+const router = useRouter()
+const taskStore = useTaskStore()
+const userStore = useUserStore()
+const taskId = route.params.taskId as string
+
+const activeTab = ref('transcript')
+
+// Restore saved tab from localStorage
+onMounted(() => {
+  const saved = localStorage.getItem('oms_gen_active_tab')
+  if (saved) activeTab.value = saved
+})
+const showMoreMenu = ref(false)
+const genMoreDropdown = ref<HTMLElement | null>(null)
+const notesContent = ref('')
+const notesSaved = ref(false)
+const notesArea = ref<HTMLTextAreaElement | null>(null)
+const summaryEditor = ref<InstanceType<typeof MdBlockEditor> | null>(null)
+const notesEditor = ref<InstanceType<typeof MdBlockEditor> | null>(null)
+const summaryMd = ref('')
+const { setQuote, startRewrite, rewritePending, registerBlockUpdater, registerSummaryAppender, registerNotesAppender } = useQuoteRef()
+const todos = ref<TodoItem[]>([])
+const showAddForm = ref(false)
+const newTodoText = ref('')
+const newTodoAssignee = ref('')
+let notesTimer: ReturnType<typeof setTimeout> | null = null
+
+// 说话人绑定引导
+const showOnboarding = ref(false)
+const dontShowAgain = ref(false)
+const speakers = ref<Speaker[]>([])
+
+// 转写原文显示/隐藏
+const showTranscriptLines = ref(true)
+
+// 定位高亮说话人
+const locateSpeakerId = ref<number | null>(null)
+
+// 归档确认对话框
+const showArchiveDialog = ref(false)
+
+// 项目关联
+const projects = ref<Project[]>([])
+const showProjectDropdown = ref(false)
+const currentProjectName = computed(() => {
+  if (!task.value?.project_id) return '点击关联项目'
+  const p = projects.value.find(p => p.id === task.value?.project_id)
+  return p?.name || '点击关联项目'
+})
+
+// 绑定横幅关闭
+const bindingBarHidden = ref(false)
+
+// ─── 右侧说话人面板 ───
+const speakerPanelVisible = ref(true)
+const speakerPanelSearch = ref('')
+const speakerFilterSet = reactive(new Set<number>())
+const focusLineIdx = ref(0)
+
+/** 面板中的说话人列表（含时长/次数/角色统计） */
+const panelSpeakerList = computed(() => {
+  const lines = flatTranscript.value
+  if (!lines.length) return []
+  const q = speakerPanelSearch.value.toLowerCase()
+  const speakerMap = new Map<number, { durMs: number; turns: number }>()
+  for (const l of lines) {
+    const cur = speakerMap.get(l.speaker_id) || { durMs: 0, turns: 0 }
+    cur.durMs += l.end_time - l.begin_time
+    cur.turns += 1
+    speakerMap.set(l.speaker_id, cur)
+  }
+  return Array.from(speakerMap.entries())
+    .sort((a, b) => b[1].durMs - a[1].durMs)
+    .map(([sid, stats]) => {
+      const uuid = currentBindingMapping[sid] || task.value?.speaker_uuid_mapping?.[String(sid)]
+      const spk = uuid ? speakers.value.find(s => s.id === uuid) : null
+      const name = spk?.name || `说话人${sid + 1}`
+      const role = spk?.role || ''
+      const isMe = spk?.linked_user_id ? spk.linked_user_id === userStore.user?.id : false
+      const m = Math.floor(stats.durMs / 60000)
+      const s = Math.floor((stats.durMs % 60000) / 1000)
+      return {
+        speakerId: sid,
+        name,
+        role,
+        isMe,
+        color: getSpeakerColor(String(sid)),
+        durationStr: `${m}:${String(s).padStart(2, '0')}`,
+        turns: stats.turns,
+      }
+    })
+    .filter(item => {
+      if (!q) return true
+      return item.name.toLowerCase().includes(q) || item.role.toLowerCase().includes(q)
+    })
+})
+
+const panelTotalDuration = computed(() => {
+  const lines = flatTranscript.value
+  if (!lines.length) return '00:00'
+  const totalMs = lines.reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
+  const m = Math.floor(totalMs / 60000)
+  const s = Math.floor((totalMs % 60000) / 1000)
+  return `${m}:${String(s).padStart(2, '0')}`
+})
+
+const panelTotalTurns = computed(() => flatTranscript.value.length)
+
+/** 聚焦模式下的目标说话人 */
+const focusSpeaker = computed(() => {
+  if (speakerFilterSet.size !== 1) return null
+  const sid = Array.from(speakerFilterSet)[0]
+  return panelSpeakerList.value.find(sp => sp.speakerId === sid) || null
+})
+
+/** 聚焦模式下的行列表 */
+const focusLines = computed(() => {
+  if (speakerFilterSet.size !== 1) return []
+  const sid = Array.from(speakerFilterSet)[0]
+  return flatTranscript.value
+    .map((l, i) => ({ ...l, idx: i }))
+    .filter(l => l.speaker_id === sid)
+})
+
+/** 切换说话人筛选 */
+function toggleSpeakerFilter(id: number) {
+  if (speakerFilterSet.has(id)) {
+    speakerFilterSet.delete(id)
+  } else {
+    speakerFilterSet.add(id)
+  }
+  focusLineIdx.value = 0
+  locateSpeakerId.value = speakerFilterSet.size === 1 ? Array.from(speakerFilterSet)[0] : null
+}
+
+/** 清除筛选 */
+function clearSpeakerFilter() {
+  speakerFilterSet.clear()
+  locateSpeakerId.value = null
+  focusLineIdx.value = 0
+}
+
+/** 判断转写行是否高亮 */
+function isLineLocated(speakerId: number): boolean {
+  if (speakerFilterSet.size > 0) return speakerFilterSet.has(speakerId)
+  return locateSpeakerId.value !== null && speakerId === locateSpeakerId.value
+}
+
+/** 判断转写行是否淡化 */
+function isLineDimmed(speakerId: number): boolean {
+  if (speakerFilterSet.size > 0) return !speakerFilterSet.has(speakerId)
+  return locateSpeakerId.value !== null && speakerId !== locateSpeakerId.value
+}
+
+/** 聚焦模式上下条导航 */
+function navFocusLine(delta: number) {
+  const lines = focusLines.value
+  if (!lines.length) return
+  focusLineIdx.value = (focusLineIdx.value + delta + lines.length) % lines.length
+  const targetLine = lines[focusLineIdx.value]
+  nextTick(() => {
+    const el = transcriptListEl.value?.querySelector(`[data-begin-time="${targetLine.begin_time}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
+// ─── 说话人绑定核心状态 ───
+const currentBindingMapping = reactive<Record<number, string>>({})
+const bindingDropdown = reactive<{
+  visible: boolean
+  speakerId: number
+  x: number
+  y: number
+  search: string
+  focusIdx: number
+}>({ visible: false, speakerId: -1, x: 0, y: 0, search: '', focusIdx: -1 })
+let dropdownEl: HTMLElement | null = null
+
+/** 从 speaker_uuid_mapping 初始化绑定映射 */
+function initBindingMapping() {
+  const m = task.value?.speaker_uuid_mapping
+  Object.keys(currentBindingMapping).forEach(k => delete currentBindingMapping[Number(k)])
+  if (m) {
+    for (const [k, v] of Object.entries(m)) {
+      if (v) currentBindingMapping[Number(k)] = v
+    }
+  }
+}
+
+/** 绑定栏中的说话人芯片列表（按时长降序） */
+const bindingLegend = computed(() => {
+  const lines = flatTranscript.value
+  if (!lines.length) return []
+  const totalMs = lines.reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
+  const speakerMap = new Map<number, number>()
+  for (const l of lines) {
+    speakerMap.set(l.speaker_id, (speakerMap.get(l.speaker_id) || 0) + (l.end_time - l.begin_time))
+  }
+  return Array.from(speakerMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([sid, durMs]) => {
+      const uuid = currentBindingMapping[sid]
+      const bound = uuid ? speakers.value.find(s => s.id === uuid) : null
+      const pct = totalMs > 0 ? Math.round((durMs / totalMs) * 100) : 0
+      return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: bound?.name || '', bound: !!bound }
+    })
+})
+
+const unboundCount = computed(() => bindingLegend.value.filter(b => !b.bound).length)
+
+/** 下拉框中过滤后的说话人列表 */
+const dropdownSpeakers = computed(() => {
+  const q = bindingDropdown.search.toLowerCase()
+  if (!q) return speakers.value
+  return speakers.value.filter(s => s.name.toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q))
+})
+
+/** 打开绑定下拉框 */
+function openBindingDropdown(e: MouseEvent, speakerId: number) {
+  e.stopPropagation()
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  bindingDropdown.speakerId = speakerId
+  bindingDropdown.x = rect.left
+  bindingDropdown.y = rect.bottom + 4
+  bindingDropdown.search = ''
+  bindingDropdown.focusIdx = -1
+  bindingDropdown.visible = true
+
+  nextTick(() => {
+    const dd = document.querySelector('.bt-dropdown') as HTMLElement
+    if (dd) {
+      dropdownEl = dd
+      const input = dd.querySelector('input') as HTMLInputElement
+      input?.focus()
+      adjustDropdownPosition(dd)
+    }
+  })
+}
+
+function adjustDropdownPosition(dd: HTMLElement) {
+  const vw = window.innerWidth, vh = window.innerHeight
+  const r = dd.getBoundingClientRect()
+  if (r.right > vw - 8) bindingDropdown.x = vw - r.width - 8
+  if (r.bottom > vh - 8) bindingDropdown.y = bindingDropdown.y - r.height - 28
+}
+
+function toggleGenMoreMenu(e: MouseEvent) {
+  showMoreMenu.value = !showMoreMenu.value
+  if (showMoreMenu.value && genMoreDropdown.value) {
+    requestAnimationFrame(() => {
+      const dd = genMoreDropdown.value!
+      const tr = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const vw = window.innerWidth, vh = window.innerHeight
+      const gap = 4
+      const spaceBelow = vh - tr.bottom
+      const spaceAbove = tr.top
+      const ddW = dd.offsetWidth, ddH = dd.offsetHeight
+      let top: number
+      if (spaceBelow >= ddH + gap || spaceBelow >= spaceAbove) {
+        top = tr.bottom + gap
+      } else {
+        top = tr.top - ddH - gap
+      }
+      let left = tr.right - ddW
+      if (left < 8) left = 8
+      if (left + ddW > vw - 8) left = vw - ddW - 8
+      dd.style.top = `${top}px`
+      dd.style.left = `${left}px`
+    })
+  }
+}
+
+function closeBindingDropdown() {
+  bindingDropdown.visible = false
+  dropdownEl = null
+}
+
+/** 选择绑定选项 */
+async function selectBinding(speakerId: number, uuid: string) {
+  if (uuid) {
+    currentBindingMapping[speakerId] = uuid
+  } else {
+    delete currentBindingMapping[speakerId]
+  }
+  closeBindingDropdown()
+  await incrementalSave()
+}
+
+/** 新建说话人并绑定 */
+async function createAndBind(speakerId: number, suggestedName: string) {
+  const name = suggestedName || `说话人${speakerId + 1}`
+  try {
+    const newSpk = await createSpeaker(name)
+    currentBindingMapping[speakerId] = newSpk.id
+    speakers.value.push(newSpk)
+    closeBindingDropdown()
+    await incrementalSave()
+  } catch (e) {
+    console.error('新建说话人失败:', e)
+  }
+}
+
+/** 增量保存（不触发重新生成） */
+async function incrementalSave() {
+  if (task.value?.status !== 'awaiting_mapping') return
+  const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
+  try {
+    await saveSpeakerMapping(taskId, mapping)
+    taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping } })
+  } catch (e) {
+    console.error('增量保存映射失败:', e)
+  }
+}
+
+/** 确认关联 → 提交映射并触发纪要生成 */
+async function confirmMapping() {
+  bindingBarHidden.value = true
+  switchTab('summary')
+  const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
+  try {
+    await submitSpeakerMapping(taskId, mapping)
+    taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping }, status: 'summarizing' })
+    startPolling()
+  } catch (e) {
+    console.error('提交映射失败:', e)
+    bindingBarHidden.value = false
+  }
+}
+
+/** 暂不关联 → 空映射提交 */
+async function skipMapping() {
+  bindingBarHidden.value = true
+  switchTab('summary')
+  Object.keys(currentBindingMapping).forEach(k => delete currentBindingMapping[Number(k)])
+  try {
+    await submitSpeakerMapping(taskId, {})
+    taskStore.patchTaskLocal(taskId, { status: 'summarizing' })
+    startPolling()
+  } catch (e) {
+    console.error('跳过绑定失败:', e)
+    bindingBarHidden.value = false
+  }
+}
+
+/** 下拉框键盘导航 */
+function onDropdownKeydown(e: KeyboardEvent) {
+  const items = dropdownSpeakers.value
+  const total = items.length + 1 // +1 for "新建说话人"
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    bindingDropdown.focusIdx = (bindingDropdown.focusIdx + 1) % total
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    bindingDropdown.focusIdx = bindingDropdown.focusIdx <= 0 ? total - 1 : bindingDropdown.focusIdx - 1
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (bindingDropdown.focusIdx >= 0 && bindingDropdown.focusIdx < items.length) {
+      selectBinding(bindingDropdown.speakerId, items[bindingDropdown.focusIdx].id)
+    } else if (bindingDropdown.focusIdx === items.length) {
+      createAndBind(bindingDropdown.speakerId, bindingDropdown.search)
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeBindingDropdown()
+  }
+}
+
+// 点击外部关闭下拉框
+function onDocClickForDropdown(e: MouseEvent) {
+  if (bindingDropdown.visible && dropdownEl && !dropdownEl.contains(e.target as Node)) {
+    closeBindingDropdown()
+  }
+}
+
+// 音频
+const audioPlaying = ref(false)
+const audioSpeed = ref(1.0)
+const audioProgress = ref(0)
+const audioTimeStr = ref('00:00 / 00:00')
+let audioEl: HTMLAudioElement | null = null
+
+const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId) ?? null)
+const dialogue = computed<DialogueLine[]>(() => task.value?.dialogue ?? [])
+const audioUrl = computed(() => task.value ? `/api/audio/${task.value.task_id}` : '')
+const metaDateShort = computed(() => {
+  const d = task.value?.meeting_date || task.value?.created_at?.slice(0, 10) || ''
+  return d
+})
+
+const metaDuration = computed(() => {
+  const sec = task.value?.audio_duration
+  if (!sec || sec <= 0) return '00:00'
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+})
+
+const speakerNames = computed(() => {
+  const m = task.value?.speaker_mapping
+  return m ? Object.values(m).filter(Boolean) : []
+})
+
+const speakerStats = computed(() => {
+  const mapping = task.value?.speaker_mapping
+  if (!mapping) return []
+  const lines = flatTranscript.value
+  if (!lines.length) return []
+  const totalMs = lines.reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
+  if (totalMs <= 0) return []
+  const speakerIds = Object.keys(mapping).sort((a, b) => Number(a) - Number(b))
+  return speakerIds.map((sid) => {
+    const name = mapping[sid] || `说话人${Number(sid) + 1}`
+    const durMs = lines.filter(l => String(l.speaker_id) === sid)
+      .reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
+    const pct = Math.round((durMs / totalMs) * 100)
+    return { name, pct, color: getSpeakerColor(sid) }
+  })
+})
+
+// 章节
+const transcriptAreaEl = ref<HTMLElement | null>(null)
+const transcriptListEl = ref<HTMLElement | null>(null)
+const activeChapterIdx = ref(0)
+const expandedChapters = reactive(new Set<number>())
+const summaryExpandedChapters = reactive(new Set<number>())
+
+const chapters = computed<Chapter[]>(() => task.value?.chapters ?? [])
+
+function toggleSummaryChapter(idx: number) {
+  if (summaryExpandedChapters.has(idx)) summaryExpandedChapters.delete(idx)
+  else summaryExpandedChapters.add(idx)
+}
+
+/** 将 dialogue.sentences 展开为扁平列表，按 begin_time 排序 */
+const flatTranscript = computed<FlatTranscriptLine[]>(() => {
+  const all: FlatTranscriptLine[] = []
+  for (const d of dialogue.value) {
+    if (!d.sentences) continue
+    for (const s of d.sentences) {
+      all.push({
+        begin_time: s.begin_time,
+        end_time: s.end_time,
+        text: s.text,
+        speaker_id: s.speaker_id,
+        sentence_id: s.sentence_id,
+      })
+    }
+  }
+  all.sort((a, b) => a.begin_time - b.begin_time)
+  return all
+})
+
+type TranscriptItem = { type: 'chapter'; chapterIdx: number } | { type: 'line'; lineIdx: number }
+
+const transcriptItems = computed<TranscriptItem[]>(() => {
+  const items: TranscriptItem[] = []
+  const lines = flatTranscript.value
+  if (!lines.length) return items
+  const chs = chapters.value
+  let lastChIdx = -2
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const lineMs = lines[lineIdx].begin_time
+    const chIdx = getChapterIdxAtTime(chs, lineMs)
+
+    if (chs.length > 0 && chIdx !== lastChIdx && chIdx >= 0) {
+      items.push({ type: 'chapter', chapterIdx: chIdx })
+      lastChIdx = chIdx
+    }
+    items.push({ type: 'line', lineIdx })
+  }
+  return items
+})
+
+function getChapterIdxAtTime(chs: Chapter[], ms: number): number {
+  for (let i = chs.length - 1; i >= 0; i--) {
+    if (ms >= chs[i].start_ms) return i
+  }
+  return -1
+}
+
+function formatTimeMs(ms: number): string {
+  const sec = Math.floor(ms / 1000)
+  const m = Math.floor(sec / 60), s = sec % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function toggleChapterExpand(idx: number) {
+  if (expandedChapters.has(idx)) expandedChapters.delete(idx)
+  else expandedChapters.add(idx)
+}
+
+function scrollToChapter(idx: number) {
+  activeChapterIdx.value = idx
+  nextTick(() => {
+    const el = transcriptListEl.value?.querySelector(`.chapter-divider[data-chapter="${idx}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+function chapterProgress(idx: number): number {
+  const ch = chapters.value[idx]
+  if (!ch || !flatTranscript.value.length) return 0
+  const linesInChapter = flatTranscript.value.filter(l => {
+    return l.begin_time >= ch.start_ms && l.begin_time <= ch.end_ms
+  })
+  return linesInChapter.length > 0 ? 100 : 0
+}
+
+/** 获取绑定状态下的说话人名称（优先从 currentBindingMapping 查） */
+function getBindingSpeakerName(speakerId: number): string {
+  const uuid = currentBindingMapping[speakerId]
+  if (!uuid) return ''
+  const spk = speakers.value.find(s => s.id === uuid)
+  return spk?.name || ''
+}
+
+/** 说话人标签点击：绑定模式下打开下拉框，否则切换定位 */
+function onSpeakerLabelClick(e: MouseEvent, speakerId: number) {
+  if (task.value?.status === 'awaiting_mapping') {
+    openBindingDropdown(e, speakerId)
+  } else {
+    toggleLocateSpeaker(speakerId)
+  }
+}
+
+/** 获取说话人背景色（用于绑定栏芯片） */
+function getSpeakerBg(speakerId: number): string {
+  const color = getSpeakerColor(String(speakerId))
+  return `${color}18`
+}
+
+/** 判断某个 speaker_id 是否是"我"（通过 linked_user_id 比较） */
+function isMeSpeakerId(speakerId: number): boolean {
+  const uuid = currentBindingMapping[speakerId] || task.value?.speaker_uuid_mapping?.[String(speakerId)]
+  if (!uuid) return false
+  const spk = speakers.value.find(s => s.id === uuid)
+  if (!spk?.linked_user_id || !userStore.user?.id) return false
+  return spk.linked_user_id === userStore.user.id
+}
+
+/** 切换定位高亮说话人 */
+function toggleLocateSpeaker(id: number) {
+  if (locateSpeakerId.value === id) {
+    locateSpeakerId.value = null
+  } else {
+    locateSpeakerId.value = id
+    speakerFilterSet.clear()
+    speakerFilterSet.add(id)
+    focusLineIdx.value = 0
+  }
+}
+
+/** 跳转到指定时间点播放音频 */
+function seekToTime(ms: number) {
+  if (!audioEl) {
+    audioEl = new Audio(audioUrl.value)
+    audioEl.playbackRate = audioSpeed.value
+    audioEl.addEventListener('timeupdate', onTimeUpdate)
+    audioEl.addEventListener('ended', () => { audioPlaying.value = false })
+  }
+  audioEl.currentTime = ms / 1000
+  if (!audioPlaying.value) {
+    audioEl.play()
+    audioPlaying.value = true
+  }
+}
+
+function updateActiveChapterOnScroll() {
+  const area = transcriptAreaEl.value
+  if (!area || !chapters.value.length) return
+  const areaTop = area.getBoundingClientRect().top
+  let bestIdx = 0
+  area.querySelectorAll('.chapter-divider').forEach((el) => {
+    const idx = Number(el.getAttribute('data-chapter'))
+    const rect = el.getBoundingClientRect()
+    if (rect.top < areaTop + 120) bestIdx = idx
+  })
+  activeChapterIdx.value = bestIdx
+}
+
+function dotClass(tabId: string): string {
+  if (!task.value) return ''
+  if (tabId === 'summary' && task.value.summary) return 'is-done'
+  if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
+  return ''
+}
+
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function switchTab(tabId: string) {
+  activeTab.value = tabId
+  localStorage.setItem('oms_gen_active_tab', tabId)
+  if (tabId === 'notes' && !notesContent.value) loadNotes()
+  if (tabId === 'todos' && todos.value.length === 0) loadTodos()
+}
+
+async function loadNotes() { notesContent.value = await fetchNotes(taskId) }
+async function loadTodos() { todos.value = await fetchTodos(taskId) }
+
+async function onSaveNotes() {
+  try { await saveNotes(taskId, notesContent.value); notesSaved.value = true } catch { /* */ }
+}
+
+async function onToggleTodo(todo: TodoItem) {
+  try { await toggleTodo(taskId, todo.id, !todo.done); todo.done = !todo.done } catch { /* */ }
+}
+
+async function onAddTodo() {
+  const text = newTodoText.value.trim()
+  if (!text) return
+  try {
+    const t = await createTodo(taskId, text, newTodoAssignee.value.trim() || undefined)
+    todos.value.push(t)
+    newTodoText.value = ''; newTodoAssignee.value = ''; showAddForm.value = false
+  } catch { /* */ }
+}
+
+function locateTodoSource(_todo: TodoItem) {
+  switchTab('transcript')
+}
+
+function insertMd(type: string) {
+  const area = notesArea.value
+  if (!area) return
+  const start = area.selectionStart, end = area.selectionEnd
+  const sel = notesContent.value.substring(start, end)
+  const map: Record<string, [string, string]> = { bold: ['**', '**'], italic: ['*', '*'], code: ['`', '`'], heading: ['## ', ''], list: ['- ', ''], quote: ['> ', ''] }
+  const [pre, post] = map[type] || ['', '']
+  notesContent.value = notesContent.value.substring(0, start) + pre + sel + post + notesContent.value.substring(end)
+}
+
+let summaryTimer: ReturnType<typeof setTimeout> | null = null
+
+function onSummaryChange(md: string) {
+  summaryMd.value = md
+  if (summaryTimer) clearTimeout(summaryTimer)
+  summaryTimer = setTimeout(async () => {
+    try { await saveNotes(taskId + ':summary', md) } catch { /* */ }
+  }, 2000)
+}
+
+function onNotesChange(md: string) {
+  notesContent.value = md
+  notesSaved.value = false
+  if (notesTimer) clearTimeout(notesTimer)
+  notesTimer = setTimeout(onSaveNotes, 2000)
+}
+
+function onSelectionAction(action: string, text: string, source: string, blockIndex: number) {
+  if (action === 'rewrite') {
+    startRewrite(text, source, blockIndex)
+    setQuote(text, source, blockIndex)
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请帮我改写以下内容，保持原意但更精炼' } }))
+  } else if (action === 'summarize') {
+    setQuote(text, source, blockIndex)
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请帮我总结以下内容' } }))
+  } else if (action === 'extract-todo') {
+    setQuote(text, source, blockIndex)
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请从以下内容中提取待办事项' } }))
+  }
+}
+
+function onCopy() {
+  const md = summaryMd.value || task.value?.summary
+  if (md) navigator.clipboard.writeText(md)
+}
+
+function onExport() { window.open(`/api/download/${taskId}`, '_blank') }
+
+function onFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen()
+  else document.exitFullscreen()
+}
+
+function onEditSummary() {
+  showMoreMenu.value = false
+  switchTab('summary')
+}
+
+async function onRetrySummary() { showMoreMenu.value = false; await retrySummary(taskId); await taskStore.loadTasks() }
+async function onRetranscribe() { showMoreMenu.value = false; await retranscribe(taskId); router.push({ name: 'processing', params: { taskId } }) }
+async function onDelete() {
+  showMoreMenu.value = false
+  if (!confirm('确定删除该会议？此操作不可撤销。')) return
+  await deleteTask(taskId); await taskStore.loadTasks(); router.push('/')
+}
+
+async function onArchive() {
+  showArchiveDialog.value = false
+  // TODO: 实现归档 API 调用
+  console.log('归档任务:', taskId)
+}
+
+function onArchiveConfirm() {
+  showMoreMenu.value = false
+  showArchiveDialog.value = true
+}
+
+function toggleAudio() {
+  if (!audioEl) { audioEl = new Audio(audioUrl.value); audioEl.playbackRate = audioSpeed.value; audioEl.addEventListener('timeupdate', onTimeUpdate); audioEl.addEventListener('ended', () => { audioPlaying.value = false }) }
+  if (audioPlaying.value) { audioEl.pause(); audioPlaying.value = false } else { audioEl.play(); audioPlaying.value = true }
+}
+function onTimeUpdate() {
+  if (!audioEl) return
+  const cur = audioEl.currentTime, dur = audioEl.duration || 0
+  audioProgress.value = dur > 0 ? (cur / dur) * 100 : 0
+  audioTimeStr.value = `${formatTime(cur)} / ${formatTime(dur)}`
+}
+function seekAudio(e: MouseEvent) {
+  if (!audioEl) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const pct = (e.clientX - rect.left) / rect.width
+  audioEl.currentTime = pct * (audioEl.duration || 0)
+}
+function cycleSpeed() {
+  const speeds = [1.0, 1.25, 1.5, 2.0, 0.75]
+  const idx = speeds.indexOf(audioSpeed.value)
+  audioSpeed.value = speeds[(idx + 1) % speeds.length]
+  if (audioEl) audioEl.playbackRate = audioSpeed.value
+}
+
+function closeOnboarding() {
+  if (dontShowAgain.value) {
+    localStorage.setItem('spk_onboarding_dismissed', 'true')
+  }
+  showOnboarding.value = false
+}
+
+// ─── 项目关联 ───
+async function onSelectProject(projectId: string) {
+  showProjectDropdown.value = false
+  try {
+    await updateTask(taskId, { project_id: projectId || undefined })
+    taskStore.patchTaskLocal(taskId, { project_id: projectId || null })
+  } catch (e) {
+    console.error('更新项目关联失败:', e)
+  }
+}
+
+// ─── 日期编辑 ───
+function openDatePicker() {
+  const input = document.createElement('input')
+  input.type = 'date'
+  input.value = task.value?.meeting_date || task.value?.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10)
+  input.style.position = 'absolute'
+  input.style.opacity = '0'
+  input.style.pointerEvents = 'none'
+  document.body.appendChild(input)
+  input.showPicker?.()
+  input.addEventListener('change', async () => {
+    const newDate = input.value
+    if (newDate && newDate !== (task.value?.meeting_date || task.value?.created_at?.slice(0, 10))) {
+      try {
+        await updateTask(taskId, { meeting_date: newDate })
+        taskStore.patchTaskLocal(taskId, { meeting_date: newDate })
+      } catch (e) {
+        console.error('保存日期失败:', e)
+      }
+    }
+    input.remove()
+  })
+  input.addEventListener('blur', () => { setTimeout(() => input.remove(), 200) })
+}
+
+watch(activeTab, (tab) => { if (tab === 'notes' && !notesContent.value) loadNotes(); if (tab === 'todos' && todos.value.length === 0) loadTodos() })
+
+watch(() => task.value?.summary, (s) => { if (s) summaryMd.value = s }, { immediate: true })
+
+onMounted(async () => {
+  // 始终获取最新任务数据（确保 dialogue/summary/chapters 等字段是最新的）
+  try { const t = await fetchTask(taskId); taskStore.patchTaskLocal(taskId, t) } catch { /* */ }
+  taskStore.selectTask(taskId)
+
+  // 任务未完成时启动轮询，完成后自动刷新
+  if (task.value && !['completed', 'failed'].includes(task.value.status)) {
+    startPolling()
+  }
+
+  // 已完成但缺少章节时，轮询等待后台补生成
+  if (task.value?.status === 'completed' && !task.value?.chapters?.length) {
+    startChapterPolling()
+  }
+
+  // 加载说话人列表
+  try { speakers.value = await fetchSpeakers() } catch { /* */ }
+
+  // 初始化绑定映射
+  initBindingMapping()
+
+  // 注册全局点击监听（关闭绑定下拉框）
+  document.addEventListener('click', onDocClickForDropdown)
+
+  // 加载项目列表
+  try { projects.value = await fetchProjects() } catch { /* */ }
+
+  // 说话人绑定引导：待关联身份状态且未关闭过时显示
+  if (task.value?.status === 'awaiting_mapping' && localStorage.getItem('spk_onboarding_dismissed') !== 'true') {
+    showOnboarding.value = true
+  }
+
+  // 章节滚动追踪
+  nextTick(() => {
+    const area = transcriptAreaEl.value
+    if (area) area.addEventListener('scroll', updateActiveChapterOnScroll, { passive: true })
+  })
+
+  registerBlockUpdater((blockIndex: number, newSource: string) => {
+    const source = rewritePending.value?.source || '纪要'
+    if (source === '笔记' && notesEditor.value) {
+      notesEditor.value.updateBlock(blockIndex, newSource)
+    } else if (summaryEditor.value) {
+      summaryEditor.value.updateBlock(blockIndex, newSource)
+    }
+  })
+
+  registerSummaryAppender((markdown: string) => {
+    const current = summaryMd.value
+    summaryMd.value = current ? current + '\n\n' + markdown : markdown
+  })
+
+  registerNotesAppender((markdown: string) => {
+    const current = notesContent.value
+    notesContent.value = current ? current + '\n\n' + markdown : markdown
+  })
+})
+
+// 轮询兜底：当任务未完成时，自动轮询状态直到完成或失败
+const { start: startPolling, stop: stopPolling } = usePolling(async () => {
+  const updated = await fetchTask(taskId)
+  taskStore.patchTaskLocal(taskId, updated)
+
+  if (updated.status === 'completed') {
+    stopPolling()
+    // 重新加载页面数据
+    window.location.reload()
+  } else if (updated.status === 'failed') {
+    stopPolling()
+  }
+}, 3000)
+
+// 章节补生成轮询：已完成但缺少章节时，等待后台生成
+const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(async () => {
+  const updated = await fetchTask(taskId)
+  taskStore.patchTaskLocal(taskId, updated)
+  if (updated.chapters?.length) {
+    stopChapterPolling()
+  }
+}, 3000)
+</script>
+
+<style scoped>
+/* "我说的" 右对齐气泡对话框（2行布局：头部右对齐 + 文本气泡右对齐） */
+.ts-line.is-me {
+  align-items: flex-end;
+  padding: var(--s-2);
+  margin: 0;
+}
+.ts-line.is-me .ts-line-head {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-self: flex-end;
+}
+.ts-line.is-me .spk {
+  color: var(--mine) !important;
+}
+.ts-line.is-me .ts-line-body {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+.ts-line.is-me .txt {
+  display: inline-block;
+  background: var(--mine-soft);
+  border: 1px solid var(--mine);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  max-width: 70%;
+  color: var(--fg);
+}
+
+/* Speaker locate/highlight styles are in legacy-views.css */
+
+.spk-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.spk {
+  cursor: pointer;
+  user-select: none;
+}
+
+.spk:hover {
+  text-decoration: underline;
+}
+
+.spk-locate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.spk-locate-btn:hover {
+  opacity: 1;
+}
+
+.spk-locate-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Timestamp clickable */
+.ts {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ts:hover {
+  text-decoration: underline;
+}
+
+/* Feature 4: Archive dialog styles */
+.archive-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.archive-dialog {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--dropdown-shadow);
+  min-width: 400px;
+  max-width: 500px;
+}
+
+.archive-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.archive-dialog-header h3 {
+  margin: 0;
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+
+.archive-dialog-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.archive-dialog-close:hover {
+  opacity: 1;
+}
+
+.archive-dialog-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.archive-dialog-body {
+  padding: var(--s-5);
+}
+
+.archive-dialog-body p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.archive-dialog-footer {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.btn-cancel,
+.btn-submit {
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-14);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.btn-cancel:hover {
+  background: var(--surface-2);
+}
+
+.btn-submit {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn-submit:hover {
+  background: oklch(from var(--accent) calc(l - 0.06) c h);
+}
+</style>

@@ -1,50 +1,49 @@
 """
-core/transcribe.py — 提交 paraformer-v2 转写任务 + 轮询 + 下载结果 + 组装对话稿
+core/transcribe.py — 通过 ASR 代理提交转写任务 + 组装对话稿
+
+作者：王永亮
+创建：2026-09-03
+版本：2.0.0（代理模式）
 
 职责：
-  1. 提交异步转写任务（开说话人分离）
-  2. 轮询任务状态直到 SUCCEEDED
-  3. 下载转写结果 JSON
-  4. 碎片句子合并 + 说话人修正 → 按 speaker_id 归并 → 组装发言人对话稿
+  1. 通过 ASR 代理提交音频文件进行转写（代理负责上传 + 提交 + 轮询 + 下载）
+  2. 碎片句子合并 + 说话人修正 → 按 speaker_id 归并 → 组装发言人对话稿
+
+架构（详见 docs/adr/0012-ASR转写走云端代理.md）：
+  - 客户端不再直连 DashScope，所有 ASR 请求通过代理服务器中转
+  - 代理持有 DashScope API Key，客户端仅持有代理地址和共享密钥
+  - 通信协议：HTTP POST + HMAC-SHA256 签名
 
 硬约束（详见 docs/API_CONTRACTS.md §2-4）：
-  - oss:// URL 必须走 RESTful API + X-DashScope-OssResourceResolve: enable
-  - 必须带 X-DashScope-Async: enable
   - 分离仅单声道生效
+  - 音频格式：PCM 16bit / 16kHz / 单声道
 """
 
 import os
 import re
-import time
 import json
+import time
+import hmac
+import hashlib
 import logging
-import requests
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DASHSCOPE_BASE = "https://dashscope.aliyuncs.com"
-
-# 轮询配置
-POLL_INTERVAL = 3  # 秒
-POLL_TIMEOUT = 600  # 10 分钟超时
+# ── 代理配置 ──
+ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "http://47.116.10.194:8200").rstrip("/")
+ASR_PROXY_TOKEN = os.getenv("ASR_PROXY_TOKEN", "")
+ASR_SIGN_TTL = 300
 
 # ── 碎片合并参数 ──
-# 时间间隔阈值（毫秒）：相邻两句间隔小于此值时考虑合并
 MERGE_GAP_MS = 2000
-# 短句阈值：去标点后字符数低于此值视为碎片
 FRAGMENT_CHARS = 12
-# 说话人修正：夹心修正的最大间隔（毫秒）
-# 仅当前后同说话人两句的间隔都小于此值时才修正（避免误合并真正的说话人切换）
 SPEAKER_FIX_GAP_MS = 800
-# 说话人修正：碎片短句跟随前句的最大间隔（毫秒）
-# 比夹心修正更严格，避免交替短答时被错误合并
 FRAGMENT_SPEAKER_FIX_GAP_MS = 500
-# 中文句末标点
 SENTENCE_END_PUNCTS = set("。！？…")
-# 中文句中停顿标点（不算完整断句）
 CLAUSE_PUNCTS = set("，、；：")
-# 常见双字词（用于检测跨句拆词）
 COMMON_BIGRAMS = {
     "智能", "企业", "客户", "服务", "系统", "数据", "分析", "报告",
     "预算", "财务", "管理", "流程", "优化", "方案", "技术", "平台",
@@ -55,170 +54,175 @@ COMMON_BIGRAMS = {
 }
 
 
-def _get_api_key() -> str:
-    from app.store import get_asr_config
-    key = get_asr_config()["api_key"]
-    if not key:
-        raise RuntimeError("未设置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")
-    return key
+def _make_sign(timestamp: str) -> str:
+    """生成请求签名：HMAC-SHA256(token, timestamp)"""
+    if not ASR_PROXY_TOKEN:
+        raise RuntimeError("未配置 ASR_PROXY_TOKEN，无法调用 ASR 代理")
+    return hmac.new(
+        ASR_PROXY_TOKEN.encode(),
+        timestamp.encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
 
-def submit_transcription(
-    file_url: str,
+def _proxy_request(path: str, data: bytes, content_type: str, timeout: int = 600) -> dict:
+    """
+    向 ASR 代理发送 POST 请求。
+
+    Args:
+        path: 代理端点路径
+        data: 请求体
+        content_type: Content-Type
+        timeout: 超时时间（秒）
+
+    Returns:
+        代理返回的 JSON dict
+    """
+    url = f"{ASR_PROXY_URL}{path}"
+    timestamp = str(int(time.time()))
+    sign = _make_sign(timestamp)
+
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": content_type,
+            "X-ASR-Timestamp": timestamp,
+            "X-ASR-Sign": sign,
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = json.loads(e.read().decode())
+            msg = err_body.get("message", str(e))
+        except Exception:
+            msg = f"HTTP {e.code}"
+        logger.error(f"ASR 代理请求失败: {path} → {msg}")
+        raise RuntimeError(f"ASR 代理返回错误: {msg}")
+    except urllib.error.URLError as e:
+        logger.error(f"ASR 代理连接失败: {path} → {e.reason}")
+        raise RuntimeError(f"ASR 代理连接失败: {e.reason}")
+    except Exception as e:
+        logger.error(f"ASR 代理请求异常: {path} → {e}")
+        raise RuntimeError(f"ASR 服务异常: {e}")
+
+
+def transcribe_audio(
+    file_path: str | Path,
     model: str = "paraformer-v2",
     diarization_enabled: bool = True,
     language_hints: list[str] | None = None,
-    speaker_count: int | None = None,
     vocabulary_id: str | None = None,
-    disfluency_removal_enabled: bool = False,
-) -> str:
+    speaker_count: int | None = None,
+) -> tuple[list[dict], dict]:
     """
-    提交转写任务。
+    一站式转写：通过代理提交音频 → 等待结果 → 组装对话稿。
 
     Args:
-        file_url: 音频 URL（oss:// 或公网 URL）
+        file_path: 本地音频文件路径
         model: 模型名
         diarization_enabled: 是否开启说话人分离
         language_hints: 语言提示（如 ["zh", "en"]）
-        speaker_count: 说话人数量（2-100，可选，仅辅助）
         vocabulary_id: 热词表 ID
-        disfluency_removal_enabled: 是否过滤语气词
+        speaker_count: 说话人数量提示（2-100）
 
     Returns:
-        task_id
+        (dialogue, raw_transcription)
+        dialogue: 组装后的对话稿
+        raw_transcription: 原始转写结果 JSON
     """
-    api_key = _get_api_key()
-    url = f"{DASHSCOPE_BASE}/api/v1/services/audio/asr/transcription"
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"文件不存在: {file_path}")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "X-DashScope-Async": "enable",  # 必带，否则无法提交
-    }
+    file_size = file_path.stat().st_size
+    if file_size > 1024 * 1024 * 1024:
+        raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
 
-    # oss:// URL 需要加此 header
-    if file_url.startswith("oss://"):
-        headers["X-DashScope-OssResourceResolve"] = "enable"
+    logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}")
 
-    # 构造参数
-    parameters = {}
-    if diarization_enabled:
-        parameters["diarization_enabled"] = True
+    # 构造 multipart/form-data
+    boundary = f"----ASRProxyBoundary{int(time.time() * 1000)}"
+    body_parts = []
+
+    # file 字段
+    body_parts.append(f"--{boundary}\r\n".encode())
+    body_parts.append(f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"\r\n'.encode())
+    body_parts.append(b"Content-Type: application/octet-stream\r\n\r\n")
+    with open(file_path, "rb") as f:
+        body_parts.append(f.read())
+    body_parts.append(b"\r\n")
+
+    # model 字段
+    body_parts.append(f"--{boundary}\r\n".encode())
+    body_parts.append(b'Content-Disposition: form-data; name="model"\r\n\r\n')
+    body_parts.append(f"{model}\r\n".encode())
+
+    # diarization_enabled 字段
+    body_parts.append(f"--{boundary}\r\n".encode())
+    body_parts.append(b'Content-Disposition: form-data; name="diarization_enabled"\r\n\r\n')
+    body_parts.append(f"{'true' if diarization_enabled else 'false'}\r\n".encode())
+
+    # 可选字段
     if language_hints:
-        parameters["language_hints"] = language_hints
+        body_parts.append(f"--{boundary}\r\n".encode())
+        body_parts.append(b'Content-Disposition: form-data; name="language_hints"\r\n\r\n')
+        body_parts.append(f"{json.dumps(language_hints)}\r\n".encode())
+
     if speaker_count:
-        parameters["speaker_count"] = speaker_count
+        body_parts.append(f"--{boundary}\r\n".encode())
+        body_parts.append(b'Content-Disposition: form-data; name="speaker_count"\r\n\r\n')
+        body_parts.append(f"{speaker_count}\r\n".encode())
+
     if vocabulary_id:
-        parameters["vocabulary_id"] = vocabulary_id
-    if disfluency_removal_enabled:
-        parameters["disfluency_removal_enabled"] = True
+        body_parts.append(f"--{boundary}\r\n".encode())
+        body_parts.append(b'Content-Disposition: form-data; name="vocabulary_id"\r\n\r\n')
+        body_parts.append(f"{vocabulary_id}\r\n".encode())
 
-    body = {
-        "model": model,
-        "input": {
-            "file_urls": [file_url],  # 单次仅 1 个 URL
-        },
-        "parameters": parameters,
-    }
+    body_parts.append(f"--{boundary}--\r\n".encode())
 
-    logger.info(f"提交转写任务: model={model}, url={file_url[:50]}..., "
-                f"分离={diarization_enabled}")
+    body = b"".join(body_parts)
+    content_type = f"multipart/form-data; boundary={boundary}"
 
-    resp = requests.post(url, headers=headers, json=body, timeout=30)
-    resp.raise_for_status()
+    # 调用代理（长时间超时，因为代理内部轮询）
+    start = time.perf_counter()
+    result = _proxy_request("/asr/transcribe", body, content_type, timeout=600)
+    elapsed = time.perf_counter() - start
 
-    data = resp.json()
-    if "output" not in data or "task_id" not in data["output"]:
-        raise RuntimeError(f"提交任务失败: {data}")
+    task_id = result.get("task_id", "")
+    transcription = result.get("transcription", {})
 
-    task_id = data["output"]["task_id"]
-    logger.info(f"任务已提交: task_id={task_id}")
-    return task_id
+    if not transcription:
+        raise RuntimeError("转写结果为空")
 
+    logger.info(f"[PERF] 转写完成: {elapsed:.3f}s, task_id={task_id}")
 
-def poll_task(task_id: str, interval: int = POLL_INTERVAL, timeout: int = POLL_TIMEOUT) -> dict:
-    """
-    轮询任务状态直到完成。
-
-    Returns:
-        任务结果 dict（含 transcription_url 等）
-
-    Raises:
-        TimeoutError: 超时
-        RuntimeError: 任务失败
-    """
-    api_key = _get_api_key()
-    url = f"{DASHSCOPE_BASE}/api/v1/tasks/{task_id}"
-    headers = {"Authorization": f"Bearer {api_key}"}
-
-    start_time = time.time()
-    last_status = ""
-
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > timeout:
-            raise TimeoutError(f"任务超时（>{timeout}s）: task_id={task_id}")
-
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-
-        output = data.get("output", {})
-        status = output.get("task_status", "UNKNOWN")
-
-        # 状态变化时打印日志
-        if status != last_status:
-            logger.info(f"任务状态: {status} ({elapsed:.0f}s)")
-            last_status = status
-
-        if status == "SUCCEEDED":
-            return output
-        elif status == "FAILED":
-            error_msg = output.get("message", "未知错误")
-            if "SUCCESS_WITH_NO_VALID_FRAGMENT" in error_msg:
-                raise RuntimeError(f"转写任务失败: 未检测到有效语音片段 (SUCCESS_WITH_NO_VALID_FRAGMENT)")
-            raise RuntimeError(f"转写任务失败: {error_msg}")
-
-        time.sleep(interval)
-
-
-def download_transcription(transcription_url: str) -> dict:
-    """
-    下载转写结果 JSON。
-
-    transcription_url 有效期 24h。
-    """
-    logger.info(f"下载转写结果: {transcription_url[:80]}...")
-    resp = requests.get(transcription_url, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
-
-
-from .hotwords import apply_hotword_mappings
+    dialogue = assemble_dialogue(transcription)
+    return dialogue, transcription
 
 
 def _sentence_ends_complete(text: str) -> bool:
-    """判断句子是否以完整句末标点结尾（而非被截断）"""
+    """判断句子是否以完整句末标点结尾"""
     if not text:
         return False
-    last_char = text[-1]
-    return last_char in SENTENCE_END_PUNCTS
+    return text[-1] in SENTENCE_END_PUNCTS
 
 
 def _is_fragment(text: str) -> bool:
-    """判断是否为碎片短句（去标点后字符数过少）"""
+    """判断是否为碎片短句"""
     stripped = re.sub(r"[，。！？、；：…？！\s]", "", text)
     return len(stripped) < FRAGMENT_CHARS
 
 
 def _detect_word_split(curr_text: str, next_text: str) -> bool:
-    """
-    检测跨句拆词：当前句末字 + 下句首字是否构成常见双字词。
-    这是 ASR 在词中间误切分的强信号。
-    """
+    """检测跨句拆词"""
     if not curr_text or not next_text:
         return False
-    # 去掉当前句末标点后取最后一个字
     last_char = curr_text.rstrip("，。！？、；：…？！")[-1:] if curr_text else ""
     first_char = next_text.lstrip("，。！？、；：…？！")[:1] if next_text else ""
     if not last_char or not first_char:
@@ -227,21 +231,7 @@ def _detect_word_split(curr_text: str, next_text: str) -> bool:
 
 
 def merge_fragments(sentences: list[dict]) -> list[dict]:
-    """
-    合并碎片化句子。
-
-    合并条件（满足任一即合并）：
-    1. 跨句拆词：当前句末字 + 下句首字构成常见双字词（如"智"+"能"）
-    2. 当前句为碎片（去标点 < FRAGMENT_CHARS 字符）
-    3. 当前句不以句末标点结尾（明显被截断）
-
-    停止条件：
-    - 时间间隔 > MERGE_GAP_MS
-    - 当前句完整（有句末标点 + 非碎片长度）且无拆词信号
-
-    Returns:
-        合并后的句子列表（结构同输入 sentences）
-    """
+    """合并碎片化句子"""
     if not sentences:
         return []
 
@@ -249,14 +239,13 @@ def merge_fragments(sentences: list[dict]) -> list[dict]:
     i = 0
 
     while i < len(sentences):
-        current = dict(sentences[i])  # 浅拷贝，避免修改原始数据
+        current = dict(sentences[i])
         current_text = current.get("text", "")
         current_begin = current.get("begin_time", 0)
         current_end = current.get("end_time", 0)
         current_words = list(current.get("words", []))
         current_sid = current.get("sentence_id", 0)
 
-        # 尝试向后合并
         j = i + 1
         while j < len(sentences):
             next_sent = sentences[j]
@@ -264,33 +253,23 @@ def merge_fragments(sentences: list[dict]) -> list[dict]:
             next_begin = next_sent.get("begin_time", 0)
             gap = next_begin - current_end
 
-            # 硬约束：时间间隔过大，停止合并
             if gap > MERGE_GAP_MS:
                 break
 
-            # 判断是否应该合并
             should_merge = False
-
-            # 信号1：跨句拆词（最强信号，无视其他条件）
             if _detect_word_split(current_text, next_text):
                 should_merge = True
-
-            # 信号2：当前句是碎片（过短）
             elif _is_fragment(current_text):
                 should_merge = True
-
-            # 信号3：当前句无句末标点（明显被截断）
             elif not _sentence_ends_complete(current_text):
                 should_merge = True
 
             if not should_merge:
                 break
 
-            # 拼接文本，处理连接标点
             connector = ""
             if current_text and next_text:
                 last_c = current_text[-1]
-                # 前句无句末/句中标点时，用逗号连接
                 if last_c not in SENTENCE_END_PUNCTS and last_c not in CLAUSE_PUNCTS:
                     connector = "，"
 
@@ -312,24 +291,12 @@ def merge_fragments(sentences: list[dict]) -> list[dict]:
 
 
 def correct_speaker_ids(sentences: list[dict]) -> list[dict]:
-    """
-    修正说话人分离过度切分。
-
-    策略：
-    1. 夹心修正：如果一句被前后相同 speaker_id 包围，且时间间隔小，
-       修正为同一说话人（ASR 短暂误判场景）
-    2. 连续短句统一：相邻碎片短句如果说话人不同，
-       且时间间隔很小，归入前句的说话人
-
-    Returns:
-        修正后的句子列表（原地修改 speaker_id）
-    """
+    """修正说话人分离过度切分"""
     if len(sentences) < 3:
         return sentences
 
     fix_count = 0
 
-    # 第一遍：夹心修正（A-B-A 模式 → 全部归为 A）
     for i in range(1, len(sentences) - 1):
         prev_sid = sentences[i - 1].get("speaker_id", 0)
         curr_sid = sentences[i].get("speaker_id", 0)
@@ -343,7 +310,6 @@ def correct_speaker_ids(sentences: list[dict]) -> list[dict]:
                 sentences[i]["speaker_id"] = prev_sid
                 fix_count += 1
 
-    # 第二遍：碎片短句跟随前句说话人（使用更严格的间隔阈值）
     for i in range(1, len(sentences)):
         curr_text = sentences[i].get("text", "")
         curr_sid = sentences[i].get("speaker_id", 0)
@@ -359,23 +325,16 @@ def correct_speaker_ids(sentences: list[dict]) -> list[dict]:
     return sentences
 
 
-def assemble_dialogue(transcription: dict) -> list[dict]:
-    """
-    碎片合并 → 说话人修正 → 按 speaker_id 归并句子，组装发言人对话稿。
+from .hotwords import apply_hotword_mappings
 
-    Returns:
-        [
-            {"speaker_id": 0, "text": "说话人0的完整文本", "sentences": [...]},
-            {"speaker_id": 1, "text": "说话人1的完整文本", "sentences": [...]},
-            ...
-        ]
-    """
+
+def assemble_dialogue(transcription: dict) -> list[dict]:
+    """碎片合并 → 说话人修正 → 按 speaker_id 归并句子，组装发言人对话稿"""
     transcripts = transcription.get("transcripts", [])
     if not transcripts:
         logger.warning("转写结果为空")
         return []
 
-    # 收集所有句子（多 transcript 时合并）
     all_sentences = []
     for t in transcripts:
         sentences = t.get("sentences", [])
@@ -385,69 +344,21 @@ def assemble_dialogue(transcription: dict) -> list[dict]:
         logger.warning("无句子数据")
         return []
 
-    # 后处理管线：碎片合并 → 说话人修正 → 热词映射纠正
     merged = merge_fragments(all_sentences)
     corrected = correct_speaker_ids(merged)
 
-    # 热词映射：纠正 ASR 识别结果（如 ES→EAS系统）
     for sent in corrected:
         sent["text"] = apply_hotword_mappings(sent["text"])
 
-    # 按说话人轮次归并（连续同说话人合并，换人时开新条目）
     result: list[dict] = []
     for sent in corrected:
         sid = sent.get("speaker_id", 0)
         if result and result[-1]["speaker_id"] == sid:
-            # 同一说话人连续发言，追加到上一条
             result[-1]["sentences"].append(sent)
             result[-1]["text"] += sent.get("text", "")
         else:
-            # 换人或首条，新建条目
             result.append({"speaker_id": sid, "text": sent.get("text", ""), "sentences": [sent]})
 
     logger.info(f"组装对话稿: {len(result)} 条对话（{len(set(s.get('speaker_id', 0) for s in corrected))} 位说话人, "
                 f"共 {len(corrected)} 句合并后）")
     return result
-
-
-def transcribe_audio(
-    file_url: str,
-    model: str = "paraformer-v2",
-    diarization_enabled: bool = True,
-    language_hints: list[str] | None = None,
-    vocabulary_id: str | None = None,
-    speaker_count: int | None = None,
-) -> tuple[list[dict], dict]:
-    """
-    一站式转写：提交 → 轮询 → 下载 → 组装。
-
-    Args:
-        speaker_count: 说话人数量提示（2-100），来自实时声纹聚类估算
-
-    Returns:
-        (dialogue, raw_transcription)
-        dialogue: 组装后的对话稿
-        raw_transcription: 原始转写结果 JSON
-    """
-    task_id = submit_transcription(
-        file_url=file_url,
-        model=model,
-        diarization_enabled=diarization_enabled,
-        language_hints=language_hints,
-        vocabulary_id=vocabulary_id,
-        speaker_count=speaker_count,
-    )
-
-    output = poll_task(task_id)
-    results = output.get("results", [])
-    if not results:
-        raise RuntimeError("转写结果为空")
-
-    transcription_url = results[0].get("transcription_url")
-    if not transcription_url:
-        raise RuntimeError("未获取到 transcription_url")
-
-    transcription = download_transcription(transcription_url)
-    dialogue = assemble_dialogue(transcription)
-
-    return dialogue, transcription

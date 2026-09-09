@@ -32,7 +32,7 @@ from fastapi import APIRouter
 from app.store import (
     SETTINGS_FILE, load_settings, save_settings_to_disk,
     mask_api_key, get_active_api_key, get_llm_config, get_asr_config,
-    get_voiceprint_config,
+    get_voiceprint_config, get_feature_flags,
 )
 from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
 from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
@@ -99,15 +99,29 @@ def get_settings():
     llm = get_llm_config()
     asr = get_asr_config()
     voiceprint = get_voiceprint_config()
+    feature_flags = get_feature_flags()
+
+    # 声纹偏好：根据用户订阅状态决定
+    from core.users import get_current_user, should_use_local_diarization
+    current_user = get_current_user()
+    if current_user:
+        subscription = current_user.get("subscription", {"tier": "free"})
+        prefs = current_user.get("prefs", {})
+        tier = subscription.get("tier", "free")
+        local_pref = prefs.get("local_diarization", False)
+        use_local = should_use_local_diarization()
+    else:
+        tier = "free"
+        local_pref = False
+        use_local = True
 
     return {
         "asr": {
             "provider": asr["provider"],
-            "base_url": asr["base_url"],
-            "api_key": mask_api_key(asr["api_key"]),
-            "api_key_set": bool(asr["api_key"]),
+            "proxy_url": asr.get("proxy_url", ""),
             "model": asr["model"],
-            "source": asr.get("source", "platform"),
+            "source": "platform",  # 代理模式下始终为 platform
+            "api_key_managed_by_proxy": True,  # API Key 由代理服务器持有
         },
         "llm": {
             "provider": llm["provider"],
@@ -122,7 +136,15 @@ def get_settings():
             "cloud_api_key": mask_api_key(voiceprint["cloud"]["api_key"]),
             "cloud_api_key_set": bool(voiceprint["cloud"]["api_key"]),
         },
+        "diarization": {
+            "subscription_tier": tier,
+            "local_diarization": local_pref,
+            "effective": "local" if use_local else "cloud",
+            "can_toggle": tier != "free",
+        },
         "output_dir": settings.get("output_dir", "data/output/"),
+        "feature_flags": feature_flags,
+        "disabled_commands": settings.get("disabled_commands", []),
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
     }
@@ -153,6 +175,7 @@ def save_settings(data: dict):
     existing_asr = existing.get("asr", {})
     existing_vp = existing.get("voiceprint", {})
     existing_vp_cloud = existing_vp.get("cloud", {})
+    existing_ff = existing.get("feature_flags", {})
 
     # ── LLM 配置 ──
     new_llm = data.get("llm", {})
@@ -162,13 +185,8 @@ def save_settings(data: dict):
     else:
         final_llm_key = incoming_llm_key
 
-    # ── ASR 配置 ──
+    # ── ASR 配置（代理模式：不再保存 API Key，仅保存模型选择）──
     new_asr = data.get("asr", {})
-    incoming_asr_key = new_asr.get("api_key", "")
-    if not incoming_asr_key or "****" in incoming_asr_key:
-        final_asr_key = existing_asr.get("api_key") or os.getenv("DASHSCOPE_API_KEY", "")
-    else:
-        final_asr_key = incoming_asr_key
 
     # ── 声纹配置 ──
     new_vp = data.get("voiceprint", {})
@@ -183,9 +201,8 @@ def save_settings(data: dict):
         **existing,
         "asr": {
             "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
-            "base_url": new_asr.get("base_url", existing_asr.get("base_url", "https://dashscope.aliyuncs.com")),
-            "api_key": final_asr_key,
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
+            # 代理模式下不再保存 base_url 和 api_key
         },
         "llm": {
             "provider": new_llm.get("provider", existing_llm.get("provider", "DashScope")),
@@ -201,6 +218,13 @@ def save_settings(data: dict):
             },
         },
         "output_dir": data.get("output_dir", existing.get("output_dir", "data/output/")),
+        "feature_flags": {
+            "realtime_chapters": data.get("feature_flags", {}).get("realtime_chapters", existing_ff.get("realtime_chapters", True)),
+            "realtime_summary": data.get("feature_flags", {}).get("realtime_summary", existing_ff.get("realtime_summary", True)),
+            "realtime_summary_interval": data.get("feature_flags", {}).get("realtime_summary_interval", existing_ff.get("realtime_summary_interval", 60)),
+            "update_check": data.get("feature_flags", {}).get("update_check", existing_ff.get("update_check", True)),
+        },
+        "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
     }
 
     save_settings_to_disk(merged)
@@ -227,10 +251,8 @@ def save_settings(data: dict):
         "ok": True,
         "asr": {
             "provider": merged["asr"]["provider"],
-            "base_url": merged["asr"]["base_url"],
-            "api_key": mask_api_key(final_asr_key),
-            "api_key_set": bool(final_asr_key),
             "model": merged["asr"]["model"],
+            "api_key_managed_by_proxy": True,
         },
         "llm": {
             "provider": merged["llm"]["provider"],
@@ -269,38 +291,26 @@ def test_api_connection(data: dict = None):
 
 
 def _test_asr_connection(asr_data: dict | None) -> dict:
-    """测试 ASR（语音转写）服务连接"""
-    if asr_data:
-        base_url = asr_data.get("base_url", "")
-        api_key = asr_data.get("api_key", "")
-    else:
-        cfg = get_asr_config()
-        base_url = cfg["base_url"]
-        api_key = cfg["api_key"]
+    """测试 ASR 代理服务连接"""
+    cfg = get_asr_config()
+    proxy_url = cfg.get("proxy_url", "")
 
-    if not api_key or "****" in api_key:
-        api_key = get_asr_config()["api_key"]
+    if not proxy_url:
+        return {"ok": False, "error": "未配置 ASR 代理地址"}
 
-    if not api_key:
-        return {"ok": False, "error": "未配置 ASR API Key"}
-    if not base_url:
-        return {"ok": False, "error": "未配置 ASR API Base URL"}
-
-    # 调用 DashScope 任务列表 API 验证 Key 有效性（轻量探测）
-    url = f"{base_url.rstrip('/')}/api/v1/tasks"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-    }
+    # 调用代理健康检查端点
+    url = f"{proxy_url.rstrip('/')}/health"
 
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
-        if resp.status_code in (200, 400):
-            # 200 = 正常，400 = Key 有效但参数不对（均可证明 Key 有效）
-            return {"ok": True, "message": "ASR 服务连接正常"}
+        resp = requests.get(url, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("dashscope_configured"):
+                return {"ok": True, "message": "ASR 代理服务连接正常"}
+            else:
+                return {"ok": False, "error": "代理服务端未配置 DASHSCOPE_API_KEY"}
         elif resp.status_code == 401:
-            return {"ok": False, "error": "ASR API Key 无效（401 Unauthorized）"}
-        elif resp.status_code == 403:
-            return {"ok": False, "error": "无权访问 ASR 服务（403 Forbidden）"}
+            return {"ok": False, "error": "代理签名校验失败"}
         else:
             return {"ok": False, "error": f"HTTP {resp.status_code}"}
     except requests.exceptions.Timeout:

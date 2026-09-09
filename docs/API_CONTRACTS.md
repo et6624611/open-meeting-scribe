@@ -1,3 +1,12 @@
+---
+title: 外部接口契约
+description: DashScope / 通义千问 API 技术细节的唯一事实源
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-07
+status: published
+---
+
 # API_CONTRACTS — 外部接口契约（DashScope / 通义千问）
 
 > 技术细节的**唯一事实源**。代码注释只引用本文，不复述。来源：阿里云百炼官方文档（2026-09 核对）。
@@ -115,9 +124,15 @@ properties: audio_format / channels / original_sampling_rate / original_duration
 
 用于录音期间的实时转写预览。**不支持说话人分离**。
 
-**WebSocket 地址**：`wss://dashscope.aliyuncs.com/api-ws/v1/inference`
+**WebSocket 地址**：`wss://dashscope.aliyuncs.com/api-ws/v1/inference`（代理模式下通过 `ws://proxy:8200/asr/ws` 中继）
 
-**调用方式**（DashScope Python SDK）：
+**调用方式**（代理模式，客户端通过代理 WebSocket 中继）：
+- 客户端连接 `ws://proxy:8200/asr/ws?timestamp=...&sign=...&model=...`
+- 代理中继到 DashScope WebSocket
+- 客户端发送 PCM 二进制帧 → 代理转发到 DashScope
+- 代理接收 DashScope 识别结果 → 转发给客户端（JSON：`partial`/`sentence`/`error`/`complete`）
+
+**DashScope SDK 直调方式**（仅代理服务端内部使用）：
 ```python
 from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
 
@@ -172,4 +187,51 @@ recognition.stop()  # 阻塞直到所有结果返回
 **与批转写的关系**：
 - 实时（qwen-audio-3.0-asr-flash-streaming）：流式、低延迟、无说话人分离 → 用于录音预览
 - 批量（paraformer-v2）：异步、高准确率、有说话人分离 → 用于最终纪要
-- 两者共用同一个 `DASHSCOPE_API_KEY`
+- 两者共用同一个 `DASHSCOPE_API_KEY`（代理服务端持有）
+
+---
+
+## 10. ASR 代理 API（客户端 ↔ 代理）
+
+客户端不再直连 DashScope ASR API，所有转写请求通过 ASR 代理中转。详见 ADR-0012。
+
+**代理地址**：`http://47.116.10.194:8200`
+
+**认证**：所有请求须携带 HMAC-SHA256 签名
+- HTTP 请求头：`X-ASR-Timestamp`（Unix 秒）+ `X-ASR-Sign`（HMAC-SHA256(token, timestamp)）
+- WebSocket 查询参数：`timestamp` + `sign`
+- 签名有效期 5 分钟防重放
+
+### POST /asr/transcribe
+
+一站式转写：接收音频文件 → 上传 → 提交 → 轮询 → 返回完整结果。
+
+**请求**（multipart/form-data）：
+- `file`: 音频文件
+- `model`: 模型名（默认 `paraformer-v2`）
+- `diarization_enabled`: 说话人分离（默认 `true`）
+- `language_hints`: 语言提示（JSON 数组）
+- `speaker_count`: 说话人数量
+- `vocabulary_id`: 热词表 ID
+
+**响应**：
+```json
+{
+  "task_id": "xxx",
+  "file_url": "oss://...",
+  "transcription": { "transcripts": [...] }
+}
+```
+
+### WebSocket /asr/ws
+
+实时流式转写中继。
+
+**查询参数**：`timestamp`, `sign`, `model`, `sample_rate`, `language_hints`, `vocabulary_id`
+
+**客户端 → 代理**：二进制帧（PCM 音频）或 `{"type": "stop"}`
+**代理 → 客户端**：`{"type": "partial"|"sentence"|"error"|"complete", ...}`
+
+### GET /health
+
+健康检查，返回 `{"status": "ok", "service": "asr-proxy", "dashscope_configured": true/false}`

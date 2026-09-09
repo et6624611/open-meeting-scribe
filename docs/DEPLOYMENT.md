@@ -21,6 +21,9 @@
 |------|------|------|----------|
 | Web UI + API | 8000 | 用户访问界面 + REST/WS API | ✅ |
 | 管理后台 | 8001 | 运维管理面板 | ✅ |
+| SMS 代理 | 8080 | 短信发送/核验中转 | ✅ |
+| 声纹服务 | 8100 | CAM++ 声纹嵌入提取 | ✅ |
+| ASR 代理 | 8200 | 语音转写中转（持有 DashScope Key） | ✅ |
 
 ### 防火墙规则（阿里云控制台 → 实例 → 防火墙）
 
@@ -28,6 +31,9 @@
 |------|------|------|
 | TCP | 8000 | Web 服务 |
 | TCP | 8001 | 管理后台 |
+| TCP | 8080 | SMS 代理 |
+| TCP | 8100 | 声纹服务 |
+| TCP | 8200 | ASR 代理 |
 | TCP | 22 | SSH（默认已开） |
 
 ## 三、访问地址
@@ -87,16 +93,14 @@ systemctl restart meeting-scribe-admin
 
 ## 七、API 调用路径
 
-本地开发与云服务器**各自独立调用 DashScope API**，互不影响：
-
 ```
-本地开发:  本机(127.0.0.1:8000) ──公网──→ DashScope API
-云服务器:  47.116.10.194:8000   ──公网──→ DashScope API
+本地开发:  客户端(127.0.0.1:8000) ──HTTP/WS──→ ASR 代理(47.116.10.194:8200) ──公网──→ DashScope API
+云服务器:  客户端(47.116.10.194:8000) ──HTTP/WS──→ ASR 代理(47.116.10.194:8200) ──公网──→ DashScope API
 ```
 
-- 代码在哪台机器运行，API 就从哪台机器发出
-- 两套环境用同一个 `.env` 中的 `DASHSCOPE_API_KEY`，同一个阿里云账号计费
-- 浏览器只是前端，音频 POST 给服务器后由服务器调 DashScope
+- ASR 转写请求通过代理服务器中转，DashScope API Key 仅存在代理端
+- 客户端通过 HMAC-SHA256 签名与代理通信，防未授权调用
+- LLM 纪要生成仍由客户端直连 DashScope（使用 `.env` 中的 `DASHSCOPE_API_KEY`）
 
 ## 八、systemd 服务文件
 
@@ -144,8 +148,31 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
+### asr-proxy.service
+
+```ini
+[Unit]
+Description=ASR Proxy Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/asr-proxy
+Environment=PATH=/opt/asr-proxy/venv/bin:/usr/bin:/bin
+ExecStart=/opt/asr-proxy/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8200
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## 九、部署历史
 
 | 日期 | 操作 |
 |------|------|
 | 2026-09-06 | 首次部署：Ubuntu 24.04 重置 + 系统依赖 + venv + pip install + systemd 服务 + 防火墙放行 |
+| 2026-09-07 | 部署 ASR 代理服务（/opt/asr-proxy:8200）：venv + dashscope/fastapi + systemd + .env 配置 |

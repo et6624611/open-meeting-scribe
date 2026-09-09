@@ -1,3 +1,13 @@
+---
+title: Open Meeting Scribe
+description: 开源 Mac 端会议纪要工具
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-07
+status: published
+version: 1.0.0
+---
+
 # Open Meeting Scribe
 
 > 开源、Mac 端的会议纪要工具：**音频 → 转写 + 说话人分离 → 结构化纪要（结论 / 待办）**。不绑定任何会议平台，音频输入即一切。
@@ -13,7 +23,7 @@
 |----|------|------|
 | **AI 入口** | [CODEX.md](CODEX.md) | 渐进式上下文索引，AI 第一入口 |
 | **Why 理念** | [MISSION.md](MISSION.md) | 为什么做、设计原则 |
-| **What 产品** | [docs/PRD.md](docs/PRD.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/design/ui-spec.md](docs/design/ui-spec.md) | 需求 / 路线 / 界面原型 |
+| **What 产品** | [docs/PRD.md](docs/PRD.md) · [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/design/DESIGN_DECISIONS.md](docs/design/DESIGN_DECISIONS.md) | 需求 / 路线 / 界面设计决策 |
 | **How 技术** | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) · [docs/adr/](docs/adr/) | 架构 / API 契约 / 决策记录 |
 | **Build 实现** | `core/` · `app/` · `tests/` · [CHANGELOG.md](CHANGELOG.md) | 代码 / 测试 / 迭代日志 |
 | **施工蓝图** | [MVP_PLAN.md](MVP_PLAN.md) | v1 分阶段实施（P0–P3） |

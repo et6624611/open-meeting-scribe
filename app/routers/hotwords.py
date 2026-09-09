@@ -44,5 +44,6 @@ def save_hotword_mappings(data: dict):
     lines = raw.split("\n")
     HOTWORD_MAPPINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     HOTWORD_MAPPINGS_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    hotwords.invalidate_hotword_mappings_cache()
     mappings = hotwords.load_hotword_mappings(HOTWORD_MAPPINGS_FILE)
     return {"ok": True, "count": len(mappings)}

@@ -9,8 +9,7 @@ core/embedding_provider.py — 声纹嵌入提取抽象层
   通过 get_embedding_provider() 按配置自动选择提供者。
 
 设计原则：
-  - 调用方（voiceprint.py 批处理链路）通过 provider 接口提取嵌入
-  - 实时链路（diarization.py）使用本地 MFCC 聚类，不走 provider
+  - 批处理链路（voiceprint.py）和实时链路（diarization.py）均通过 provider 提取嵌入
   - provider 可热切换，调用方无感知
   - 云端不可用时降级为 MFCC 14 维
 

@@ -168,3 +168,50 @@ def delete_todo(task_id: str, todo_id: str):
     task["todos"] = [t for t in todos if t["id"] != todo_id]
     save_task_to_disk(task_id)
     return {"ok": True}
+
+
+class TodoCreateRequest(BaseModel):
+    text: str
+    assignee: str = ""
+
+
+class TodoUpdateRequest(BaseModel):
+    text: str | None = None
+    assignee: str | None = None
+
+
+@router.post("/api/tasks/{task_id}/todos")
+def create_todo(task_id: str, req: TodoCreateRequest):
+    """手工添加一条待办"""
+    task = tasks.get(task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    todos = task.setdefault("todos", [])
+    todo_item = {
+        "id": str(uuid.uuid4()),
+        "text": req.text,
+        "assignee": req.assignee,
+        "done": False,
+        "source": "manual",
+        "created_at": datetime.now().isoformat(),
+    }
+    todos.append(todo_item)
+    save_task_to_disk(task_id)
+    return {"todo": todo_item}
+
+
+@router.put("/api/tasks/{task_id}/todos/{todo_id}")
+def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
+    """编辑待办内容或执行人"""
+    task = tasks.get(task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    for todo in task.get("todos", []):
+        if todo["id"] == todo_id:
+            if req.text is not None:
+                todo["text"] = req.text
+            if req.assignee is not None:
+                todo["assignee"] = req.assignee
+            save_task_to_disk(task_id)
+            return {"todo": todo}
+    raise HTTPException(404, "待办不存在")

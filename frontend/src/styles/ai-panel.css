@@ -1,0 +1,76 @@
+/* ═══ AI 面板 ═══ */
+
+.ai { flex: 0 0 360px; min-width: 240px; background: var(--bg); display: flex; flex-direction: column; min-height: 0; position: relative; }
+.ai { transition: flex-basis 0.22s cubic-bezier(0.2, 0, 0, 1), min-width 0.22s cubic-bezier(0.2, 0, 0, 1); }
+
+/* ─── 折叠/展开 ─── */
+.ai-toggle { position: absolute; top: 10px; left: -13px; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-strong); display: grid; place-items: center; color: var(--muted); z-index: 20; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; }
+.ai-toggle:hover { background: var(--surface-2); color: var(--fg); border-color: var(--fg); }
+.ai-toggle svg { width: 14px; height: 14px; transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1); }
+.ai.is-collapsed .ai-toggle svg { transform: rotate(180deg); }
+.ai.is-collapsed { flex-basis: 44px !important; min-width: 44px !important; max-width: 44px !important; }
+.ai.is-collapsed .ai-panel-header,
+.ai.is-collapsed .ai-panel-context,
+.ai.is-collapsed .ai-panel-tabs,
+.ai.is-collapsed .ai-session-tabs,
+.ai.is-collapsed .ai-feed,
+.ai.is-collapsed .ai-input-zone { display: none !important; }
+.ai.is-collapsed .ai-collapsed-strip { display: flex; }
+.ai-collapsed-strip { display: none; flex-direction: column; align-items: center; padding: var(--s-4) 0; gap: var(--s-3); flex: 1; }
+.ai-collapsed-strip .ai-collapsed-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--fg); color: var(--bg); display: grid; place-items: center; cursor: pointer; }
+.ai-collapsed-strip .ai-collapsed-icon svg { width: 16px; height: 16px; }
+.ai-collapsed-strip .ai-collapsed-label { writing-mode: vertical-rl; text-orientation: mixed; font-size: var(--fs-11); color: var(--subtle); letter-spacing: 0.06em; }
+
+/* ─── 面板头部 ─── */
+.ai-panel-header { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-4); background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ai-panel-header-left { display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1; }
+.ai-panel-header-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.ai-header-avatar { width: 22px; height: 22px; border-radius: 6px; background: var(--fg); color: var(--bg); display: grid; place-items: center; flex-shrink: 0; }
+.ai-header-avatar svg { width: 12px; height: 12px; }
+.ai-header-title { font-size: var(--fs-13); font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ai-header-btn { width: 30px; height: 30px; border-radius: var(--radius-sm); display: grid; place-items: center; color: var(--subtle); transition: all 0.12s; }
+.ai-header-btn:hover { background: var(--surface-2); color: var(--fg); }
+.ai-header-btn svg { width: 14px; height: 14px; }
+
+/* ─── 上下文状态栏 ─── */
+.ai-panel-context { position: relative; display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-4); font-size: 11px; color: var(--subtle); flex-shrink: 0; flex-wrap: wrap; background: var(--bg); border-bottom: 1px solid var(--border); }
+.ai-panel-context .sep { opacity: 0.35; }
+
+/* ─── Tab 栏 ─── */
+/* 覆盖 legacy-views.css 中的 .frame.conv-layout .ai-panel-tabs { display:none !important } */
+.frame.conv-layout .ai-panel-tabs { display: flex !important; }
+.ai-panel-tabs { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 var(--s-4); border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
+.ai-panel-tab { padding: 0 var(--s-3); font-size: var(--fs-13); color: var(--muted); height: 100%; display: flex; align-items: center; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.12s; }
+.ai-panel-tab:hover { color: var(--fg); }
+.ai-panel-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ─── 会话子标签 ─── */
+.ai-session-tabs { display: flex; align-items: center; height: 34px; padding: 0 var(--s-2) 0 var(--s-4); border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; gap: var(--s-1); }
+.ai-session-tab { display: flex; align-items: center; gap: 3px; padding: 3px 8px; font-size: var(--fs-11); color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.12s; white-space: nowrap; flex-shrink: 0; }
+.ai-session-tab:hover { color: var(--fg); background: var(--surface-2); }
+.ai-session-tab.is-active { color: var(--accent); background: var(--surface-2); border-color: var(--border); font-weight: 500; }
+.ai-session-add { width: 24px; height: 24px; border-radius: var(--radius-sm); display: grid; place-items: center; color: var(--subtle); transition: all 0.12s; flex-shrink: 0; }
+.ai-session-add:hover { background: var(--surface-2); color: var(--accent); }
+
+/* ─── 对话区 ─── */
+.ai-feed { flex: 1; overflow-y: auto; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-4); }
+.ai-msg { display: flex; flex-direction: column; gap: 6px; }
+.ai-msg.is-user { align-items: flex-end; }
+.ai-msg-avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--fg); color: var(--bg); display: grid; place-items: center; flex-shrink: 0; }
+.ai-bubble { max-width: 100%; padding: 10px 12px; border-radius: 12px; font-size: var(--fs-13); line-height: 1.7; color: var(--fg); background: var(--surface); border: 1px solid var(--border); word-break: break-word; }
+.ai-msg.is-user .ai-bubble { background: var(--accent-soft); color: var(--fg); border-color: var(--accent-mid); }
+.ai-bubble p { margin: 0 0 6px; }
+.ai-bubble p:last-child { margin-bottom: 0; }
+.ai-bubble code { font-family: var(--font-mono); font-size: var(--fs-12); background: var(--surface-2); padding: 1px 4px; border-radius: 3px; }
+.ai-bubble pre { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; margin: 6px 0; overflow-x: auto; }
+.ai-bubble pre code { background: transparent; padding: 0; }
+
+/* ─── 输入区 ─── */
+.ai-input-zone { border-top: 1px solid var(--border); background: var(--surface); padding: var(--s-3) var(--s-4) var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.ai-input-box { display: flex; align-items: flex-end; gap: var(--s-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 4px 4px var(--s-3); background: var(--surface); transition: all 0.15s; }
+.ai-input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.ai-input-box textarea { flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--fs-13); padding: 8px 0; resize: none; min-height: 20px; max-height: 120px; line-height: 1.5; font-family: inherit; color: var(--fg); }
+.ai-input-box textarea::placeholder { color: var(--subtle); }
+.ai-send-btn { width: 30px; height: 30px; border-radius: 6px; background: var(--fg); color: var(--bg); display: grid; place-items: center; flex-shrink: 0; border: none; cursor: pointer; transition: opacity 0.12s; }
+.ai-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.ai-send-btn svg { width: 14px; height: 14px; }

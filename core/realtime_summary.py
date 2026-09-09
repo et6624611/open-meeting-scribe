@@ -19,6 +19,7 @@ core/realtime_summary.py — 实时增量总结引擎
 import asyncio
 import logging
 import threading
+import time
 from typing import Callable
 
 from .llm import chat_completion
@@ -91,16 +92,24 @@ class RealtimeSummarizer:
         self,
         on_summary: Callable[[str], None] | None = None,
         on_status: Callable[[str], None] | None = None,
+        on_countdown: Callable[[int], None] | None = None,
+        interval: int = SUMMARY_INTERVAL,
     ):
         """
         初始化实时总结器。
 
         Args:
             on_summary: 摘要更新回调，接收 Markdown 字符串
-            on_status: 状态变化回调，接收状态字符串（"summarizing" / "idle" / "paused"）
+            on_status: 状态变化回调，接收状态字符串（"summarizing" / "idle" / "paused" / "stopped"）
+            on_countdown: 倒计时回调，接收剩余秒数（每秒推送一次）
+            interval: 总结间隔秒数（默认 60，最小 30）
         """
         self._on_summary = on_summary
         self._on_status = on_status
+        self._on_countdown = on_countdown
+
+        # 总结间隔（下限 30 秒，防止 API 调用过于频繁）
+        self._interval = max(30, interval)
 
         # 句子缓冲
         self._buffer: list[dict] = []  # 当前分钟新增句子
@@ -109,9 +118,15 @@ class RealtimeSummarizer:
 
         # 定时器
         self._timer: threading.Timer | None = None
+        self._timer_started_at: float = 0  # 当前计时周期起始时间戳
         self._started = False
         self._paused = False
+        self._stopped = False
         self._lock = threading.Lock()  # 保护缓冲区
+
+        # 倒计时推送线程
+        self._countdown_thread: threading.Thread | None = None
+        self._countdown_stop_event = threading.Event()
 
         # 统计
         self._summary_count = 0
@@ -122,23 +137,29 @@ class RealtimeSummarizer:
             raise RuntimeError("实时总结已在运行中")
         self._started = True
         self._paused = False
+        self._stopped = False
         self._schedule_next()
-        logger.info("[实时总结] 已启动")
+        logger.info(f"[实时总结] 已启动（间隔 {self._interval}s）")
 
     def stop(self) -> None:
-        """停止定时器"""
+        """停止定时器（彻底关闭）"""
         self._started = False
+        self._stopped = True
         if self._timer:
             self._timer.cancel()
             self._timer = None
+        self._stop_countdown()
+        if self._on_status:
+            self._on_status("stopped")
         logger.info(f"[实时总结] 已停止，共 {self._summary_count} 次总结")
 
     def pause(self) -> None:
-        """暂停总结"""
+        """暂停总结（冻结倒计时）"""
         self._paused = True
         if self._timer:
             self._timer.cancel()
             self._timer = None
+        self._stop_countdown()
         if self._on_status:
             self._on_status("paused")
         logger.info("[实时总结] 已暂停")
@@ -151,6 +172,18 @@ class RealtimeSummarizer:
         if self._on_status:
             self._on_status("idle")
         logger.info("[实时总结] 已恢复")
+
+    def restart(self) -> None:
+        """从已停止状态重新启动"""
+        if not self._stopped:
+            return
+        self._stopped = False
+        self._started = True
+        self._paused = False
+        self._schedule_next()
+        if self._on_status:
+            self._on_status("idle")
+        logger.info("[实时总结] 已重新启动")
 
     def feed_sentence(self, sentence: dict) -> None:
         """
@@ -180,8 +213,44 @@ class RealtimeSummarizer:
         return self._paused
 
     @property
+    def is_stopped(self) -> bool:
+        return self._stopped
+
+    @property
     def summary_count(self) -> int:
         return self._summary_count
+
+    @property
+    def interval(self) -> int:
+        return self._interval
+
+    def get_remaining(self) -> int:
+        """获取当前计时周期剩余秒数（供 WebSocket 回放用）"""
+        if not self._started or self._paused or self._stopped:
+            return 0
+        if self._timer_started_at <= 0:
+            return self._interval
+        elapsed = time.monotonic() - self._timer_started_at
+        remaining = max(0, self._interval - int(elapsed))
+        return remaining
+
+    def set_interval(self, new_interval: int) -> None:
+        """
+        热更新总结间隔。
+
+        若在运行中，立即重启当前计时周期（剩余时间按新间隔重新计算）。
+        最小值 30 秒，防止 API 调用过于频繁。
+        """
+        self._interval = max(30, new_interval)
+        if self._started and not self._paused:
+            # 重启当前计时周期
+            if self._timer:
+                self._timer.cancel()
+            self._stop_countdown()
+            self._schedule_next()
+            logger.info(f"[实时总结] 间隔已热更新为 {self._interval}s")
+        else:
+            logger.info(f"[实时总结] 间隔已更新为 {self._interval}s（下次启动生效）")
 
     # ── 内部方法 ──
 
@@ -189,9 +258,36 @@ class RealtimeSummarizer:
         """调度下一次总结"""
         if not self._started or self._paused:
             return
-        self._timer = threading.Timer(SUMMARY_INTERVAL, self._do_summary)
+        self._timer_started_at = time.monotonic()
+        self._timer = threading.Timer(self._interval, self._do_summary)
         self._timer.daemon = True
         self._timer.start()
+        # 启动倒计时推送线程
+        self._start_countdown()
+
+    def _start_countdown(self) -> None:
+        """启动倒计时推送线程（每秒推送剩余秒数）"""
+        self._stop_countdown()  # 先确保旧线程已停止
+        self._countdown_stop_event = threading.Event()
+
+        def _countdown_loop():
+            while not self._countdown_stop_event.is_set():
+                if not self._started or self._paused:
+                    break
+                remaining = self.get_remaining()
+                if self._on_countdown and remaining >= 0:
+                    self._on_countdown(remaining)
+                self._countdown_stop_event.wait(1.0)
+
+        self._countdown_thread = threading.Thread(target=_countdown_loop, daemon=True)
+        self._countdown_thread.start()
+
+    def _stop_countdown(self) -> None:
+        """停止倒计时推送线程"""
+        self._countdown_stop_event.set()
+        if self._countdown_thread and self._countdown_thread.is_alive():
+            self._countdown_thread.join(timeout=2.0)
+        self._countdown_thread = None
 
     def _do_summary(self) -> None:
         """执行一次增量总结"""
@@ -208,6 +304,9 @@ class RealtimeSummarizer:
             logger.debug("[实时总结] 无新内容，跳过")
             self._schedule_next()
             return
+
+        # 停止倒计时（总结中不推送倒计时）
+        self._stop_countdown()
 
         # 通知前端正在总结
         if self._on_status:

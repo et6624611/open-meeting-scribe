@@ -1,24 +1,29 @@
 """
-core/diarization.py — 实时说话人分离（MFCC + VAD + 聚类）
+core/diarization.py — 实时说话人分离（声纹嵌入 + VAD + 聚类）
+
+作者：王永亮
+创建：2026-09-03
+版本：2.0.0
 
 职责：
-  1. 从 PCM 音频流中提取 MFCC 声纹特征（14 维）
+  1. 从 PCM 音频流中提取声纹嵌入特征（云端 CAM++ 192 维优先，MFCC 14 维降级）
   2. VAD 前置过滤：仅对语音段提取特征，避免静音噪声聚类
   3. 基于余弦相似度实时聚类，区分不同说话人
   4. 为 ASR 句子标注说话人 ID
 
 原理：
   - VAD 过滤：RMS 能量阈值检测语音段，静音段跳过特征提取
-  - 每 2.5 秒音频提取一组 MFCC 14维特征
+  - 每 2.5 秒音频提取一组声纹嵌入
   - 用余弦相似度比对已知说话人档案
   - 相似度高于阈值 → 归入该说话人；否则创建新说话人
   - ASR 句子根据时间戳匹配最近的声纹特征，获得说话人标签
 
-依赖：numpy, scipy（纯本地，无 torch）
+特征提取：
+  - 通过 core.embedding_provider 抽象层，云端 CAM++ 192 维优先
+  - 云端不可用时自动降级为 MFCC 14 维（零依赖兜底）
+  - 阈值根据 provider 维度自动选择
 
-限制：
-  - 适合 2-4 人会议场景；人数过多或音色极相近时可能误判
-  - 需要每人至少说 2.5 秒才能建立可靠档案
+参见：docs/adr/0009-声纹识别服务云端拆分.md
 """
 
 import logging
@@ -51,6 +56,11 @@ N_MFCC = 13
 
 # 采样率
 SAMPLE_RATE = 16000
+
+# ── 云端 CAM++ 192 维阈值（区分度远优于 MFCC，阈值更宽松）──
+# CAM++ 同一说话人跨时段余弦相似度稳定在 0.65+，不同说话人通常 < 0.40
+CLOUD_SIMILARITY_THRESHOLD = 0.55
+CLOUD_MERGE_THRESHOLD = 0.65
 
 # ── VAD 配置 ──
 # RMS 能量阈值：低于此值视为静音，跳过特征提取
@@ -254,16 +264,21 @@ def _extract_mfcc_feature(pcm_bytes: bytes) -> np.ndarray | None:
 
 def extract_speaker_feature(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> np.ndarray | None:
     """
-    从 PCM 音频段提取说话人 MFCC 特征向量（14 维）。
+    从 PCM 音频段提取说话人声纹嵌入向量。
+
+    通过 embedding_provider 抽象层：云端 CAM++ 192 维优先，
+    云端不可用时自动降级为 MFCC 14 维。
 
     Args:
         pcm_bytes: PCM 16bit 单声道原始字节（建议 ≥ 2 秒）
         sample_rate: 采样率
 
     Returns:
-        14 维特征向量，或 None（音频太短/提取失败）
+        声纹嵌入向量（维度取决于 provider），或 None（音频太短/提取失败）
     """
-    return _extract_mfcc_feature(pcm_bytes)
+    from core.embedding_provider import get_embedding_provider
+    provider = get_embedding_provider()
+    return provider.extract_from_pcm(pcm_bytes, sample_rate)
 
 
 # ============================================================
@@ -272,7 +287,10 @@ def extract_speaker_feature(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) ->
 
 class SpeakerDiarizer:
     """
-    实时说话人分离器（MFCC 声纹 + VAD + 余弦聚类）。
+    实时说话人分离器（声纹嵌入 + VAD + 余弦聚类）。
+
+    特征提取通过 embedding_provider 抽象层：云端 CAM++ 192 维优先，
+    云端不可用时自动降级为 MFCC 14 维。阈值根据 provider 维度自动选择。
 
     用法：
         diarizer = SpeakerDiarizer()
@@ -292,19 +310,32 @@ class SpeakerDiarizer:
         self,
         feature_window_sec: float = FEATURE_WINDOW_SEC,
         feature_step_sec: float = FEATURE_STEP_SEC,
-        similarity_threshold: float = SIMILARITY_THRESHOLD,
+        similarity_threshold: float | None = None,
         min_features: int = MIN_FEATURES_PER_SPEAKER,
+        provider=None,
     ):
         """
         Args:
             feature_window_sec: 特征提取窗口（秒）
             feature_step_sec: 特征提取步长（秒）
-            similarity_threshold: 余弦相似度阈值
+            similarity_threshold: 余弦相似度阈值；None 时根据 provider 维度自动选择
             min_features: 每个说话人最少特征数
+            provider: EmbeddingProvider 实例；None 时从 get_embedding_provider() 获取
         """
+        from core.embedding_provider import get_embedding_provider
+        self._provider = provider if provider is not None else get_embedding_provider()
+
         self._window_sec = feature_window_sec
         self._step_sec = feature_step_sec
-        self._threshold = similarity_threshold
+
+        # 根据 provider 维度自动选择阈值
+        if similarity_threshold is not None:
+            self._threshold = similarity_threshold
+        elif self._provider.dim >= 192:
+            self._threshold = CLOUD_SIMILARITY_THRESHOLD
+        else:
+            self._threshold = SIMILARITY_THRESHOLD
+
         self._min_features = min_features
 
         # 说话人档案：speaker_id → SpeakerProfile
@@ -329,17 +360,22 @@ class SpeakerDiarizer:
         self._finalized: bool = False
 
         # 合并阈值：质心余弦相似度高于此值的簇将被合并
-        # 实测：同说话人跨时段余弦 ≈ 0.42，不同说话人 ≈ 0.17
-        # 0.40 在两者之间，保守选取
-        self._merge_threshold: float = 0.40
+        if self._provider.dim >= 192:
+            # CAM++ 192 维跨时段稳定性好，可激进合并
+            self._merge_threshold: float = CLOUD_MERGE_THRESHOLD
+        else:
+            # MFCC 14 维区分度有限，偏保守：宁可保留轻微过度分裂
+            self._merge_threshold = 0.52
 
         # 线程锁
         import threading
         self._lock = threading.Lock()
 
         logger.info(
-            f"[声纹聚类] 初始化: 窗口={feature_window_sec}s, "
-            f"阈值={similarity_threshold}, VAD阈值={VAD_ENERGY_THRESHOLD}"
+            f"[声纹聚类] 初始化: provider={self._provider.model_version}"
+            f"({self._provider.dim}维), 窗口={feature_window_sec}s, "
+            f"匹配阈值={self._threshold}, 合并阈值={self._merge_threshold}, "
+            f"VAD阈值={VAD_ENERGY_THRESHOLD}"
         )
 
     def feed_audio(self, pcm_bytes: bytes, timestamp: float | None = None) -> None:
@@ -401,8 +437,8 @@ class SpeakerDiarizer:
 
         self._vad_speech_count += 1
 
-        # 提取声纹特征（MFCC 14 维）
-        feature = extract_speaker_feature(chunk)
+        # 提取声纹嵌入（通过 provider：云端 CAM++ 优先，MFCC 降级）
+        feature = self._provider.extract_from_pcm(chunk)
         if feature is not None:
             speaker_id = self._match_speaker(feature)
             self._feature_timeline.append(FeatureTimestamp(
@@ -511,6 +547,25 @@ class SpeakerDiarizer:
         """当前识别到的说话人数量（原始值，不含后处理合并）"""
         with self._lock:
             return len(self._profiles)
+
+    def get_active_speaker_count(self, min_speech_sec: float = 2.0) -> int:
+        """有效说话人数量：仅统计累计语音时长 >= min_speech_sec 的说话人。
+
+        过滤掉因 VAD 误触发或瞬态噪声产生的伪说话人（语音时长极短）。
+        """
+        with self._lock:
+            return sum(
+                1 for p in self._profiles.values()
+                if p.total_speech_sec >= min_speech_sec
+            )
+
+    def get_active_speaker_ids(self, min_speech_sec: float = 2.0) -> list[int]:
+        """有效说话人 ID 列表（仅统计语音时长 >= min_speech_sec 的说话人）"""
+        with self._lock:
+            return sorted(
+                sid for sid, p in self._profiles.items()
+                if p.total_speech_sec >= min_speech_sec
+            )
 
     def get_profiles(self) -> dict[int, SpeakerProfile]:
         """获取所有说话人档案（供调试/展示）"""
@@ -629,3 +684,28 @@ class SpeakerDiarizer:
             self._vad_silence_count = 0
             self._finalized = False
             logger.info("[声纹聚类] 已重置")
+
+
+# ============================================================
+# 工厂函数：根据用户订阅状态创建实时分离器
+# ============================================================
+
+def create_realtime_diarizer(**kwargs) -> SpeakerDiarizer:
+    """根据用户订阅状态和偏好创建实时说话人分离器。
+
+    策略：
+      - 非订阅用户（free）/ 未登录 → 强制 MFCC 14 维本地
+      - 订阅用户（personal/pro/team）→ 默认云端 CAM++ 192 维，
+        用户可通过 prefs.local_diarization=True 切换为本地 MFCC
+
+    额外的 kwargs 透传给 SpeakerDiarizer 构造函数。
+    """
+    from core.users import should_use_local_diarization
+
+    if should_use_local_diarization():
+        from core.embedding_provider import MfccFallbackProvider
+        logger.info("[声纹聚类] 用户策略: 本地 MFCC 14 维")
+        return SpeakerDiarizer(provider=MfccFallbackProvider(), **kwargs)
+
+    logger.info("[声纹聚类] 用户策略: 云端 CAM++ 192 维（默认）")
+    return SpeakerDiarizer(**kwargs)

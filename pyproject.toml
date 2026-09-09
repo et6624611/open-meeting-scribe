@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-meeting-scribe"
+version = "1.0.0"
+description = "开源 Mac 端会议纪要工具：音频 → 转写 + 说话人分离 + 声纹姓名化 → 结构化纪要"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "王永亮", email = "wangyongliang2006@126.com"}
+]
+maintainers = [
+    {name = "王永亮", email = "wangyongliang2006@126.com"}
+]
+keywords = ["meeting", "transcription", "asr", "speaker-diarization", "voiceprint", "minutes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Office/Business",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.32",
+    "PyJWT>=2.8.0",
+    "alibabacloud-dypnsapi20170525>=1.0.0",
+    "alibabacloud-tea-openapi>=0.3.0",
+    "dashscope>=1.23.0",
+    "websockets>=12.0",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "python-docx>=1.1.0",
+    "PyPDF2>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/et6624611/open-meeting-scribe"
+Repository = "https://github.com/et6624611/open-meeting-scribe"
+Issues = "https://github.com/et6624611/open-meeting-scribe/issues"
+Changelog = "https://github.com/et6624611/open-meeting-scribe/blob/main/CHANGELOG.md"
+
+[project.scripts]
+oms = "cli:main"
+
+[tool.setuptools]
+packages = ["core", "app"]
+
+[tool.setuptools.package-data]
+app = ["static/*.html", "admin_static/*.html"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

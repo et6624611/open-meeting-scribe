@@ -1,6 +1,10 @@
 """
 core/pipeline.py — 串联全流程
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 职责：
   1. 编排：音频归一化 → 上传 → 转写 → 纪要
   2. 输出 Markdown 纪要到 data/output/
@@ -12,6 +16,7 @@ core/pipeline.py — 串联全流程
 """
 
 import os
+import time
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -20,12 +25,12 @@ from typing import Callable
 from dotenv import load_dotenv
 
 from .audio import normalize_audio, get_audio_duration
-from .upload import upload_file
 from .transcribe import transcribe_audio
 from .hotwords import get_or_create_vocabulary
 from .summarize import generate_summary, generate_title, save_summary
 from .chapters import generate_chapters
 from . import speakers
+from .perf import perf_timer
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +97,16 @@ def run_pipeline_stage1(
         raise FileNotFoundError(f"音频文件不存在: {audio_path}")
 
     result = {}
+    stage1_start = time.perf_counter()
 
     # 1. 音频归一化
     progress("audio", "正在归一化音频...", 10)
-    normalized = normalize_audio(
-        audio_path,
-        sample_rate=cfg["sample_rate"],
-        channels=cfg["channels"],
-    )
+    with perf_timer("音频归一化", category="ffmpeg_normalize"):
+        normalized = normalize_audio(
+            audio_path,
+            sample_rate=cfg["sample_rate"],
+            channels=cfg["channels"],
+        )
     audio_duration = get_audio_duration(normalized)
     result["audio_duration"] = audio_duration
     result["normalized_path"] = str(normalized)
@@ -119,32 +126,33 @@ def run_pipeline_stage1(
             f"但估算说话人={original_count}，强制设为 2"
         )
 
-    # 2. 上传到 DashScope
-    progress("upload", "正在上传音频...", 30)
-    oss_url = upload_file(normalized, model=cfg["asr_model"])
-    progress("upload", "上传完成", 40)
-
-    # 3. 热词表（可选）
-    progress("hotwords", "检查热词表...", 45)
-    vocabulary_id = get_or_create_vocabulary(target_model=cfg["asr_model"])
+    # 2. 热词表（可选）
+    progress("hotwords", "检查热词表...", 35)
+    with perf_timer("热词表检查"):
+        vocabulary_id = get_or_create_vocabulary(target_model=cfg["asr_model"])
     if vocabulary_id:
-        progress("hotwords", f"使用热词表: {vocabulary_id}", 50)
+        progress("hotwords", f"使用热词表: {vocabulary_id}", 40)
     else:
-        progress("hotwords", "无热词", 50)
+        progress("hotwords", "无热词", 40)
 
-    # 4. 转写
-    progress("transcribe", "提交转写任务...", 55)
-    dialogue, transcription = transcribe_audio(
-        file_url=oss_url,
-        model=cfg["asr_model"],
-        diarization_enabled=cfg["diarization_enabled"],
-        language_hints=cfg["language_hints"],
-        vocabulary_id=vocabulary_id,
-        speaker_count=speaker_count,
-    )
+    # 3. 转写（代理负责上传 + 提交 + 轮询 + 下载）
+    progress("transcribe", "提交转写任务...", 45)
+    with perf_timer("转写（含上传+轮询）", category="transcribe"):
+        dialogue, transcription = transcribe_audio(
+            file_path=normalized,
+            model=cfg["asr_model"],
+            diarization_enabled=cfg["diarization_enabled"],
+            language_hints=cfg["language_hints"],
+            vocabulary_id=vocabulary_id,
+            speaker_count=speaker_count,
+        )
     progress("transcribe", "转写完成", 70)
     result["dialogue"] = dialogue
     result["transcription"] = transcription
+
+    stage1_elapsed = time.perf_counter() - stage1_start
+    logger.info(f"[PERF] 管线第一阶段总计: {stage1_elapsed:.3f}s")
+    result["perf_stage1"] = stage1_elapsed
 
     return result
 
@@ -197,6 +205,7 @@ def run_pipeline_stage2(
             on_progress(p)
 
     result = {}
+    stage2_start = time.perf_counter()
 
     # 5. 说话人姓名化
     progress("speakers", "应用说话人姓名...", 75)
@@ -218,19 +227,22 @@ def run_pipeline_stage2(
 
     # 6. 生成纪要
     progress("summarize", "正在生成纪要...", 85)
-    summary = generate_summary(dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes)
+    with perf_timer("纪要生成", category="llm_sync"):
+        summary = generate_summary(dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes)
     progress("summarize", "纪要生成完成", 90)
     result["summary"] = summary
 
     # 6.5 生成标题
     progress("title", "正在生成标题...", 92)
-    title = generate_title(dialogue, model=cfg["llm_model"])
+    with perf_timer("标题生成", category="llm_sync"):
+        title = generate_title(dialogue, model=cfg["llm_model"])
     progress("title", f"标题生成完成: {title}", 93)
     result["title"] = title
 
     # 6.6 生成章节
     progress("chapters", "正在划分章节...", 94)
-    chapters = generate_chapters(dialogue, model=cfg["llm_model"])
+    with perf_timer("章节生成", category="llm_sync"):
+        chapters = generate_chapters(dialogue, model=cfg["llm_model"])
     progress("chapters", f"章节划分完成: {len(chapters)} 个章节", 96)
     result["chapters"] = chapters
 
@@ -251,6 +263,10 @@ def run_pipeline_stage2(
     saved_path = save_summary(summary, output_path, dialogue)
     result["output_path"] = saved_path
     progress("done", f"完成！纪要已保存: {saved_path}", 100)
+
+    stage2_elapsed = time.perf_counter() - stage2_start
+    logger.info(f"[PERF] 管线第二阶段总计: {stage2_elapsed:.3f}s")
+    result["perf_stage2"] = stage2_elapsed
 
     return result
 

@@ -1,0 +1,99 @@
+/* ═══ 顶部导航栏 ═══ */
+
+.topbar { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; border-bottom: 1px solid var(--border); background: var(--topbar-bg); backdrop-filter: blur(12px); position: relative; z-index: 100; }
+.topbar > .topbar-main { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); height: 48px; width: 100%; }
+.topbar-left { display: flex; align-items: center; gap: var(--s-4); }
+.topbar-right { display: flex; align-items: center; gap: var(--s-3); }
+.topbar-toggles { display: flex; align-items: center; gap: 2px; margin-right: var(--s-2); }
+.toggle-btn { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); transition: all 0.12s; }
+.toggle-btn:hover { background: var(--surface-2); color: var(--fg); }
+.toggle-btn.is-active { color: var(--fg); }
+.toggle-btn svg { width: 18px; height: 18px; }
+
+/* ─── 品牌标识 ─── */
+.brand { display: flex; align-items: center; gap: var(--s-2); font-weight: 600; font-size: var(--fs-14); cursor: pointer; border-radius: var(--radius-sm); padding: 4px 8px 4px 4px; margin: -4px -8px -4px -4px; transition: background 0.15s; }
+.brand:hover { background: var(--surface-2); }
+.brand:active { background: var(--surface-3); }
+.brand-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--fg); color: var(--bg); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+.topbar-divider { display: none; }
+.topbar-title { font-size: var(--fs-13); color: var(--muted); }
+.topbar-title strong { color: var(--fg); font-weight: 500; }
+
+/* ─── 视图预设切换器 ─── */
+.view-switcher {
+  display: flex; align-items: center;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 2px; gap: 1px;
+}
+.view-switcher-btn {
+  width: 30px; height: 26px; border-radius: 5px;
+  display: grid; place-items: center;
+  color: var(--subtle); transition: all 0.15s; position: relative;
+}
+.view-switcher-btn[data-view="full"] { margin-right: 1px; }
+.view-switcher-btn:hover { color: var(--muted); background: var(--surface); }
+.view-switcher-btn.is-active {
+  background: var(--surface); color: var(--fg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px var(--border);
+}
+.view-switcher-btn svg { width: 16px; height: 16px; }
+.view-switcher-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ─── 状态药丸 ─── */
+.state-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-11); font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); }
+.state-pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--subtle); }
+.state-pill.is-rec { color: var(--rec); border-color: oklch(from var(--rec) l c h / 0.25); background: var(--rec-soft); }
+.state-pill.is-rec .pip { background: var(--rec); animation: blink 1.2s ease-in-out infinite; }
+.state-pill.is-proc { color: var(--accent); border-color: var(--accent-mid); background: var(--accent-soft); }
+.state-pill.is-proc .pip { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+.state-pill.is-done { color: var(--ok); }
+.state-pill.is-done .pip { background: var(--ok); }
+.state-pill.is-fail { color: var(--rec); }
+.state-pill.is-fail .pip { background: var(--rec); }
+.state-pill.is-pending { color: var(--warn); }
+.state-pill.is-pending .pip { background: var(--warn); }
+.state-pill.is-map { color: var(--warn); }
+.state-pill.is-map .pip { background: var(--warn); }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ─── 新建按钮 ─── */
+.topbar-new-btn { display: inline-flex; align-items: center; gap: var(--s-2); padding: 5px 12px; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; background: var(--surface); color: var(--fg); border: 1px solid var(--border); transition: all 0.12s; }
+.topbar-new-btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.topbar-new-btn svg { width: 14px; height: 14px; }
+.topbar-new-btn.is-hidden { display: none; }
+
+/* ─── 更新按钮 ─── */
+.update-badge { display: none; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-sm); font-size: var(--fs-11); font-weight: 500; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-mid); cursor: pointer; transition: all 0.12s; }
+.update-badge:hover { background: oklch(from var(--accent-soft) calc(l - 0.04) c h); border-color: var(--accent); }
+.update-badge.is-visible { display: inline-flex; }
+.ub-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* ─── 录音中指示 pill ─── */
+.rec-pill { display: none; align-items: center; gap: var(--s-2); padding: 3px 10px; border-radius: 999px; border: 1px solid oklch(from var(--rec) l c h / 0.3); background: var(--rec-soft); font-size: var(--fs-11); color: var(--rec); font-family: var(--font-mono); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.rec-pill.is-visible { display: inline-flex; }
+.rec-pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--rec); animation: blink 1.4s ease-in-out infinite; }
+.rec-pill:hover { background: oklch(from var(--rec) l c h / 0.25); border-color: oklch(from var(--rec) l c h / 0.45); }
+.rec-pill:active { background: oklch(from var(--rec) l c h / 0.25); }
+
+/* ─── 注册引导横幅 ─── */
+.reg-guidance-banner { position: relative; background: oklch(97% 0.02 150); border-bottom: 1px solid oklch(90% 0.03 150); padding: 10px 24px; transition: opacity 0.3s ease, max-height 0.3s ease; overflow: hidden; }
+.reg-guidance-banner.is-hidden { opacity: 0; max-height: 0; padding: 0 24px; pointer-events: none; }
+.reg-guidance-content { display: flex; align-items: center; gap: 12px; max-width: 1400px; margin: 0 auto; }
+.reg-guidance-icon { width: 20px; height: 20px; color: oklch(55% 0.15 150); flex-shrink: 0; }
+.reg-guidance-text { flex: 1; font-size: var(--fs-13); color: var(--fg); line-height: 1.5; }
+.reg-guidance-text :deep(strong) { color: oklch(45% 0.15 150); font-weight: 600; }
+.reg-guidance-cta { padding: 6px 16px; background: oklch(55% 0.15 150); color: #fff; border: none; border-radius: 6px; font-size: var(--fs-13); font-weight: 500; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.reg-guidance-cta:hover { background: oklch(50% 0.15 150); }
+.reg-guidance-dismiss { width: 24px; height: 24px; padding: 0; background: none; border: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; border-radius: 4px; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
+.reg-guidance-dismiss:hover { background: oklch(90% 0.02 150); color: var(--fg); }
+.reg-guidance-dismiss svg { width: 16px; height: 16px; }
+
+/* ─── 响应式：右侧控件折叠 ─── */
+@media (max-width: 1280px) {
+  .lang-btn { display: none; }
+  .view-switcher { display: none; }
+}
+@media (max-width: 1100px) {
+  .topbar-new-btn span { display: none; }
+  .topbar-new-btn { padding: 5px 8px; }
+}

@@ -1,3 +1,12 @@
+---
+title: AI 协作约定
+description: AI 代理与新人开工规则
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-07
+status: published
+---
+
 # AGENTS.md — AI 协作约定
 
 给在此工作区干活的 AI / 新人。目标：低成本对齐全局、不制造矛盾信息、决策可追溯。
@@ -17,7 +26,9 @@
 | 重大决策 | `docs/adr/` | 新增一篇；旧决策作废标 `Superseded`，不删不改 |
 | 版本施工步骤 | `MVP_PLAN.md` | 当前版本怎么做 |
 | 迭代痕迹 | `CHANGELOG.md` | 每次功能迭代追加一条 |
-| 需求 / 路线 / 界面 | `docs/PRD.md` `ROADMAP.md` `design/ui-spec.md` | 产品视角 |
+| 版本主线 / 路线 | `docs/ROADMAP.md` | 版本里程碑（v1→v6），不含细碎条目 |
+| 零散需求与缺陷 | `docs/BACKLOG.md` | bug 修复、体验优化等细碎条目 |
+| 需求 / 界面 | `docs/PRD.md` `docs/design/DESIGN_DECISIONS.md` | 产品需求 + 界面设计决策（组件实现以 Vue 源码为准） |
 
 ## 硬约束（不可违背，细节见 API_CONTRACTS.md）
 - 转写 API **只认公网 URL**；本地 / 内录文件先上传 DashScope 临时存储换 `oss://` URL。
@@ -27,9 +38,10 @@
 
 ## 代码规范
 - 语言：Python 3.11+（独立 venv，不用系统 3.14）
+- 前端：Vue 3 + TypeScript + Vite（`frontend/` 目录，独立 npm 依赖）
 - 密钥：只从 `.env` 读，**禁止硬编码 / 入库**
 - 注释 / 文档 / 提交信息：中文
-- 目录：`core/` 放管线逻辑，`app/` 放服务与前端，`tests/` 放测试
+- 目录：`core/` 放管线逻辑，`app/` 放服务与路由，`frontend/` 放前端 SPA，`tests/` 放测试
 
 ## 架构原则
 - **server.py 轻量化**：`app/server.py` 仅做 app 创建与 router 注册（<100 行），不含业务逻辑；新功能一律加在 `app/routers/` 下对应文件
@@ -45,4 +57,4 @@
 ## 收尾清单
 - [ ] 更新 `CHANGELOG.md`
 - [ ] 若涉架构 / 契约 / 决策 → 同步对应 docs（必要时新增 ADR）
-- [ ] 若涉界面 → 更新 `docs/design/ui-spec.md`
+- [ ] 若涉界面设计决策 → 更新 `docs/design/DESIGN_DECISIONS.md`

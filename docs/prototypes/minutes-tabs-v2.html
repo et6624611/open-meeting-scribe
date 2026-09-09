@@ -1,0 +1,1574 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>纪要页功能原型 · 纪要 / 笔记 / 待办 / AI 助手</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   THEME TOKENS — 与转写 v2 原型完全一致
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --bg: oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(98% 0.003 240);
+  --surface-3: oklch(96.5% 0.004 240);
+  --fg: oklch(18% 0.012 250);
+  --muted: oklch(54% 0.012 250);
+  --subtle: oklch(52% 0.01 250);
+  --border: oklch(92% 0.005 250);
+  --border-strong: oklch(86% 0.006 250);
+  --accent: oklch(58% 0.18 255);
+  --accent-soft: oklch(58% 0.18 255 / 0.10);
+  --accent-mid: oklch(58% 0.18 255 / 0.25);
+  --accent-fg: oklch(100% 0 0);
+  --rec: oklch(62% 0.22 25);
+  --rec-soft: oklch(62% 0.22 25 / 0.10);
+  --mine: oklch(62% 0.14 155);
+  --mine-soft: oklch(62% 0.14 155 / 0.10);
+  --mine-bg: oklch(97.5% 0.012 155);
+  --mine-border: oklch(91% 0.02 155);
+  --ok: oklch(64% 0.16 155);
+  --ok-soft: oklch(64% 0.16 155 / 0.10);
+  --warn: oklch(72% 0.16 55);
+  --warn-soft: oklch(72% 0.16 55 / 0.10);
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-18: 18px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
+  --shadow-focus: 0 0 0 3px oklch(58% 0.18 255 / 0.18);
+}
+
+/* ─── reset ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; height: 100%; }
+body {
+  margin: 0; height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--fs-14);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea { font: inherit; color: var(--fg); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT — 整体框架
+   ═══════════════════════════════════════════════════════════ */
+.prototype-frame {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden;
+}
+
+/* ─── 原型标注条 ─── */
+.proto-banner {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  background: oklch(58% 0.18 255 / 0.08);
+  border-bottom: 1px dashed var(--accent);
+  font-size: var(--fs-12); color: var(--accent);
+  flex-shrink: 0;
+}
+.proto-banner strong { font-weight: 600; }
+.proto-banner .proto-tag {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); font-size: var(--fs-11);
+  font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOOLBAR / META — 与转写 v2 原型一致
+   ═══════════════════════════════════════════════════════════ */
+.gen-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s-2) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.gen-toolbar-left { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.gen-toolbar-right { display: flex; align-items: center; gap: 2px; }
+.gen-breadcrumb {
+  font-size: var(--fs-13); font-weight: 600; color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gen-toolbar-icon {
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--muted); transition: all 0.12s;
+}
+.gen-toolbar-icon:hover { background: var(--surface-2); color: var(--fg); }
+.gen-toolbar-icon svg { width: 16px; height: 16px; }
+.gen-toolbar-divider { width: 1px; height: 16px; background: var(--border); margin: 0 var(--s-1); }
+
+.gen-meta {
+  display: flex; flex-direction: column; gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.gen-meta-row { display: flex; align-items: center; gap: var(--s-3); }
+.gen-meta-group { display: flex; align-items: center; gap: var(--s-2); }
+.gen-meta-item {
+  display: flex; align-items: center; gap: var(--s-1);
+  font-size: var(--fs-12); color: var(--muted);
+}
+.gen-meta-item svg { width: 14px; height: 14px; opacity: 0.7; }
+.gen-meta-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.gen-meta-sep { width: 1px; height: 12px; background: var(--border); }
+.gen-meta-project { margin-left: auto; }
+.gen-meta-project-chip {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: 3px 10px; border-radius: var(--radius-sm);
+  font-size: var(--fs-12); color: var(--muted);
+  background: var(--surface-2); border: 1px solid var(--border);
+  cursor: pointer; transition: all 0.12s;
+}
+.gen-meta-project-chip:hover { border-color: var(--accent); color: var(--fg); }
+.gen-meta-project-chip svg { width: 12px; height: 12px; }
+
+.gen-speaker-zone { display: flex; flex-direction: column; gap: var(--s-2); }
+.gen-speaker-bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; }
+.gen-sb-seg { height: 100%; transition: width 0.3s; }
+.gen-speaker-labels { display: flex; align-items: center; gap: var(--s-1); flex-wrap: wrap; }
+.gen-spk-label {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  font-size: var(--fs-11); color: var(--fg);
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: all 0.12s;
+}
+.gen-spk-label:hover { background: var(--surface-2); }
+.gen-spk-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.gen-spk-pct { font-size: 10px; opacity: 0.6; font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════════════════
+   CONTROL ZONE — Tab 栏 + 转写原文开关 + 音频条
+   ═══════════════════════════════════════════════════════════ */
+.gen-control-zone {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 0 var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 42px;
+}
+.gen-tabs { display: flex; gap: 0; height: 100%; }
+.gen-tab {
+  display: flex; align-items: center; gap: 5px;
+  padding: 0 var(--s-3);
+  font-size: var(--fs-13); color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer; transition: all 0.12s;
+  white-space: nowrap;
+}
+.gen-tab:hover { color: var(--fg); }
+.gen-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-icon { width: 14px; height: 14px; }
+.transcript-toggle {
+  display: flex; align-items: center; gap: 5px;
+  padding: var(--s-1) 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-12); color: var(--muted);
+  border: 1px solid var(--border);
+  transition: all 0.15s; cursor: pointer;
+  margin-left: auto;
+}
+.transcript-toggle:hover { border-color: var(--border-strong); color: var(--fg); }
+.transcript-toggle.is-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.transcript-toggle svg { width: 14px; height: 14px; }
+
+.gen-audio-bar { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
+.gen-audio-ctrl {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-fg);
+}
+.gen-audio-ctrl svg { width: 12px; height: 12px; }
+.gen-audio-time {
+  font-size: var(--fs-11); font-family: var(--font-mono);
+  color: var(--subtle); min-width: 60px;
+  font-variant-numeric: tabular-nums;
+}
+.gen-audio-progress {
+  flex: 1; height: 4px; background: var(--border);
+  border-radius: 2px; cursor: pointer; position: relative;
+  min-width: 80px;
+}
+.gen-audio-progress-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 2px; width: 35%;
+  transition: width 0.1s;
+}
+.gen-audio-speed {
+  font-size: var(--fs-11); font-family: var(--font-mono);
+  color: var(--muted); padding: 2px 6px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+}
+.gen-audio-speed:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════
+   BODY — 内容区（左面板 + 右 AI 助手轨道）
+   ═══════════════════════════════════════════════════════════ */
+.gen-body { display: flex; flex: 1; min-height: 0; }
+.gen-main { flex: 1; overflow-y: auto; min-width: 0; }
+.gen-panel-inner {
+  max-width: 760px; margin: 0 auto;
+  padding: var(--s-4) var(--s-6) var(--s-7);
+}
+.gen-panel.hidden, .hidden { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   SUMMARY PANEL — 纪要内容（1.0 Markdown 结构还原）
+   ═══════════════════════════════════════════════════════════ */
+.sum-section { margin-bottom: var(--s-6); }
+.sum-section-label {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-11); font-weight: 600;
+  color: var(--subtle); text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: var(--s-3);
+}
+.sum-section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.sum-overview {
+  font-size: var(--fs-14); line-height: 1.8; color: var(--fg);
+}
+.sum-overview strong { font-weight: 600; }
+
+/* ─── 章节卡片（与转写 v2 一致，新增可展开要点区） ─── */
+.chapter-divider {
+  margin-bottom: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.chapter-divider:hover { border-color: var(--border-strong); }
+.chapter-header {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  cursor: pointer; width: 100%; text-align: left;
+}
+.chapter-header:hover { background: var(--surface-2); }
+.chapter-number {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surface-3); color: var(--muted);
+  display: grid; place-items: center;
+  font-size: var(--fs-11); font-weight: 600;
+  font-family: var(--font-mono); flex-shrink: 0;
+}
+.chapter-info { flex: 1; min-width: 0; }
+.chapter-title {
+  font-size: var(--fs-13); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.chapter-meta {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-11); color: var(--subtle);
+  font-family: var(--font-mono);
+}
+.chapter-meta .sep { opacity: 0.4; }
+.chapter-chevron {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--subtle);
+  transition: transform 0.15s;
+}
+.chapter-chevron svg { width: 14px; height: 14px; }
+.chapter-divider.is-open .chapter-chevron { transform: rotate(180deg); }
+.chapter-points {
+  display: none;
+  padding: 0 var(--s-4) var(--s-3) calc(var(--s-4) + 36px);
+}
+.chapter-divider.is-open .chapter-points { display: block; }
+.chapter-points li {
+  list-style: none; position: relative;
+  font-size: var(--fs-13); line-height: 1.7; color: var(--fg);
+  padding-left: var(--s-4); margin-bottom: var(--s-1);
+}
+.chapter-points li::before {
+  content: ""; position: absolute; left: 2px; top: 9px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--border-strong);
+}
+
+/* ─── 关键决策 ─── */
+.decision-row {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--s-2);
+}
+.decision-row:last-child { margin-bottom: 0; }
+.decision-mark {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--ok-soft); color: var(--ok);
+  display: grid; place-items: center; flex-shrink: 0;
+  margin-top: 1px;
+}
+.decision-mark svg { width: 11px; height: 11px; }
+.decision-body { flex: 1; min-width: 0; }
+.decision-text { font-size: var(--fs-13); line-height: 1.6; }
+.decision-owner {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  font-size: var(--fs-11); color: var(--muted);
+  margin-top: var(--s-1);
+}
+.decision-owner .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* ─── 风险与待确认 ─── */
+.risk-row {
+  display: flex; align-items: flex-start; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid oklch(72% 0.16 55 / 0.35);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-13); line-height: 1.6;
+}
+.risk-row:last-child { margin-bottom: 0; }
+.risk-row svg { width: 15px; height: 15px; color: var(--warn); flex-shrink: 0; margin-top: 2px; }
+
+/* ─── 行动项入口 ─── */
+.sum-todos-link {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer; width: 100%; text-align: left;
+  transition: all 0.12s;
+  font-size: var(--fs-13); color: var(--muted);
+}
+.sum-todos-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sum-todos-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sum-todos-link .count { font-family: var(--font-mono); font-weight: 600; }
+.sum-todos-link .go { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+.sum-todos-link .go svg { width: 13px; height: 13px; }
+
+/* ═══════════════════════════════════════════════════════════
+   NOTES PANEL — 笔记（1.0 md-toolbar + 块编辑还原）
+   ═══════════════════════════════════════════════════════════ */
+.md-toolbar {
+  display: flex; align-items: center; gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--s-3);
+}
+.md-toolbar-btn {
+  min-width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  font-size: var(--fs-13); color: var(--muted);
+  transition: all 0.12s;
+}
+.md-toolbar-btn:hover { background: var(--surface-2); color: var(--fg); }
+.md-toolbar-btn svg { width: 14px; height: 14px; }
+.md-toolbar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 var(--s-1); }
+.md-toolbar-hint { margin-left: auto; font-size: var(--fs-11); color: var(--subtle); }
+
+.note-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.note-block {
+  display: grid; grid-template-columns: 52px 1fr auto;
+  gap: var(--s-3); align-items: start;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  transition: background 0.12s;
+  position: relative;
+}
+.note-block:hover { background: var(--surface-2); }
+.note-block .nt-ts {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--subtle); cursor: pointer; padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.note-block .nt-ts:hover { color: var(--accent); }
+.note-content { font-size: var(--fs-13); line-height: 1.7; min-width: 0; }
+.note-content h3 { font-size: var(--fs-15); font-weight: 600; margin: 0; }
+.note-content ul { margin: 0; padding-left: var(--s-4); }
+.note-content li { margin-bottom: 2px; }
+.note-content blockquote {
+  margin: 0; padding: var(--s-1) var(--s-3);
+  border-left: 3px solid var(--border-strong);
+  color: var(--muted);
+}
+.note-content blockquote .q-spk { font-weight: 600; color: var(--fg); }
+.note-edit-btn {
+  width: 24px; height: 24px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--subtle); opacity: 0;
+  transition: all 0.12s;
+}
+.note-block:hover .note-edit-btn { opacity: 1; }
+.note-edit-btn:hover { background: var(--surface-3); color: var(--fg); }
+.note-edit-btn svg { width: 13px; height: 13px; }
+.note-block.is-editing { background: var(--surface); border: 1px solid var(--accent-mid); }
+.note-block.is-editing .note-edit-btn { opacity: 0; }
+.note-block.is-editing textarea {
+  width: 100%; border: none; outline: none; resize: vertical;
+  background: transparent; font-size: var(--fs-13); line-height: 1.7;
+  min-height: 60px;
+}
+.task-notes-saved {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  font-size: var(--fs-11); color: var(--ok);
+  margin-top: var(--s-2); opacity: 0; transition: opacity 0.3s;
+}
+.task-notes-saved.show { opacity: 1; }
+.task-notes-saved svg { width: 12px; height: 12px; }
+
+/* ═══════════════════════════════════════════════════════════
+   TODOS PANEL — 待办（1.0 还原 + 来源徽标）
+   ═══════════════════════════════════════════════════════════ */
+.todos-summary {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-13); color: var(--muted);
+  margin-bottom: var(--s-4);
+}
+.todos-summary .count { font-family: var(--font-mono); font-weight: 600; color: var(--fg); }
+.todos-summary .done-count { color: var(--ok); }
+.todos-list { display: flex; flex-direction: column; gap: 2px; }
+.todo-item {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.todo-item:hover { background: var(--surface-2); }
+.todo-item input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: var(--ok);
+  cursor: pointer; flex-shrink: 0;
+}
+.todo-text { flex: 1; min-width: 0; font-size: var(--fs-13); line-height: 1.6; }
+.todo-item.done .todo-text { color: var(--subtle); text-decoration: line-through; }
+.todo-assignee {
+  font-size: 11px; color: var(--muted);
+  padding: 2px 8px; background: var(--surface-2);
+  border-radius: 4px; flex-shrink: 0;
+  max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.todo-source-badge {
+  font-size: 10px; font-family: var(--font-mono);
+  padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+}
+.todo-source-badge.source-ai { background: var(--accent-soft); color: var(--accent); }
+.todo-source-badge.source-manual { background: var(--surface-3); color: var(--muted); }
+.todo-locate-btn {
+  width: 22px; height: 22px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--subtle); opacity: 0; flex-shrink: 0;
+  transition: all 0.12s;
+}
+.todo-item:hover .todo-locate-btn { opacity: 1; }
+.todo-locate-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.todo-locate-btn svg { width: 13px; height: 13px; }
+
+.todos-add-bar { margin-top: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); }
+.todos-add-btn {
+  display: flex; align-items: center; justify-content: center; gap: var(--s-1);
+  padding: var(--s-2);
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted);
+  font-size: var(--fs-12); transition: all 0.15s; width: 100%;
+}
+.todos-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.todos-add-form {
+  display: flex; flex-direction: column; gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.todos-add-form textarea {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: var(--s-2); font-size: var(--fs-13); resize: vertical;
+  background: var(--surface);
+}
+.todos-add-form textarea:focus { border-color: var(--accent); outline: none; }
+.add-form-row input {
+  width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: var(--s-2); font-size: var(--fs-13); background: var(--surface);
+}
+.add-form-row input:focus { border-color: var(--accent); outline: none; }
+.add-form-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.btn-cancel {
+  padding: 5px 14px; border-radius: var(--radius-sm);
+  font-size: var(--fs-13); color: var(--muted);
+  border: 1px solid var(--border); transition: all 0.12s;
+}
+.btn-cancel:hover { background: var(--surface-2); color: var(--fg); }
+.btn-submit {
+  padding: 5px 14px; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--accent-fg);
+  font-size: var(--fs-13); font-weight: 500; transition: all 0.12s;
+}
+.btn-submit:hover { filter: brightness(1.08); }
+
+/* ═══════════════════════════════════════════════════════════
+   TRANSCRIPT RECAP — 转写 Tab 回顾（设计定稿于转写 v2 原型）
+   ═══════════════════════════════════════════════════════════ */
+.recap-note {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--fs-12); color: var(--muted);
+  margin-bottom: var(--s-4);
+}
+.recap-note svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--accent); }
+.ts-line {
+  display: grid;
+  grid-template-columns: 48px auto 1fr;
+  gap: var(--s-3);
+  font-size: var(--fs-13);
+  line-height: 1.7;
+  padding: 3px var(--s-2);
+  border-radius: var(--radius-sm);
+  align-items: baseline;
+  transition: background 0.1s;
+}
+.ts-line:hover { background: var(--surface-2); }
+.ts-line .ts {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--subtle); cursor: pointer;
+}
+.ts-line .ts:hover { color: var(--accent); }
+.ts-line .spk {
+  font-weight: 500; cursor: pointer; font-size: var(--fs-12);
+  padding: 1px 8px; border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.ts-line .txt { color: var(--fg); }
+.ts-line.is-me {
+  display: flex; flex-direction: row-reverse; justify-content: flex-start;
+  align-items: baseline; gap: var(--s-3); text-align: right;
+}
+.ts-line.is-me .ts { order: 3; flex-shrink: 0; }
+.ts-line.is-me .spk { order: 1; flex-shrink: 0; color: var(--mine); }
+.ts-line.is-me .txt {
+  order: 2; display: inline-block;
+  background: var(--mine-bg); border: 1px solid var(--mine-border);
+  padding: var(--s-1) var(--s-3); border-radius: var(--radius-lg);
+  text-align: left; max-width: 70%; color: var(--fg);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PANEL STATES — 三态演示（待绑定 / 生成中）
+   ═══════════════════════════════════════════════════════════ */
+.gen-pending {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s-3); padding: var(--s-7) var(--s-4); text-align: center;
+}
+.gen-pending-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--muted);
+}
+.gen-pending-icon svg { width: 20px; height: 20px; }
+.gen-pending-text { font-size: var(--fs-13); color: var(--muted); }
+.btn-primary {
+  padding: 6px 16px; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--accent-fg);
+  font-size: var(--fs-13); font-weight: 500;
+  border: none; cursor: pointer; transition: all 0.12s;
+}
+.btn-primary:hover { filter: brightness(1.08); }
+.gen-loading { display: flex; flex-direction: column; gap: var(--s-5); }
+.gen-loading-hint {
+  display: flex; align-items: center; gap: var(--s-3);
+  font-size: var(--fs-14); color: var(--accent);
+}
+.gen-loading-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+  border-radius: 50%; animation: gen-spin 0.8s linear infinite; flex-shrink: 0;
+}
+@keyframes gen-spin { to { transform: rotate(360deg); } }
+.gen-skeleton { display: flex; flex-direction: column; gap: var(--s-3); }
+.gen-skeleton-bar {
+  height: 14px; background: var(--surface-2); border-radius: 4px;
+  animation: gen-shimmer 1.5s ease-in-out infinite;
+}
+.gen-skeleton-bar:nth-child(2) { width: 85%; }
+.gen-skeleton-bar:nth-child(3) { width: 60%; }
+@keyframes gen-shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ─── 演示分隔线 ─── */
+.demo-divider {
+  display: flex; align-items: center; gap: var(--s-2);
+  margin: var(--s-6) 0 var(--s-4);
+}
+.demo-divider .line { height: 1px; flex: 1; background: var(--border); }
+.demo-divider .label {
+  font-size: var(--fs-11); color: var(--subtle);
+  font-family: var(--font-mono); white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AI RAIL — 右侧 AI 会议助手（1.0 还原）
+   ═══════════════════════════════════════════════════════════ */
+.ai-rail {
+  position: relative;
+  flex: 0 0 300px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+  transition: flex-basis 0.2s ease;
+}
+.ai-rail.is-collapsed { flex-basis: 44px; }
+.ai-rail.is-collapsed .ai-rail-body { display: none; }
+.ai-collapse-btn {
+  position: absolute; top: var(--s-2); right: var(--s-2);
+  width: 24px; height: 24px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--muted); z-index: 2;
+  transition: all 0.12s;
+}
+.ai-collapse-btn:hover { background: var(--surface-2); color: var(--fg); }
+.ai-collapse-btn svg { width: 14px; height: 14px; transition: transform 0.2s; }
+.ai-rail.is-collapsed .ai-collapse-btn svg { transform: rotate(180deg); }
+
+/* 折叠态竖条 */
+.ai-collapsed-strip { display: none; }
+.ai-rail.is-collapsed .ai-collapsed-strip {
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: var(--s-4); gap: var(--s-2);
+  cursor: pointer; height: 100%;
+}
+.ai-collapsed-strip:hover { background: var(--surface-2); }
+.ai-collapsed-strip svg { width: 18px; height: 18px; color: var(--muted); }
+.ai-collapsed-label {
+  writing-mode: vertical-rl; letter-spacing: 0.15em;
+  font-size: var(--fs-11); color: var(--subtle);
+}
+
+.ai-rail-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ai-header {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ai-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.ai-avatar svg { width: 14px; height: 14px; }
+.ai-title { font-size: var(--fs-13); font-weight: 600; flex: 1; }
+.ai-header-btn {
+  width: 26px; height: 26px; border-radius: var(--radius-sm);
+  display: grid; place-items: center; color: var(--muted);
+  transition: all 0.12s;
+}
+.ai-header-btn:hover { background: var(--surface-2); color: var(--fg); }
+.ai-header-btn svg { width: 14px; height: 14px; }
+
+.ai-ctx-bar {
+  display: flex; gap: var(--s-1); flex-wrap: wrap;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ai-ctx-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-11); color: var(--muted);
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.ai-ctx-tag .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+
+.ai-tabs {
+  display: flex; gap: 0; padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ai-tab {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-13); color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.12s;
+}
+.ai-tab:hover { color: var(--fg); }
+.ai-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.ai-feed { flex: 1; overflow-y: auto; padding: var(--s-4); min-height: 0; }
+.ai-msg { margin-bottom: var(--s-4); }
+.ai-msg-header {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-11); color: var(--subtle); margin-bottom: var(--s-1);
+}
+.ai-msg-header .mini-avatar {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.ai-msg-header .mini-avatar svg { width: 9px; height: 9px; }
+.ai-bubble {
+  padding: var(--s-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  font-size: var(--fs-13); line-height: 1.7;
+}
+.ai-bubble p { margin-bottom: var(--s-2); }
+.ai-bubble p:last-child { margin-bottom: 0; }
+.ai-bubble ul { margin: 0; padding-left: var(--s-4); }
+.ai-bubble li { margin-bottom: 2px; }
+.ai-msg.is-user { display: flex; flex-direction: column; align-items: flex-end; }
+.ai-msg.is-user .ai-msg-header { flex-direction: row-reverse; }
+.ai-msg.is-user .ai-bubble {
+  background: var(--accent-soft);
+  border: 1px solid oklch(58% 0.18 255 / 0.18);
+  max-width: 85%;
+}
+.ai-action-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: var(--s-2);
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--ok-soft); color: var(--ok);
+  font-size: var(--fs-11); cursor: pointer;
+  transition: all 0.12s;
+}
+.ai-action-chip:hover { filter: brightness(0.97); }
+.ai-action-chip svg { width: 11px; height: 11px; }
+
+/* ─── 分析 Tab ─── */
+.analyze-block { margin-bottom: var(--s-5); }
+.analyze-label {
+  font-size: var(--fs-11); font-weight: 600; color: var(--subtle);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: var(--s-3);
+}
+.share-row {
+  display: grid; grid-template-columns: 52px 1fr 36px;
+  gap: var(--s-2); align-items: center;
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-12);
+}
+.share-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.share-name .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.share-bar { height: 8px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.share-bar-fill { height: 100%; border-radius: 4px; }
+.share-pct {
+  font-family: var(--font-mono); color: var(--subtle);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.kw-cloud { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.kw-chip {
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: var(--fs-12); color: var(--muted);
+}
+.kw-chip b { color: var(--fg); font-weight: 600; }
+
+/* ─── 指令 Tab ─── */
+.cmd-row {
+  display: flex; align-items: baseline; gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer; transition: background 0.1s;
+}
+.cmd-row:hover { background: var(--surface-2); }
+.cmd-key {
+  font-family: var(--font-mono); font-size: var(--fs-12);
+  color: var(--accent); flex-shrink: 0; width: 52px;
+}
+.cmd-desc { font-size: var(--fs-12); color: var(--muted); line-height: 1.5; }
+
+/* ─── 输入区 ─── */
+.ai-input-zone {
+  border-top: 1px solid var(--border);
+  padding: var(--s-2) var(--s-3) var(--s-3);
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
+.ai-quick-actions { display: flex; gap: var(--s-1); flex-wrap: wrap; }
+.ai-quick-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: var(--fs-11); color: var(--muted);
+  transition: all 0.12s;
+}
+.ai-quick-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.ai-quick-chip svg { width: 11px; height: 11px; }
+.ai-input-box {
+  display: flex; align-items: flex-end; gap: var(--s-2);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: var(--s-2);
+  background: var(--surface);
+  transition: border-color 0.12s;
+}
+.ai-input-box:focus-within { border-color: var(--accent); }
+.ai-input-box textarea {
+  flex: 1; border: none; outline: none; resize: none;
+  background: transparent; font-size: var(--fs-13); line-height: 1.5;
+  max-height: 96px;
+}
+.ai-send-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-fg);
+  display: grid; place-items: center; flex-shrink: 0;
+  transition: all 0.12s;
+}
+.ai-send-btn:hover { filter: brightness(1.08); }
+.ai-send-btn svg { width: 13px; height: 13px; }
+.ai-input-hint {
+  font-size: var(--fs-11); color: var(--subtle);
+  display: flex; align-items: center; gap: var(--s-1);
+}
+.ai-input-hint kbd {
+  font-family: var(--font-mono); font-size: 10px;
+  padding: 1px 5px; border-radius: 4px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANNOTATIONS — 原型标注
+   ═══════════════════════════════════════════════════════════ */
+.anno { position: relative; }
+.anno::after {
+  content: attr(data-anno);
+  position: absolute; top: -8px; right: -4px;
+  padding: 1px 6px;
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 9px; font-family: var(--font-mono);
+  border-radius: 3px; white-space: nowrap;
+  opacity: 0; transform: translateY(2px);
+  transition: all 0.15s;
+  pointer-events: none; z-index: 10;
+}
+.anno:hover::after { opacity: 1; transform: translateY(0); }
+
+.demo-label {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  background: oklch(72% 0.16 55 / 0.12);
+  color: oklch(55% 0.16 55);
+  font-size: 10px; font-family: var(--font-mono);
+  border-radius: 3px; margin-left: var(--s-2);
+  vertical-align: middle;
+}
+
+/* ─── 响应式 ─── */
+@media (max-width: 920px) {
+  .ai-rail { flex-basis: 44px; }
+  .ai-rail .ai-rail-body { display: none; }
+  .ai-rail .ai-collapsed-strip { display: flex; }
+  .ai-rail.is-collapsed .ai-collapse-btn svg { transform: rotate(180deg); }
+  .gen-panel-inner { padding: var(--s-3) var(--s-4) var(--s-6); }
+  .note-block { grid-template-columns: 44px 1fr auto; }
+  .gen-audio-time { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="prototype-frame">
+
+  <!-- 原型标注条 -->
+  <div class="proto-banner" data-od-id="proto-banner">
+    <strong>原型</strong>
+    <span>纪要页其他功能 · 纪要 / 笔记 / 待办 / AI 助手（基于 1.0 版本还原）</span>
+    <span class="proto-tag">v2.0-minutes-tabs</span>
+    <span style="margin-left:auto;opacity:0.7">hover 各区域查看标注 · Tab 可点击切换</span>
+  </div>
+
+  <!-- ═══ TOOLBAR ═══ -->
+  <div class="gen-toolbar anno" data-anno="工具栏：与转写 v2 原型一致" data-od-id="gen-toolbar">
+    <div class="gen-toolbar-left">
+      <span class="gen-breadcrumb">星瀚 EAS 升级项目沟通会 0905</span>
+    </div>
+    <div class="gen-toolbar-right">
+      <button class="gen-toolbar-icon" title="复制" aria-label="复制">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+      <button class="gen-toolbar-icon" title="导出" aria-label="导出">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+      </button>
+      <button class="gen-toolbar-icon" title="全屏" aria-label="全屏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      </button>
+      <div class="gen-toolbar-divider"></div>
+      <button class="gen-toolbar-icon" title="更多" aria-label="更多">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ META ═══ -->
+  <div class="gen-meta anno" data-anno="元信息行 + 说话人区：与转写 v2 一致（绑定已完成态）" data-od-id="gen-meta">
+    <div class="gen-meta-row">
+      <div class="gen-meta-group">
+        <span class="gen-meta-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span class="gen-meta-val">101:35</span>
+        </span>
+        <span class="gen-meta-sep"></span>
+        <span class="gen-meta-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span class="gen-meta-val">5</span> 人
+        </span>
+        <span class="gen-meta-sep"></span>
+        <span class="gen-meta-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span class="gen-meta-val">2026-09-05</span>
+        </span>
+      </div>
+      <span class="gen-meta-project">
+        <span class="gen-meta-project-chip">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>星瀚升级</span>
+        </span>
+      </span>
+    </div>
+    <div class="gen-speaker-zone">
+      <div class="gen-speaker-bar">
+        <div class="gen-sb-seg" style="width:32%;background:oklch(60% 0.14 255)"></div>
+        <div class="gen-sb-seg" style="width:24%;background:oklch(65% 0.14 155)"></div>
+        <div class="gen-sb-seg" style="width:20%;background:oklch(65% 0.14 35)"></div>
+        <div class="gen-sb-seg" style="width:14%;background:oklch(60% 0.14 285)"></div>
+        <div class="gen-sb-seg" style="width:10%;background:oklch(65% 0.12 80)"></div>
+      </div>
+      <div class="gen-speaker-labels">
+        <span class="gen-spk-label"><span class="gen-spk-dot" style="background:oklch(60% 0.14 255)"></span>赵里海<span class="gen-spk-pct">32%</span></span>
+        <span class="gen-spk-label"><span class="gen-spk-dot" style="background:oklch(65% 0.14 155)"></span>沈天雅<span class="gen-spk-pct">24%</span></span>
+        <span class="gen-spk-label"><span class="gen-spk-dot" style="background:oklch(65% 0.14 35)"></span>王大解<span class="gen-spk-pct">20%</span></span>
+        <span class="gen-spk-label"><span class="gen-spk-dot" style="background:oklch(60% 0.14 285)"></span>李思涵<span class="gen-spk-pct">14%</span></span>
+        <span class="gen-spk-label"><span class="gen-spk-dot" style="background:oklch(65% 0.12 80)"></span>陈雨晴<span class="gen-spk-pct">10%</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONTROL ZONE ═══ -->
+  <div class="gen-control-zone anno" data-anno="Tab 栏：点击切换四个面板 · 纪要默认激活" data-od-id="gen-control-zone">
+    <div class="gen-tabs">
+      <button class="gen-tab" data-tab="transcript" onclick="switchTab('transcript')">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span>转写</span>
+      </button>
+      <button class="gen-tab is-active" data-tab="summary" onclick="switchTab('summary')">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+        <span>纪要</span>
+      </button>
+      <button class="gen-tab" data-tab="notes" onclick="switchTab('notes')">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span>笔记</span>
+      </button>
+      <button class="gen-tab" data-tab="todos" onclick="switchTab('todos')">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span>待办</span>
+      </button>
+    </div>
+    <button class="transcript-toggle is-active" title="切换转写原文显示">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+      <span>转写原文</span>
+    </button>
+    <div class="gen-audio-bar">
+      <button class="gen-audio-ctrl" aria-label="播放" onclick="togglePlay(this)">
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+      </button>
+      <span class="gen-audio-time">35:34 / 101:35</span>
+      <div class="gen-audio-progress">
+        <div class="gen-audio-progress-fill"></div>
+      </div>
+      <button class="gen-audio-speed">1.0×</button>
+    </div>
+  </div>
+
+  <!-- ═══ BODY ═══ -->
+  <div class="gen-body">
+    <div class="gen-main" data-od-id="gen-main">
+
+      <!-- ─── 纪要面板 ─── -->
+      <div class="gen-panel" id="panel-summary" data-od-id="panel-summary">
+        <div class="gen-panel-inner">
+
+          <!-- 概述 -->
+          <div class="sum-section anno" data-anno="概述：由 LLM Stage 2 生成，可编辑（MdBlockEditor）">
+            <div class="sum-section-label">会议概述</div>
+            <p class="sum-overview">
+              本次会议围绕<strong>星瀚 EAS 升级项目</strong>的数据迁移、客商清理与物料治理三个议题展开。
+              数据迁移确定采用<strong>分三批</strong>执行的方案，每批间隔一周并在迁移前完成全量备份；
+              客商合并已完成第一轮，剩余约 200 条重复记录需人工确认；
+              物料编码确定采用<strong>分层映射</strong>方案，映射规则文档已上传项目空间。
+            </p>
+          </div>
+
+          <!-- 章节回顾 -->
+          <div class="sum-section anno" data-anno="章节卡片：与转写 Tab 共用，点击展开要点，时间可跳转音频">
+            <div class="sum-section-label">章节回顾</div>
+
+            <div class="chapter-divider is-open">
+              <button class="chapter-header" onclick="toggleChapter(this)">
+                <div class="chapter-number">1</div>
+                <div class="chapter-info">
+                  <div class="chapter-title">数据迁移方案讨论</div>
+                  <div class="chapter-meta">
+                    <span>23:15 – 48:20</span>
+                    <span class="sep">·</span>
+                    <span>3 个要点</span>
+                  </div>
+                </div>
+                <div class="chapter-chevron">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </button>
+              <ul class="chapter-points">
+                <li>数据迁移分三批执行：基础数据 → 业务数据 → 历史数据，每批间隔一周。</li>
+                <li>科目编码映射表已覆盖 85% 常用科目，剩余 15% 需业务部门确认。</li>
+                <li>每批迁移前进行全量备份，出现异常可整体回滚。</li>
+              </ul>
+            </div>
+
+            <div class="chapter-divider">
+              <button class="chapter-header" onclick="toggleChapter(this)">
+                <div class="chapter-number">2</div>
+                <div class="chapter-info">
+                  <div class="chapter-title">客商与物料治理</div>
+                  <div class="chapter-meta">
+                    <span>48:20 – 79:40</span>
+                    <span class="sep">·</span>
+                    <span>3 个要点</span>
+                  </div>
+                </div>
+                <div class="chapter-chevron">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+              </button>
+              <ul class="chapter-points">
+                <li>客商合并完成第一轮，约 200 条重复记录需人工确认，预计下周完成。</li>
+                <li>物料编码采用分层映射：大类直接对应、中类加后缀区分、小类逐条核对。</li>
+                <li>映射规则文档已上传至项目空间。</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 关键决策 -->
+          <div class="sum-section anno" data-anno="关键决策：决策内容 + 决策人，1.0 同结构">
+            <div class="sum-section-label">关键决策</div>
+            <div class="decision-row">
+              <span class="decision-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div class="decision-body">
+                <div class="decision-text">数据迁移分三批执行，每批间隔一周，迁移前进行全量备份。</div>
+                <div class="decision-owner"><span class="dot" style="background:oklch(60% 0.14 255)"></span>决策人：赵里海</div>
+              </div>
+            </div>
+            <div class="decision-row">
+              <span class="decision-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div class="decision-body">
+                <div class="decision-text">物料编码采用分层映射方案（大类直对应 / 中类加后缀 / 小类逐条核对）。</div>
+                <div class="decision-owner"><span class="dot" style="background:oklch(65% 0.14 35)"></span>决策人：王大解</div>
+              </div>
+            </div>
+            <div class="decision-row">
+              <span class="decision-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div class="decision-body">
+                <div class="decision-text">剩余 15% 科目映射由财务部牵头与业务部门确认，本周五前完成。</div>
+                <div class="decision-owner"><span class="dot" style="background:oklch(65% 0.14 155)"></span>决策人：沈天雅</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 风险与待确认 -->
+          <div class="sum-section anno" data-anno="风险与待确认：warn 语义色，仅用于非阻断提示">
+            <div class="sum-section-label">风险与待确认</div>
+            <div class="risk-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>权限分配细节尚未确认（李思涵提出），需在迁移演练前明确。</span>
+            </div>
+            <div class="risk-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>历史数据清洗工作量可能超预期，需预留 20% 进度 buffer。</span>
+            </div>
+          </div>
+
+          <!-- 行动项入口 -->
+          <div class="sum-section anno" data-anno="行动项入口：点击跳转待办 Tab">
+            <div class="sum-section-label">行动项</div>
+            <button class="sum-todos-link" onclick="switchTab('todos')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+              <span>本次会议共产生 <span class="count">6</span> 项待办，已完成 <span class="count">2</span> 项</span>
+              <span class="go">查看待办
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </span>
+            </button>
+          </div>
+
+          <!-- 三态演示 -->
+          <div class="demo-divider">
+            <div class="line"></div>
+            <span class="label">↓ 纪要面板三态演示（1.0 结构）↓</span>
+            <div class="line"></div>
+          </div>
+
+          <div class="gen-pending anno" data-anno="状态一：awaiting_mapping 时显示，引导去绑定">
+            <div class="gen-pending-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="gen-pending-text">确认说话人身份后开始生成纪要</div>
+            <button class="btn-primary" onclick="switchTab('transcript')">去转写 Tab 关联</button>
+          </div>
+
+          <div class="gen-loading anno" data-anno="状态二：Stage 2 生成中，spinner + 骨架屏" style="margin-top:var(--s-6)">
+            <div class="gen-loading-hint">
+              <div class="gen-loading-spinner"></div>
+              等待原文校正后，为你总结更详细的纪要内容...
+            </div>
+            <div class="gen-skeleton">
+              <div class="gen-skeleton-bar"></div>
+              <div class="gen-skeleton-bar"></div>
+              <div class="gen-skeleton-bar"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ─── 笔记面板 ─── -->
+      <div class="gen-panel hidden" id="panel-notes" data-od-id="panel-notes">
+        <div class="gen-panel-inner">
+          <div class="md-toolbar anno" data-anno="Markdown 工具栏：1.0 原样保留（B/I/code/H/列表/引用）">
+            <button class="md-toolbar-btn" title="加粗"><strong>B</strong></button>
+            <button class="md-toolbar-btn" title="斜体"><em>I</em></button>
+            <button class="md-toolbar-btn" title="代码">&lt;/&gt;</button>
+            <span class="md-toolbar-sep"></span>
+            <button class="md-toolbar-btn" title="标题">H</button>
+            <button class="md-toolbar-btn" title="列表">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+            <button class="md-toolbar-btn" title="引用">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>
+            </button>
+            <span class="md-toolbar-hint">双击文本块可逐块编辑 · Markdown 语法</span>
+          </div>
+
+          <div class="note-list anno" data-anno="笔记块：每块带时间戳，点击时间戳跳转音频；hover 显示编辑按钮">
+            <div class="note-block">
+              <span class="nt-ts" title="跳转到 23:15">23:15</span>
+              <div class="note-content"><h3>数据迁移三批计划</h3></div>
+              <button class="note-edit-btn" title="编辑此块" aria-label="编辑此块">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+
+            <div class="note-block">
+              <span class="nt-ts" title="跳转到 23:20">23:20</span>
+              <div class="note-content">
+                <ul>
+                  <li>第一批：基础数据（科目 / 供应商 / 客户）</li>
+                  <li>第二批：业务数据（凭证 / 余额）</li>
+                  <li>第三批：历史数据（近三年）</li>
+                </ul>
+              </div>
+              <button class="note-edit-btn" title="编辑此块" aria-label="编辑此块">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+
+            <div class="note-block">
+              <span class="nt-ts" title="跳转到 23:28">23:28</span>
+              <div class="note-content">
+                <blockquote><span class="q-spk">赵里海：</span>客商合并已经完成了第一轮，目前还有大约 200 条重复记录需要人工确认。</blockquote>
+              </div>
+              <button class="note-edit-btn" title="编辑此块" aria-label="编辑此块">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+
+            <div class="note-block is-editing anno" data-anno="编辑态：点击块进入编辑，失焦自动保存（已保存 指示）">
+              <span class="nt-ts" title="跳转到 23:35">23:35</span>
+              <textarea aria-label="编辑笔记">物料编码分层映射方案：
+- 大类 → 直接对应
+- 中类 → 加后缀区分
+- 小类 → 逐条核对（工作量最大，需排期）</textarea>
+            </div>
+          </div>
+
+          <span class="task-notes-saved show" data-od-id="notes-saved">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            已保存
+          </span>
+        </div>
+      </div>
+
+      <!-- ─── 待办面板 ─── -->
+      <div class="gen-panel hidden" id="panel-todos" data-od-id="panel-todos">
+        <div class="gen-panel-inner">
+          <div class="todos-summary anno" data-anno="统计行：勾选待办时计数实时更新" data-od-id="todos-summary">
+            <span>共 <span class="count" id="todoTotal">6</span> 项，已完成 <span class="count done-count" id="todoDone">2</span> 项</span>
+          </div>
+
+          <div class="todos-list anno" data-anno="待办条目：勾选 + 执行人 + 来源徽标（AI 提取 / 手动添加）+ 定位原文">
+            <div class="todo-item done">
+              <input type="checkbox" checked onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">整理科目编码映射表初稿</span>
+              <span class="todo-assignee">沈天雅</span>
+              <span class="todo-source-badge source-ai">AI</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="todo-item">
+              <input type="checkbox" onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">与业务部门确认剩余 15% 科目映射（本周五前）</span>
+              <span class="todo-assignee">沈天雅</span>
+              <span class="todo-source-badge source-ai">AI</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="todo-item">
+              <input type="checkbox" onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">人工确认约 200 条重复客商记录</span>
+              <span class="todo-assignee">赵里海</span>
+              <span class="todo-source-badge source-ai">AI</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="todo-item">
+              <input type="checkbox" onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">物料编码映射规则文档同步至项目空间</span>
+              <span class="todo-assignee">王大解</span>
+              <span class="todo-source-badge source-ai">AI</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="todo-item done">
+              <input type="checkbox" checked onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">创建数据迁移批次计划表</span>
+              <span class="todo-assignee">赵里海</span>
+              <span class="todo-source-badge source-manual">手动</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+            <div class="todo-item">
+              <input type="checkbox" onchange="onTodoToggle(this)" aria-label="切换待办状态">
+              <span class="todo-text">确认权限分配细节，迁移演练前明确</span>
+              <span class="todo-assignee">李思涵</span>
+              <span class="todo-source-badge source-manual">手动</span>
+              <button class="todo-locate-btn" title="定位到转写原文" onclick="locateSource()" aria-label="定位到转写原文">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="todos-add-bar anno" data-anno="添加待办：虚线按钮展开表单（1.0 交互）">
+            <button class="todos-add-btn" id="todoAddBtn" onclick="toggleAddForm()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              添加待办事项
+            </button>
+            <div class="todos-add-form hidden" id="todoAddForm">
+              <textarea placeholder="待办内容…" rows="2" aria-label="待办内容"></textarea>
+              <div class="add-form-row">
+                <input type="text" placeholder="执行人（可选）" aria-label="执行人">
+              </div>
+              <div class="add-form-actions">
+                <button class="btn-cancel" onclick="toggleAddForm()">取消</button>
+                <button class="btn-submit" onclick="toggleAddForm()">添加</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── 转写面板（回顾） ─── -->
+      <div class="gen-panel hidden" id="panel-transcript" data-od-id="panel-transcript">
+        <div class="gen-panel-inner">
+          <div class="recap-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            转写页的完整设计（说话人面板 / 绑定 / 聚焦模式 / 我的气泡）已定稿于 transcript-page-v2 原型，此处仅作 Tab 联动示意。
+          </div>
+
+          <div class="ts-line">
+            <span class="ts">23:15</span>
+            <span class="spk" style="color:oklch(60% 0.14 255)">赵里海</span>
+            <span class="txt">关于数据迁移的方案，我们之前讨论过几个版本。目前来看，最大的挑战是历史数据的清洗和映射。</span>
+          </div>
+          <div class="ts-line">
+            <span class="ts">23:25</span>
+            <span class="spk" style="color:oklch(65% 0.14 155)">沈天雅</span>
+            <span class="txt">科目编码映射表我已经整理了一版，大概覆盖了 85% 的常用科目。剩下的 15% 需要业务部门确认。</span>
+          </div>
+          <div class="ts-line is-me">
+            <span class="ts">23:28</span>
+            <span class="spk">我（王大解）</span>
+            <span class="txt">那供应商数据的清理进度怎么样？上次说客商合并的问题解决了吗？</span>
+          </div>
+          <div class="ts-line">
+            <span class="ts">23:30</span>
+            <span class="spk" style="color:oklch(60% 0.14 255)">赵里海</span>
+            <span class="txt">客商合并已经完成了第一轮，目前还有大约 200 条重复记录需要人工确认。</span>
+          </div>
+          <div class="ts-line">
+            <span class="ts">23:35</span>
+            <span class="spk" style="color:oklch(65% 0.14 35)">王大解</span>
+            <span class="txt">物料编码这块我们采用了分层映射的方案，映射规则文档已经上传到项目空间了。</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ AI 助手轨道 ═══ -->
+    <aside class="ai-rail anno" data-anno="AI 会议助手：1.0 还原 — 上下文标签 / 三个子 Tab / 对话流 / 快捷指令 / 可折叠" data-od-id="ai-rail">
+      <button class="ai-collapse-btn" onclick="toggleAiPanel()" title="收起/展开 AI 面板" aria-label="收起或展开 AI 面板">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <div class="ai-collapsed-strip" onclick="toggleAiPanel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2a4 4 0 014 4v2a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M18 14a6 6 0 01-12 0"/><path d="M12 14v8"/><path d="M8 22h8"/></svg>
+        <span class="ai-collapsed-label">会议助手</span>
+      </div>
+
+      <div class="ai-rail-body">
+        <!-- 头部 -->
+        <div class="ai-header" data-od-id="ai-header">
+          <div class="ai-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2a4 4 0 014 4v2a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M18 14a6 6 0 01-12 0"/><path d="M12 14v8"/><path d="M8 22h8"/></svg>
+          </div>
+          <span class="ai-title">会议助手</span>
+          <button class="ai-header-btn" title="新建对话" aria-label="新建对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+          </button>
+        </div>
+
+        <!-- 上下文标签 -->
+        <div class="ai-ctx-bar" data-od-id="ai-ctx-bar">
+          <span class="ai-ctx-tag"><span class="dot"></span>星瀚 EAS 升级项目沟通会 0905</span>
+          <span class="ai-ctx-tag">纪要已生成</span>
+        </div>
+
+        <!-- 子 Tab -->
+        <div class="ai-tabs" data-od-id="ai-tabs">
+          <button class="ai-tab is-active" data-aitab="chat" onclick="switchAiTab('chat')">对话</button>
+          <button class="ai-tab" data-aitab="analysis" onclick="switchAiTab('analysis')">分析</button>
+          <button class="ai-tab" data-aitab="commands" onclick="switchAiTab('commands')">指令</button>
+        </div>
+
+        <!-- 对话流 -->
+        <div class="ai-feed" id="aiTab-chat" data-od-id="ai-feed">
+          <div class="ai-msg">
+            <div class="ai-msg-header">
+              <span class="mini-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a4 4 0 014 4v2a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M18 14a6 6 0 01-12 0"/><path d="M12 14v8"/></svg>
+              </span>
+              会议助手
+            </div>
+            <div class="ai-bubble">
+              <p>你好！纪要已经生成好了。你可以随时问我关于这场会议的问题，比如：</p>
+              <ul>
+                <li>提取待办事项</li>
+                <li>总结关键结论</li>
+                <li>分析发言占比</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="ai-msg is-user" data-od-id="ai-msg-user">
+            <div class="ai-msg-header">我</div>
+            <div class="ai-bubble">帮我提取这次会议的待办事项</div>
+          </div>
+
+          <div class="ai-msg" data-od-id="ai-msg-assistant">
+            <div class="ai-msg-header">
+              <span class="mini-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a4 4 0 014 4v2a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M18 14a6 6 0 01-12 0"/><path d="M12 14v8"/></svg>
+              </span>
+              会议助手
+            </div>
+            <div class="ai-bubble">
+              <p>本次会议共识别出 <strong>6 项待办</strong>，其中 4 项来自转写内容、2 项为手动添加：</p>
+              <ul>
+                <li>与业务部门确认剩余 15% 科目映射（沈天雅，本周五前）</li>
+                <li>人工确认约 200 条重复客商记录（赵里海）</li>
+                <li>物料编码映射规则文档同步至项目空间（王大解）</li>
+                <li>确认权限分配细节，迁移演练前明确（李思涵）</li>
+              </ul>
+              <span class="ai-action-chip" onclick="switchTab('todos')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                已同步至待办 Tab · 点击查看
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分析 Tab -->
+        <div class="ai-feed hidden" id="aiTab-analysis" data-od-id="ai-analysis">
+          <div class="analyze-block">
+            <div class="analyze-label">发言占比</div>
+            <div class="share-row">
+              <span class="share-name"><span class="dot" style="background:oklch(60% 0.14 255)"></span>赵里海</span>
+              <div class="share-bar"><div class="share-bar-fill" style="width:32%;background:oklch(60% 0.14 255)"></div></div>
+              <span class="share-pct">32%</span>
+            </div>
+            <div class="share-row">
+              <span class="share-name"><span class="dot" style="background:oklch(65% 0.14 155)"></span>沈天雅</span>
+              <div class="share-bar"><div class="share-bar-fill" style="width:24%;background:oklch(65% 0.14 155)"></div></div>
+              <span class="share-pct">24%</span>
+            </div>
+            <div class="share-row">
+              <span class="share-name"><span class="dot" style="background:oklch(65% 0.14 35)"></span>王大解</span>
+              <div class="share-bar"><div class="share-bar-fill" style="width:20%;background:oklch(65% 0.14 35)"></div></div>
+              <span class="share-pct">20%</span>
+            </div>
+            <div class="share-row">
+              <span class="share-name"><span class="dot" style="background:oklch(60% 0.14 285)"></span>李思涵</span>
+              <div class="share-bar"><div class="share-bar-fill" style="width:14%;background:oklch(60% 0.14 285)"></div></div>
+              <span class="share-pct">14%</span>
+            </div>
+            <div class="share-row">
+              <span class="share-name"><span class="dot" style="background:oklch(65% 0.12 80)"></span>陈雨晴</span>
+              <div class="share-bar"><div class="share-bar-fill" style="width:10%;background:oklch(65% 0.12 80)"></div></div>
+              <span class="share-pct">10%</span>
+            </div>
+          </div>
+          <div class="analyze-block">
+            <div class="analyze-label">高频关键词</div>
+            <div class="kw-cloud">
+              <span class="kw-chip"><b>数据迁移</b> ×18</span>
+              <span class="kw-chip"><b>科目映射</b> ×12</span>
+              <span class="kw-chip"><b>客商合并</b> ×9</span>
+              <span class="kw-chip"><b>物料编码</b> ×8</span>
+              <span class="kw-chip"><b>分层映射</b> ×6</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 指令 Tab -->
+        <div class="ai-feed hidden" id="aiTab-commands" data-od-id="ai-commands">
+          <div class="analyze-label" style="margin-bottom:var(--s-2)">可用指令</div>
+          <div class="cmd-row">
+            <span class="cmd-key">/纪要</span>
+            <span class="cmd-desc">根据当前会议内容生成结构化纪要（议题 / 要点 / 结论）</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-key">/待办</span>
+            <span class="cmd-desc">提取会议中的待办事项并同步到待办 Tab</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-key">/决策</span>
+            <span class="cmd-desc">总结本次会议的关键决策及决策依据</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-key">/风险</span>
+            <span class="cmd-desc">识别会议中提到的风险与争议点</span>
+          </div>
+          <div class="cmd-row">
+            <span class="cmd-key">/回顾</span>
+            <span class="cmd-desc">回顾最近 N 分钟的讨论要点</span>
+          </div>
+        </div>
+
+        <!-- 输入区 -->
+        <div class="ai-input-zone" data-od-id="ai-input-zone">
+          <div class="ai-quick-actions">
+            <button class="ai-quick-chip" onclick="switchTab('todos')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+              提取待办事项
+            </button>
+            <button class="ai-quick-chip" onclick="switchTab('summary')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+              生成会议纪要
+            </button>
+            <button class="ai-quick-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              总结关键决策
+            </button>
+          </div>
+          <div class="ai-input-box">
+            <textarea rows="1" placeholder="输入问题，/ 打开指令…" aria-label="输入问题"></textarea>
+            <button class="ai-send-btn" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+          <div class="ai-input-hint">
+            <svg style="width:12px;height:12px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
+            输入 <kbd>/</kbd> 查看可用命令
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+</div>
+
+<script>
+/* ─── Tab 切换 ─── */
+function switchTab(id) {
+  document.querySelectorAll('.gen-tab').forEach(function (t) {
+    t.classList.toggle('is-active', t.dataset.tab === id);
+  });
+  ['transcript', 'summary', 'notes', 'todos'].forEach(function (p) {
+    document.getElementById('panel-' + p).classList.toggle('hidden', p !== id);
+  });
+}
+
+/* ─── 章节展开/折叠 ─── */
+function toggleChapter(header) {
+  header.parentElement.classList.toggle('is-open');
+}
+
+/* ─── 待办勾选 + 统计联动 ─── */
+function onTodoToggle(input) {
+  input.closest('.todo-item').classList.toggle('done', input.checked);
+  var items = document.querySelectorAll('.todo-item');
+  var done = document.querySelectorAll('.todo-item.done').length;
+  document.getElementById('todoTotal').textContent = items.length;
+  document.getElementById('todoDone').textContent = done;
+}
+
+/* ─── 添加待办表单 ─── */
+function toggleAddForm() {
+  document.getElementById('todoAddBtn').classList.toggle('hidden');
+  document.getElementById('todoAddForm').classList.toggle('hidden');
+}
+
+/* ─── 待办定位原文：切到转写 Tab ─── */
+function locateSource() {
+  switchTab('transcript');
+  document.querySelector('.gen-main').scrollTop = 0;
+}
+
+/* ─── AI 面板折叠 ─── */
+function toggleAiPanel() {
+  document.querySelector('.ai-rail').classList.toggle('is-collapsed');
+}
+
+/* ─── AI 子 Tab ─── */
+function switchAiTab(id) {
+  document.querySelectorAll('.ai-tab').forEach(function (t) {
+    t.classList.toggle('is-active', t.dataset.aitab === id);
+  });
+  ['chat', 'analysis', 'commands'].forEach(function (p) {
+    document.getElementById('aiTab-' + p).classList.toggle('hidden', p !== id);
+  });
+}
+
+/* ─── 音频播放演示 ─── */
+function togglePlay(btn) {
+  var playing = btn.dataset.playing === '1';
+  btn.dataset.playing = playing ? '0' : '1';
+  btn.innerHTML = playing
+    ? '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>';
+}
+</script>
+
+</body>
+</html>

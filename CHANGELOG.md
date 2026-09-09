@@ -1,6 +1,531 @@
+---
+title: 迭代日志
+description: 版本迭代记录，配合 git tag
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-09
+status: published
+---
+
 # CHANGELOG — 迭代日志
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
+
+## [v2.x-rec-pause-toggle-fix] - 2026-09-09
+
+### 修复
+- 录音页底部播放/暂停按钮点击无切换效果，界面恒显示「已暂停 + 播放图标」，波形动画也恒为暂停态
+- 根因：模板中 `recorder.isPaused` 拿到的是 ref 对象本身（普通对象内嵌套的 ref 在模板中不会解包），恒为真；脚本侧读 `.value` 正常，故状态机正确但渲染不跟随
+- 修复：`isPaused` 提升为顶层绑定 `recPaused` 供模板使用；顺带修复永不触发的 `watch(() => recorder.isPaused)`（getter 每次返回同一 ref 对象）改为 `watch(recPaused)`
+- 涉及文件：`RecordingView.vue`
+
+## [v2.x-recording-menu-cleanup] - 2026-09-09
+
+**变更**
+- 录音页底部更多菜单：移除与实时总结面板重复的「总结刷新频率」和「暂停/恢复总结」，仅保留「放弃录音」——就近原则，总结相关操作统一收归实时总结面板右侧更多菜单
+
+## [v2.x-dropdown-smart-position] - 2026-09-09
+
+### 修复
+- 底部更多按钮弹出菜单溢出屏幕底部（如"总结刷新频率"菜单被截断）
+- 根因：下拉菜单使用 `position: fixed` 但无智能定位逻辑，始终向下弹出
+- 修复：新增 `positionDropdown` / `toggleGenMoreMenu` 函数，检测底部空间不足时向上翻转弹出，右侧溢出时左对齐
+- 二次修复：`nextTick` 在 dropdown 从 `display:none` → `display:block` 时无法保证浏览器完成布局，`offsetHeight` 返回 0 导致定位失效；改用 `requestAnimationFrame` 确保布局完成后再测量尺寸
+- 涉及文件：`RecordingView.vue`、`GeneratingView.vue`
+
+## [v2.x-banner-layout-overflow] - 2026-09-09
+
+### 修复
+- 顶部系统消息横幅导致画面向底部溢出，录音纪要页面底部更多按钮弹出菜单显示不完整
+- 根因：`reg-guidance-banner` 在 `.frame`（100vh grid）外部，不参与高度计算；`.gen-view` / `.rec-main` 使用硬编码 `calc(100vh - ...)` 无法适应动态横幅
+- 修复：将横幅移入 `.frame` grid（新增 auto 行），子视图改用 `height: 100%` 继承可用空间
+- 涉及文件：`App.vue`、`layout.css`、`legacy-views.css`
+
+## [v2.x-speaker-display-unify] - 2026-09-09
+
+### 变更
+- 说话人显示统一标准：**字体颜色区分** + **横条占比图形**替代数字百分比，移除所有彩色圆点
+- 涉及文件：`GeneratingView.vue`、`RecordingView.vue`、`SpeakersView.vue`、`legacy-views.css`
+- 设计规范：`docs/design/DESIGN_DECISIONS.md` 新增第 7 节「说话人显示统一标准」
+
+## [v2.x-design-docs-refactor] - 2026-09-09
+
+### 变更
+- `docs/design/ui-spec.md` 废弃，拆分为 `docs/design/DESIGN_DECISIONS.md`（设计决策与原则）；组件实现以 Vue 源码为准，不再维护平行的 Markdown 清单
+- 同步更新 `AGENTS.md`、`CODEX.md`、`docs/README.md`、`README.md` 中的引用
+
+## [v2.x-pause-transcript-fix] - 2026-09-09
+
+**修复**：录音页暂停功能失效——暂停后实时转写仍在继续
+
+- 根因：`onTogglePause` 先调 API 再断 WebSocket，API 慢时 WebSocket 仍接收数据
+- 修复：暂停时先断 WebSocket 再调 API；新增 `watch(isPaused)` 确保状态同步
+- 文件：`RecordingView.vue`
+
+## [v2.x-neutral-hub-strategy] - 2026-09-09
+
+### 决策
+- **确立「跨平台中立枢纽闭环」产品战略**：厘清会议软件生态与转录生态的三处接缝（会前上下文 / 会中采集 / 会后回流），明确闭环方向不是接入平台开放 API 做深度集成（违背「反生态锁定」使命、自降为附庸），而是做中立枢纽——上游靠「项目」机制补上下文、会中靠主动型 AI 基于音频流越界、下游多路回流协作生态。
+
+### 变更
+- **文档同步**：`docs/PRD.md` 新增「生态闭环：做跨平台的中立枢纽」章节；`docs/ROADMAP.md` 想法池新增战略条目并关联下游回流；`MISSION.md` 强化「生态锁定」痛点目标与「开放自由」设计原则表述。
+
+## [v2.x-font-size-unify] - 2026-09-09
+
+### 修复
+- **录音页转写文本字体大小与纪要页不一致**：录音页 `.rec-line-text` 使用 `var(--fs-14)` (14px)，而纪要页 `.ts-line` 使用 `var(--fs-13)` (13px)。统一为 `var(--fs-13)` (13px)，与侧边栏标题、说话人标签等保持一致。同步更新原型。
+
+## [v2.x-recording-jump-btn] - 2026-09-09
+
+### 修复
+- **录音页"回到底部"按钮不显示**（两处叠加）：
+  1. `showJumpBtn` 只在新内容到达时（`wsLines.length` / `wsPartial` 变化）才更新，用户手动上滑时没有滚动监听器。新增 `transcriptBody` 的 `scroll` 事件监听，实时根据滚动位置切换按钮显隐；`onUnmounted` 时移除监听器。
+  2. 模板用 `v-show` 控制显隐，但 CSS 里按钮默认 `opacity: 0; pointer-events: none`，需 `.is-visible` 类才可见——而模板从未绑定该类，按钮即使移出 `display:none` 仍然透明不可点。改为 `:class="{ 'is-visible': showJumpBtn }"` 驱动，保留淡入过渡动画。
+
+## [v2.x-recording-autoscroll] - 2026-09-09
+
+### 修复
+- **录音页实时转写不自动滚动**：自动滚动 watcher 只监听 `wsLines.length`（新行定稿时触发），但 partial 文本更新（正在说的句子）不改变数组长度，页面不跟随滚动。新增 `wsPartial` watcher + 抽取 `scrollIfAtBottom()` 公共函数，partial 更新时也触发滚动。
+
+## [v2.x-prototype-purification] - 2026-09-09
+
+### 变更
+- **转写页面原型净化**（Creative Director 诊断后执行）：
+  - 删除原型标注条（`.proto-banner`）——开发脚手架不进入设计评审
+  - 移除说话人标签的 `translate()` 偏移调试残留——标签自然排列
+  - 移除章节导航条（`.chapter-overview`）——与章节分隔卡片功能重叠
+  - 删除 3 处演示分隔线和 `demo-label` 标注
+  - 移除筛选模式演示区（聚焦横幅 + 淡化行 + 定位行）——聚焦到单一连贯状态
+  - 绑定下拉框从固定坐标改为 JS 锚定到「说话人4」转写行下方
+  - 转写行间距增加：gap 2px → 8px，padding 8px 12px → 12px 12px
+  - 气泡内边距增加：8px 12px → 10px 14px
+  - 清理对应 CSS：`.proto-banner`、`.demo-label`、`.chapter-overview` 等约 40 行无用样式
+- **同步**：净化后原型同步至代码仓库 `docs/prototypes/transcript-page-v2.html`
+
+## [v2.x-ai-panel-recording-fix] - 2026-09-09
+
+### 修复
+- **录音页 AI 面板"插入笔记/纪要"报错**：`RecordingView` 未注册 `useQuoteRef` 的回调函数，导致点击 AI 面板的"插入笔记"或"插入纪要"按钮时 toast 报错"请先打开一个会议的笔记页面"。新增 `registerNotesAppender` 和 `registerSummaryAppender` 注册，将 AI 内容追加到笔记输入框
+
+## [v2.x-prototype-border-sync] - 2026-09-09
+
+### 修复
+- **原型气泡边框不可见**（Vue 部署版修复后原型未同步）：`transcript-page-v2-prototype.html` 他人行气泡边框从 `--border`（92% 亮度）升级为 `--border-strong`（86% 亮度）；「我的」行气泡从 `--mine-bg` / `--mine-border`（91% 浅绿边框，近乎隐形）改为 `--mine-soft` / `--mine`，与 Vue 部署版完全一致
+- **清理**：移除原型中不再使用的 `--mine-bg` / `--mine-border` token 定义
+- **同步**：原型修复同步至代码仓库 `docs/prototypes/transcript-page-v2.html`
+
+## [v2.x-bubble-border-fix] - 2026-09-09
+
+### 修复
+- **气泡边框不可见**：`--mine-bg` / `--mine-border` 为未定义 CSS 变量，浏览器忽略整个 border 声明。替换为已定义的 `--mine-soft`（背景）和 `--mine`（边框），覆盖 `GeneratingView.vue` 和 `RecordingView.vue`
+- **他人行边框对比度不足**：`.txt` 边框从 `--border`（92% 亮度，与背景近乎无色）升级为 `--border-strong`（86% 亮度），确保气泡轮廓清晰可见
+
+## [v2.x-vue-bubble-transcript] - 2026-09-09
+
+### 变更
+- **转写行气泡化移植到 Vue**：将原型确认的气泡样式移植到 `legacy-views.css`——所有转写行 `.txt` 统一包进气泡（白底 + 1px 边框 + `--radius-lg` 12px 圆角），「我的」行保持绿色调气泡右对齐（scoped 样式已有）
+- **CSS 细节**：`.ts-line` 添加 hover 背景 `var(--surface-2)`；`.ts-line-body` 改为 `inline-block` + `max-width: 85%`；`.spk` 圆角改用 `--radius-sm` token；`.spk-unbound` 添加 `font-style: italic`
+
+## [v2.x-prototype-bubble-unify] - 2026-09-09
+
+### 变更
+- **转写行统一气泡化（原型）**：`transcript-page-v2-prototype.html` 所有会话内容统一包进气泡——他人行为白底 + 1px 边框气泡（品牌「1px 细线分区」语言），「我的」行保持绿色调气泡，两者均以 `align-self` 收缩至内容宽度
+- **圆角标准确立**：三档 token——`--radius-sm` 6px（按钮/标签/chip）、`--radius` 8px（输入框/下拉框）、`--radius-lg` 12px（弹窗/章节卡/对话气泡）；气泡统一 12px 并带 4px 锚点角（靠近说话人一侧收窄：他人行左上、「我的」行右上）
+- **「我的」行头部修正**：移除 `.ts-line-head` 的 `row-reverse`，改为整组右对齐，内部保持「时间戳 → 说话人」阅读顺序，说话人标签落在最右与锚点角对齐
+- **对齐方式调整**：`.ts-line-body` 对齐偏移从 `padding-left` 改为 `margin-left`，气泡内边距保持四边一致
+- **清理**：移除「我的」行遗留的内联 `border-radius: 9px` 覆盖与 `text-align: right` 冗余声明
+
+## [v2.x-prototype-ts-order] - 2026-09-09
+
+### 变更
+- **转写行头部元素顺序调整**：时间戳移到说话人左侧，左对齐。`.ts-line-head` 内 HTML 顺序从「说话人 → 时间戳」改为「时间戳 → 说话人」
+- **文本对齐调整**：`.ts-line-body` 添加 `padding-left: calc(40px + var(--s-2))`，让文本内容与第一行的说话人标签左对齐（跳过时间戳宽度）
+
+## [v2.x-prototype-2row-update] - 2026-09-09
+
+### 变更
+- **转写页面原型更新为两行布局**：`transcript-page-v2-prototype.html` 所有转写行从 CSS Grid 三列单行改为 Flexbox 两行（`.ts-line-head` 说话人+时间戳 / `.ts-line-body` 文本内容），与 Vue 组件实现保持一致
+- **流程约定**：今后所有前端修改先调整原型图并确认，再移植到 Vue 组件
+
+## [v2.x-transcript-2row-layout] - 2026-09-09
+
+### 变更
+- **转写行布局改为两行**：说话人与时间戳一行、内容一行。从 CSS Grid 三列单行改为 Flexbox 两行（`.ts-line-head` + `.ts-line-body`），同步应用于纪要页（`.ts-line`）和录音页（`.rec-line`）
+- **"我的"气泡样式适配**：`.ts-line.is-me` / `.rec-line.is-me` 改为 `align-items: flex-end` + `.ts-line-head` 反转 + `.ts-line-body` 右对齐，气泡最大宽度 70%
+
+### 修复
+- `frontend/src/views/GeneratingView.vue`：转写行 HTML 重构为 `.ts-line-head`（说话人+时间戳）+ `.ts-line-body`（文本）
+- `frontend/src/views/RecordingView.vue`：录音行 HTML 同步重构为 `.rec-line-head` + `.rec-line-body`，含 partial 行
+- `frontend/src/styles/legacy-views.css`：`.ts-line` 从 `grid-template-columns: 60px minmax(56px,80px) 1fr` 改为 `flex-direction: column`；`.rec-line` 同步改为 `flex-direction: column`；新增 `.ts-line-head` / `.ts-line-body` / `.rec-line-head` / `.rec-line-body` 样式
+
+## [v2.x-chapters-backfill] - 2026-09-09
+
+### 修复
+- **旧任务章节缺失**：已完成任务在章节生成功能添加前完成，`chapters` 字段为 `None`。新增后台自动补生成逻辑——`get_task` API 检测到 `completed` 但无章节时，启动后台线程调用 `generate_chapters()` 并持久化
+- **前端章节加载态**：`GeneratingView.vue` 新增章节补生成轮询（3 秒间隔），章节生成期间显示"章节划分中..."加载指示器
+
+### 变更
+- `app/routers/tasks.py`：`get_task` 增加章节补生成逻辑
+- `frontend/src/views/GeneratingView.vue`：新增 `startChapterPolling` / `stopChapterPolling` + `.chapter-loading` 模板
+- `frontend/src/styles/legacy-views.css`：新增 `.chapter-loading` / `.chapter-loading-spinner` 样式
+
+## [v2.x-minutes-tabs-migration] - 2026-09-09
+
+### 新增
+- **纪要面板增强**：`GeneratingView.vue` 纪要 Tab 新增章节回顾卡片（可展开要点列表，使用已有 chapters 数据）+ 行动项入口（虚线按钮跳转待办 Tab，实时显示待办计数）
+- **笔记工具栏引用按钮**：Markdown 工具栏新增引用（`>`）按钮，与原型一致
+- **待办定位原文按钮**：每个待办条目新增 hover 显示的定位按钮，点击跳转到转写 Tab
+
+### 变更
+- `legacy-views.css`：新增 `.sum-section` / `.sum-chapter-card` / `.sum-todos-link` / `.todo-locate-btn` 样式
+
+## [v2.x-minutes-tabs-prototype] - 2026-09-09
+
+### 新增
+- **纪要页功能原型**（`docs/prototypes/minutes-tabs-v2.html`，同步 Design Files `minutes-tabs-v2-prototype.html`）：基于 1.0 版本还原纪要页其余功能区，与已定稿的 transcript-page-v2 原型共享同一套 tokens 与页面框架——
+  - **纪要 Tab**：概述 / 章节回顾（可展开要点卡片）/ 关键决策（含决策人）/ 风险与待确认（warn 语义色）/ 行动项入口（跳转待办 Tab）；底部附三态演示（awaiting_mapping 引导 + Stage 2 生成中骨架屏）
+  - **笔记 Tab**：1.0 Markdown 工具栏（B/I/code/H/列表/引用）+ 时间戳笔记块（点击时间戳跳转音频，hover 编辑，含编辑态示例与"已保存"指示）
+  - **待办 Tab**：统计行实时联动 + 待办条目（勾选 / 执行人 / 来源徽标 AI·手动 / 定位原文跳转转写 Tab）+ 虚线按钮展开添加表单
+  - **AI 会议助手右侧轨道**：上下文标签 / 对话·分析·指令三个子 Tab / 消息气泡（含"已同步至待办 Tab"动作芯片）/ 发言占比与高频关键词 / `/` 指令表 / 快捷指令芯片 / 可折叠为竖条
+
+## [v2.x-transcript-v2] - 2026-09-09
+
+### 变更
+- **转写页面原型设计 → 代码移植**（`GeneratingView.vue` + `legacy-views.css`）：基于 1.0 版本设计还原完整转写页面——
+  - **"我的"转写行布局修复**：从 CSS Grid（`order` 属性导致 `.txt` 被挤进 56-80px 窄列）改为 Flexbox `row-reverse`，文本气泡自然获得剩余空间，不再大量换行
+  - **右侧说话人面板**：搜索框 + 勾选筛选列表（含角色/时长/次数统计）+ 底部合计；支持面板收起/展开；勾选单个说话人进入聚焦模式
+  - **聚焦模式横幅**：显示当前聚焦说话人 + 上下条导航 + 退出按钮；非目标行淡化（opacity 0.25），目标行高亮（accent-soft 背景 + 左侧 accent 色条）
+  - **转写面板布局**：添加 `spk-layout-active` class 解除 `max-width: 760px` 约束，允许转写区 + 说话人面板并排显示
+
+## [v2.x-ui-polish] - 2026-09-09
+
+### 变更
+- **首页与会议库路由拆分**（`StartView.vue` + `legacy-views.css`）：StartView 精简为纯首页（动画背景 + 操作按钮 + 最近会议），移除 `.main-inner` 空闲态双层结构和 `showStartPage` 显隐切换；CSS 中 `.start-page` 改为始终 `display: flex`，所有 `.start-page.is-active` 选择器简化为 `.start-page`；首页操作直接路由跳转，不再有中间页面闪烁
+- **纪要页元信息区重构**（`GeneratingView.vue` + `legacy-views.css`）：对齐原型设计——图标化元信息行（时长/人数/日期 + 项目标签）+ 新增说话人色条与彩色圆点名单；新增 `metaDuration`、`metaDateShort`、`speakerStats` computed
+- **TopBar 响应式折叠**（`topbar.css`）：≤1280px 隐藏语言按钮与视图切换器，≤1100px 新建按钮仅显示图标
+- **录音页波形动画增强**（`legacy-views.css`）：wbar 从纯 opacity 脉冲改为 scaleY 高度联动，5 根条错峰动画
+- **跳过处理中页**（`RecordingView.vue`）：录音结束直接跳转纪要页，由其内部轮询展示"转写内容整理中"，ProcessingView 保留为手动入口
+- **说话人绑定流程还原**（对齐 1.0 版本）：`GeneratingView.vue` 还原绑定栏（legend chips / 未关联计数 / 暂不关联 / 确认关联）+ 转写内联绑定下拉框（搜索 / 不关联 / 新建 / 键盘导航）+ 增量 PUT 保存；`api/speakers.ts` 新增 `submitSpeakerMapping`、`saveSpeakerMapping`
+- **样式规范落地**：6 个组件（Library/Processing/Settings/Speakers/Generating/Recording）硬编码间距替换为 `--s-*` token；13 处 opacity 衰减型 hover 改为背景加深/前景增强（`legacy-views.css`、`topbar.css`、`GeneratingView.vue`）；StartView 说话人选择器内联样式抽取为 class
+- **说话人页面 UI 重新设计**（`SpeakersView.vue` + `legacy-views.css`）：移除彩色方块头像，改用彩色圆点 + 文字信息的简洁列表风格，与会议列表视觉一致；列表项改为统一边框容器 + 分隔线布局；操作按钮改为轻量 ghost 样式；详情视图头部同步简化；清理 legacy-views.css 中约 50 行未使用的 `.spk-table`、`.spk-detail-avatar`、`.spk-detail` 旧样式
+
+### 修复
+- **"设为我"按钮操作后无反馈**：前端 `mapSpeaker` 读取 `raw.is_me` 但后端只返回 `linked_user_id`，导致 `is_me` 永远为 `false`；改为引入 `useUserStore`，通过比较 `linked_user_id` 与当前用户 `id` 判断；`onSetMe` 增加 try/catch + toast 成功/失败反馈
+- **录音完成后页面卡住**：`RecordingView` 原直接跳纪要页但后端管线未完成；`GeneratingView` 新增轮询兜底（任务未完成时每 3 秒拉取最新数据），`onMounted` 始终 fetch 最新任务而非复用 store 旧数据；`ProcessingView` 轮询补充 `awaiting_mapping`、`failed` 状态处理
+- **`awaiting_mapping` 提示误导**：纪要面板不再显示"等待原文校正"，改为明确的"请先绑定说话人身份"引导卡片
+- **会议列表切换不响应**：`App.vue` 的 `<router-view>` 增加 `:key="$route.fullPath"`，路由参数变化时强制重建组件
+- **任务卡片删除/重命名/重试无响应**：`TaskList.vue` 补监听 `@menu` 事件，`TaskCard.vue` 的 menu 事件透传 `newName` 避免重命名弹两次输入框
+- **暗色主题穿帮（P0）**：归档对话框 9 处硬编码 fallback 颜色改走主题变量；`SpeakersView` 声纹 badge 硬编码绿色/红色改用 `--ok-soft`/`--rec-soft` 语义色
+- **全局键盘可达性（P0）**：`base.css` 新增 `:focus-visible` 焦点环（`--accent` 色，覆盖 button/input/a/[role="button"]）
+- **"设为我"后转写行未居右**（还原 1.0 版本群聊风格）：`GeneratingView.vue` 和 `RecordingView.vue` 的 `isMeSpeakerId`/`isMeSpeaker` 函数从读取后端不返回的 `is_me` 改为通过 `linked_user_id` 与当前用户 `id` 比较；CSS 从简单背景高亮增强为右对齐气泡对话框——`flex-direction: row-reverse` + `--mine-soft` 气泡背景 + 圆角 12px + 最大宽度 70%/85%
+- **首页操作闪烁**：`StartView.vue` 移除 `onStartRecord`、`onUploadClick`、`onFileSelected`、`openTask` 中提前设置 `showStartPage = false` 的逻辑，API 等待期间保持首页覆盖层显示，路由跳转后自然切换
+- **录音计时器小数位**：`useRecorder.ts` 的 `formatElapsed` 对 `elapsed` 先 `Math.floor` 取整，避免浮点精度导致秒数显示为 `00:9.01394…`
+- **空状态响应式**：LibraryView / SpeakersView 空状态 padding 改用 token 并新增 920px 断点，搜索框窄屏撑满
+- **"我的会话"气泡大量换行**：`GeneratingView.vue` 的 `.ts-line.is-me` 使用 CSS Grid `order` 属性试图反转布局，但 grid 自动放置仍按 order 排序后依次填入列，导致 `.txt` 被放入 `minmax(56px, 80px)` 的说话人列，文本被挤进窄列；改为 `grid-column` 显式指定 `.txt` → 第 1 列（1fr）、`.spk-wrapper` → 第 2 列、`.ts` → 第 3 列，`.txt` 加 `justify-self: end` 右对齐气泡
+
+## [v1.x-backlog-restructure] - 2026-09-09
+
+### 决策
+- **产品迭代规划结构化重构**：将 8 个零散产品想法按模块分类整理为结构化需求卡片，写入 BACKLOG.md「产品迭代规划」章节
+
+### 新增
+- **BACKLOG 新增 9 条结构化需求**（4 大模块）：
+  - UI/UX：全局面包屑导航、工具栏响应式降级规范
+  - 核心业务：项目文件转写状态可视化、说话人手动标记准确性修复
+  - AI 能力：AI 操作交互确认机制、纪要编辑与上下文反馈增强、实时章节折叠交互、实时新词发现与确认机制
+  - 外部集成：本地系统日历集成
+
+## [v1.x-product-ideas] - 2026-09-08
+
+### 决策
+- **产品战略方向**：从会议助理向主动型 AI 转变，AI 主动识别卡壳/偏题并提供解决方案（写入 PRD.md、ROADMAP.md）
+- **企业化核心洞察**：更大上下文 → 更有效决策，用户参与编辑提升置信度（写入 PRD.md、ROADMAP.md）
+
+### 新增
+- **BACKLOG 新增 7 条**：说话人绑定无法解绑（缺陷）、说话人分离精度不足（缺陷）、录音界面显示系统时钟、AI 主动识别卡壳/偏题、实时总结重新定位、笔记支持选中文本批注、转写摘要允许用户编辑
+
+## [v2.0-frontend] - 2026-09-08
+
+### 新增
+- **前端 Vue 3 重构**：将 19,509 行单文件 `index.html` 拆分为 48+ 个模块化源文件
+  - 技术栈：Vue 3 + TypeScript + Vite + Pinia + Vue Router
+  - 目录结构：`frontend/src/`（api/ stores/ composables/ views/ components/ styles/）
+  - 7 个主题 CSS 变量拆分为独立文件，保留 oklch() 色彩系统
+  - 9 个视图全部实现：StartView、RecordingView、ProcessingView、GeneratingView、LibraryView、ProjectsView、SpeakersView、HotwordsView、SettingsView
+  - 3 个 composable：usePolling、useRecorder、useWebSocket
+  - 11 个 API 封装模块，与后端 15 个 router 完全对齐
+  - 登录弹窗：GitHub OAuth + 短信验证码双 Tab
+  - AI 对话面板：实时对话 + 上下文感知 + 折叠/展开
+  - 侧边栏：任务列表时间分组、搜索过滤、用户菜单
+- **生产集成**：`server.py` 自动检测 `frontend/dist/` 并托管 Vue 构建产物，支持 history 模式
+- **CLI 命令**：`python cli.py build` 一键构建前端
+- **部署脚本**：`deploy.sh` 新增 Node.js 依赖安装和前端构建步骤
+
+### 变更
+- **server.py**：前端托管改为双模式（新版 Vue SPA / 旧版 index.html 兼容），自动检测
+- **cli.py**：新增 `build` 子命令，自动安装依赖并构建前端
+- **.gitignore**：新增 `frontend/node_modules/` 和 `frontend/dist/`
+
+## [v1.x-icon-spec] - 2026-09-08
+
+### 新增
+- **图标规范文档**：新增 `docs/ICON_SPEC.md`，统一图标体系：
+  - 选型 Lucide（Feather Icons 活跃分支），与现有内联 SVG 风格 100% 兼容
+  - 定义 4 级尺寸体系（sm 14px / md 16px / lg 20px / xl 24px）
+  - 设计 JS 图标映射表 `ICONS`（30+ 图标） + `icon()` 辅助函数
+  - 完整 Emoji → Lucide SVG 替换映射表
+  - 明确 SVG 属性规范、禁止事项、新增图标流程
+
+### 变更
+- **图标系统实施**：按 `ICON_SPEC.md` 完成全应用图标替换：
+  - `index.html`：添加 `.ic` / `.ic-sm` / `.ic-md` / `.ic-lg` / `.ic-xl` CSS 类 + `ICONS` 映射表 + `icon()` 函数
+  - 重构 `AI_GUIDANCE_ICONS`、`iconSvgs` 动态 SVG 映射表改用 `icon()` 函数
+  - 替换 14 处 emoji 为 SVG 图标（⚠→alert-triangle、🔄→refresh-cw、🎵→music、🔑→key、📎→paperclip、📁→folder、📂→folder-open、✕→x、✓→check、☐→square、☑→check-square、↓→chevron-down）
+  - 替换密码可见性切换硬编码 SVG path 改用 `ICONS['eye']` / `ICONS['eye-off']`
+  - 替换版本更新日志分类图标（+→plus、✓→check、↑→chevron-up）
+  - `admin.html`：添加图标 CSS 类，替换 3 处 emoji 空状态图标（📭→inbox、📢→megaphone、🎛️→sliders）
+- `ui-spec.md` 添加图标规范引用，「待补」项标记视觉规范已部分完成
+- `CODEX.md` 模块速查表新增 `ICON_SPEC.md` 入口
+
+## [v1.x-hotwords-cache] - 2026-09-08
+
+### 修复
+- **热词映射重复读文件**：`load_hotword_mappings()` 在实时转写期间每 ~200ms 被调用一次，每次都从磁盘读取文件并重新编译正则。改为基于文件 mtime 的模块级缓存 + 预编译正则，缓存命中时性能提升约 80 倍。保存端点调用 `invalidate_hotword_mappings_cache()` 确保写入后立即生效。
+
+## [v1.x-perf-monitoring] - 2026-09-08
+
+### 新增
+- **运行时性能监控埋点**：新增 `core/perf.py` 轻量性能工具（`perf_timer` 上下文管理器 + `PerfCollector` 任务级收集器 + 慢操作告警阈值），在关键路径加耗时日志：
+  - `core/pipeline.py`：管线两阶段总计 + 各子步骤（归一化、热词、转写、纪要、标题、章节）
+  - `core/audio.py`：ffmpeg 归一化耗时
+  - `core/transcribe.py`：ASR 代理调用耗时
+  - `core/llm.py`：同步/异步 LLM 调用耗时（含超时/失败时的耗时记录）
+  - `app/store.py`：管线任务总计 + P0 文本桥接匹配 + P1 声纹匹配
+  - `app/server.py`：慢请求告警（>3s 的 HTTP 请求输出 WARNING 到主日志）
+- 所有性能日志统一 `[PERF]` 前缀，便于 grep 过滤
+
+## [v1.x-ai-followup-and-cmd-toggle] - 2026-09-08
+
+### 新增
+- **AI 消息跟进建议**：每条 AI 回复底部自动展示 1-3 个上下文相关的对话引导 chips（如回复涉及待办→建议"按责任人分类"，涉及结论→建议"展开讨论细节"），点击即发送
+- **快捷指令管理（设置面板）**：设置 → 快捷指令管理，可按指令逐个启用/禁用，关闭的指令不再出现在 / 指令面板中。支持按状态分组（通用/录制中/已完成），配置持久化到 settings.json
+
+## [v1.x-transcript-loading-fix] - 2026-09-08
+
+### 修复
+- **已完成会议转写内容栏残留"整理中"**：两层问题——①`getContextStats` 引用了未定义的 `projects` 变量（应为 `projectsCache`），导致 `showCompleted` 在调用 `updateAiSessionBar` 时抛出 `ReferenceError` 崩溃，后续 UI 更新全部跳过；②即使无异常，`showCompleted` 也未显式隐藏转写区加载态。修复：将加载态隐藏移至 `showCompleted` 最开头（在任何可能异常的调用之前），并修正 `projects` → `projectsCache.find()`
+
+## [v1.x-summary-countdown] - 2026-09-08
+
+### 新增
+- **实时总结倒计时**：总结面板 header 新增环形进度倒计时（28px SVG ring）+ 底部线性进度条，10 秒内橙色预警；后端每秒通过 WebSocket 推送 `summary_countdown` 消息，前端实时渲染剩余秒数
+- **用户自定义刷新频率**：设置页「实时总结生成」开关下方新增频率选择器（30s / 60s / 120s / 300s），持久化到 `settings.json` 的 `feature_flags.realtime_summary_interval`；录音中通过总结面板 "..." 更多菜单切换频率，热更新立即生效
+- **停止/启动控制**：通过 "..." 更多菜单内的停止/开始项，支持三态模型——运行中 → 已停止（彻底关闭自动更新，ring 显示 "—"）→ 菜单项切换为"开始总结"恢复；暂停按钮独立可用
+- **页面刷新同步**：WebSocket 回放时携带 `remaining`（剩余秒数）和 `interval`（当前间隔），重连后倒计时状态无缝恢复
+
+### 变更
+- **总结面板布局精简**：移除底部状态栏（倒计时文字 + 间隔快选 + 元信息），与 header 环形倒计时消除冗余；停止/暂停两个独立按钮合并为一个暂停按钮 + "..." 更多菜单（内含停止/启动、刷新频率选择）；聚焦模式按钮移至顶部工具栏与翻译同级
+- `RealtimeSummarizer.__init__` 新增 `interval` 和 `on_countdown` 参数，`_schedule_next()` 使用实例属性替代模块常量
+- `get_feature_flags()` 返回增加 `realtime_summary_interval` 字段（默认 60）
+- 新增 API 端点：`POST /api/record/summary/stop`、`/restart`、`/interval`
+
+### 修复
+- **音频双重归一化**：`estimate_speaker_count` 先归一化生成 `_normalized.wav`，`run_pipeline_stage1` 又对其再次归一化产生 `_normalized_normalized.wav`；`normalize_audio` 新增幂等性检查，输入已为 `_normalized.wav` 时直接返回跳过 ffmpeg
+- **声纹注册表维度混合崩溃**：注册表中同时存在 CAM++ 192 维和 MFCC 降级 14 维嵌入，`np.stack` 因维度不一致抛出 `ValueError`；`auto_identify_speakers` 和 `match_speaker` 新增维度过滤，剔除与当前 encoder 输出维度不一致的记录
+
+## [v1.x-notes-inline-flow] - 2026-09-08
+
+### 新增
+- **孤儿录音自动恢复**：服务异常退出后重启时，若检测到正在录制的任务且 raw PCM 文件仍在，自动将 raw 转为 WAV 并保留任务（状态置为 `pending`），用户可直接触发后续转写与分析，不再丢失音频数据
+
+### 变更
+- **笔记融入转写流**：笔记从独立浮动面板改为直接插入转写时间线，与对话共享同一滚动区域
+  - 靠右轻量气泡（max-width 78%、冷色 `--note-bg`、✏️「笔记」标签 + 时间戳），视觉重量低于转写段落
+  - 点击发送后笔记自动出现在时间上最近的对话条目之后，无需跳转操作
+- **全宽输入栏**：笔记输入栏横跨转写 + 总结下方（`.rec-notes-bar`），移除摘要栏 / 浮动面板 / 独立笔记列表
+  - 计数徽章（`role="status"`）与「显示标记」开关移入输入栏
+- **「我说的」暖色区分**：绑定为「我」的说话人段落改用暖绿底色（`--mine-bg` / `--mine-border`），与冷色笔记气泡形成「形态 + 色相」双重区分（7 套主题均定义 token）
+- **可访问性落地**（原型打磨同步）：textarea 关联 sr-only label、删除按钮 24×24 触控目标、`aria-pressed`/`aria-label` 同步、删除动画改用 `.note-removing` CSS class、新增 `prefers-reduced-motion` 适配
+
+### 修复
+- 「显示标记」压缩逻辑适配内嵌气泡：仅当转写区溢出时折叠无笔记对话组，空间足够时不压缩
+
+### 移除
+- 旧浮动面板体系：`.rec-notes-section` / `.notes-summary-bar` / `.rec-notes-floating-panel` / `.note-card` / `.transcript-note-marker` 及相关 JS（`toggleNotesPanel`、`highlightNoteCard`、`createNoteCard` 等）
+
+### 涉及文件
+- `app/static/index.html`：CSS token + 笔记样式 + HTML 结构 + JS 逻辑
+- `docs/design/ui-spec.md`：「录音视图 · 时间戳打点笔记」段落重写
+
+## [v1.x-timestamped-notes] - 2026-09-08
+
+### 新增
+- **时间戳打点笔记**：录音期间的笔记功能从整体 textarea 升级为带时间戳的打点系统
+  - **笔记输入**：底部笔记栏从折叠式 textarea 改为始终可见的输入行（支持多行），Enter 发送、Shift+Enter 换行
+  - **时间戳标记**：每条笔记自动打上录音时间戳（如 `记录于 1:42`），明确标注记录时刻
+  - **笔记卡片**：已发送的笔记以卡片形式展示，左侧时间标签 + 右侧内容，支持点击跳转到转写区对应位置
+  - **转写区标记行**：开启「显示标记」后，转写列表中在对应位置插入蓝色标记行，显示时间 + 笔记图标 + 内容预览
+  - **对话压缩**：开启标记后，无标记的对话段落自动折叠为「已折叠 N 段对话」，点击可展开/收回，便于快速扫描打点位置
+  - **可折叠面板**：笔记区默认折叠为摘要栏（显示笔记数量 + 最新预览），点击展开笔记列表，最大高度 220px 内部滚动
+  - **删除确认**：删除笔记需点击叉号后二次确认（「确认删除？删除 取消」），防止误操作
+  - **双向跳转**：点击笔记卡片 → 转写区滚动到标记行并高亮闪烁；点击转写区标记 → 展开笔记面板并高亮对应卡片
+  - **localStorage 持久化**：笔记数据实时保存，刷新页面不丢失
+  - **停止录音提交**：笔记格式化为 `[0:42] 内容` 提交给后端，作为结构化上下文传给纪要生成
+
+### 变更
+- **笔记栏 HTML 结构**：`.rec-notes-bar` 替换为 `.rec-notes-section`，包含摘要栏、可展开区域、笔记列表、输入行
+- **笔记 CSS 样式**：新增完整的笔记系统样式（摘要栏、笔记卡片、标记行、压缩指示器、删除确认、焦点环、reduced-motion 适配）
+- **笔记 JavaScript 逻辑**：新增 `recNotes` 状态管理、`addNote()`、`deleteNote()`、`toggleNotesPanel()`、`toggleMarkerMode()`、`rebuildCompression()`、`scrollToNoteMarker()`、`highlightNoteCard()` 等函数
+- **可访问性增强**：所有交互元素添加 `:focus-visible` 焦点环，摘要栏/压缩指示器/笔记可点击区域添加 `tabindex` + `role="button"` + 键盘事件支持
+
+### 涉及文件
+- `app/static/index.html`：CSS 样式、HTML 结构、JavaScript 逻辑全面改造
+
+## [v1.x-todo-crud] - 2026-09-07
+
+### 新增
+- **待办手工增删改**：`app/routers/notes.py` 新增 `POST /api/tasks/{task_id}/todos`（手工添加待办）和 `PUT /api/tasks/{task_id}/todos/{todo_id}`（编辑待办内容/执行人）两个端点，支持用户在 AI 提取待办之外手工补充和管理待办事项
+
+### 涉及文件
+- `app/routers/notes.py`：新增 `TodoCreateRequest`、`TodoUpdateRequest` 模型及对应端点
+
+## [v1.x-tab-order] - 2026-09-07
+
+### 变更
+- **会议纪要 Tab 顺序调整**：详情页 Tab 顺序从「转写 → 纪要 → 章节 → 笔记 → 待办」调整为「转写 → 笔记 → 纪要 → 待办」。章节（chapters）已合并到转写面板，不再作为独立 Tab
+- **重新生成纪要**：纪要 Tab 保留「重新生成纪要」按钮，笔记修改后可一键重新调用 LLM 生成纪要
+
+### 涉及文件
+- `app/static/index.html`：Tab 顺序调整，chapters 合并到 transcript 面板
+
+## [v2.0-asr-proxy] - 2026-09-07
+
+### 新增
+- **ASR 代理服务**：新增 `asr-proxy/` 目录，FastAPI 服务运行在 47.116.10.194:8200，持有 DashScope API Key，为客户端提供批处理转写（`/asr/transcribe`）和实时流式转写（`/asr/ws`）中转。通信协议：HTTP POST + HMAC-SHA256 签名（`X-ASR-Timestamp` / `X-ASR-Sign`），WebSocket 通过查询参数传递签名。详见 ADR-0012。服务端已部署（`/opt/asr-proxy`，systemd 管理，开机自启）。
+
+### 变更
+- **客户端转写管线改造**：`core/transcribe.py` 从直连 DashScope 改为调用 ASR 代理 `/asr/transcribe`，一站式提交音频文件并获取完整转写结果（代理内部处理上传 + 提交 + 轮询 + 下载）。`core/pipeline.py` 移除独立的上传步骤（不再调用 `core/upload.py`）。
+- **实时转写改造**：`core/realtime_asr.py` 从 DashScope SDK 直连改为通过代理 WebSocket 中继，使用 `websockets` 库连接 `ws://proxy:8200/asr/ws`。
+- **计量逻辑简化**：`core/metering.py` 的 `is_metered()` 不再判断"自带 Key"分支，代理模式下所有已登录用户均走计量。
+- **设置页精简**：移除 ASR API Key、Base URL、Provider 配置入口，仅保留模型选择。新增代理模式说明。
+- **`app/store.py`**：`get_asr_config()` 返回代理地址而非 DashScope 直连配置。
+- **`app/routers/settings.py`**：`save_settings()` 不再保存 ASR API Key；`_test_asr_connection()` 改为调用代理健康检查端点。
+
+### 环境变量
+- 新增：`ASR_PROXY_URL`（默认 `http://47.116.10.194:8200`）、`ASR_PROXY_TOKEN`（共享密钥）
+- `DASHSCOPE_API_KEY` 仅用于 LLM 纪要生成，ASR 不再使用
+
+### 决策
+- ASR 转写走云端代理，DashScope Key 不落地客户端。详见 ADR-0012。
+
+## [v3++-speaker-binding-loop] - 2026-09-07
+
+### 新增
+- **文本桥接匹配（P0）**：新增 `core/text_bridge.py`，利用实时绑定阶段的文本内容（确定性证据）在批处理结果中搜索相似文本，继承说话人绑定关系。基于 `difflib.SequenceMatcher` 字符级模糊匹配，按命中次数投票确定新 speaker_id
+- **分层匹配策略**：批处理完成后按 P0 文本桥接 → P1 声纹匹配 → P2 手动绑定的优先级依次执行（`app/store.py:run_pipeline_task`）。文本桥接未覆盖的 speaker_id 由声纹匹配补充
+- **全量实时转写持久化**：新增 `realtime_full_transcripts` 字典（`app/store.py`），录音期间无上限累积所有定稿句子，突破 `REALTIME_BUFFER_MAX=10` 的限制，供文本桥接匹配使用
+- **声纹时长加权累积**：`VoiceprintRecord` 新增 `total_sample_duration` 字段，`register_voiceprint()` 按音频时长加权累积平均（替代旧的样本数加权），更准确反映信息量
+- **声纹自动更新闭环**：自动匹配成功后立即调用 `register_from_binding` 更新声纹注册表（含时长加权），无需用户手动触发
+- **声纹采集用户感知**：实时绑定完成后 toast 提示「已记录声音特征，后续会议将自动识别」；设置页说话人列表显示「声纹样本：X 分钟」（替代旧的手动更新按钮）；绑定横幅暗示「系统正在学习识别说话人」
+
+### 变更
+- **声纹注册 API 扩展**：`register_voiceprint()` 新增 `duration_sec` 参数；`VoiceprintStatusResponse` 和 `/api/voiceprint/registry` 返回 `total_sample_duration` 字段
+- **前端声纹按钮**：说话人详情页的「注册/更新声纹」按钮改为只读的声纹样本时长显示（`<span>` 替代 `<button>`），声纹更新由系统自动完成
+
+## [v1.x-jwt-user-identity] - 2026-09-07
+
+### 修复
+- **多用户身份隔离**：`get_current_user()` 从全局 `current_user_id` 改为优先读取请求级 ContextVar（由 JWT cookie 解析），回退到 `current_user_id` 兼容后台任务场景。新增 `user_identity_middleware`（`app/server.py`）从 `oms_session` cookie 解析用户 ID 并写入 ContextVar。修复了多用户同时登录时订阅信息、用量数据、偏好设置互相覆盖的 bug
+
+### 涉及文件
+- `core/users.py`：新增 `set_request_user_id()`、`get_request_user_id()`，重构 `get_current_user()`
+- `app/server.py`：新增 `user_identity_middleware`
+
+## [v1.x-diarization-user-pref] - 2026-09-07
+
+### 新增
+- **声纹方案用户偏好 + 订阅状态驱动**：实时说话人分离的 provider 选择（云端 CAM++ vs 本地 MFCC）改为用户可控。非订阅用户（free）强制本地 MFCC；订阅用户（personal/pro/team）默认云端 CAM++，可通过偏好设置切换回本地 MFCC。新增 `core/users.py` 的 `should_use_local_diarization()`、`core/diarization.py` 的 `create_realtime_diarizer()` 工厂函数、`GET/POST /api/user/prefs` 端点、`GET /api/settings` 返回 `diarization` 节
+
+### 涉及文件
+- `core/users.py`：新增 `should_use_local_diarization()`
+- `core/diarization.py`：新增 `create_realtime_diarizer()` 工厂函数
+- `app/routers/record.py`、`app/routers/chat.py`：改用 `create_realtime_diarizer()`
+- `app/routers/user.py`：新增 `GET/POST /api/user/prefs` 端点
+- `app/routers/settings.py`：`GET /api/settings` 新增 `diarization` 字段
+
+## [v1.x-realtime-cloud-cam++] - 2026-09-07
+
+### 变更
+- **实时声纹聚类切换到云端 CAM++ 192 维**：`core/diarization.py` 的 `SpeakerDiarizer` 和 `extract_speaker_feature()` 改为通过 `core.embedding_provider` 抽象层提取嵌入（云端 CAM++ 192 维优先，MFCC 14 维降级兜底）。匹配阈值从 0.65（MFCC）调整为 0.55（CAM++），合并阈值从 0.52 调整为 0.65。阈值根据 provider 维度自动选择，云端不可用时回退 MFCC 阈值。调用方（`record.py`、`chat.py`、`store.py`）无需修改
+
+### 涉及文件
+- `core/diarization.py`：`SpeakerDiarizer` 新增 `provider` 参数，`extract_speaker_feature` 走 provider，新增 `CLOUD_SIMILARITY_THRESHOLD` / `CLOUD_MERGE_THRESHOLD` 常量
+
+## [v1.x-speaker-count-and-archive] - 2026-09-07
+
+### 修复
+- **说话人计数不准确**：`core/diarization.py` 后处理合并阈值从 0.40 提高到 0.52，避免 MFCC 14 维特征区分度不足时把不同说话人误合并；录音停止时改用有效说话人计数（过滤语音时长 <2s 的伪说话人）
+
+### 新增
+- **实时说话人参与统计**：录音过程中实时显示当前识别到的说话人数量，顶栏展示「N 位说话人」徽章，悬停显示说话人姓名列表；后端每 2 秒检测数量变化并通过 WebSocket `speaker_count_update` 消息推送
+- **项目归档用户确认**：会议纪要完成后不再自动写入项目文件夹，改为弹出确认提示，由用户选择是否将纪要和待办写入关联项目的文件夹；新增 `GET /api/tasks/{id}/sync-status` 和 `POST /api/tasks/{id}/sync-to-project` 两个端点
+
+### 涉及文件
+- `core/diarization.py`：合并阈值调整，新增 `get_active_speaker_count()` / `get_active_speaker_ids()`
+- `app/routers/record.py`：实时说话人统计推送，停止录音时使用有效计数
+- `app/routers/tasks.py`：新增同步状态查询与手动同步端点，移除自动同步逻辑
+- `app/store.py`：移除 `_run_stage2_for_task` 中的自动同步调用
+- `app/static/index.html`：录音顶栏说话人徽章、`handleSpeakerCountUpdate`、`checkAndPromptProjectSync`
+
+## [v1.x-sticky-scroll-transcript] - 2026-09-07
+
+### 修复
+- **实时录写时无法上翻查看历史**：转写列表原本每收到 partial/sentence 消息就无条件滚到底部，导致用户上翻查看之前的对话时被强行拽回。改为「粘底检测」模式：监听滚动位置，距底部 60px 以内视为粘底（跟随模式），只有粘底时新消息才自动滚动；用户上翻后停止自动滚动，并在转写面板右下角显示「回到底部」浮动按钮，点击跳回最新位置并恢复跟随。新建/恢复录音时重置为粘底状态。
+
+### 涉及文件
+- `app/static/index.html`：新增 `recStickBottom` 粘底状态与 `recScrollIfStuck()` 等辅助函数；`handleTranscriptMessage` 中 5 处（partial / sentence / history / error / 章节分隔）无条件滚动改为粘底条件滚动；新增「回到底部」按钮及样式；3 处清空转写列表处重置粘底状态
+
+
+## [v1.x-update-flow] - 2026-09-07
+
+### 新增
+- **软件更新流程（L3 骨架）**：启动后自动检查新版本并提示，应用内展示更新面板（版本对比 / 分类 changelog / 下载进度）与重启确认模态框。当前为骨架版本：版本检查与 UI 已可用，下载与重启为模拟逻辑，真实发布渠道接入计划见 [BACKLOG](docs/BACKLOG.md)「软件更新流程落地（L3）」。
+- `core/version_check.py`（新增）：读取根目录 VERSION，调用 GitHub Releases API 获取最新版本，语义化版本比对，结果缓存 30 分钟，网络失败静默降级；远端地址可用 `settings.json` 的 `update.releases_url` 覆盖
+- `app/routers/update.py`（新增）：`GET /api/update/version`（当前版本）、`GET /api/update/check`（检查更新，支持 `force` 跳过缓存）
+- 前端：侧边栏底部固定版本号（点击打开更新面板，侧栏收起时自适应）、顶部导航栏更新徽标、右滑更新面板（changelog 自动分类为新功能/修复/优化）、下载进度模拟、重启确认模态框
+- 启动 2 秒后自动检查版本，受 `feature_flags.update_check` 功能开关控制
+
+### 涉及文件
+- `core/version_check.py`：新增
+- `app/routers/update.py`：新增
+- `app/server.py`：注册 `update` 路由
+- `app/static/index.html`：新增侧边栏版本号、更新徽标、更新面板、重启模态框及对应 JS
+- `VERSION`：新增版本文件
+
+
+## [v1.x-fix-bind-speaker] - 2026-09-07
+
+### 修复
+- **录音中绑定说话人无效**：修复录音过程中绑定说话人后未生效的 bug。`handle_bind_speaker` 事件处理现在立即更新内存中活跃会话的说话人映射，确保后续 WebSocket 推送使用最新映射；`update_speaker_mapping` 同时更新内存映射和持久化到 `data/meeting_mappings.json`。
+
+### 涉及文件
+- `app/routers/record.py`：`handle_bind_speaker` 立即更新 `session.speaker_mapping`
+- `core/diarization.py`：`update_speaker_mapping` 同步更新内存与持久化存储
+
+
+## [v1.x-feature-flags] - 2026-09-07
+
+### 新增
+- **功能开关**：设置页新增「功能开关」卡片，支持用户停用/启用实时章节生成、实时总结生成、软件更新提示三项功能，默认全部开启。配置持久化到 `data/settings.json` 的 `feature_flags` 配置节，关闭后对应功能在录音/启动流程中跳过，不产生额外 API 调用。
+
+### 涉及文件
+- `data/settings.json`：新增 `feature_flags` 配置节
+- `app/store.py`：新增 `get_feature_flags()` 辅助函数
+- `app/routers/settings.py`：GET/POST 端点支持读写 `feature_flags`
+- `app/routers/record.py`：根据开关控制实时总结器与章节生成器的创建与句子馁入
+- `app/routers/chat.py`：AI 面板发起录音时同样受开关控制
+- `app/static/index.html`：设置页新增功能开关卡片及对应 JS 逻辑
+
 
 ## [v1.x-sms-proxy] - 2026-09-07
 

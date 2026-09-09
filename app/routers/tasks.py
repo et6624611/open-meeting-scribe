@@ -1,5 +1,9 @@
 """
 app/routers/tasks.py — 转录提交 + 任务 CRUD + 音频/下载
+
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
 """
 
 import json
@@ -142,6 +146,24 @@ def get_task(task_id: str):
         info = get_stream_recording_info()
         if info:
             task = {**task, "elapsed": info["elapsed"]}
+    # 已完成任务缺少章节时，后台自动补生成（兼容旧任务）
+    if task.get("status") == "completed" and not task.get("chapters"):
+        import threading
+        from core.chapters import generate_chapters
+        def _backfill_chapters():
+            try:
+                dialogue = task.get("dialogue", [])
+                if not dialogue:
+                    return
+                from app.store import get_llm_config
+                model = get_llm_config().get("model", "qwen-plus")
+                chapters = generate_chapters(dialogue, model=model)
+                tasks[task_id]["chapters"] = chapters
+                save_task_to_disk(task_id)
+                logger.info(f"[{task_id[:8]}] 补生成 {len(chapters)} 个章节")
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 补生成章节失败: {e}")
+        threading.Thread(target=_backfill_chapters, daemon=True).start()
     return task
 
 
@@ -338,14 +360,66 @@ def update_task(task_id: str, data: TaskUpdate):
         changed = True
     if changed:
         save_task_to_disk(task_id)
-        # 项目绑定变更且任务已完成时，触发同步
-        if data.project_id is not None and tasks[task_id].get("status") == "completed":
-            try:
-                from core.projects import sync_meeting_to_folders
-                written = sync_meeting_to_folders(tasks[task_id])
-                if written:
-                    logger.info(f"[{task_id[:8]}] 项目绑定触发同步，写入 {len(written)} 个文件")
-            except Exception as e:
-                logger.warning(f"[{task_id[:8]}] 项目绑定同步失败（不影响主流程）: {e}")
 
     return tasks[task_id]
+
+
+@router.get("/api/tasks/{task_id}/sync-status")
+def get_task_sync_status(task_id: str):
+    """查询任务的项目同步状态：是否可同步、目标文件夹信息"""
+    if task_id not in tasks:
+        raise HTTPException(404, "任务不存在")
+
+    task = tasks[task_id]
+    project_id = task.get("project_id")
+    if not project_id or task.get("status") != "completed":
+        return {"can_sync": False, "reason": "任务未完成或未关联项目"}
+
+    from core.projects import get_project, get_sync_enabled_folders
+    project = get_project(project_id)
+    if not project:
+        return {"can_sync": False, "reason": "关联的项目不存在"}
+
+    sync_folders = get_sync_enabled_folders(project_id)
+    if not sync_folders:
+        return {"can_sync": False, "reason": "项目未启用文件夹同步"}
+
+    return {
+        "can_sync": True,
+        "project_name": project.get("name", ""),
+        "folders": [
+            {
+                "path": f["path"],
+                "subfolder": f.get("subfolder_name", ".meetings"),
+                "content_types": f.get("content_types", ["summary", "action_items"]),
+            }
+            for f in sync_folders
+        ],
+    }
+
+
+@router.post("/api/tasks/{task_id}/sync-to-project")
+def sync_task_to_project(task_id: str):
+    """手动将会议纪要同步写入关联项目的文件夹"""
+    if task_id not in tasks:
+        raise HTTPException(404, "任务不存在")
+
+    task = tasks[task_id]
+    if task.get("status") != "completed":
+        raise HTTPException(400, "任务未完成，无法同步")
+
+    project_id = task.get("project_id")
+    if not project_id:
+        raise HTTPException(400, "任务未关联项目")
+
+    from core.projects import sync_meeting_to_folders
+    written = sync_meeting_to_folders(task)
+    if not written:
+        return {"synced": False, "message": "没有可同步的目标文件夹"}
+
+    logger.info(f"[{task_id[:8]}] 手动同步到项目文件夹，写入 {len(written)} 个文件")
+    return {
+        "synced": True,
+        "files": written,
+        "message": f"已写入 {len(written)} 个文件到项目文件夹",
+    }

@@ -1,6 +1,9 @@
 """
 core/upload.py — 本地文件 → DashScope 临时存储 → oss:// 临时 URL
 
+⚠️ 注意：主管线已改为通过 ASR 代理上传（core/transcribe.py 直接发送文件到代理），
+本模块仅保留给 CLI 测试命令使用。正常转写流程不再调用此模块。
+
 职责：
   1. 获取上传凭证（getPolicy）
   2. POST 上传到 OSS

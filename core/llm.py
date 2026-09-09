@@ -1,6 +1,10 @@
 """
 core/llm.py — LLM provider（OpenAI 兼容端点）
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 职责：
   1. 调用 OpenAI 兼容的 chat/completions 端点
   2. 支持流式/非流式输出
@@ -16,6 +20,7 @@ Provider 配置从 settings.json 动态读取（app.store.get_llm_config），
 """
 
 import os
+import time
 import logging
 import requests
 
@@ -124,6 +129,7 @@ def chat_completion(
 
     logger.info(f"调用 LLM（同步）: url={base_url}, model={body['model']}, messages={len(messages)}")
 
+    start = time.perf_counter()
     try:
         resp = requests.post(
             f"{base_url}/chat/completions",
@@ -133,15 +139,22 @@ def chat_completion(
         )
         resp.raise_for_status()
         content = _extract_content(resp.json())
-        logger.info(f"LLM 生成完成: {len(content)} 字符")
+        elapsed = time.perf_counter() - start
+        logger.info(f"[PERF] LLM 同步调用: {elapsed:.3f}s, {len(content)} 字符")
         return content
 
     except requests.exceptions.Timeout:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 同步调用超时: {elapsed:.3f}s")
         raise RuntimeError("LLM 调用超时")
     except requests.exceptions.HTTPError as e:
+        elapsed = time.perf_counter() - start
         status = e.response.status_code if e.response is not None else "?"
+        logger.warning(f"[PERF] LLM 同步调用失败: HTTP {status}, {elapsed:.3f}s")
         raise RuntimeError(f"LLM 调用失败: HTTP {status}")
     except Exception as e:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 同步调用异常: {elapsed:.3f}s")
         raise RuntimeError(f"LLM 调用失败: {e}")
 
 
@@ -168,6 +181,7 @@ async def async_chat_completion(
 
     logger.info(f"调用 LLM（异步）: url={base_url}, model={body['model']}, messages={len(messages)}")
 
+    start = time.perf_counter()
     try:
         resp = await client.post(
             f"{base_url}/chat/completions",
@@ -176,14 +190,21 @@ async def async_chat_completion(
         )
         resp.raise_for_status()
         content = _extract_content(resp.json())
-        logger.info(f"LLM 异步生成完成: {len(content)} 字符")
+        elapsed = time.perf_counter() - start
+        logger.info(f"[PERF] LLM 异步调用: {elapsed:.3f}s, {len(content)} 字符")
         return content
 
     except httpx.TimeoutException:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用超时: {elapsed:.3f}s")
         raise RuntimeError("LLM 调用超时")
     except httpx.HTTPStatusError as e:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用失败: HTTP {e.response.status_code}, {elapsed:.3f}s")
         raise RuntimeError(f"LLM 调用失败: HTTP {e.response.status_code}")
     except Exception as e:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用异常: {elapsed:.3f}s")
         raise RuntimeError(f"LLM 调用失败: {e}")
 
 

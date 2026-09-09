@@ -1,0 +1,63 @@
+/* ═══ 全局重置 + 基础样式 ═══ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: var(--fs-14); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; padding: 0; }
+input, textarea { font: inherit; color: inherit; }
+::selection { background: var(--accent-soft); color: var(--fg); }
+
+/* ─── 全局键盘焦点环 ─── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── 全局滚动条：hover 触发，默认隐藏 ─── */
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+
+/* 悬停时显示滚动条滑块 */
+.sb-history:hover::-webkit-scrollbar-thumb,
+.ai-feed:hover::-webkit-scrollbar-thumb,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb,
+.gen-content:hover::-webkit-scrollbar-thumb,
+.spk-transcript-area:hover::-webkit-scrollbar-thumb,
+.main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+.sb-history:hover::-webkit-scrollbar-thumb:hover,
+.ai-feed:hover::-webkit-scrollbar-thumb:hover,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
+.gen-content:hover::-webkit-scrollbar-thumb:hover,
+.spk-transcript-area:hover::-webkit-scrollbar-thumb:hover,
+.main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+
+/* Firefox hover 触发 */
+.sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
+.gen-content:hover, .spk-transcript-area:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
+
+/* ─── 减弱动效 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── 通用工具类 ─── */
+.hidden { display: none !important; }
+
+/* ─── 动画 ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}

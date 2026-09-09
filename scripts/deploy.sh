@@ -13,14 +13,15 @@ echo "=========================================="
 
 # ── 1. 系统更新 + 基础依赖 ──
 echo ""
-echo "[1/7] 安装系统依赖..."
+echo "[1/8] 安装系统依赖..."
 apt update && apt upgrade -y
 apt install -y \
     python3 python3-venv python3-pip \
     ffmpeg \
     git \
     curl \
-    build-essential
+    build-essential \
+    nodejs npm
 
 # 验证 Python 版本
 python3 --version
@@ -47,7 +48,18 @@ echo "[4/7] 安装 Python 依赖（首次较慢，约 2-3 分钟）..."
 pip install -r requirements.txt
 echo "✓ Python 依赖安装完成"
 
-# ── 5. 创建数据目录 ──
+# ── 5. 构建前端 ──
+echo ""
+echo "[5/8] 构建前端（Vue 3 + Vite）..."
+if [ -d "frontend" ]; then
+    cd frontend
+    npm install
+    npm run build
+    cd ..
+    echo "✓ 前端构建完成"
+else
+    echo "⚠ frontend/ 目录不存在，跳过前端构建"
+fi
 echo ""
 echo "[5/7] 创建数据目录..."
 mkdir -p data/{output,uploads,recordings,tasks,project_index,usage}

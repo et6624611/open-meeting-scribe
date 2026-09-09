@@ -30,6 +30,7 @@ core/users.py — 用户信息数据管理
   - 旧版 current_user 字段在读取时自动迁移为 users 数组
 """
 
+import contextvars
 import json
 import logging
 import uuid
@@ -94,12 +95,39 @@ def _save_user_data(data: dict) -> None:
         logger.error(f"保存用户数据失败: {e}")
 
 
+# ── 请求级用户身份（从 JWT cookie 解析，中间件设置）──
+_request_user_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    '_request_user_id', default=None
+)
+
+
+def set_request_user_id(user_id: str | None) -> None:
+    """设置当前请求的用户 ID（由中间件调用）"""
+    _request_user_id.set(user_id)
+
+
+def get_request_user_id() -> str | None:
+    """获取当前请求的用户 ID"""
+    return _request_user_id.get()
+
+
 # ── 用户信息 ──
 
 def get_current_user() -> dict | None:
-    """获取当前登录用户信息，未登录返回 None"""
+    """获取当前登录用户信息。
+
+    优先级：
+      1. 请求级 ContextVar（从 JWT cookie 解析，多用户互不干扰）
+      2. 回退到 current_user_id（兼容后台任务等无请求上下文的场景）
+
+    未登录返回 None。
+    """
     data = _load_user_data()
-    user_id = data.get("current_user_id")
+    # 优先从请求级 ContextVar 获取（HTTP 请求场景，按会话区分）
+    user_id = _request_user_id.get()
+    if not user_id:
+        # 回退到全局 current_user_id（后台任务等非请求场景）
+        user_id = data.get("current_user_id")
     if not user_id:
         return None
     for user in data.get("users", []):
@@ -435,3 +463,32 @@ def set_user_subscription(
             logger.info(f"用户订阅已更新: user={user_id[:8]}, tier={tier}")
             return user
     return None
+
+
+# ── 声纹偏好 ──
+
+
+def should_use_local_diarization() -> bool:
+    """判断当前用户是否应使用本地 MFCC 声纹（而非云端 CAM++）。
+
+    规则：
+      - 未登录 → True（无订阅信息，强制本地）
+      - free 用户 → True（非订阅用户，强制本地 MFCC）
+      - 订阅用户（personal/pro/team）→ 检查 prefs.local_diarization，
+        默认 False（使用云端 CAM++），用户可主动开启本地 MFCC
+
+    Returns:
+        True = 使用本地 MFCC 14 维；False = 使用云端 CAM++ 192 维
+    """
+    user = get_current_user()
+    if not user:
+        return True
+
+    subscription = user.get("subscription", {"tier": "free"})
+    tier = subscription.get("tier", "free")
+
+    if tier == "free":
+        return True
+
+    prefs = user.get("prefs", {})
+    return prefs.get("local_diarization", False)

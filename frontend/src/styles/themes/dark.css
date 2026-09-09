@@ -1,0 +1,39 @@
+/* ─── 夜色 (Dark mode) ─── */
+html[data-theme="dark"] {
+  --bg: oklch(14% 0.010 250);
+  --surface: oklch(17% 0.010 250);
+  --surface-2: oklch(20% 0.010 250);
+  --surface-3: oklch(24% 0.010 250);
+  --fg: oklch(92% 0.004 250);
+  --muted: oklch(65% 0.008 250);
+  --subtle: oklch(50% 0.008 250);
+  --border: oklch(28% 0.010 250);
+  --border-strong: oklch(35% 0.010 250);
+  --accent: oklch(70% 0.14 255);
+  --accent-soft: oklch(70% 0.14 255 / 0.12);
+  --accent-mid: oklch(70% 0.14 255 / 0.30);
+  --accent-fg: oklch(14% 0.010 250);
+  --rec: oklch(70% 0.18 25);
+  --rec-soft: oklch(70% 0.18 25 / 0.12);
+  --note-bg: oklch(23% 0.012 255);
+  --note-border: oklch(32% 0.02 255);
+  --note-fg: oklch(88% 0.012 255);
+  --mine: oklch(75% 0.12 155);
+  --mine-soft: oklch(75% 0.12 155 / 0.14);
+  --mine-bg: oklch(24% 0.02 155);
+  --mine-border: oklch(34% 0.04 155);
+  --ok: oklch(72% 0.14 155);
+  --ok-soft: oklch(72% 0.14 155 / 0.12);
+  --warn: oklch(80% 0.14 80);
+  --warn-soft: oklch(80% 0.14 80 / 0.12);
+  --timeline-line: oklch(30% 0.010 250);
+  --timeline-node: oklch(65% 0.14 255);
+  --timeline-today: oklch(70% 0.16 255);
+  --timeline-today-glow: oklch(70% 0.16 255 / 0.20);
+  --dropdown-bg: oklch(20% 0.010 250);
+  --dropdown-shadow: 0 8px 32px oklch(0% 0 0 / 0.40), 0 2px 8px oklch(0% 0 0 / 0.20);
+  --topbar-bg: oklch(14% 0.010 250 / 0.88);
+  --shadow-focus: 0 0 0 3px oklch(70% 0.14 255 / 0.25);
+  --wm-opacity: 0.20;
+  --wm-glow: oklch(70% 0.14 255 / 0.12);
+}

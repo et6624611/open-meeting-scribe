@@ -1,3 +1,12 @@
+---
+title: 系统架构
+description: v1 云方案 + v4 CAM++ 声纹姓名化架构设计
+author: 王永亮
+created_at: 2026-09-03
+updated_at: 2026-09-07
+status: published
+---
+
 # ARCHITECTURE — 系统架构（v1 云方案 + v4 CAM++ 声纹姓名化）
 
 > 本文是架构的**唯一事实源**。改架构先改这里，再改代码。API 细节见 [API_CONTRACTS.md](API_CONTRACTS.md)，决策来由见 [adr/](adr/)，云部署运维见 [DEPLOYMENT.md](DEPLOYMENT.md)。
@@ -8,25 +17,47 @@
 |----|------|------|
 | 采集 | `core/audio.py` | ffmpeg 归一化（16k/单声道/wav）；BlackHole 内录采集（avfoundation）；流式录音（PCM pipe） |
 | 上云 | `core/upload.py` | 本地文件 → DashScope 免费临时存储 → `oss://` 临时 URL |
-| 转写 | `core/transcribe.py` | 提交 `paraformer-v2` 任务（开分离）+ 轮询 + 下载结果 + 碎片合并/说话人修正 + 组装发言人对话稿 |
-| 实时转写 | `core/realtime_asr.py` | `qwen-audio-3.0-asr-flash-streaming` WebSocket 流式客户端，支持热词/上下文增强 |
+| 转写 | `core/transcribe.py` | 通过 ASR 代理提交转写（代理负责上传 + 提交 + 轮询 + 下载）+ 碎片合并/说话人修正 + 组装发言人对话稿 |
+| 实时转写 | `core/realtime_asr.py` | 通过 ASR 代理 WebSocket 中继的 `qwen-audio-3.0-asr-flash-streaming` 流式客户端，支持热词/上下文增强 |
 | 实时分离 | `core/diarization.py` | CAM++ 192维声纹嵌入 + VAD 能量检测 + 余弦相似度贪心聚类，MFCC 降级 |
 | 实时总结 | `core/realtime_summary.py` | 基于 `qwen-turbo` 的增量式定时总结（每 60 秒触发） |
 | 热词 | `core/hotwords.py` | `data/hotwords.txt` → DashScope 热词表 `vocabulary_id`；热词映射后处理纠正 |
 | 纪要 | `core/llm.py` `core/summarize.py` | 通义千问 provider（同步/异步/流式）+ 纪要提示词与解析（结论/待办）+ 标题生成 |
-| 声纹 | `core/voiceprint.py` | CAM++ 神经声纹嵌入提取（192 维，中文语料训练）+ 声纹注册表 + per-meeting 中心化 + 匈牙利算法一对一分配 |
+| 声纹 | `core/voiceprint.py` | CAM++ 神经声纹嵌入提取（192 维，中文语料训练）+ 声纹注册表（时长加权累积）+ per-meeting 中心化 + 匈牙利算法一对一分配 |
+| 文本桥接 | `core/text_bridge.py` | 实时绑定文本 → 批处理结果的模糊匹配（`difflib.SequenceMatcher`），按命中次数投票确定 speaker_id，实现 P0 分层匹配策略 |
 | 嵌入提供者 | `core/embedding_provider.py` | 声纹嵌入提取抽象层：`EmbeddingProvider` 接口 + `LocalCamPlusProvider`（本地 torch）/ `CloudEmbeddingProvider`（HTTP）/ `MfccFallbackProvider`（14 维降级）；通过 `get_embedding_provider()` 按配置选择 |
 | 说话人 | `core/speakers.py` | 说话人档案 CRUD + 会议级映射 + 姓名应用 |
 | 项目 | `core/projects.py` | 项目（文件夹分组）管理 + 文件索引扫描 + 纪要归档同步 |
-| 用户 | `core/users.py` | 本地用户 + OAuth 用户 + 说话人绑定 |
+| 用户 | `core/users.py` | 本地用户 + OAuth 用户 + 说话人绑定 + 请求级 ContextVar 身份隔离 + 声纹偏好（订阅状态驱动） |
+| 版本检查 | `core/version_check.py` | 读取 VERSION、调用 GitHub Releases API、语义化版本比对、30 分钟缓存、网络失败静默降级 |
 | 认证 | `core/auth.py` | GitHub OAuth 2.0 提供者 + JWT 签发/验证 + CSRF state 管理 |
 | 错误处理 | `core/errors.py` | 瞬时错误判断 + 错误分类（供自动重试与前端展示） |
 | 作业日志 | `core/joblog.py` | per-task 操作/运行事件流（append-only JSONL）；为会议助手提供渐进式上下文 |
 | 编排 | `core/pipeline.py` | 串联全流程（stage1: 转写, stage2: 纪要），输出 Markdown |
 | 界面 | `app/server.py` `app/static/` | FastAPI 本地服务（~210 行）+ 安全审计中间件 + 前端（拖拽/录制/进度/纪要） |
-| 路由 | `app/routers/` | 12 个功能域路由模块（tasks/record/chat/speakers/voiceprint/hotwords/notes/projects/settings/user/philosophy/auth） |
+| 前端 | `frontend/` | Vue 3 + TypeScript + Vite + Pinia 单页应用（详见下方「前端架构」节） |
+| 路由 | `app/routers/` | 13 个功能域路由模块（tasks/record/chat/speakers/voiceprint/hotwords/notes/projects/settings/user/philosophy/auth/usage/config/update） |
 | 共享状态 | `app/store.py` | 跨路由共享状态（tasks 字典、实时状态）、配置常量、持久化辅助、后台管线函数 |
-| 入口 | `cli.py` | 命令行 |
+| 入口 | `cli.py` | 命令行（含 `build` 命令构建前端） |
+
+### 前端架构（v2.0）
+
+```
+frontend/src/
+├── api/          11 个模块（types + client + tasks + auth + notes + record + projects + speakers + hotwords + settings + chat）
+├── stores/        3 个 Pinia store（theme + task + user）
+├── composables/   3 个可复用逻辑（usePolling + useRecorder + useWebSocket）
+├── views/         9 个页面视图（Start + Recording + Processing + Generating + Library + Projects + Speakers + Hotwords + Settings）
+├── components/    6 个组件（TopBar + Sidebar + AIPanel + TaskCard + TaskList + LoginModal）
+├── styles/       13 个 CSS 文件（7 主题 + base + layout + topbar + sidebar + ai-panel + components）
+├── router/        Vue Router（9 路由，懒加载）
+├── main.ts        应用入口
+└── App.vue        根组件（三栏布局）
+```
+
+- 开发模式：`cd frontend && npm run dev`（Vite :5173，代理 API 到 :8000）
+- 生产模式：`python cli.py build` → `python cli.py server`（FastAPI 托管 `frontend/dist/`）
+- 兼容模式：若 `frontend/dist/` 不存在，自动回退到旧版 `app/static/index.html`
 
 ## 二、数据流
 
@@ -34,14 +65,13 @@
 flowchart TD
     A1[实时内录 BlackHole] --> B[ffmpeg 归一化<br/>16k/单声道/wav]
     A2[音频文件拖入] --> B
-    B --> C{已是公网URL?}
-    C -- 否 --> D[upload.py<br/>上传DashScope临时存储<br/>得 oss:// 临时URL 48h]
-    C -- 是 --> E
-    D --> E[transcribe.py<br/>提交 paraformer-v2 任务<br/>diarization_enabled=true]
-    E --> F[轮询 task_id<br/>→ SUCCEEDED<br/>→ transcription_url]
-    F --> G[下载结果JSON<br/>句子带 speaker_id]
+    B --> E[transcribe.py<br/>通过 ASR 代理提交转写]
+    E --> E1[代理: 上传到 DashScope<br/>+ 提交 paraformer-v2 任务<br/>+ 轮询 + 下载结果]
+    E1 --> G[返回转写结果 JSON<br/>句子带 speaker_id]
     G --> H[组装发言人对话稿<br/>按 speaker_id 归并]
-    H --> H2{voiceprint.py<br/>per-meeting 中心化<br/>+ 匈牙利算法分配}
+    H --> H1{text_bridge.py<br/>P0 文本桥接匹配}
+    H1 -- 命中 --> H3
+    H1 -- 未覆盖 --> H2{voiceprint.py<br/>P1 声纹匹配<br/>per-meeting 中心化<br/>+ 匈牙利算法分配}
     H2 -- 有注册声纹 --> H3[自动绑定 speaker_id → 姓名]
     H2 -- 无注册 --> H4[等待手动绑定]
     H3 --> I[summarize.py<br/>通义千问生成纪要<br/>结论 + 待办]
@@ -60,7 +90,8 @@ flowchart TD
 
 ## 四、边界与非目标（v1）
 - **不做**本地 ASR / 本地分离 / 本地 LLM（v2 再议）。
-- **声纹姓名化已实现（v4）**：通过 CAM++ 本地提取 192 维声纹嵌入（基于 FunASR CAMPPlus 实现，权重来自 ModelScope `iic/speech_campplus_sv_zh-cn_16k-common`，中文语料训练，对中文说话人判别力显著优于旧版 GE2E），注册后自动匹配，降级为手动绑定；绑定确认后后台按映射自动注册声纹（`register_from_binding`）形成闭环，重复注册按样本数加权累积。每条注册记录带 `model_version`（当前 `cam++-v1`），encoder 升级时旧版本记录在匹配侧被自动忽略，需通过 rebuild 端点重新注册。匹配直接在 L2 归一化后的余弦空间进行（CAM++ 本身已具备足够判别力，不再需要 cohort centering 补丁）；注册与匹配共用单人音频时长上限（`MAX_SEC_PER_SPEAKER`）以保证嵌入可比。注册表为空或无当前 encoder 版本记录时跳过自动匹配；绑定页对未命中说话人仅以"上次会议映射"补填建议并提示需人工核对（speaker_id 跨会议不稳定）。
+- **声纹姓名化已实现（v4）**：通过 CAM++ 本地提取 192 维声纹嵌入（基于 FunASR CAMPPlus 实现，权重来自 ModelScope `iic/speech_campplus_sv_zh-cn_16k-common`，中文语料训练，对中文说话人判别力显著优于旧版 GE2E），注册后自动匹配，降级为手动绑定；绑定确认后后台按映射自动注册声纹（`register_from_binding`）形成闭环，重复注册按时长加权累积（`total_sample_duration` 字段）。每条注册记录带 `model_version`（当前 `cam++-v1`），encoder 升级时旧版本记录在匹配侧被自动忽略，需通过 rebuild 端点重新注册。匹配直接在 L2 归一化后的余弦空间进行（CAM++ 本身已具备足够判别力，不再需要 cohort centering 补丁）；注册与匹配共用单人音频时长上限（`MAX_SEC_PER_SPEAKER`）以保证嵌入可比。注册表为空或无当前 encoder 版本记录时跳过自动匹配；绑定页对未命中说话人仅以“上次会议映射”补填建议并提示需人工核对（speaker_id 跨会议不稳定）。
+- **v3++ 分层匹配策略**：批处理完成后按 P0 文本桥接（`core/text_bridge.py`，确定性证据）→ P1 声纹匹配（概率性证据）→ P2 手动绑定的优先级依次执行。文本桥接利用实时阶段已绑定说话人的文本片段，在批处理结果中搜索相似文本，直接继承绑定关系。声纹匹配仅补充文本桥接未覆盖的 speaker_id。匹配成功后自动更新声纹注册表（含时长加权）。
 - **人员独立于会议记录**：声纹注册/更新不绑定单个录音文件。`POST /api/voiceprint/rebuild/{speaker_uuid}` 按 `speaker_uuid_mapping` 反查该说话人参与的所有已完成会议，逐场提取其发言片段嵌入后均值融合覆盖注册表（`sample_count` = 会议数），抑制单场录音的信道偏置；说话人详情页「注册/更新声纹」按钮即调用此端点。
 - **作业日志从属于会议纪要**：`core/joblog.py` 以 task_id 为键，用 append-only JSONL（`data/tasks/{id}.joblog.jsonl`）记录录音/转写/声纹匹配/绑定/纪要生成/助手动作的关键操作与运行事件。会议助手针对某会议提问时，仅当问题涉及操作/运行/流程/故障（意图关键词门控）才**渐进式**注入上下文：先轻量概要（阶段计数 + 最近事件），再按问题检索相关明细，避免全量日志塞入提示词。作业日志写入失败静默降级，绝不打断主链路。
 - **一个厂商一套 key**：ASR 与纪要都用 DashScope，简化凭据管理。

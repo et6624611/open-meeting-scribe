@@ -2,6 +2,10 @@
 """
 cli.py — Open Meeting Scribe 命令行助手
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 用法：
     python cli.py transcribe <音频文件>     # 转写 + 生成纪要
     python cli.py normalize <音频文件>      # 仅归一化音频
@@ -216,6 +220,36 @@ def cmd_server(args):
         port=port,
         reload=reload,
     )
+    return 0
+
+
+def cmd_build(args):
+    """构建前端（Vue 3 + Vite）"""
+    import subprocess
+
+    frontend_dir = Path(__file__).parent / "frontend"
+    if not frontend_dir.exists():
+        print("错误: frontend/ 目录不存在")
+        return 1
+
+    # 检查 node_modules
+    if not (frontend_dir / "node_modules").exists():
+        print("安装前端依赖...")
+        result = subprocess.run(["npm", "install"], cwd=frontend_dir)
+        if result.returncode != 0:
+            print("错误: npm install 失败")
+            return 1
+
+    print("构建前端...")
+    result = subprocess.run(["npm", "run", "build"], cwd=frontend_dir)
+    if result.returncode != 0:
+        print("错误: 构建失败")
+        return 1
+
+    dist_dir = frontend_dir / "dist"
+    if dist_dir.exists():
+        print(f"✓ 构建完成: {dist_dir}")
+        print("  启动服务后将自动使用新版前端")
     return 0
 
 
@@ -574,6 +608,10 @@ def main():
     p_server.add_argument("--port", type=int, default=8000, help="监听端口")
     p_server.add_argument("--reload", action="store_true", help="开发模式（自动重载）")
     p_server.set_defaults(func=cmd_server)
+
+    # ── build 命令 ──
+    p_build = subparsers.add_parser("build", help="构建前端（Vue 3 + Vite）")
+    p_build.set_defaults(func=cmd_build)
 
     # ── admin 命令 ──
     p_admin = subparsers.add_parser("admin", help="启动管理后台")

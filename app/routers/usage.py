@@ -22,19 +22,27 @@ router = APIRouter(prefix="/api/usage", tags=["用量"])
 
 @router.get("/summary")
 def usage_summary():
-    """本月用量汇总（底部状态栏用）"""
+    """本月用量汇总（底部状态栏 + 设置页用量面板用）"""
     user = get_current_user()
     if not user:
         return {"metered": False, "message": "未登录"}
 
+    subscription = user.get("subscription", {})
+    tier = subscription.get("tier", "free")
+    TIER_NAMES = {"free": "体验版", "personal": "个人版", "pro": "专业版", "team": "团队版"}
+
     if not is_metered():
-        return {"metered": False, "message": "自带 Key，不计量"}
+        return {
+            "metered": False,
+            "message": "自带 Key，不计量",
+            "tier": tier,
+            "tier_name": TIER_NAMES.get(tier, tier),
+            "quota": TIER_QUOTAS.get(tier, 0),
+        }
 
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
     used = get_monthly_usage(user["id"], month_key)
 
-    subscription = user.get("subscription", {})
-    tier = subscription.get("tier", "free")
     quota = TIER_QUOTAS.get(tier, 0)
     remaining = max(0, quota - used)
     pct = round(remaining / quota * 100) if quota > 0 else 0
@@ -42,6 +50,7 @@ def usage_summary():
     return {
         "metered": True,
         "tier": tier,
+        "tier_name": TIER_NAMES.get(tier, tier),
         "month": month_key,
         "quota": quota,
         "used": round(used, 1),

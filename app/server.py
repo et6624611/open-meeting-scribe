@@ -1,6 +1,10 @@
 """
 app/server.py — FastAPI 应用入口
 
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
+
 职责：
   1. 创建 FastAPI 应用实例
   2. 注册各功能域路由模块（12 个）
@@ -23,6 +27,7 @@ app/server.py — FastAPI 应用入口
   auth      — GitHub OAuth 登录 + JWT 会话 + 登出
   usage     — 用量计量查询 + 配额预检
   config    — 远程配置拉取（公告/横幅消息）
+  update    — 版本更新检查
 """
 
 import asyncio
@@ -61,8 +66,10 @@ audit_logger.addHandler(audit_handler)
 audit_logger.propagate = False  # 不重复写入 server.log
 
 from app.store import STATIC_DIR, load_tasks_from_disk, recover_interrupted_tasks, event_loop
-from app.routers import tasks, record, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config
+from app.routers import tasks, record, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update
+from core.auth import verify_jwt
 from core.llm import close_async_client
+from core.users import set_request_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +84,33 @@ app = FastAPI(
 )
 
 # ============================================================
+# 用户身份中间件（从 JWT cookie 解析，写入 ContextVar）
+# ============================================================
+
+# JWT cookie 名称（与 auth.py 保持一致）
+_SESSION_COOKIE = "oms_session"
+
+
+@app.middleware("http")
+async def user_identity_middleware(request: Request, call_next):
+    """
+    从请求的 JWT cookie 中解析用户 ID，写入 ContextVar，
+    使 get_current_user() 能按会话区分用户身份。
+    """
+    token = request.cookies.get(_SESSION_COOKIE)
+    if token:
+        payload = verify_jwt(token)
+        if payload:
+            set_request_user_id(payload.get("sub"))
+    try:
+        response = await call_next(request)
+    finally:
+        # 请求结束后清理，避免连接池复用时状态泄漏
+        set_request_user_id(None)
+    return response
+
+
+# ============================================================
 # 安全审计中间件
 # ============================================================
 
@@ -88,11 +122,16 @@ _SUSPICIOUS_PATH_PATTERNS = [
 ]
 
 
+# 慢请求告警阈值（毫秒），超过此值的请求会在主日志中以 WARNING 级别记录
+SLOW_REQUEST_THRESHOLD_MS = 3000  # 3 秒
+
+
 @app.middleware("http")
 async def security_audit_middleware(request: Request, call_next):
     """
     记录所有请求的审计信息，检测可疑行为。
     写入 logs/audit.log，不影响正常请求流程。
+    慢请求（>3s）同时在主日志中输出 WARNING 告警。
     """
     start = time.time()
     client_ip = request.client.host if request.client else "unknown"
@@ -126,6 +165,13 @@ async def security_audit_middleware(request: Request, call_next):
                 f"status={status} | {duration_ms:.0f}ms"
             )
 
+        # 慢请求告警（写入主日志）
+        if duration_ms > SLOW_REQUEST_THRESHOLD_MS:
+            logger.warning(
+                f"[PERF] 慢请求: {method} {path} | "
+                f"{duration_ms:.0f}ms (>{SLOW_REQUEST_THRESHOLD_MS}ms)"
+            )
+
     return response
 
 
@@ -147,6 +193,7 @@ app.include_router(philosophy.router)
 app.include_router(auth.router)
 app.include_router(usage.router)
 app.include_router(config.router)
+app.include_router(update.router)
 
 # ============================================================
 # 生命周期
@@ -181,17 +228,41 @@ async def shutdown():
 # 前端页面
 # ============================================================
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    """返回前端页面"""
-    index_path = STATIC_DIR / "index.html"
-    if not index_path.exists():
-        return "<h1>前端页面未找到</h1><p>请创建 app/static/index.html</p>"
-    return index_path.read_text(encoding="utf-8")
+# Vue 构建产物目录（优先级高于旧版 app/static/）
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
+if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
+    # ── 新版：Vue SPA（生产模式）──
+    logger.info(f"前端使用 Vue 构建产物: {FRONTEND_DIST}")
 
-# 挂载静态文件（CSS/JS/图片等）
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    # 挂载 Vite 构建的静态资源（带 hash 的文件）
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="frontend_assets")
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def frontend_catch_all(full_path: str):
+        """Vue Router history 模式：所有非 API 路由返回 index.html"""
+        # 跳过 API 和 WebSocket 路径
+        if full_path.startswith(("api/", "ws/", "auth/")):
+            from fastapi import HTTPException
+            raise HTTPException(404, "Not Found")
+        index = FRONTEND_DIST / "index.html"
+        if index.exists():
+            return HTMLResponse(index.read_text(encoding="utf-8"))
+        return HTMLResponse("<h1>前端构建产物损坏</h1><p>请重新运行 npm run build</p>")
+else:
+    # ── 旧版：单文件 index.html（兼容模式）──
+    logger.info("前端使用旧版 app/static/index.html")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index():
+        """返回前端页面"""
+        index_path = STATIC_DIR / "index.html"
+        if not index_path.exists():
+            return "<h1>前端页面未找到</h1><p>请创建 app/static/index.html 或构建前端 (cd frontend && npm run build)</p>"
+        return index_path.read_text(encoding="utf-8")
+
+    # 挂载静态文件（CSS/JS/图片等）
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ============================================================

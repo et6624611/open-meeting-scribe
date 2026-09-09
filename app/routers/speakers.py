@@ -1,5 +1,9 @@
 """
 app/routers/speakers.py — 说话人 CRUD + 会议级绑定/纪要生成
+
+作者：王永亮
+创建：2026-09-03
+版本：1.0.0
 """
 
 import logging

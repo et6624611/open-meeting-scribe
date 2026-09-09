@@ -53,5 +53,9 @@ logs/
 /*.png
 docs/screenshots/
 
+# 前端构建产物（npm run build 生成，由 FastAPI 托管）
+frontend/node_modules/
+frontend/dist/
+
 # AI 生成的文档索引（可随时重建，不入库）
 .qoder/
