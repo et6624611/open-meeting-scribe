@@ -34,6 +34,15 @@ const ICON_LIST = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" st
 const ICON_SEARCH = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg>'
 const ICON_CLOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>'
 
+/** 默认建议（原快捷命令），无对话时始终展示 */
+const DEFAULT_SUGGESTIONS: FollowUpSuggestion[] = [
+  { text: '生成会议纪要', icon: ICON_LIST },
+  { text: '提取待办事项', icon: ICON_PLUS },
+  { text: '分析发言要点', icon: ICON_SEARCH },
+  { text: '总结关键决策', icon: ICON_CLOCK },
+  { text: '识别风险与争议', icon: ICON_LIST },
+]
+
 export function useAiChat() {
   const router = useRouter()
   const taskStore = useTaskStore()
@@ -43,6 +52,11 @@ export function useAiChat() {
   const isLoading = ref(false)
   const abortController = ref<AbortController | null>(null)
   const followUps = ref<FollowUpSuggestion[]>([])
+
+  /** 统一建议：有 AI 跟进建议时用跟进，否则用默认建议（原快捷命令） */
+  const displaySuggestions = computed(() =>
+    followUps.value.length > 0 ? followUps.value : DEFAULT_SUGGESTIONS
+  )
   const injectPrompt = ref<{ items: ChatExtractedItem[]; desc: string } | null>(null)
   const verifiedChanges = ref<VerifiedChange[]>([])
 
@@ -94,7 +108,10 @@ export function useAiChat() {
         verifiedChanges.value = []
       }
 
-      if (res.actions?.length) {
+      // 后端返回 action（单数对象）或 actions（数组）均兼容处理
+      if (res.action?.name && res.action.success) {
+        executeAction({ name: res.action.name, data: res.action.data || {} })
+      } else if (res.actions?.length) {
         for (const action of res.actions) {
           executeAction(action)
         }
@@ -154,7 +171,9 @@ export function useAiChat() {
         }
         break
       }
-      case 'record_stop': {
+      case 'record_stop':
+      case 'record_pause':
+      case 'record_resume': {
         taskStore.loadTasks()
         break
       }
@@ -268,7 +287,7 @@ export function useAiChat() {
   }
 
   return {
-    messages, isLoading, followUps, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
+    messages, isLoading, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast,
   }

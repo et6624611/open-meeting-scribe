@@ -61,3 +61,32 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ═══ 全局 tooltip（L2 防护层） ═══
+   单一 DOM 元素挂载在 document.body 上，position: fixed 定位，
+   不受任何父容器 overflow: hidden 裁剪。
+   由 main.ts 中的全局事件委托驱动显示/隐藏/定位。 */
+#global-tooltip {
+  position: fixed;
+  padding: 4px 8px;
+  font-size: var(--fs-12, 12px);
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: var(--fg, oklch(20% 0.01 250));
+  background: var(--surface, oklch(99% 0 0));
+  border: 1px solid var(--border, oklch(88% 0.01 250));
+  border-radius: var(--radius-sm, 6px);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.06);
+  z-index: var(--z-popover, 500);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#global-tooltip.is-visible {
+  opacity: 1;
+}

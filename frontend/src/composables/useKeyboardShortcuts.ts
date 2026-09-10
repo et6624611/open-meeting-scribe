@@ -3,24 +3,16 @@
  *
  * 旧版快捷键映射：
  *   ESC        → 关闭弹窗/对话框/下拉菜单/退出聚焦模式
- *   /          → 打开 AI 指令面板（非输入框聚焦时）
  *   Cmd/Ctrl+B → 切换侧边栏
  *   Cmd/Ctrl+J → 切换 AI 面板
  *   Cmd/Ctrl+K → 聚焦侧边栏搜索
  *   Cmd/Ctrl+N → 新建会议（跳转录音页）
+ *   Cmd/Ctrl+R → 开始页：麦克风录音
+ *   Cmd/Ctrl+U → 开始页：上传音频文件
  */
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLayoutStore } from '@/stores/layout'
-
-/** 判断当前焦点是否在可编辑元素内 */
-function isEditableTarget(el: Element | null): boolean {
-  if (!el) return false
-  const tag = el.tagName.toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
-  if ((el as HTMLElement).isContentEditable) return true
-  return false
-}
 
 export function useKeyboardShortcuts() {
   const router = useRouter()
@@ -29,15 +21,14 @@ export function useKeyboardShortcuts() {
   function handleKeydown(e: KeyboardEvent) {
     const isMeta = e.metaKey || e.ctrlKey
     const isEscape = e.key === 'Escape'
-    const isSlash = e.key === '/' && !isMeta && !e.altKey
 
     // ─── ESC ───
     if (isEscape) {
-      // 1. 关闭登录弹窗
+      // 1. 关闭登录弹窗（派事件由 LoginModal 同步状态，避免直接改 DOM 与 Vue 状态脱钩）
       const loginOverlay = document.getElementById('loginOverlay')
       if (loginOverlay && !loginOverlay.classList.contains('is-hidden')) {
         e.preventDefault()
-        loginOverlay.classList.add('is-hidden')
+        window.dispatchEvent(new CustomEvent('oms:hide-login'))
         return
       }
 
@@ -61,15 +52,6 @@ export function useKeyboardShortcuts() {
 
       // 4. 派发全局 esc 事件（供各组件按需监听）
       window.dispatchEvent(new CustomEvent('global-esc'))
-      return
-    }
-
-    // ─── / 打开 AI 指令面板 ───
-    if (isSlash && !isEditableTarget(document.activeElement)) {
-      e.preventDefault()
-      if (layout.aiCollapsed) layout.toggleAi()
-      // 聚焦 AI 输入框并触发 "/"
-      window.dispatchEvent(new CustomEvent('global-ai-focus'))
       return
     }
 
@@ -99,6 +81,22 @@ export function useKeyboardShortcuts() {
         case 'n':
           e.preventDefault()
           router.push('/recording')
+          return
+
+        // Cmd+R → 开始页：麦克风录音
+        case 'r':
+          if (router.currentRoute.value.name === 'start') {
+            e.preventDefault()
+            window.dispatchEvent(new CustomEvent('global-start-record'))
+          }
+          return
+
+        // Cmd+U → 开始页：上传音频文件
+        case 'u':
+          if (router.currentRoute.value.name === 'start') {
+            e.preventDefault()
+            window.dispatchEvent(new CustomEvent('global-start-upload'))
+          }
           return
       }
     }

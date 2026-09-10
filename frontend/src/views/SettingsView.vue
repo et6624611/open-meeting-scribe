@@ -141,11 +141,11 @@
     <!-- 用量与订阅 -->
     <div class="settings-section">
       <h2 class="settings-title">用量与订阅</h2>
-      <p class="settings-section-desc">本月转写额度与使用情况</p>
+      <p class="settings-section-desc">本月识别额度与使用情况</p>
 
       <!-- 未登录 -->
       <div v-if="!userStore.isLoggedIn" class="usage-not-metered">
-        <p>登录后可查看转写额度与使用情况。未登录时使用本地模式，需自行配置 API Key。</p>
+        <p>登录后可查看识别额度与使用情况。未登录时使用本地模式，需自行配置 API Key。</p>
         <button class="btn btn-primary" style="margin-top:12px;padding:0 16px;height:32px;font-size:12px" @click="showLogin">登录</button>
       </div>
 
@@ -205,7 +205,7 @@
             <div class="stat-label">平台额度剩余</div>
           </div>
         </div>
-        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">当前使用云端代理模式，转写费用已包含在订阅额度中。</p>
+        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">当前使用云端代理模式，识别费用已包含在订阅额度中。</p>
       </div>
     </div>
   </div>

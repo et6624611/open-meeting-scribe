@@ -24,7 +24,7 @@
       <div class="pipe-step" :class="stepClass('transcribe')">
         <div class="ico">{{ stepIcon('transcribe') }}</div>
         <div class="info">
-          <div class="lbl">转写</div>
+          <div class="lbl">识别</div>
           <div class="sub">{{ stepSub('transcribe') }}</div>
         </div>
       </div>
@@ -77,7 +77,7 @@ const statusText = computed(() => {
   if (!task.value) return '加载中…'
   const s = task.value.status
   if (s === 'pending') return '等待处理…'
-  if (s === 'transcribing') return '正在转写录音…'
+  if (s === 'transcribing') return '正在识别录音…'
   if (s === 'summarizing') return '正在生成纪要…'
   if (s === 'completed') return '处理完成！'
   if (s === 'failed') return '处理失败'

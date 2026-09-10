@@ -270,8 +270,9 @@ def recover_interrupted_tasks() -> None:
     """
     启动时自动恢复中断的任务。
 
-    扫描所有 processing 状态的任务，根据已有数据判断断点位置：
+    扫描所有 processing / awaiting_mapping 状态的任务，根据已有数据判断断点位置：
       - 有 dialogue 数据 → Stage 1 已完成 → 从 Stage 2（纪要生成）恢复
+        （awaiting_mapping 为历史遗留状态：新流程纪要不再等待绑定确认，一并补跑）
       - 无 dialogue 但有 audio_path 且文件存在 → 从 Stage 1（转写）重新开始
       - audio_path 不存在 → 标记为 failed
     """
@@ -281,7 +282,7 @@ def recover_interrupted_tasks() -> None:
     failed = 0
 
     for task_id, task in list(tasks.items()):
-        if task.get("status") != "processing":
+        if task.get("status") not in ("processing", "awaiting_mapping"):
             continue
 
         audio_path_str = task.get("audio_path")
@@ -864,18 +865,17 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                                 )
                         except Exception as e:
                             logger.warning(f"[{task_id[:8]}] 自动声纹更新失败（不影响主流程）: {e}")
-                    # 直接运行第二阶段
-                    save_task_to_disk(task_id)
-                    _run_stage2_for_task(task_id, audio_path, auto_mapping)
                 else:
-                    # 无匹配，等待用户手动绑定
-                    tasks[task_id]["status"] = "awaiting_mapping"
-                    tasks[task_id]["progress"] = 70
-                    tasks[task_id]["message"] = "转写完成，请绑定说话人身份"
+                    # 无自动匹配：不阻塞管线，纪要先以通用说话人标签生成；
+                    # 前端绑定栏保留，用户确认关联后按真实身份重新生成纪要
                     joblog.append_event(
-                        task_id, joblog.STAGE_BIND, "转写完成，等待用户手动绑定说话人",
+                        task_id, joblog.STAGE_BIND,
+                        "未命中自动匹配，先以通用标签生成纪要，等待用户事后关联说话人",
                     )
-                    save_task_to_disk(task_id)
+
+                # 直接运行第二阶段（不再等待用户确认绑定）
+                save_task_to_disk(task_id)
+                _run_stage2_for_task(task_id, audio_path, auto_mapping)
 
             return  # 成功，退出重试循环
 

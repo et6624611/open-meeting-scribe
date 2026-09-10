@@ -3,7 +3,7 @@ title: AI 协作约定
 description: AI 代理与新人开工规则
 author: 王永亮
 created_at: 2026-09-03
-updated_at: 2026-09-07
+updated_at: 2026-09-09
 status: published
 ---
 
@@ -35,6 +35,7 @@ status: published
 - `oss://` URL 必须走 **RESTful API** + 请求头 `X-DashScope-OssResourceResolve: enable`（SDK 不支持）。
 - 说话人分离**仅支持单声道** → ffmpeg 强制下混单声道。
 - 临时存储单文件 **≤1GB / 48h**；URL 含空格或中文**必须 URL 编码**。
+- **按钮必有文本定义**（详见 `docs/design/DESIGN_DECISIONS.md` 第 10 节）：所有图标按钮**必须使用 `IconButton` 组件**（`components/common/IconButton.vue`），`label` 为必填 prop，组件自动处理 `title` / `data-tip` / `aria-label` 三属性同步与 tooltip 渲染。**禁止手写裸 `<button>` 做图标按钮**——三层防护确保原则不被绕过：L1 `label` required prop（编译报错）→ L2 全局 `[data-tip]` CSS tooltip 兜底存量裸按钮 → L3 ESLint 规则 `meeting-scribe/require-button-label` 拦截无文本定义按钮（`npm run lint`）。
 
 ## 代码规范
 - 语言：Python 3.11+（独立 venv，不用系统 3.14）

@@ -30,9 +30,9 @@
   </div>
 
   <div class="frame conv-layout" :class="frameClasses">
-    <!-- 系统消息横幅（参与 grid 布局，不溢出视口） -->
-    <div class="reg-guidance-banner" :class="{ 'is-hidden': !annVisible }" v-if="annMessage">
-      <div class="reg-guidance-content">
+    <!-- 系统消息横幅（参与 grid 布局，不溢出视口）；常驻渲染以保持 frame 网格行数与子元素数一致 -->
+    <div class="reg-guidance-banner" :class="{ 'is-hidden': !annVisible || !annMessage }">
+      <div class="reg-guidance-content" v-if="annMessage">
         <svg class="reg-guidance-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2L2 7l10 5 10-5-10-5z"/>
           <path d="M2 17l10 5 10-5"/>
@@ -64,19 +64,9 @@
       <!-- 侧边栏 -->
       <Sidebar />
 
-      <!-- 侧边栏折叠时的浮动展开按钮 -->
-      <button v-if="layout.sidebarCollapsed" class="sb-float-expand" @click="layout.toggleSidebar()" title="展开侧边栏">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-
-      <!-- 左侧分隔条 -->
-      <div class="layout-divider layout-divider-left" id="dividerLeft">
+      <!-- 左侧分隔缝（纯视觉） -->
+      <div class="layout-divider layout-divider-left">
         <div class="divider-line"></div>
-        <div class="divider-grip"><span></span></div>
-        <div class="tracking-dot"></div>
-        <div class="mode-badge"></div>
-        <div class="scroll-indicator"></div>
-        <div class="width-tooltip"></div>
       </div>
 
       <!-- 主内容区 -->
@@ -84,14 +74,9 @@
         <router-view :key="$route.fullPath" />
       </main>
 
-      <!-- 右侧分隔条 -->
-      <div class="layout-divider layout-divider-right" id="dividerRight">
+      <!-- 右侧分隔缝（纯视觉） -->
+      <div class="layout-divider layout-divider-right">
         <div class="divider-line"></div>
-        <div class="divider-grip"><span></span></div>
-        <div class="tracking-dot"></div>
-        <div class="mode-badge"></div>
-        <div class="scroll-indicator"></div>
-        <div class="width-tooltip"></div>
       </div>
 
       <!-- AI 面板 -->
@@ -104,7 +89,7 @@
         <div class="item"><span class="pip"></span> DashScope 已连接</div>
         <div class="item status-models">paraformer-v2 + qwen-plus</div>
         <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
-        <div class="usage-indicator" id="usageIndicator" style="display:none" title="本月转写额度">
+        <div class="usage-indicator" id="usageIndicator" style="display:none" title="本月识别额度">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
           <span class="usage-text" id="usageText"></span>
         </div>
@@ -167,6 +152,7 @@ const bodyClasses = computed(() => ({
   'view-full': layout.viewMode === 'full',
   'view-center-only': layout.viewMode === 'center',
   'sidebar-collapsed': layout.sidebarCollapsed,
+  'ai-collapsed': layout.aiCollapsed,
 }))
 
 onMounted(async () => {

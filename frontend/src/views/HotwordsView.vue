@@ -2,7 +2,7 @@
   <div>
     <div class="main-head">
       <h1>热词管理</h1>
-      <p class="sub">管理转写识别词汇与纠错映射，按区块分组组织</p>
+      <p class="sub">管理识别词汇与纠错映射，按区块分组组织</p>
     </div>
 
     <div class="hw-layout">

@@ -53,7 +53,7 @@
 .summary-content blockquote { border-left: 3px solid var(--border-strong); padding-left: 1em; color: var(--muted); margin: 1em 0; }
 
 /* ─── 内联确认弹窗 ─── */
-.inline-confirm { position: absolute; z-index: 200; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.18); padding: 12px 14px; min-width: 240px; max-width: 320px; }
+.inline-confirm { position: absolute; z-index: var(--z-popover); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.18); padding: 12px 14px; min-width: 240px; max-width: 320px; }
 .inline-confirm p { margin: 0 0 10px; font-size: var(--fs-13); color: var(--fg); line-height: 1.5; }
 .inline-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .inline-confirm-actions button { padding: 5px 14px; border-radius: var(--radius-sm); font-size: var(--fs-12); cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--fg); transition: background 0.12s, border-color 0.12s; }

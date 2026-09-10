@@ -8,18 +8,12 @@
 .body.view-full .sidebar { display: flex; }
 .body.view-full .ai { display: flex; }
 
-/* ─── 分隔条 ─── */
-.layout-divider { flex: 0 0 10px; cursor: col-resize; background: transparent; position: relative; z-index: 10; user-select: none; -webkit-user-select: none; }
-.divider-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-strong); transition: width 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+/* ─── 分隔缝（纯视觉；调宽与折叠由面板上的缝隙拉手承担） ─── */
+.layout-divider { flex: 0 0 10px; position: relative; pointer-events: none; }
+.divider-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-strong); transition: width 0.15s ease, background-color 0.15s ease; }
 .layout-divider-left .divider-line { left: 0; }
 .layout-divider-right .divider-line { right: 0; }
-.layout-divider:hover .divider-line { width: 2px; background: var(--accent); box-shadow: 0 0 6px var(--accent-soft); }
 body.is-divider-dragging .divider-line { width: 2px; background: var(--accent); }
-.divider-grip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 16px; height: 44px; opacity: 0; transition: opacity 0.15s ease; pointer-events: none; border-radius: 8px; }
-.layout-divider:hover .divider-grip { opacity: 1; }
-body.is-divider-dragging .divider-grip { opacity: 1; }
-.divider-grip::before, .divider-grip::after, .divider-grip span { content: ''; display: block; width: 3px; height: 3px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.tracking-dot, .mode-badge, .scroll-indicator, .width-tooltip { display: none; }
 
 /* ─── 主内容区 ─── */
 .main { flex: 1; min-width: 300px; background: var(--bg); overflow-y: auto; min-height: 0; height: 100%; position: relative; }

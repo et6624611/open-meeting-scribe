@@ -129,7 +129,10 @@ async def list_tasks():
     """获取任务列表"""
     task_list = sorted(
         tasks.values(),
-        key=lambda x: x.get("meeting_date") or x.get("created_at", ""),
+        key=lambda x: (
+            x.get("meeting_date") or x.get("created_at", ""),
+            x.get("created_at", ""),
+        ),
         reverse=True,
     )
     return {"tasks": task_list}

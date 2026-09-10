@@ -6,6 +6,7 @@
 
 export type TaskStatus =
   | 'recording'
+  | 'paused'
   | 'pending'
   | 'transcribing'
   | 'awaiting_mapping'
@@ -105,8 +106,9 @@ export interface StatusConfig {
 
 export const STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
   recording:        { label: '录音中',   dotColor: 'var(--rec)',    pulse: true },
+  paused:           { label: '已暂停',   dotColor: 'var(--warn)',   pulse: false },
   pending:          { label: '等待处理', dotColor: 'var(--warn)',   pulse: false },
-  transcribing:     { label: '转写中',   dotColor: 'var(--accent)', pulse: true },
+  transcribing:     { label: '识别中',   dotColor: 'var(--accent)', pulse: true },
   awaiting_mapping: { label: '待关联身份', dotColor: 'var(--warn)', pulse: false },
   summarizing:      { label: '生成纪要', dotColor: 'var(--accent)', pulse: true },
   completed:        { label: '已完成',   dotColor: 'var(--ok)',     pulse: false },

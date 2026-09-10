@@ -1,9 +1,20 @@
 <template>
   <Teleport to="body">
     <div class="login-overlay" :class="{ 'is-hidden': !visible }" id="loginOverlay">
+      <IconButton class="login-back-btn" label="返回（或按 ESC）" show-label @click="hide">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        <template #label>返回 <kbd>ESC</kbd></template>
+      </IconButton>
       <div class="login-card">
         <div class="login-card-brand">
-          <div class="brand-mark">O</div>
+          <div class="brand-mark">
+            <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="28" cy="28" r="24" fill="var(--fg)"/>
+              <path d="M20 20h16v12h-8l-4 4v-4h-4V20z" fill="var(--bg)"/>
+              <line x1="24" y1="26" x2="32" y2="26" stroke="var(--fg)" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="26" y1="29" x2="30" y2="29" stroke="var(--fg)" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
           <span>Open Meeting Scribe</span>
         </div>
         <p class="login-card-sub">登录后即可使用 AI 会议纪要生成、说话人识别等全部功能</p>
@@ -52,6 +63,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import IconButton from '@/components/common/IconButton.vue'
 
 const visible = ref(false)
 const activeTab = ref<'github' | 'sms'>('github')

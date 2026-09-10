@@ -24,16 +24,16 @@ const GUIDANCE_MAP: Record<string, GuidanceConfig> = {
     title: '会议进行中',
     sub: '实时记录讨论内容，随时可以提问',
     icon: ICON_MIC,
-    contexts: ['实时转写中', '对话不会打断录音'],
+    contexts: ['实时识别中', '对话不会打断录音'],
     prompts: [
       { text: '目前讨论到哪了？', icon: ICON_SEARCH },
-      { text: '帮我记录一条笔记', icon: ICON_DOC },
+      { text: '帮我记录一条随记', icon: ICON_DOC },
       { text: '目前有哪些待办？', icon: ICON_LIST },
     ],
   },
   processing: {
     title: '正在生成纪要',
-    sub: '转写和摘要正在处理中',
+    sub: '识别和摘要正在处理中',
     icon: ICON_CLOCK,
     contexts: ['处理中', '完成后可查看详细纪要'],
     prompts: [
@@ -43,11 +43,11 @@ const GUIDANCE_MAP: Record<string, GuidanceConfig> = {
   },
   pending: {
     title: '等待处理',
-    sub: '录音已完成，可以开始转写',
+    sub: '录音已完成，可以开始识别',
     icon: ICON_UPLOAD,
-    contexts: ['待转写', '可配置说话人和热词'],
+    contexts: ['待识别', '可配置说话人和热词'],
     prompts: [
-      { text: '开始转写并生成纪要', icon: ICON_UPLOAD },
+      { text: '开始识别并生成纪要', icon: ICON_UPLOAD },
       { text: '如何配置说话人信息？', icon: ICON_SEARCH },
     ],
   },
@@ -67,7 +67,7 @@ const GUIDANCE_MAP: Record<string, GuidanceConfig> = {
     title: 'AI 会议助手',
     sub: '选择或开始一个会议，我来帮你记录和分析',
     icon: ICON_MIC,
-    contexts: ['支持实时录音转写', '支持上传音频文件'],
+    contexts: ['支持实时录音识别', '支持上传音频文件'],
     prompts: [
       { text: '开始一个新会议', icon: ICON_MIC },
       { text: '上传音频文件', icon: ICON_UPLOAD },

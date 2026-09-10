@@ -1,0 +1,1 @@
+import{a,h as u}from"./index-BdC5oQoK.js";function c(r,o=3e3){const e=u(!1);let t=null;function l(){e.value||(e.value=!0,r().catch(console.error),t=setInterval(()=>{r().catch(console.error)},o))}function n(){e.value=!1,t&&(clearInterval(t),t=null)}return a(n),{active:e,start:l,stop:n}}export{c as u};

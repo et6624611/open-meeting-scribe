@@ -3,9 +3,17 @@
     <!-- 紧凑图标工具栏 -->
     <div class="gen-toolbar">
       <div class="gen-toolbar-left">
-        <div class="gen-breadcrumb" id="genBreadcrumb">
-          <span class="gen-breadcrumb-current">{{ task?.title || task?.audio_name || '会议纪要' }}</span>
-        </div>
+        <nav class="gen-breadcrumb" id="genBreadcrumb" aria-label="面包屑导航">
+          <template v-for="(crumb, i) in breadcrumbs" :key="i">
+            <button class="gen-breadcrumb-item" :title="crumb.label" @click="router.push(crumb.to)">
+              <svg v-if="crumb.icon === 'folder'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              <span class="gen-breadcrumb-label">{{ crumb.label }}</span>
+            </button>
+            <span class="gen-breadcrumb-sep">/</span>
+          </template>
+          <span class="gen-breadcrumb-current" :title="breadcrumbTitle">{{ breadcrumbTitle }}</span>
+        </nav>
       </div>
       <div class="gen-toolbar-right">
         <button class="gen-toolbar-icon" @click="onCopy" title="复制">
@@ -22,7 +30,7 @@
         </button>
         <div class="gen-toolbar-divider"></div>
         <div class="gen-toolbar-more-wrap">
-          <button class="gen-toolbar-icon" @click="toggleGenMoreMenu" aria-label="更多">
+          <button ref="genMoreBtn" class="gen-toolbar-icon" @click="toggleGenMore" aria-label="更多" aria-haspopup="menu">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           <div ref="genMoreDropdown" class="gen-toolbar-more-menu" :class="{ 'is-open': showMoreMenu }">
@@ -100,7 +108,7 @@
     </div>
 
     <!-- 说话人身份关联横幅（还原 1.0 版本） -->
-    <div class="gen-binding-bar" :class="{ hidden: task?.status !== 'awaiting_mapping' || bindingBarHidden }">
+    <div class="gen-binding-bar" :class="{ hidden: !showBindingBar }">
       <div class="gbb-main">
         <div class="gbb-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -116,7 +124,7 @@
                  :class="{ 'is-bound': item.bound }"
                  :style="{ background: getSpeakerBg(item.sid) }"
                  @click="openBindingDropdown($event, item.sid)">
-              <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || '未关联' }}</span>
+              <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || `说话人${item.sid + 1}` }}</span>
               <span class="bl-locate" title="定位到该说话人的发言" @click.stop="toggleLocateSpeaker(item.sid)">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
               </span>
@@ -133,7 +141,7 @@
       </div>
       <div class="gbb-hint-bar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <span>点击说话人标签可关联已有身份或新建身份，关联后系统将自动生成纪要</span>
+        <span>点击说话人标签可关联已有身份或新建身份，点击「确认关联」后系统将按真实身份生成纪要</span>
       </div>
     </div>
 
@@ -180,40 +188,38 @@
           <span class="tab-dot" :class="dotClass(tab.id)"></span>
         </button>
       </div>
-      <!-- 转写原文显示/隐藏切换按钮 -->
-      <button class="transcript-toggle" :class="{ 'is-active': showTranscriptLines }" @click="showTranscriptLines = !showTranscriptLines" title="切换转写原文显示">
-        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="8" y1="13" x2="16" y2="13"/>
-          <line x1="8" y1="17" x2="13" y2="17"/>
+      <!-- 原文显示/隐藏切换：仅「原文」Tab 可见 -->
+      <button class="transcript-toggle" v-if="activeTab === 'transcript'" :class="{ 'is-active': showTranscriptLines }"
+        @click="showTranscriptLines = !showTranscriptLines"
+        :title="showTranscriptLines ? '隐藏原文，仅保留章节与要点' : '显示原文'">
+        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
         </svg>
-        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="8" y1="13" x2="16" y2="13"/>
-          <line x1="8" y1="17" x2="13" y2="17"/>
-          <line x1="4" y1="4" x2="20" y2="20" stroke-width="2"/>
+        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
-        <span class="toggle-label">转写原文</span>
+        <span class="toggle-label">{{ showTranscriptLines ? '隐藏原文' : '显示原文' }}</span>
       </button>
       <!-- 音频播放条 -->
       <div class="gen-audio-bar" v-if="audioUrl">
-        <button class="gen-audio-ctrl gen-audio-play" @click="toggleAudio" aria-label="播放">
-          <svg v-if="!audioPlaying" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
-          <svg v-else viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>
+        <button class="gen-audio-play" @click="toggleAudio" :title="player.playing ? '暂停播放' : '播放录音'" :aria-label="player.playing ? '暂停播放' : '播放录音'">
+          <svg v-if="!player.playing" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          <span class="gen-audio-play-text">{{ player.playing ? '暂停' : '播放' }}</span>
         </button>
-        <span class="gen-audio-time">{{ audioTimeStr }}</span>
+        <span class="gen-audio-time">{{ player.timeStr }}</span>
         <div class="gen-audio-progress" @click="seekAudio">
-          <div class="gen-audio-progress-fill" :style="{ width: audioProgress + '%' }"></div>
+          <div class="gen-audio-progress-fill" :style="{ width: player.progress + '%' }"></div>
         </div>
-        <button class="gen-audio-speed" @click="cycleSpeed">{{ audioSpeed }}×</button>
+        <button class="gen-audio-speed" @click="player.cycleSpeed()">{{ player.speed }}×</button>
       </div>
     </div>
 
     <!-- 内容区 -->
     <div class="gen-content">
-      <!-- 转写面板 -->
+      <!-- 原文面板 -->
       <div class="gen-panel spk-layout-active" v-show="activeTab === 'transcript'">
         <div class="spk-transcript-layout">
           <div class="spk-transcript-area" id="spkTranscriptArea" ref="transcriptAreaEl">
@@ -259,11 +265,21 @@
               </button>
             </div>
 
+            <!-- 原文隐藏提示条 -->
+            <div class="gen-hidden-indicator" v-if="!showTranscriptLines && flatTranscript.length">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+              <span>已隐藏 {{ flatTranscript.length }} 条原文，当前仅显示章节与要点</span>
+              <button class="gen-hidden-show-btn" @click="showTranscriptLines = true">显示原文</button>
+            </div>
+
             <div class="gen-loading" v-if="!flatTranscript.length">
-              <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>转写内容整理中...</div>
+              <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>原文整理中...</div>
               <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
             </div>
-            <div class="gen-transcript-list" v-show="showTranscriptLines" v-else ref="transcriptListEl">
+            <div class="gen-transcript-list" v-else ref="transcriptListEl">
               <template v-for="item in transcriptItems" :key="item.type === 'chapter' ? 'ch-' + item.chapterIdx : 'line-' + item.lineIdx">
                 <!-- 章节分隔卡片 -->
                 <div v-if="item.type === 'chapter'" class="chapter-divider" :class="{ 'is-current': item.chapterIdx === activeChapterIdx, 'is-expanded': expandedChapters.has(item.chapterIdx) }" :data-chapter="item.chapterIdx">
@@ -295,33 +311,36 @@
                   </div>
                 </div>
                 <!-- 转写行 -->
-                <div v-else class="ts-line" 
+                <div v-else class="ts-line" v-show="showTranscriptLines"
                   :class="{ 
                     'is-me': isMeSpeakerId(flatTranscript[item.lineIdx].speaker_id),
                     'is-located': isLineLocated(flatTranscript[item.lineIdx].speaker_id),
-                    'is-dimmed': isLineDimmed(flatTranscript[item.lineIdx].speaker_id)
+                    'is-dimmed': isLineDimmed(flatTranscript[item.lineIdx].speaker_id),
+                    'is-playing': item.lineIdx === playingLineIdx
                   }"
-                  :data-begin-time="flatTranscript[item.lineIdx].begin_time">
+                  :data-begin-time="flatTranscript[item.lineIdx].begin_time"
+                  :data-line-idx="item.lineIdx"
+                  @click="seekFromTranscriptClick(flatTranscript[item.lineIdx].begin_time)">
                   <div class="ts-line-head">
-                    <span class="spk-wrapper">
+                    <span class="spk-wrapper" @click.stop>
                       <span class="spk"
                         :class="[
                           getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) ? 'spk-bound' : 'spk-unbound',
-                          { 'spk-bindable': task?.status === 'awaiting_mapping' }
+                          { 'spk-bindable': canBind }
                         ]"
                         :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
                         @click="onSpeakerLabelClick($event, flatTranscript[item.lineIdx].speaker_id)">
                         {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || `说话人${flatTranscript[item.lineIdx].speaker_id + 1}` }}
                       </span>
                       <button class="spk-locate-btn"
-                        v-if="task?.status !== 'awaiting_mapping'"
+                        v-if="!canBind"
                         @click.stop="toggleLocateSpeaker(flatTranscript[item.lineIdx].speaker_id)"
                         title="定位此说话人">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
-                      <span class="spk-bind-arrow" v-if="task?.status === 'awaiting_mapping'">▾</span>
+                      <span class="spk-bind-arrow" v-if="canBind">▾</span>
                     </span>
-                    <span class="ts" @click="seekToTime(flatTranscript[item.lineIdx].begin_time)">{{ formatTimeMs(flatTranscript[item.lineIdx].begin_time) }}</span>
+                    <span class="ts" @click.stop="seekFromTranscriptClick(flatTranscript[item.lineIdx].begin_time)">{{ formatTimeMs(flatTranscript[item.lineIdx].begin_time) }}</span>
                   </div>
                   <div class="ts-line-body">
                     <span class="txt">{{ flatTranscript[item.lineIdx].text }}</span>
@@ -330,6 +349,13 @@
               </template>
             </div>
           </div>
+
+          <!-- 播放跟随恢复按钮：用户手动滚动后出现 -->
+          <button class="ts-follow-btn" :class="{ 'is-visible': player.playing && !followPlayback }"
+            @click="resumeFollowPlayback" title="回到当前播放位置" aria-label="回到当前播放位置">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
+            回到播放位置
+          </button>
 
           <!-- 右侧说话人面板 -->
           <div class="spk-panel" v-if="speakerPanelVisible">
@@ -383,17 +409,8 @@
 
       <!-- 纪要面板 -->
       <div class="gen-panel" v-show="activeTab === 'summary'" :class="{ hidden: activeTab !== 'summary' }">
-        <div class="gen-loading" v-if="!task?.summary && task?.status === 'awaiting_mapping'">
-          <div class="gen-loading-hint gen-loading-actionable">
-            <svg class="gen-loading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <div class="gen-loading-text">
-              <strong>请先在上方绑定栏关联说话人身份</strong>
-              <span>关联完成后点击「确认关联」，系统将自动生成纪要</span>
-            </div>
-          </div>
-        </div>
-        <div class="gen-loading" v-else-if="!task?.summary && task?.status !== 'completed'">
-          <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>等待原文校正后，为你总结更详细的纪要内容...</div>
+        <div class="gen-loading" v-if="!task?.summary && task?.status !== 'completed' && task?.status !== 'failed'">
+          <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>纪要生成中...</div>
           <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
         </div>
         <MdBlockEditor
@@ -443,7 +460,7 @@
         </div>
       </div>
 
-      <!-- 笔记面板 -->
+      <!-- 随记面板 -->
       <div class="gen-panel" v-show="activeTab === 'notes'" :class="{ hidden: activeTab !== 'notes' }">
         <div class="md-toolbar">
           <button class="md-toolbar-btn" @click="insertMd('bold')" title="加粗"><strong>B</strong></button>
@@ -463,7 +480,7 @@
           :markdown="notesContent"
           @change="onNotesChange"
           ref="notesEditor"
-          empty-text="在此记录笔记…"
+          empty-text="在此记录随记…"
         />
         <span class="task-notes-saved" :class="{ show: notesSaved }">已保存</span>
       </div>
@@ -479,7 +496,7 @@
             <span class="todo-text">{{ todo.text }}</span>
             <span v-if="todo.assignee" class="todo-assignee">{{ todo.assignee }}</span>
             <span v-if="todo.source" class="todo-source-badge" :class="'source-' + todo.source">{{ todo.source === 'ai' ? 'AI' : '手动' }}</span>
-            <button class="todo-locate-btn" title="定位到转写原文" @click="locateTodoSource(todo)" aria-label="定位到转写原文">
+            <button class="todo-locate-btn" title="定位到原文" @click="locateTodoSource(todo)" aria-label="定位到原文">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
@@ -509,41 +526,36 @@
       @action="onSelectionAction"
     />
 
-    <!-- 说话人绑定引导弹窗 -->
-    <div v-if="showOnboarding" class="spk-onboarding-overlay" @click.self="closeOnboarding">
-      <div class="spk-onboarding-card">
-        <div class="spk-ob-visual">
-          <div class="spk-ob-visual-inner">
-            <div class="spk-ob-speaker-tag">
-              <span :style="{ color: getSpeakerColor('0') }">说话人 1</span>
-            </div>
-            <span class="spk-ob-arrow">→</span>
-            <div class="spk-ob-person-tag">张三</div>
-          </div>
+    <!-- 说话人绑定引导弹窗（数据变化感知版） -->
+    <div v-if="showOnboarding" class="spk-onboarding-overlay" @click.self="closeOnboarding" @keydown.esc="closeOnboarding">
+      <div class="spk-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="obDialogTitle">
+        <!-- 标题区 -->
+        <div class="spk-ob-header">
+          <h3 id="obDialogTitle">关联说话人身份</h3>
         </div>
-        <div class="spk-ob-body">
-          <h3>认识一下「关联身份」</h3>
-          <p>系统通过声音识别出了几位说话人，但还不知道他们是谁。关联身份后，纪要中会显示真实姓名，方便你回顾和分享。</p>
-          <div class="spk-ob-steps">
-            <div class="spk-ob-step">
-              <span class="spk-ob-step-num">1</span>
-              <span>点击说话人标签（如 <strong>「说话人 1」</strong>）</span>
-            </div>
-            <div class="spk-ob-step">
-              <span class="spk-ob-step-num">2</span>
-              <span>从列表中选择已有说话人，或<strong>新建</strong>一个</span>
-            </div>
-            <div class="spk-ob-step">
-              <span class="spk-ob-step-num">3</span>
-              <span>全部关联后点击<strong>「确认关联」</strong>，系统开始生成纪要</span>
+        <!-- 数据变化演示区 -->
+        <div class="spk-ob-demo">
+          <div class="spk-ob-transcript">
+            <div class="spk-ob-line" v-for="(line, i) in demoLines" :key="i" :class="{ 'is-me': line.isMe }">
+              <div class="spk-ob-head">
+                <span class="spk-ob-ts">{{ line.ts }}</span>
+                <span class="spk-ob-spk" :class="line.bound ? 'bound' : 'unbound'" :style="line.bound ? { background: line.color } : {}">{{ line.bound ? line.name : line.label }}</span>
+              </div>
+              <div class="spk-ob-text" :class="line.bound ? 'bound' : 'unbound'">
+                <div class="spk-ob-skeleton">
+                  <div class="spk-ob-skel-bar" :style="{ width: line.bar1 }"></div>
+                  <div class="spk-ob-skel-bar" :style="{ width: line.bar2 }"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+        <!-- 底部操作区 -->
         <div class="spk-ob-footer">
           <label class="spk-ob-dont-show">
             <input type="checkbox" v-model="dontShowAgain"> 不再显示
           </label>
-          <button class="spk-ob-got-it" @click="closeOnboarding">我知道了</button>
+          <button type="button" class="spk-ob-got-it" @click="closeOnboarding">开始关联</button>
         </div>
       </div>
     </div>
@@ -570,9 +582,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, reactive, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, reactive, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTaskStore } from '@/stores/task'
+import { usePlayerStore } from '@/stores/player'
 import { useUserStore } from '@/stores/user'
 import { usePolling } from '@/composables/usePolling'
 import { fetchTask, deleteTask, retranscribe, retrySummary, updateTask } from '@/api/tasks'
@@ -580,14 +593,15 @@ import { fetchNotes, saveNotes, fetchTodos, toggleTodo, createTodo } from '@/api
 import { fetchSpeakers, createSpeaker, submitSpeakerMapping, saveSpeakerMapping, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
+import { usePopMenu } from '@/composables/usePopMenu'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine } from '@/api/types'
 import MdBlockEditor from '@/components/MdBlockEditor.vue'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 
 const TABS = [
-  { id: 'transcript', label: '转写', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
-  { id: 'notes', label: '笔记', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+  { id: 'transcript', label: '原文', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
+  { id: 'notes', label: '随记', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
   { id: 'summary', label: '纪要', icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
   { id: 'todos', label: '待办', icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
 ]
@@ -605,8 +619,9 @@ onMounted(() => {
   const saved = localStorage.getItem('oms_gen_active_tab')
   if (saved) activeTab.value = saved
 })
-const showMoreMenu = ref(false)
+const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
+const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore } = usePopMenu(genMoreDropdown, genMoreBtn)
 const notesContent = ref('')
 const notesSaved = ref(false)
 const notesArea = ref<HTMLTextAreaElement | null>(null)
@@ -623,9 +638,21 @@ let notesTimer: ReturnType<typeof setTimeout> | null = null
 // 说话人绑定引导
 const showOnboarding = ref(false)
 const dontShowAgain = ref(false)
+
+// 引导弹窗演示数据
+const demoLines = reactive([
+  { ts: '23:15', label: '说话人 1', name: '赵里海', color: 'oklch(55% 0.16 250)', bound: false, isMe: false, bar1: '100%', bar2: '60%' },
+  { ts: '23:18', label: '说话人 2', name: '沈天雅', color: 'oklch(55% 0.14 150)', bound: false, isMe: false, bar1: '80%', bar2: '45%' },
+  { ts: '23:20', label: '说话人 1', name: '赵里海', color: 'oklch(55% 0.16 250)', bound: false, isMe: true, bar1: '45%', bar2: '35%' },
+])
+let obAnimTimer: ReturnType<typeof setTimeout> | null = null
+let obLoopTimer: ReturnType<typeof setTimeout> | null = null
+const OB_CYCLE_MS = 4000
+const OB_PAUSE_MS = 1500
+
 const speakers = ref<Speaker[]>([])
 
-// 转写原文显示/隐藏
+// 原文显示/隐藏
 const showTranscriptLines = ref(true)
 
 // 定位高亮说话人
@@ -643,8 +670,25 @@ const currentProjectName = computed(() => {
   return p?.name || '点击关联项目'
 })
 
+const breadcrumbTitle = computed(() => task.value?.title || task.value?.audio_name || '会议纪要')
+
+/** 面包屑祖先层级：已关联项目时展示 项目 / 项目名，否则展示 会议库 */
+const breadcrumbs = computed(() => {
+  const pid = task.value?.project_id
+  const proj = pid ? projects.value.find(p => p.id === pid) : null
+  if (proj) {
+    return [
+      { label: '项目', icon: 'folder' as const, to: { name: 'projects' } },
+      { label: proj.name, icon: null, to: { name: 'projects' } },
+    ]
+  }
+  return [{ label: '会议库', icon: 'list' as const, to: { name: 'library' } }]
+})
+
 // 绑定横幅关闭
 const bindingBarHidden = ref(false)
+// 任务级「暂不关联」：跨会话持久隐藏绑定栏
+const bindBarDismissed = ref(localStorage.getItem(`oms_bind_bar_dismissed:${taskId}`) === 'true')
 
 // ─── 右侧说话人面板 ───
 const speakerPanelVisible = ref(true)
@@ -735,13 +779,13 @@ function clearSpeakerFilter() {
   focusLineIdx.value = 0
 }
 
-/** 判断转写行是否高亮 */
+/** 判断原文行是否高亮 */
 function isLineLocated(speakerId: number): boolean {
   if (speakerFilterSet.size > 0) return speakerFilterSet.has(speakerId)
   return locateSpeakerId.value !== null && speakerId === locateSpeakerId.value
 }
 
-/** 判断转写行是否淡化 */
+/** 判断原文行是否淡化 */
 function isLineDimmed(speakerId: number): boolean {
   if (speakerFilterSet.size > 0) return !speakerFilterSet.has(speakerId)
   return locateSpeakerId.value !== null && speakerId !== locateSpeakerId.value
@@ -803,6 +847,15 @@ const bindingLegend = computed(() => {
 
 const unboundCount = computed(() => bindingLegend.value.filter(b => !b.bound).length)
 
+/** 可绑定状态：转写已完成且仍有未关联说话人（纪要生成不再等待绑定，绑定为事后补充） */
+const canBind = computed(() => {
+  const s = task.value?.status
+  return unboundCount.value > 0 && (s === 'awaiting_mapping' || s === 'completed')
+})
+
+/** 绑定栏可见：可绑定且未会话级关闭、未任务级「暂不关联」 */
+const showBindingBar = computed(() => canBind.value && !bindingBarHidden.value && !bindBarDismissed.value)
+
 /** 下拉框中过滤后的说话人列表 */
 const dropdownSpeakers = computed(() => {
   const q = bindingDropdown.search.toLowerCase()
@@ -839,32 +892,6 @@ function adjustDropdownPosition(dd: HTMLElement) {
   if (r.bottom > vh - 8) bindingDropdown.y = bindingDropdown.y - r.height - 28
 }
 
-function toggleGenMoreMenu(e: MouseEvent) {
-  showMoreMenu.value = !showMoreMenu.value
-  if (showMoreMenu.value && genMoreDropdown.value) {
-    requestAnimationFrame(() => {
-      const dd = genMoreDropdown.value!
-      const tr = (e.currentTarget as HTMLElement).getBoundingClientRect()
-      const vw = window.innerWidth, vh = window.innerHeight
-      const gap = 4
-      const spaceBelow = vh - tr.bottom
-      const spaceAbove = tr.top
-      const ddW = dd.offsetWidth, ddH = dd.offsetHeight
-      let top: number
-      if (spaceBelow >= ddH + gap || spaceBelow >= spaceAbove) {
-        top = tr.bottom + gap
-      } else {
-        top = tr.top - ddH - gap
-      }
-      let left = tr.right - ddW
-      if (left < 8) left = 8
-      if (left + ddW > vw - 8) left = vw - ddW - 8
-      dd.style.top = `${top}px`
-      dd.style.left = `${left}px`
-    })
-  }
-}
-
 function closeBindingDropdown() {
   bindingDropdown.visible = false
   dropdownEl = null
@@ -897,7 +924,7 @@ async function createAndBind(speakerId: number, suggestedName: string) {
 
 /** 增量保存（不触发重新生成） */
 async function incrementalSave() {
-  if (task.value?.status !== 'awaiting_mapping') return
+  if (!['awaiting_mapping', 'completed'].includes(task.value?.status ?? '')) return
   const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
   try {
     await saveSpeakerMapping(taskId, mapping)
@@ -922,19 +949,11 @@ async function confirmMapping() {
   }
 }
 
-/** 暂不关联 → 空映射提交 */
-async function skipMapping() {
+/** 暂不关联 → 任务级持久隐藏绑定栏（纪要保留通用说话人标签） */
+function skipMapping() {
   bindingBarHidden.value = true
-  switchTab('summary')
-  Object.keys(currentBindingMapping).forEach(k => delete currentBindingMapping[Number(k)])
-  try {
-    await submitSpeakerMapping(taskId, {})
-    taskStore.patchTaskLocal(taskId, { status: 'summarizing' })
-    startPolling()
-  } catch (e) {
-    console.error('跳过绑定失败:', e)
-    bindingBarHidden.value = false
-  }
+  bindBarDismissed.value = true
+  localStorage.setItem(`oms_bind_bar_dismissed:${taskId}`, 'true')
 }
 
 /** 下拉框键盘导航 */
@@ -967,16 +986,30 @@ function onDocClickForDropdown(e: MouseEvent) {
   }
 }
 
-// 音频
-const audioPlaying = ref(false)
-const audioSpeed = ref(1.0)
-const audioProgress = ref(0)
-const audioTimeStr = ref('00:00 / 00:00')
-let audioEl: HTMLAudioElement | null = null
+// 音频（全局 player store：路由切换后播放不中断，列表/侧边栏/顶栏共享状态）
+const player = usePlayerStore()
+
+/** 当前播放时间对应的原文行下标，-1 表示无 */
+const playingLineIdx = ref(-1)
+/** 是否随播放进度自动滚动原文；用户手动滚动后置 false */
+const followPlayback = ref(true)
 
 const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId) ?? null)
+// 任务进入 store 时初始化绑定映射：刷新时 store 异步装载可能晚于 onMounted 的初始化
+watch(() => task.value?.task_id, () => initBindingMapping(), { immediate: true })
 const dialogue = computed<DialogueLine[]>(() => task.value?.dialogue ?? [])
 const audioUrl = computed(() => task.value ? `/api/audio/${task.value.task_id}` : '')
+
+// 本会议音频载入全局播放器：同任务保持状态，切换任务时释放旧音频
+watch(audioUrl, (url) => { if (url) player.load(taskId, url) }, { immediate: true })
+
+// 播放进度驱动原文跟随；播放器离开本会议时清除当前行标记
+watch(() => player.currentTime, (sec) => {
+  if (player.taskId === taskId) syncPlayingLine(sec * 1000)
+})
+watch(() => player.taskId, (id) => {
+  if (id !== taskId) playingLineIdx.value = -1
+})
 const metaDateShort = computed(() => {
   const d = task.value?.meeting_date || task.value?.created_at?.slice(0, 10) || ''
   return d
@@ -1111,7 +1144,7 @@ function getBindingSpeakerName(speakerId: number): string {
 
 /** 说话人标签点击：绑定模式下打开下拉框，否则切换定位 */
 function onSpeakerLabelClick(e: MouseEvent, speakerId: number) {
-  if (task.value?.status === 'awaiting_mapping') {
+  if (canBind.value) {
     openBindingDropdown(e, speakerId)
   } else {
     toggleLocateSpeaker(speakerId)
@@ -1145,19 +1178,11 @@ function toggleLocateSpeaker(id: number) {
   }
 }
 
-/** 跳转到指定时间点播放音频 */
-function seekToTime(ms: number) {
-  if (!audioEl) {
-    audioEl = new Audio(audioUrl.value)
-    audioEl.playbackRate = audioSpeed.value
-    audioEl.addEventListener('timeupdate', onTimeUpdate)
-    audioEl.addEventListener('ended', () => { audioPlaying.value = false })
-  }
-  audioEl.currentTime = ms / 1000
-  if (!audioPlaying.value) {
-    audioEl.play()
-    audioPlaying.value = true
-  }
+/** 点击原文（时间戳或整行）跳转到该句播放；拖选文本时让位给划词工具栏 */
+function seekFromTranscriptClick(ms: number) {
+  const sel = window.getSelection()
+  if (sel && !sel.isCollapsed && sel.toString().trim()) return
+  player.seekToMs(ms)
 }
 
 function updateActiveChapterOnScroll() {
@@ -1178,11 +1203,6 @@ function dotClass(tabId: string): string {
   if (tabId === 'summary' && task.value.summary) return 'is-done'
   if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
   return ''
-}
-
-function formatTime(sec: number): string {
-  const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 function switchTab(tabId: string) {
@@ -1271,14 +1291,14 @@ function onFullscreen() {
 }
 
 function onEditSummary() {
-  showMoreMenu.value = false
+  closeGenMore()
   switchTab('summary')
 }
 
-async function onRetrySummary() { showMoreMenu.value = false; await retrySummary(taskId); await taskStore.loadTasks() }
-async function onRetranscribe() { showMoreMenu.value = false; await retranscribe(taskId); router.push({ name: 'processing', params: { taskId } }) }
+async function onRetrySummary() { closeGenMore(); await retrySummary(taskId); await taskStore.loadTasks() }
+async function onRetranscribe() { closeGenMore(); await retranscribe(taskId); router.push({ name: 'processing', params: { taskId } }) }
 async function onDelete() {
-  showMoreMenu.value = false
+  closeGenMore()
   if (!confirm('确定删除该会议？此操作不可撤销。')) return
   await deleteTask(taskId); await taskStore.loadTasks(); router.push('/')
 }
@@ -1290,34 +1310,86 @@ async function onArchive() {
 }
 
 function onArchiveConfirm() {
-  showMoreMenu.value = false
+  closeGenMore()
   showArchiveDialog.value = true
 }
 
 function toggleAudio() {
-  if (!audioEl) { audioEl = new Audio(audioUrl.value); audioEl.playbackRate = audioSpeed.value; audioEl.addEventListener('timeupdate', onTimeUpdate); audioEl.addEventListener('ended', () => { audioPlaying.value = false }) }
-  if (audioPlaying.value) { audioEl.pause(); audioPlaying.value = false } else { audioEl.play(); audioPlaying.value = true }
+  const willPlay = !player.playing
+  player.toggle()
+  if (!willPlay) return
+  followPlayback.value = true
+  if (activeTab.value !== 'transcript') switchTab('transcript')
+  playingLineIdx.value = findLineIdxAt(player.currentTime * 1000)
+  scrollToPlayingLine()
 }
-function onTimeUpdate() {
-  if (!audioEl) return
-  const cur = audioEl.currentTime, dur = audioEl.duration || 0
-  audioProgress.value = dur > 0 ? (cur / dur) * 100 : 0
-  audioTimeStr.value = `${formatTime(cur)} / ${formatTime(dur)}`
+
+/** 二分查找播放时间落在哪一行（flatTranscript 已按 begin_time 升序） */
+function findLineIdxAt(ms: number): number {
+  const lines = flatTranscript.value
+  let lo = 0, hi = lines.length - 1, found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (lines[mid].begin_time <= ms) { found = mid; lo = mid + 1 } else { hi = mid - 1 }
+  }
+  return found
+}
+
+/** 播放进度推进时更新当前行，跟随模式下滚动定位 */
+function syncPlayingLine(ms: number) {
+  const idx = findLineIdxAt(ms)
+  if (idx === playingLineIdx.value) return
+  playingLineIdx.value = idx
+  if (followPlayback.value) scrollToPlayingLine()
+}
+
+function scrollToPlayingLine() {
+  const idx = playingLineIdx.value
+  if (idx < 0 || !showTranscriptLines.value) return
+  nextTick(() => {
+    const el = transcriptListEl.value?.querySelector(`[data-line-idx="${idx}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
+/** 恢复自动跟随并立即定位到当前播放行 */
+function resumeFollowPlayback() {
+  followPlayback.value = true
+  scrollToPlayingLine()
+}
+
+/** 用户主动滚动原文时停止自动跟随，阅读位置交还给用户 */
+function onUserScrollIntent() {
+  if (player.playing) followPlayback.value = false
 }
 function seekAudio(e: MouseEvent) {
-  if (!audioEl) return
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const pct = (e.clientX - rect.left) / rect.width
-  audioEl.currentTime = pct * (audioEl.duration || 0)
+  player.seekPercent(((e.clientX - rect.left) / rect.width) * 100)
 }
-function cycleSpeed() {
-  const speeds = [1.0, 1.25, 1.5, 2.0, 0.75]
-  const idx = speeds.indexOf(audioSpeed.value)
-  audioSpeed.value = speeds[(idx + 1) % speeds.length]
-  if (audioEl) audioEl.playbackRate = audioSpeed.value
+
+function stopOnboardingAnim() {
+  if (obAnimTimer) { clearTimeout(obAnimTimer); obAnimTimer = null }
+  if (obLoopTimer) { clearTimeout(obLoopTimer); obLoopTimer = null }
+}
+
+function startOnboardingAnim() {
+  stopOnboardingAnim()
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (prefersReduced) {
+    demoLines.forEach(l => { l.bound = true })
+    return
+  }
+  demoLines.forEach(l => { l.bound = false })
+  obAnimTimer = setTimeout(() => {
+    demoLines.forEach(l => { l.bound = true })
+  }, 1500)
+  obLoopTimer = setTimeout(() => {
+    startOnboardingAnim()
+  }, OB_CYCLE_MS + OB_PAUSE_MS)
 }
 
 function closeOnboarding() {
+  stopOnboardingAnim()
   if (dontShowAgain.value) {
     localStorage.setItem('spk_onboarding_dismissed', 'true')
   }
@@ -1391,20 +1463,24 @@ onMounted(async () => {
   // 加载项目列表
   try { projects.value = await fetchProjects() } catch { /* */ }
 
-  // 说话人绑定引导：待关联身份状态且未关闭过时显示
-  if (task.value?.status === 'awaiting_mapping' && localStorage.getItem('spk_onboarding_dismissed') !== 'true') {
+  // 说话人绑定引导：绑定栏可见且未关闭过时显示
+  if (showBindingBar.value && localStorage.getItem('spk_onboarding_dismissed') !== 'true') {
     showOnboarding.value = true
+    nextTick(() => startOnboardingAnim())
   }
 
-  // 章节滚动追踪
+  // 章节滚动追踪 + 用户主动滚动时停止播放跟随
   nextTick(() => {
     const area = transcriptAreaEl.value
-    if (area) area.addEventListener('scroll', updateActiveChapterOnScroll, { passive: true })
+    if (!area) return
+    area.addEventListener('scroll', updateActiveChapterOnScroll, { passive: true })
+    area.addEventListener('wheel', onUserScrollIntent, { passive: true })
+    area.addEventListener('touchmove', onUserScrollIntent, { passive: true })
   })
 
   registerBlockUpdater((blockIndex: number, newSource: string) => {
     const source = rewritePending.value?.source || '纪要'
-    if (source === '笔记' && notesEditor.value) {
+    if (source === '随记' && notesEditor.value) {
       notesEditor.value.updateBlock(blockIndex, newSource)
     } else if (summaryEditor.value) {
       summaryEditor.value.updateBlock(blockIndex, newSource)
@@ -1444,6 +1520,15 @@ const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(asyn
     stopChapterPolling()
   }
 }, 3000)
+
+onUnmounted(() => {
+  stopOnboardingAnim()
+  const area = transcriptAreaEl.value
+  if (area) {
+    area.removeEventListener('wheel', onUserScrollIntent)
+    area.removeEventListener('touchmove', onUserScrollIntent)
+  }
+})
 </script>
 
 <style scoped>
@@ -1478,6 +1563,59 @@ const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(asyn
 }
 
 /* Speaker locate/highlight styles are in legacy-views.css */
+
+/* 播放联动：当前播放行高亮 */
+.ts-line.is-playing {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+.ts-line.is-playing .ts {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 播放联动：用户手动滚动后出现的"回到播放位置"浮动按钮
+   置于左下角，避开右侧说话人面板（.spk-panel 占 230px） */
+.ts-follow-btn {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.14);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.12s, border-color 0.12s;
+  cursor: pointer;
+}
+.ts-follow-btn.is-visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.ts-follow-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--subtle);
+}
+.ts-follow-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ts-follow-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
 
 .spk-wrapper {
   display: inline-flex;
@@ -1538,7 +1676,7 @@ const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(asyn
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-modal);
 }
 
 .archive-dialog {

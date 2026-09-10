@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>说话人绑定引导弹窗 v3 — 数据变化感知</title>
+<style>
+  :root {
+    --bg: oklch(99% 0.003 250);
+    --surface: oklch(98% 0.004 250);
+    --surface-2: oklch(96% 0.006 250);
+    --surface-3: oklch(93% 0.008 250);
+    --fg: oklch(25% 0.02 250);
+    --muted: oklch(55% 0.02 250);
+    --border: oklch(90% 0.01 250);
+    --border-strong: oklch(82% 0.015 250);
+    --accent: oklch(55% 0.18 250);
+    --accent-fg: oklch(99% 0.003 250);
+    --accent-soft: oklch(94% 0.04 250);
+    --ok: oklch(55% 0.16 150);
+    --ok-soft: oklch(95% 0.04 150);
+    --rec: oklch(60% 0.14 25);
+    --rec-soft: oklch(95% 0.04 25);
+    --radius: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+    --fs-11: 11px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-16: 16px; --fs-18: 18px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+
+  .mock-bg {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, oklch(95% 0.01 250) 0%, oklch(92% 0.015 250) 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mock-bg::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: oklch(0% 0 0 / 0.15);
+  }
+
+  .overlay {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05);
+    width: 480px;
+    overflow: hidden;
+    animation: cardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ===== 标题区 ===== */
+  .header {
+    padding: var(--s-5) var(--s-6) var(--s-4);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    animation: fadeUp 0.4s 0.2s both;
+  }
+  .header h3 {
+    font-size: var(--fs-18);
+    font-weight: 600;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ===== 数据变化演示区 ===== */
+  .demo-area {
+    padding: var(--s-4) var(--s-6) var(--s-5);
+  }
+
+  /* 迷你转写容器 */
+  .mini-transcript {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  /* 转写行 */
+  .mini-line {
+    display: flex;
+    flex-direction: column;
+    padding: var(--s-2) var(--s-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .mini-line:last-child { border-bottom: none; }
+
+  .mini-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-bottom: var(--s-1);
+  }
+
+  .mini-ts {
+    font-size: var(--fs-11);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 32px;
+  }
+
+  .mini-spk {
+    font-size: var(--fs-13);
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* 变化前：灰色通用标签 */
+  .mini-spk.unbound {
+    background: var(--surface-3);
+    color: var(--muted);
+    border: 1px dashed var(--border-strong);
+  }
+
+  /* 变化后：彩色实名标签 */
+  .mini-spk.bound {
+    border: none;
+    color: white;
+  }
+  .mini-spk.bound.spk-a { background: oklch(55% 0.16 250); }
+  .mini-spk.bound.spk-b { background: oklch(55% 0.14 150); }
+
+  .mini-text {
+    max-width: 85%;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+  }
+
+  /* 非核心内容（会话文本）全程以骨架屏表示，不呈现真实文本 */
+  .mini-text.unbound { background: transparent; }
+  .mini-text.bound { background: transparent; }
+
+  .skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .skeleton-bar {
+    height: 10px;
+    border-radius: 5px;
+    background: var(--surface-3);
+  }
+  .skeleton-bar.w-full { width: 100%; }
+  .skeleton-bar.w-80 { width: 80%; }
+  .skeleton-bar.w-60 { width: 60%; }
+  .skeleton-bar.w-45 { width: 45%; }
+  .skeleton-bar.w-35 { width: 35%; }
+
+  /* "我的"行特殊处理 */
+  .mini-line.is-me .mini-head {
+    flex-direction: row-reverse;
+  }
+  .mini-line.is-me {
+    align-items: flex-end;
+  }
+  .mini-line.is-me .mini-text.bound {
+    background: var(--ok-soft);
+    border: 1px solid var(--ok);
+  }
+
+  /* 关联后说话人标签增强——已移至文件底部统一处理 */
+
+  /* ===== 底部操作区 ===== */
+  .footer {
+    padding: var(--s-4) var(--s-6);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dont-show {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--fs-13);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .dont-show input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  .got-it {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    border-radius: var(--radius);
+    padding: var(--s-2) var(--s-5);
+    font-size: var(--fs-14);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .got-it:hover {
+    background: oklch(from var(--accent) calc(l - 0.06) c h);
+  }
+  .got-it:active {
+    background: oklch(from var(--accent) calc(l - 0.10) c h);
+  }
+
+  /* 演示控制 */
+  .demo-controls {
+    position: fixed;
+    bottom: var(--s-5);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: var(--s-3);
+    z-index: 100;
+  }
+  .demo-btn {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: var(--s-2) var(--s-4);
+    font-size: var(--fs-13);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .demo-btn:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  /* ===== P0-6: 键盘焦点环 ===== */
+  .got-it:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .dont-show input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .demo-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ===== P0-4: 骨架条对比度增强 ===== */
+  .skeleton-bar {
+    background: var(--border-strong);
+    opacity: 0.5;
+  }
+
+  /* ===== P1-9: 移除永久 scale，改为仅用阴影和字重增强 ===== */
+  .mini-spk.bound {
+    transform: none;
+    box-shadow: 0 1px 4px oklch(0% 0 0 / 0.12);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  /* ===== P1-10: 响应式 ===== */
+  @media (max-width: 520px) {
+    .card {
+      width: calc(100% - var(--s-6));
+      min-width: 0;
+    }
+  }
+
+  /* ===== P0-2: 减少动效偏好降级 ===== */
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .header { animation: none; }
+    .footer { animation: none; }
+    .mini-spk { transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="mock-bg">
+    <div class="overlay">
+      <div class="card transform-phase" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+
+        <!-- 标题区 -->
+        <div class="header">
+          <h3 id="dialogTitle">关联说话人身份</h3>
+        </div>
+
+        <!-- 数据变化演示区 -->
+        <div class="demo-area">
+
+          <!-- 单一转写容器（状态切换） -->
+          <div class="mini-transcript" id="miniTranscript">
+            <div class="mini-line">
+              <div class="mini-head">
+                <span class="mini-ts">23:15</span>
+                <span class="mini-spk unbound" data-bound-name="赵里海" data-bound-class="spk-a">说话人 1</span>
+              </div>
+              <div class="mini-text unbound">
+                <div class="skeleton">
+                  <div class="skeleton-bar w-full"></div>
+                  <div class="skeleton-bar w-60"></div>
+                </div>
+              </div>
+            </div>
+            <div class="mini-line">
+              <div class="mini-head">
+                <span class="mini-ts">23:18</span>
+                <span class="mini-spk unbound" data-bound-name="沈天雅" data-bound-class="spk-b">说话人 2</span>
+              </div>
+              <div class="mini-text unbound">
+                <div class="skeleton">
+                  <div class="skeleton-bar w-80"></div>
+                </div>
+              </div>
+            </div>
+            <div class="mini-line is-me">
+              <div class="mini-head">
+                <span class="mini-ts">23:20</span>
+                <span class="mini-spk unbound" data-bound-name="赵里海" data-bound-class="spk-a">说话人 1</span>
+              </div>
+              <div class="mini-text unbound">
+                <div class="skeleton">
+                  <div class="skeleton-bar w-45"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 底部操作区 -->
+        <div class="footer">
+          <label class="dont-show">
+            <input type="checkbox"> 不再显示
+          </label>
+          <button type="button" class="got-it">开始关联</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 演示控制 -->
+  <div class="demo-controls">
+    <button type="button" class="demo-btn" onclick="replay()">重播动画</button>
+  </div>
+
+  <script>
+    let animationTimer = null;
+    let loopTimer = null;
+    const CYCLE_MS = 4000;
+    const PAUSE_MS = 1500;
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function applyBoundState() {
+      const spks = document.querySelectorAll('.mini-spk');
+      const texts = document.querySelectorAll('.mini-text');
+
+      spks.forEach(spk => {
+        spk.className = `mini-spk bound ${spk.dataset.boundClass}`;
+        spk.textContent = spk.dataset.boundName;
+      });
+      texts.forEach(text => text.className = 'mini-text bound');
+    }
+
+    function resetUnboundState() {
+      const spks = document.querySelectorAll('.mini-spk');
+      const texts = document.querySelectorAll('.mini-text');
+
+      spks.forEach(spk => {
+        spk.className = 'mini-spk unbound';
+        spk.textContent = spk.dataset.boundClass === 'spk-a' ? '说话人 1' : '说话人 2';
+      });
+      texts.forEach(text => text.className = 'mini-text unbound');
+    }
+
+    function runAnimation() {
+      if (prefersReducedMotion.matches) {
+        applyBoundState();
+        return;
+      }
+
+      resetUnboundState();
+
+      animationTimer = setTimeout(() => {
+        applyBoundState();
+      }, 1500);
+
+      loopTimer = setTimeout(() => {
+        runAnimation();
+      }, CYCLE_MS + PAUSE_MS);
+    }
+
+    function replay() {
+      clearTimeout(animationTimer);
+      clearTimeout(loopTimer);
+      runAnimation();
+    }
+
+    /* P1-12: Escape 键关闭弹窗 */
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const card = document.querySelector('.card');
+        if (card) card.remove();
+      }
+    });
+
+    window.addEventListener('load', () => {
+      setTimeout(runAnimation, 500);
+    });
+  </script>
+</body>
+</html>

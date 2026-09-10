@@ -4,7 +4,7 @@
     <div class="rec-header">
       <div class="rec-header-left">
         <span class="rec-title" id="recTitle">录音纪要</span>
-        <span class="rec-status" id="recStatus">{{ recPaused ? '已暂停' : '转写中...' }}</span>
+        <span class="rec-status" id="recStatus">{{ recPaused ? '已暂停' : '识别中...' }}</span>
         <span class="rec-speaker-count" :class="{ 'has-update': speakerCountUpdated }" v-if="displaySpeakerCount > 0" title="当前识别到的说话人">
           <span class="sc-dot"></span>
           <span class="sc-num">{{ displaySpeakerCount }}</span>
@@ -27,13 +27,13 @@
       </div>
     </div>
 
-    <!-- 内容区：转写 + 实时总结 -->
+    <!-- 内容区：原文 + 实时总结 -->
     <div class="rec-content-area" :class="{ 'tab-summary': recTab === 'summary' }" id="recContentArea">
       <!-- Tab 切换栏 -->
       <div class="rec-tab-bar" id="recTabBar">
         <button class="rec-tab" :class="{ active: recTab === 'transcript' }" @click="recTab = 'transcript'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          实时转写
+          原文
         </button>
         <button class="rec-tab" :class="{ active: recTab === 'summary' }" @click="recTab = 'summary'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
@@ -63,15 +63,12 @@
         </template>
       </div>
 
-      <!-- 左栏：实时转写 -->
+      <!-- 左栏：原文 -->
       <div class="rec-transcript" id="recTranscript" v-show="recTab === 'transcript'">
         <div class="rec-transcript-header">
-          <div class="rec-transcript-title">
-            实时转写
-            <span class="rec-transcript-status">{{ recPaused ? '已暂停' : (wsConnected ? '转写中...' : '等待连接') }}</span>
-          </div>
+          <div class="rec-transcript-title">原文</div>
           <div class="rec-transcript-actions">
-            <button class="btn-translate" @click="showTranscript = !showTranscript" :title="showTranscript ? '隐藏转写原文' : '显示转写原文'">
+            <button class="btn-translate" @click="showTranscript = !showTranscript" :title="showTranscript ? '隐藏原文' : '显示原文'">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path v-if="showTranscript" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle v-if="showTranscript" cx="12" cy="12" r="3"/><path v-else d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line v-if="!showTranscript" x1="1" y1="1" x2="23" y2="23"/></svg>
               {{ showTranscript ? '隐藏原文' : '显示原文' }}
             </button>
@@ -88,10 +85,10 @@
           </div>
         </div>
         <div class="rec-transcript-body" id="recTranscriptBody" ref="transcriptBody">
-          <!-- 转写原文隐藏指示条 -->
+          <!-- 原文隐藏指示条 -->
           <div v-if="!showTranscript" class="rec-hidden-indicator">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-            已隐藏 {{ wsLines.length }} 条转写原文
+            已隐藏 {{ wsLines.length }} 条原文
             <button class="rec-hidden-show-btn" @click="showTranscript = true">显示原文</button>
           </div>
           <!-- 标记模式压缩指示器 -->
@@ -117,10 +114,10 @@
               <div class="rec-line-body" v-show="showTranscript">
                 <span class="rec-line-text">{{ line.text }}</span>
               </div>
-              <!-- 内联笔记标记 -->
+              <!-- 内联随记标记 -->
               <div v-if="notesByLine[i]" class="note-inline-card">
                 <span class="note-inline-text">{{ notesByLine[i] }}</span>
-                <button class="note-inline-delete" @click.stop="onDeleteNote(i)" title="删除笔记">
+                <button class="note-inline-delete" @click.stop="onDeleteNote(i)" title="删除随记">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -138,7 +135,7 @@
           </div>
           <div v-if="visibleLines.length === 0 && !wsPartial" class="rec-empty">
             <p>等待识别结果…</p>
-            <p class="rec-empty-hint">开始说话后，转写内容将实时显示在这里</p>
+            <p class="rec-empty-hint">开始说话后，识别内容将实时显示在这里</p>
           </div>
         </div>
         <button class="rec-jump-latest" :class="{ 'is-visible': showJumpBtn }" @click="jumpToLatest" title="回到最新内容">
@@ -169,7 +166,7 @@
               <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
             </button>
             <div class="more-menu-wrap">
-              <button class="rec-summary-btn" @click="toggleSummaryMore" title="更多">
+              <button ref="summaryMoreBtn" class="rec-summary-btn" @click="toggleSummaryMore" title="更多" aria-haspopup="menu" aria-label="总结更多操作">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
               </button>
               <div ref="summaryDropdown" class="more-menu-dropdown" :class="{ 'is-open': showSummaryMore }" role="menu">
@@ -195,7 +192,7 @@
       </div>
     </div>
 
-    <!-- 全宽笔记输入栏 -->
+    <!-- 全宽随记输入栏 -->
     <div class="rec-notes-bar" id="recNotesBar">
       <span class="rec-notes-bar-icon" aria-hidden="true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -204,8 +201,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         标记 {{ noteCount > 0 ? noteCount : '' }}
       </button>
-      <textarea class="rec-notes-input" id="recNotesInput" rows="1" placeholder="记录笔记... Enter 发送，Shift+Enter 换行" v-model="noteText" @keydown.enter.exact.prevent="onSendNote"></textarea>
-      <button class="rec-notes-bar-send" :disabled="!noteText.trim()" @click="onSendNote" aria-label="发送笔记">
+      <textarea class="rec-notes-input" id="recNotesInput" rows="1" placeholder="记录随记... Enter 发送，Shift+Enter 换行" v-model="noteText" @keydown.enter.exact.prevent="onSendNote"></textarea>
+      <button class="rec-notes-bar-send" :disabled="!noteText.trim()" @click="onSendNote" aria-label="发送随记">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
@@ -216,17 +213,18 @@
         <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
       </div>
       <span class="ctrl-timer" id="recTimer">{{ recorder.formatElapsed() }}</span>
-      <button class="btn-pause" @click="onTogglePause" :title="recPaused ? '恢复' : '暂停'">
+      <button class="btn-pause" @click="onTogglePause" :title="recPaused ? '恢复录音' : '暂停录音'">
         <svg v-if="!recPaused" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
         <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+        <span class="btn-pause-text">{{ recPaused ? '恢复' : '暂停' }}</span>
       </button>
       <button class="btn-end-rec" @click="onStop">结束</button>
       <div class="more-menu-wrap">
-        <button class="more-menu-btn" @click="toggleRecMore" title="更多">
+        <button ref="recMoreBtn" class="more-menu-btn" @click="toggleRecMore" title="更多" aria-haspopup="menu" aria-label="更多操作">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
         </button>
         <div ref="recDropdown" class="more-menu-dropdown" :class="{ 'is-open': showRecMore }" role="menu">
-          <button class="more-menu-item danger" @click="showAbandon = true" role="menuitem">
+          <button class="more-menu-item danger" @click="closeRecMore(); showAbandon = true" role="menuitem">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             放弃录音
           </button>
@@ -284,6 +282,7 @@ import { useWebSocketTranscript, type TranscriptLine } from '@/composables/useWe
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import { useQuoteRef } from '@/composables/useQuoteRef'
+import { usePopMenu } from '@/composables/usePopMenu'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { fetchSpeakers, createSpeaker, type Speaker } from '@/api/speakers'
 import {
@@ -302,7 +301,6 @@ const wsLines = ws.lines
 const wsPartial = ws.partialText
 const wsSummary = ws.summary
 const wsChapters = ws.chapters
-const wsConnected = ws.connected
 const taskStore = useTaskStore()
 const userStore = useUserStore()
 const { registerNotesAppender, registerSummaryAppender } = useQuoteRef()
@@ -349,52 +347,18 @@ function onTranscriptScroll() {
   const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   showJumpBtn.value = !atBottom
 }
-const showRecMore = ref(false)
-const showSummaryMore = ref(false)
+const recMoreBtn = ref<HTMLElement | null>(null)
 const recDropdown = ref<HTMLElement | null>(null)
+const { visible: showRecMore, toggle: toggleRecMore, close: closeRecMore } = usePopMenu(recDropdown, recMoreBtn)
+const summaryMoreBtn = ref<HTMLElement | null>(null)
 const summaryDropdown = ref<HTMLElement | null>(null)
+const { visible: showSummaryMore, toggle: toggleSummaryMore, close: closeSummaryMore } = usePopMenu(summaryDropdown, summaryMoreBtn)
 const showAbandon = ref(false)
 const ending = ref(false)
 const stopFailed = ref(false)
 const stopErrorMsg = ref('')
 const showJumpBtn = ref(false)
 
-/** 智能定位下拉菜单：底部空间不足时向上弹出，右侧溢出时左对齐 */
-function positionDropdown(dd: HTMLElement, trigger: HTMLElement) {
-  const vw = window.innerWidth, vh = window.innerHeight
-  const tr = trigger.getBoundingClientRect()
-  const gap = 4
-  const spaceBelow = vh - tr.bottom
-  const spaceAbove = tr.top
-  const ddW = dd.offsetWidth, ddH = dd.offsetHeight
-
-  let top: number, left: number
-  if (spaceBelow >= ddH + gap || spaceBelow >= spaceAbove) {
-    top = tr.bottom + gap
-  } else {
-    top = tr.top - ddH - gap
-  }
-  left = tr.right - ddW
-  if (left < 8) left = 8
-  if (left + ddW > vw - 8) left = vw - ddW - 8
-
-  dd.style.top = `${top}px`
-  dd.style.left = `${left}px`
-}
-
-function toggleRecMore(e: MouseEvent) {
-  showRecMore.value = !showRecMore.value
-  if (showRecMore.value && recDropdown.value) {
-    requestAnimationFrame(() => positionDropdown(recDropdown.value!, e.currentTarget as HTMLElement))
-  }
-}
-
-function toggleSummaryMore(e: MouseEvent) {
-  showSummaryMore.value = !showSummaryMore.value
-  if (showSummaryMore.value && summaryDropdown.value) {
-    requestAnimationFrame(() => positionDropdown(summaryDropdown.value!, e.currentTarget as HTMLElement))
-  }
-}
 const transcriptBody = ref<HTMLElement | null>(null)
 
 // 转写原文显示/隐藏
@@ -717,7 +681,7 @@ async function onCreateAndBind() {
 async function onSetFrequency(f: number) {
   summaryInterval.value = f
   summaryCountdown.value = f
-  showSummaryMore.value = false
+  closeSummaryMore()
   try {
     await setSummaryInterval(f)
   } catch (e) {
@@ -731,7 +695,7 @@ function getFreqHint(f: number): string {
 }
 
 async function onStopSummary() {
-  showSummaryMore.value = false
+  closeSummaryMore()
   try {
     await stopSummary()
     summaryPaused.value = true

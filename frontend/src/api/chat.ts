@@ -21,6 +21,13 @@ export interface ChatExtractedItem {
 
 export interface ChatResponse {
   reply: string
+  /** 后端实际返回的动作（单数对象） */
+  action?: {
+    name: string | null
+    success: boolean | null
+    data: Record<string, unknown> | null
+  }
+  /** 兼容：部分场景可能返回数组 */
   actions?: ChatAction[]
   extracted_items?: ChatExtractedItem[]
   follow_ups?: string[]

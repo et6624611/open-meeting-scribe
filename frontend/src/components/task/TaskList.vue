@@ -19,10 +19,12 @@
         <!-- 会议条目列表 -->
         <div class="sb-date-content">
           <TaskCard
-            v-for="task in group.tasks"
+            v-for="(task, idx) in group.tasks"
             :key="task.task_id"
             :task="task"
+            :data-task-id="task.task_id"
             :is-active="task.task_id === taskStore.currentTaskId"
+            :is-latest="group === taskStore.groupedTasks[0] && idx === 0"
             @select="onSelect"
             @menu="onMenu"
             @retry="onRetry"
@@ -47,16 +49,29 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
+import { usePlayerStore } from '@/stores/player'
 import TaskCard from './TaskCard.vue'
 import { retranscribe } from '@/api/tasks'
 
 const taskStore = useTaskStore()
 const layout = useLayoutStore()
+const player = usePlayerStore()
 const router = useRouter()
+
+/** 播放开始时侧边栏默认定位：展开所在日期组并滚动到该会议条目 */
+watch(() => player.taskId, (id) => {
+  if (!id) return
+  const group = taskStore.groupedTasks.find(g => g.tasks.some(t => t.task_id === id))
+  if (group && isCollapsed(group.label)) toggleGroup(group.label)
+  nextTick(() => {
+    document.querySelector(`.sb-timeline [data-task-id="${id}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+}, { immediate: true })
 
 /** 手动折叠的日期组（与全局 all-collapsed 叠加） */
 const collapsedGroups = reactive(new Set<string>())

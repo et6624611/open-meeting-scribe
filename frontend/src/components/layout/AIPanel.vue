@@ -1,7 +1,11 @@
 <template>
   <div class="ai" :class="{ 'is-collapsed': layout.aiCollapsed }">
-    <button class="ai-toggle" @click="layout.toggleAi()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    <button class="ai-toggle"
+      :title="layout.aiCollapsed ? '展开助手' : '收起助手'"
+      :aria-label="layout.aiCollapsed ? '展开助手' : '收起助手'"
+      :aria-expanded="!layout.aiCollapsed"
+      @mousedown="onToggleDown($event)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
     <div class="ai-collapsed-strip">
       <div class="ai-collapsed-icon" @click="layout.toggleAi()">
@@ -15,9 +19,9 @@
         <span class="ai-header-title">AI 助手</span>
       </div>
       <div class="ai-panel-header-right">
-        <button class="ai-header-btn" @click="chat.clearConversation()" title="清空对话">
+        <IconButton class="ai-header-btn" label="清空对话" @click="chat.clearConversation()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </button>
+        </IconButton>
       </div>
     </div>
     <div class="ai-panel-context">
@@ -29,92 +33,86 @@
       <div class="ai-panel-tabs-list">
         <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'chat' }" @click="aiTab = 'chat'">对话</button>
         <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'analysis' }" @click="aiTab = 'analysis'">分析</button>
-        <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'commands' }" @click="aiTab = 'commands'">指令</button>
       </div>
     </div>
 
-    <!-- 会话标签栏 -->
+    <!-- 会话标签栏（分段控件） -->
     <div v-show="aiTab === 'chat'" class="ai-session-tabs">
       <div class="ai-session-tabs-scroll">
         <button
-          v-for="s in aiSessions.sessions" :key="s.id"
-          class="ai-session-tab" :class="{ 'is-active': s.id === aiSessions.currentBucket.activeSessionId }"
+          v-for="s in visibleSessions" :key="s.id"
+          class="ai-session-seg" :class="{ 'is-active': s.id === aiSessions.currentBucket.activeSessionId }"
           @click="onSwitchSession(s.id)"
-          :title="s.name"
+          @mouseenter="segHover = s.id"
+          @mouseleave="segHover = null"
         >
-          <span class="ai-session-tab-label">{{ s.name }}</span>
-          <span class="ai-session-tab-actions">
-            <button class="ai-session-tab-rename" @click.stop="onRenameSession(s.id)" title="重命名" aria-label="重命名">
+          <input
+            v-if="renamingId === s.id"
+            ref="renameInputRef"
+            class="ai-session-seg-input"
+            v-model="renameInput"
+            @keydown="onRenameKey"
+            @blur="confirmRename"
+            @click.stop
+            :aria-label="'重命名会话'"
+          />
+          <span v-else class="ai-session-seg-label">{{ s.name }}</span>
+          <span class="ai-session-seg-dot"></span>
+          <span v-if="segHover === s.id && s.id !== aiSessions.currentBucket.activeSessionId && renamingId !== s.id" class="ai-session-seg-actions">
+            <IconButton class="ai-session-seg-action" label="重命名" @click.stop="startRename(s.id)">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3-9 9H2.5v-3z"/></svg>
-            </button>
-            <button class="ai-session-tab-close" @click.stop="onDeleteSession(s.id)" title="删除会话" aria-label="删除会话">&times;</button>
+            </IconButton>
+            <IconButton class="ai-session-seg-action is-close" label="删除" @click.stop="onDeleteSession(s.id)">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8"/><path d="M12 4l-8 8"/></svg>
+            </IconButton>
           </span>
         </button>
       </div>
-      <button class="ai-session-add" @click="onNewSession()" title="新建会话" aria-label="新建会话">
+      <div v-if="overflowSessions.length > 0" class="ai-session-overflow">
+        <IconButton
+          class="ai-session-overflow-btn"
+          :class="{ 'is-active': showOverflowMenu }"
+          :label="'更多会话 (' + overflowSessions.length + ')'"
+          @click.stop="showOverflowMenu = !showOverflowMenu"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg>
+        </IconButton>
+        <div v-if="showOverflowMenu" class="ai-session-overflow-menu" @click.stop>
+          <div
+            v-for="s in overflowSessions" :key="s.id"
+            class="ai-session-overflow-item"
+            :class="{ 'is-active': s.id === aiSessions.currentBucket.activeSessionId }"
+            @click="onSwitchSession(s.id); showOverflowMenu = false"
+          >
+            <span class="ai-session-overflow-item-label">{{ s.name }}</span>
+            <span class="ai-session-overflow-item-actions">
+              <IconButton class="ai-session-seg-action" label="重命名" @click.stop="startRename(s.id)">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3-9 9H2.5v-3z"/></svg>
+              </IconButton>
+              <IconButton class="ai-session-seg-action is-close" label="删除" @click.stop="onDeleteSession(s.id); showOverflowMenu = false">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8"/><path d="M12 4l-8 8"/></svg>
+              </IconButton>
+            </span>
+          </div>
+        </div>
+      </div>
+      <IconButton class="ai-session-add" label="新建会话" show-label @click="onNewSession()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-        <span>新建</span>
-      </button>
+      </IconButton>
     </div>
 
     <!-- 对话 Tab -->
     <div v-show="aiTab === 'chat'" class="ai-feed" ref="feedRef">
-      <div v-if="chat.messages.value.length === 0" class="ai-guidance is-active">
-        <div class="ai-guidance-header">
-          <div class="ai-guidance-icon" v-html="guidance.guidance.value.icon"></div>
-          <div class="ai-guidance-title">{{ guidance.guidance.value.title }}</div>
-          <div class="ai-guidance-sub">{{ guidance.guidance.value.sub }}</div>
-        </div>
-        <div class="ai-guidance-context">
-          <span v-for="ctx in guidance.guidance.value.contexts" :key="ctx" class="ai-guidance-ctx-tag">{{ ctx }}</span>
-        </div>
-        <div>
-          <div class="ai-guidance-section-label">推荐提问</div>
-          <div class="ai-guidance-prompts">
-            <button v-for="(p, pi) in guidance.guidance.value.prompts" :key="pi" class="ai-guidance-prompt" @click="chat.sendRaw(p.text)">
-              <span class="gp-icon" v-html="p.icon"></span>
-              {{ p.text }}
-            </button>
-          </div>
-        </div>
-        <div class="conv-quick-cmds">
-          <button class="conv-qcmd" @click="chat.sendRaw('请从会议内容中提取关键信息并生成结构化纪要。')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
-            生成会议纪要
-          </button>
-          <button class="conv-qcmd" @click="chat.sendRaw('请从会议内容中提取所有待办事项，明确责任人和截止时间。')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            提取待办事项
-          </button>
-          <button class="conv-qcmd" @click="chat.sendRaw('请分析本次会议中各发言人的核心观点和论据。')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-            分析发言要点
-          </button>
-          <button class="conv-qcmd" @click="chat.sendRaw('请总结本次会议做出的关键决策及决策依据。')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            总结关键决策
-          </button>
-          <button class="conv-qcmd" @click="chat.sendRaw('请识别会议讨论中提到的风险点和未解决的争议。')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            识别风险与争议
-          </button>
-        </div>
-        <div class="ai-guidance-hint">
-          输入 <kbd>/</kbd> 查看所有指令
-        </div>
-      </div>
       <div v-for="(msg, i) in chat.messages.value" :key="i" class="ai-msg" :class="{ 'is-user': msg.role === 'user' }">
         <div class="ai-bubble" v-html="fmt(msg.content)"></div>
-        <!-- 插入纪要/笔记按钮（仅 assistant 消息） -->
+        <!-- 插入纪要/随记按钮（仅 assistant 消息） -->
         <div v-if="msg.role === 'assistant' && msg.content" class="ai-msg-actions">
-          <button class="ai-insert-btn" @click="onInsertToSummary(msg.content)" title="插入到纪要">
+          <IconButton class="ai-insert-btn" label="插入纪要" show-label @click="onInsertToSummary(msg.content)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9,15 12,12 15,15"/></svg>
-            插入纪要
-          </button>
-          <button class="ai-insert-btn" @click="onInsertToNotes(msg.content)" title="插入到笔记">
+          </IconButton>
+          <IconButton class="ai-insert-btn" label="插入随记" show-label @click="onInsertToNotes(msg.content)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            插入笔记
-          </button>
+          </IconButton>
         </div>
         <!-- 改写 Diff 视图（仅最后一条 assistant 消息且存在改写挂起） -->
         <div v-if="quoteRef.rewritePending.value && i === chat.messages.value.length - 1 && msg.role === 'assistant'" class="diff-view">
@@ -127,18 +125,11 @@
             <p style="font-size:11px;color:var(--muted);font-style:italic;">AI 改写结果将替换上方删除内容</p>
           </div>
           <div class="diff-actions">
-            <button class="diff-accept-btn" @click="onAcceptRewrite(msg.content)">
+            <IconButton class="diff-accept-btn" label="替换原文" show-label @click="onAcceptRewrite(msg.content)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-              替换原文
-            </button>
+            </IconButton>
             <button class="diff-reject-btn" @click="quoteRef.clearRewrite()">放弃</button>
           </div>
-        </div>
-        <!-- 跟进建议（仅最后一条 assistant 消息） -->
-        <div v-if="chat.followUps.value.length && i === chat.messages.value.length - 1 && msg.role === 'assistant'" class="follow-up-suggestions">
-          <button v-for="(s, si) in chat.followUps.value" :key="si" class="follow-up-chip" @click="chat.sendRaw(s.text)">
-            <span v-html="s.icon"></span>{{ s.text }}
-          </button>
         </div>
         <!-- AI 操作校验结果展示 -->
         <div v-if="chat.verifiedChanges.value.length && i === chat.messages.value.length - 1 && msg.role === 'assistant'" class="verified-changes-block">
@@ -228,21 +219,14 @@
       </template>
     </div>
 
-    <!-- 指令 Tab -->
-    <div v-show="aiTab === 'commands'" class="ai-feed">
-      <div class="ai-cmd-list">
-        <div v-for="group in commandGroups" :key="group.label" class="ai-cmd-group">
-          <div class="ai-cmd-group-label">{{ group.label }}</div>
-          <button v-for="cmd in group.cmds" :key="cmd.key" class="ai-cmd-item" @click="runCommand(cmd)">
-            <span class="cmd-key">{{ cmd.key }}</span>
-            <span class="cmd-label">{{ cmd.desc }}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 输入区（仅对话 Tab） -->
     <div v-show="aiTab === 'chat'" class="ai-input-zone">
+      <!-- 跟进建议（始终显示在输入框上方，滚动区外） -->
+      <div class="ai-suggestions-bar">
+        <button v-for="(s, si) in chat.displaySuggestions.value" :key="si" class="follow-up-chip" @click="chat.sendRaw(s.text)">
+          <span v-html="s.icon"></span>{{ s.text }}
+        </button>
+      </div>
       <!-- 停止生成 -->
       <div class="ai-stop-gen" :class="{ 'is-visible': chat.isLoading.value }">
         <button class="ai-stop-gen-btn" @click="chat.stopGeneration()">
@@ -261,46 +245,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
-      <!-- 指令面板 -->
-      <div class="ai-cmd-palette" :class="{ 'is-open': cmds.cmdOpen.value && filteredCmds.length > 0 }">
-        <template v-if="filteredCmds.length > 0">
-          <!-- 高频指令 -->
-          <template v-if="!isFiltered && frequentCmds.length > 0">
-            <button v-for="(c, ci) in frequentCmds" :key="c.key" class="ai-cmd-item" :class="{ 'is-active': cmds.cmdIndex.value === ci }" @click="runCommand(c)">
-              <span class="cmd-key">{{ c.key }}</span>
-              <span class="cmd-label">{{ c.desc }}</span>
-            </button>
-          </template>
-          <!-- 更多指令 -->
-          <template v-if="!isFiltered && restCmds.length > 0">
-            <div class="ai-cmd-group-header">
-              <span>更多指令</span>
-              <button class="ai-cmd-group-toggle" :class="{ 'is-expanded': cmdGroupExpanded }" @click="cmdGroupExpanded = !cmdGroupExpanded" aria-label="展开更多指令">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg>
-                <span>{{ restCmds.length }}</span>
-              </button>
-            </div>
-            <div class="ai-cmd-group-body" :class="{ 'is-expanded': cmdGroupExpanded }">
-              <button v-for="(c, ci) in restCmds" :key="c.key" class="ai-cmd-item" :class="{ 'is-active': cmds.cmdIndex.value === frequentCmds.length + ci }" @click="runCommand(c)">
-                <span class="cmd-key">{{ c.key }}</span>
-                <span class="cmd-label">{{ c.desc }}</span>
-              </button>
-            </div>
-          </template>
-          <!-- 搜索结果（有过滤条件时直接平铺） -->
-          <template v-if="isFiltered">
-            <button v-for="(c, ci) in filteredCmds" :key="c.key" class="ai-cmd-item" :class="{ 'is-active': cmds.cmdIndex.value === ci }" @click="runCommand(c)">
-              <span class="cmd-key">{{ c.key }}</span>
-              <span class="cmd-label">{{ c.desc }}</span>
-            </button>
-          </template>
-        </template>
-        <div v-else-if="inputText.startsWith('/')" class="ai-cmd-empty">无匹配指令</div>
-      </div>
       <div class="ai-input-box">
         <textarea
           v-model="inputText"
-          placeholder="输入问题，/ 打开指令…"
+          placeholder="输入问题…"
           rows="1"
           ref="inputRef"
           @keydown="handleInputKey"
@@ -316,36 +264,41 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
 import { useAiChat } from '@/composables/useAiChat'
-import { useAiCommands } from '@/composables/useAiCommands'
 import { useQuoteRef } from '@/composables/useQuoteRef'
-import type { AiCommand } from '@/composables/useAiCommands'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAiAnalysis } from '@/composables/useAiAnalysis'
-import { useAiGuidance } from '@/composables/useAiGuidance'
 import { showToast } from '@/composables/useToast'
+import { beginResize } from '@/composables/useDivider'
+import IconButton from '@/components/common/IconButton.vue'
 
-const router = useRouter()
 const taskStore = useTaskStore()
 const layout = useLayoutStore()
+
+function onToggleDown(e: MouseEvent) {
+  beginResize(e, 'right', { onClick: () => layout.toggleAi(), resizable: !layout.aiCollapsed })
+}
 const chat = useAiChat()
-const cmds = useAiCommands()
 const quoteRef = useQuoteRef()
 const aiSessions = useAiSessionsStore()
 const analysis = useAiAnalysis()
-const guidance = useAiGuidance()
 
 const aiTab = ref('chat')
 const inputText = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const feedRef = ref<HTMLElement | null>(null)
-const cmdGroupExpanded = ref(false)
 
-const currentStatus = computed(() => taskStore.currentTask?.status ?? null)
+const showOverflowMenu = ref(false)
+const segHover = ref<string | null>(null)
+const renamingId = ref<string | null>(null)
+const renameInput = ref('')
+const renameInputRef = ref<HTMLInputElement | HTMLInputElement[] | null>(null)
+const MAX_VISIBLE_SESSIONS = 3
+const visibleSessions = computed(() => aiSessions.sessions.slice(0, MAX_VISIBLE_SESSIONS))
+const overflowSessions = computed(() => aiSessions.sessions.slice(MAX_VISIBLE_SESSIONS))
 
 const todoPercent = computed(() => {
   const ts = analysis.todoStats.value
@@ -359,26 +312,26 @@ function formatCount(n: number): string {
   return String(n)
 }
 
-/** 注册指令列表 */
 onMounted(() => {
-  cmds.registerCommands(buildCommands())
   window.addEventListener('quote-to-ai', onQuoteToAiEvent)
   window.addEventListener('global-ai-focus', onGlobalAiFocus)
+  document.addEventListener('click', onDocClickCloseOverflow)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('quote-to-ai', onQuoteToAiEvent)
   window.removeEventListener('global-ai-focus', onGlobalAiFocus)
+  document.removeEventListener('click', onDocClickCloseOverflow)
 })
+
+function onDocClickCloseOverflow() {
+  showOverflowMenu.value = false
+}
 
 function onGlobalAiFocus() {
   aiTab.value = 'chat'
   nextTick(() => {
     inputRef.value?.focus()
-    // 如果输入框为空，插入 "/" 触发指令面板
-    if (!inputText.value) {
-      inputText.value = '/'
-    }
   })
 }
 
@@ -399,11 +352,6 @@ function onQuoteToAiEvent(e: Event) {
   })
 }
 
-/** 当任务变化时重新注册（action 闭包捕获最新状态） */
-watch(() => taskStore.currentTaskId, () => {
-  cmds.registerCommands(buildCommands())
-})
-
 function onNewSession() {
   aiSessions.createNewSession()
   nextTick(() => scrollFeed())
@@ -415,98 +363,49 @@ function onSwitchSession(sessionId: string) {
   nextTick(() => scrollFeed())
 }
 
-function onDeleteSession(sessionId: string) {
-  aiSessions.deleteSession(sessionId)
-  nextTick(() => scrollFeed())
-}
-
-function onRenameSession(sessionId: string) {
+function startRename(sessionId: string) {
   const session = aiSessions.sessions.find(s => s.id === sessionId)
   if (!session) return
-  const newName = prompt('重命名会话', session.name)
-  if (newName?.trim()) {
-    aiSessions.renameSession(sessionId, newName)
+  renamingId.value = sessionId
+  renameInput.value = session.name
+  showOverflowMenu.value = false
+  nextTick(() => {
+    const el = Array.isArray(renameInputRef.value) ? renameInputRef.value[0] : renameInputRef.value
+    el?.focus()
+    el?.select()
+  })
+}
+
+function confirmRename() {
+  if (renamingId.value && renameInput.value.trim()) {
+    aiSessions.renameSession(renamingId.value, renameInput.value.trim())
   }
+  renamingId.value = null
+}
+
+function cancelRename() {
+  renamingId.value = null
+}
+
+function onRenameKey(e: KeyboardEvent) {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    confirmRename()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    cancelRename()
+  }
+}
+
+function onDeleteSession(sessionId: string) {
+  if (renamingId.value === sessionId) cancelRename()
+  aiSessions.deleteSession(sessionId)
+  nextTick(() => scrollFeed())
 }
 
 function followUps_reset() {
   chat.followUps.value = []
   chat.injectPrompt.value = null
-}
-
-function buildCommands(): AiCommand[] {
-  return [
-    { key: '/进度', desc: '目前讨论到哪了', when: 'all', action: () => chat.sendRaw('目前讨论到哪了？请精炼总结当前进度') },
-    { key: '/回顾', desc: '回顾最近 N 分钟的讨论要点', when: 'all', action: () => chat.sendRaw('回顾最近 5 分钟的讨论要点') },
-    { key: '/笔记', desc: '添加一条手动笔记', when: 'all', action: () => {
-      const text = prompt('输入笔记内容：')
-      if (text) chat.sendRaw(`笔记：${text}`)
-    }},
-    { key: '/对齐', desc: '将当前讨论与项目档案做差异比对', when: 'all', action: () => chat.sendRaw('对照项目档案，当前讨论有哪些偏离既定方案的地方？') },
-    { key: '/待办', desc: '提取本次会议的待办事项', when: 'completed', action: () => chat.sendRaw('提取所有待办事项') },
-    { key: '/结论', desc: '总结会议关键结论', when: 'completed', action: () => chat.sendRaw('总结关键结论') },
-    { key: '/总结', desc: '生成结构化会议总结', when: 'completed', action: () => chat.sendRaw('生成结构化会议总结') },
-    { key: '/发言', desc: '分析各发言人发言占比', when: 'completed', action: () => chat.sendRaw('分析各发言人的发言时长占比') },
-    { key: '/导出', desc: '导出纪要到中心区域', when: 'completed', trigger: true, action: () => {
-      chat.sendRaw('导出会议纪要')
-      showToast('已触发「导出」→ 请在中心区域查看导出预览')
-    }},
-    { key: '/归档', desc: '归档本次会议记录', when: 'completed', trigger: true, action: () => {
-      chat.sendRaw('归档本次会议')
-      showToast('已触发「归档」→ 请在中心区域确认')
-    }},
-    { key: '/重新生成', desc: '重新生成章节摘要', when: 'completed', trigger: true, action: () => chat.sendRaw('重新生成纪要') },
-    { key: '/录音', desc: '开始/停止录音', when: 'all', action: () => {
-      const task = taskStore.currentTask
-      if (task?.status === 'recording') {
-        router.push(`/recording/${task.task_id}`)
-      } else {
-        router.push('/')
-      }
-    }},
-    { key: '/历史', desc: '查看全部会议', when: 'all', action: () => { router.push('/library') }},
-    { key: '/热词', desc: '打开热词管理', when: 'all', action: () => { router.push('/hotwords') }},
-    { key: '/清除', desc: '清除当前对话历史', when: 'all', action: () => { chat.clearConversation() }},
-    { key: '/帮助', desc: '查看所有可用指令', when: 'all', action: () => showCommandHelp() },
-  ]
-}
-
-/** 当前过滤后的指令 */
-const filteredCmds = computed(() => {
-  if (!inputText.value.startsWith('/')) return []
-  const query = inputText.value.slice(1).toLowerCase()
-  return cmds.filterCommands(query, currentStatus.value)
-})
-
-const isFiltered = computed(() => filteredCmds.value.length < cmds.getAvailable(currentStatus.value).length)
-
-const frequentCmds = computed(() => filteredCmds.value.filter(c => cmds.isFrequent(c.key)))
-const restCmds = computed(() => filteredCmds.value.filter(c => !cmds.isFrequent(c.key)))
-
-/** 指令 Tab 分组 */
-const commandGroups = computed(() => {
-  const available = cmds.getAvailable(currentStatus.value)
-  return [
-    { label: '通用', cmds: available.filter(c => c.when === 'all') },
-    { label: '录制中', cmds: available.filter(c => c.when === 'recording') },
-    { label: '已完成', cmds: available.filter(c => c.when === 'completed') },
-  ].filter(g => g.cmds.length > 0)
-})
-
-/** 执行指令 */
-function runCommand(cmd: AiCommand) {
-  cmds.close()
-  inputText.value = ''
-  cmd.action()
-}
-
-/** 显示命令帮助 */
-function showCommandHelp() {
-  const available = cmds.getAvailable(currentStatus.value)
-  const statusLabel = currentStatus.value === 'recording' ? '录制中' : currentStatus.value === 'completed' ? '已完成' : '通用'
-  const text = `当前状态「${statusLabel}」可用指令：\n` + available.map(c => `${c.key} — ${c.desc}`).join('\n')
-  chat.messages.value.push({ role: 'assistant', content: text })
-  aiSessions.persist()
 }
 
 /** 发送消息 */
@@ -528,50 +427,15 @@ async function onSend() {
 
 /** 输入框键盘事件 */
 function handleInputKey(e: KeyboardEvent) {
-  const isOpen = cmds.cmdOpen.value && filteredCmds.value.length > 0
-
-  if (isOpen) {
-    const items = filteredCmds.value
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      cmds.moveDown(items.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      cmds.moveUp()
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (cmds.cmdIndex.value >= 0 && items[cmds.cmdIndex.value]) {
-        runCommand(items[cmds.cmdIndex.value])
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      cmds.close()
-    }
-    return
-  }
-
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     onSend()
   }
 }
 
-/** 输入变化 → 触发指令面板 */
+/** 输入变化 → 自动调整高度 */
 function handleInputChange() {
   autoResize()
-  const val = inputText.value
-  if (val.startsWith('/')) {
-    const query = val.slice(1).toLowerCase()
-    const available = cmds.getAvailable(currentStatus.value)
-    const filtered = available.filter(c => c.key.slice(1).toLowerCase().includes(query))
-    if (filtered.length > 0) {
-      cmds.open()
-    } else {
-      cmds.close()
-    }
-  } else {
-    cmds.close()
-  }
 }
 
 function autoResize() {
@@ -619,13 +483,13 @@ function onInsertToSummary(content: string) {
   }
 }
 
-/** 插入内容到笔记 */
+/** 插入内容到随记 */
 function onInsertToNotes(content: string) {
   const ok = quoteRef.insertToNotes(content)
   if (ok) {
-    showToast('已插入到笔记', 'success')
+    showToast('已插入到随记', 'success')
   } else {
-    showToast('请先打开一个会议的笔记页面', 'warn')
+    showToast('请先打开一个会议的随记页面', 'warn')
   }
 }
 

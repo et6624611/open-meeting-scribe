@@ -155,7 +155,7 @@ async function saveAll(silent = false) {
   try {
     await Promise.all([saveHotwords(words), saveHotwordMappings(mappings)])
     saveAssignments()
-    if (!silent) showToast('热词已保存，下次转写生效', 'success')
+    if (!silent) showToast('热词已保存，下次识别生效', 'success')
   } catch (e: any) {
     if (!silent) showToast('保存失败: ' + e.message, 'error')
   }

@@ -4,7 +4,7 @@
 .ai { transition: flex-basis 0.22s cubic-bezier(0.2, 0, 0, 1), min-width 0.22s cubic-bezier(0.2, 0, 0, 1); }
 
 /* ─── 折叠/展开 ─── */
-.ai-toggle { position: absolute; top: 10px; left: -13px; width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-strong); display: grid; place-items: center; color: var(--muted); z-index: 20; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; }
+.ai-toggle { position: absolute; top: 50%; left: -9px; transform: translateY(-50%); width: 18px; height: 56px; border-radius: 9px; background: var(--surface); border: 1px solid var(--border-strong); display: grid; place-items: center; color: var(--muted); z-index: 20; transition: all 0.15s; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; }
 .ai-toggle:hover { background: var(--surface-2); color: var(--fg); border-color: var(--fg); }
 .ai-toggle svg { width: 14px; height: 14px; transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1); }
 .ai.is-collapsed .ai-toggle svg { transform: rotate(180deg); }
@@ -44,11 +44,34 @@
 .ai-panel-tab:hover { color: var(--fg); }
 .ai-panel-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
-/* ─── 会话子标签 ─── */
-.ai-session-tabs { display: flex; align-items: center; height: 34px; padding: 0 var(--s-2) 0 var(--s-4); border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; gap: var(--s-1); }
-.ai-session-tab { display: flex; align-items: center; gap: 3px; padding: 3px 8px; font-size: var(--fs-11); color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.12s; white-space: nowrap; flex-shrink: 0; }
-.ai-session-tab:hover { color: var(--fg); background: var(--surface-2); }
-.ai-session-tab.is-active { color: var(--accent); background: var(--surface-2); border-color: var(--border); font-weight: 500; }
+/* ─── 会话子标签（分段控件） ─── */
+.ai-session-tabs { display: flex; align-items: center; height: 38px; padding: 0 var(--s-2) 0 var(--s-3); border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; gap: var(--s-1); position: relative; }
+.ai-session-tabs-scroll { display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--surface-2, oklch(0.96 0 0)); border-radius: 8px; }
+.ai-session-seg { display: flex; align-items: center; gap: 4px; padding: 4px 10px; font-size: var(--fs-11); color: var(--muted); background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; flex-shrink: 0; position: relative; }
+.ai-session-seg:hover { color: var(--fg); background: oklch(0.94 0 0 / 0.6); }
+.ai-session-seg.is-active { color: var(--fg); background: var(--bg, #fff); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
+.ai-session-seg-label { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.ai-session-seg-input { width: 72px; font-size: var(--fs-11); color: var(--fg); background: var(--bg, #fff); border: 1px solid var(--accent); border-radius: 3px; padding: 0 4px; line-height: 18px; outline: none; font-family: inherit; }
+.ai-session-seg-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; opacity: 0; transition: opacity 0.12s; }
+.ai-session-seg-actions { display: flex; align-items: center; gap: 1px; margin-left: 2px; opacity: 0; transition: opacity 0.1s; }
+.ai-session-seg:hover .ai-session-seg-actions { opacity: 1; }
+.ai-session-seg.is-active:hover .ai-session-seg-actions { opacity: 0; }
+.ai-session-seg.is-active:hover .ai-session-seg-dot { opacity: 1; }
+.ai-session-seg-action { width: 16px; height: 16px; border-radius: 3px; display: grid; place-items: center; color: var(--muted); transition: all 0.1s; padding: 0; }
+.ai-session-seg-action svg { width: 10px; height: 10px; }
+.ai-session-seg-action:hover { background: var(--surface-3); color: var(--fg); }
+.ai-session-seg-action.is-close:hover { background: oklch(0.65 0.18 25 / 0.15); color: oklch(0.55 0.2 25); }
+.ai-session-overflow { margin-left: auto; flex-shrink: 0; }
+.ai-session-overflow-btn { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); transition: all 0.12s; }
+.ai-session-overflow-btn:hover { background: var(--surface-2); color: var(--fg); }
+.ai-session-overflow-btn.is-active { color: var(--accent); background: var(--surface-2); }
+.ai-session-overflow-menu { position: absolute; top: calc(100% - 2px); right: var(--s-2); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.1); z-index: 100; min-width: 150px; padding: 4px; overflow: hidden; }
+.ai-session-overflow-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 4px; cursor: pointer; transition: background 0.1s; }
+.ai-session-overflow-item:hover { background: var(--surface-2); }
+.ai-session-overflow-item.is-active { background: var(--accent-soft); }
+.ai-session-overflow-item-label { font-size: var(--fs-12); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.ai-session-overflow-item-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; }
+.ai-session-overflow-item:hover .ai-session-overflow-item-actions { opacity: 1; }
 .ai-session-add { width: 24px; height: 24px; border-radius: var(--radius-sm); display: grid; place-items: center; color: var(--subtle); transition: all 0.12s; flex-shrink: 0; }
 .ai-session-add:hover { background: var(--surface-2); color: var(--accent); }
 
@@ -64,6 +87,9 @@
 .ai-bubble code { font-family: var(--font-mono); font-size: var(--fs-12); background: var(--surface-2); padding: 1px 4px; border-radius: 3px; }
 .ai-bubble pre { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; margin: 6px 0; overflow-x: auto; }
 .ai-bubble pre code { background: transparent; padding: 0; }
+
+/* ─── 跟进建议栏（输入区顶部，滚动区外） ─── */
+.ai-suggestions-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: var(--s-2) 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); }
 
 /* ─── 输入区 ─── */
 .ai-input-zone { border-top: 1px solid var(--border); background: var(--surface); padding: var(--s-3) var(--s-4) var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }

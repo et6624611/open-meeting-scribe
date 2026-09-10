@@ -1,22 +1,23 @@
 <template>
   <div
     class="sb-tl-item"
-    :class="{ 'is-active': isActive }"
+    :class="{ 'is-active': isActive, 'is-latest': isLatest, 'is-playing': player.taskId === task.task_id }"
     @click="$emit('select', task.task_id)"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
   >
-    <!-- 时间 -->
-    <div class="sb-tl-time">{{ timeStr }}</div>
-
     <!-- 标题 -->
-    <div class="sb-tl-title">{{ displayTitle }}</div>
+    <div class="sb-tl-title">
+      <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
+      <span>{{ displayTitle }}</span>
+    </div>
 
-    <!-- 元数据 -->
+    <!-- 元数据：时间 + 状态 + 时长 -->
     <div class="sb-tl-meta">
+      <span v-if="timeStr" class="sb-tl-time">{{ timeStr }}</span>
       <span class="sb-tl-dot" :class="dotClass"></span>
       <span class="sb-tl-status">{{ statusLabel }}</span>
-      <span class="sb-tl-dur">{{ durationStr }}</span>
+      <span v-if="durationStr" class="sb-tl-dur">{{ durationStr }}</span>
     </div>
 
     <!-- 失败详情 -->
@@ -35,7 +36,13 @@
     </div>
 
     <!-- 更多按钮 -->
-    <button class="sb-more" @click.stop="onMenuClick" title="更多">
+    <button
+      class="sb-more"
+      :data-tip="showContextMenu ? '' : '更多'"
+      @click.stop="onMenuClick"
+      @mouseenter="onMoreEnter"
+      @mouseleave="onMoreLeave"
+    >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
         <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
       </svg>
@@ -80,10 +87,15 @@
 import { computed, ref } from 'vue'
 import type { Task } from '@/api/types'
 import { STATUS_CONFIG } from '@/api/types'
+import { usePlayerStore } from '@/stores/player'
+import PlayingEq from '@/components/common/PlayingEq.vue'
+
+const player = usePlayerStore()
 
 const props = defineProps<{
   task: Task
   isActive: boolean
+  isLatest?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -126,7 +138,7 @@ const dotClass = computed(() => {
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
-    recording: '录音中', pending: '等待处理', transcribing: '转写中',
+    recording: '录音中', pending: '等待处理', transcribing: '识别中',
     awaiting_mapping: '待关联', summarizing: '生成纪要',
     completed: '已完成', failed: '处理失败',
   }
@@ -154,6 +166,8 @@ function onMouseEnter(e: MouseEvent) {
   hoverTimer = setTimeout(() => {
     // 定时到期时再次检查：若期间打开了菜单或移到更多按钮，则不显示
     if (showContextMenu.value) return
+    const moreBtn = el.querySelector('.sb-more')
+    if (moreBtn && moreBtn.matches(':hover')) return
     const rect = el.getBoundingClientRect()
     hoverStyle.value = {
       left: (rect.right + 8) + 'px',
@@ -166,6 +180,16 @@ function onMouseEnter(e: MouseEvent) {
 function onMouseLeave() {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
   showHoverCard.value = false
+}
+
+// 更多按钮互斥：光标在按钮上时取消悬停卡片，离开后恢复
+function onMoreEnter() {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
+  showHoverCard.value = false
+}
+function onMoreLeave() {
+  // 光标离开更多按钮但仍在卡片内时，重新触发悬停检测
+  // 由父元素的 @mouseenter 自然处理，这里不做额外操作
 }
 
 const hoverDate = computed(() => {

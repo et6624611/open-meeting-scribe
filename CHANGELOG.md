@@ -3,13 +3,311 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: 王永亮
 created_at: 2026-09-03
-updated_at: 2026-09-09
+updated_at: 2026-09-10
 status: published
 ---
 
 # CHANGELOG — 迭代日志
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
+
+## [v2.x-minutes-play-btn-spec] - 2026-09-10
+
+**变更**：会议纪要页音频条播放按钮对齐录音页 `.btn-pause` 的「图标 + 动作文字」药丸范式。原为 28px 中性描边圆形纯图标按钮，改为 accent 填充药丸（`border-radius: 999px`，16px 图标 + `var(--fs-13)`/500 文字）；文字写**即将执行的动作**而非当前状态——播放中显示暂停图标 +「暂停」，已暂停显示播放图标 +「播放」，图标几何与录音页完全一致。`title` / `aria-label` 补为完整语义（「暂停播放」/「播放录音」）。控制条总高仅 44px（录音页约 64px），故高度按密度取 32px，形态与配色不变。
+
+- `frontend/src/views/GeneratingView.vue` — `.gen-audio-play` 按钮内新增 `.gen-audio-play-text` 状态文字，`v-if/v-else` 图标沿用录音页 16px 几何，补 `title`；移除只服务旧圆形底座的 `gen-audio-ctrl` 类
+- `frontend/src/styles/legacy-views.css` — `.gen-audio-play` 由圆形描边改为 accent 药丸并新增 `.gen-audio-play-text`；删除已无引用的 `.gen-audio-ctrl` 三条规则
+- `docs/design/DESIGN_DECISIONS.md` §10.9 — 新增「状态切换按钮 · 文字写『即将执行的动作』」，把 `.btn-pause` 固化为跨页共享规范（含高度按控制条密度取值规则）
+
+**已知边界**：药丸变宽 50px（28→78px）使 `.gen-control-zone` 自然内容宽度升到约 696px（进度条压到 `min-width` 后约 652px）。`.main` 的宽度档位类 `is-narrow` / `is-xnarrow`（会把音频条拆成独立整行并隐藏时间显示）在 Vue 版中**无任何 JS 驱动**，属休眠规则，因此主区宽度落在约 602–652px 区间时控制条会比改动前更早溢出。修复该档位机制是独立议题，本次未扩大范围。
+
+## [v2.x-global-player-state] - 2026-09-10
+
+**新增**：全局播放态。音频播放从纪要页组件内提升为 Pinia 全局单例（`stores/player.ts` 持有唯一 `HTMLAudioElement`），离开纪要页后播放继续不中断。播放中的会议在三处统一标识：会议库列表行、侧边栏时间线条目（`PlayingEq` 声纹 + 标题转 `--accent`），以及**非纪要页**顶栏的播放胶囊 `.player-pill`（借鉴录音中 `.rec-pill` 形态：声纹 + 标题 + 时间 + 可点击进度条 + 播放/暂停、倍速、打开纪要、停止）。播放任务变化时侧边栏自动展开所属分组并滚动定位到该条目（`scrollIntoView({ block: 'nearest' })`）。
+
+**变更**：`GeneratingView.vue` 移除组件内 audio 元素与本地播放状态（`audioPlaying` / `audioSpeed` / `audioProgress` / `onTimeUpdate` / `stopAudio`），改由 player store 驱动；播放排他性改由 `load()` 内先 `release()` 旧元素结构性保证，取代「组件卸载即停止」方案。播放跟随（当前行高亮与滚动）改由 `watch(player.currentTime)` 驱动，行为不变。
+
+- `frontend/src/stores/player.ts`（新增）— 全局播放器 store：`taskId` / `playing` / `currentTime` / `duration` / `speed` + 派生 `progress` / `timeStr`，方法 `load` / `toggle` / `seekToMs` / `seekPercent` / `cycleSpeed` / `stop` / `stopForTask`；播放中的任务被删除时自动释放
+- `frontend/src/components/common/PlayingEq.vue`（新增）— 三竖条声纹指示器，暂停态动画冻结并降透明度（不消失，保留「可接着播」提示）
+- `frontend/src/views/GeneratingView.vue` — 音频条改绑 player store（`player.timeStr` / `player.progress` / `cycleSpeed`）；删除本地 audio 元素与 `stopAudio`；`seekToTime(ms)` → `player.seekToMs(ms)`
+- `frontend/src/views/LibraryView.vue` — 行 `:class="{ 'is-playing': player.taskId === task.task_id }"`，标题前插入 `PlayingEq`
+- `frontend/src/components/task/TaskCard.vue` — 条目 `.is-playing` + 标题前 `PlayingEq`；向根元素透传 `data-task-id` 供定位查询
+- `frontend/src/components/task/TaskList.vue` — `watch(() => player.taskId)`（含 `immediate`）自动展开折叠分组并定位滚动
+- `frontend/src/components/layout/TopBar.vue` — 新增 `.player-pill`，显示条件 `player.taskId && route.name !== 'generating'`
+- `frontend/src/styles/topbar.css` `sidebar.css` `legacy-views.css` — 胶囊样式、播放中标题色、顶栏溢出保护与 ≤640px（隐藏标题）/ ≤480px（隐藏进度与时间）降级
+- `docs/design/DESIGN_DECISIONS.md` §15 — 记录播放态全局标识、顶栏胶囊作用域与侧边栏定位决策
+
+## [v2.x-transcript-click-to-seek] - 2026-09-10
+
+**新增**：会议纪要页原文行整行可点击跳转播放。点击转写行任意位置（文本气泡 / 行内空白 / 时间戳）即从该句 `begin_time` 开始播放，暂停态下点击同时启动播放；说话人区（说话人标签 / 定位按钮 / 绑定箭头）保持原有身份绑定与定位语义，点击不触发跳转。拖选原文时跳过跳转，避免划词工具栏刚弹出播放位置就被拽走。
+
+- `frontend/src/views/GeneratingView.vue` — `.ts-line` 新增 `@click`，`.spk-wrapper` 与时间戳 `.ts` 加 `@click.stop` 阻断冒泡；原 `seekToTime` 改名 `seekFromTranscriptClick` 并加入选区保护（`window.getSelection()` 非空时不跳转），时间戳与整行共用同一入口
+- `docs/design/DESIGN_DECISIONS.md` §13 — 记录原文行点击跳转播放与「划词优先」决策
+
+## [v2.x-summary-without-binding] - 2026-09-10
+
+**变更**：纪要生成不再等待说话人绑定确认。Stage 1 转写完成后若声纹/文本桥接未自动匹配，不再停留 `awaiting_mapping`，直接以空映射跑 Stage 2（纪要先以通用说话人标签生成）；服务重启时存量 `awaiting_mapping` 任务一并从 Stage 2 补跑。说话人绑定栏改为事后补充能力：存在未关联说话人时保留在纪要栏目上方（含原文可绑定标签），点击「确认关联」按真实身份重新生成纪要、全部关联后提示自然结束；「暂不关联」按任务级持久隐藏绑定栏。
+
+- `app/store.py` — `run_pipeline_task` 移除无自动匹配时的 `awaiting_mapping` 停留分支，改为始终运行 `_run_stage2_for_task`；`recover_interrupted_tasks` 将 `awaiting_mapping` 纳入 Stage 2 恢复范围
+- `frontend/src/views/GeneratingView.vue` — 绑定栏显示条件改为 `showBindingBar`（未关联数 > 0 且状态为 completed/awaiting_mapping 且未关闭）；原文标签可绑定态 / 定位按钮 / 箭头改由 `canBind` 控制；纪要面板移除「请先在上方绑定栏关联说话人身份」引导卡，统一为「纪要生成中」骨架屏；增量保存状态门槛放开到 completed；「暂不关联」改为持久隐藏且不再提交空映射；新增 watch 修复刷新时绑定映射初始化晚于 store 装载的竞态
+- `docs/design/DESIGN_DECISIONS.md` §7 — 补充绑定栏显示时机决策
+
+## [v2.x-minutes-breadcrumb] - 2026-09-10
+
+**变更**：会议纪要顶部标题恢复为面包屑形式（1.0 形态回归）。已关联项目显示 `项目 / {项目名} / {会议标题}`，未关联显示 `会议库 / {会议标题}`；祖先层级可点击跳转（`/projects`、`/library`），末级会议标题不可点击、悬停显示全文；中间层级限宽截断，不再挤掉会议标题。层级由 `task.project_id` 派生，刷新与直达链接下保持一致。
+
+- `frontend/src/views/GeneratingView.vue` — `.gen-breadcrumb` 由单一标题改为 `nav` 面包屑：新增 `breadcrumbTitle` / `breadcrumbs` computed，祖先层级渲染为 `button.gen-breadcrumb-item`（图标 + 标签），层级间 `/` 分隔
+- `frontend/src/styles/legacy-views.css` — `.gen-breadcrumb-item` 增加 `max-width: 14em; overflow: hidden`，新增 `.gen-breadcrumb-label` 省略号截断
+- `docs/design/DESIGN_DECISIONS.md` §14 — 记录顶部标题面包屑化决策
+
+## [v2.x-login-back-affordance] - 2026-09-10
+
+**新增**：登录页左上角可见返回按钮（`IconButton` + 「返回」文本 + `ESC` 键帽标识），点击关闭登录遮罩；键帽标识向用户明示 ESC 快捷键可完成同一返回操作，补齐全屏登录遮罩缺失的退出 affordance。
+
+**修复**：ESC 关闭登录遮罩原实现直接改 DOM class（`useKeyboardShortcuts.ts`），与 `LoginModal` 的 `visible` 状态脱钩——组件重渲染（如短信验证码冷却倒计时 tick）会把 `is-hidden` 抹掉导致遮罩「复活」。改为派发 `oms:hide-login` 事件由 `LoginModal` 统一更新状态，DOM 与 Vue 状态保持单一事实源。
+
+- `frontend/src/components/modals/LoginModal.vue` — 遮罩内新增 `.login-back-btn`（IconButton，label「返回（或按 ESC）」，label 插槽渲染「返回 + kbd ESC」）
+- `frontend/src/styles/legacy-views.css` — 新增 `.login-overlay .login-back-btn` 定位与键帽样式（绝对定位左上角，配色跟随主题变量）；登录卡片宽度 360px → 420px，改善表单呼吸空间
+- `frontend/src/composables/useKeyboardShortcuts.ts` — ESC 分支改派 `oms:hide-login` 事件
+- `docs/design/DESIGN_DECISIONS.md` §12 — 记录登录页退出 affordance 决策
+
+## [v2.x-library-header-and-btn-degradation] - 2026-09-09
+
+**新增**：通用响应式按钮组组件 `ResponsiveButtonGroup`（`frontend/src/components/common/ResponsiveButtonGroup.vue`），实现三级降级策略：容器宽度足够时图标+文字同显；不足时降级为仅图标；再不足时仅保留首个图标按钮，其余收进「更多」弹出菜单（复用 `usePopMenu` 定位规范，菜单 `Teleport` 到 body 以规避祖先 transform/overflow 对 fixed 定位与层叠上下文的劫持）。首页「麦克风录音 / 上传音频文件」已切换为该组件。
+
+**变更**：
+- `LibraryView.vue` — 「全部会议」标题、会议计数与搜索框整合到同一行（`.lib-header-bar`），提升信息密度；≤768px 时降级为上下堆叠
+- `Sidebar.vue` — `/library` 路由下隐藏侧边栏顶部「全部折叠 / 筛选」按钮与搜索行，搜索功能由 LibraryView 页面自身承载，避免双入口与窄幅侧边栏下的布局挤压
+
+## [v2.x-topbar-rec-pill-scope] - 2026-09-09
+
+**修复**：会议相关路由（`recording` / `processing` / `generating`）不再在顶栏叠加右上角录音中胶囊（`.rec-pill`），避免与页面自身头部/控制栏状态重复显示；左侧状态胶囊也不再以「转写中…」「已暂停」等录音态文字出现（录音页由视图头部与控制栏承载，非会议页由右上角 rec-pill 承载）。新建会议按钮的「返回录音」行为改为依赖 `hasRecordingTask`（是否存在录音中任务），与 rec-pill 是否在会议页面隐藏解耦。
+
+- `frontend/src/components/layout/TopBar.vue` — 新增 `MEETING_ROUTES` 常量与 `showRecPill` / `showStatePill` 计算属性；`showTaskInfo` 复用常量；新建按钮 class/title/click/icon/text 全部切换为 `hasRecordingTask` 驱动；顶栏左侧 state-pill 加 `v-if="showStatePill"` 条件
+- `docs/design/DESIGN_DECISIONS.md` §1 — 「顶栏遵循『标题、状态与视图』原则」补充：顶栏不放置功能入口，也不叠加录音中胶囊（录音态由页面自身或右上角 pill 承载）
+
+**已知边界情况**：若后端存在孤儿录音会话（音频流仍在运行但对应 task 未落盘，常见于服务重启后实时资源丢失而音频 pipe 未完全释放），`is_stream_recording()` 返回 true 但 `tasks[]` 中无 recording/paused 条目，此时前端 `hasRecordingTask = false`，新建按钮不会显示「返回录音」。此属后端状态不一致问题，需另行修复（见下文根因分析）。
+
+## [v2.x-sidebar-narrow-truncation] - 2026-09-09
+
+**变更**：侧边栏拖拽至宽度 < 200px 时自动进入窄幅态（`.is-narrow`），任务列表标题从两行截断切换为单行省略号截断（`text-overflow: ellipsis`），时长信息自动隐藏，保持列表项高度一致、视觉节奏稳定。悬停卡片仍可查看完整标题。
+
+- `frontend/src/components/layout/Sidebar.vue` — 新增 `sidebarRef` + `isNarrow` 响应式变量；`onMounted` 中通过 `ResizeObserver` 监听侧边栏宽度变化并动态切换 `is-narrow` 类；`onBeforeUnmount` 中清理 observer
+- `frontend/src/styles/legacy-views.css` §2937–2939 — 已有 `.sidebar.is-narrow .sb-tl-title` 单行截断规则与 `.sb-tl-dur` 隐藏规则，本次接入 JS 驱动使其生效
+
+## [v2.x-start-page-recent-all-statuses] - 2026-09-09
+
+### 修复
+- 修复 AI 对话启动录音后页面不自动跳转到录音页的问题：后端返回 `action`（单数）而前端读取 `actions`（复数）字段名不匹配，导致前端无法接收导航指令
+
+### 变更
+- 开始页底部「最近会议」移除 `status === 'completed'` 过滤，显示所有状态的会议，与侧边栏排序一致
+- 非已完成会议显示状态标签（录音中/转写中/总结中等）替代时长
+- 点击最近会议根据状态跳转至对应视图（录音/处理中/纪要）
+- 修复 `watch` 未导入的 TS 编译错误
+
+## [v2.x-onboarding-vue-port] - 2026-09-09
+
+### 新增
+- 说话人绑定引导弹窗移植到 Vue 组件（GeneratingView.vue），从原型 `speaker-binding-onboarding-v3.html` 移植：
+  - **数据变化感知演示**：3 行迷你转写（2 条他人 + 1 条"我的"），骨架屏表示会话文本，说话人标签从灰色通用（虚线边框）循环动画切换为彩色实名
+  - **循环动画**：1.5s 后触发 bound 状态，4s 后重置，1.5s 间隔，持续循环
+  - **无障碍**：`role="dialog"` `aria-modal="true"` `aria-labelledby`，Escape 键关闭，`:focus-visible` 焦点环
+  - **减少动效降级**：`prefers-reduced-motion: reduce` 时直接显示终态
+  - **响应式**：`@media (max-width: 520px)` 自适应窄屏
+  - **新增 CSS 变量**：`--radius-xl: 16px`（大型容器圆角）
+  - **组件卸载清理**：`onUnmounted` 停止动画定时器，防止内存泄漏
+
+## [v2.x-onboarding-polish] - 2026-09-09
+
+### 修复
+- 说话人绑定引导弹窗设计打磨（impeccable-design-polish），修复 12 项问题：
+  - **P0-1** 底部按钮 2.6s 延迟入场 → 移除 `animation-delay`，按钮立即可见可点击
+  - **P0-2** 无 `prefers-reduced-motion` 降级 → CSS 媒体查询禁用所有动画 + JS 端检测后直接显示终态
+  - **P0-3** 弹窗缺少 ARIA → 添加 `role="dialog"` `aria-modal="true"` `aria-labelledby="dialogTitle"`
+  - **P0-4** 骨架条对比度不足 → `background` 从 `--surface-3`（93%）升级为 `--border-strong`（82%）+ `opacity: 0.5`
+  - **P0-5** 硬编码颜色 → 3 处 `rgba()` / 硬编码 `oklch()` 替换为 `oklch(0% 0 0 / alpha)` 或主题变量（`--ok`）
+  - **P0-6** 无 `:focus-visible` → 按钮、复选框、演示按钮均添加 2px accent 焦点环
+  - **P1-7** `text-transform: uppercase` 对中文无效 → 移除，`letter-spacing` 改为相对单位 `0.04em`
+  - **P1-8** 按钮缺少 `type="button"` → 两处按钮补全
+  - **P1-9** `scale(1.08)` 永久放大 → 改为 `transform: none`，仅用阴影 + 字重增强
+  - **P1-10** 卡片固定 480px 无响应式 → 添加 `@media (max-width: 520px)` 自适应
+  - **P1-11** 按钮 hover 装饰性 `translateY(-1px)` → 移除，仅保留背景色变化
+  - **P1-12** 无 Escape 键关闭 → 添加 `keydown` 监听，Escape 移除弹窗
+- **排版优化**：移除标题与演示区之间的"关联前/关联后"状态标签——动画本身（灰色虚线→彩色实名）已清晰传达状态变化，无需文字重复说明；演示区内边距从 `0 var(--s-6) var(--s-4)` 调整为 `var(--s-4) var(--s-6) var(--s-5)`，增加呼吸空间
+
+## [v2.x-divider-visual-only] - 2026-09-09
+
+### 变更
+- 分隔条拖拽调宽功能移除：`.layout-divider` 改为纯视觉分隔缝（`pointer-events: none`，仅保留 `.divider-line` 子元素），删除 hover 高亮、grip 圆点与 tracking-dot / mode-badge / scroll-indicator / width-tooltip 等失效反馈元素；调宽与折叠统一由缝隙拉手双手势承担，`useDivider` 不再绑定分隔条 mousedown
+- 修复左侧缝隙拉手被缝线「贯穿」的层叠问题：`.sidebar` 的 `contain: layout style` 会建立独立层叠上下文、困住拉手的 z-index，为 `.sidebar` 显式 `z-index: 11` 使拉手绘制在分隔缝之上
+- `DESIGN_DECISIONS.md`（v2.6.0）：§9.5 改写为「缝隙拉手双手势标准（分隔缝纯视觉）」并新增层叠规则，§1、§3 同步更新
+
+### 修复
+- 清理阻塞构建的未使用绑定：`RecordingView.vue` 的 `wsConnected`（TS6133，noUnusedLocals）
+
+## [v2.x-onboarding-skeleton-principle] - 2026-09-09
+
+**变更**：说话人绑定引导弹窗原型（v3）的演示动效——非核心内容（会话文本）从动画第一帧即以骨架屏表示，全程不呈现真实文本。
+
+- `docs/prototypes/speaker-binding-onboarding-v3.html` — 移除三处真实文本（`txt-content`），骨架条成为内容的固有表示；唯一动态变化为说话人标签「灰色通用 → 彩色实名」及「我的」行气泡显隐；修正 is-me 气泡边框（原 `border-color` 无边框宽度不生效）
+
+**决策**：引导演示动效两条原则的补充澄清——
+1. 骨架屏是内容在演示中的**表示方式**，从动画一开始就存在，而非先呈现内容再用工具事后虚化；
+2. 配合既定原则（非核心内容用骨架屏退居背景 + 演示动效循环播放），适用于未来所有引导类演示动效。
+
+## [v2.x-sidebar-latest-indicator] - 2026-09-09
+
+**变更**：侧边栏会议列表第一条（最新会议）添加左侧 3px 强调色条，与开始页底部最近会议的标识方式统一。
+
+- `TaskCard.vue` — 新增 `isLatest` prop，根元素添加 `is-latest` class
+- `TaskList.vue` — 传递 `is-latest` 给 `groupedTasks[0].tasks[0]`
+- `legacy-views.css` — 新增 `.sb-tl-item.is-latest` 样式（`border-left: 3px solid var(--accent)` + padding 补偿）
+- `DESIGN_DECISIONS.md` — 第 11 节扩展为「最近会议标识 · 统一标准」，覆盖开始页和侧边栏两个位置
+
+## [v2.x-button-label-enforcement-l2-l3] - 2026-09-09
+
+### 新增
+- **L2 全局 tooltip 兜底**：`base.css` 新增 `[data-tip]::after` 全局规则，为所有带 `data-tip` 的元素提供统一 CSS tooltip 样式，覆盖未迁移到 IconButton 的存量裸按钮
+- **L3 ESLint 自定义规则**：`eslint-rules/require-button-label.js` 遍历 Vue 模板 AST，拦截无文本定义的图标按钮（无 `title`/`aria-label`/`data-tip` 且无可见文本的 `<button>`）；`eslint.config.js`（flat config）+ `typescript-eslint` 解析 Vue SFC
+- `package.json` 新增 `lint` / `lint:fix` 脚本
+
+### 决策
+- 按钮文本定义不可变更原则从"文档约束"升级为"代码级强制执行"——三层防护：L1 组件编译报错 → L2 全局 CSS 兜底 → L3 ESLint CI 拦截
+- 规则首次启用发现 12 处存量违规（AIPanel 5、Sidebar 1、TopBar 2、GeneratingView 3、StartView 1），后续迁移至 IconButton 组件
+
+### 参考
+- DESIGN_DECISIONS.md 第 10.8 节「三层防护机制」
+- AGENTS.md 硬约束条款已同步更新
+
+## [v2.x-seam-handle-dual-gesture] - 2026-09-09
+
+### 新增
+- 缝隙拉手**双手势**：点击（水平位移 ≤4px）= 折叠/展开，按住水平拖动 = 调整面板宽度；复用 `useDivider` 的 clamp（侧边栏 140–400 / 助手栏 240–600）与 `oms_sb_width` / `oms_ai_width` 持久化
+- 左侧边栏新增缝隙拉手 `.sb-toggle`（骑右缝、垂直居中），与右侧 `.ai-toggle` 造型、手势、tooltip 规则完全一致
+
+### 变更
+- `useDivider.ts` 重构为模块级：导出 `beginResize(e, side, { onClick, resizable })` / `setSidebarWidth` / `setAiWidth`，分隔条与两侧拉手共用同一拖拽会话与 4px 点/拖阈值
+- 移除侧边栏头部折叠 IconButton 与 `App.vue` 的 `.sb-float-expand` 浮动展开按钮（后者在 Vue 版因缺 `is-visible` 类始终不可见）；折叠态隐藏空头部 `.sb-header`，拉手成为唯一折叠/展开入口
+- 清理 `legacy-views.css` 对应死规则（`.sb-sidebar-toggle`、`.sb-float-expand`、折叠态头部居中）
+
+### 决策
+- 缝隙拉手双手势统一标准：缝隙全高可拖无死区、折叠态只响应点击展开、拉手与分隔条共享宽度状态；方案经交互原型 `docs/design/ai-handle-resize-prototype.html` 三案对比后选定，见 DESIGN_DECISIONS 9.5
+
+## [v2.x-binding-onboarding-v3-minimal] - 2026-09-09
+
+### 变更
+- 说话人绑定引导弹窗原型 v3 精简：移除标题下解释文本和底部变化摘要注释（"3 条转写已更新姓名""纪要将同步显示"），让视觉变化本身完成用户感知教育，符合软件「极少内容」规范
+
+## [v2.x-binding-onboarding-skeleton-loop] - 2026-09-09
+
+### 变更
+- 说话人绑定引导弹窗原型 v3 虚化方式升级：关联后状态的会话文本从 CSS blur 改为骨架屏（灰色圆角条），与截图中的设计语言一致，更干净、更有设计意图
+- 演示动效改为循环播放（4s 一轮 + 1.5s 间隔），不再是一次性播放
+- **确立设计原则**：未来所有引导/演示动效遵循两条规范——① 非核心内容用骨架屏退居背景（灰色圆角条，非 blur）；② 演示动效循环播放
+
+## [v2.x-binding-onboarding-v3-refine] - 2026-09-09
+
+### 变更
+- 说话人绑定引导弹窗原型 v3 优化：标题区添加 `--surface-2` 背景色 + 底部分隔线，与内容区形成明确视觉分区；关联后状态的会话文本添加 `blur(2.5px)` + `opacity: 0.45` 虚化处理，说话人名称标签增强（`scale(1.08)` + 阴影 + 加粗），让数据变化的核心信息（姓名映射）成为唯一视觉焦点
+
+## [v2.x-ai-panel-handle] - 2026-09-09
+
+### 修复
+- AI 助手栏折叠/展开按钮箭头方向与用户操作预期相反：展开态显示 `‹`、折叠态显示 `›`（箭头表示的是「当前状态」而非「动作方向」）
+
+### 变更
+- 折叠/展开控件由「面板左缘顶部 26px 圆形按钮」改为**缝隙居中胶囊拉手**：18×56px、圆角 9px、半嵌在面板与主内容缝隙（`left: -9px`）、面板区域垂直居中；折叠态停在 44px 折叠条左缝，不再被误读为「返回」按钮
+- 箭头语义统一为**动作方向**：展开态显示 `›`（点击向右收起面板）、折叠态显示 `‹`（点击向左展开面板）；基础字形改为右箭头，折叠态沿用既有 CSS rotate(180°) 翻转
+- 拉手补充随状态切换的 `title` / `aria-label`（收起助手 ↔ 展开助手）与 `aria-expanded`
+- `ai-panel.css` 与 `legacy-views.css` 两处重复的 `.ai-toggle` 规则同步更新
+
+### 决策
+- 面板局部控件留在该面板边缘（缝隙拉手），不上顶栏；折叠/展开控件箭头恒指动作方向，见 DESIGN_DECISIONS 第 9 节
+
+## [v2.x-start-page-recent-meetings] - 2026-09-09
+
+### 变更
+- 开始页最近会议列表从 5 条缩减为 **3 条**，降低信息密度，让"新建会议"按钮回归视觉主导
+- 最新会议（第一条）增加左侧 **3px 强调色条**（`--accent`），作为唯一区分手段
+- 会议卡片图标从**音符**（♪）替换为**文档图标**（折角 + 文字行），语义更贴近"会议纪要"
+- "查看全部"按钮阈值从 `> 5` 调整为 `> 3`
+
+### 决策
+- 不使用麦克风图标——已用于「麦克风录音」按钮，避免语义冲突
+- 不使用放大/加粗/标签区分最新会议——仅用左侧色条，保持等权排列的克制感
+
+## [v2.x-onboarding-data-perception] - 2026-09-09
+
+### 变更
+- 说话人绑定引导弹窗 v3 原型（`docs/prototypes/speaker-binding-onboarding-v3.html`）
+- 设计方向调整：从「操作流程说明」改为「数据变化感知」——让用户直观看到绑定操作对页面数据的实际影响
+- **纵向空间优化**：将"关联前"和"关联后"两个独立转写块合并为单一容器，用 JS 动画在 1.5 秒后自动切换状态，弹窗高度减半
+- 移除 v2 的三步骤卡片（点击/选择/确认），改为**关联前/关联后**的转写数据对比
+- 关联前：灰色虚线边框的通用标签（说话人 1/说话人 2）+ 无气泡的裸文本
+- 关联后：彩色实底实名标签（赵里海/沈天雅）+ 气泡化文本 + "我的"行右对齐绿色气泡
+- 转换箭头动画（1.2s 延迟淡入）分隔前后两态
+- 底部变化摘要条（2.4s 延迟入场）：「3 条转写已更新姓名」「纪要将同步显示」
+- 按钮文案从「我知道了」改为「开始关联」——引导用户立即操作
+
+## [v2.x-onboarding-graphical] - 2026-09-09
+
+### 新增
+- 说话人绑定引导弹窗 v2 原型（`docs/prototypes/speaker-binding-onboarding-v2.html`）
+- 设计方向：图形化 + 动效替代纯文字说明，保留上/中/下三区布局
+- 顶部视觉区：「说话人 1 → 张三」流程图增加入场动画（标签滑入、箭头绘制、人物标签弹出）+ 背景光晕脉冲
+- 中部演示区：3 个文字步骤改为图形化迷你卡片，每张带专属图标动画（点击涟漪、列表弹跳、勾选绘制）
+- 底部操作区：保持不变（不再显示复选框 + 我知道了按钮）
+- 弹窗整体入场：上移 + 缩放弹性动画
+- 步骤卡片依次延迟入场（0.7s / 1.0s / 1.3s），引导视线从上到下
+
+## [v2.x-frame-grid-fix] - 2026-09-09
+
+### 修复
+- 底部状态栏异常膨胀（占据近半视口、文字悬在页面中部），主体区被压缩成内容高度
+- 根因：`.frame` 网格 `grid-template-rows: auto auto 1fr 28px` 硬编码 4 行，但首个子元素（系统公告横幅）是 `v-if` 条件渲染；公告被永久关闭后 DOM 只剩 3 个子元素，错位落轨——主体落入 auto 行（内容高度 370px），底部栏落入 1fr 行（约 872px）。截图中可见的横幅实为 TopBar 内置注册引导横幅（sessionStorage 独立记录关闭状态），两横幅关闭状态不同步暴露了此缺陷
+- 修复：App.vue 公告横幅改为常驻渲染（复用 `is-hidden` 折叠机制，与 TopBar 横幅同模式），内层内容区保持 `v-if="annMessage"` 防空引用；`.frame` 子元素数量恒为 4，网格落轨稳定
+- 清理 `legacy-views.css` 中过时的 3 行 `.frame` 重复规则（与 layout.css 形成双事实源），`layout.css` 成为唯一定义来源
+- `.reg-guidance-banner.is-hidden` 补 `border-bottom: none`，折叠态不再残留 1px 边线
+
+## [v2.x-transcript-toggle-scope] - 2026-09-09
+
+### 修复
+- 纪要页「转写原文」开关隐藏范围过大：关闭时连 AI 生成的章节卡片（标题/摘要/要点）一并隐藏，转写区只剩章节导航条
+- 根因：`v-show="showTranscriptLines"` 加在整个 `.gen-transcript-list` 容器上，章节分隔卡片与原文行同属该容器
+- 修复：`v-show` 下移到 `.ts-line` 转写行元素，开关只作用于原文会话；章节卡片恒可见（与录音页 RecordingView 的既有行为对齐）
+- 开关图标语义此前与状态相反（显示中却渲染带斜杠的 eye-off），已按状态修正
+- 涉及文件：`GeneratingView.vue`、`legacy-views.css`
+
+### 变更
+- 「转写原文」开关归属「转写」Tab：加 `v-if="activeTab === 'transcript'"`，纪要/笔记/待办 Tab 不再出现该按钮（音频播放条属跨 Tab 控件，保持常驻）
+- 开关文案由静态名词「转写原文」改为随状态切换的动词「隐藏原文」/「显示原文」，图标改为 Lucide `eye` / `eye-off`，`title` 说明隐藏后仍保留章节与要点
+- 隐藏原文后在转写区就地显示提示条 `.gen-hidden-indicator`：「已隐藏 N 条转写原文，当前仅显示章节与要点」+「显示原文」快捷按钮，视觉与录音页 `.rec-hidden-indicator` 统一（CSS 选择器共用）
+
+### 决策
+- 控件作用域必须等于其影响范围；隐藏类开关必须自解释（动词文案 + 状态图标 + 就地恢复提示条）——见 `docs/design/DESIGN_DECISIONS.md` 第 9 节
+
+## [v2.x-popmenu-standard] - 2026-09-09
+
+### 新增
+- `frontend/src/composables/usePopMenu.ts` — 弹出菜单统一封装：智能定位（底部不足向上翻转、左右溢出回缩、8px 视口边距）、点击空白关闭、Esc 关闭、滚动/缩放自动重定位
+- z-index 分层 token（`legacy-views.css :root`）：`--z-topbar: 100` / `--z-popover: 500` / `--z-modal: 1000` / `--z-toast: 1100`
+
+### 变更
+- `RecordingView.vue` 两个更多菜单、`GeneratingView.vue` 更多菜单全部迁移到 `usePopMenu`，删除三份重复的手写定位代码
+- 修复两个视图更多菜单此前均缺少「点击空白处关闭」的缺陷（全局点击监听只覆盖了绑定气泡）
+- 全部弹出层 `z-index` 迁移到分层 token：更多菜单/下拉/悬浮卡片/绑定气泡/选择操作条等 30+ 处（原 9999/200/100/60 等任意值），模态/遮罩统一 `--z-modal`，toast 统一 `--z-toast`
+- 更多触发按钮补充 `aria-haspopup="menu"` 与明确 `aria-label`
+- `DESIGN_DECISIONS.md` 第 8 节重写为「弹出菜单（PopMenu）统一标准」：行为四原则、图层阶梯、代码用法、禁止事项
+
+### 决策
+- 今后任何"点按钮弹小面板"一律复用 `usePopMenu`，禁止手写 `position: fixed` 定位与关闭逻辑，禁止自造 z-index 数值（见 DESIGN_DECISIONS 8.4）
+
+## [v2.x-ann-banner-theme-adapt] - 2026-09-09
+- **修复**：顶部公告栏（`reg-guidance-banner`）在暗色主题下使用硬编码浅绿色 OKLch 值，与深色背景严重冲突
+- **变更**：将公告栏全部 7 处硬编码颜色替换为 CSS 变量（`--ann-bg`/`--ann-border`/`--ann-icon`/`--ann-cta-bg`/`--ann-cta-fg`/`--ann-text-strong`/`--ann-dismiss-hover`），fallback 到主题通用变量（`--surface-2`/`--border`/`--accent`/`--accent-fg`/`--fg`/`--surface-3`）
+- **设计规范**：公告栏不定义独立色相，完全从主题变量派生，自动适配所有 7 个主题（default/dark/forest/rose/ocean/lavender/warm）
+- **文件**：`frontend/src/styles/topbar.css`、`frontend/src/styles/legacy-views.css`
 
 ## [v2.x-rec-pause-toggle-fix] - 2026-09-09
 
