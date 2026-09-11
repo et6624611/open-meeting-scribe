@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from core import projects
+from core.i18n import _
 from app.store import tasks
 
 logger = logging.getLogger(__name__)
@@ -56,9 +57,9 @@ def browse_filesystem(path: Optional[str] = None):
     target = target.resolve()
 
     if not target.exists():
-        raise HTTPException(404, f"路径不存在: {target}")
+        raise HTTPException(404, _("Path not found: {path}").format(path=target))
     if not target.is_dir():
-        raise HTTPException(400, f"不是目录: {target}")
+        raise HTTPException(400, _("Not a directory: {path}").format(path=target))
 
     directories = []
     try:
@@ -79,7 +80,7 @@ def browse_filesystem(path: Optional[str] = None):
                     "has_children": has_children,
                 })
     except PermissionError:
-        raise HTTPException(403, f"无权限访问: {target}")
+        raise HTTPException(403, _("No permission to access: {path}").format(path=target))
 
     return {
         "current_path": str(target),
@@ -97,9 +98,9 @@ def open_folder_in_finder(data: FolderAction):
     folder_path = data.path.strip()
     target = Path(folder_path)
     if not target.exists():
-        raise HTTPException(404, f"文件夹不存在: {folder_path}")
+        raise HTTPException(404, _("Folder not found: {path}").format(path=folder_path))
     if not target.is_dir():
-        raise HTTPException(400, f"不是目录: {folder_path}")
+        raise HTTPException(400, _("Not a directory: {path}").format(path=folder_path))
 
     try:
         if sys.platform == "darwin":
@@ -109,7 +110,7 @@ def open_folder_in_finder(data: FolderAction):
         else:
             subprocess.Popen(["xdg-open", str(target)])
     except Exception as e:
-        raise HTTPException(500, f"打开文件夹失败: {e}")
+        raise HTTPException(500, _("Failed to open folder: {err}").format(err=e))
 
     return {"opened": True, "path": str(target)}
 
@@ -125,12 +126,12 @@ def list_projects():
 def create_project(data: ProjectCreate, background_tasks: BackgroundTasks):
     """创建项目（写 projects.json）"""
     if not data.name.strip():
-        raise HTTPException(400, "项目名称不能为空")
+        raise HTTPException(400, _("Project name cannot be empty"))
     # 验证文件夹路径
     if data.folders:
         for f in data.folders:
             if not Path(f).exists() or not Path(f).is_dir():
-                raise HTTPException(400, f"文件夹不存在: {f}")
+                raise HTTPException(400, _("Folder not found: {path}").format(path=f))
     project = projects.create_project(name=data.name.strip(), folders=data.folders)
     # 自动触发索引构建
     if data.folders:
@@ -143,7 +144,7 @@ def get_project(project_id: str):
     """获取项目详情（读 projects.json + 索引文件 + 关联会议）"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     # 附加索引信息
     index = projects.get_project_index(project_id)
     if index:
@@ -172,7 +173,7 @@ def update_project(project_id: str, data: ProjectUpdate):
     """更新项目（写 projects.json）"""
     project = projects.update_project(project_id, name=data.name)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     return project
 
 
@@ -180,7 +181,7 @@ def update_project(project_id: str, data: ProjectUpdate):
 def delete_project(project_id: str):
     """删除项目（写 projects.json）"""
     if not projects.delete_project(project_id):
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     return {"deleted": True}
 
 
@@ -189,10 +190,10 @@ def add_project_folder(project_id: str, data: FolderAction, background_tasks: Ba
     """为项目添加文件夹（写 projects.json）"""
     folder_path = data.path.strip()
     if not Path(folder_path).exists() or not Path(folder_path).is_dir():
-        raise HTTPException(400, f"文件夹不存在: {folder_path}")
+        raise HTTPException(400, _("Folder not found: {path}").format(path=folder_path))
     project = projects.add_folder(project_id, folder_path)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     # 自动触发索引构建
     background_tasks.add_task(_do_scan_project, project_id)
     return project
@@ -203,7 +204,7 @@ def remove_project_folder(project_id: str, data: FolderAction, background_tasks:
     """从项目移除文件夹（写 projects.json）"""
     project = projects.remove_folder(project_id, data.path)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     # 自动触发索引重建
     background_tasks.add_task(_do_scan_project, project_id)
     return project
@@ -221,7 +222,7 @@ def update_folder_sync_config(project_id: str, data: FolderSyncConfig):
         config["subfolder_name"] = data.subfolder_name
     result = projects.update_folder_sync(project_id, data.path, config)
     if not result:
-        raise HTTPException(404, "项目或文件夹不存在")
+        raise HTTPException(404, _("Project or folder not found"))
     return result
 
 
@@ -230,11 +231,11 @@ def trigger_project_sync(project_id: str):
     """手动触发同步：将项目中所有已完成的会议同步写入启用了同步的文件夹"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
 
     sync_folders = projects.get_sync_enabled_folders(project_id)
     if not sync_folders:
-        return {"synced": 0, "message": "没有启用同步的文件夹"}
+        return {"synced": 0, "message": _("No folders with sync enabled")}
 
     from core.projects import sync_meeting_to_folders
 
@@ -250,7 +251,7 @@ def trigger_project_sync(project_id: str):
     return {
         "synced": synced_count,
         "files": written_files,
-        "message": f"已同步 {synced_count} 个会议，写入 {len(written_files)} 个文件",
+        "message": _("Synced {count} meeting(s), wrote {files} file(s)").format(count=synced_count, files=len(written_files)),
     }
 
 
@@ -268,9 +269,9 @@ def scan_project(project_id: str, background_tasks: BackgroundTasks):
     """触发项目索引构建（后台执行）"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, "项目不存在")
+        raise HTTPException(404, _("Project not found"))
     background_tasks.add_task(_do_scan_project, project_id)
-    return {"status": "scanning", "message": "索引构建已启动"}
+    return {"status": "scanning", "message": _("Index build started")}
 
 
 @router.get("/api/projects/{project_id}/files")

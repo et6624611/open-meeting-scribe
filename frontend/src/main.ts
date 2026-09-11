@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import i18n, { loadLocaleMessages, getLocale } from './i18n'
 
 // 样式引入顺序：
 // 1. 主题变量（CSS 自定义属性，必须最先加载）
@@ -22,10 +23,26 @@ import './styles/sidebar.css'
 import './styles/ai-panel.css'
 import './styles/components.css'
 
-const app = createApp(App)
-app.use(createPinia())
-app.use(router)
-app.mount('#app')
+// ─── 启动：先确保「初始语言」的语言包已加载，再挂载应用 ───
+// zh-CN 已在 i18n 模块静态内置（零延迟）；但 detectLocale() 可能返回 en
+// （浏览器语言为英文，或上次切换后 localStorage 持久化了 en）。此时若不先
+// 动态加载 en 语言包，首屏会因缺少消息而回退到 zh-CN，造成「语言选择器
+// 高亮 English、界面却是中文」的不一致（刷新后必现）。故挂载前先 await 加载。
+async function bootstrap() {
+  try {
+    await loadLocaleMessages(getLocale())
+  } catch (err) {
+    // 加载失败时静默回退：zh-CN 已静态内置，保证应用仍可挂载
+    console.error('初始语言包加载失败，回退到默认语言 zh-CN', err)
+  }
+
+  const app = createApp(App)
+  app.use(createPinia())
+  app.use(router)
+  app.use(i18n)
+  app.mount('#app')
+}
+bootstrap()
 
 // ═══ 全局 tooltip（L2 防护层） ═══
 // 单一 DOM 元素挂载在 document.body，position: fixed 定位，
@@ -57,12 +74,23 @@ function isMoreButton(el: HTMLElement): boolean {
   return false
 }
 
+// 检测按钮元素内部是否已包含可见文字标签（自身已有文字则无需 tooltip 重复提示）
+function hasVisibleText(el: HTMLElement): boolean {
+  // 克隆节点以移除 SVG 图标，再检查剩余文字内容
+  const clone = el.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('svg').forEach(s => s.remove())
+  const text = (clone.textContent || '').trim()
+  return text.length > 0
+}
+
 function showTooltip(e: Event) {
   const target = e.target as HTMLElement
   const el = target.closest?.('[data-tip], [title]') as HTMLElement | null
   if (!el || el.matches(TOOLTIP_EXCLUDE)) return
   // "..."更多按钮是通用符号，不需要 tooltip 提示
   if (isMoreButton(el)) return
+  // 按钮自身已包含可见文字标签，tooltip 会造成文字叠加冗余
+  if (el.tagName === 'BUTTON' && hasVisibleText(el)) return
 
   const text = el.dataset.tip || el.title || ''
   if (!text) {

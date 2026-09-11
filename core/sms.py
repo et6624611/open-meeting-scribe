@@ -7,7 +7,7 @@ core/sms.py — 短信认证服务（云端代理模式）
   3. 本地频率限制（60 秒冷却 + 每天 10 次上限）
 
 设计：
-  - 阿里云 AccessKey 不落地客户端，由云端代理（47.116.10.194）持有
+  - 阿里云 AccessKey 不落地客户端，由云端代理持有
   - 客户端通过 HTTP + 共享密钥（SMS_PROXY_TOKEN）调用代理端点
   - 代理负责调用阿里云 PNVS SDK（SendSmsVerifyCode / CheckSmsVerifyCode）
   - 验证码由阿里云 PNVS 全权托管（生成、发送、有效期、核验）

@@ -195,7 +195,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 客户端不再直连 DashScope ASR API，所有转写请求通过 ASR 代理中转。详见 ADR-0012。
 
-**代理地址**：`http://47.116.10.194:8200`
+**代理地址**：通过 `.env` 中 `ASR_PROXY_URL` 配置
 
 **认证**：所有请求须携带 HMAC-SHA256 签名
 - HTTP 请求头：`X-ASR-Timestamp`（Unix 秒）+ `X-ASR-Sign`（HMAC-SHA256(token, timestamp)）

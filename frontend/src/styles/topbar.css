@@ -89,8 +89,7 @@
 @keyframes rwbar { 0%,100%{ transform: scaleY(0.3); opacity: 0.4 } 50%{ transform: scaleY(1); opacity: 1 } }
 
 /* 计时器 */
-.rec-timer { font-family: var(--font-mono); font-size: var(--fs-12); font-weight: 600; letter-spacing: 0.02em; cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: background 0.12s; user-select: none; }
-.rec-timer:hover { background: oklch(from var(--rec) l c h / 0.15); }
+.rec-timer { font-family: var(--font-mono); font-size: var(--fs-12); font-weight: 600; letter-spacing: 0.02em; padding: 2px 4px; border-radius: 4px; user-select: none; }
 .rec-pill.is-paused .rec-timer { color: var(--warn); }
 
 /* 暂停/恢复按钮（药丸形，与底部控制栏一致） */
@@ -119,7 +118,6 @@
 .rec-more-item.danger { color: var(--rec); }
 .rec-more-item.danger:hover { background: var(--rec-soft); }
 .rec-more-item svg { width: 14px; height: 14px; flex-shrink: 0; }
-
 /* ─── 全局播放控件 pill（离开会议纪要页时展示）─── */
 .player-pill { display: inline-flex; align-items: center; gap: var(--s-2); padding: 3px 4px 3px 10px; border-radius: 999px; border: 1px solid oklch(from var(--accent) l c h / 0.3); background: var(--accent-soft); font-size: var(--fs-11); color: var(--accent); transition: background 0.15s, border-color 0.15s; }
 .player-pill .playing-eq { color: var(--accent); }

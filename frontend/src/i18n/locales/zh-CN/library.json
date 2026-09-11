@@ -1,0 +1,22 @@
+{
+  "title": "全部会议",
+  "count": "{count} 个会议",
+  "search_placeholder": "搜索会议标题或内容…",
+  "col_name": "会议名称",
+  "col_status": "状态",
+  "col_duration": "时长",
+  "col_speakers": "说话人",
+  "col_time": "创建时间",
+  "speakers_count": "{count} 位",
+  "open_title": "打开",
+  "empty": "暂无会议记录",
+  "empty_search": "没有匹配的会议",
+  "batch_count": "已选 {count} 项",
+  "batch_export": "导出",
+  "batch_archive": "归档",
+  "batch_delete": "删除",
+  "batch_close": "取消选择",
+  "export_todo": "导出 {count} 个会议（功能待实现）",
+  "archive_todo": "归档 {count} 个会议（功能待实现）",
+  "confirm_delete": "确定删除 {count} 个会议？此操作不可撤销。"
+}

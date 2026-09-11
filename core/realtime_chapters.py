@@ -17,13 +17,14 @@ core/realtime_chapters.py — 实时增量章节生成引擎
   - 单次分析失败不影响后续周期
 """
 
+import asyncio
 import json
 import logging
 import re
 import threading
 from typing import Callable
 
-from .llm import chat_completion
+from .llm import async_chat_completion_safe
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class RealtimeChapterGenerator:
         generator.feed_sentence({"text": "...", "begin_time": 0, "end_time": 1000})
         generator.stop()
 
-    线程模型：同 RealtimeSummarizer
+    线程模型：同 RealtimeSummarizer（LLM 调用通过事件循环线程池执行）
     """
 
     def __init__(
@@ -145,6 +146,11 @@ class RealtimeChapterGenerator:
         self._timer.start()
 
     def _do_chapters(self) -> None:
+        """执行一次增量章节分析（在 Timer 线程中执行）
+
+        LLM 调用通过 run_coroutine_threadsafe 委托到事件循环线程池，
+        使用 asyncio.to_thread 执行，不阻塞事件循环。
+        """
         if not self._started:
             return
 
@@ -216,12 +222,28 @@ class RealtimeChapterGenerator:
                 {"role": "user", "content": user_content},
             ]
 
-            raw = chat_completion(
-                messages,
-                model=CHAPTERS_MODEL,
-                max_tokens=1536,
-                temperature=0.3,
-            )
+            # 通过事件循环线程池执行 LLM 调用（不阻塞事件循环）
+            from app.store import event_loop
+            if event_loop and not event_loop.is_closed():
+                future = asyncio.run_coroutine_threadsafe(
+                    async_chat_completion_safe(
+                        messages,
+                        model=CHAPTERS_MODEL,
+                        max_tokens=1536,
+                        temperature=0.3,
+                    ),
+                    event_loop,
+                )
+                raw = future.result()  # 在 Timer 线程中等待结果
+            else:
+                # 兑底：无事件循环时直接同步调用（不应发生）
+                from .llm import chat_completion
+                raw = chat_completion(
+                    messages,
+                    model=CHAPTERS_MODEL,
+                    max_tokens=1536,
+                    temperature=0.3,
+                )
 
             if raw and raw.strip():
                 chapters = self._parse_response(raw, all_sentences)

@@ -372,9 +372,9 @@ class TestVoiceprintRegisterFromBinding:
         # 注册表隔离到临时目录，避免污染真实数据
         monkeypatch.setattr(voiceprint, "REGISTRY_FILE", tmp_path / "voiceprint_registry.json")
 
-        # 模拟嵌入提取（避免加载 resemblyzer 重模型）：按调用次序交替返回两个正交向量
-        vec_a = np.zeros(256, dtype=np.float32); vec_a[0] = 1.0
-        vec_b = np.zeros(256, dtype=np.float32); vec_b[1] = 1.0
+        # 模拟嵌入提取（避免加载重模型）：按调用次序交替返回两个正交 192 维向量
+        vec_a = np.zeros(192, dtype=np.float32); vec_a[0] = 1.0
+        vec_b = np.zeros(192, dtype=np.float32); vec_b[1] = 1.0
         calls = {"n": 0}
 
         def fake_extract(audio, sample_rate=voiceprint.SAMPLE_RATE):
@@ -445,7 +445,7 @@ class TestVoiceprintRebuildAcrossMeetings:
 
         monkeypatch.setattr(voiceprint, "REGISTRY_FILE", tmp_path / "registry.json")
 
-        vec = np.zeros(256, dtype=np.float32)
+        vec = np.zeros(192, dtype=np.float32)
         vec[0] = 1.0
         monkeypatch.setattr(
             voiceprint, "extract_embedding",
@@ -546,9 +546,13 @@ class TestVoiceprintMatchMargin:
 
     @staticmethod
     def _vec(angle_deg: float) -> list:
+        """构造 192 维单位向量，前 2 维按角度旋转，其余为 0，保证 L2 范数 = 1"""
         import math
         rad = math.radians(angle_deg)
-        return [math.cos(rad), math.sin(rad)]
+        v = [0.0] * 192
+        v[0] = math.cos(rad)
+        v[1] = math.sin(rad)
+        return v
 
     def test_margin_gate(self, tmp_path, monkeypatch):
         import numpy as np
@@ -556,7 +560,7 @@ class TestVoiceprintMatchMargin:
         from core.voiceprint import VoiceprintRecord
 
         monkeypatch.setattr(voiceprint, "REGISTRY_FILE", tmp_path / "registry.json")
-        # 注册两人，人间余弦 ≈ 0.87（模拟高基线相似但 margin 足够）
+        # 注册两人，前 2 维余弦 ≈ 0.87（模拟高基线相似但 margin 足够）
         registry = {
             "uuid-a": VoiceprintRecord(speaker_uuid="uuid-a", embedding=self._vec(0.0)),
             "uuid-b": VoiceprintRecord(speaker_uuid="uuid-b", embedding=self._vec(30.0)),
@@ -942,3 +946,592 @@ class TestSmsCheckVerifyCode:
         passed, reason = sms.check_verify_code("13312343103", "123456")
         assert passed is False
         assert reason == "验证服务异常，请稍后重试"
+
+
+# ============================================================
+# 认证路由（auth）
+# ============================================================
+
+class TestAuthGithubLogin:
+    """GET /auth/github 重定向到 GitHub 授权页"""
+
+    def test_redirects_to_github(self, client):
+        resp = client.get("/auth/github", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        location = resp.headers.get("location", "")
+        assert "github.com" in location or "authorize" in location
+
+
+class TestAuthMeNotLoggedIn:
+    """GET /auth/me 未登录时返回 401"""
+
+    def test_me_unauthorized(self, client):
+        resp = client.get("/auth/me")
+        assert resp.status_code == 401
+
+
+class TestAuthLogout:
+    """POST /auth/logout 正常返回"""
+
+    def test_logout_ok(self, client):
+        resp = client.post("/auth/logout")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "message" in data
+
+
+class TestAuthCallbackMissingCode:
+    """GET /auth/callback 缺少 code 参数时返回 400"""
+
+    def test_callback_no_code(self, client):
+        resp = client.get("/auth/callback?state=fake-state")
+        assert resp.status_code == 400
+
+
+# ============================================================
+# AI 对话路由（chat）
+# ============================================================
+
+class TestChatEmptyMessage:
+    """POST /api/chat 空消息返回 400"""
+
+    def test_empty_message_rejected(self, client):
+        resp = client.post("/api/chat", json={"message": "   "})
+        assert resp.status_code == 400
+
+
+class TestChatMissingMessage:
+    """POST /api/chat 缺少 message 字段返回 422"""
+
+    def test_missing_message_field(self, client):
+        resp = client.post("/api/chat", json={})
+        assert resp.status_code == 422
+
+
+class TestListModels:
+    """GET /api/models 返回模型列表"""
+
+    def test_models_ok(self, client):
+        resp = client.get("/api/models")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "models" in data
+        assert isinstance(data["models"], list)
+        assert len(data["models"]) > 0
+
+
+class TestOptimizeEmptyText:
+    """POST /api/optimize 空文本返回 400"""
+
+    def test_empty_text_rejected(self, client):
+        resp = client.post("/api/optimize", json={"text": "   "})
+        assert resp.status_code == 400
+
+
+# ============================================================
+# AI 页面上下文感知（current_page）
+# ============================================================
+
+class TestBuildPageContext:
+    """_build_page_context 根据页面名返回差异化上下文"""
+
+    def test_start_page(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("start")
+        assert ctx is not None
+        assert "首页" in ctx
+
+    def test_speakers_page_returns_list_or_empty(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("speakers")
+        assert ctx is not None
+        assert "说话人" in ctx
+
+    def test_hotwords_page_returns_list_or_empty(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("hotwords")
+        assert ctx is not None
+        assert "热词" in ctx
+
+    def test_settings_page(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("settings")
+        assert ctx is not None
+        assert "设置" in ctx
+
+    def test_projects_page(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("projects")
+        assert ctx is not None
+        assert "项目" in ctx
+
+    def test_library_page(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("library")
+        assert ctx is not None
+        assert "会议" in ctx
+
+    def test_generating_page_returns_none(self):
+        """纪要页由 task 上下文覆盖，无需额外页面上下文"""
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("generating")
+        assert ctx is None
+
+    def test_unknown_page_returns_none(self):
+        from app.routers.chat import _build_page_context
+        ctx = _build_page_context("nonexistent_page")
+        assert ctx is None
+
+
+class TestChatWithCurrentPage:
+    """POST /api/chat 传入 current_page 不报错"""
+
+    def test_chat_with_page_field_accepted(self, client, monkeypatch):
+        """current_page 字段被接受，端点不 500"""
+        calls = {"n": 0}
+
+        async def fake_llm(messages, **kwargs):
+            calls["n"] += 1
+            return "你好，我在首页可以帮你开始录音或上传音频。"
+
+        from app.routers import chat as chat_mod
+        monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
+
+        resp = client.post("/api/chat", json={
+            "message": "我能做什么",
+            "current_page": "start",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "reply" in data
+
+
+# ============================================================
+# 版本更新路由（update）
+# ============================================================
+
+class TestUpdateVersion:
+    """GET /api/update/version 返回版本号"""
+
+    def test_version_ok(self, client):
+        resp = client.get("/api/update/version")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "version" in data
+        assert isinstance(data["version"], str)
+        assert len(data["version"]) > 0
+
+
+class TestUpdateCheck:
+    """GET /api/update/check 返回更新检查结果"""
+
+    def test_check_ok(self, client):
+        resp = client.get("/api/update/check")
+        assert resp.status_code == 200
+        data = resp.json()
+        # 网络不可达时静默降级，但端点本身不 500
+        assert isinstance(data, dict)
+
+
+# ============================================================
+# 用量查询路由（usage）
+# ============================================================
+
+class TestUsageSummary:
+    """GET /api/usage/summary 返回用量汇总"""
+
+    def test_summary_ok(self, client):
+        resp = client.get("/api/usage/summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        # 未登录时返回 metered=False 或提示信息
+        assert isinstance(data, dict)
+
+
+class TestUsageHistory:
+    """GET /api/usage/history 返回用量明细"""
+
+    def test_history_ok(self, client):
+        resp = client.get("/api/usage/history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "history" in data
+        assert isinstance(data["history"], (list, dict))
+
+
+class TestUsageCheck:
+    """GET /api/usage/check 配额预检"""
+
+    def test_quota_check_ok(self, client):
+        resp = client.get("/api/usage/check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, dict)
+
+
+# ============================================================
+# 管理后台路由（admin）
+# 注意：admin router 注册在独立的 admin_app 上（端口 8001），
+# 不在主 app 上，因此需要创建独立的测试客户端。
+# ============================================================
+
+@pytest.fixture
+def admin_client():
+    """创建管理后台测试客户端"""
+    from app.admin_server import admin_app
+    with TestClient(admin_app) as c:
+        yield c
+
+
+class TestAdminLoginNoPassword:
+    """POST /api/admin/login 未配置密码时返回 500"""
+
+    def test_login_no_password_configured(self, admin_client, monkeypatch):
+        from app.routers import admin as admin_mod
+        monkeypatch.setattr(admin_mod, "ADMIN_PASSWORD", "")
+        resp = admin_client.post("/api/admin/login", json={"password": "test"})
+        assert resp.status_code == 500
+
+
+class TestAdminLoginWrongPassword:
+    """POST /api/admin/login 密码错误返回 401"""
+
+    def test_wrong_password(self, admin_client, monkeypatch):
+        from app.routers import admin as admin_mod
+        monkeypatch.setattr(admin_mod, "ADMIN_PASSWORD", "correct-password")
+        resp = admin_client.post("/api/admin/login", json={"password": "wrong-password"})
+        assert resp.status_code == 401
+
+
+class TestAdminMeUnauthorized:
+    """GET /api/admin/me 未认证返回 401"""
+
+    def test_me_unauthorized(self, admin_client):
+        resp = admin_client.get("/api/admin/me")
+        assert resp.status_code == 401
+
+
+class TestAdminOverviewUnauthorized:
+    """GET /api/admin/overview 未认证返回 401"""
+
+    def test_overview_unauthorized(self, admin_client):
+        resp = admin_client.get("/api/admin/overview")
+        assert resp.status_code == 401
+
+
+class TestAdminLogout:
+    """POST /api/admin/logout 正常返回"""
+
+    def test_logout_ok(self, admin_client):
+        resp = admin_client.post("/api/admin/logout")
+        assert resp.status_code == 200
+
+
+# ============================================================
+# 远程配置路由（config）
+# ============================================================
+
+class TestConfigAnnouncements:
+    """GET /api/config/announcements 返回公告列表"""
+
+    def test_announcements_ok(self, client):
+        resp = client.get("/api/config/announcements")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "messages" in data
+        assert isinstance(data["messages"], list)
+
+
+class TestConfigVersion:
+    """GET /api/config/version 返回配置版本号"""
+
+    def test_config_version_ok(self, client):
+        resp = client.get("/api/config/version")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "version" in data
+
+
+# ============================================================
+# 理念传播路由（philosophy）
+# ============================================================
+
+class TestPhilosophyRandom:
+    """GET /api/philosophy/random 返回随机理念"""
+
+    def test_random_ok(self, client):
+        resp = client.get("/api/philosophy/random")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "text" in data
+        assert isinstance(data["text"], str)
+
+
+# ============================================================
+# 文本桥接匹配（core/text_bridge.py）
+# ============================================================
+
+class TestNormalizeText:
+    """_normalize_text 去除空白字符"""
+
+    def test_remove_spaces(self):
+        from core.text_bridge import _normalize_text
+        assert _normalize_text("hello world") == "helloworld"
+        assert _normalize_text("  你好  世界  ") == "你好世界"
+
+    def test_empty_string(self):
+        from core.text_bridge import _normalize_text
+        assert _normalize_text("") == ""
+        assert _normalize_text("   ") == ""
+
+
+class TestTextSimilarity:
+    """_text_similarity 文本相似度计算"""
+
+    def test_exact_match(self):
+        from core.text_bridge import _text_similarity
+        assert _text_similarity("完全相同的文本", "完全相同的文本") == 1.0
+
+    def test_high_similarity(self):
+        from core.text_bridge import _text_similarity
+        # 仅差一两个字
+        sim = _text_similarity("今天讨论预算方案", "今天讨论预算方案吧")
+        assert sim > 0.75
+
+    def test_low_similarity(self):
+        from core.text_bridge import _text_similarity
+        sim = _text_similarity("今天天气很好", "股票市场大跌")
+        assert sim < 0.5
+
+    def test_empty_input(self):
+        from core.text_bridge import _text_similarity
+        assert _text_similarity("", "有内容") == 0.0
+        assert _text_similarity("有内容", "") == 0.0
+        assert _text_similarity("", "") == 0.0
+
+    def test_length_ratio_filter(self):
+        from core.text_bridge import _text_similarity
+        # 长度差异超过 70% 时直接返回 0
+        sim = _text_similarity("abc", "这是一段非常长的中文文本内容")
+        assert sim == 0.0
+
+
+class TestTextBridgeMatch:
+    """text_bridge_match 核心匹配逻辑"""
+
+    def _make_realtime(self, speaker_id, texts):
+        """构造实时全量转写记录"""
+        return [{"speaker_id": speaker_id, "text": t, "begin_time": i * 1000, "end_time": (i + 1) * 1000}
+                for i, t in enumerate(texts)]
+
+    def _make_dialogue(self, mappings):
+        """构造批处理对话稿。mappings: {speaker_id: [text, ...]}"""
+        dialogue = []
+        for sid, texts in mappings.items():
+            sentences = [{"text": t, "begin_time": i * 1000, "end_time": (i + 1) * 1000}
+                         for i, t in enumerate(texts)]
+            dialogue.append({"speaker_id": sid, "sentences": sentences})
+        return dialogue
+
+    def test_empty_inputs(self):
+        from core.text_bridge import text_bridge_match
+        results, mapping = text_bridge_match([], {}, [])
+        assert results == [] and mapping == {}
+
+    def test_no_bindings(self):
+        from core.text_bridge import text_bridge_match
+        rt = self._make_realtime(0, ["测试文本内容"])
+        results, mapping = text_bridge_match(rt, {}, self._make_dialogue({0: ["测试文本内容"]}))
+        assert results == [] and mapping == {}
+
+    def test_perfect_match(self):
+        """实时文本与批处理文本完全一致时正确匹配"""
+        from core.text_bridge import text_bridge_match
+        rt = self._make_realtime(0, ["讨论预算方案", "确认实施计划"])
+        dialogue = self._make_dialogue({
+            5: ["讨论预算方案", "其他内容"],
+            6: ["无关话题"],
+        })
+        binding = {"0": "uuid-alice"}
+        names = {"uuid-alice": "张三"}
+
+        results, mapping = text_bridge_match(rt, binding, dialogue, names)
+        assert len(results) == 1
+        assert results[0].status == "matched"
+        assert results[0].new_speaker_id == 5
+        assert results[0].speaker_name == "张三"
+        assert mapping[5] == "uuid-alice"
+
+    def test_multiple_speakers_voting(self):
+        """多位说话人各自独立匹配"""
+        from core.text_bridge import text_bridge_match
+        rt = (
+            self._make_realtime(0, ["讨论预算方案", "确认实施计划", "审核财务报表"])
+            + self._make_realtime(1, ["市场推广策略", "用户增长方案"])
+        )
+        dialogue = self._make_dialogue({
+            3: ["讨论预算方案", "确认实施计划", "审核财务报表"],
+            4: ["市场推广策略", "用户增长方案"],
+        })
+        binding = {"0": "uuid-alice", "1": "uuid-bob"}
+
+        results, mapping = text_bridge_match(rt, binding, dialogue)
+        assert len(results) == 2
+        matched = [r for r in results if r.status == "matched"]
+        assert len(matched) == 2
+        assert mapping.get(3) == "uuid-alice"
+        assert mapping.get(4) == "uuid-bob"
+
+    def test_no_match_when_texts_differ(self):
+        """实时文本与批处理文本完全不同时无匹配"""
+        from core.text_bridge import text_bridge_match
+        rt = self._make_realtime(0, ["今天天气很好"])
+        dialogue = self._make_dialogue({0: ["股票市场大跌"]})
+        binding = {"0": "uuid-alice"}
+
+        results, mapping = text_bridge_match(rt, binding, dialogue)
+        assert len(results) == 1
+        assert results[0].status == "unmatched"
+        assert mapping == {}
+
+    def test_short_text_filtered(self):
+        """过短的文本（< MIN_TEXT_LENGTH）被过滤不参与匹配"""
+        from core.text_bridge import text_bridge_match
+        rt = self._make_realtime(0, ["好", "嗯"])
+        dialogue = self._make_dialogue({0: ["好", "嗯"]})
+        binding = {"0": "uuid-alice"}
+
+        results, mapping = text_bridge_match(rt, binding, dialogue)
+        # 所有文本都短于 MIN_TEXT_LENGTH=4，无有效文本
+        assert results == [] and mapping == {}
+
+    def test_to_dict_output(self):
+        """TextBridgeMatchResult.to_dict() 输出格式正确"""
+        from core.text_bridge import TextBridgeMatchResult
+        result = TextBridgeMatchResult(
+            old_speaker_id=0,
+            speaker_uuid="uuid-test",
+            speaker_name="测试人",
+            new_speaker_id=3,
+            confidence=0.8567,
+            hit_count=5,
+            best_similarity=0.9234,
+            status="matched",
+        )
+        d = result.to_dict()
+        assert d["confidence"] == 0.857  # 四舍五入到 3 位
+        assert d["best_similarity"] == 0.923
+        assert d["status"] == "matched"
+        assert d["new_speaker_id"] == 3
+
+
+# ============================================================
+# 动作检测关键词误命中回归（chat.py _detect_action）
+# ============================================================
+
+class TestDetectActionFalsePositive:
+    """_detect_action 不应被「结论」等短词误触发 summarize_conclusions"""
+
+    def test_generate_minutes_with_conclusion_not_triggered(self):
+        """用户说「生成会议纪要包含结论」不应命中 summarize_conclusions"""
+        from app.routers.chat import _detect_action
+        result = _detect_action("请根据当前会议内容生成一份结构化会议纪要，包含议题、讨论要点和结论。")
+        # 不应命中 summarize_conclusions（可能命中其他动作或返回 None）
+        if result is not None:
+            assert result.name != "summarize_conclusions"
+
+    def test_explicit_conclusion_request_still_works(self):
+        """明确请求「总结关键结论」仍应命中 summarize_conclusions"""
+        from app.routers.chat import _detect_action
+        result = _detect_action("请总结关键结论")
+        assert result is not None
+        assert result.name == "summarize_conclusions"
+
+    def test_key_conclusion_still_works(self):
+        """「关键结论」仍应命中 summarize_conclusions"""
+        from app.routers.chat import _detect_action
+        result = _detect_action("帮我整理一下关键结论")
+        assert result is not None
+        assert result.name == "summarize_conclusions"
+
+    def test_bare_conclusion_not_triggered(self):
+        """单独说「结论」不再触发 summarize_conclusions（避免误命中）"""
+        from app.routers.chat import _detect_action
+        result = _detect_action("结论")
+        # 不再被短词「结论」触发
+        if result is not None:
+            assert result.name != "summarize_conclusions"
+
+
+# ============================================================
+# 输入校验边界测试
+# ============================================================
+
+class TestInputValidationSpeaker:
+    """说话人名称长度限制"""
+
+    def test_speaker_name_too_long(self, client):
+        """名称超过 100 字返回 422"""
+        resp = client.post("/api/speakers", json={"name": "A" * 101})
+        assert resp.status_code == 422
+
+    def test_speaker_name_empty_string(self, client):
+        """空字符串名称返回 400（业务层校验）"""
+        resp = client.post("/api/speakers", json={"name": ""})
+        assert resp.status_code in (400, 422)
+
+
+class TestInputValidationHotwords:
+    """热词接口 Pydantic 模型校验"""
+
+    def test_hotwords_save_accepts_valid_input(self, client):
+        """正常热词保存应成功"""
+        resp = client.post("/api/hotwords", json={"hotwords": "热词A\n热词B"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 2
+
+    def test_hotwords_save_rejects_oversized_input(self, client):
+        """超大文本应被 Pydantic 拒绝（422）"""
+        resp = client.post("/api/hotwords", json={"hotwords": "A" * 50001})
+        assert resp.status_code == 422
+
+
+# ============================================================
+# 静默检测配置
+# ============================================================
+
+class TestSilenceDetectionConfig:
+    """静默检测配置加载"""
+
+    def test_get_silence_detection_config_returns_defaults(self):
+        """get_silence_detection_config() 应返回完整默认配置"""
+        from app.store import get_silence_detection_config
+        config = get_silence_detection_config()
+        assert config["enabled"] is True
+        assert "presence" in config
+        assert "audio" in config
+        assert "action" in config
+        # 存在性评分参数
+        assert config["presence"]["score_max"] == 100
+        assert config["presence"]["heartbeat_timeout_sec"] == 90
+        assert config["presence"]["threshold_warning"] == 20
+        # 音频层参数
+        assert config["audio"]["asr_no_sentence_timeout_sec"] == 300
+        # 动作参数
+        assert config["action"]["gentle_countdown_sec"] == 120
+        assert config["action"]["urgent_countdown_sec"] == 60
+        assert config["action"]["max_warnings_per_session"] == 2
+
+    def test_silence_detection_state_dicts_exist(self):
+        """静默检测状态字典应已初始化"""
+        from app.store import (
+            realtime_last_heartbeat, realtime_last_sentence,
+            realtime_presence_scores, realtime_silence_warnings,
+            realtime_silence_monitors,
+        )
+        assert isinstance(realtime_last_heartbeat, dict)
+        assert isinstance(realtime_last_sentence, dict)
+        assert isinstance(realtime_presence_scores, dict)
+        assert isinstance(realtime_silence_warnings, dict)
+        assert isinstance(realtime_silence_monitors, dict)

@@ -99,7 +99,8 @@ def _proxy_request(path: str, data: bytes, content_type: str, timeout: int = 600
     except urllib.error.HTTPError as e:
         try:
             err_body = json.loads(e.read().decode())
-            msg = err_body.get("message", str(e))
+            # FastAPI HTTPException 默认字段名为 "detail"，兼容 "message"
+            msg = err_body.get("detail") or err_body.get("message") or str(e)
         except Exception:
             msg = f"HTTP {e.code}"
         logger.error(f"ASR 代理请求失败: {path} → {msg}")

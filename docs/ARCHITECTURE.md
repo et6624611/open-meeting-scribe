@@ -3,7 +3,7 @@ title: 系统架构
 description: v1 云方案 + v4 CAM++ 声纹姓名化架构设计
 author: 王永亮
 created_at: 2026-09-03
-updated_at: 2026-09-07
+updated_at: 2026-09-10
 status: published
 ---
 
@@ -31,7 +31,8 @@ status: published
 | 用户 | `core/users.py` | 本地用户 + OAuth 用户 + 说话人绑定 + 请求级 ContextVar 身份隔离 + 声纹偏好（订阅状态驱动） |
 | 版本检查 | `core/version_check.py` | 读取 VERSION、调用 GitHub Releases API、语义化版本比对、30 分钟缓存、网络失败静默降级 |
 | 认证 | `core/auth.py` | GitHub OAuth 2.0 提供者 + JWT 签发/验证 + CSRF state 管理 |
-| 错误处理 | `core/errors.py` | 瞬时错误判断 + 错误分类（供自动重试与前端展示） |
+| 错误处理 | `core/errors.py` | 瞬时错误判断 + 错误分类（供自动重试与前端展示），错误建议支持 i18n 多语言 |
+| 国际化 | `core/i18n/` | Babel + gettext 后端多语言：I18nMiddleware（语言偏好解析，写入 ContextVar）+ get_translator()（lru_cache）+ _() 翻译函数（ContextVar 驱动，请求级 locale，深层调用栈无需传 request）；翻译文件 `locales/{zh_CN,en}/LC_MESSAGES/`（.po+.mo）；工作流 `pybabel extract` → `scripts/gen_i18n_po.py` → `pybabel compile`；详见 [ADR-0013](adr/0013-国际化i18n架构.md) |
 | 作业日志 | `core/joblog.py` | per-task 操作/运行事件流（append-only JSONL）；为会议助手提供渐进式上下文 |
 | 编排 | `core/pipeline.py` | 串联全流程（stage1: 转写, stage2: 纪要），输出 Markdown |
 | 界面 | `app/server.py` `app/static/` | FastAPI 本地服务（~210 行）+ 安全审计中间件 + 前端（拖拽/录制/进度/纪要） |
@@ -50,6 +51,7 @@ frontend/src/
 ├── views/         9 个页面视图（Start + Recording + Processing + Generating + Library + Projects + Speakers + Hotwords + Settings）
 ├── components/    6 个组件（TopBar + Sidebar + AIPanel + TaskCard + TaskList + LoginModal）
 ├── styles/       13 个 CSS 文件（7 主题 + base + layout + topbar + sidebar + ai-panel + components）
+├── i18n/          国际化模块（vue-i18n v11 实例 + 15 语言模块异步加载 + setI18nLocale 切换 + tt() 供非组件 TS 用）
 ├── router/        Vue Router（9 路由，懒加载）
 ├── main.ts        应用入口
 └── App.vue        根组件（三栏布局）

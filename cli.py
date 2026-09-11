@@ -224,10 +224,12 @@ def cmd_server(args):
 
 
 def cmd_build(args):
-    """构建前端（Vue 3 + Vite）"""
+    """构建前端（Vue 3 + Vite）并部署到 app/static/"""
     import subprocess
+    import shutil
 
     frontend_dir = Path(__file__).parent / "frontend"
+    static_dir = Path(__file__).parent / "app" / "static"
     if not frontend_dir.exists():
         print("错误: frontend/ 目录不存在")
         return 1
@@ -247,9 +249,20 @@ def cmd_build(args):
         return 1
 
     dist_dir = frontend_dir / "dist"
-    if dist_dir.exists():
-        print(f"✓ 构建完成: {dist_dir}")
-        print("  启动服务后将自动使用新版前端")
+    if not dist_dir.exists():
+        print("错误: 构建产物目录 frontend/dist/ 不存在")
+        return 1
+
+    # 部署到 app/static/
+    print("部署到 app/static/...")
+    assets_dir = static_dir / "assets"
+    if assets_dir.exists():
+        shutil.rmtree(assets_dir)
+    shutil.copytree(dist_dir / "assets", assets_dir)
+    shutil.copy2(dist_dir / "index.html", static_dir / "index.html")
+
+    print(f"✓ 构建并部署完成: {static_dir}")
+    print("  刷新浏览器即可使用新版前端（Ctrl+Shift+R 强制刷新）")
     return 0
 
 

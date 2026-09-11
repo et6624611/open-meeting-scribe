@@ -5,13 +5,14 @@
  * 消息持久化由 aiSessions store 管理。
  */
 import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { sendMessage, injectItems } from '@/api/chat'
 import type { ChatAction, ChatExtractedItem, ChatResponse } from '@/api/chat'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { showToast } from '@/composables/useToast'
+import { tt } from '@/i18n'
 
 const AI_MAX_CONTEXT = 20
 
@@ -34,17 +35,16 @@ const ICON_LIST = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" st
 const ICON_SEARCH = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/></svg>'
 const ICON_CLOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>'
 
-/** 默认建议（原快捷命令），无对话时始终展示 */
+/** 默认建议（原快捷命令），对话有内容但无 AI 推断建议时展示 */
 const DEFAULT_SUGGESTIONS: FollowUpSuggestion[] = [
   { text: '生成会议纪要', icon: ICON_LIST },
   { text: '提取待办事项', icon: ICON_PLUS },
   { text: '分析发言要点', icon: ICON_SEARCH },
-  { text: '总结关键决策', icon: ICON_CLOCK },
-  { text: '识别风险与争议', icon: ICON_LIST },
 ]
 
 export function useAiChat() {
   const router = useRouter()
+  const route = useRoute()
   const taskStore = useTaskStore()
   const realtimeStore = useRealtimeStore()
   const aiSessions = useAiSessionsStore()
@@ -53,10 +53,12 @@ export function useAiChat() {
   const abortController = ref<AbortController | null>(null)
   const followUps = ref<FollowUpSuggestion[]>([])
 
-  /** 统一建议：有 AI 跟进建议时用跟进，否则用默认建议（原快捷命令） */
-  const displaySuggestions = computed(() =>
-    followUps.value.length > 0 ? followUps.value : DEFAULT_SUGGESTIONS
-  )
+  /** 统一建议：对话为空或 AI 正在回复时隐藏；有推断建议时用推断，否则用默认 */
+  const displaySuggestions = computed(() => {
+    if (messages.value.length === 0) return []
+    if (isLoading.value) return []
+    return followUps.value.length > 0 ? followUps.value : DEFAULT_SUGGESTIONS
+  })
   const injectPrompt = ref<{ items: ChatExtractedItem[]; desc: string } | null>(null)
   const verifiedChanges = ref<VerifiedChange[]>([])
 
@@ -96,6 +98,7 @@ export function useAiChat() {
         task_id: taskStore.currentTaskId || undefined,
         history: histSlice,
         realtime_transcripts: realtimeStore.getSnapshot(),
+        current_page: (route.name as string) || undefined,
         signal: ctrl.signal,
       })
 
@@ -110,10 +113,10 @@ export function useAiChat() {
 
       // 后端返回 action（单数对象）或 actions（数组）均兼容处理
       if (res.action?.name && res.action.success) {
-        executeAction({ name: res.action.name, data: res.action.data || {} })
+        await executeAction({ name: res.action.name, data: res.action.data || {} })
       } else if (res.actions?.length) {
         for (const action of res.actions) {
-          executeAction(action)
+          await executeAction(action)
         }
       }
 
@@ -156,7 +159,7 @@ export function useAiChat() {
   }
 
   /** 执行后端返回的动作 */
-  function executeAction(action: ChatAction) {
+  async function executeAction(action: ChatAction) {
     const d = action.data || {}
 
     switch (action.name) {
@@ -164,8 +167,10 @@ export function useAiChat() {
         const tid = d.task_id as string
         if (!tid) break
         if (taskStore.currentTaskId && taskStore.currentTask?.status === 'recording' && taskStore.currentTaskId !== tid) {
-          showToast('当前有任务正在进行，已忽略重复录音请求', 'warn')
+          showToast(tt('ai-panel.chat.duplicate_record'), 'warn')
         } else {
+          // [状态同步] AI 触发录音后刷新任务列表
+          await taskStore.loadTasks()
           taskStore.selectTask(tid)
           router.push(`/recording/${tid}`)
         }
@@ -174,6 +179,7 @@ export function useAiChat() {
       case 'record_stop':
       case 'record_pause':
       case 'record_resume': {
+        // [状态同步] AI 触发录音操作后刷新任务列表
         taskStore.loadTasks()
         break
       }
@@ -194,9 +200,9 @@ export function useAiChat() {
         break
       }
       case 'create_theme': {
-        const name = d.theme_name as string || '自定义主题'
+        const name = d.theme_name as string || tt('ai-panel.chat.custom_theme')
         const hue = d.accent_hue as number || 255
-        showToast(`主题「${name}」已创建（色相 ${hue}°）`, 'success')
+        showToast(tt('ai-panel.chat.theme_created', { name, hue }), 'success')
         break
       }
     }
@@ -205,9 +211,15 @@ export function useAiChat() {
   /** 显示数据注入提示 */
   function showInjectPrompt(items: ChatExtractedItem[]) {
     const typeCounts: Record<string, number> = {}
-    const typeLabels: Record<string, string> = { todo: '待办', conclusion: '结论', decision: '决策' }
+    const typeLabels: Record<string, string> = {
+      todo: tt('ai-panel.chat.type_todo'),
+      conclusion: tt('ai-panel.chat.type_conclusion'),
+      decision: tt('ai-panel.chat.type_decision'),
+    }
     items.forEach(i => { typeCounts[i.type] = (typeCounts[i.type] || 0) + 1 })
-    const desc = Object.entries(typeCounts).map(([t, c]) => `${c} 条${typeLabels[t] || t}`).join('、')
+    const desc = Object.entries(typeCounts)
+      .map(([type, c]) => tt('ai-panel.chat.type_count', { count: c, type: typeLabels[type] || type }))
+      .join(tt('ai-panel.chat.type_join'))
     injectPrompt.value = { items, desc }
   }
 
@@ -217,10 +229,10 @@ export function useAiChat() {
     const items = injectPrompt.value.items
     try {
       await injectItems(taskStore.currentTaskId, items)
-      showToast(`已注入 ${items.length} 条内容`, 'success')
+      showToast(tt('ai-panel.chat.injected', { count: items.length }), 'success')
       injectPrompt.value = null
     } catch {
-      showToast('注入失败，请重试', 'error')
+      showToast(tt('ai-panel.chat.inject_failed'), 'error')
     }
   }
 

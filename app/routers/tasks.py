@@ -22,6 +22,7 @@ from app.store import (
     save_task_to_disk, run_pipeline_task, run_stage2_task,
 )
 from core.audio import is_stream_recording, get_stream_recording_info
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +51,11 @@ async def create_transcribe_task(
     allowed_types = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".mp4", ".webm"}
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in allowed_types:
-        raise HTTPException(400, f"不支持的文件类型: {file_ext}")
+        raise HTTPException(400, _("Unsupported file type: {ext}").format(ext=file_ext))
 
     # 验证 speaker_count 范围
     if speaker_count is not None and (speaker_count < 1 or speaker_count > 100):
-        raise HTTPException(400, "speaker_count 必须在 1-100 之间")
+        raise HTTPException(400, _("speaker_count must be between 1 and 100"))
 
     # 配额预检：订阅用户额度用尽时阻止上传（自带 Key 用户不受限）
     try:
@@ -69,7 +70,7 @@ async def create_transcribe_task(
                     {
                         "error": "quota_exhausted",
                         "remaining": quota_result["remaining"],
-                        "message": f"本月转写额度已用完（剩余 {quota_result['remaining']} 分钟），可配置自有 API Key 继续使用",
+                        "message": _("Monthly transcription quota exhausted ({remaining} min remaining). Configure your own API Key to continue.").format(remaining=quota_result['remaining']),
                     },
                 )
     except HTTPException:
@@ -100,6 +101,7 @@ async def create_transcribe_task(
     tasks[task_id] = {
         "task_id": task_id,
         "status": "pending",
+        "source": "upload",
         "progress": 0,
         "message": "等待处理",
         "audio_name": file.filename,
@@ -142,7 +144,7 @@ async def list_tasks():
 def get_task(task_id: str):
     """查询任务状态（含 subprocess 状态检查）"""
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     task = tasks[task_id]
     # 录音中任务：附带实际已录制时长（供前端恢复累计计时）
     if task.get("status") == "recording" and is_stream_recording():
@@ -178,12 +180,12 @@ def download_summary(task_id: str):
     FastAPI 自动在线程池中运行，避免阻塞事件循环。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     output_path = task.get("output_path")
     if not output_path or not Path(output_path).exists():
-        raise HTTPException(404, "纪要文件不存在")
+        raise HTTPException(404, _("Minutes file not found"))
 
     return FileResponse(
         output_path,
@@ -199,12 +201,12 @@ def serve_audio(task_id: str):
     注意：用 def（非 async def），大音频文件 I/O 会阻塞事件循环。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     audio_path = task.get("audio_path")
     if not audio_path or not Path(audio_path).exists():
-        raise HTTPException(404, "录音文件不存在")
+        raise HTTPException(404, _("Recording file not found"))
 
     audio_file = Path(audio_path)
     # 根据扩展名确定 MIME 类型
@@ -232,7 +234,7 @@ def serve_audio(task_id: str):
 def delete_task(task_id: str):
     """删除任务（含文件删除 I/O）"""
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks.pop(task_id)
 
@@ -262,12 +264,12 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
     保留原始音频文件，清除旧的转写结果。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     audio_path = task.get("audio_path")
     if not audio_path or not Path(audio_path).exists():
-        raise HTTPException(404, "录音文件不存在，无法重新识别")
+        raise HTTPException(404, _("Recording file not found, cannot re-transcribe"))
 
     # 重置任务状态
     tasks[task_id]["status"] = "processing"
@@ -295,7 +297,7 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_pipeline_task, task_id, Path(audio_path), audio_name, None, None)
 
     logger.info(f"[重新识别] task={task_id[:8]}, audio={audio_name}")
-    return {"status": "processing", "message": "已提交重新识别任务"}
+    return {"status": "processing", "message": _("Re-transcription task submitted")}
 
 
 @router.post("/api/tasks/{task_id}/retry-summary")
@@ -306,15 +308,15 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     当转写成功但纪要生成失败时，无需重跑耗时的 ASR，只重跑纪要阶段。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     if not task.get("dialogue"):
-        raise HTTPException(400, "转写结果不存在，请使用「重新识别」")
+        raise HTTPException(400, _("Transcription result not found, please use Re-transcribe"))
 
     audio_path = task.get("audio_path")
     if not audio_path or not Path(audio_path).exists():
-        raise HTTPException(404, "录音文件不存在")
+        raise HTTPException(404, _("Recording file not found"))
 
     # 只重置 stage2 相关字段
     tasks[task_id]["status"] = "processing"
@@ -336,14 +338,14 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
 
     logger.info(f"[重新生成纪要] task={task_id[:8]}")
-    return {"status": "processing", "message": "正在重新生成纪要..."}
+    return {"status": "processing", "message": _("Regenerating minutes...")}
 
 
 @router.patch("/api/tasks/{task_id}")
 def update_task(task_id: str, data: TaskUpdate):
     """更新任务信息（写 tasks JSON）"""
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     changed = False
     if data.title is not None:
@@ -354,7 +356,7 @@ def update_task(task_id: str, data: TaskUpdate):
         try:
             datetime.strptime(data.meeting_date, "%Y-%m-%d")
         except ValueError:
-            raise HTTPException(400, "日期格式无效，应为 YYYY-MM-DD")
+            raise HTTPException(400, _("Invalid date format, expected YYYY-MM-DD"))
         tasks[task_id]["meeting_date"] = data.meeting_date
         changed = True
     if data.project_id is not None:
@@ -371,7 +373,7 @@ def update_task(task_id: str, data: TaskUpdate):
 def get_task_sync_status(task_id: str):
     """查询任务的项目同步状态：是否可同步、目标文件夹信息"""
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     project_id = task.get("project_id")
@@ -405,24 +407,24 @@ def get_task_sync_status(task_id: str):
 def sync_task_to_project(task_id: str):
     """手动将会议纪要同步写入关联项目的文件夹"""
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     if task.get("status") != "completed":
-        raise HTTPException(400, "任务未完成，无法同步")
+        raise HTTPException(400, _("Task not completed, cannot sync"))
 
     project_id = task.get("project_id")
     if not project_id:
-        raise HTTPException(400, "任务未关联项目")
+        raise HTTPException(400, _("Task is not linked to a project"))
 
     from core.projects import sync_meeting_to_folders
     written = sync_meeting_to_folders(task)
     if not written:
-        return {"synced": False, "message": "没有可同步的目标文件夹"}
+        return {"synced": False, "message": _("No target folder to sync")}
 
     logger.info(f"[{task_id[:8]}] 手动同步到项目文件夹，写入 {len(written)} 个文件")
     return {
         "synced": True,
         "files": written,
-        "message": f"已写入 {len(written)} 个文件到项目文件夹",
+        "message": _("Wrote {count} file(s) to project folder").format(count=len(written)),
     }

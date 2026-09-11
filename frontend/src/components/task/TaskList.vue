@@ -10,7 +10,7 @@
         >
           <span class="sb-date-node"></span>
           <span class="sb-date-label">{{ group.label }}</span>
-          <span class="sb-date-sub">{{ group.tasks.length }} 个会议</span>
+          <span class="sb-date-sub">{{ t('task.group_count', { count: group.tasks.length }) }}</span>
           <svg class="sb-date-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
@@ -30,6 +30,7 @@
             @retry="onRetry"
             @check-settings="onCheckSettings"
             @reupload="onReupload"
+            @rerecord="onRerecord"
             @view-details="onViewDetails"
           />
         </div>
@@ -38,12 +39,12 @@
 
     <!-- 空状态 -->
     <div v-if="taskStore.groupedTasks.length === 0 && !taskStore.loading" style="padding: 20px 0; text-align: center; color: var(--subtle); font-size: 12px;">
-      {{ taskStore.searchQuery ? '没有匹配的会议' : '暂无会议记录' }}
+      {{ taskStore.searchQuery ? t('task.empty_search') : t('task.empty') }}
     </div>
 
     <!-- 加载中 -->
     <div v-if="taskStore.loading" style="padding: 20px 0; text-align: center; color: var(--subtle); font-size: 12px;">
-      加载中…
+      {{ t('task.loading') }}
     </div>
   </div>
 </template>
@@ -51,12 +52,14 @@
 <script setup lang="ts">
 import { reactive, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
 import { usePlayerStore } from '@/stores/player'
 import TaskCard from './TaskCard.vue'
 import { retranscribe } from '@/api/tasks'
 
+const { t } = useI18n()
 const taskStore = useTaskStore()
 const layout = useLayoutStore()
 const player = usePlayerStore()
@@ -103,11 +106,9 @@ function onSelect(taskId: string) {
   const task = taskStore.currentTask
   if (!task) return
 
-  // 根据任务状态路由到对应视图
+  // 所有非录音任务统一进入纪要页（中间状态由 GeneratingView 内联处理）
   if (task.status === 'recording') {
     router.push({ name: 'recording', params: { taskId } })
-  } else if (task.status === 'pending' || task.status === 'transcribing' || task.status === 'summarizing') {
-    router.push({ name: 'processing', params: { taskId } })
   } else {
     router.push({ name: 'generating', params: { taskId } })
   }
@@ -121,8 +122,8 @@ async function onMenu(taskId: string, event: MouseEvent, newName?: string) {
         router.push('/')
       }
     } catch (e) {
-      console.error('删除失败:', e)
-      alert('删除失败，请重试')
+      console.error('delete failed:', e)
+      alert(t('task.errors.delete_failed'))
     }
   } else if (event.type === 'rename' && newName) {
     try {
@@ -130,8 +131,8 @@ async function onMenu(taskId: string, event: MouseEvent, newName?: string) {
       await updateTask(taskId, { title: newName })
       await taskStore.loadTasks()
     } catch (e) {
-      console.error('重命名失败:', e)
-      alert('重命名失败，请重试')
+      console.error('rename failed:', e)
+      alert(t('task.errors.rename_failed'))
     }
   } else if (event.type === 'retry') {
     await onRetry(taskId)
@@ -144,8 +145,8 @@ async function onRetry(taskId: string) {
     // 重新加载任务列表以更新状态
     await taskStore.loadTasks()
   } catch (e) {
-    console.error('重试失败:', e)
-    alert('重试失败，请检查网络连接')
+    console.error('retry failed:', e)
+    alert(t('task.errors.retry_failed'))
   }
 }
 
@@ -155,8 +156,14 @@ function onCheckSettings() {
 
 function onReupload(taskId: string) {
   // TODO: 实现重新上传逻辑
-  console.log('重新上传任务:', taskId)
-  alert('重新上传功能开发中')
+  console.log('reupload task:', taskId)
+  alert(t('task.errors.reupload_wip'))
+}
+
+function onRerecord(taskId: string) {
+  // TODO: 实现重新录制逻辑
+  console.log('rerecord task:', taskId)
+  alert(t('task.errors.reupload_wip'))
 }
 
 function onViewDetails(taskId: string) {

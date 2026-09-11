@@ -35,6 +35,7 @@ from core.realtime_summary import RealtimeSummarizer
 from core.diarization import create_realtime_diarizer
 from core import speakers, projects, hotwords, joblog
 from core.llm import async_chat_completion
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ ACTION_REGISTRY: list[ActionDef] = [
     ActionDef("record_pause", ["暂停录音", "暂停录制", "pause recording", "暂停"], "暂停当前录音"),
     ActionDef("record_resume", ["继续录音", "恢复录音", "resume recording", "继续录", "恢复录"], "恢复录音"),
     ActionDef("extract_todos", ["提取待办", "待办事项", "todos", "待办", "提取任务"], "从当前会议提取待办事项"),
-    ActionDef("summarize_conclusions", ["关键结论", "总结结论", "结论", "conclusions", "总结关键"], "总结会议关键结论"),
+    ActionDef("summarize_conclusions", ["关键结论", "总结结论", "总结关键决策", "conclusions", "总结关键"], "总结会议关键结论"),
     ActionDef("analyze_speakers", ["发言分析", "发言占比", "说话人分析", "speaker analysis", "发言统计"], "分析各发言人发言情况"),
     ActionDef("list_tasks", ["任务列表", "会议列表", "历史记录", "list tasks", "所有会议", "会议记录"], "列出所有会议任务"),
     ActionDef("get_hotwords", ["热词", "热词列表", "hotwords"], "查看当前热词"),
@@ -183,7 +184,7 @@ def _execute_action(action: ActionDef, data: "ChatRequest") -> dict:
 
             from app.store import RECORDINGS_DIR, save_task_to_disk
             result = start_recording_with_stream(device=RECORD_DEVICE, output_dir=RECORDINGS_DIR, task_id=task_id, pcm_callback=pcm_callback)
-            tasks[task_id] = {"task_id": task_id, "status": "recording", "progress": 0, "message": "正在录制...", "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}}
+            tasks[task_id] = {"task_id": task_id, "status": "recording", "source": "record", "progress": 0, "message": "正在录制...", "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}}
             save_task_to_disk(task_id)
             return {"success": True, "message": f"录音已开始，会议 ID: {task_id[:8]}", "data": {"task_id": task_id}}
 
@@ -618,16 +619,40 @@ def _audit_reply_claims(reply: str, changes: list[dict]) -> str:
 # 注入内容提取
 # ============================================================
 
-def _extract_injectable_items(reply: str) -> list[dict]:
-    """从 AI 回复中提取可注入的结构化内容（待办/结论/决策）。"""
+def _is_duplicate_todo(content: str, existing_todos: list[dict]) -> bool:
+    """检查提取的待办是否已存在于任务待办列表中（模糊匹配）。"""
+    content_norm = content.strip()
+    for t in existing_todos:
+        existing = t.get("text", "").strip()
+        # 互相包含即视为重复
+        if content_norm in existing or existing in content_norm:
+            return True
+        # 核心内容重叠度 > 60% 也视为重复
+        if len(content_norm) > 10 and len(existing) > 10:
+            common = len(set(content_norm) & set(existing))
+            union = len(set(content_norm) | set(existing))
+            if union > 0 and common / union > 0.6:
+                return True
+    return False
+
+
+def _extract_injectable_items(reply: str, existing_todos: list[dict] | None = None) -> list[dict]:
+    """从 AI 回复中提取可注入的结构化内容（待办/结论/决策）。
+    
+    Args:
+        reply: AI 回复文本
+        existing_todos: 当前任务已有的待办列表，用于去重过滤
+    """
     items = []
+    existing_todos = existing_todos or []
 
     # 提取待办（Markdown checkbox 格式）
     todo_pattern = re.compile(r'^\s*-\s*\[\s*\]\s*(.+)$', re.MULTILINE)
     for m in todo_pattern.finditer(reply):
         content = m.group(1).strip()
         if content and len(content) > 4:
-            items.append({"type": "todo", "content": content})
+            if not _is_duplicate_todo(content, existing_todos):
+                items.append({"type": "todo", "content": content})
 
     # 提取带「待办」「需要」「后续」关键词的列表项
     action_keywords = re.compile(r'^\s*[-•·]\s*(?:.*?(?:待办|需要|后续|跟进|完成|处理|负责|尽快)).*$', re.MULTILINE)
@@ -635,7 +660,8 @@ def _extract_injectable_items(reply: str) -> list[dict]:
         content = m.group(0).strip().lstrip('-•· ').strip()
         if content and len(content) > 4:
             if not any(i["content"] == content for i in items):
-                items.append({"type": "todo", "content": content})
+                if not _is_duplicate_todo(content, existing_todos):
+                    items.append({"type": "todo", "content": content})
 
     # 提取结论/决策段落
     conclusion_pattern = re.compile(
@@ -673,6 +699,102 @@ def _build_speaker_name_map(task_id: str) -> dict:
     return name_map
 
 
+def _build_page_context(page: str) -> str | None:
+    """根据前端页面构建差异化上下文。
+
+    每个页面注入与该页面场景相关的数据摘要，让 AI 回复更贴合用户当前操作。
+    返回格式化文本，或 None（无需注入）。
+    """
+    if page == "start":
+        return (
+            "## 当前页面\n"
+            "用户在首页，可以开始新录音或上传音频文件。"
+            "可用操作：开始录音、上传音频、查看历史会议。"
+        )
+
+    if page == "recording":
+        # 录音页的上下文已由 task 维度覆盖，仅补充页面提示
+        if is_stream_recording():
+            return "## 当前页面\n用户正在录音中，可通过对话控制录音（暂停/停止）。"
+        return None
+
+    if page == "generating":
+        # 纪要页的上下文已由 task 维度充分覆盖
+        return None
+
+    if page == "speakers":
+        spk_list = speakers.load_speakers()
+        if not spk_list:
+            return "## 当前页面\n用户在说话人管理页面，当前暂无注册的说话人。"
+        lines = [f"- {s.name}" + (f"（{s.role}）" if s.role else "") for s in spk_list[:20]]
+        text = "## 当前页面：说话人管理\n当前注册的说话人：\n" + "\n".join(lines)
+        if len(spk_list) > 20:
+            text += f"\n（共 {len(spk_list)} 人，仅展示前 20 位）"
+        return text
+
+    if page == "hotwords":
+        hw_list = hotwords.load_hotwords()
+        if not hw_list:
+            return "## 当前页面\n用户在热词管理页面，当前暂无自定义热词。"
+        lines = [f"- {w}" for w in hw_list[:30]]
+        text = "## 当前页面：热词管理\n当前热词列表：\n" + "\n".join(lines)
+        if len(hw_list) > 30:
+            text += f"\n（共 {len(hw_list)} 个，仅展示前 30 个）"
+        # 补充热词映射
+        mappings = hotwords.load_hotword_mappings()
+        if mappings:
+            map_lines = [f"- {wrong} → {right}" for wrong, right in mappings[:15]]
+            text += "\n\n热词映射（ASR 纠错）：\n" + "\n".join(map_lines)
+        return text
+
+    if page == "settings":
+        # 注入非敏感设置摘要
+        from app.store import load_settings
+        settings = load_settings()
+        if not settings:
+            return "## 当前页面\n用户在系统设置页面，当前使用默认配置。"
+        safe_keys = ["language", "default_model", "record_device", "theme", "hotwords_enabled"]
+        lines = []
+        for k in safe_keys:
+            v = settings.get(k)
+            if v is not None:
+                lines.append(f"- {k}: {v}")
+        if lines:
+            return "## 当前页面：系统设置\n当前配置：\n" + "\n".join(lines)
+        return "## 当前页面\n用户在系统设置页面。"
+
+    if page == "projects":
+        proj_list = projects.list_projects()
+        if not proj_list:
+            return "## 当前页面\n用户在项目管理页面，当前暂无项目。"
+        lines = [f"- {p.get('name', '未命名')}（{p.get('file_count', 0)} 个文件）" for p in proj_list[:15]]
+        text = "## 当前页面：项目管理\n当前项目列表：\n" + "\n".join(lines)
+        if len(proj_list) > 15:
+            text += f"\n（共 {len(proj_list)} 个项目）"
+        return text
+
+    if page == "library":
+        total = len(tasks)
+        if total == 0:
+            return "## 当前页面\n用户在会议库页面，当前暂无会议记录。"
+        # 按状态统计
+        status_counts: dict[str, int] = {}
+        for t in tasks.values():
+            s = t.get("status", "unknown")
+            status_counts[s] = status_counts.get(s, 0) + 1
+        status_line = "、".join(f"{k}: {v}" for k, v in status_counts.items())
+        # 最近 5 个会议
+        recent = sorted(tasks.values(), key=lambda t: t.get("created_at", ""), reverse=True)[:5]
+        recent_lines = [f"- {t.get('title') or t.get('audio_name') or '未命名'}（{t.get('status', '')}）" for t in recent]
+        return (
+            f"## 当前页面：会议库\n"
+            f"共 {total} 个会议（{status_line}）。\n"
+            f"最近会议：\n" + "\n".join(recent_lines)
+        )
+
+    return None
+
+
 # ============================================================
 # AI 对话端点
 # ============================================================
@@ -685,6 +807,7 @@ class ChatRequest(BaseModel):
     realtime_transcripts: Optional[list[dict]] = None
     mode: Optional[str] = None  # "agent" | "qa"
     model: Optional[str] = None  # 前端选择的模型 ID
+    current_page: Optional[str] = None  # 前端当前页面路由名
 
 
 # AI 对话系统提示词（基于 Anthropic 2026 最佳实践重构）
@@ -778,6 +901,7 @@ CHAT_SYSTEM_PROMPT = """<role>
 - 软件版本：v1 云方案
 - ASR 模型：paraformer-v2
 - 纪要模型：qwen-plus
+- 系统会注入「当前页面」上下文，据此调整回复的侧重点
 """
 
 # 智能问答模式系统提示词：仅基于上下文回答，不执行任何操作
@@ -808,7 +932,7 @@ async def chat(data: ChatRequest):
     """AI 对话端点（含动作检测与执行）。"""
     user_message = data.message.strip()
     if not user_message:
-        raise HTTPException(400, "消息不能为空")
+        raise HTTPException(400, _("Message cannot be empty"))
 
     # 根据模式选择系统提示词
     is_qa_mode = data.mode == "qa"
@@ -913,21 +1037,43 @@ async def chat(data: ChatRequest):
         context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
 
         # 纪要 / 对话片段（按需注入）
-        if task.get("summary"):
+        # 若 summary 是生成失败的错误信息（如"对话内容过短"），视为无纪要，回退到对话注入
+        summary = task.get("summary") or ""
+        is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
+        if summary and not is_summary_error:
             context_blocks.append(
-                f"## 当前会议纪要\n{task['summary'][:2000]}"
+                f"## 当前会议纪要\n{summary[:2000]}"
             )
         elif task.get("dialogue") and not realtime_entries:
-            dialogue_text = ""
-            for item in task["dialogue"][:5]:
+            # 回退：展开 sentences 字段注入对话（dialogue 按说话人分组，需展开）
+            dialogue_lines = []
+            for item in task["dialogue"]:
                 name = item.get("speaker_name", f"说话人{item.get('speaker_id', 0) + 1}")
-                text = item.get("text", "")
-                if text:
-                    dialogue_text += f"{name}：{text}\n"
+                sents = item.get("sentences") or []
+                for s in sents:
+                    text = s.get("text", "").strip()
+                    if text:
+                        dialogue_lines.append(f"{name}：{text}")
+                # 兜底：若无 sentences 字段，用顶层 text
+                if not sents:
+                    text = item.get("text", "").strip()
+                    if text:
+                        dialogue_lines.append(f"{name}：{text}")
+            dialogue_text = "\n".join(dialogue_lines)
             if dialogue_text:
                 context_blocks.append(
-                    f"## 当前会议对话（片段）\n{dialogue_text[:1500]}"
+                    f"## 当前会议对话\n{dialogue_text[:3000]}"
                 )
+
+        # 待办事项（始终注入，便于 LLM 回答结论/待办相关问题）
+        todos = task.get("todos") or []
+        if todos:
+            todo_lines = []
+            for t in todos:
+                status = "✅" if t.get("done") else "⬜"
+                assignee = t.get("assignee", "未分配")
+                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
+            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
 
         # ── 维度 2.5: 作业日志（渐进式：概要常驻 + 按需明细；仅操作类意图注入）──
         if _is_joblog_intent(user_message):
@@ -947,9 +1093,27 @@ async def chat(data: ChatRequest):
         if context_text:
             context_blocks.append(context_text)
 
+    # ── 维度 5: 页面上下文（根据前端当前页面注入差异化数据）──
+    if data.current_page:
+        page_ctx = _build_page_context(data.current_page)
+        if page_ctx:
+            context_blocks.append(page_ctx)
+
     # 拼接所有上下文块到系统提示词末尾
     if context_blocks:
         system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
+
+    # 注入内容审计日志：记录每轮注入了哪些块及其长度，便于排查 LLM 幻觉来源
+    logger.info(
+        "[AI对话] 注入块 task=%s mode=%s blocks=%d 详情=%s",
+        data.task_id,
+        data.mode,
+        len(context_blocks),
+        [
+            {"head": b[:120].replace("\n", " "), "len": len(b)}
+            for b in context_blocks
+        ],
+    )
 
     # ── 维度 4: 对话历史 ──
     messages = [{"role": "system", "content": system_prompt}]
@@ -970,7 +1134,8 @@ async def chat(data: ChatRequest):
         # 事后审计：回复中的操作声称必须与系统实际执行结果一致
         reply = _audit_reply_claims(reply, edit_changes)
         # 编辑轮的回复不是新注入内容来源，避免把改写后的待办再当新待办注入
-        extracted_items = [] if edit_changes else _extract_injectable_items(reply)
+        existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
+        extracted_items = [] if edit_changes else _extract_injectable_items(reply, existing_todos)
         return {
             "reply": reply,
             "sources": source_files,
@@ -984,7 +1149,7 @@ async def chat(data: ChatRequest):
         }
     except Exception as e:
         logger.error("AI 对话失败: %s", e)
-        raise HTTPException(500, f"AI 对话失败: {e}")
+        raise HTTPException(500, _("AI conversation failed: {err}").format(err=e))
 
 
 # ============================================================
@@ -1016,7 +1181,7 @@ async def optimize_text(data: OptimizeRequest):
     """文稿优化端点：调用 LLM 对文本进行润色优化。"""
     text = data.text.strip()
     if not text:
-        raise HTTPException(400, "文本不能为空")
+        raise HTTPException(400, _("Text cannot be empty"))
 
     model = data.model or "qwen-plus"
     messages = [
@@ -1029,7 +1194,7 @@ async def optimize_text(data: OptimizeRequest):
         return {"ok": True, "original": text, "optimized": optimized.strip()}
     except Exception as e:
         logger.error("文稿优化失败: %s", e)
-        raise HTTPException(500, f"文稿优化失败: {e}")
+        raise HTTPException(500, _("Text refinement failed: {err}").format(err=e))
 
 
 # ============================================================

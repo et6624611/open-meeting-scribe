@@ -8,6 +8,7 @@ export type TaskStatus =
   | 'recording'
   | 'paused'
   | 'pending'
+  | 'processing'
   | 'transcribing'
   | 'awaiting_mapping'
   | 'summarizing'
@@ -82,6 +83,7 @@ export interface Task {
   todos: TodoItem[]
   chapters: Chapter[]
   project_id: string | null
+  source?: 'record' | 'upload'
 }
 
 // ─── 用户 ───
@@ -108,6 +110,7 @@ export const STATUS_CONFIG: Record<TaskStatus, StatusConfig> = {
   recording:        { label: '录音中',   dotColor: 'var(--rec)',    pulse: true },
   paused:           { label: '已暂停',   dotColor: 'var(--warn)',   pulse: false },
   pending:          { label: '等待处理', dotColor: 'var(--warn)',   pulse: false },
+  processing:       { label: '处理中',   dotColor: 'var(--accent)', pulse: true },
   transcribing:     { label: '识别中',   dotColor: 'var(--accent)', pulse: true },
   awaiting_mapping: { label: '待关联身份', dotColor: 'var(--warn)', pulse: false },
   summarizing:      { label: '生成纪要', dotColor: 'var(--accent)', pulse: true },

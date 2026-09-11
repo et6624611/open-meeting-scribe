@@ -3,7 +3,7 @@ core/embedding_provider.py — 声纹嵌入提取抽象层
 
 职责：
   定义 EmbeddingProvider 接口，支持两种实现：
-    1. CloudEmbeddingProvider — 云端 HTTP 调用（已部署 47.116.10.194:8100）
+    1. CloudEmbeddingProvider — 云端 HTTP 调用（通过环境变量配置地址）
     2. MfccFallbackProvider — 14 维 MFCC 降级（零依赖兜底）
 
   通过 get_embedding_provider() 按配置自动选择提供者。

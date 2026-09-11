@@ -1,5 +1,5 @@
 <template>
-  <span class="playing-eq" :class="{ 'is-paused': !playing }" role="img" :aria-label="playing ? '播放中' : '播放暂停'">
+  <span class="playing-eq" :class="{ 'is-paused': !playing }" role="img" :aria-label="playing ? t('common.playing') : t('common.paused')">
     <span class="pe-bar"></span>
     <span class="pe-bar"></span>
     <span class="pe-bar"></span>
@@ -7,6 +7,8 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 defineProps<{ playing?: boolean }>()
 </script>
 

@@ -1,9 +1,9 @@
 <template>
   <Teleport to="body">
     <div class="login-overlay" :class="{ 'is-hidden': !visible }" id="loginOverlay">
-      <IconButton class="login-back-btn" label="返回（或按 ESC）" show-label @click="hide">
+      <IconButton class="login-back-btn" :label="t('login.back')" show-label @click="hide">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        <template #label>返回 <kbd>ESC</kbd></template>
+        <template #label>{{ t('login.back_label') }} <kbd>ESC</kbd></template>
       </IconButton>
       <div class="login-card">
         <div class="login-card-brand">
@@ -17,45 +17,49 @@
           </div>
           <span>Open Meeting Scribe</span>
         </div>
-        <p class="login-card-sub">登录后即可使用 AI 会议纪要生成、说话人识别等全部功能</p>
+        <p class="login-card-sub">{{ t('login.subtitle') }}</p>
 
         <!-- 登录方式 Tab -->
         <div class="login-tabs">
-          <button class="login-tab" :class="{ active: activeTab === 'github' }" @click="switchTab('github')">GitHub</button>
-          <button class="login-tab" :class="{ active: activeTab === 'sms' }" @click="switchTab('sms')">手机号</button>
+          <button class="login-tab" :class="{ active: activeTab === 'github' }" @click="switchTab('github')">{{ t('login.tab_github') }}</button>
+          <button class="login-tab" :class="{ active: activeTab === 'sms' }" @click="switchTab('sms')">{{ t('login.tab_sms') }}</button>
         </div>
 
         <!-- GitHub 登录面板 -->
         <div class="login-tab-panel" :class="{ active: activeTab === 'github' }">
           <button class="login-btn" @click="onGithubLogin">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-            使用 GitHub 登录
+            {{ t('login.github_btn') }}
           </button>
         </div>
 
         <!-- 手机号登录面板 -->
         <div class="login-tab-panel" :class="{ active: activeTab === 'sms' }">
           <div class="sms-input-group">
-            <input class="sms-input" ref="phoneRef" type="tel" maxlength="11"
-                   placeholder="请输入手机号" autocomplete="tel"
-                   v-model="phone" @input="clearError()">
+            <input
+              class="sms-input" ref="phoneRef" type="tel" maxlength="11"
+              :placeholder="t('login.phone_placeholder')" autocomplete="tel"
+              v-model="phone" @input="clearError()"
+            >
           </div>
           <div class="sms-row">
-            <input class="sms-input" ref="codeRef" type="text" maxlength="6" inputmode="numeric"
-                   placeholder="验证码" autocomplete="one-time-code"
-                   v-model="code" @input="clearError()"
-                   @keydown.enter="onVerify">
+            <input
+              class="sms-input" ref="codeRef" type="text" maxlength="6" inputmode="numeric"
+              :placeholder="t('login.code_placeholder')" autocomplete="one-time-code"
+              v-model="code" @input="clearError()"
+              @keydown.enter="onVerify"
+            >
             <button class="sms-send-btn" ref="sendBtnRef" :disabled="cooldown > 0" @click="onSendCode">
-              {{ cooldown > 0 ? cooldown + 's' : '获取验证码' }}
+              {{ cooldown > 0 ? cooldown + 's' : t('login.send_code') }}
             </button>
           </div>
           <div class="sms-error" v-show="errorMsg">{{ errorMsg }}</div>
           <button class="sms-submit-btn" :disabled="submitting" @click="onVerify">
-            {{ submitting ? '登录中...' : '登录' }}
+            {{ submitting ? t('login.submitting') : t('login.submit') }}
           </button>
         </div>
 
-        <p class="login-footer">登录即表示同意开源使用条款<br>个人版完全免费，无需订阅</p>
+        <p class="login-footer">{{ t('login.footer_line1') }}<br>{{ t('login.footer_line2') }}</p>
       </div>
     </div>
   </Teleport>
@@ -63,7 +67,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
+
+const { t } = useI18n()
 
 const visible = ref(false)
 const activeTab = ref<'github' | 'sms'>('github')
@@ -99,7 +106,7 @@ async function onSendCode() {
   clearError()
   const p = phone.value.trim()
   if (!/^1[3-9]\d{9}$/.test(p)) {
-    errorMsg.value = '请输入正确的 11 位手机号'
+    errorMsg.value = t('login.errors.invalid_phone')
     return
   }
   try {
@@ -110,13 +117,13 @@ async function onSendCode() {
     })
     const data = await safeJson(resp)
     if (!data.success) {
-      errorMsg.value = data.message || '发送失败，请稍后重试'
+      errorMsg.value = data.message || t('login.errors.send_failed')
       return
     }
     startCooldown(60)
     codeRef.value?.focus()
   } catch {
-    errorMsg.value = '网络异常，请检查连接'
+    errorMsg.value = t('login.errors.network')
   }
 }
 
@@ -124,8 +131,8 @@ async function onVerify() {
   clearError()
   const p = phone.value.trim()
   const c = code.value.trim()
-  if (!p) { errorMsg.value = '请输入手机号'; return }
-  if (!c) { errorMsg.value = '请输入验证码'; return }
+  if (!p) { errorMsg.value = t('login.errors.phone_required'); return }
+  if (!c) { errorMsg.value = t('login.errors.code_required'); return }
   submitting.value = true
   try {
     const resp = await fetch('/auth/sms/verify', {
@@ -135,13 +142,13 @@ async function onVerify() {
     })
     const data = await safeJson(resp)
     if (!data.success) {
-      errorMsg.value = data.message || '登录失败'
+      errorMsg.value = data.message || t('login.errors.login_failed')
       return
     }
     // 登录成功，刷新页面（cookie 已设置）
     window.location.href = '/'
   } catch {
-    errorMsg.value = '网络异常，请检查连接'
+    errorMsg.value = t('login.errors.network')
   } finally {
     submitting.value = false
   }
@@ -149,7 +156,7 @@ async function onVerify() {
 
 async function safeJson(resp: Response): Promise<{ success: boolean; message?: string }> {
   const text = await resp.text()
-  try { return JSON.parse(text) } catch { return { success: false, message: `服务异常（HTTP ${resp.status}），请稍后重试` } }
+  try { return JSON.parse(text) } catch { return { success: false, message: t('login.errors.service_error', { status: resp.status }) } }
 }
 
 function startCooldown(seconds: number) {

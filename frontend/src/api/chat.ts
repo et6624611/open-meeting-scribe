@@ -53,6 +53,8 @@ export interface ChatOptions {
   }> | null
   mode?: string
   model?: string
+  /** 前端当前页面路由名，用于注入差异化上下文 */
+  current_page?: string
   signal?: AbortSignal
 }
 
@@ -68,6 +70,7 @@ export async function sendMessage(
     realtime_transcripts: options?.realtime_transcripts,
     mode: options?.mode || 'agent',
     model: options?.model || 'qwen-plus',
+    current_page: options?.current_page,
   }, {
     signal: options?.signal,
   })

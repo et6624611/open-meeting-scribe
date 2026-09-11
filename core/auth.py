@@ -66,7 +66,7 @@ def verify_oauth_state(state: str) -> bool:
     return True
 
 
-def cleanup_expired_states():
+def cleanup_expired_states() -> None:
     """清理过期的 state 条目（可定期调用）"""
     now = time.time()
     expired = [s for s, t in _oauth_states.items() if now - t > STATE_TTL]

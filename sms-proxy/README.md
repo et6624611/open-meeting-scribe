@@ -2,14 +2,14 @@
 
 持有阿里云 AccessKey，为客户端提供短信发送/核验中转服务。
 
-**部署位置**：47.116.10.194:8080
+**部署位置**：<your-server-ip>:8080
 
 ## 架构
 
 ```
 客户端 (open-meeting-scribe)
     ↓ HTTP POST + HMAC-SHA256 签名
-SMS 代理 (47.116.10.194:8080)
+SMS 代理 (<your-server-ip>:8080)
     ↓ 阿里云 PNVS SDK
 阿里云短信服务
 ```
@@ -38,21 +38,21 @@ cp .env.example .env
 
 ```bash
 # 从项目根目录执行
-ssh root@47.116.10.194 'bash -s' < sms-proxy/deploy.sh
+ssh root@<your-server-ip> 'bash -s' < sms-proxy/deploy.sh
 ```
 
 ### 3. 手动部署
 
 ```bash
 # 登录服务器
-ssh root@47.116.10.194
+ssh root@<your-server-ip>
 
 # 创建服务目录
 mkdir -p /opt/sms-proxy
 cd /opt/sms-proxy
 
 # 上传文件（从本地）
-scp -r sms-proxy/* root@47.116.10.194:/opt/sms-proxy/
+scp -r sms-proxy/* root@<your-server-ip>:/opt/sms-proxy/
 
 # 创建虚拟环境并安装依赖
 python3 -m venv venv

@@ -180,10 +180,16 @@ def generate_summary(
     if not dialogue:
         return "（对话稿为空，无法生成纪要）"
 
-    # 统计有效对话
-    valid_dialogues = [d for d in dialogue if d.get("text", "").strip()]
-    if len(valid_dialogues) < 3:
-        return "对话内容过短（仅 {} 句），无法生成有效纪要。请录制更长时间的会议音频。".format(len(valid_dialogues))
+    # 统计有效句子数（dialogue 按说话人分组，需展开 sentences 计数）
+    total_sentences = 0
+    for d in dialogue:
+        sents = d.get("sentences") or []
+        total_sentences += len([s for s in sents if s.get("text", "").strip()])
+    # 兜底：若无 sentences 字段，按说话人条目数估算
+    if total_sentences == 0:
+        total_sentences = len([d for d in dialogue if d.get("text", "").strip()])
+    if total_sentences < 3:
+        return "对话内容过短（仅 {} 句），无法生成有效纪要。请录制更长时间的会议音频。".format(total_sentences)
 
     # 构造发言人说明
     speaker_names = []
@@ -198,7 +204,7 @@ def generate_summary(
     user_content += f"---\n"
     user_content += f"**说话人数量**：{len(dialogue)} 位\n"
     user_content += f"**发言人对应关系**：{speaker_info}\n"
-    user_content += f"**对话总句数**：{len(valid_dialogues)} 句\n"
+    user_content += f"**对话总句数**：{total_sentences} 句\n"
     if meeting_time:
         user_content += f"**会议时间**：{meeting_time}\n"
         user_content += f"**音频采集时间**：{meeting_time}\n"

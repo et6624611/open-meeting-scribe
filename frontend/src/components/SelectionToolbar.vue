@@ -1,28 +1,31 @@
 <template>
   <div class="selection-toolbar" :class="{ 'is-visible': visible }" :style="toolbarStyle" ref="toolbarEl">
-    <button class="sel-tool-btn is-primary" @click="onQuoteToAi" title="引用到会议助手">
+    <button class="sel-tool-btn is-primary" @click="onQuoteToAi" :title="t('common.selection_toolbar.quote_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      引用到 AI
+      {{ t('common.selection_toolbar.quote_to_ai') }}
     </button>
     <span class="sel-tool-sep"></span>
-    <button class="sel-tool-btn" @click="onAction('rewrite')" title="AI 改写">
+    <button class="sel-tool-btn" @click="onAction('rewrite')" :title="t('common.selection_toolbar.rewrite_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      改写
+      {{ t('common.selection_toolbar.rewrite') }}
     </button>
-    <button class="sel-tool-btn" @click="onAction('summarize')" title="AI 总结">
+    <button class="sel-tool-btn" @click="onAction('summarize')" :title="t('common.selection_toolbar.summarize_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-      总结
+      {{ t('common.selection_toolbar.summarize') }}
     </button>
-    <button class="sel-tool-btn" @click="onAction('extract-todo')" title="提取待办">
+    <button class="sel-tool-btn" @click="onAction('extract-todo')" :title="t('common.selection_toolbar.extract_todo_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      提取待办
+      {{ t('common.selection_toolbar.extract_todo') }}
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useQuoteRef } from '@/composables/useQuoteRef'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   containerSelector?: string
@@ -66,9 +69,9 @@ function onMouseUp(e: MouseEvent) {
   if (blockEl) {
     blockIndex = parseInt(blockEl.getAttribute('data-block-index') || '-1')
     const isAi = blockEl.classList.contains('is-ai-generated')
-    sourceLabel = isAi ? 'AI 生成' : '纪要'
+    sourceLabel = isAi ? t('common.selection_toolbar.source_ai') : t('common.selection_toolbar.source_minutes')
   } else {
-    sourceLabel = '纪要'
+    sourceLabel = t('common.selection_toolbar.source_minutes')
     blockIndex = -1
   }
 

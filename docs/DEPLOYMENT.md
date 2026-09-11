@@ -1,108 +1,78 @@
-# DEPLOYMENT — 云服务器部署与运维
+---
+title: 部署指南
+description: Open Meeting Scribe 云服务器部署参考，适用于自建实例或订阅服务运维。
+tags: ["deployment", "server", "systemd", "运维"]
+created_at: "2026-09-06"
+updated_at: "2026-09-10"
+version: "2.0.0"
+---
 
-> 云服务器操作信息的唯一事实源。服务器变更先更新这里。
+# DEPLOYMENT — 云服务器部署指南
 
-## 一、服务器信息
+> 本文档提供通用的云服务器部署参考，不含任何特定实例的地址或凭据。
 
-| 项目 | 值 |
-|------|-----|
-| 服务商 | 阿里云轻量应用服务器 |
-| 规格 | 通用型 2 vCPU / 4 GiB / 50 GiB 系统盘 |
-| 系统 | Ubuntu 24.04 LTS |
-| 公网 IP | `47.116.10.194` |
-| 地域 | 华东（上海） |
-| SSH 用户 | root（密码认证） |
-| 项目目录 | `/opt/meeting-scribe` |
-| Python | 3.12（系统自带） + venv |
+## 一、服务器要求
 
-## 二、服务端口
+| 项目 | 最低要求 |
+|------|----------|
+| 系统 | Ubuntu 22.04+ / Debian 12+ |
+| 规格 | 2 vCPU / 4 GiB RAM / 50 GiB 磁盘 |
+| Python | 3.11+（推荐 3.12） |
+| 网络 | 公网 IP（用于 Web 服务 + 代理中转） |
 
-| 服务 | 端口 | 用途 | 开机自启 |
-|------|------|------|----------|
-| Web UI + API | 8000 | 用户访问界面 + REST/WS API | ✅ |
-| 管理后台 | 8001 | 运维管理面板 | ✅ |
-| SMS 代理 | 8080 | 短信发送/核验中转 | ✅ |
-| 声纹服务 | 8100 | CAM++ 声纹嵌入提取 | ✅ |
-| ASR 代理 | 8200 | 语音转写中转（持有 DashScope Key） | ✅ |
+## 二、服务架构
 
-### 防火墙规则（阿里云控制台 → 实例 → 防火墙）
+```
+客户端 ──HTTP/WS──→ Web UI + API (:8000)
+                  → 管理后台 (:8001)
+                  → ASR 代理 (:8200) ──→ DashScope API
+                  → 声纹服务 (:8100)
+                  → SMS 代理 (:8080) ──→ 阿里云短信
+```
 
-| 协议 | 端口 | 用途 |
+| 服务 | 端口 | 用途 |
 |------|------|------|
-| TCP | 8000 | Web 服务 |
-| TCP | 8001 | 管理后台 |
-| TCP | 8080 | SMS 代理 |
-| TCP | 8100 | 声纹服务 |
-| TCP | 8200 | ASR 代理 |
-| TCP | 22 | SSH（默认已开） |
+| Web UI + API | 8000 | 用户访问界面 + REST/WS API |
+| 管理后台 | 8001 | 运维管理面板 |
+| SMS 代理 | 8080 | 短信发送/核验中转 |
+| 声纹服务 | 8100 | CAM++ 声纹嵌入提取 |
+| ASR 代理 | 8200 | 语音转写中转（持有 DashScope Key） |
 
-## 三、访问地址
+## 三、安装步骤
 
-- Web UI 👉 **http://47.116.10.194:8000**
-- 管理后台 👉 **http://47.116.10.194:8001**
-
-## 四、SSH 连接
+### 3.1 系统依赖
 
 ```bash
-# 本地连接（密码在 .env 或口头传达，不写入文件）
-ssh root@47.116.10.194
+sudo apt update && sudo apt install -y python3 python3-venv python3-pip ffmpeg
 ```
 
-## 五、服务管理
+### 3.2 项目部署
 
 ```bash
-# ── Web 服务 ──
-systemctl status meeting-scribe       # 查看状态
-systemctl restart meeting-scribe      # 重启
-systemctl stop meeting-scribe         # 停止
-journalctl -u meeting-scribe -f       # 实时日志
+# 克隆仓库
+git clone https://github.com/your-org/open-meeting-scribe.git
+cd open-meeting-scribe
 
-# ── 管理后台 ──
-systemctl status meeting-scribe-admin # 查看状态
-systemctl restart meeting-scribe-admin
-journalctl -u meeting-scribe-admin -f
+# 创建虚拟环境
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-# ── 通用 ──
-systemctl daemon-reload               # 修改 service 文件后重载
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入你的 API Key 和配置
 ```
 
-## 六、代码更新流程
-
-本地改完代码后，推送到服务器：
+### 3.3 构建前端
 
 ```bash
-# 1. 打包（排除缓存/数据/虚拟环境）
-cd <项目根目录>
-tar czf /tmp/meeting-scribe-src.tar.gz \
-  --exclude='__pycache__' --exclude='venv' --exclude='data' \
-  --exclude='logs' --exclude='.qoder' --exclude='*.png' \
-  --exclude='samples' --exclude='docs' --exclude='tests' \
-  --exclude='.pytest_cache' --exclude='scripts/_ssh*' \
-  app core cli.py requirements.txt .env .env.example
-
-# 2. 上传
-scp /tmp/meeting-scribe-src.tar.gz root@47.116.10.194:/tmp/
-
-# 3. 服务器端解压 + 重启（主服务 + 管理后台）
-ssh root@47.116.10.194
-cd /opt/meeting-scribe
-tar xzf /tmp/meeting-scribe-src.tar.gz
-systemctl restart meeting-scribe
-systemctl restart meeting-scribe-admin
+cd frontend
+npm install
+npm run build
+cd ..
 ```
 
-## 七、API 调用路径
-
-```
-本地开发:  客户端(127.0.0.1:8000) ──HTTP/WS──→ ASR 代理(47.116.10.194:8200) ──公网──→ DashScope API
-云服务器:  客户端(47.116.10.194:8000) ──HTTP/WS──→ ASR 代理(47.116.10.194:8200) ──公网──→ DashScope API
-```
-
-- ASR 转写请求通过代理服务器中转，DashScope API Key 仅存在代理端
-- 客户端通过 HMAC-SHA256 签名与代理通信，防未授权调用
-- LLM 纪要生成仍由客户端直连 DashScope（使用 `.env` 中的 `DASHSCOPE_API_KEY`）
-
-## 八、systemd 服务文件
+## 四、systemd 服务配置
 
 ### meeting-scribe.service
 
@@ -113,7 +83,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=www-data
 WorkingDirectory=/opt/meeting-scribe
 Environment=PATH=/opt/meeting-scribe/venv/bin:/usr/bin:/bin
 ExecStart=/opt/meeting-scribe/venv/bin/python cli.py server --host 0.0.0.0 --port 8000
@@ -135,7 +105,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=www-data
 WorkingDirectory=/opt/meeting-scribe
 Environment=PATH=/opt/meeting-scribe/venv/bin:/usr/bin:/bin
 ExecStart=/opt/meeting-scribe/venv/bin/python cli.py admin --host 0.0.0.0 --port 8001
@@ -157,7 +127,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=www-data
 WorkingDirectory=/opt/asr-proxy
 Environment=PATH=/opt/asr-proxy/venv/bin:/usr/bin:/bin
 ExecStart=/opt/asr-proxy/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8200
@@ -170,9 +140,64 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-## 九、部署历史
+### 启用服务
 
-| 日期 | 操作 |
-|------|------|
-| 2026-09-06 | 首次部署：Ubuntu 24.04 重置 + 系统依赖 + venv + pip install + systemd 服务 + 防火墙放行 |
-| 2026-09-07 | 部署 ASR 代理服务（/opt/asr-proxy:8200）：venv + dashscope/fastapi + systemd + .env 配置 |
+```bash
+sudo cp meeting-scribe.service meeting-scribe-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now meeting-scribe meeting-scribe-admin
+```
+
+## 五、防火墙配置
+
+根据你的云服务商控制台或 `ufw` 放行对应端口：
+
+```bash
+sudo ufw allow 8000/tcp  # Web 服务
+sudo ufw allow 8001/tcp  # 管理后台
+sudo ufw allow 8080/tcp  # SMS 代理
+sudo ufw allow 8100/tcp  # 声纹服务
+sudo ufw allow 8200/tcp  # ASR 代理
+sudo ufw allow 22/tcp    # SSH
+sudo ufw enable
+```
+
+## 六、代码更新
+
+```bash
+# 1. 拉取最新代码
+cd /opt/meeting-scribe
+git pull origin main
+
+# 2. 更新依赖
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. 重建前端（如有变更）
+cd frontend && npm install && npm run build && cd ..
+
+# 4. 重启服务
+sudo systemctl restart meeting-scribe meeting-scribe-admin
+```
+
+## 七、服务管理
+
+```bash
+# 查看状态
+systemctl status meeting-scribe
+systemctl status meeting-scribe-admin
+
+# 重启
+systemctl restart meeting-scribe
+
+# 查看实时日志
+journalctl -u meeting-scribe -f
+```
+
+## 八、安全建议
+
+1. **使用非 root 用户运行服务**（上述示例使用 `www-data`）
+2. **SSH 禁用密码认证**，改用密钥登录
+3. **定期轮换 API Key**（DashScope、阿里云 AccessKey）
+4. **启用 HTTPS**（通过 Nginx 反向代理 + Let's Encrypt）
+5. **设置强管理员密码**（`ADMIN_PASSWORD` 环境变量）

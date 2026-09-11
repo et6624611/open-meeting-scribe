@@ -1,0 +1,22 @@
+{
+  "title": "All Meetings",
+  "count": "{count} meeting(s)",
+  "search_placeholder": "Search meeting title or content...",
+  "col_name": "Meeting Name",
+  "col_status": "Status",
+  "col_duration": "Duration",
+  "col_speakers": "Speakers",
+  "col_time": "Created",
+  "speakers_count": "{count} speaker(s)",
+  "open_title": "Open",
+  "empty": "No meeting records",
+  "empty_search": "No matching meetings",
+  "batch_count": "{count} selected",
+  "batch_export": "Export",
+  "batch_archive": "Archive",
+  "batch_delete": "Delete",
+  "batch_close": "Clear selection",
+  "export_todo": "Export {count} meeting(s) (coming soon)",
+  "archive_todo": "Archive {count} meeting(s) (coming soon)",
+  "confirm_delete": "Delete {count} meeting(s)? This cannot be undone."
+}

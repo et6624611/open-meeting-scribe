@@ -22,7 +22,7 @@ import threading
 import time
 from typing import Callable
 
-from .llm import chat_completion
+from .llm import async_chat_completion_safe
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,8 @@ class RealtimeSummarizer:
 
     线程模型：
         - 定时器在独立线程执行
-        - LLM 调用在定时器线程中同步执行（不阻塞主事件循环）
+        - LLM 调用通过 asyncio.run_coroutine_threadsafe 委托到事件循环线程池
+          （使用 async_chat_completion_safe + asyncio.to_thread），不阻塞事件循环
         - 回调通过事件循环投递到 asyncio 世界
     """
 
@@ -122,6 +123,7 @@ class RealtimeSummarizer:
         self._started = False
         self._paused = False
         self._stopped = False
+        self._paused_by_recording = False  # 标记暂停是否由录音暂停触发
         self._lock = threading.Lock()  # 保护缓冲区
 
         # 倒计时推送线程
@@ -137,6 +139,7 @@ class RealtimeSummarizer:
             raise RuntimeError("实时总结已在运行中")
         self._started = True
         self._paused = False
+        self._paused_by_recording = False
         self._stopped = False
         self._schedule_next()
         logger.info(f"[实时总结] 已启动（间隔 {self._interval}s）")
@@ -153,25 +156,45 @@ class RealtimeSummarizer:
             self._on_status("stopped")
         logger.info(f"[实时总结] 已停止，共 {self._summary_count} 次总结")
 
-    def pause(self) -> None:
-        """暂停总结（冻结倒计时）"""
+    def pause(self, source: str = "manual") -> None:
+        """
+        暂停总结（冻结倒计时）
+
+        Args:
+            source: 暂停来源，"manual"（用户手动）或 "recording"（录音暂停联动）
+        """
         self._paused = True
+        self._paused_by_recording = (source == "recording")
         if self._timer:
             self._timer.cancel()
             self._timer = None
         self._stop_countdown()
         if self._on_status:
             self._on_status("paused")
-        logger.info("[实时总结] 已暂停")
+        logger.info(f"[实时总结] 已暂停（来源: {source}）")
 
     def resume(self) -> None:
         """恢复总结"""
         self._paused = False
+        self._paused_by_recording = False
         if self._started:
             self._schedule_next()
         if self._on_status:
             self._on_status("idle")
         logger.info("[实时总结] 已恢复")
+
+    def auto_resume_for_recording(self) -> bool:
+        """
+        录音恢复时自动恢复总结（仅当暂停是由录音触发时）
+
+        Returns:
+            bool: 是否实际执行了恢复
+        """
+        if self._paused and self._paused_by_recording and not self._stopped:
+            self.resume()
+            logger.info("[实时总结] 因录音恢复而自动恢复")
+            return True
+        return False
 
     def restart(self) -> None:
         """从已停止状态重新启动"""
@@ -180,6 +203,7 @@ class RealtimeSummarizer:
         self._stopped = False
         self._started = True
         self._paused = False
+        self._paused_by_recording = False
         self._schedule_next()
         if self._on_status:
             self._on_status("idle")
@@ -200,6 +224,24 @@ class RealtimeSummarizer:
             self._all_sentences.append(sentence)
         logger.debug(f"[实时总结] 收到句子: {sentence.get('text', '')[:40]}")
 
+    def update_speaker_name(self, old_name: str, new_name: str) -> None:
+        """
+        更新缓冲区中所有句子的说话人姓名（绑定后调用）。
+
+        确保下一次增量总结使用绑定后的真实姓名，而非通用编号。
+        """
+        with self._lock:
+            updated = 0
+            for s in self._buffer:
+                if s.get("speaker_name") == old_name:
+                    s["speaker_name"] = new_name
+                    updated += 1
+            for s in self._all_sentences:
+                if s.get("speaker_name") == old_name:
+                    s["speaker_name"] = new_name
+            if updated:
+                logger.info(f"[实时总结] 更新说话人姓名: '{old_name}' → '{new_name}'（{updated} 条缓冲区句子）")
+
     def get_final_summary(self) -> str:
         """返回最终摘要（录音结束后调用）"""
         return self._previous_summary
@@ -211,6 +253,10 @@ class RealtimeSummarizer:
     @property
     def is_paused(self) -> bool:
         return self._paused
+
+    @property
+    def is_paused_by_recording(self) -> bool:
+        return self._paused_by_recording
 
     @property
     def is_stopped(self) -> bool:
@@ -290,7 +336,11 @@ class RealtimeSummarizer:
         self._countdown_thread = None
 
     def _do_summary(self) -> None:
-        """执行一次增量总结"""
+        """执行一次增量总结（在 Timer 线程中执行）
+
+        LLM 调用通过 run_coroutine_threadsafe 委托到事件循环线程池，
+        使用 asyncio.to_thread 执行，不阻塞事件循环。
+        """
         if not self._started or self._paused:
             return
 
@@ -345,12 +395,28 @@ class RealtimeSummarizer:
                 {"role": "user", "content": user_content},
             ]
 
-            summary = chat_completion(
-                messages,
-                model=SUMMARY_MODEL,
-                max_tokens=1024,
-                temperature=0.3,  # 低温度，更稳定
-            )
+            # 通过事件循环线程池执行 LLM 调用（不阻塞事件循环）
+            from app.store import event_loop
+            if event_loop and not event_loop.is_closed():
+                future = asyncio.run_coroutine_threadsafe(
+                    async_chat_completion_safe(
+                        messages,
+                        model=SUMMARY_MODEL,
+                        max_tokens=1024,
+                        temperature=0.3,
+                    ),
+                    event_loop,
+                )
+                summary = future.result()  # 在 Timer 线程中等待结果
+            else:
+                # 兑底：无事件循环时直接同步调用（不应发生）
+                from .llm import chat_completion
+                summary = chat_completion(
+                    messages,
+                    model=SUMMARY_MODEL,
+                    max_tokens=1024,
+                    temperature=0.3,
+                )
 
             if summary and summary.strip():
                 self._previous_summary = summary.strip()

@@ -1,0 +1,12 @@
+{
+  "title": "Projects",
+  "subtitle": "Link local folders to let AI respond based on project materials",
+  "input_placeholder": "Enter project name...",
+  "create": "New Project",
+  "folders_count": "{count} folder(s)",
+  "add_folder": "+ Add Folder",
+  "remove_folder": "Remove",
+  "empty": "No projects yet, create one to get started",
+  "confirm_delete": "Delete this project?",
+  "folder_path_prompt": "Enter folder path:"
+}

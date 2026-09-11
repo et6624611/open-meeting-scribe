@@ -1,103 +1,128 @@
 <template>
   <div>
     <!-- 列表视图 -->
-    <div v-if="!selectedSpeaker">
+    <Transition name="fade" mode="out-in">
+    <div v-if="!selectedSpeaker" key="list">
       <div class="main-head">
-        <h1>说话人管理</h1>
-        <p class="sub">管理说话人身份档案，追溯会议参与与发言记录</p>
+        <h1>{{ t('speakers.title') }}</h1>
+        <p class="sub">{{ t('speakers.subtitle') }}</p>
       </div>
       <div class="spk-create">
-        <input v-model="newName" class="spk-create-input" placeholder="输入说话人名称…" @keyup.enter="onCreate" />
-        <button class="btn btn-primary" @click="onCreate" :disabled="!newName.trim()">添加</button>
+        <input ref="createInputRef" v-model="newName" class="spk-create-input" :placeholder="t('speakers.input_placeholder')" @keyup.enter="onCreate" />
+        <button class="btn btn-primary" @click="onCreate" :disabled="!newName.trim()">{{ t('speakers.add') }}</button>
       </div>
-      <div v-if="speakers.length > 0" class="spk-list">
-        <div v-for="spk in speakers" :key="spk.id" class="spk-item" @click="openDetail(spk)">
+      <!-- 搜索框 -->
+      <div v-if="speakers.length > 3" class="spk-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input v-model="searchQuery" class="spk-search-input" type="text" :placeholder="t('speakers.search_placeholder')" />
+      </div>
+      <!-- 加载态 -->
+      <div v-if="loading" class="spk-loading">
+        <div class="spk-spinner"></div>
+        <span>{{ t('speakers.voiceprint_loading') }}</span>
+      </div>
+      <!-- 说话人列表 -->
+      <div v-else-if="filteredSpeakers.length > 0" class="spk-list">
+        <div v-for="spk in filteredSpeakers" :key="spk.id" :class="['spk-item', { 'is-new': createdSpeakerId === spk.id }]" @click="openDetail(spk)">
           <div class="spk-info">
+            <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
             <div class="spk-text">
               <span class="spk-name" :style="{ color: getColor(spk.id) }">{{ spk.name }}</span>
-              <span v-if="isMe(spk)" class="spk-badge-me">我</span>
+              <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
             </div>
           </div>
           <div class="spk-meta-row">
-            <span v-if="spk.meeting_count" class="spk-meta">{{ spk.meeting_count }} 次会议</span>
+            <span v-if="spk.meeting_count" class="spk-meta">{{ t('speakers.meetings_count', { count: spk.meeting_count }) }}</span>
             <div class="spk-actions" @click.stop>
-              <button v-if="!isMe(spk)" class="spk-action-btn" @click="onSetMe(spk.id)">设为我</button>
-              <button class="spk-action-btn danger" @click="onDelete(spk.id)">删除</button>
+              <button class="spk-action-btn" @click="onSetMe(spk.id)">{{ isMe(spk) ? t('speakers.unset_me') : t('speakers.set_me') }}</button>
+              <button class="spk-action-btn danger" @click="confirmDelete(spk)">{{ t('common.action.delete') }}</button>
             </div>
           </div>
         </div>
       </div>
-      <div v-else class="empty-state">暂无说话人</div>
+      <!-- 空状态 -->
+      <div v-else class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <p>{{ speakers.length === 0 ? t('speakers.empty') : t('speakers.search_placeholder') }}</p>
+        <p v-if="speakers.length === 0" class="empty-hint">{{ t('speakers.empty_hint') }}</p>
+      </div>
+      <!-- 设为我功能提示 -->
+      <p v-if="speakers.length > 0" class="spk-set-me-hint">{{ t('speakers.set_me_hint') }}</p>
     </div>
 
     <!-- 详情视图 -->
-    <div v-else class="spk-detail">
+    <div v-else key="detail" class="spk-detail">
       <button class="spk-back-btn" @click="backToList">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
-        返回列表
+        {{ t('speakers.back_list') }}
       </button>
 
       <div class="spk-detail-head">
         <div class="spk-detail-left">
           <div class="spk-detail-info">
-            <div class="spk-detail-name">
-              <span :style="{ color: getColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
-              <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">当前用户</span>
+            <div class="spk-detail-name" @click="startRename">
+              <span v-if="!isRenaming" class="spk-name-clickable" :style="{ color: getColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
+              <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keyup.escape="cancelRename" @blur="saveRename" />
+              <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
             </div>
-            <div class="spk-detail-role">{{ selectedSpeaker.alias || '' }}</div>
+            <div v-if="selectedSpeaker.alias" class="spk-detail-role">{{ selectedSpeaker.alias }}</div>
           </div>
         </div>
         <div class="spk-detail-actions">
-          <button v-if="!isMe(selectedSpeaker)" class="btn btn-secondary btn-sm" @click="onToggleMe">设为我</button>
-          <button class="btn btn-secondary btn-sm" @click="onEdit">编辑</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--rec)" @click="onDelete(selectedSpeaker.id)">删除</button>
+          <button v-if="!isMe(selectedSpeaker)" class="btn btn-secondary btn-sm" @click="onToggleMe">{{ t('speakers.set_me') }}</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--rec)" @click="confirmDelete(selectedSpeaker)">{{ t('common.action.delete') }}</button>
         </div>
       </div>
 
       <!-- 统计卡片 -->
       <div class="spk-stat-cards">
         <div class="spk-stat-card">
-          <div class="label">参与会议</div>
+          <div class="label">{{ t('speakers.stat_meetings') }}</div>
           <div class="value">{{ stat.meetings.length }}</div>
-          <div class="sub">次会议</div>
+          <div class="sub">{{ t('speakers.stat_meetings_unit') }}</div>
         </div>
         <div class="spk-stat-card">
-          <div class="label">总发言时长</div>
+          <div class="label">{{ t('speakers.stat_duration') }}</div>
           <div class="value">{{ Math.round(stat.totalDuration / 60) }}</div>
-          <div class="sub">分钟</div>
+          <div class="sub">{{ t('speakers.stat_duration_unit') }}</div>
         </div>
         <div class="spk-stat-card">
-          <div class="label">待办事项</div>
+          <div class="label">{{ t('speakers.stat_todos') }}</div>
           <div class="value">{{ stat.todos.length }}</div>
-          <div class="sub">项待办</div>
+          <div class="sub">{{ t('speakers.stat_todos_unit') }}</div>
         </div>
       </div>
 
       <!-- 声纹管理 -->
-      <div v-if="voiceprintStatus" class="spk-voiceprint-section">
+      <div class="spk-voiceprint-section">
+        <div v-if="voiceprintLoading && !voiceprintStatus" class="vp-skeleton">
+          <div class="vp-skeleton-line"></div>
+          <div class="vp-skeleton-line short"></div>
+        </div>
+        <template v-else-if="voiceprintStatus">
         <div class="vp-header">
-          <h3 class="vp-title">声纹信息</h3>
+          <h3 class="vp-title">{{ t('speakers.voiceprint_title') }}</h3>
           <span :class="['vp-badge', voiceprintStatus.has_voiceprint ? 'vp-registered' : 'vp-not-registered']">
-            {{ voiceprintStatus.has_voiceprint ? '已注册' : '未注册' }}
+            {{ voiceprintStatus.has_voiceprint ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered') }}
           </span>
         </div>
         <div class="vp-stats">
           <div class="vp-stat-item">
-            <span class="vp-stat-label">样本数量：</span>
+            <span class="vp-stat-label">{{ t('speakers.voiceprint_samples') }}</span>
             <span class="vp-stat-value">{{ voiceprintStatus.sample_count }}</span>
           </div>
           <div class="vp-stat-item">
-            <span class="vp-stat-label">总时长：</span>
+            <span class="vp-stat-label">{{ t('speakers.voiceprint_total_duration') }}</span>
             <span class="vp-stat-value">{{ formatTime(voiceprintStatus.total_sample_duration) }}</span>
           </div>
           <div v-if="voiceprintStatus.updated_at" class="vp-stat-item">
-            <span class="vp-stat-label">更新时间：</span>
+            <span class="vp-stat-label">{{ t('speakers.voiceprint_updated') }}</span>
             <span class="vp-stat-value">{{ formatDate(voiceprintStatus.updated_at) }}</span>
           </div>
         </div>
         <div class="vp-actions">
           <button class="btn btn-secondary btn-sm" @click="onRebuildVoiceprint" :disabled="voiceprintLoading">
-            {{ voiceprintLoading ? '重建中…' : '重建声纹' }}
+            {{ voiceprintLoading ? t('speakers.voiceprint_rebuilding') : t('speakers.voiceprint_rebuild') }}
           </button>
           <button 
             v-if="voiceprintStatus.has_voiceprint" 
@@ -106,21 +131,28 @@
             @click="onDeleteVoiceprint"
             :disabled="voiceprintLoading"
           >
-            删除声纹
+            {{ t('speakers.voiceprint_delete') }}
           </button>
         </div>
+        </template>
       </div>
 
       <!-- Tab 切换 -->
       <div class="spk-tabs">
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">参与的会议</button>
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'utterances' }" @click="activeTab = 'utterances'">发言摘要</button>
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'todos' }" @click="activeTab = 'todos'">待办事项</button>
+        <button class="spk-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">
+          {{ t('speakers.tab_meetings') }} <span class="spk-tab-count">{{ stat.meetings.length }}</span>
+        </button>
+        <button class="spk-tab" :class="{ 'is-active': activeTab === 'utterances' }" @click="activeTab = 'utterances'">
+          {{ t('speakers.tab_utterances') }} <span class="spk-tab-count">{{ allUtterances.length }}</span>
+        </button>
+        <button class="spk-tab" :class="{ 'is-active': activeTab === 'todos' }" @click="activeTab = 'todos'">
+          {{ t('speakers.tab_todos') }} <span class="spk-tab-count">{{ stat.todos.length }}</span>
+        </button>
       </div>
 
       <!-- 会议列表 -->
       <div v-show="activeTab === 'meetings'" class="spk-tab-panel is-active">
-        <div v-if="stat.meetings.length === 0" class="spk-empty">暂无参与的会议</div>
+        <div v-if="stat.meetings.length === 0" class="spk-empty">{{ t('speakers.empty_meetings') }}</div>
         <div v-for="m in sortedMeetings" :key="m.task_id" class="spk-meeting-card" @click="openTask(m.task_id)">
           <div class="mc-head">
             <span class="mc-title">{{ m.title }}</span>
@@ -128,15 +160,15 @@
           </div>
           <div class="mc-excerpt">{{ m.excerpt }}</div>
           <div class="mc-stats">
-            <span>{{ Math.round(m.duration / 60) }} 分钟</span>
-            <span>{{ m.utteranceCount }} 条发言</span>
+            <span>{{ t('speakers.minutes', { count: Math.round(m.duration / 60) }) }}</span>
+            <span>{{ t('speakers.utterances_count', { count: m.utteranceCount }) }}</span>
           </div>
         </div>
       </div>
 
       <!-- 发言摘要 -->
       <div v-show="activeTab === 'utterances'" class="spk-tab-panel is-active">
-        <div v-if="allUtterances.length === 0" class="spk-empty">暂无发言记录</div>
+        <div v-if="allUtterances.length === 0" class="spk-empty">{{ t('speakers.empty_utterances') }}</div>
         <div v-for="(u, i) in allUtterances.slice(0, 20)" :key="i" class="spk-utterance" :style="{ borderLeftColor: getColor(selectedSpeaker.id) }">
           <div class="ut-meta">
             <span class="ut-meeting" @click="openTask(u.meetingTaskId)">{{ u.meetingTitle }}</span>
@@ -144,43 +176,73 @@
           </div>
           <div class="ut-text">{{ u.text }}</div>
         </div>
-        <div v-if="allUtterances.length > 20" class="spk-empty">仅显示最近 20 条发言</div>
+        <div v-if="allUtterances.length > 20" class="spk-empty">{{ t('speakers.utterances_limit') }}</div>
       </div>
 
       <!-- 待办事项 -->
       <div v-show="activeTab === 'todos'" class="spk-tab-panel is-active">
-        <div v-if="stat.todos.length === 0" class="spk-empty">暂无待办事项</div>
+        <div v-if="stat.todos.length === 0" class="spk-empty">{{ t('speakers.empty_todos') }}</div>
         <div v-for="todo in stat.todos" :key="todo.id" class="spk-todo-item">
-          <input type="checkbox" class="todo-check" :checked="todo.done" @change="onToggleTodo(todo)" />
           <div class="todo-body">
             <div class="todo-text" :class="{ 'is-done': todo.done }">{{ todo.text }}</div>
-            <div class="todo-from">来自：{{ todo.fromTaskTitle }}</div>
+            <div class="todo-from">{{ t('speakers.todo_from', { title: todo.fromTaskTitle }) }}</div>
           </div>
         </div>
       </div>
     </div>
+    </Transition>
+
+    <!-- 确认对话框 -->
+    <Teleport to="body">
+    <div v-if="showConfirmDialog" class="spk-dialog-overlay" @click.self="showConfirmDialog = false">
+      <div class="spk-dialog">
+        <h3>{{ confirmDialogTitle }}</h3>
+        <p>{{ confirmDialogMsg }}</p>
+        <div class="spk-dialog-actions">
+          <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('speakers.cancel') }}</button>
+          <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
+        </div>
+      </div>
+    </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { fetchSpeakers, createSpeaker, deleteSpeaker, setSpeakerAsMe, updateSpeaker } from '@/api/speakers'
 import type { Speaker } from '@/api/speakers'
 import { loadSpeakerStats, useSpeakerStat } from '@/composables/useSpeakerStats'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useRouter } from 'vue-router'
 import { showToast } from '@/composables/useToast'
-import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, type VoiceprintStatus } from '@/api/voiceprint'
+import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
 import { useUserStore } from '@/stores/user'
 
+const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
 const speakers = ref<Speaker[]>([])
 const newName = ref('')
+const createInputRef = ref<HTMLInputElement | null>(null)
+const createdSpeakerId = ref<string | null>(null)
 const selectedSpeaker = ref<Speaker | null>(null)
 const activeTab = ref<'meetings' | 'utterances' | 'todos'>('meetings')
 const voiceprintStatus = ref<VoiceprintStatus | null>(null)
 const voiceprintLoading = ref(false)
+const loading = ref(false)
+const searchQuery = ref('')
+const voiceprintIds = ref<Set<string>>(new Set())
+// 内联重命名
+const isRenaming = ref(false)
+const renameValue = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+// 确认对话框
+const showConfirmDialog = ref(false)
+const confirmDialogTitle = ref('')
+const confirmDialogMsg = ref('')
+let confirmCallback: (() => void) | null = null
 
 /** 判断说话人是否为当前用户（通过 linked_user_id 比较） */
 function isMe(spk: Speaker): boolean {
@@ -210,11 +272,24 @@ watch(
 )
 
 async function load() {
-  speakers.value = await fetchSpeakers()
-  if (speakers.value.length > 0) {
-    await loadSpeakerStats(speakers.value.map(s => s.id))
+  loading.value = true
+  try {
+    speakers.value = await fetchSpeakers()
+    if (speakers.value.length > 0) {
+      await loadSpeakerStats(speakers.value.map(s => s.id))
+      voiceprintIds.value = await fetchVoiceprintRegistry()
+    }
+  } finally {
+    loading.value = false
   }
 }
+
+/** 按搜索词过滤说话人 */
+const filteredSpeakers = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return speakers.value
+  return speakers.value.filter(s => s.name.toLowerCase().includes(q))
+})
 
 function getColor(id: string) {
   return getSpeakerColor(id)
@@ -232,18 +307,61 @@ function backToList() {
 async function onCreate() {
   const name = newName.value.trim()
   if (!name) return
-  await createSpeaker(name)
-  newName.value = ''
-  await load()
+  // 重名检测
+  if (speakers.value.some(s => s.name === name)) {
+    showToast(t('speakers.duplicate_name', { name }), 'warn')
+    return
+  }
+  try {
+    await createSpeaker(name)
+    newName.value = ''
+    showToast(t('speakers.create_success', { name }), 'success')
+    await load()
+    // 找到新创建的说话人并滚动+高亮
+    const newSpk = speakers.value.find(s => s.name === name)
+    if (newSpk) {
+      createdSpeakerId.value = newSpk.id
+      await nextTick()
+      const el = document.querySelector('.spk-item.is-new')
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+      setTimeout(() => { createdSpeakerId.value = null }, 1500)
+    }
+    createInputRef.value?.focus()
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || t('speakers.create_failed')
+    showToast(msg, 'error')
+  }
 }
 
 async function onDelete(id: string) {
-  if (!confirm('确定删除该说话人？')) return
-  await deleteSpeaker(id)
-  if (selectedSpeaker.value?.id === id) {
-    selectedSpeaker.value = null
+  const spk = speakers.value.find(s => s.id === id)
+  try {
+    await deleteSpeaker(id)
+    if (selectedSpeaker.value?.id === id) {
+      selectedSpeaker.value = null
+    }
+    await load()
+    if (spk) showToast(t('speakers.delete_success', { name: spk.name }), 'success')
+  } catch (e: any) {
+    showToast(e?.response?.data?.detail || e?.message || t('speakers.delete_failed'), 'error')
   }
-  await load()
+}
+
+/** 打开确认对话框 */
+function confirmDelete(spk: Speaker) {
+  confirmDialogTitle.value = t('speakers.confirm_delete_title')
+  confirmDialogMsg.value = t('speakers.confirm_delete_msg', { name: spk.name })
+  confirmCallback = () => onDelete(spk.id)
+  showConfirmDialog.value = true
+}
+
+/** 确认删除回调 */
+function onConfirmDelete() {
+  showConfirmDialog.value = false
+  confirmCallback?.()
+  confirmCallback = null
 }
 
 async function onSetMe(id: string) {
@@ -254,9 +372,9 @@ async function onSetMe(id: string) {
       selectedSpeaker.value = speakers.value.find(s => s.id === id) || null
     }
     const spk = speakers.value.find(s => s.id === id)
-    showToast(`已将「${spk?.name}」设为当前用户`, 'success')
+    showToast(t('speakers.set_me_success', { name: spk?.name }), 'success')
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || '设置失败'
+    const msg = e?.response?.data?.detail || e?.message || t('speakers.set_me_failed')
     showToast(msg, 'error')
   }
 }
@@ -266,13 +384,31 @@ async function onToggleMe() {
   await onSetMe(selectedSpeaker.value.id)
 }
 
-function onEdit() {
+/** 开始内联重命名 */
+function startRename() {
   if (!selectedSpeaker.value) return
-  const newName = prompt('输入新名称：', selectedSpeaker.value.name)
-  if (newName && newName.trim()) {
-    updateSpeaker(selectedSpeaker.value.id, { name: newName.trim() })
-    load()
+  renameValue.value = selectedSpeaker.value.name
+  isRenaming.value = true
+  nextTick(() => renameInputRef.value?.focus())
+}
+
+/** 保存重命名 */
+async function saveRename() {
+  if (!isRenaming.value || !selectedSpeaker.value) return
+  const name = renameValue.value.trim()
+  if (!name || name === selectedSpeaker.value.name) {
+    cancelRename()
+    return
   }
+  await updateSpeaker(selectedSpeaker.value.id, { name })
+  selectedSpeaker.value.name = name
+  isRenaming.value = false
+  await load()
+}
+
+/** 取消重命名 */
+function cancelRename() {
+  isRenaming.value = false
 }
 
 function openTask(taskId: string) {
@@ -282,7 +418,7 @@ function openTask(taskId: string) {
 function formatDate(dateStr: string) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  return t('speakers.date_format', { month: d.getMonth() + 1, day: d.getDate() })
 }
 
 function formatTime(seconds: number) {
@@ -314,20 +450,15 @@ const allUtterances = computed(() => {
   return result
 })
 
-async function onToggleTodo(todo: any) {
-  // TODO: 调用后端 API 更新待办状态
-  todo.done = !todo.done
-}
-
 async function onRebuildVoiceprint() {
   if (!selectedSpeaker.value) return
   voiceprintLoading.value = true
   try {
     const result = await rebuildVoiceprint(selectedSpeaker.value.id)
-    showToast(`声纹重建成功：${result.meeting_count} 次会议，${Math.round(result.duration_sec / 60)} 分钟`, 'success')
+    showToast(t('speakers.voiceprint_rebuild_success', { count: result.meeting_count, minutes: Math.round(result.duration_sec / 60) }), 'success')
     await loadVoiceprint()
   } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || '声纹重建失败'
+    const msg = e?.response?.data?.detail || e?.message || t('speakers.voiceprint_rebuild_failed')
     showToast(msg, 'error')
   } finally {
     voiceprintLoading.value = false
@@ -336,38 +467,62 @@ async function onRebuildVoiceprint() {
 
 async function onDeleteVoiceprint() {
   if (!selectedSpeaker.value) return
-  if (!confirm('确定删除该说话人的声纹数据？')) return
-  try {
-    await deleteVoiceprint(selectedSpeaker.value.id)
-    showToast('声纹已删除', 'success')
-    await loadVoiceprint()
-  } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || '删除声纹失败'
-    showToast(msg, 'error')
+  confirmDialogTitle.value = t('speakers.confirm_delete_title')
+  confirmDialogMsg.value = t('speakers.confirm_delete_voiceprint_msg')
+  confirmCallback = async () => {
+    try {
+      if (!selectedSpeaker.value) return
+      await deleteVoiceprint(selectedSpeaker.value.id)
+      showToast(t('speakers.voiceprint_deleted'), 'success')
+      await loadVoiceprint()
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || t('speakers.voiceprint_delete_failed')
+      showToast(msg, 'error')
+    }
   }
+  showConfirmDialog.value = true
 }
 
 onMounted(load)
 </script>
 
 <style scoped>
-.spk-create { display: flex; gap: var(--s-2); margin-bottom: var(--s-6); }
-.spk-create-input { flex: 1; max-width: 300px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
+.spk-create { display: flex; gap: var(--s-2); margin-bottom: var(--s-4); }
+.spk-create-input { flex: 1; max-width: 400px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
 .spk-create-input:focus { border-color: var(--accent); }
 .spk-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .spk-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); background: var(--surface); cursor: pointer; transition: background 0.12s; }
 .spk-item:hover { background: var(--surface-2); }
-.spk-info { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.spk-item:hover .spk-actions { opacity: 1; }
+.spk-item.is-new { animation: spk-highlight 1.5s ease-out; }
+@keyframes spk-highlight {
+  0% { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  100% { background: var(--surface); box-shadow: none; }
+}
+.spk-info { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.spk-vp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.spk-vp-dot.vp-yes { background: var(--ok); }
+.spk-vp-dot.vp-no { background: var(--border); }
 .spk-text { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
 .spk-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spk-badge-me { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: 500; flex-shrink: 0; }
 .spk-meta-row { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; }
 .spk-meta { font-size: 12px; color: var(--muted); }
-.spk-actions { display: flex; gap: var(--s-1); }
+.spk-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 0.12s; }
 .spk-action-btn { padding: 4px 10px; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.12s; }
 .spk-action-btn:hover { color: var(--fg); border-color: var(--fg); }
 .spk-action-btn.danger:hover { color: var(--rec); border-color: var(--rec); }
-.empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; }
+.empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+.empty-hint { font-size: 12px; color: var(--subtle); }
+.spk-set-me-hint { font-size: 12px; color: var(--subtle); margin-top: var(--s-3); text-align: center; }
+.spk-search { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-4); position: relative; }
+.spk-search svg { position: absolute; left: 10px; color: var(--subtle); pointer-events: none; }
+.spk-search-input { width: 100%; max-width: 400px; padding: 6px 10px 6px 30px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; outline: none; background: var(--surface); color: var(--fg); }
+.spk-search-input:focus { border-color: var(--accent); }
+.spk-search-input::placeholder { color: var(--subtle); }
+.spk-loading { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-6); color: var(--muted); font-size: 13px; justify-content: center; }
+.spk-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spk-spin 0.8s linear infinite; }
+@keyframes spk-spin { to { transform: rotate(360deg); } }
 
 .spk-me-badge { font-size: 11px; margin-left: var(--s-2); padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: 500; vertical-align: middle; }
 
@@ -377,7 +532,10 @@ onMounted(load)
 .spk-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-6); padding-bottom: var(--s-4); border-bottom: 1px solid var(--border); }
 .spk-detail-left { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
 .spk-detail-info { min-width: 0; }
-.spk-detail-name { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: var(--s-2); }
+.spk-detail-name { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.spk-name-clickable { cursor: pointer; border-radius: var(--radius-sm); padding: 1px 4px; margin: -1px -4px; transition: background 0.12s; }
+.spk-name-clickable:hover { background: var(--surface-2); }
+.spk-inline-edit { font-size: 18px; font-weight: 600; border: 1px solid var(--accent); border-radius: var(--radius); padding: 1px 6px; background: var(--surface); color: var(--fg); outline: none; font-family: inherit; }
 .spk-detail-role { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .spk-detail-actions { display: flex; gap: var(--s-2); flex-shrink: 0; }
 
@@ -443,6 +601,33 @@ onMounted(load)
   display: flex; 
   gap: var(--s-2); 
 }
+
+/* Tab 计数徽章 */
+.spk-tab { display: inline-flex; align-items: center; gap: var(--s-1); }
+.spk-tab-count { font-size: 11px; color: var(--muted); background: var(--surface-2); padding: 0 5px; border-radius: 999px; min-width: 18px; text-align: center; }
+.spk-tab.is-active .spk-tab-count { background: var(--accent-soft); color: var(--accent); }
+
+/* 过渡动画 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* 确认对话框 */
+.spk-dialog-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.spk-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--s-6); max-width: 400px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.15); }
+.spk-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 var(--s-3); color: var(--fg); }
+.spk-dialog p { font-size: 14px; color: var(--muted); margin: 0 0 var(--s-5); line-height: 1.5; }
+.spk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.danger-confirm { color: var(--rec) !important; border-color: var(--rec) !important; }
+.danger-confirm:hover { background: var(--rec-soft) !important; }
+
+/* 声纹骨架屏 */
+.vp-skeleton { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2) 0; }
+.vp-skeleton-line { height: 14px; background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%); background-size: 200% 100%; border-radius: var(--radius-sm); animation: vp-shimmer 1.5s infinite; }
+.vp-skeleton-line.short { width: 60%; }
+@keyframes vp-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* 待办事项 */
+.todo-body { flex: 1; min-width: 0; }
 
 @media (max-width: 920px) {
   .empty-state { padding: var(--s-7) var(--s-4); }

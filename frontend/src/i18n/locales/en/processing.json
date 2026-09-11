@@ -1,0 +1,21 @@
+{
+  "title": "Processing",
+  "stage_upload": "Upload",
+  "stage_upload_done": "Done",
+  "stage_transcribe": "Recognition",
+  "stage_summary": "Minutes",
+  "step_done": "Done",
+  "step_active": "In progress...",
+  "step_waiting": "Waiting",
+  "status_loading": "Loading...",
+  "status_pending": "Waiting to process...",
+  "status_transcribing": "Recognizing audio...",
+  "status_summarizing": "Generating minutes...",
+  "status_completed": "Completed!",
+  "status_failed": "Processing failed",
+  "status_default": "Processing...",
+  "error_title": "Processing Failed",
+  "error_unknown": "Unknown error",
+  "retry": "Retry",
+  "back_home": "Back to Home"
+}

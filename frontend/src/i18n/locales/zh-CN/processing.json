@@ -1,0 +1,21 @@
+{
+  "title": "处理中",
+  "stage_upload": "上传",
+  "stage_upload_done": "完成",
+  "stage_transcribe": "识别",
+  "stage_summary": "纪要",
+  "step_done": "完成",
+  "step_active": "进行中…",
+  "step_waiting": "等待中",
+  "status_loading": "加载中…",
+  "status_pending": "等待处理…",
+  "status_transcribing": "正在识别录音…",
+  "status_summarizing": "正在生成纪要…",
+  "status_completed": "处理完成！",
+  "status_failed": "处理失败",
+  "status_default": "处理中…",
+  "error_title": "处理失败",
+  "error_unknown": "未知错误",
+  "retry": "重试",
+  "back_home": "返回首页"
+}

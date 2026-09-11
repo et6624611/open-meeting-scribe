@@ -37,6 +37,7 @@ from app.store import (
 from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
 from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
 from app.routers.chat import CHAT_SYSTEM_PROMPT
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ def save_settings(data: dict):
             "realtime_summary": data.get("feature_flags", {}).get("realtime_summary", existing_ff.get("realtime_summary", True)),
             "realtime_summary_interval": data.get("feature_flags", {}).get("realtime_summary_interval", existing_ff.get("realtime_summary_interval", 60)),
             "update_check": data.get("feature_flags", {}).get("update_check", existing_ff.get("update_check", True)),
+            "voiceprint_auto_match": data.get("feature_flags", {}).get("voiceprint_auto_match", existing_ff.get("voiceprint_auto_match", False)),
         },
         "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
     }
@@ -296,7 +298,7 @@ def _test_asr_connection(asr_data: dict | None) -> dict:
     proxy_url = cfg.get("proxy_url", "")
 
     if not proxy_url:
-        return {"ok": False, "error": "未配置 ASR 代理地址"}
+        return {"ok": False, "error": _("ASR proxy URL not configured")}
 
     # 调用代理健康检查端点
     url = f"{proxy_url.rstrip('/')}/health"
@@ -306,19 +308,19 @@ def _test_asr_connection(asr_data: dict | None) -> dict:
         if resp.status_code == 200:
             data = resp.json()
             if data.get("dashscope_configured"):
-                return {"ok": True, "message": "ASR 代理服务连接正常"}
+                return {"ok": True, "message": _("ASR proxy service connected")}
             else:
-                return {"ok": False, "error": "代理服务端未配置 DASHSCOPE_API_KEY"}
+                return {"ok": False, "error": _("Proxy server has no DASHSCOPE_API_KEY configured")}
         elif resp.status_code == 401:
-            return {"ok": False, "error": "代理签名校验失败"}
+            return {"ok": False, "error": _("Proxy signature verification failed")}
         else:
             return {"ok": False, "error": f"HTTP {resp.status_code}"}
     except requests.exceptions.Timeout:
-        return {"ok": False, "error": "连接超时（15s），请检查网络"}
+        return {"ok": False, "error": _("Connection timeout (15s), please check network")}
     except requests.exceptions.ConnectionError:
-        return {"ok": False, "error": f"无法连接到 {base_url}，请检查地址是否正确"}
+        return {"ok": False, "error": _("Cannot connect to {url}, please check the address").format(url=base_url)}
     except Exception as e:
-        return {"ok": False, "error": f"测试失败: {str(e)[:200]}"}
+        return {"ok": False, "error": _("Test failed: {err}").format(err=str(e)[:200])}
 
 
 def _test_ll_connection(llm_data: dict | None) -> dict:
@@ -337,9 +339,9 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
         api_key = get_active_api_key()
 
     if not api_key:
-        return {"ok": False, "error": "未配置 LLM API Key"}
+        return {"ok": False, "error": _("LLM API Key not configured")}
     if not base_url:
-        return {"ok": False, "error": "未配置 LLM API Base URL"}
+        return {"ok": False, "error": _("LLM API Base URL not configured")}
 
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -357,24 +359,24 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
         if resp.status_code == 200:
             data_resp = resp.json()
             content = data_resp.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return {"ok": True, "message": f"连接成功，模型 {model} 响应正常"}
+            return {"ok": True, "message": _("Connection successful, model {model} responding").format(model=model)}
         elif resp.status_code == 401:
-            return {"ok": False, "error": "LLM API Key 无效（401 Unauthorized）"}
+            return {"ok": False, "error": _("Invalid LLM API Key (401 Unauthorized)")}
         elif resp.status_code == 403:
-            return {"ok": False, "error": "无权访问 LLM 服务（403 Forbidden）"}
+            return {"ok": False, "error": _("No permission to access LLM service (403 Forbidden)")}
         elif resp.status_code == 404:
-            return {"ok": False, "error": f"端点或模型不存在（404）。请检查 Base URL 和模型名称"}
+            return {"ok": False, "error": _("Endpoint or model not found (404). Please check Base URL and model name")}
         elif resp.status_code == 429:
-            return {"ok": False, "error": "请求过于频繁（429 Rate Limited），Key 本身是有效的"}
+            return {"ok": False, "error": _("Too many requests (429 Rate Limited), the Key itself is valid")}
         else:
             error_msg = resp.text[:200]
             return {"ok": False, "error": f"HTTP {resp.status_code}: {error_msg}"}
     except requests.exceptions.Timeout:
-        return {"ok": False, "error": "连接超时（15s），请检查网络或 Base URL"}
+        return {"ok": False, "error": _("Connection timeout (15s), please check network or Base URL")}
     except requests.exceptions.ConnectionError as e:
-        return {"ok": False, "error": f"无法连接到 {base_url}，请检查地址是否正确"}
+        return {"ok": False, "error": _("Cannot connect to {url}, please check the address").format(url=base_url)}
     except Exception as e:
-        return {"ok": False, "error": f"测试失败: {str(e)[:200]}"}
+        return {"ok": False, "error": _("Test failed: {err}").format(err=str(e)[:200])}
 
 
 # CLI 命令参考（供前端展示与其他 Agent 工具调用）

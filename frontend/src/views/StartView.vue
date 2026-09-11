@@ -18,7 +18,7 @@
           <circle cx="28" cy="28" r="13" stroke="var(--bg)" stroke-width="7" fill="none"/>
         </svg>
       </div>
-      <h2 class="start-title">开始新的会议</h2>
+      <h2 class="start-title">{{ t('start.title') }}</h2>
       <div class="start-actions">
         <ResponsiveButtonGroup
           :buttons="actionButtons"
@@ -29,15 +29,15 @@
     </div>
     <!-- 最近会议 -->
     <div class="start-recent-section" v-if="recentTasks.length > 0">
-      <div class="start-divider">最近会议</div>
+      <div class="start-divider">{{ t('start.recent') }}</div>
       <div class="start-recent" id="startRecentList">
         <div class="start-recent-list">
-          <button v-for="(task, index) in recentTasks" :key="task.task_id" class="start-recent-item" :class="{ 'is-latest': index === 0 }" @click="openTask(task)">
+          <button v-for="(task, index) in recentTasks" :key="task.task_id" class="start-recent-item" :class="{ 'is-latest': index === 0 }" :title="task.title || task.audio_name" @click="openTask(task)">
             <div class="start-recent-item-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
             </div>
             <div class="start-recent-item-info">
-              <div class="start-recent-item-title">{{ task.title || task.audio_name || '未命名' }}</div>
+              <div class="start-recent-item-title">{{ task.title || task.audio_name || t('common.untitled') }}</div>
               <div class="start-recent-item-meta">
                 <span>{{ formatDate(task) }}</span>
                 <span class="sep">·</span>
@@ -47,7 +47,7 @@
             </div>
           </button>
           <button v-if="taskStore.tasks.length > 3" class="start-recent-more" @click="router.push('/library')">
-            查看全部 {{ taskStore.tasks.length }} 个会议 →
+            {{ t('start.view_all', { count: taskStore.tasks.length }) }}
           </button>
         </div>
       </div>
@@ -60,12 +60,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, h, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useRecorder } from '@/composables/useRecorder'
 import { submitTranscribe } from '@/api/tasks'
+import { getRecordStatus } from '@/api/record'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 const taskStore = useTaskStore()
 const recorder = useRecorder()
@@ -106,7 +109,7 @@ const UploadIcon = {
 const actionButtons = computed(() => [
   {
     key: 'record',
-    label: hasRecordingTask.value ? '返回录音' : '麦克风录音',
+    label: hasRecordingTask.value ? t('start.return_record') : t('start.record'),
     icon: hasRecordingTask.value ? LockIcon : MicIcon,
     variant: 'primary' as const,
     shortcut: hasRecordingTask.value ? undefined : '⌘R',
@@ -114,7 +117,7 @@ const actionButtons = computed(() => [
   },
   {
     key: 'upload',
-    label: '上传音频文件',
+    label: t('start.upload'),
     icon: UploadIcon,
     variant: 'secondary' as const,
     shortcut: '⌘U',
@@ -180,11 +183,26 @@ async function onStartRecord() {
   try {
     const data = await recorder.startRecording()
     if (data?.task_id) {
+      // [状态同步] 录音成功后刷新任务列表，否则侧边栏不显示新录音
+      await taskStore.loadTasks()
       router.push({ name: 'recording', params: { taskId: data.task_id } })
     }
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    alert(err.response?.data?.detail || '开始录音失败')
+    const err = e as { response?: { data?: { detail?: string }; status?: number } }
+    // 后端提示"已在录制中"时，自动导航到已有录音页
+    if (err.response?.status === 400) {
+      try {
+        const status = await getRecordStatus()
+        if (status.recording && status.task_id) {
+          // [状态同步] 恢复活跃录音时刷新任务列表
+          await taskStore.loadTasks()
+          taskStore.selectTask(status.task_id)
+          router.push({ name: 'recording', params: { taskId: status.task_id } })
+          return
+        }
+      } catch { /* 静默 */ }
+    }
+    alert(err.response?.data?.detail || t('start.errors.start_failed'))
   }
 }
 
@@ -199,11 +217,12 @@ async function onFileSelected(e: Event) {
 
   try {
     const task = await submitTranscribe(file)
+    // [状态同步] 上传成功后刷新任务列表
     await taskStore.loadTasks()
-    router.push({ name: 'processing', params: { taskId: task.task_id } })
+    router.push({ name: 'generating', params: { taskId: task.task_id } })
   } catch (e: unknown) {
     const err = e as { response?: { data?: { detail?: string } } }
-    alert(err.response?.data?.detail || '上传失败')
+    alert(err.response?.data?.detail || t('start.errors.upload_failed'))
   } finally {
     input.value = ''
   }
@@ -211,12 +230,11 @@ async function onFileSelected(e: Event) {
 
 function openTask(task: Task) {
   taskStore.selectTask(task.task_id)
+  // 所有非录音任务统一进入纪要页（中间状态由 GeneratingView 内联处理）
   if (task.status === 'recording' || task.status === 'paused') {
     router.push({ name: 'recording', params: { taskId: task.task_id } })
-  } else if (task.status === 'completed') {
-    router.push({ name: 'generating', params: { taskId: task.task_id } })
   } else {
-    router.push({ name: 'processing', params: { taskId: task.task_id } })
+    router.push({ name: 'generating', params: { taskId: task.task_id } })
   }
 }
 
@@ -228,19 +246,19 @@ function formatDate(task: Task): string {
 }
 
 function formatDuration(sec: number | null): string {
-  if (!sec) return '未知时长'
+  if (!sec) return t('common.duration.unknown')
   const m = Math.round(sec / 60)
-  return m < 60 ? `${m}分钟` : `${Math.floor(m / 60)}小时${m % 60}分`
+  return m < 60 ? t('common.duration.minutes', { m }) : t('common.duration.hours_minutes', { h: Math.floor(m / 60), m: m % 60 })
 }
 
 const statusLabels: Record<string, string> = {
-  recording: '录音中',
-  paused: '已暂停',
-  pending: '等待处理',
-  transcribing: '转写中',
-  summarizing: '总结中',
-  awaiting_mapping: '等待确认',
-  failed: '处理失败',
+  recording: t('common.status.recording'),
+  paused: t('common.status.paused'),
+  pending: t('common.status.pending'),
+  transcribing: t('common.status.transcribing'),
+  summarizing: t('common.status.summarizing'),
+  awaiting_mapping: t('common.status.awaiting_mapping'),
+  failed: t('common.status.failed'),
 }
 
 function formatStatus(status: string): string {

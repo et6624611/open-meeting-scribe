@@ -14,11 +14,6 @@ const router = createRouter({
       component: () => import('@/views/RecordingView.vue'),
     },
     {
-      path: '/processing/:taskId',
-      name: 'processing',
-      component: () => import('@/views/ProcessingView.vue'),
-    },
-    {
       path: '/meeting/:taskId',
       name: 'generating',
       component: () => import('@/views/GeneratingView.vue'),

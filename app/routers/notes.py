@@ -6,10 +6,11 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.store import tasks, save_task_to_disk
 from core import users as user_module
+from core.i18n import _
 
 router = APIRouter(tags=["notes"])
 
@@ -19,7 +20,7 @@ router = APIRouter(tags=["notes"])
 # ============================================================
 
 class NotesUpdate(BaseModel):
-    notes: str
+    notes: str = Field("", max_length=100000)
 
 
 @router.get("/api/tasks/{task_id}/notes")
@@ -27,7 +28,7 @@ def get_task_notes(task_id: str):
     """获取任务笔记"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     return {"notes": task.get("user_notes", "")}
 
 
@@ -36,7 +37,7 @@ def update_task_notes(task_id: str, req: NotesUpdate):
     """保存任务笔记（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     task["user_notes"] = req.notes
     save_task_to_disk(task_id)
     return {"notes": req.notes}
@@ -47,9 +48,9 @@ def update_task_notes(task_id: str, req: NotesUpdate):
 # ============================================================
 
 class InjectRequest(BaseModel):
-    type: str  # todo | conclusion | decision
-    content: str
-    source_message: str = ""
+    type: str = Field(..., max_length=50)  # todo | conclusion | decision
+    content: str = Field(..., max_length=10000)
+    source_message: str = Field(default="", max_length=10000)
 
 
 class TodoToggleRequest(BaseModel):
@@ -61,7 +62,7 @@ def get_task_injections(task_id: str):
     """获取任务的所有注入内容"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     return {"injections": task.get("injections", [])}
 
 
@@ -70,7 +71,7 @@ def inject_content(task_id: str, req: InjectRequest):
     """注入一条 AI 识别内容（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     injections = task.setdefault("injections", [])
     item = {
         "id": str(uuid.uuid4()),
@@ -107,13 +108,13 @@ def apply_injection(task_id: str, injection_id: str):
     """标记注入内容为已应用到纪要（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     for item in task.get("injections", []):
         if item["id"] == injection_id:
             item["applied"] = True
             save_task_to_disk(task_id)
             return {"item": item}
-    raise HTTPException(404, "注入内容不存在")
+    raise HTTPException(404, _("Injection content not found"))
 
 
 @router.delete("/api/tasks/{task_id}/injections/{injection_id}")
@@ -121,7 +122,7 @@ def delete_injection(task_id: str, injection_id: str):
     """删除一条注入内容（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     injections = task.get("injections", [])
     task["injections"] = [i for i in injections if i["id"] != injection_id]
     # 同步删除关联的 todo
@@ -140,7 +141,7 @@ def get_task_todos(task_id: str):
     """获取任务的所有待办事项"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     return {"todos": task.get("todos", [])}
 
 
@@ -149,13 +150,13 @@ def toggle_todo(task_id: str, todo_id: str, req: TodoToggleRequest):
     """切换待办完成状态（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     for todo in task.get("todos", []):
         if todo["id"] == todo_id:
             todo["done"] = req.done
             save_task_to_disk(task_id)
             return {"todo": todo}
-    raise HTTPException(404, "待办不存在")
+    raise HTTPException(404, _("To-do not found"))
 
 
 @router.delete("/api/tasks/{task_id}/todos/{todo_id}")
@@ -163,7 +164,7 @@ def delete_todo(task_id: str, todo_id: str):
     """删除一条待办（写 tasks JSON）"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     todos = task.get("todos", [])
     task["todos"] = [t for t in todos if t["id"] != todo_id]
     save_task_to_disk(task_id)
@@ -171,13 +172,13 @@ def delete_todo(task_id: str, todo_id: str):
 
 
 class TodoCreateRequest(BaseModel):
-    text: str
-    assignee: str = ""
+    text: str = Field(..., min_length=1, max_length=500)
+    assignee: str = Field(default="", max_length=100)
 
 
 class TodoUpdateRequest(BaseModel):
-    text: str | None = None
-    assignee: str | None = None
+    text: str | None = Field(default=None, max_length=500)
+    assignee: str | None = Field(default=None, max_length=100)
 
 
 @router.post("/api/tasks/{task_id}/todos")
@@ -185,7 +186,7 @@ def create_todo(task_id: str, req: TodoCreateRequest):
     """手工添加一条待办"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     todos = task.setdefault("todos", [])
     todo_item = {
         "id": str(uuid.uuid4()),
@@ -205,7 +206,7 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
     """编辑待办内容或执行人"""
     task = tasks.get(task_id)
     if not task:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
     for todo in task.get("todos", []):
         if todo["id"] == todo_id:
             if req.text is not None:
@@ -214,4 +215,4 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
                 todo["assignee"] = req.assignee
             save_task_to_disk(task_id)
             return {"todo": todo}
-    raise HTTPException(404, "待办不存在")
+    raise HTTPException(404, _("To-do not found"))

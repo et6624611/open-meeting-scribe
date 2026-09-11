@@ -195,6 +195,7 @@ export const useTaskStore = defineStore('task', () => {
       recording: '录音中',
       paused: '已暂停',
       pending: '等待处理',
+      processing: '处理中',
       transcribing: '识别中',
       awaiting_mapping: '待关联身份',
       summarizing: '生成纪要',

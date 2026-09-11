@@ -17,6 +17,7 @@ data/settings.json
 data/philosophies.json
 data/hotwords.txt
 data/usage/
+data/remote_config.json
 data/*.wav
 data/*.mp3
 data/*.m4a
@@ -51,7 +52,9 @@ logs/
 
 # 截图（调试/测试用，不入库）
 /*.png
-docs/screenshots/
+/docs/screenshots/
+.cu_shots/
+browser/
 
 # 前端构建产物（npm run build 生成，由 FastAPI 托管）
 frontend/node_modules/
@@ -59,3 +62,10 @@ frontend/dist/
 
 # AI 生成的文档索引（可随时重建，不入库）
 .qoder/
+
+# SSH 自动化脚本（私人运维工具）
+scripts/_ssh_*.exp
+
+# AI 协作文档（内部使用，不对外）
+AGENTS.md
+CODEX.md

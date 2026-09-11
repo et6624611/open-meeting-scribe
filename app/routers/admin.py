@@ -31,6 +31,7 @@ from core.users import (
 )
 from core.metering import get_monthly_usage, TIER_QUOTAS
 from core import remote_config
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +79,10 @@ def require_admin(request: Request):
     """依赖注入：验证管理员身份"""
     token = request.cookies.get(ADMIN_COOKIE)
     if not token:
-        raise HTTPException(401, "请先登录管理后台")
+        raise HTTPException(401, _("Please log in to the admin console first"))
     payload = _verify_admin_token(token)
     if not payload:
-        raise HTTPException(401, "管理员登录已过期")
+        raise HTTPException(401, _("Admin login expired"))
     return payload
 
 
@@ -97,11 +98,11 @@ class AdminLoginRequest(BaseModel):
 def admin_login(req: AdminLoginRequest):
     """管理员登录"""
     if not ADMIN_PASSWORD:
-        raise HTTPException(500, "管理员密码未配置（ADMIN_PASSWORD）")
+        raise HTTPException(500, _("Admin password not configured (ADMIN_PASSWORD)"))
 
     if not secrets.compare_digest(req.password, ADMIN_PASSWORD):
         logger.warning("管理员登录失败：密码错误")
-        raise HTTPException(401, "密码错误")
+        raise HTTPException(401, _("Incorrect password"))
 
     token = _create_admin_token()
     logger.info("管理员登录成功")
@@ -121,7 +122,7 @@ def admin_login(req: AdminLoginRequest):
 @router.post("/logout")
 def admin_logout():
     """管理员登出"""
-    response = JSONResponse({"message": "已登出"})
+    response = JSONResponse({"message": _("Logged out")})
     response.delete_cookie(key=ADMIN_COOKIE, path="/")
     logger.info("管理员已登出")
     return response
@@ -260,7 +261,7 @@ def admin_get_user(user_id: str, _: dict = Depends(require_admin)):
     """用户详情（含用量历史）"""
     user = get_user_by_id(user_id)
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, _("User not found"))
 
     month_key = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
@@ -310,11 +311,11 @@ def admin_update_subscription(
     """修改用户订阅档位"""
     valid_tiers = list(TIER_QUOTAS.keys())
     if req.tier not in valid_tiers:
-        raise HTTPException(400, f"无效档位，可选: {', '.join(valid_tiers)}")
+        raise HTTPException(400, _("Invalid tier, options: {opts}").format(opts=', '.join(valid_tiers)))
 
     user = get_user_by_id(user_id)
     if not user:
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, _("User not found"))
 
     updated = set_user_subscription(
         user_id=user_id,
@@ -323,7 +324,7 @@ def admin_update_subscription(
     )
 
     if not updated:
-        raise HTTPException(500, "更新失败")
+        raise HTTPException(500, _("Update failed"))
 
     logger.info(f"管理员修改订阅: user={user_id[:8]}, tier={req.tier}")
     return {
@@ -349,7 +350,7 @@ def admin_update_user_status(
 ):
     """禁用/启用用户账号"""
     if req.status not in ("active", "disabled"):
-        raise HTTPException(400, "无效状态，可选: active, disabled")
+        raise HTTPException(400, _("Invalid status, options: active, disabled"))
 
     data = _load_user_data()
     for user in data.get("users", []):
@@ -359,7 +360,7 @@ def admin_update_user_status(
             logger.info(f"管理员修改用户状态: user={user_id[:8]}, status={req.status}")
             return {"success": True, "user_id": user_id, "status": req.status}
 
-    raise HTTPException(404, "用户不存在")
+    raise HTTPException(404, _("User not found"))
 
 
 # ============================================================
@@ -411,16 +412,16 @@ def admin_create_message(
     """创建消息"""
     valid_types = ("banner", "toast", "announcement")
     if req.type not in valid_types:
-        raise HTTPException(400, f"无效类型，可选: {', '.join(valid_types)}")
+        raise HTTPException(400, _("Invalid type, options: {opts}").format(opts=', '.join(valid_types)))
 
     valid_targets = ("all", "guest", "logged_in")
     target_base = req.target.split(":")[0] if ":" in req.target else req.target
     if target_base not in valid_targets and not req.target.startswith("tier:"):
-        raise HTTPException(400, f"无效目标用户，可选: {', '.join(valid_targets)} 或 tier:<name>")
+        raise HTTPException(400, _("Invalid target user, options: {opts} or tier:<name>").format(opts=', '.join(valid_targets)))
 
     valid_modes = ("session", "delayed", "permanent")
     if req.dismiss_mode not in valid_modes:
-        raise HTTPException(400, f"无效关闭策略，可选: {', '.join(valid_modes)}")
+        raise HTTPException(400, _("Invalid dismissal policy, options: {opts}").format(opts=', '.join(valid_modes)))
 
     msg = remote_config.create_message(
         msg_type=req.type,
@@ -448,7 +449,7 @@ def admin_update_message(
     """更新消息"""
     existing = remote_config.get_message(message_id)
     if not existing:
-        raise HTTPException(404, "消息不存在")
+        raise HTTPException(404, _("Message not found"))
 
     # 只传非 None 字段
     kwargs = {}
@@ -477,7 +478,7 @@ def admin_delete_message(
     """删除消息"""
     deleted = remote_config.delete_message(message_id)
     if not deleted:
-        raise HTTPException(404, "消息不存在")
+        raise HTTPException(404, _("Message not found"))
     return {"success": True, "message_id": message_id}
 
 
@@ -489,7 +490,7 @@ def admin_toggle_message(
     """切换消息启用/禁用"""
     msg = remote_config.toggle_message(message_id)
     if not msg:
-        raise HTTPException(404, "消息不存在")
+        raise HTTPException(404, _("Message not found"))
     return {"success": True, "message": msg}
 
 
@@ -527,12 +528,12 @@ def admin_create_feature_flag(
 ):
     """创建功能开关"""
     if not req.name.strip():
-        raise HTTPException(400, "标识名不能为空")
+        raise HTTPException(400, _("Identifier name cannot be empty"))
 
     valid_targets = ("all", "users")
     target_base = req.target.split(":")[0] if ":" in req.target else req.target
     if target_base not in valid_targets and not req.target.startswith("tier:"):
-        raise HTTPException(400, "无效生效对象，可选: all, tier:<name>, users")
+        raise HTTPException(400, _("Invalid effective target, options: all, tier:<name>, users"))
 
     try:
         flag = remote_config.create_feature_flag(
@@ -557,7 +558,7 @@ def admin_update_feature_flag(
     """更新功能开关"""
     existing = remote_config.get_feature_flag(flag_id)
     if not existing:
-        raise HTTPException(404, "功能开关不存在")
+        raise HTTPException(404, _("Feature flag not found"))
 
     kwargs = {}
     for key in ("name", "description", "enabled", "target", "target_users"):
@@ -583,7 +584,7 @@ def admin_delete_feature_flag(
     """删除功能开关"""
     deleted = remote_config.delete_feature_flag(flag_id)
     if not deleted:
-        raise HTTPException(404, "功能开关不存在")
+        raise HTTPException(404, _("Feature flag not found"))
     return {"success": True, "flag_id": flag_id}
 
 
@@ -595,5 +596,5 @@ def admin_toggle_feature_flag(
     """切换功能开关启用/禁用"""
     flag = remote_config.toggle_feature_flag(flag_id)
     if not flag:
-        raise HTTPException(404, "功能开关不存在")
+        raise HTTPException(404, _("Feature flag not found"))
     return {"success": True, "flag": flag}

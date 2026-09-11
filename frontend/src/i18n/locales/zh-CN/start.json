@@ -1,0 +1,12 @@
+{
+  "title": "开始新的会议",
+  "record": "麦克风录音",
+  "return_record": "返回录音",
+  "upload": "上传音频文件",
+  "recent": "最近会议",
+  "view_all": "查看全部 {count} 个会议 →",
+  "errors": {
+    "start_failed": "开始录音失败",
+    "upload_failed": "上传失败"
+  }
+}

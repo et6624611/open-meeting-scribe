@@ -19,7 +19,7 @@
 
     <!-- 更多按钮 -->
     <div v-if="hiddenButtons.length > 0" class="more-wrap" ref="moreBtnEl">
-      <button class="responsive-btn-item is-more" @click="toggleMore" title="更多操作" aria-haspopup="menu" aria-label="更多操作">
+      <button class="responsive-btn-item is-more" @click="toggleMore" :title="t('common.action.more')" aria-haspopup="menu" :aria-label="t('common.action.more')">
         <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
         </svg>
@@ -31,6 +31,7 @@
             v-for="btn in hiddenButtons"
             :key="btn.key"
             class="more-dropdown-item"
+            :title="btn.label"
             @click="handleMoreClick(btn)"
             role="menuitem"
           >
@@ -45,6 +46,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, type Component } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { usePopMenu } from '@/composables/usePopMenu'
 
 export interface ButtonItem {
@@ -68,6 +70,8 @@ const props = withDefaults(defineProps<Props>(), {
   iconThreshold: 480,
   mixedThreshold: 640,
 })
+
+const { t } = useI18n()
 
 const containerEl = ref<HTMLElement | null>(null)
 const moreBtnEl = ref<HTMLElement | null>(null)

@@ -33,9 +33,10 @@ export function useRecorder() {
   /** 暂停录音 */
   async function pauseRecording() {
     try {
-      await client.post('/api/record/pause')
+      const { data } = await client.post('/api/record/pause')
       state.value = 'paused'
       stopElapsedTimer()
+      return data
     } catch (e) {
       console.error('[Recorder] 暂停录音失败:', e)
       throw e
@@ -45,9 +46,10 @@ export function useRecorder() {
   /** 恢复录音 */
   async function resumeRecording() {
     try {
-      await client.post('/api/record/resume')
+      const { data } = await client.post('/api/record/resume')
       state.value = 'recording'
       startElapsedTimer()
+      return data
     } catch (e) {
       console.error('[Recorder] 恢复录音失败:', e)
       throw e

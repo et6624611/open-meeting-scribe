@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core import voiceprint, speakers
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def register_voiceprint(req: RegisterRequest):
 
     audio_path = Path(req.audio_path)
     if not audio_path.exists():
-        raise HTTPException(404, f"音频文件不存在: {req.audio_path}")
+        raise HTTPException(404, _("Audio file not found: {path}").format(path=req.audio_path))
 
     # 加载音频
     try:
@@ -106,7 +107,7 @@ def register_voiceprint(req: RegisterRequest):
         if audio_data.dtype != np.float32:
             audio_data = audio_data.astype(np.float32) / 32768.0
     except Exception as e:
-        raise HTTPException(400, f"无法读取音频: {e}")
+        raise HTTPException(400, _("Failed to read audio: {err}").format(err=e))
 
     # 截取区间
     start_sample = int(req.begin_time * sr)
@@ -116,7 +117,7 @@ def register_voiceprint(req: RegisterRequest):
         end_sample = len(audio_data)
 
     if start_sample >= end_sample:
-        raise HTTPException(400, "时间区间无效")
+        raise HTTPException(400, _("Invalid time range"))
 
     segment = audio_data[start_sample:end_sample]
     duration_sec = len(segment) / sr
@@ -124,13 +125,13 @@ def register_voiceprint(req: RegisterRequest):
     if duration_sec < voiceprint.MIN_REGISTER_SEC:
         raise HTTPException(
             400,
-            f"音频太短: {duration_sec:.1f}s（最少需要 {voiceprint.MIN_REGISTER_SEC}s）"
+            _("Audio too short: {dur}s (minimum {min}s required)").format(dur=f"{duration_sec:.1f}", min=voiceprint.MIN_REGISTER_SEC)
         )
 
     # 提取声纹
     embedding = voiceprint.extract_embedding(segment, sr)
     if embedding is None:
-        raise HTTPException(500, "声纹提取失败（音频质量可能不足）")
+        raise HTTPException(500, _("Voiceprint extraction failed (audio quality may be insufficient)"))
 
     # 注册
     record = voiceprint.register_voiceprint(
@@ -148,7 +149,7 @@ def register_voiceprint(req: RegisterRequest):
         "speaker_name": speaker_name,
         "duration_sec": round(duration_sec, 1),
         "registered_at": record.registered_at,
-        "message": f"声纹注册成功: {speaker_name}",
+        "message": _("Voiceprint registered: {name}").format(name=speaker_name),
     }
 
 
@@ -156,7 +157,7 @@ def register_voiceprint(req: RegisterRequest):
 def delete_voiceprint(speaker_uuid: str):
     """删除说话人声纹"""
     if not voiceprint.delete_voiceprint(speaker_uuid):
-        raise HTTPException(404, "声纹不存在")
+        raise HTTPException(404, _("Voiceprint not found"))
     return {"deleted": True}
 
 
@@ -205,7 +206,7 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
 
     speaker = speakers.get_speaker_by_id(speaker_uuid)
     if not speaker:
-        raise HTTPException(404, "说话人不存在")
+        raise HTTPException(404, _("Speaker not found"))
 
     embeddings = []
     total_sec = 0.0
@@ -241,8 +242,7 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
     if not embeddings:
         raise HTTPException(
             400,
-            "该说话人在所有已绑定会议中均无足够发言音频"
-            f"（单场至少 {voiceprint.MIN_REGISTER_SEC} 秒）",
+            _("This speaker has insufficient speech audio in all linked meetings (at least {min} sec per meeting)").format(min=voiceprint.MIN_REGISTER_SEC),
         )
 
     merged = voiceprint.merge_embeddings(embeddings)
@@ -266,7 +266,7 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
         "duration_sec": round(total_sec, 1),
         "sample_count": record.sample_count,
         "updated_at": record.updated_at,
-        "message": f"声纹已基于 {len(embeddings)} 场会议重建: {speaker.name}",
+        "message": _("Voiceprint rebuilt from {count} meeting(s): {name}").format(count=len(embeddings), name=speaker.name),
     }
 
 
@@ -281,19 +281,19 @@ def auto_match_task_voiceprint(task_id: str, req: Optional[VoiceprintMatchTask] 
     from app.store import tasks, save_task_to_disk
 
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     dialogue = task.get("dialogue")
     if not dialogue:
-        raise HTTPException(400, "任务尚无转写结果")
+        raise HTTPException(400, _("Task has no transcription result yet"))
 
     # 找归一化音频路径
     normalized_path = _resolve_normalized_path(task)
     if normalized_path:
         task["normalized_path"] = normalized_path
     if not normalized_path:
-        raise HTTPException(400, "归一化音频不可用")
+        raise HTTPException(400, _("Normalized audio unavailable"))
 
     threshold = req.threshold if req else None
 

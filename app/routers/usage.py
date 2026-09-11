@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from core.users import get_current_user
+from core.i18n import _
 from core.metering import (
     get_monthly_usage, get_daily_history, check_quota,
     is_metered, TIER_QUOTAS,
@@ -25,7 +26,7 @@ def usage_summary():
     """本月用量汇总（底部状态栏 + 设置页用量面板用）"""
     user = get_current_user()
     if not user:
-        return {"metered": False, "message": "未登录"}
+        return {"metered": False, "message": _("Not logged in")}
 
     subscription = user.get("subscription", {})
     tier = subscription.get("tier", "free")
@@ -34,7 +35,7 @@ def usage_summary():
     if not is_metered():
         return {
             "metered": False,
-            "message": "自带 Key，不计量",
+            "message": _("Self-hosted Key, not metered"),
             "tier": tier,
             "tier_name": TIER_NAMES.get(tier, tier),
             "quota": TIER_QUOTAS.get(tier, 0),

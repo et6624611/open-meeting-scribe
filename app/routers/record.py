@@ -8,7 +8,11 @@ app/routers/record.py — 录制控制 + 实时转写 WS + 实时总结/绑定
 
 import uuid
 import asyncio
+import json
 import logging
+import math
+import struct
+import time
 import threading
 from pathlib import Path
 from datetime import datetime
@@ -22,10 +26,15 @@ from app.store import (
     realtime_queues, realtime_transcribers, realtime_diarizers,
     realtime_summarizers, realtime_chapter_generators, realtime_speaker_maps,
     realtime_full_transcripts,
+    realtime_last_heartbeat, realtime_last_sentence,
+    realtime_presence_scores, realtime_silence_warnings, realtime_silence_monitors,
     save_task_to_disk, push_realtime_msg, resolve_realtime_speaker_name,
-    run_pipeline_task, get_feature_flags,
+    run_pipeline_task, get_feature_flags, get_silence_detection_config,
     SPEAKER_COUNT_MIN, SPEAKER_COUNT_MAX,
 )
+# 以模块方式引用 store：event_loop 全局在 startup 时才赋值，必须运行时通过
+# store.event_loop 读取（若按值 import 会像 _stream_task_id 一样恒为初始值 None）
+import app.store as store
 from core.audio import (
     start_recording_with_stream,
     stop_recording_with_stream,
@@ -39,6 +48,7 @@ from core.realtime_summary import RealtimeSummarizer
 from core.realtime_chapters import RealtimeChapterGenerator
 from core.diarization import create_realtime_diarizer
 from core import speakers
+from core.i18n import _, set_current_locale
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +63,7 @@ router = APIRouter(tags=["record"])
 def start_record():
     """开始流式录音，同时启动实时转写"""
     if is_stream_recording():
-        raise HTTPException(400, "已在录制中")
+        raise HTTPException(400, _("Already recording"))
 
     # 配额预检：订阅用户额度用尽时阻止录制（自带 Key 用户不受限）
     try:
@@ -68,7 +78,7 @@ def start_record():
                     {
                         "error": "quota_exhausted",
                         "remaining": quota_result["remaining"],
-                        "message": f"本月转写额度已用完（剩余 {quota_result['remaining']} 分钟），可配置自有 API Key 继续使用",
+                        "message": _("Monthly transcription quota exhausted ({remaining} min remaining). Configure your own API Key to continue.").format(remaining=quota_result['remaining']),
                     },
                 )
     except HTTPException:
@@ -130,15 +140,43 @@ def start_record():
     transcriber_ref: dict[str, RealtimeTranscriber | None] = {"ref": None}
     _pcm_call_count = 0
     _last_speaker_count = 0  # 上次推送的说话人数量（避免重复推送）
+    _volume_warned = False  # 音量过低警告只发一次
+    _volume_samples: list[float] = []  # 前 N 次回调的 RMS dB 样本
+    _VOLUME_CHECK_LIMIT = 50  # 前 50 次回调（≈5 秒）用于音量检测
+    _VOLUME_THRESHOLD_DB = -50.0  # 低于此值视为音量极低
 
     def pcm_callback(data: bytes) -> None:
-        nonlocal _pcm_call_count, _last_speaker_count
+        nonlocal _pcm_call_count, _last_speaker_count, _volume_warned
         _pcm_call_count += 1
         t = transcriber_ref.get("ref")
         if t and t.is_running:
             t.feed_audio(data)
         # 送入声纹聚类器
         diarizer.feed_audio(data)
+
+        # ── 前 5 秒音量检测：提醒用户麦克风是否异常 ──
+        if not _volume_warned and _pcm_call_count <= _VOLUME_CHECK_LIMIT:
+            if len(data) >= 64:  # 至少 32 个样本才计算
+                n_samples = len(data) // 2
+                samples = struct.unpack(f'<{n_samples}h', data[:n_samples * 2])
+                rms = (sum(s * s for s in samples) / n_samples) ** 0.5
+                if rms > 0:
+                    db = 20.0 * math.log10(rms / 32768.0)
+                    _volume_samples.append(db)
+            if _pcm_call_count == _VOLUME_CHECK_LIMIT and _volume_samples:
+                avg_db = sum(_volume_samples) / len(_volume_samples)
+                if avg_db < _VOLUME_THRESHOLD_DB:
+                    _volume_warned = True
+                    logger.warning(
+                        f"[录制] 前 5 秒音量极低 (mean={avg_db:.1f} dB)，"
+                        f"请检查麦克风或音频输入设备"
+                    )
+                    push_realtime_msg(task_id, {
+                        "type": "volume_warning",
+                        "level": "low",
+                        "avg_db": round(avg_db, 1),
+                    })
+
         # 每 20 次回调（约 2 秒）检查一次说话人数量变化，推送更新
         if _pcm_call_count % 20 == 0:
             active_count = diarizer.get_active_speaker_count()
@@ -186,6 +224,8 @@ def start_record():
                 "speaker_id": speaker_id,
                 "speaker_name": speaker_name,
             })
+            # 更新最后定稿句子时间戳（供静默检测使用）
+            realtime_last_sentence[task_id] = time.time()
             # 送入实时总结器（含说话人姓名）
             if summarizer:
                 summarizer.feed_sentence({
@@ -239,6 +279,7 @@ def start_record():
         tasks[task_id] = {
             "task_id": task_id,
             "status": "recording",
+            "source": "record",
             "progress": 0,
             "message": "正在录制...",
             "audio_name": "",
@@ -253,12 +294,34 @@ def start_record():
         }
         save_task_to_disk(task_id)
 
+        # ── 初始化静默检测状态 ──
+        silence_config = get_silence_detection_config()
+        if silence_config["enabled"]:
+            now_ts = time.time()
+            realtime_last_heartbeat[task_id] = now_ts
+            realtime_last_sentence[task_id] = now_ts
+            realtime_presence_scores[task_id] = float(silence_config["presence"]["score_max"])
+            realtime_silence_warnings[task_id] = 0
+            # 启动静默监测协程（跨线程调度到主事件循环）
+            # 注意：start_record 是同步端点，运行在 AnyIO worker 线程，该线程无事件循环，
+            # 不能用 asyncio.get_event_loop()（会抛 "no current event loop"），
+            # 必须用 startup 时捕获的 store.event_loop + run_coroutine_threadsafe。
+            loop = store.event_loop
+            if loop and not loop.is_closed():
+                monitor_future = asyncio.run_coroutine_threadsafe(
+                    _silence_monitor_loop(task_id), loop
+                )
+                realtime_silence_monitors[task_id] = monitor_future
+                logger.info(f"[录制] 静默检测已启动: task={task_id[:8]}")
+            else:
+                logger.warning(f"[录制] 主事件循环不可用，静默检测未启动: task={task_id[:8]}")
+
         logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={RECORD_DEVICE}")
         return {"task_id": task_id, "status": "recording"}
 
     except RuntimeError as e:
         realtime_queues.pop(task_id, None)
-        raise HTTPException(500, f"录制启动失败: {e}")
+        raise HTTPException(500, _("Failed to start recording: {err}").format(err=e))
 
 
 class RecordStopRequest(BaseModel):
@@ -277,7 +340,7 @@ def stop_record(
     FastAPI 会自动在线程池中运行同步端点，避免阻塞事件循环。
     """
     if not is_stream_recording():
-        raise HTTPException(400, "未在录制中")
+        raise HTTPException(400, _("Not recording"))
 
     # 提取笔记
     user_notes = data.notes if data else None
@@ -343,6 +406,8 @@ def stop_record(
             if full_transcript and task_id in tasks:
                 tasks[task_id]["realtime_full_transcript"] = full_transcript
                 logger.info(f"[录制] 全量实时转写已保存: {len(full_transcript)} 条句子")
+            # 停止静默监测协程，清理静默检测状态
+            _cleanup_silence_detection(task_id)
 
         # 2. 停止录音
         result = stop_recording_with_stream()
@@ -352,7 +417,7 @@ def stop_record(
         duration = result["duration"]
 
         if task_id not in tasks:
-            raise HTTPException(404, "任务不存在")
+            raise HTTPException(404, _("Task not found"))
 
         # 3. 发送结束消息
         push_realtime_msg(task_id, {"type": "ended"})
@@ -394,7 +459,7 @@ def stop_record(
         }
 
     except RuntimeError as e:
-        raise HTTPException(500, f"录制停止失败: {e}")
+        raise HTTPException(500, _("Failed to stop recording: {err}").format(err=e))
 
 
 @router.get("/api/record/status")
@@ -415,10 +480,25 @@ async def record_status():
 async def pause_record():
     """暂停录制（音频数据丢弃，实时转写停止接收）"""
     if not is_stream_recording():
-        raise HTTPException(400, "未在录制中")
+        raise HTTPException(400, _("Not recording"))
     try:
+        # 通过访问器实时获取当前录制的 task_id（不可用按值导入的 _stream_task_id，其恒为 None）
+        info = get_stream_recording_info()
+        task_id = info["task_id"] if info else None
         pause_recording_with_stream()
-        return {"status": "paused"}
+        # 更新任务状态为 paused
+        if task_id and task_id in tasks:
+            tasks[task_id]["status"] = "paused"
+            save_task_to_disk(task_id)
+        # 联动暂停实时总结（仅当总结正在运行时）
+        summarizer = realtime_summarizers.get(task_id) if task_id else None
+        summary_paused_by_recording = False
+        if summarizer and summarizer.is_running and not summarizer.is_paused:
+            summarizer.pause(source="recording")
+            summary_paused_by_recording = True
+        if not summarizer:
+            logger.warning(f"[录制] 暂停联动：未找到实时总结器 task={task_id}")
+        return {"status": "paused", "summary_paused": summary_paused_by_recording}
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 
@@ -427,10 +507,24 @@ async def pause_record():
 async def resume_record():
     """恢复录制"""
     if not is_stream_recording():
-        raise HTTPException(400, "未在录制中")
+        raise HTTPException(400, _("Not recording"))
     try:
+        # 通过访问器实时获取当前录制的 task_id（不可用按值导入的 _stream_task_id，其恒为 None）
+        info = get_stream_recording_info()
+        task_id = info["task_id"] if info else None
         resume_recording_with_stream()
-        return {"status": "recording"}
+        # 更新任务状态为 recording
+        if task_id and task_id in tasks:
+            tasks[task_id]["status"] = "recording"
+            save_task_to_disk(task_id)
+        # 联动恢复实时总结（仅当暂停是由录音触发时）
+        summarizer = realtime_summarizers.get(task_id) if task_id else None
+        summary_resumed = False
+        if summarizer:
+            summary_resumed = summarizer.auto_resume_for_recording()
+        else:
+            logger.warning(f"[录制] 恢复联动：未找到实时总结器 task={task_id}")
+        return {"status": "recording", "summary_resumed": summary_resumed}
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 
@@ -439,7 +533,7 @@ async def resume_record():
 def abandon_record():
     """放弃录音：停止录制并删除所有相关数据和文件"""
     if not is_stream_recording():
-        raise HTTPException(400, "未在录制中")
+        raise HTTPException(400, _("Not recording"))
 
     task_id = None
     try:
@@ -474,6 +568,8 @@ def abandon_record():
             realtime_speaker_maps.pop(task_id, None)
             realtime_full_transcripts.pop(task_id, None)
             realtime_queues.pop(task_id, None)
+            # 停止静默监测协程，清理静默检测状态
+            _cleanup_silence_detection(task_id)
 
         # 3. 删除音频文件
         audio_path = result.get("output_path")
@@ -492,7 +588,7 @@ def abandon_record():
         return {"abandoned": True, "task_id": task_id}
 
     except RuntimeError as e:
-        raise HTTPException(500, f"放弃录音失败: {e}")
+        raise HTTPException(500, _("Failed to abandon recording: {err}").format(err=e))
 
 
 # ============================================================
@@ -507,7 +603,7 @@ async def pause_summary():
         summarizer = s
         break
     if not summarizer:
-        raise HTTPException(400, "无活跃的实时总结")
+        raise HTTPException(400, _("No active real-time summary"))
     summarizer.pause()
     return {"status": "paused"}
 
@@ -520,7 +616,7 @@ async def resume_summary():
         summarizer = s
         break
     if not summarizer:
-        raise HTTPException(400, "无活跃的实时总结")
+        raise HTTPException(400, _("No active real-time summary"))
     summarizer.resume()
     return {"status": "resumed"}
 
@@ -533,7 +629,7 @@ async def stop_summary():
         summarizer = s
         break
     if not summarizer:
-        raise HTTPException(400, "无活跃的实时总结")
+        raise HTTPException(400, _("No active real-time summary"))
     summarizer.stop()
     return {"status": "stopped"}
 
@@ -546,7 +642,7 @@ async def restart_summary():
         summarizer = s
         break
     if not summarizer:
-        raise HTTPException(400, "无活跃的实时总结")
+        raise HTTPException(400, _("No active real-time summary"))
     summarizer.restart()
     return {"status": "restarted"}
 
@@ -563,7 +659,7 @@ async def set_summary_interval(req: SummaryIntervalRequest):
         summarizer = s
         break
     if not summarizer:
-        raise HTTPException(400, "无活跃的实时总结")
+        raise HTTPException(400, _("No active real-time summary"))
     # 下限 30 秒
     new_interval = max(30, req.interval)
     summarizer.set_interval(new_interval)
@@ -593,12 +689,15 @@ async def realtime_bind_speaker(req: RealtimeBindSpeakerRequest):
         task_id = tid
         break
     if not task_id:
-        raise HTTPException(400, "无活跃的录音")
+        raise HTTPException(400, _("No active recording"))
 
     # 验证说话人存在
     spk = speakers.get_speaker_by_id(req.speaker_uuid)
     if not spk:
-        raise HTTPException(404, "说话人不存在")
+        raise HTTPException(404, _("Speaker not found"))
+
+    # 记录绑定前，先获取旧的兆底名称（用于更新缓冲区和全量转写）
+    old_name = resolve_realtime_speaker_name(task_id, req.speaker_id)
 
     # 记录绑定
     realtime_speaker_maps[task_id][req.speaker_id] = req.speaker_uuid
@@ -611,6 +710,17 @@ async def realtime_bind_speaker(req: RealtimeBindSpeakerRequest):
         "speaker_uuid": req.speaker_uuid,
         "speaker_name": spk.name,
     })
+
+    # 更新实时总结缓冲区中已缓冲句子的说话人姓名
+    summarizer = realtime_summarizers.get(task_id)
+    if summarizer and old_name != spk.name:
+        summarizer.update_speaker_name(old_name, spk.name)
+
+    # 更新全量实时转写记录中的说话人姓名（确保 WebSocket 重连回放时也显示真名）
+    full_transcript = realtime_full_transcripts.get(task_id, [])
+    for entry in full_transcript:
+        if entry.get("speaker_id") == req.speaker_id:
+            entry["speaker_name"] = spk.name
 
     return {
         "speaker_id": req.speaker_id,
@@ -646,11 +756,12 @@ async def realtime_get_speaker_bindings():
 # ============================================================
 
 @router.websocket("/ws/transcript/{task_id}")
-async def websocket_transcript(websocket: WebSocket, task_id: str):
+async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str = "zh_CN"):
     """
     实时转写 WebSocket。
 
     前端在录音期间连接此端点，接收实时识别结果。
+    通过 ?locale=zh_CN 查询参数传递语言偏好。
     消息格式（下行）：
       {"type": "partial", "text": "...", "speaker_id": N, "speaker_name": "..."}    临时结果
       {"type": "sentence", "text": "...", "speaker_id": N, "speaker_name": "..."}   定稿句子
@@ -659,18 +770,21 @@ async def websocket_transcript(websocket: WebSocket, task_id: str):
       {"type": "ended"}                         转写结束
     """
     await websocket.accept()
+    # WebSocket 不走 HTTP 中间件，手动将 locale 写入 ContextVar，
+    # 使后续整个 WS 流程内的 _() 调用均使用客户端语言
+    set_current_locale(locale)
 
     queue = realtime_queues.get(task_id)
     if not queue:
-        await websocket.send_json({"type": "error", "message": "任务不存在或未在录制"})
+        await websocket.send_json({"type": "error", "message": _("Task not found or not recording")})
         await websocket.close()
         return
 
     logger.info(f"[WebSocket] 实时转写连接: task={task_id[:8]}")
 
-    # 回放缓冲区中的历史句子（页面刷新恢复时不丢失转写内容）
-    from app.store import realtime_transcript_buffers, realtime_summarizers as _summarizers, realtime_chapter_generators as _chapter_gens
-    history = realtime_transcript_buffers.get(task_id, [])
+    # 回放全量历史句子（页面刷新恢复时不丢失转写内容）
+    from app.store import realtime_full_transcripts, realtime_summarizers as _summarizers, realtime_chapter_generators as _chapter_gens
+    history = realtime_full_transcripts.get(task_id, [])
     if history:
         logger.info(f"[WebSocket] 回放历史: task={task_id[:8]}, {len(history)} 条句子")
         for item in history:
@@ -723,19 +837,292 @@ async def websocket_transcript(websocket: WebSocket, task_id: str):
                 "chapters": current_chapters,
             })
 
+    # ── 初始化心跳时间戳（WebSocket 连接建立时）──
+    realtime_last_heartbeat[task_id] = time.time()
+
     try:
         while True:
-            # 从队列取消息（由 SDK 回调通过 push_realtime_msg 投递）
-            msg = await asyncio.wait_for(queue.get(), timeout=60.0)
-            await websocket.send_json(msg)
-            if msg.get("type") == "ended":
+            # 双向监听：同时等待队列消息和客户端消息（心跳）
+            queue_task = asyncio.create_task(queue.get())
+            receive_task = asyncio.create_task(websocket.receive_text())
+
+            done, pending = await asyncio.wait(
+                {queue_task, receive_task},
+                timeout=60.0,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # 取消未完成的任务
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+            if not done:
+                # 60 秒无任何消息，正常关闭
+                logger.info(f"[WebSocket] 超时关闭: task={task_id[:8]}")
                 break
-    except asyncio.TimeoutError:
-        # 60 秒无新消息，正常关闭
-        logger.info(f"[WebSocket] 超时关闭: task={task_id[:8]}")
+
+            # 处理队列消息（后端 → 前端）
+            if queue_task in done:
+                try:
+                    msg = queue_task.result()
+                    await websocket.send_json(msg)
+                    if msg.get("type") == "ended":
+                        break
+                except Exception as e:
+                    logger.error(f"[WebSocket] 队列消息处理异常: {e}")
+                    break
+
+            # 处理客户端消息（前端 → 后端，心跳）
+            if receive_task in done:
+                try:
+                    raw = receive_task.result()
+                    data = json.loads(raw)
+                    if data.get("type") == "heartbeat":
+                        realtime_last_heartbeat[task_id] = time.time()
+                        # 更新前端上报的存在性评分
+                        score = data.get("presence_score")
+                        if score is not None:
+                            realtime_presence_scores[task_id] = float(score)
+                        # 用户确认继续录制，重置提醒计数
+                        if data.get("user_ack"):
+                            realtime_silence_warnings[task_id] = 0
+                            logger.info(f"[静默检测] 用户确认继续录制: task={task_id[:8]}")
+                except WebSocketDisconnect:
+                    logger.info(f"[WebSocket] 客户端断开: task={task_id[:8]}")
+                    break
+                except Exception as e:
+                    logger.debug(f"[WebSocket] 客户端消息处理异常: {e}")
+
     except WebSocketDisconnect:
         logger.info(f"[WebSocket] 客户端断开: task={task_id[:8]}")
     except Exception as e:
         logger.error(f"[WebSocket] 异常: {e}")
     finally:
+        # 清理心跳时间戳
+        realtime_last_heartbeat.pop(task_id, None)
         logger.info(f"[WebSocket] 连接结束: task={task_id[:8]}")
+
+
+# ============================================================
+# 静默检测与用户存在性感知
+# 详见 docs/design/SILENCE_DETECTION.md
+# ============================================================
+
+def _cleanup_silence_detection(task_id: str) -> None:
+    """清理静默检测状态，取消监测协程"""
+    # 取消监测协程
+    monitor = realtime_silence_monitors.pop(task_id, None)
+    if monitor and not monitor.done():
+        monitor.cancel()
+        logger.debug(f"[静默检测] 监测协程已取消: task={task_id[:8]}")
+    # 清理状态字典
+    realtime_last_heartbeat.pop(task_id, None)
+    realtime_last_sentence.pop(task_id, None)
+    realtime_presence_scores.pop(task_id, None)
+    realtime_silence_warnings.pop(task_id, None)
+
+
+async def _silence_monitor_loop(task_id: str) -> None:
+    """
+    静默监测协程：每 10 秒检查一次，判断是否需要提醒或自动关停。
+
+    检查逻辑：
+    1. 心跳超时（前端不可达）→ 直接自动关停
+    2. ASR 无活动 + 存在性评分低 → 三阶段提醒（温和 → 紧急 → 自动关停）
+    """
+    config = get_silence_detection_config()
+    if not config["enabled"]:
+        return
+
+    heartbeat_timeout = config["presence"]["heartbeat_timeout_sec"]
+    asr_timeout = config["audio"]["asr_no_sentence_timeout_sec"]
+    threshold_warning = config["presence"]["threshold_warning"]
+    gentle_countdown = config["action"]["gentle_countdown_sec"]
+    urgent_countdown = config["action"]["urgent_countdown_sec"]
+    max_warnings = config["action"]["max_warnings_per_session"]
+
+    # 阶段状态：0=无提醒，1=温和提醒已发，2=紧急提醒已发
+    warning_stage = 0
+    stage_enter_time = 0.0  # 进入当前阶段的时间
+
+    logger.info(f"[静默检测] 监测启动: task={task_id[:8]}, "
+                f"heartbeat_timeout={heartbeat_timeout}s, asr_timeout={asr_timeout}s")
+
+    try:
+        while True:
+            await asyncio.sleep(10)  # 每 10 秒检查一次
+
+            # 检查录音是否仍在进行
+            if not is_stream_recording():
+                break
+
+            now = time.time()
+
+            # ── 检查 1：心跳超时（前端不可达）──
+            last_hb = realtime_last_heartbeat.get(task_id, now)
+            heartbeat_silent = now - last_hb
+            if heartbeat_silent > heartbeat_timeout:
+                logger.warning(
+                    f"[静默检测] 心跳超时 ({heartbeat_silent:.0f}s > {heartbeat_timeout}s)，"
+                    f"前端不可达，自动关停: task={task_id[:8]}"
+                )
+                await _auto_stop_recording(task_id, reason="heartbeat_timeout")
+                break
+
+            # ── 检查 2：ASR 无活动 + 存在性评分 ──
+            last_sent = realtime_last_sentence.get(task_id, now)
+            asr_silent = now - last_sent
+            presence_score = realtime_presence_scores.get(task_id, 100.0)
+
+            # 条件：ASR 无活动超过阈值 且 存在性评分低于警告阈值
+            if asr_silent > asr_timeout and presence_score < threshold_warning:
+                silent_minutes = int(asr_silent / 60)
+
+                if warning_stage == 0:
+                    # 发送温和提醒
+                    logger.info(
+                        f"[静默检测] 发送温和提醒: task={task_id[:8]}, "
+                        f"asr_silent={silent_minutes}min, score={presence_score:.0f}"
+                    )
+                    push_realtime_msg(task_id, {
+                        "type": "presence_warning",
+                        "level": "gentle",
+                        "silent_minutes": silent_minutes,
+                        "countdown_seconds": gentle_countdown,
+                    })
+                    warning_stage = 1
+                    stage_enter_time = now
+                    realtime_silence_warnings[task_id] = realtime_silence_warnings.get(task_id, 0) + 1
+
+                elif warning_stage == 1:
+                    # 温和提醒超时，发送紧急提醒
+                    if now - stage_enter_time > gentle_countdown:
+                        logger.info(
+                            f"[静默检测] 发送紧急提醒: task={task_id[:8]}, "
+                            f"温和提醒超时 ({gentle_countdown}s)"
+                        )
+                        push_realtime_msg(task_id, {
+                            "type": "presence_warning",
+                            "level": "urgent",
+                            "silent_minutes": silent_minutes,
+                            "countdown_seconds": urgent_countdown,
+                        })
+                        warning_stage = 2
+                        stage_enter_time = now
+                        realtime_silence_warnings[task_id] = realtime_silence_warnings.get(task_id, 0) + 1
+
+                elif warning_stage == 2:
+                    # 紧急提醒超时，自动关停
+                    if now - stage_enter_time > urgent_countdown:
+                        logger.warning(
+                            f"[静默检测] 紧急提醒超时，自动关停: task={task_id[:8]}, "
+                            f"asr_silent={silent_minutes}min, score={presence_score:.0f}"
+                        )
+                        await _auto_stop_recording(task_id, reason="user_presence_timeout")
+                        break
+
+                # 检查是否超过最大提醒次数
+                if realtime_silence_warnings.get(task_id, 0) >= max_warnings * 2:
+                    # 温和 + 紧急各算一次，总共 max_warnings 轮
+                    logger.warning(
+                        f"[静默检测] 已达最大提醒次数 ({max_warnings})，自动关停: "
+                        f"task={task_id[:8]}"
+                    )
+                    await _auto_stop_recording(task_id, reason="max_warnings_reached")
+                    break
+
+            else:
+                # 条件不满足（有语音活动或存在性评分高），重置阶段
+                if warning_stage > 0:
+                    logger.info(
+                        f"[静默检测] 条件恢复，重置提醒阶段: task={task_id[:8]}, "
+                        f"asr_silent={asr_silent:.0f}s, score={presence_score:.0f}"
+                    )
+                warning_stage = 0
+
+    except asyncio.CancelledError:
+        logger.info(f"[静默检测] 监测协程被取消: task={task_id[:8]}")
+    except Exception as e:
+        logger.error(f"[静默检测] 监测协程异常: {e}")
+
+
+async def _auto_stop_recording(task_id: str, reason: str = "unknown") -> None:
+    """
+    自动停止录音（由静默监测协程调用）。
+
+    复用 stop_record 的核心逻辑，但不通过 HTTP 端点。
+    在线程池中执行阻塞操作（stop_recording_with_stream）。
+    """
+    logger.warning(f"[静默检测] 开始自动关停: task={task_id[:8]}, reason={reason}")
+
+    try:
+        # 1. 停止实时转写
+        transcriber = realtime_transcribers.pop(task_id, None)
+        if transcriber:
+            try:
+                transcriber.stop()
+            except Exception as e:
+                logger.warning(f"自动关停-转写停止异常: {e}")
+
+        diarizer = realtime_diarizers.pop(task_id, None)
+        if diarizer:
+            try:
+                diarizer.stop()
+            except Exception as e:
+                logger.warning(f"自动关停-聚类停止异常: {e}")
+
+        summarizer = realtime_summarizers.pop(task_id, None)
+        if summarizer:
+            summarizer.stop()
+
+        chapter_gen = realtime_chapter_generators.pop(task_id, None)
+        if chapter_gen:
+            chapter_gen.stop()
+
+        realtime_speaker_maps.pop(task_id, None)
+        realtime_full_transcripts.pop(task_id, None)
+
+        # 2. 停止录音（阻塞操作，放线程池）
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, stop_recording_with_stream)
+
+        audio_path = result["output_path"]
+        duration = result["duration"]
+
+        if task_id in tasks:
+            tasks[task_id]["audio_name"] = f"录音 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            tasks[task_id]["audio_duration"] = duration
+            tasks[task_id]["auto_stop_reason"] = reason
+            save_task_to_disk(task_id)
+
+        # 3. 发送结束消息
+        push_realtime_msg(task_id, {
+            "type": "auto_stopped",
+            "reason": reason,
+            "duration": duration,
+            "message": f"因长时间无活动已自动停止录制（已保存 {duration:.0f} 秒录音）",
+        })
+        push_realtime_msg(task_id, {"type": "ended"})
+
+        # 4. 后台执行管线
+        asyncio.get_event_loop().call_soon(
+            lambda: asyncio.ensure_future(run_pipeline_task(
+                task_id, audio_path, tasks[task_id]["audio_name"], None, None
+            ))
+        )
+
+        # 5. 清理实时状态
+        realtime_queues.pop(task_id, None)
+        _cleanup_silence_detection(task_id)
+
+        logger.info(
+            f"[静默检测] 自动关停完成: task={task_id[:8]}, "
+            f"duration={duration:.0f}s, reason={reason}"
+        )
+
+    except Exception as e:
+        logger.error(f"[静默检测] 自动关停失败: {e}")

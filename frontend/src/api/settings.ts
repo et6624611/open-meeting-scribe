@@ -8,14 +8,47 @@ export interface FeatureFlags {
   realtime_summary: boolean
   realtime_summary_interval: number
   update_check: boolean
+  voiceprint_auto_match: boolean
+}
+
+/** LLM 提供商预设 */
+export interface ProviderPreset {
+  name: string
+  base_url: string
+  models: string[]
 }
 
 export interface Settings {
-  api_key?: string
-  asr_model?: string
-  llm_model?: string
+  asr?: {
+    provider?: string
+    model?: string
+    /** 代理模式下由服务器持有，前端仅展示 */
+    api_key_managed_by_proxy?: boolean
+  }
+  llm?: {
+    provider?: string
+    base_url?: string
+    api_key?: string
+    api_key_set?: boolean
+    model?: string
+  }
+  voiceprint?: {
+    provider?: string
+    cloud_base_url?: string
+    cloud_api_key?: string
+    cloud_api_key_set?: boolean
+  }
+  diarization?: {
+    subscription_tier?: string
+    local_diarization?: boolean
+    effective?: string
+    can_toggle?: boolean
+  }
   output_dir?: string
+  disabled_commands?: string[]
   feature_flags?: Partial<FeatureFlags>
+  /** 后端返回的 LLM Provider 预设列表 */
+  llm_provider_presets?: ProviderPreset[]
   [key: string]: unknown
 }
 
@@ -35,5 +68,24 @@ export async function testApiConnection(): Promise<{ success: boolean; message?:
 
 export async function fetchModels(): Promise<{ asr: string[]; llm: string[] }> {
   const { data } = await client.get('/api/models')
+  return data
+}
+
+/** 系统提示词条目 */
+export interface SystemPromptItem {
+  module: string
+  description: string
+  prompt: string
+}
+
+/** 获取系统提示词列表（只读） */
+export async function fetchSystemPrompts(): Promise<Record<string, SystemPromptItem>> {
+  const { data } = await client.get<Record<string, SystemPromptItem>>('/api/system-prompts')
+  return data
+}
+
+/** 获取 CLI 命令参考 */
+export async function fetchCliReference(): Promise<Record<string, unknown>> {
+  const { data } = await client.get<Record<string, unknown>>('/api/cli-reference')
   return data
 }

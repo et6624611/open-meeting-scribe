@@ -17,7 +17,7 @@
       <span v-if="timeStr" class="sb-tl-time">{{ timeStr }}</span>
       <span class="sb-tl-dot" :class="dotClass"></span>
       <span class="sb-tl-status">{{ statusLabel }}</span>
-      <span v-if="durationStr" class="sb-tl-dur">{{ durationStr }}</span>
+      <DurationDial v-if="task.audio_duration" class="sb-tl-dur" :seconds="task.audio_duration" />
     </div>
 
     <!-- 失败详情 -->
@@ -30,7 +30,7 @@
       </div>
       <div class="sb-failure-content">
         <div class="sb-failure-message">{{ failureInfo.message }}</div>
-        <div v-if="task.error_suggestion" class="sb-failure-suggestion">{{ task.error_suggestion }}</div>
+        <div v-if="failureInfo.suggestion" class="sb-failure-suggestion">{{ failureInfo.suggestion }}</div>
       </div>
       <button class="sb-failure-action" @click.stop="failureInfo.onAction">{{ failureInfo.actionText }}</button>
     </div>
@@ -38,7 +38,7 @@
     <!-- 更多按钮 -->
     <button
       class="sb-more"
-      :data-tip="showContextMenu ? '' : '更多'"
+      :data-tip="showContextMenu ? '' : t('task.more')"
       @click.stop="onMenuClick"
       @mouseenter="onMoreEnter"
       @mouseleave="onMoreLeave"
@@ -53,15 +53,15 @@
       <div v-if="showContextMenu" class="sb-dropdown is-open is-down" :style="menuStyle" @click.stop>
         <button @click="onRename">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          重命名
+          {{ t('task.rename') }}
         </button>
         <button v-if="task.status === 'failed'" @click="onRetry">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          重试
+          {{ t('task.retry') }}
         </button>
         <button class="is-danger" @click="onDelete">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          删除
+          {{ t('task.delete') }}
         </button>
       </div>
     </Teleport>
@@ -75,7 +75,7 @@
           <span>{{ durationStr }}</span>
         </div>
         <div v-if="task.summary" class="hc-section">
-          <div class="hc-label">摘要</div>
+          <div class="hc-label">{{ t('task.summary_label') }}</div>
           <div class="hc-summary">{{ task.summary.slice(0, 200) }}…</div>
         </div>
       </div>
@@ -85,11 +85,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { Task } from '@/api/types'
 import { STATUS_CONFIG } from '@/api/types'
 import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
+import DurationDial from '@/components/common/DurationDial.vue'
 
+const { t } = useI18n()
 const player = usePlayerStore()
 
 const props = defineProps<{
@@ -106,6 +109,7 @@ const emit = defineEmits<{
   retry: [taskId: string]
   checkSettings: []
   reupload: [taskId: string]
+  rerecord: [taskId: string]
   viewDetails: [taskId: string]
 }>()
 
@@ -115,7 +119,7 @@ const menuStyle = ref<Record<string, string>>({})
 const hoverStyle = ref<Record<string, string>>({})
 
 const displayTitle = computed(() =>
-  props.task.title || props.task.audio_name || '未命名会议',
+  props.task.title || props.task.audio_name || t('task.untitled'),
 )
 
 const timeStr = computed(() => {
@@ -130,7 +134,7 @@ const timeStr = computed(() => {
 const dotClass = computed(() => {
   const s = props.task.status
   if (s === 'completed') return 'is-done'
-  if (s === 'recording' || s === 'transcribing' || s === 'summarizing') return 'is-processing'
+  if (s === 'recording' || s === 'processing' || s === 'transcribing' || s === 'summarizing') return 'is-processing'
   if (s === 'pending' || s === 'awaiting_mapping') return 'is-pending'
   if (s === 'failed') return 'is-failed'
   return ''
@@ -138,9 +142,10 @@ const dotClass = computed(() => {
 
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
-    recording: '录音中', pending: '等待处理', transcribing: '识别中',
-    awaiting_mapping: '待关联', summarizing: '生成纪要',
-    completed: '已完成', failed: '处理失败',
+    recording: t('task.status.recording'), pending: t('task.status.pending'), processing: t('common.processing'),
+    transcribing: t('task.status.transcribing'),
+    awaiting_mapping: t('task.status.awaiting_mapping'), summarizing: t('task.status.summarizing'),
+    completed: t('task.status.completed'), failed: t('task.status.failed'),
   }
   return map[props.task.status] || props.task.status
 })
@@ -149,10 +154,10 @@ const durationStr = computed(() => {
   const dur = props.task.audio_duration
   if (!dur) return ''
   const mins = Math.round(dur / 60)
-  if (mins < 60) return `${mins}分钟`
+  if (mins < 60) return t('task.duration.minutes', { m: mins })
   const h = Math.floor(mins / 60)
   const m = mins % 60
-  return m > 0 ? `${h}小时${m}分` : `${h}小时`
+  return m > 0 ? t('task.duration.hours_minutes', { h, m }) : t('task.duration.hours', { h })
 })
 
 // 悬停知识卡片
@@ -201,39 +206,56 @@ const hoverDate = computed(() => {
 // 失败信息分类
 const failureInfo = computed(() => {
   const category = props.task.error_category
-  const errorText = props.task.error || '未知错误'
+  const errorText = props.task.error || t('task.failure.unknown')
   
   switch (category) {
     case 'transient':
       return {
         icon: 'refresh',
         iconClass: 'is-transient',
-        message: '临时错误，可重试',
-        actionText: '重试',
+        message: t('task.failure.transient'),
+        suggestion: '',
+        actionText: t('task.failure.transient_action'),
         onAction: () => emit('retry', props.task.task_id),
       }
     case 'api_config':
       return {
         icon: 'settings',
         iconClass: 'is-api-config',
-        message: 'API 配置异常',
-        actionText: '检查设置',
+        message: t('task.failure.api_config'),
+        suggestion: '',
+        actionText: t('task.failure.api_config_action'),
         onAction: () => emit('checkSettings'),
       }
     case 'audio':
+      // 细分：无有效语音 vs 其他音频问题
+      const isRecord = props.task.source === 'record' || (props.task.audio_path || '').includes('recordings')
+      if (errorText.toLowerCase().includes('no_valid_fragment') ||
+          errorText.toLowerCase().includes('no valid fragment')) {
+        return {
+          icon: 'audio',
+          iconClass: 'is-audio',
+          message: t('task.failure.no_speech'),
+          suggestion: t('task.failure.no_speech_hint'),
+          actionText: isRecord ? t('task.failure.rerecord_action') : t('task.failure.audio_action'),
+          onAction: () => { isRecord ? emit('rerecord', props.task.task_id) : emit('reupload', props.task.task_id) },
+        }
+      }
       return {
         icon: 'audio',
         iconClass: 'is-audio',
-        message: '音频文件异常',
-        actionText: '重新上传',
-        onAction: () => emit('reupload', props.task.task_id),
+        message: t('task.failure.audio'),
+        suggestion: '',
+        actionText: isRecord ? t('task.failure.rerecord_action') : t('task.failure.audio_action'),
+        onAction: () => { isRecord ? emit('rerecord', props.task.task_id) : emit('reupload', props.task.task_id) },
       }
     default:
       return {
         icon: 'alert',
         iconClass: 'is-unknown',
         message: errorText,
-        actionText: '查看详情',
+        suggestion: '',
+        actionText: t('task.failure.default_action'),
         onAction: () => emit('viewDetails', props.task.task_id),
       }
   }
@@ -261,7 +283,7 @@ function closeMenu() { showContextMenu.value = false }
 
 function onRename() {
   closeMenu()
-  const newName = prompt('输入新标题：', props.task.title || props.task.audio_name || '')
+  const newName = prompt(t('task.rename_prompt'), props.task.title || props.task.audio_name || '')
   if (newName && newName.trim()) {
     emit('menu', props.task.task_id, new MouseEvent('rename'), newName.trim())
   }
@@ -274,7 +296,7 @@ function onRetry() {
 
 function onDelete() {
   closeMenu()
-  if (confirm('确定删除该会议？此操作不可撤销。')) {
+  if (confirm(t('task.confirm_delete'))) {
     emit('menu', props.task.task_id, new MouseEvent('delete'))
   }
 }

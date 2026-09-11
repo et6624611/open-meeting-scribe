@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core import users as user_module
+from core.i18n import _
 
 router = APIRouter(tags=["user"])
 
@@ -31,7 +32,7 @@ def get_user():
 def set_user(req: UserSetRequest):
     """设置/更新当前用户姓名（写 users.json）"""
     if not req.name.strip():
-        raise HTTPException(400, "姓名不能为空")
+        raise HTTPException(400, _("Name cannot be empty"))
     user = user_module.set_current_user(req.name, req.avatar_color)
     return {"user": user}
 
@@ -41,10 +42,10 @@ def user_bind_speaker(req: UserBindSpeakerRequest):
     """将当前用户绑定到指定任务的某说话人（写 users.json）"""
     user = user_module.get_current_user()
     if not user:
-        raise HTTPException(400, "请先设置用户姓名")
+        raise HTTPException(400, _("Please set up your name first"))
     speaker_uuid = user_module.bind_current_user_to_speaker(req.task_id, req.speaker_id)
     if not speaker_uuid:
-        raise HTTPException(400, "绑定失败")
+        raise HTTPException(400, _("Binding failed"))
     return {"speaker_uuid": speaker_uuid, "user_name": user["name"]}
 
 
@@ -96,7 +97,7 @@ def update_user_prefs(req: UserPrefsUpdateRequest):
     """
     user = user_module.get_current_user()
     if not user:
-        raise HTTPException(401, "请先登录")
+        raise HTTPException(401, _("Please log in first"))
 
     updates = {}
 

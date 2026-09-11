@@ -1,10 +1,10 @@
 <template>
-  <div class="lib-page">
-    <!-- 整合标题区与搜索栏 -->
+  <div class="lib-page" ref="libPageRef" :class="widthClass">
+    <!-- 整合标题区与搜索框 -->
     <div class="lib-header-bar">
       <div class="lib-title-group">
-        <h1>全部会议</h1>
-        <span class="lib-count">{{ taskStore.tasks.length }} 个会议</span>
+        <h1>{{ t('library.title') }}</h1>
+        <span class="lib-count">{{ t('library.count', { count: taskStore.tasks.length }) }}</span>
       </div>
       <div class="lib-search-wrap">
         <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -12,7 +12,7 @@
           v-model="taskStore.searchQuery"
           class="lib-search-input"
           type="text"
-          placeholder="搜索会议标题或内容…"
+          :placeholder="t('library.search_placeholder')"
         />
       </div>
     </div>
@@ -29,20 +29,20 @@
           ></div>
         </div>
         <div class="col-header sortable" :class="{ sorted: sortKey === 'title' }" @click="toggleSort('title')">
-          <span>会议名称</span>
+          <span>{{ t('library.col_name') }}</span>
           <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
         </div>
         <div class="col-header sortable" :class="{ sorted: sortKey === 'status' }" @click="toggleSort('status')">
-          <span>状态</span>
+          <span>{{ t('library.col_status') }}</span>
           <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
         </div>
         <div class="col-header sortable" :class="{ sorted: sortKey === 'duration' }" @click="toggleSort('duration')">
-          <span>时长</span>
+          <span>{{ t('library.col_duration') }}</span>
           <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
         </div>
-        <div class="col-header">说话人</div>
+        <div class="col-header">{{ t('library.col_speakers') }}</div>
         <div class="col-header sortable" :class="{ sorted: sortKey === 'created_at' }" @click="toggleSort('created_at')">
-          <span>创建时间</span>
+          <span>{{ t('library.col_time') }}</span>
           <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
         </div>
         <div class="col-header"></div>
@@ -68,18 +68,35 @@
             </div>
             <div class="cell-title">
               <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
-              <span class="cell-title-text">{{ task.title || task.audio_name || '未命名' }}</span>
+              <span class="cell-title-text">{{ task.title || task.audio_name || t('common.untitled') }}</span>
             </div>
             <div class="cell-status">
               <span class="status-dot" :class="statusDotClass(task.status)"></span>
               <span>{{ taskStore.getStatusLabel(task.status) }}</span>
             </div>
-            <div class="cell-duration">{{ formatDuration(task.audio_duration) }}</div>
-            <div class="cell-speakers">{{ task.speaker_count ? task.speaker_count + ' 位' : '—' }}</div>
-            <div class="cell-time">{{ formatTime(task.created_at) }}</div>
+            <div class="cell-duration">
+              <DurationDial v-if="task.audio_duration" :seconds="task.audio_duration" />
+              <span v-else class="cell-muted">—</span>
+            </div>
+            <div class="cell-speakers">
+              <template v-if="getSpeakerList(task).length > 0">
+                <span
+                  v-for="sp in visibleSpeakers(task)"
+                  :key="sp.id"
+                  class="lib-spk-label"
+                  :title="`${sp.name} · ${formatDuration(sp.duration)}`"
+                >
+                  <span class="lib-spk-name" :style="{ color: sp.color }">{{ sp.name }}</span>
+                  <span class="lib-spk-bar"><span class="lib-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
+                </span>
+                <span v-if="extraSpeakerCount(task) > 0" class="lib-spk-more">+{{ extraSpeakerCount(task) }}</span>
+              </template>
+              <span v-else class="cell-muted">—</span>
+            </div>
+            <div class="cell-time">{{ formatDateTime(task.created_at) }}</div>
             <div class="cell-actions">
-              <button class="cell-actions-btn" @click.stop="openTask(task)" title="打开">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              <button class="cell-actions-btn" @click.stop="openTask(task)" :title="t('library.open_title')">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               </button>
             </div>
           </div>
@@ -89,17 +106,17 @@
 
     <!-- 空状态 -->
     <div v-if="taskStore.groupedTasks.length === 0 && !taskStore.loading" class="empty-state">
-      {{ taskStore.searchQuery ? '没有匹配的会议' : '暂无会议记录' }}
+      {{ taskStore.searchQuery ? t('library.empty_search') : t('library.empty') }}
     </div>
 
     <!-- 批量操作栏 -->
     <div class="batch-bar" :class="{ visible: selectedIds.size > 0 }">
-      <span class="batch-count">已选 {{ selectedIds.size }} 项</span>
+      <span class="batch-count">{{ t('library.batch_count', { count: selectedIds.size }) }}</span>
       <div class="batch-spacer"></div>
-      <button class="batch-btn" @click="batchExport">导出</button>
-      <button class="batch-btn" @click="batchArchive">归档</button>
-      <button class="batch-btn danger" @click="batchDelete">删除</button>
-      <button class="batch-close" @click="clearSelection" title="取消选择">
+      <button class="batch-btn" @click="batchExport">{{ t('library.batch_export') }}</button>
+      <button class="batch-btn" @click="batchArchive">{{ t('library.batch_archive') }}</button>
+      <button class="batch-btn danger" @click="batchDelete">{{ t('library.batch_delete') }}</button>
+      <button class="batch-close" @click="clearSelection" :title="t('library.batch_close')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -107,16 +124,48 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
+import DurationDial from '@/components/common/DurationDial.vue'
+import { getSpeakerColor } from '@/utils/speakerColors'
 import type { Task, TaskStatus } from '@/api/types'
 
+const { t } = useI18n()
 const router = useRouter()
 const taskStore = useTaskStore()
 const player = usePlayerStore()
+
+// ─── 宽度档位（ResizeObserver 驱动，与 is-compact/is-narrow/is-xnarrow 模式一致）───
+const libPageRef = ref<HTMLElement | null>(null)
+const widthClass = ref('')
+let resizeObs: ResizeObserver | null = null
+
+function updateWidthClass(w: number) {
+  if (w <= 480) widthClass.value = 'is-xnarrow'
+  else if (w <= 640) widthClass.value = 'is-narrow'
+  else if (w <= 860) widthClass.value = 'is-compact'
+  else widthClass.value = ''
+}
+
+onMounted(() => {
+  if (!libPageRef.value) return
+  resizeObs = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      updateWidthClass(entry.contentRect.width)
+    }
+  })
+  resizeObs.observe(libPageRef.value)
+  updateWidthClass(libPageRef.value.clientWidth)
+})
+
+onUnmounted(() => {
+  resizeObs?.disconnect()
+  resizeObs = null
+})
 
 // ─── 选择状态 ───
 const selectedIds = ref<Set<string>>(new Set())
@@ -219,22 +268,22 @@ function sortGroupTasks(tasks: Task[]): Task[] {
 
 // ─── 批量操作 ───
 function batchExport() {
-  alert(`导出 ${selectedIds.value.size} 个会议（功能待实现）`)
+  alert(t('library.export_todo', { count: selectedIds.value.size }))
 }
 
 function batchArchive() {
-  alert(`归档 ${selectedIds.value.size} 个会议（功能待实现）`)
+  alert(t('library.archive_todo', { count: selectedIds.value.size }))
 }
 
 async function batchDelete() {
   const count = selectedIds.value.size
-  if (!confirm(`确定删除 ${count} 个会议？此操作不可撤销。`)) return
+  if (!confirm(t('library.confirm_delete', { count }))) return
 
   for (const id of selectedIds.value) {
     try {
       await taskStore.removeTask(id)
     } catch (e) {
-      console.error(`删除会议 ${id} 失败:`, e)
+      console.error(`delete meeting ${id} failed:`, e)
     }
   }
   clearSelection()
@@ -243,12 +292,11 @@ async function batchDelete() {
 // ─── 导航 ───
 function openTask(task: Task) {
   taskStore.selectTask(task.task_id)
-  if (task.status === 'completed') {
-    router.push({ name: 'generating', params: { taskId: task.task_id } })
-  } else if (task.status === 'recording') {
+  // 所有非录音任务统一进入纪要页（中间状态由 GeneratingView 内联处理）
+  if (task.status === 'recording') {
     router.push({ name: 'recording', params: { taskId: task.task_id } })
   } else {
-    router.push({ name: 'processing', params: { taskId: task.task_id } })
+    router.push({ name: 'generating', params: { taskId: task.task_id } })
   }
 }
 
@@ -257,7 +305,7 @@ function statusDotClass(status: TaskStatus): string {
   if (status === 'completed') return 'is-done'
   if (status === 'failed') return 'is-failed'
   if (status === 'paused') return 'is-paused'
-  if (['recording', 'transcribing', 'summarizing'].includes(status)) return 'is-processing'
+  if (['recording', 'processing', 'transcribing', 'summarizing'].includes(status)) return 'is-processing'
   return 'is-pending'
 }
 
@@ -269,12 +317,69 @@ function formatDuration(sec: number | null): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`
 }
 
-function formatTime(dateStr: string | null): string {
+function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return '—'
   const d = new Date(dateStr)
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
   const h = String(d.getHours()).padStart(2, '0')
   const m = String(d.getMinutes()).padStart(2, '0')
-  return `${h}:${m}`
+  return `${y}-${mo}-${day} ${h}:${m}`
+}
+
+/** 说话人列最多展示条数：超出以 +N 折叠，保证 ≤2 行不超出 52px 行高 */
+const SPK_MAX_SHOWN = 4
+
+function visibleSpeakers(task: Task): SpeakerInfo[] {
+  const list = getSpeakerList(task)
+  return list.length > SPK_MAX_SHOWN ? list.slice(0, SPK_MAX_SHOWN - 1) : list
+}
+
+function extraSpeakerCount(task: Task): number {
+  const n = getSpeakerList(task).length
+  return n > SPK_MAX_SHOWN ? n - (SPK_MAX_SHOWN - 1) : 0
+}
+
+/** 从 task 中提取说话人列表（含颜色、名称、时长、占比） */
+interface SpeakerInfo {
+  id: string
+  name: string
+  color: string
+  duration: number
+  pct: number
+}
+
+function getSpeakerList(task: Task): SpeakerInfo[] {
+  const mapping = task.speaker_mapping
+  if (!mapping || Object.keys(mapping).length === 0) return []
+
+  // 从 dialogue 计算每位说话人的时长与总时长
+  const durMap: Record<string, number> = {}
+  let total = 0
+  if (task.dialogue) {
+    for (const line of task.dialogue) {
+      const sid = String(line.speaker_id)
+      for (const s of line.sentences) {
+        const d = s.end_time - s.begin_time
+        durMap[sid] = (durMap[sid] || 0) + d
+        total += d
+      }
+    }
+  }
+
+  return Object.entries(mapping)
+    .filter(([, name]) => name) // 过滤空名称
+    .map(([id, name]) => {
+      const dur = durMap[id] || 0
+      return {
+        id,
+        name,
+        color: getSpeakerColor(id),
+        duration: dur,
+        pct: total > 0 ? Math.round((dur / total) * 100) : 0,
+      }
+    })
 }
 </script>
 
@@ -348,7 +453,7 @@ function formatTime(dateStr: string | null): string {
 /* 列标题 */
 .table-head {
   display: grid;
-  grid-template-columns: 40px 1fr 120px 100px 100px 120px 40px;
+  grid-template-columns: 40px minmax(180px, 1fr) 110px 100px 140px 140px 40px;
   align-items: center;
   padding: 0 var(--s-4);
   height: 40px;
@@ -410,7 +515,7 @@ function formatTime(dateStr: string | null): string {
 
 .table-row {
   display: grid;
-  grid-template-columns: 40px 1fr 120px 100px 100px 120px 40px;
+  grid-template-columns: 40px minmax(180px, 1fr) 110px 100px 140px 140px 40px;
   align-items: center;
   padding: 0 var(--s-4);
   height: 52px;
@@ -444,7 +549,38 @@ function formatTime(dateStr: string | null): string {
 .status-dot.is-paused { background: var(--warn); }
 .status-dot.is-pending { background: var(--warn); }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.cell-duration, .cell-speakers, .cell-time { font-size: 13px; color: var(--muted); }
+.cell-duration, .cell-speakers, .cell-time {
+  font-size: 13px; color: var(--muted);
+  display: flex; align-items: center; gap: 4px;
+}
+.cell-muted { color: var(--subtle); }
+
+/* 说话人列：彩色名称 + 占比横条，参照 .gen-spk-label 视觉模式 */
+.cell-speakers {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-content: center;
+}
+.lib-spk-label {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  white-space: nowrap;
+}
+.lib-spk-name {
+  font-size: var(--fs-12); font-weight: 500;
+  max-width: 60px; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-spk-bar {
+  display: block; width: 44px; height: 3px; border-radius: 2px;
+  background: var(--border); overflow: hidden;
+}
+.lib-spk-bar-fill {
+  display: block; height: 100%; border-radius: 2px;
+}
+.lib-spk-more {
+  align-self: center;
+  font-size: 11px; color: var(--subtle);
+  font-family: var(--font-mono);
+}
 .cell-actions {
   display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity 0.15s;
@@ -491,18 +627,19 @@ function formatTime(dateStr: string | null): string {
 /* ─── 空状态 ─── */
 .empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; }
 
-/* ─── 响应式 ─── */
-@media (max-width: 920px) {
+/* ─── 响应式：视口级 @media 渐进隐藏次要列 ─── */
+
+/* ≤1000px：隐藏说话人列 */
+@media (max-width: 1000px) {
   .table-head, .table-row {
-    grid-template-columns: 40px 1fr 100px 80px 40px;
+    grid-template-columns: 40px minmax(160px, 1fr) 110px 100px 140px 40px;
   }
   .table-head .col-header:nth-child(5),
-  .table-head .col-header:nth-child(6),
-  .table-row .cell-speakers,
-  .table-row .cell-time { display: none; }
-  .lib-search-wrap { max-width: 360px; }
+  .table-row .cell-speakers { display: none; }
+  .lib-search-wrap { max-width: 380px; }
 }
 
+/* ≤768px：标题区与搜索框纵向排列 + 隐藏时长列 */
 @media (max-width: 768px) {
   .lib-header-bar {
     flex-direction: column;
@@ -511,13 +648,43 @@ function formatTime(dateStr: string | null): string {
   }
   .lib-title-group { justify-content: space-between; }
   .lib-search-wrap { max-width: 100%; }
-}
-
-@media (max-width: 600px) {
   .table-head, .table-row {
-    grid-template-columns: 36px 1fr 80px 36px;
+    grid-template-columns: 40px minmax(140px, 1fr) 110px 130px 40px;
   }
   .table-head .col-header:nth-child(4),
   .table-row .cell-duration { display: none; }
+}
+
+/* ≤600px：隐藏时间列，仅保留 复选框 + 标题 + 状态 + 操作 */
+@media (max-width: 600px) {
+  .table-head, .table-row {
+    grid-template-columns: 36px minmax(120px, 1fr) 110px 36px;
+  }
+  .table-head .col-header:nth-child(6),
+  .table-row .cell-time { display: none; }
+}
+
+/* ─── 组件级宽度档位（ResizeObserver 驱动） ─── */
+
+/* is-compact (≤860px)：状态列文字隐藏，仅保留状态圆点 */
+.lib-page.is-compact .cell-status span:not(.status-dot) {
+  display: none;
+}
+.lib-page.is-compact .cell-status {
+  justify-content: center;
+}
+
+/* is-narrow (≤640px)：在视口隐藏说话人基础上，进一步收紧间距 */
+.lib-page.is-narrow .table-head,
+.lib-page.is-narrow .table-row {
+  padding: 0 var(--s-2);
+}
+
+/* is-xnarrow (≤480px)：隐藏状态文字 + 缩短行高 */
+.lib-page.is-xnarrow .table-row {
+  height: 44px;
+}
+.lib-page.is-xnarrow .cell-title {
+  font-size: 13px;
 }
 </style>

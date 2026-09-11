@@ -1,7 +1,7 @@
 #!/bin/bash
 # ASR 代理服务部署脚本
-# 目标服务器：47.116.10.194
-# 用法：ssh root@47.116.10.194 'bash -s' < deploy.sh
+# 目标服务器：<your-server-ip>
+# 用法：ssh root@<your-server-ip> 'bash -s' < deploy.sh
 
 set -e
 

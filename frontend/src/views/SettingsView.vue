@@ -1,13 +1,13 @@
 <template>
   <div>
     <div class="main-head">
-      <h1>设置</h1>
-      <p class="sub">账户、API 配置、模型选择</p>
+      <h1>{{ t('settings.title') }}</h1>
+      <p class="sub">{{ t('settings.subtitle') }}</p>
     </div>
 
     <!-- 账户信息 -->
     <div class="settings-section">
-      <h2 class="settings-title">账户</h2>
+      <h2 class="settings-title">{{ t('settings.account') }}</h2>
       <div v-if="userStore.isLoggedIn" class="settings-account">
         <span class="settings-avatar">{{ userStore.avatarLetter }}</span>
         <div>
@@ -16,36 +16,126 @@
         </div>
       </div>
       <div v-else class="settings-login-prompt">
-        <p>未登录</p>
-        <button class="btn btn-primary" @click="showLogin">登录</button>
+        <p>{{ t('settings.not_logged_in') }}</p>
+        <button class="btn btn-primary" @click="showLogin">{{ t('settings.login') }}</button>
       </div>
     </div>
 
     <!-- API 配置 -->
     <div class="settings-section">
-      <h2 class="settings-title">API 配置</h2>
-      <div class="settings-field">
-        <label class="settings-label">API Key</label>
-        <input v-model="settings.api_key" type="password" class="settings-input" placeholder="留空则使用环境变量中的 Key" />
+      <h2 class="settings-title">{{ t('settings.api_config') }}</h2>
+
+      <!-- LLM 纪要生成服务 -->
+      <div class="api-subsection">
+        <h3 class="api-subsection-title">{{ t('settings.llm_service') }}</h3>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.llm_provider') }}</label>
+          <select v-model="settings.llm!.provider" class="settings-input" @change="onLlmProviderChange">
+            <option v-for="p in llmPresets" :key="p.name" :value="p.name">{{ p.name }}</option>
+          </select>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.llm_base_url') }}</label>
+          <input v-model="settings.llm!.base_url" class="settings-input" :placeholder="t('settings.llm_base_url_placeholder')" />
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.api_key') }}</label>
+          <input v-model="settings.llm!.api_key" type="password" class="settings-input" :placeholder="t('settings.llm_api_key_placeholder')" />
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.llm_model') }}</label>
+          <input v-model="settings.llm!.model" class="settings-input" placeholder="qwen-plus" />
+        </div>
       </div>
-      <div class="settings-field">
-        <label class="settings-label">ASR 模型</label>
-        <input v-model="settings.asr_model" class="settings-input" placeholder="paraformer-v2" />
+
+      <!-- ASR 语音转写服务 -->
+      <div class="api-subsection">
+        <h3 class="api-subsection-title">{{ t('settings.asr_service') }}</h3>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.asr_provider') }}</label>
+          <span class="api-readonly">{{ settings.asr?.provider || 'DashScope' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.asr_model') }}</label>
+          <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
+        </div>
       </div>
-      <div class="settings-field">
-        <label class="settings-label">LLM 模型</label>
-        <input v-model="settings.llm_model" class="settings-input" placeholder="qwen-plus" />
-      </div>
+
       <div class="settings-actions">
-        <button class="btn btn-secondary" @click="onTest" :disabled="testing">{{ testing ? '测试中…' : '测试连接' }}</button>
-        <button class="btn btn-primary" @click="onSave">保存设置</button>
+        <button class="btn btn-secondary" @click="onTest" :disabled="testing">{{ testing ? t('settings.testing') : t('settings.test_connection') }}</button>
+        <button class="btn btn-primary" @click="onSave">{{ t('settings.save') }}</button>
       </div>
       <p v-if="testResult" class="settings-test-result" :class="{ 'is-error': testIsError }">{{ testResult }}</p>
     </div>
 
+    <!-- 声纹服务 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.voiceprint') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.voiceprint_desc') }}</p>
+      <div class="settings-field">
+        <label class="settings-label">{{ t('settings.voiceprint_provider') }}</label>
+        <select v-model="settings.voiceprint!.provider" class="settings-input">
+          <option value="auto">{{ t('settings.voiceprint_provider_auto') }}</option>
+          <option value="local">{{ t('settings.voiceprint_provider_local') }}</option>
+          <option value="cloud">{{ t('settings.voiceprint_provider_cloud') }}</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">{{ t('settings.voiceprint_cloud_base_url') }}</label>
+        <input v-model="settings.voiceprint!.cloud_base_url" class="settings-input" placeholder="https://" />
+      </div>
+      <div class="settings-field">
+        <label class="settings-label">{{ t('settings.voiceprint_cloud_api_key') }}</label>
+        <input v-model="settings.voiceprint!.cloud_api_key" type="password" class="settings-input" :placeholder="t('settings.voiceprint_cloud_api_key_placeholder')" />
+      </div>
+    </div>
+
+    <!-- 说话人分离 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.diarization') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.diarization_desc') }}</p>
+      <div class="wm-setting-row">
+        <label>
+          {{ t('settings.diarization_effective') }}
+          <span class="toggle-desc">
+            {{ diarizationInfo.effective === 'local' ? t('settings.diarization_effective_local') : t('settings.diarization_effective_cloud') }}
+          </span>
+        </label>
+      </div>
+      <div class="wm-setting-row">
+        <label>
+          {{ t('settings.diarization_local_toggle') }}
+          <span class="toggle-desc">{{ t('settings.diarization_local_toggle_desc') }}</span>
+        </label>
+        <div class="wm-toggle-wrap">
+          <div
+            class="wm-toggle"
+            :class="{ 'is-on': diarizationInfo.local_diarization, 'is-disabled': !diarizationInfo.can_toggle }"
+            role="switch"
+            :aria-checked="diarizationInfo.local_diarization"
+            :tabindex="diarizationInfo.can_toggle ? 0 : -1"
+            @click="onToggleDiarization"
+            @keydown.enter.prevent="onToggleDiarization"
+            @keydown.space.prevent="onToggleDiarization"
+          ></div>
+          <span class="wm-setting-val">{{ diarizationInfo.local_diarization ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+        </div>
+        <span v-if="!diarizationInfo.can_toggle" class="toggle-experimental">{{ t('settings.diarization_requires_subscription') }}</span>
+      </div>
+    </div>
+
+    <!-- 输出目录 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.output_dir') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.output_dir_desc') }}</p>
+      <div class="settings-field">
+        <input v-model="settings.output_dir" class="settings-input" :placeholder="t('settings.output_dir_placeholder')" />
+      </div>
+    </div>
+
     <!-- 主题 -->
     <div class="settings-section">
-      <h2 class="settings-title">外观</h2>
+      <h2 class="settings-title">{{ t('settings.appearance') }}</h2>
       <div class="theme-grid">
         <button
           v-for="theme in THEMES"
@@ -53,20 +143,35 @@
           class="theme-chip"
           :class="{ 'is-active': themeStore.current === theme.id }"
           @click="themeStore.setTheme(theme.id)"
-        >{{ theme.label }}</button>
+        >{{ t(`common.theme.${theme.id}`) }}</button>
+      </div>
+    </div>
+
+    <!-- 语言 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.language') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.language_subtitle') }}</p>
+      <div class="theme-grid">
+        <button
+          v-for="lang in LANG_OPTIONS"
+          :key="lang.id"
+          class="theme-chip"
+          :class="{ 'is-active': currentLocale === lang.id }"
+          @click="onSwitchLang(lang.id)"
+        >{{ lang.label }}</button>
       </div>
     </div>
 
     <!-- 功能开关 -->
     <div class="settings-section">
-      <h2 class="settings-title">功能开关</h2>
-      <p class="settings-section-desc">控制录音过程中的实时 AI 功能，默认全部开启</p>
+      <h2 class="settings-title">{{ t('settings.features') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.features_desc') }}</p>
       
       <div class="feature-toggles">
         <div class="wm-setting-row">
           <label>
-            实时章节生成
-            <span class="toggle-desc">录音过程中自动按话题切分章节</span>
+            {{ t('settings.realtime_chapters') }}
+            <span class="toggle-desc">{{ t('settings.realtime_chapters_desc') }}</span>
           </label>
           <div class="wm-toggle-wrap">
             <div 
@@ -79,14 +184,14 @@
               @keydown.enter.prevent="toggleFlag('realtime_chapters')"
               @keydown.space.prevent="toggleFlag('realtime_chapters')"
             ></div>
-            <span class="wm-setting-val">{{ featureFlags.realtime_chapters ? '开启' : '关闭' }}</span>
+            <span class="wm-setting-val">{{ featureFlags.realtime_chapters ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
           </div>
         </div>
 
         <div class="wm-setting-row">
           <label>
-            实时总结生成
-            <span class="toggle-desc">录音过程中按设定间隔增量生成摘要</span>
+            {{ t('settings.realtime_summary') }}
+            <span class="toggle-desc">{{ t('settings.realtime_summary_desc') }}</span>
           </label>
           <div class="wm-toggle-wrap">
             <div 
@@ -99,10 +204,10 @@
               @keydown.enter.prevent="toggleFlag('realtime_summary')"
               @keydown.space.prevent="toggleFlag('realtime_summary')"
             ></div>
-            <span class="wm-setting-val">{{ featureFlags.realtime_summary ? '开启' : '关闭' }}</span>
+            <span class="wm-setting-val">{{ featureFlags.realtime_summary ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
           </div>
           <div v-if="featureFlags.realtime_summary" class="interval-selector">
-            <span class="interval-label">刷新频率：</span>
+            <span class="interval-label">{{ t('recording.summary.frequency') }}：</span>
             <div class="freq-btns">
               <button 
                 v-for="sec in [30, 60, 120, 300]" 
@@ -113,14 +218,14 @@
                 @click="setInterval(sec)"
               >{{ sec }}s</button>
             </div>
-            <span class="interval-hint">修改后下次录音生效</span>
+            <span class="interval-hint">{{ t('settings.interval_hint') }}</span>
           </div>
         </div>
 
         <div class="wm-setting-row">
           <label>
-            软件更新提示
-            <span class="toggle-desc">启动时检查新版本并提示升级</span>
+            {{ t('settings.update_check') }}
+            <span class="toggle-desc">{{ t('settings.update_check_desc') }}</span>
           </label>
           <div class="wm-toggle-wrap">
             <div 
@@ -133,20 +238,95 @@
               @keydown.enter.prevent="toggleFlag('update_check')"
               @keydown.space.prevent="toggleFlag('update_check')"
             ></div>
-            <span class="wm-setting-val">{{ featureFlags.update_check ? '开启' : '关闭' }}</span>
+            <span class="wm-setting-val">{{ featureFlags.update_check ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+          </div>
+        </div>
+
+        <div class="wm-setting-row">
+          <label>
+            {{ t('settings.voiceprint_auto_match') }}
+            <span class="toggle-desc">{{ t('settings.voiceprint_auto_match_desc') }}</span>
+            <span class="toggle-experimental">{{ t('settings.experimental') }}</span>
+          </label>
+          <div class="wm-toggle-wrap">
+            <div 
+              class="wm-toggle" 
+              :class="{ 'is-on': featureFlags.voiceprint_auto_match }" 
+              role="switch" 
+              :aria-checked="featureFlags.voiceprint_auto_match"
+              tabindex="0"
+              @click="toggleFlag('voiceprint_auto_match')"
+              @keydown.enter.prevent="toggleFlag('voiceprint_auto_match')"
+              @keydown.space.prevent="toggleFlag('voiceprint_auto_match')"
+            ></div>
+            <span class="wm-setting-val">{{ featureFlags.voiceprint_auto_match ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
           </div>
         </div>
       </div>
     </div>
+    <!-- 系统提示词 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.system_prompts') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.system_prompts_desc') }}</p>
+      <div class="prompt-list">
+        <div v-for="(item, name) in systemPrompts" :key="name" class="prompt-item">
+          <div class="prompt-item-header">
+            <span class="prompt-item-name">{{ name }}</span>
+            <span class="prompt-item-source">{{ t('settings.system_prompts_source') }}: {{ item.module }}</span>
+            <button class="btn btn-sm btn-secondary" @click="togglePromptExpand(name)">
+              {{ expandedPrompts.has(name) ? '▲' : t('settings.system_prompts_view') }}
+            </button>
+          </div>
+          <p class="prompt-item-desc">{{ item.description }}</p>
+          <pre v-if="expandedPrompts.has(name)" class="prompt-item-content">{{ item.prompt }}</pre>
+        </div>
+        <p v-if="!Object.keys(systemPrompts).length" class="settings-empty">—</p>
+      </div>
+    </div>
+
+    <!-- CLI 命令参考 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.cli_reference') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.cli_reference_desc') }}</p>
+      <div class="cli-ref-list">
+        <template v-for="(val, key) in cliReference" :key="key">
+          <div v-if="typeof val === 'string'" class="cli-ref-item">
+            <span class="cli-ref-cmd">{{ key }}</span>
+            <code>{{ val }}</code>
+          </div>
+          <div v-else-if="typeof val === 'object'" class="cli-ref-group">
+            <div class="cli-ref-group-title">{{ key }}</div>
+            <div v-for="(subVal, subKey) in (val as Record<string, string>)" :key="subKey" class="cli-ref-item">
+              <span class="cli-ref-cmd">{{ subKey }}</span>
+              <code>{{ subVal }}</code>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- 禁用快捷指令 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.disabled_commands') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.disabled_commands_desc') }}</p>
+      <div v-if="!settings.disabled_commands?.length" class="settings-empty">{{ t('settings.no_disabled_commands') }}</div>
+      <div v-else class="disabled-cmd-list">
+        <div v-for="cmd in settings.disabled_commands" :key="cmd" class="disabled-cmd-item">
+          <code>{{ cmd }}</code>
+          <button class="btn btn-sm btn-secondary" @click="onEnableCommand(cmd)">{{ t('settings.command_enable') }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 用量与订阅 -->
     <div class="settings-section">
-      <h2 class="settings-title">用量与订阅</h2>
-      <p class="settings-section-desc">本月识别额度与使用情况</p>
+      <h2 class="settings-title">{{ t('settings.usage') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.usage') }}</p>
 
       <!-- 未登录 -->
       <div v-if="!userStore.isLoggedIn" class="usage-not-metered">
-        <p>登录后可查看识别额度与使用情况。未登录时使用本地模式，需自行配置 API Key。</p>
-        <button class="btn btn-primary" style="margin-top:12px;padding:0 16px;height:32px;font-size:12px" @click="showLogin">登录</button>
+        <p>{{ t('settings.usage_login_hint') }}</p>
+        <button class="btn btn-primary" style="margin-top:12px;padding:0 16px;height:32px;font-size:12px" @click="showLogin">{{ t('settings.login') }}</button>
       </div>
 
       <!-- 计量模式 -->
@@ -158,30 +338,30 @@
         <div class="usage-summary-row">
           <div class="usage-stat">
             <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">月额度</div>
+            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
           </div>
           <div class="usage-stat">
             <div class="stat-value">{{ formatMinutes(usageSummary.used || 0) }}</div>
-            <div class="stat-label">已使用</div>
+            <div class="stat-label">{{ t('settings.used') }}</div>
           </div>
           <div class="usage-stat">
             <div class="stat-value">{{ formatMinutes(usageSummary.remaining || 0) }}</div>
-            <div class="stat-label">剩余</div>
+            <div class="stat-label">{{ t('settings.remaining') }}</div>
           </div>
         </div>
         <div class="usage-progress">
           <div class="usage-progress-fill" :style="progressStyle"></div>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">最近 30 天用量</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ t('settings.recent_30_days') }}</div>
         <div class="usage-chart">
           <div
             v-for="d in usageHistory"
             :key="d.date"
             class="usage-chart-bar"
             :style="{ height: barHeight(d.minutes) + 'px' }"
-            :data-tip="d.date.slice(5) + '：' + formatMinutes(d.minutes) + '（' + d.tasks + ' 次）'"
+            :data-tip="t('settings.usage_tooltip', { date: d.date.slice(5), minutes: formatMinutes(d.minutes), tasks: d.tasks })"
           ></div>
-          <div v-if="!usageHistory.length" style="font-size:12px;color:var(--muted);padding:8px">暂无用量记录</div>
+          <div v-if="!usageHistory.length" style="font-size:12px;color:var(--muted);padding:8px">{{ t('settings.no_usage') }}</div>
         </div>
       </div>
 
@@ -189,23 +369,23 @@
       <div v-else class="usage-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
-          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">自带 Key</span>
+          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">{{ t('settings.self_key') }}</span>
         </div>
         <div class="usage-summary-row">
           <div class="usage-stat">
             <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">月额度</div>
+            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
           </div>
           <div class="usage-stat">
             <div class="stat-value" style="color:var(--muted)">∞</div>
-            <div class="stat-label">已使用（自费）</div>
+            <div class="stat-label">{{ t('settings.used_self') }}</div>
           </div>
           <div class="usage-stat">
             <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">平台额度剩余</div>
+            <div class="stat-label">{{ t('settings.platform_remaining') }}</div>
           </div>
         </div>
-        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">当前使用云端代理模式，识别费用已包含在订阅额度中。</p>
+        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">{{ t('settings.cloud_mode_hint') }}</p>
       </div>
     </div>
   </div>
@@ -213,13 +393,16 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
-import { fetchSettings, saveSettings, testApiConnection } from '@/api/settings'
-import type { Settings, FeatureFlags } from '@/api/settings'
+import { fetchSettings, saveSettings, testApiConnection, fetchSystemPrompts, fetchCliReference } from '@/api/settings'
+import type { Settings, FeatureFlags, ProviderPreset, SystemPromptItem } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory } from '@/api/usage'
 import type { UsageSummary, UsageHistoryItem } from '@/api/usage'
+import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 
+const { t } = useI18n()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const settings = reactive<Settings>({})
@@ -227,20 +410,81 @@ const testing = ref(false)
 const testResult = ref('')
 const testIsError = ref(false)
 
+/** LLM Provider 预设列表（从后端加载） */
+const llmPresets = computed<ProviderPreset[]>(() => settings.llm_provider_presets || [
+  { name: 'DashScope（通义千问）', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo'] },
+  { name: 'OpenAI', base_url: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini'] },
+  { name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'] },
+  { name: '自定义', base_url: '', models: [] },
+])
+
+/** Provider 切换时自动填充 Base URL */
+function onLlmProviderChange() {
+  const preset = llmPresets.value.find(p => p.name === settings.llm?.provider)
+  if (preset && preset.base_url) {
+    settings.llm!.base_url = preset.base_url
+  }
+}
+
 const featureFlags = reactive<FeatureFlags>({
   realtime_chapters: true,
   realtime_summary: true,
   realtime_summary_interval: 60,
-  update_check: true
+  update_check: true,
+  voiceprint_auto_match: false,
 })
 
 const usageSummary = reactive<UsageSummary>({ metered: false })
 const usageHistory = ref<UsageHistoryItem[]>([])
 
-const TIER_NAMES: Record<string, string> = { free: '体验版', personal: '个人版', pro: '专业版', team: '团队版' }
+// ─── 声纹 / 分离 / 输出目录 ───
+const diarizationInfo = reactive({
+  subscription_tier: 'free',
+  local_diarization: true,
+  effective: 'local',
+  can_toggle: false,
+})
+
+function onToggleDiarization() {
+  if (!diarizationInfo.can_toggle) return
+  diarizationInfo.local_diarization = !diarizationInfo.local_diarization
+  saveSettings({ diarization: { local_diarization: diarizationInfo.local_diarization } } as any)
+}
+
+// ─── 系统提示词 ───
+const systemPrompts = reactive<Record<string, SystemPromptItem>>({})
+const expandedPrompts = reactive(new Set<string>())
+
+function togglePromptExpand(name: string) {
+  if (expandedPrompts.has(name)) expandedPrompts.delete(name)
+  else expandedPrompts.add(name)
+}
+
+// ─── CLI 参考 ───
+const cliReference = reactive<Record<string, unknown>>({})
+
+// ─── 禁用指令 ───
+function onEnableCommand(cmd: string) {
+  if (!settings.disabled_commands) return
+  settings.disabled_commands = settings.disabled_commands.filter(c => c !== cmd)
+  saveSettings({ disabled_commands: settings.disabled_commands })
+}
+
+const TIER_NAMES: Record<string, string> = { free: t('settings.tier_names.free'), personal: t('settings.tier_names.personal'), pro: t('settings.tier_names.pro'), team: t('settings.tier_names.team') }
 
 function tierName(tier?: string) {
-  return tier ? (TIER_NAMES[tier] || tier) : '体验版'
+  return tier ? (TIER_NAMES[tier] || tier) : t('settings.tier_names.free')
+}
+
+// ─── 语言切换 ───
+const LANG_OPTIONS: { id: SupportedLocale; label: string }[] = [
+  { id: 'zh-CN', label: '简体中文' },
+  { id: 'en', label: 'English' },
+]
+const currentLocale = computed(() => getLocale())
+
+async function onSwitchLang(locale: SupportedLocale) {
+  await setI18nLocale(locale)
 }
 
 function formatMinutes(min: number): string {
@@ -276,11 +520,14 @@ function showLogin() {
 }
 
 async function onSave() {
-  await saveSettings({ 
-    ...settings,
-    feature_flags: { ...featureFlags }
+  await saveSettings({
+    asr: { ...settings.asr },
+    llm: { ...settings.llm },
+    voiceprint: { ...settings.voiceprint },
+    output_dir: settings.output_dir,
+    feature_flags: { ...featureFlags },
   })
-  alert('设置已保存')
+  alert(t('settings.saved'))
 }
 
 async function onTest() {
@@ -288,10 +535,10 @@ async function onTest() {
   testResult.value = ''
   try {
     const res = await testApiConnection()
-    testResult.value = res.message || (res.success ? '连接成功' : '连接失败')
+    testResult.value = res.message || (res.success ? t('settings.connection_success') : t('settings.connection_failed'))
     testIsError.value = !res.success
   } catch {
-    testResult.value = '连接失败'
+    testResult.value = t('settings.connection_failed')
     testIsError.value = true
   } finally {
     testing.value = false
@@ -315,16 +562,35 @@ async function saveFeatureFlags() {
 
 onMounted(async () => {
   const s = await fetchSettings()
+  // 确保嵌套对象存在，避免模板中 settings.llm!.xxx 报错
+  if (!s.llm) s.llm = {}
+  if (!s.asr) s.asr = {}
   Object.assign(settings, s)
   if (s.feature_flags) {
     Object.assign(featureFlags, {
       realtime_chapters: s.feature_flags.realtime_chapters !== false,
       realtime_summary: s.feature_flags.realtime_summary !== false,
       realtime_summary_interval: s.feature_flags.realtime_summary_interval || 60,
-      update_check: s.feature_flags.update_check !== false
+      update_check: s.feature_flags.update_check !== false,
+      voiceprint_auto_match: s.feature_flags.voiceprint_auto_match === true,
     })
   }
+  // 声纹配置
+  if (s.voiceprint) {
+    if (!settings.voiceprint) settings.voiceprint = {}
+    Object.assign(settings.voiceprint, s.voiceprint)
+  }
+  // 分离配置
+  if (s.diarization) {
+    Object.assign(diarizationInfo, s.diarization)
+  }
+  // 输出目录
+  if (s.output_dir) {
+    settings.output_dir = s.output_dir
+  }
   loadUsage()
+  loadSystemPrompts()
+  loadCliReference()
 })
 
 async function loadUsage() {
@@ -337,7 +603,25 @@ async function loadUsage() {
     Object.assign(usageSummary, summary)
     usageHistory.value = history.history || []
   } catch (e) {
-    console.error('加载用量失败:', e)
+    console.error('load usage failed:', e)
+  }
+}
+
+async function loadSystemPrompts() {
+  try {
+    const data = await fetchSystemPrompts()
+    Object.assign(systemPrompts, data)
+  } catch (e) {
+    console.error('load system prompts failed:', e)
+  }
+}
+
+async function loadCliReference() {
+  try {
+    const data = await fetchCliReference()
+    Object.assign(cliReference, data)
+  } catch (e) {
+    console.error('load cli reference failed:', e)
   }
 }
 </script>
@@ -356,6 +640,10 @@ async function loadUsage() {
 .settings-input { width: 100%; max-width: 400px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
 .settings-input:focus { border-color: var(--accent); }
 .settings-actions { display: flex; gap: var(--s-2); margin-top: var(--s-4); }
+.api-subsection { margin-bottom: var(--s-5); padding-left: var(--s-3); border-left: 2px solid var(--border); }
+.api-subsection-title { font-size: 13px; font-weight: 600; margin-bottom: var(--s-3); color: var(--fg); }
+.api-readonly { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
+.api-proxy-hint { font-size: 11px; color: var(--subtle); }
 .settings-test-result { font-size: 12px; margin-top: var(--s-2); }
 .settings-test-result.is-error { color: var(--rec); }
 .theme-grid { display: flex; flex-wrap: wrap; gap: var(--s-2); }
@@ -365,8 +653,31 @@ async function loadUsage() {
 .settings-section-desc { font-size: 12px; color: var(--muted); margin: calc(-1 * var(--s-2)) 0 var(--s-4); }
 .feature-toggles { display: flex; flex-direction: column; gap: var(--s-5); }
 .toggle-desc { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+.toggle-experimental { display: inline-block; font-size: 10px; color: var(--muted); background: var(--border); padding: 1px 6px; border-radius: 8px; margin-left: 6px; vertical-align: middle; }
 .interval-selector { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 .interval-label { font-size: 12px; color: var(--muted); }
 .freq-btns { display: flex; gap: 2px; }
 .interval-hint { font-size: 11px; color: var(--subtle); }
+.settings-empty { font-size: 13px; color: var(--muted); padding: var(--s-3) 0; }
+.wm-toggle.is-disabled { opacity: 0.4; cursor: not-allowed; }
+/* 声纹 / 分离 / 输出目录 */
+/* 系统提示词 */
+.prompt-list { display: flex; flex-direction: column; gap: var(--s-3); }
+.prompt-item { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-3); }
+.prompt-item-header { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.prompt-item-name { font-weight: 600; font-size: 13px; }
+.prompt-item-source { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+.prompt-item-desc { font-size: 12px; color: var(--subtle); margin: 4px 0 0; }
+.prompt-item-content { font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--s-3); margin: var(--s-2) 0 0; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; font-family: var(--font-mono); line-height: 1.5; }
+/* CLI 参考 */
+.cli-ref-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.cli-ref-group { margin-bottom: var(--s-3); }
+.cli-ref-group-title { font-size: 13px; font-weight: 600; margin-bottom: var(--s-2); color: var(--fg); }
+.cli-ref-item { display: flex; align-items: baseline; gap: var(--s-3); padding: 4px 0; font-size: 13px; }
+.cli-ref-cmd { font-weight: 500; min-width: 80px; color: var(--fg); }
+.cli-ref-item code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 2px 6px; border-radius: var(--radius-sm); word-break: break-all; }
+/* 禁用指令 */
+.disabled-cmd-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.disabled-cmd-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.disabled-cmd-item code { font-family: var(--font-mono); font-size: 12px; color: var(--fg); }
 </style>

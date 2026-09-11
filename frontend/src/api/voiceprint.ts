@@ -27,3 +27,9 @@ export async function rebuildVoiceprint(
 export async function deleteVoiceprint(uuid: string): Promise<void> {
   await client.delete(`/api/voiceprint/${uuid}`)
 }
+
+/** 获取声纹注册表，返回已注册声纹的说话人 ID 集合 */
+export async function fetchVoiceprintRegistry(): Promise<Set<string>> {
+  const { data } = await client.get<{ voiceprints: Array<{ speaker_uuid: string }> }>('/api/voiceprint/registry')
+  return new Set((data.voiceprints || []).map(v => v.speaker_uuid))
+}

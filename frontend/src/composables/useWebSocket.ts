@@ -5,6 +5,7 @@
  */
 import { ref, onUnmounted } from 'vue'
 import { useRealtimeStore } from '@/stores/realtime'
+import { getLocale } from '@/i18n'
 
 export interface TranscriptLine {
   speaker_id: number
@@ -20,8 +21,24 @@ export interface SummaryUpdate {
 }
 
 export interface ChapterItem {
+  id: number
   title: string
-  start_time: number
+  start_ms: number
+  end_ms: number
+  summary?: string
+  key_points?: string[]
+}
+
+export interface PresenceWarning {
+  level: 'gentle' | 'urgent'
+  silent_minutes: number
+  countdown_seconds: number
+}
+
+export interface AutoStopped {
+  reason: string
+  duration: number
+  message: string
 }
 
 export function useWebSocketTranscript() {
@@ -34,6 +51,18 @@ export function useWebSocketTranscript() {
   const speakerCount = ref(0)
   const speakerNames = ref<string[]>([])
   const summaryCountdownSec = ref(-1)
+  const summaryPaused = ref(false)  // 由后端 summary_status 消息驱动
+  const volumeWarning = ref('')  // '' | 'low'
+  const presenceWarning = ref<PresenceWarning | null>(null)
+  const autoStopped = ref<AutoStopped | null>(null)
+
+  // 说话人绑定更新回调（供外部组件注册，同步本地绑定映射表）
+  let onSpeakerBoundCb: ((speakerId: number, speakerUuid: string, speakerName: string) => void) | null = null
+
+  /** 注册 speaker_bound 事件回调 */
+  function onSpeakerBound(cb: (speakerId: number, speakerUuid: string, speakerName: string) => void) {
+    onSpeakerBoundCb = cb
+  }
 
   let ws: WebSocket | null = null
 
@@ -43,7 +72,8 @@ export function useWebSocketTranscript() {
     error.value = ''
 
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${location.host}/ws/transcript/${taskId}`
+    const locale = getLocale().replace('-', '_')
+    const url = `${protocol}//${location.host}/ws/transcript/${taskId}?locale=${locale}`
 
     ws = new WebSocket(url)
 
@@ -56,12 +86,12 @@ export function useWebSocketTranscript() {
         const msg = JSON.parse(event.data)
         handleMessage(msg)
       } catch (e) {
-        console.error('[WS] 消息解析失败:', e)
+        console.error('[WS] message parse failed:', e)
       }
     }
 
     ws.onerror = () => {
-      error.value = '连接异常'
+      error.value = 'Connection error'
       connected.value = false
     }
 
@@ -111,18 +141,25 @@ export function useWebSocketTranscript() {
           speaker_id: msg.speaker_id as number,
           speaker_name: msg.speaker_name as string || '',
           text: msg.text as string,
+          begin_time: msg.begin_time as number,
+          end_time: msg.end_time as number,
           isFinal: true,
         })
         break
 
       case 'speaker_bound':
-        // 说话人绑定更新 — 更新已有行的 speaker_name
+        // 说话人绑定更新 — 更新已有行的 speaker_name，并通知外部同步绑定映射表
         const sid = msg.speaker_id as number
         const name = msg.speaker_name as string
+        const uuid = msg.speaker_uuid as string || ''
         for (const line of lines.value) {
           if (line.speaker_id === sid) {
             line.speaker_name = name
           }
+        }
+        // 通知外部组件同步绑定映射（realtimeSpeakerBindings）
+        if (onSpeakerBoundCb && uuid) {
+          onSpeakerBoundCb(sid, uuid, name)
         }
         break
 
@@ -143,6 +180,37 @@ export function useWebSocketTranscript() {
         summaryCountdownSec.value = msg.remaining as number
         break
 
+      case 'summary_status': {
+        const status = msg.status as string
+        // 后端推送的 paused/idle/stopped 状态同步到前端
+        summaryPaused.value = (status === 'paused' || status === 'stopped')
+        // 同步倒计时剩余秒数（暂停/停止时为 0，恢复时为剩余秒数）
+        if (typeof msg.remaining === 'number') {
+          summaryCountdownSec.value = msg.remaining as number
+        }
+        break
+      }
+
+      case 'volume_warning':
+        volumeWarning.value = (msg.level as string) || 'low'
+        break
+
+      case 'presence_warning':
+        presenceWarning.value = {
+          level: (msg.level as 'gentle' | 'urgent') || 'gentle',
+          silent_minutes: (msg.silent_minutes as number) || 0,
+          countdown_seconds: (msg.countdown_seconds as number) || 120,
+        }
+        break
+
+      case 'auto_stopped':
+        autoStopped.value = {
+          reason: (msg.reason as string) || 'unknown',
+          duration: (msg.duration as number) || 0,
+          message: (msg.message as string) || '',
+        }
+        break
+
       case 'error':
         error.value = msg.message as string
         break
@@ -151,6 +219,22 @@ export function useWebSocketTranscript() {
         connected.value = false
         break
     }
+  }
+
+  /** 发送心跳消息（含存在性评分） */
+  function sendHeartbeat(score: number, userAck = false) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'heartbeat',
+        presence_score: score,
+        user_ack: userAck,
+      }))
+    }
+  }
+
+  /** 清除存在性警告（用户确认后调用） */
+  function clearPresenceWarning() {
+    presenceWarning.value = null
   }
 
   /** 断开连接 */
@@ -164,6 +248,11 @@ export function useWebSocketTranscript() {
     speakerCount.value = 0
     speakerNames.value = []
     summaryCountdownSec.value = -1
+    // 注意：不重置 summaryPaused，因为录音暂停时 WebSocket 会断开，
+    // 但后端总结可能已联动暂停，该状态在重连后通过回放更新
+    volumeWarning.value = ''
+    presenceWarning.value = null
+    autoStopped.value = null
   }
 
   /** 重置所有数据 */
@@ -177,13 +266,18 @@ export function useWebSocketTranscript() {
     speakerCount.value = 0
     speakerNames.value = []
     summaryCountdownSec.value = -1
+    summaryPaused.value = false
+    volumeWarning.value = ''
+    presenceWarning.value = null
+    autoStopped.value = null
   }
 
   onUnmounted(disconnect)
 
   return {
     lines, partialText, summary, chapters, connected, error,
-    speakerCount, speakerNames, summaryCountdownSec,
-    connect, disconnect, reset,
+    speakerCount, speakerNames, summaryCountdownSec, summaryPaused, volumeWarning,
+    presenceWarning, autoStopped,
+    connect, disconnect, reset, sendHeartbeat, clearPresenceWarning, onSpeakerBound,
   }
 }

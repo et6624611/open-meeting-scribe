@@ -11,13 +11,14 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.store import (
     tasks, save_task_to_disk, run_stage2_task,
 )
 from core import speakers, voiceprint, joblog
 from core import users as user_module
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +26,15 @@ router = APIRouter(tags=["speakers"])
 
 
 class SpeakerCreate(BaseModel):
-    name: str
-    role: str = ""
-    note: str = ""
+    name: str = Field(..., min_length=1, max_length=100)
+    role: str = Field(default="", max_length=100)
+    note: str = Field(default="", max_length=500)
 
 
 class SpeakerUpdate(BaseModel):
-    name: Optional[str] = None
-    role: Optional[str] = None
-    note: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=100)
+    role: Optional[str] = Field(default=None, max_length=100)
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class SaveMappingRequest(BaseModel):
@@ -57,7 +58,7 @@ def list_speakers():
 def create_speaker(data: SpeakerCreate):
     """添加说话人（写 speakers.json）"""
     if not data.name.strip():
-        raise HTTPException(400, "姓名不能为空")
+        raise HTTPException(400, _("Name cannot be empty"))
     speaker = speakers.add_speaker(
         name=data.name.strip(),
         role=data.role.strip(),
@@ -76,7 +77,7 @@ def update_speaker(speaker_id: str, data: SpeakerUpdate):
         note=data.note.strip() if data.note is not None else None,
     )
     if not speaker:
-        raise HTTPException(404, "说话人不存在")
+        raise HTTPException(404, _("Speaker not found"))
     return speaker.to_dict()
 
 
@@ -84,7 +85,7 @@ def update_speaker(speaker_id: str, data: SpeakerUpdate):
 def delete_speaker(speaker_id: str):
     """删除说话人（写 speakers.json）"""
     if not speakers.delete_speaker(speaker_id):
-        raise HTTPException(404, "说话人不存在")
+        raise HTTPException(404, _("Speaker not found"))
     return {"deleted": True}
 
 
@@ -98,11 +99,11 @@ def set_speaker_as_me(speaker_id: str):
     """
     user = user_module.get_current_user()
     if not user:
-        raise HTTPException(400, "请先设置用户信息")
+        raise HTTPException(400, _("Please set up user info first"))
 
     speaker = speakers.get_speaker_by_id(speaker_id)
     if not speaker:
-        raise HTTPException(404, "说话人不存在")
+        raise HTTPException(404, _("Speaker not found"))
 
     if speaker.linked_user_id == user["id"]:
         result = speakers.clear_linked_user(speaker_id)
@@ -110,7 +111,7 @@ def set_speaker_as_me(speaker_id: str):
         result = speakers.set_linked_user(speaker_id, user["id"])
 
     if not result:
-        raise HTTPException(500, "操作失败")
+        raise HTTPException(500, _("Operation failed"))
     return result.to_dict()
 
 
@@ -168,11 +169,11 @@ def update_speaker_mapping(
     避免离开页面后绑定丢失。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     if task["status"] not in ("awaiting_mapping", "completed"):
-        raise HTTPException(400, "当前状态不允许设置说话人映射")
+        raise HTTPException(400, _("Current status does not allow setting speaker mapping"))
 
     # 转换 key 为 int
     mapping = {int(k): v for k, v in data.mapping.items()}
@@ -217,11 +218,11 @@ def set_speaker_mapping(
     然后自动生成纪要。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     if task["status"] not in ("awaiting_mapping", "completed"):
-        raise HTTPException(400, "当前状态不允许设置说话人映射")
+        raise HTTPException(400, _("Current status does not allow setting speaker mapping"))
 
     # 转换 key 为 int
     mapping = {int(k): v for k, v in data.mapping.items()}
@@ -266,7 +267,7 @@ def set_speaker_mapping(
             _register_voiceprints_bg, task_id, normalized_path, dialogue, mapping,
         )
 
-    return {"status": "processing", "message": "正在生成纪要..."}
+    return {"status": "processing", "message": _("Generating minutes...")}
 
 
 @router.post("/api/tasks/{task_id}/regenerate-summary")
@@ -280,11 +281,11 @@ def regenerate_summary(
     用于用户修改说话人绑定后重新生成纪要。
     """
     if task_id not in tasks:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
     if task["status"] != "completed":
-        raise HTTPException(400, "任务尚未完成")
+        raise HTTPException(400, _("Task not yet completed"))
 
     # 获取 UUID 映射（优先）或从姓名映射反查
     uuid_mapping = task.get("speaker_uuid_mapping", {})
@@ -292,7 +293,7 @@ def regenerate_summary(
         # 尝试从姓名映射反查 UUID
         name_mapping = task.get("speaker_mapping", {})
         if not name_mapping:
-            raise HTTPException(400, "未设置说话人映射")
+            raise HTTPException(400, _("Speaker mapping not set"))
         name_to_uuid = {s.name: s.speaker_id for s in speakers.load_speakers()}
         uuid_mapping = {sid: name_to_uuid[name] for sid, name in name_mapping.items() if name in name_to_uuid}
 
@@ -309,4 +310,4 @@ def regenerate_summary(
     audio_path = Path(task["audio_path"])
     background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
 
-    return {"status": "processing", "message": "正在重新生成纪要..."}
+    return {"status": "processing", "message": _("Regenerating minutes...")}

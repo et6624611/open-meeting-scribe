@@ -32,6 +32,7 @@ from core.auth import (
 )
 from core.users import find_or_create_oauth_user, find_or_create_sms_user, get_user_by_id, clear_current_user
 from core.sms import validate_phone, can_send, send_verify_code, check_verify_code
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -71,30 +72,30 @@ async def oauth_callback(request: Request, code: str = "", state: str = ""):
     if error:
         error_desc = request.query_params.get("error_description", "未知错误")
         logger.warning(f"OAuth 回调错误: {error} - {error_desc}")
-        raise HTTPException(400, f"OAuth 授权失败: {error_desc}")
+        raise HTTPException(400, _("OAuth authorization failed: {err}").format(err=error_desc))
 
     # 验证 state
     if not state or not verify_oauth_state(state):
         logger.warning("OAuth state 验证失败（可能过期或 CSRF 攻击）")
-        raise HTTPException(400, "安全验证失败，请重新登录")
+        raise HTTPException(400, _("Security verification failed, please log in again"))
 
     # 检查 code
     if not code:
-        raise HTTPException(400, "缺少授权码")
+        raise HTTPException(400, _("Missing authorization code"))
 
     # 用 code 换 access_token
     try:
         access_token = await exchange_github_code(code)
     except ValueError as e:
         logger.error(f"换取 access_token 失败: {e}")
-        raise HTTPException(400, f"授权码交换失败: {e}")
+        raise HTTPException(400, _("Authorization code exchange failed: {err}").format(err=e))
 
     # 获取用户信息
     try:
         user_info = await fetch_github_user_info(access_token)
     except ValueError as e:
         logger.error(f"获取用户信息失败: {e}")
-        raise HTTPException(400, f"获取用户信息失败: {e}")
+        raise HTTPException(400, _("Failed to get user info: {err}").format(err=e))
 
     # 创建/查找本地用户
     display_name = user_info.name or user_info.login
@@ -136,16 +137,16 @@ def get_me(request: Request):
     """
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
-        raise HTTPException(401, "未登录")
+        raise HTTPException(401, _("Not logged in"))
 
     payload = verify_jwt(token)
     if not payload:
-        raise HTTPException(401, "登录已过期，请重新登录")
+        raise HTTPException(401, _("Login expired, please log in again"))
 
     user_id = payload.get("sub")
     user = get_user_by_id(user_id)
     if not user:
-        raise HTTPException(401, "用户不存在")
+        raise HTTPException(401, _("User not found"))
 
     return {
         "id": user["id"],
@@ -162,7 +163,7 @@ def get_me(request: Request):
 def logout(request: Request):
     """登出：清除 cookie 和本地登录状态"""
     clear_current_user()
-    response = JSONResponse({"message": "已登出"})
+    response = JSONResponse({"message": _("Logged out")})
     response.delete_cookie(key=SESSION_COOKIE, path="/")
     logger.info("用户已登出")
     return response
@@ -198,7 +199,7 @@ def sms_send(req: SmsSendRequest):
 
     # 格式校验
     if not validate_phone(phone):
-        return JSONResponse(status_code=400, content={"success": False, "message": "请输入正确的手机号"})
+        return JSONResponse(status_code=400, content={"success": False, "message": _("Please enter a valid phone number")})
 
     # 频率限制
     allowed, reason = can_send(phone)
@@ -227,10 +228,10 @@ def sms_verify(req: SmsVerifyRequest):
     code = req.code.strip()
 
     if not validate_phone(phone):
-        return JSONResponse(status_code=400, content={"success": False, "message": "请输入正确的手机号"})
+        return JSONResponse(status_code=400, content={"success": False, "message": _("Please enter a valid phone number")})
 
     if not code:
-        return JSONResponse(status_code=400, content={"success": False, "message": "请输入验证码"})
+        return JSONResponse(status_code=400, content={"success": False, "message": _("Please enter the verification code")})
 
     # 核验验证码
     passed, reason = check_verify_code(phone, code)

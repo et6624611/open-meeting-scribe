@@ -67,6 +67,25 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 TASKS_DIR = Path("data/tasks")
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def infer_task_source(task: dict) -> str:
+    """推断任务来源：'record'（录音）或 'upload'（上传）。
+
+    优先使用显式 source 字段；缺失时通过 audio_path 位置推断：
+    - data/recordings/ 目录下 → 录音
+    - data/uploads/ 目录下 → 上传
+    - 均不匹配时默认 'upload'
+    """
+    source = task.get("source")
+    if source in ("record", "upload"):
+        return source
+    audio_path = task.get("audio_path", "")
+    if "recordings" in audio_path:
+        return "record"
+    if "uploads" in audio_path:
+        return "upload"
+    return "upload"  # 默认
+
 HOTWORDS_FILE = Path("data/hotwords.txt")
 HOTWORD_MAPPINGS_FILE = Path("data/hotword_mappings.txt")
 SETTINGS_FILE = Path("data/settings.json")
@@ -92,6 +111,13 @@ realtime_transcript_buffers: dict[str, list[dict]] = {}  # 实时转写缓冲（
 realtime_full_transcripts: dict[str, list[dict]] = {}  # 全量实时转写（task_id → 所有句子，供文本桥接匹配）
 realtime_speaker_maps: dict[str, dict[int, str]] = {}  # 实时说话人绑定（task_id → {speaker_id: speaker_uuid}）
 event_loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
+
+# 静默检测状态（task_id → 相关信息，详见 docs/design/SILENCE_DETECTION.md）
+realtime_last_heartbeat: dict[str, float] = {}       # 最后心跳时间戳
+realtime_last_sentence: dict[str, float] = {}         # 最后 ASR 定稿句子时间戳
+realtime_presence_scores: dict[str, float] = {}       # 前端上报的存在性评分
+realtime_silence_warnings: dict[str, int] = {}        # 已发送提醒次数
+realtime_silence_monitors: dict[str, asyncio.Task] = {}  # 静默监测协程任务
 
 # 实时转写缓冲区最大条目数
 REALTIME_BUFFER_MAX = 10
@@ -226,7 +252,7 @@ def load_tasks_from_disk() -> None:
                         speaker_count_fixed += 1
                         logger.info(f"[迁移] {task_id[:8]} speaker_count: {old} → {correct_count}")
                 # 恢复孤儿录音：服务重启后实时资源已丢失，但 raw 音频数据可能仍在
-                if task.get("status") == "recording":
+                if task.get("status") in ("recording", "paused"):
                     recovered = _try_recover_orphan_recording(task, task_id)
                     if recovered:
                         orphan_recording += 1  # 复用计数器，日志中标记为"已恢复"
@@ -296,7 +322,7 @@ def recover_interrupted_tasks() -> None:
                 task["error"] = "服务重启时录音文件已丢失"
                 task["failed_stage"] = "summarize"
                 task["error_category"] = "file_missing"
-                task["error_suggestion"] = "请重新上传录音文件"
+                task["error_suggestion"] = "请重新录制" if infer_task_source(task) == "record" else "请重新上传录音文件"
                 save_task_to_disk(task_id)
                 failed += 1
                 continue
@@ -356,7 +382,7 @@ def recover_interrupted_tasks() -> None:
             task["error"] = "服务重启时录音文件已丢失"
             task["failed_stage"] = "transcribe"
             task["error_category"] = "file_missing"
-            task["error_suggestion"] = "请重新上传录音文件"
+            task["error_suggestion"] = "请重新录制" if infer_task_source(task) == "record" else "请重新上传录音文件"
             save_task_to_disk(task_id)
             failed += 1
 
@@ -804,7 +830,9 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
 
                 # ── P1：声纹向量匹配（概率性证据） ──
                 # 仅对文本桥接未覆盖的说话人执行声纹匹配
-                if normalized_path and dialogue:
+                # 受 feature_flags.voiceprint_auto_match 开关控制（默认关闭）
+                vp_enabled = get_feature_flags().get("voiceprint_auto_match", False)
+                if vp_enabled and normalized_path and dialogue:
                     try:
                         vp_start = time.perf_counter()
                         vp_results = voiceprint.auto_identify_speakers(
@@ -1130,7 +1158,7 @@ def get_asr_config() -> dict:
     返回格式：
       {
         "provider": "DashScope",
-        "proxy_url": "http://47.116.10.194:8200",
+        "proxy_url": "http://your-asr-proxy-server:8200",
         "model": "paraformer-v2",
         "source": "platform"  # 始终为 platform（代理模式）
       }
@@ -1183,10 +1211,12 @@ def get_feature_flags() -> dict:
         "realtime_chapters": true,   # 实时章节生成
         "realtime_summary": true,    # 实时总结生成
         "realtime_summary_interval": 60,  # 总结间隔（秒），可选 30/60/120/300
-        "update_check": true         # 软件更新提示
+        "update_check": true,        # 软件更新提示
+        "voiceprint_auto_match": false  # 声纹自动识别（实验性，默认关闭）
       }
 
-    未配置的字段默认启用（true）。
+    未配置的字段：realtime_* / update_check 默认启用（true），
+    voiceprint_auto_match 默认关闭（false）——CAM++ 模型精度尚未达标。
     """
     settings = load_settings()
     ff = settings.get("feature_flags", {})
@@ -1195,4 +1225,48 @@ def get_feature_flags() -> dict:
         "realtime_summary": ff.get("realtime_summary", True),
         "realtime_summary_interval": ff.get("realtime_summary_interval", 60),
         "update_check": ff.get("update_check", True),
+        "voiceprint_auto_match": ff.get("voiceprint_auto_match", False),
+    }
+
+
+def get_silence_detection_config() -> dict:
+    """
+    获取静默检测配置（从 settings.json）。
+
+    详见 docs/design/SILENCE_DETECTION.md。
+
+    返回格式：
+      {
+        "enabled": true,
+        "presence": { ... },   # 存在性评分参数
+        "audio": { ... },      # 音频层阈值
+        "action": { ... }      # 提醒与关停参数
+      }
+    """
+    settings = load_settings()
+    sd = settings.get("silence_detection", {})
+    return {
+        "enabled": sd.get("enabled", True),
+        "presence": {
+            "score_max": sd.get("presence", {}).get("score_max", 100),
+            "score_decay_per_sec": sd.get("presence", {}).get("score_decay_per_sec", 1),
+            "score_interaction_boost": sd.get("presence", {}).get("score_interaction_boost", 100),
+            "score_visibility_return": sd.get("presence", {}).get("score_visibility_return", 80),
+            "score_focus_return": sd.get("presence", {}).get("score_focus_return", 60),
+            "score_heartbeat": sd.get("presence", {}).get("score_heartbeat", 20),
+            "score_visibility_hidden_multiplier": sd.get("presence", {}).get("score_visibility_hidden_multiplier", 0.3),
+            "score_blur_multiplier": sd.get("presence", {}).get("score_blur_multiplier", 0.5),
+            "threshold_warning": sd.get("presence", {}).get("threshold_warning", 20),
+            "heartbeat_interval_sec": sd.get("presence", {}).get("heartbeat_interval_sec", 30),
+            "heartbeat_timeout_sec": sd.get("presence", {}).get("heartbeat_timeout_sec", 90),
+        },
+        "audio": {
+            "rms_silence_db": sd.get("audio", {}).get("rms_silence_db", -45),
+            "asr_no_sentence_timeout_sec": sd.get("audio", {}).get("asr_no_sentence_timeout_sec", 300),
+        },
+        "action": {
+            "gentle_countdown_sec": sd.get("action", {}).get("gentle_countdown_sec", 120),
+            "urgent_countdown_sec": sd.get("action", {}).get("urgent_countdown_sec", 60),
+            "max_warnings_per_session": sd.get("action", {}).get("max_warnings_per_session", 2),
+        },
     }

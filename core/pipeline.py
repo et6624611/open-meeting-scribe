@@ -220,8 +220,15 @@ def run_pipeline_stage2(
         result["speaker_uuid_mapping"] = {str(k): v for k, v in speaker_mapping.items()}
         progress("speakers", f"已应用 {len(speaker_mapping)} 个姓名", 80)
     else:
-        result["speaker_mapping"] = {}
-        progress("speakers", "未配置姓名映射", 80)
+        # 无绑定映射时，仍从 dialogue 构建默认姓名映射（确保前端说话人视图始终可显示）
+        speaker_name_map = {}
+        for item in dialogue:
+            sid = item.get("speaker_id", 0)
+            if sid not in speaker_name_map:
+                speaker_name_map[sid] = item.get("speaker_name", f"说话人{sid + 1}")
+        result["speaker_mapping"] = speaker_name_map
+        result["speaker_uuid_mapping"] = {}
+        progress("speakers", f"未配置姓名映射，使用默认名称（{len(speaker_name_map)} 位说话人）", 80)
 
     result["dialogue"] = dialogue
 

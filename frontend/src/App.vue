@@ -1,5 +1,5 @@
 <template>
-  <a class="skip-link" href="#mainContent">跳到主要内容</a>
+  <a class="skip-link" href="#mainContent">{{ t('common.skip_to_content') }}</a>
   <div
     class="toast"
     id="globalToast"
@@ -10,22 +10,22 @@
 
   <!-- 浮动选中操作条 -->
   <div class="selection-toolbar" id="selectionToolbar">
-    <button class="sel-tool-btn is-primary" data-action="quote-to-ai" title="引用到会议助手">
+    <button class="sel-tool-btn is-primary" data-action="quote-to-ai" :title="t('common.selection_toolbar.quote_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      引用到 AI
+      {{ t('common.selection_toolbar.quote_to_ai') }}
     </button>
     <span class="sel-tool-sep"></span>
-    <button class="sel-tool-btn" data-action="rewrite" title="AI 改写">
+    <button class="sel-tool-btn" data-action="rewrite" :title="t('common.selection_toolbar.rewrite_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      改写
+      {{ t('common.selection_toolbar.rewrite') }}
     </button>
-    <button class="sel-tool-btn" data-action="summarize" title="AI 总结">
+    <button class="sel-tool-btn" data-action="summarize" :title="t('common.selection_toolbar.summarize_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-      总结
+      {{ t('common.selection_toolbar.summarize') }}
     </button>
-    <button class="sel-tool-btn" data-action="extract-todo" title="提取待办">
+    <button class="sel-tool-btn" data-action="extract-todo" :title="t('common.selection_toolbar.extract_todo_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      提取待办
+      {{ t('common.selection_toolbar.extract_todo') }}
     </button>
   </div>
 
@@ -40,7 +40,7 @@
         </svg>
         <span class="reg-guidance-text" v-html="annMessage.content"></span>
         <button v-if="annMessage.cta_text && annCtaUrl()" class="reg-guidance-cta" @click="onCtaClick">{{ annMessage.cta_text }}</button>
-        <button class="reg-guidance-dismiss" @click="annDismiss" title="关闭提示">
+        <button class="reg-guidance-dismiss" @click="annDismiss" :title="t('common.announcement.dismiss')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -86,17 +86,17 @@
     <!-- 底部状态栏 -->
     <footer class="status">
       <div class="left">
-        <div class="item"><span class="pip"></span> DashScope 已连接</div>
+        <div class="item"><span class="pip"></span> {{ t('common.usage.dashscope_connected') }}</div>
         <div class="item status-models">paraformer-v2 + qwen-plus</div>
         <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
-        <div class="usage-indicator" id="usageIndicator" style="display:none" title="本月识别额度">
+        <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
           <span class="usage-text" id="usageText"></span>
         </div>
       </div>
       <span class="philosophy-text" id="philosophyText">{{ philosophyText }}</span>
       <div class="right">
-        <div class="item" id="statusInfo">就绪</div>
+        <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
       </div>
     </footer>
   </div>
@@ -107,6 +107,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
@@ -115,11 +117,14 @@ import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
+import { getRecordStatus } from '@/api/record'
 import TopBar from '@/components/layout/TopBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import AIPanel from '@/components/layout/AIPanel.vue'
 import LoginModal from '@/components/modals/LoginModal.vue'
 
+const router = useRouter()
+const { t } = useI18n()
 const themeStore = useThemeStore()
 const taskStore = useTaskStore()
 const userStore = useUserStore()
@@ -158,10 +163,30 @@ const bodyClasses = computed(() => ({
 onMounted(async () => {
   layout.restore()
   await userStore.checkAuth()
-  taskStore.loadTasks()
+  // [状态同步] 应用启动时加载任务列表（含活跃录音恢复）
+  await taskStore.loadTasks()
+  // 检查后端是否有进行中的录音，若有则自动导航到录音页（防止刷新后丢失录音上下文）
+  checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
 })
+
+/** 检查后端是否有进行中的录音，自动恢复到录音页 */
+async function checkActiveRecording() {
+  try {
+    const status = await getRecordStatus()
+    if (status.recording && status.task_id) {
+      // 当前不在录音页时，自动导航过去
+      const currentRoute = router.currentRoute.value
+      if (currentRoute.name !== 'recording' || currentRoute.params.taskId !== status.task_id) {
+        taskStore.selectTask(status.task_id)
+        router.push({ name: 'recording', params: { taskId: status.task_id } })
+      }
+    }
+  } catch {
+    // 静默失败，不影响正常使用
+  }
+}
 
 async function loadPhilosophy() {
   const CACHE_KEY = 'philosophy_cache'

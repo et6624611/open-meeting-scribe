@@ -1,0 +1,832 @@
+---
+title: "AI 主动发起会话 · 交互原型"
+description: "展示 AI 主动消息的三种状态（折叠态呼吸灯诱导、展开态悬浮横幅、完整对话流），包含功能开关 Toggle、专属气泡样式和两个预设业务场景。"
+tags: ["prototype", "ai-panel", "proactive-messaging", "ux"]
+created_at: "2026-09-11"
+updated_at: "2026-09-11"
+version: "1.0.0"
+author: "wangyongliang"
+status: "published"
+category: "prototype"
+---
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 主动发起会话 · 交互原型</title>
+<style>
+  /* ═══ Design Tokens — 复用应用 OKLCH 色板 ═══ */
+  :root {
+    --bg: oklch(99% 0.002 240);
+    --surface: oklch(100% 0 0);
+    --surface-2: oklch(98% 0.003 240);
+    --surface-3: oklch(96.5% 0.004 240);
+    --fg: oklch(18% 0.012 250);
+    --muted: oklch(54% 0.012 250);
+    --subtle: oklch(70% 0.008 250);
+    --border: oklch(92% 0.005 250);
+    --border-strong: oklch(86% 0.006 250);
+    --accent: oklch(58% 0.18 255);
+    --accent-soft: oklch(58% 0.18 255 / 0.10);
+    --accent-mid: oklch(58% 0.18 255 / 0.25);
+    --ok: oklch(64% 0.16 155);
+    --ok-soft: oklch(64% 0.16 155 / 0.10);
+    --warn: oklch(78% 0.16 80);
+    --warn-soft: oklch(78% 0.16 80 / 0.10);
+    --proactive: oklch(62% 0.20 270);
+    --proactive-soft: oklch(62% 0.20 270 / 0.08);
+    --proactive-mid: oklch(62% 0.20 270 / 0.18);
+    --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+    --fs-10: 10px; --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px;
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+    --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
+    --shadow-flyout: 0 4px 24px oklch(18% 0.012 250 / 0.10), 0 1px 4px oklch(18% 0.012 250 / 0.06);
+    --shadow-sm: 0 1px 3px oklch(18% 0.012 250 / 0.06);
+    --shadow-banner: 0 -2px 16px oklch(18% 0.012 250 / 0.08), 0 1px 4px oklch(18% 0.012 250 / 0.04);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: var(--fs-14); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; padding: 0; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  /* ═══ 页面布局 ═══ */
+  .showcase {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: var(--s-7);
+    gap: var(--s-7); flex-wrap: wrap;
+  }
+  .showcase-label {
+    position: fixed; top: var(--s-4); left: var(--s-4);
+    font-size: var(--fs-12); color: var(--subtle);
+    font-family: var(--font-mono);
+  }
+
+  /* ═══ 状态标签 ═══ */
+  .state-label {
+    position: absolute; top: -28px; left: 0;
+    font-size: var(--fs-11); font-family: var(--font-mono);
+    color: var(--subtle); white-space: nowrap;
+  }
+  .state-label strong { color: var(--fg); font-weight: 600; }
+
+  /* ═══ 面板容器 ═══ */
+  .panel-wrapper { position: relative; flex-shrink: 0; }
+  .panel {
+    width: 420px; height: 720px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-flyout);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ═══ 面板头部 ═══ */
+  .panel-header {
+    padding: var(--s-3) var(--s-4);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-header-left {
+    display: flex; align-items: center; gap: var(--s-2); min-width: 0; flex: 1;
+  }
+  .panel-header-right {
+    display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0;
+  }
+  .panel-header-title {
+    font-size: var(--fs-13); font-weight: 600;
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .panel-header-title svg { width: 14px; height: 14px; color: var(--accent); }
+  .panel-header-sub {
+    font-size: var(--fs-11); color: var(--subtle);
+    font-family: var(--font-mono);
+  }
+
+  /* ═══ 功能开关 Toggle ═══ */
+  .proactive-toggle {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    display: grid; place-items: center;
+    color: var(--subtle);
+    transition: all 0.15s;
+    position: relative;
+  }
+  .proactive-toggle:hover { background: var(--surface-2); color: var(--fg); }
+  .proactive-toggle svg { width: 14px; height: 14px; }
+  .proactive-toggle.is-active {
+    color: var(--proactive);
+    background: var(--proactive-soft);
+  }
+  .proactive-toggle.is-active:hover {
+    background: var(--proactive-mid);
+  }
+  /* Toggle 开关滑块 */
+  .toggle-switch {
+    width: 32px; height: 18px;
+    border-radius: 9px;
+    background: var(--border-strong);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    transition: transform 0.2s;
+  }
+  .toggle-switch.is-on {
+    background: var(--proactive);
+  }
+  .toggle-switch.is-on::after {
+    transform: translateX(14px);
+  }
+
+  /* ═══ Tab 栏 ═══ */
+  .tab-bar {
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    padding: 0 var(--s-4);
+  }
+  .tab-btn {
+    padding: var(--s-3) var(--s-3);
+    font-size: var(--fs-13);
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.12s, border-color 0.12s;
+    position: relative; white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--fg); }
+  .tab-btn.is-active {
+    color: var(--accent); font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+
+  /* ═══ 对话区 ═══ */
+  .chat-area {
+    flex: 1; overflow-y: auto; min-height: 0;
+    padding: var(--s-4);
+    display: flex; flex-direction: column; gap: var(--s-3);
+  }
+  .chat-area::-webkit-scrollbar { width: 4px; }
+  .chat-area::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+  /* ═══ 消息气泡 — 常规 ═══ */
+  .msg { display: flex; flex-direction: column; max-width: 88%; }
+  .msg.is-user { align-self: flex-end; align-items: flex-end; }
+  .msg.is-ai { align-self: flex-start; align-items: flex-start; }
+  .msg-bubble {
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--radius);
+    font-size: var(--fs-13); line-height: 1.6;
+    word-break: break-word;
+  }
+  .msg.is-user .msg-bubble {
+    background: var(--accent); color: var(--surface);
+    border-bottom-right-radius: var(--radius-sm);
+  }
+  .msg.is-ai .msg-bubble {
+    background: var(--surface-2); color: var(--fg);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+  .msg-meta {
+    font-size: var(--fs-11); color: var(--subtle);
+    margin-top: 2px; padding: 0 var(--s-1);
+  }
+
+  /* ══ 消息气泡 — AI 主动消息 ═══ */
+  .msg.is-proactive {
+    align-self: stretch; max-width: 100%;
+  }
+  .msg.is-proactive .msg-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: var(--fs-10); font-family: var(--font-mono);
+    font-weight: 600; color: var(--proactive);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: var(--s-1);
+    padding: 2px 6px; background: var(--proactive-mid);
+    border-radius: 3px;
+  }
+  .msg.is-proactive .msg-badge svg { width: 10px; height: 10px; }
+  .msg.is-proactive .msg-bubble {
+    background: var(--proactive-soft); color: var(--fg);
+    border: 1px solid var(--proactive-mid);
+    border-left: 3px solid var(--proactive);
+    border-radius: var(--radius);
+    border-bottom-left-radius: var(--radius-sm);
+  }
+  .msg.is-proactive .msg-bubble-title {
+    font-size: var(--fs-13); font-weight: 600;
+    color: var(--fg); margin-bottom: var(--s-1);
+    line-height: 1.4;
+  }
+  .msg.is-proactive .msg-bubble-body {
+    font-size: var(--fs-13); color: var(--muted);
+    line-height: 1.6;
+  }
+  .msg.is-proactive .msg-bubble-body strong { color: var(--fg); font-weight: 600; }
+  .msg.is-proactive .msg-bubble-body ul {
+    margin: var(--s-1) 0; padding-left: var(--s-4);
+  }
+  .msg.is-proactive .msg-bubble-body li { margin-bottom: 2px; }
+  .msg.is-proactive .msg-actions {
+    display: flex; gap: var(--s-1);
+    margin-top: var(--s-2); padding-top: var(--s-2);
+    border-top: 1px solid var(--proactive-mid);
+  }
+  .msg.is-proactive .msg-action-btn {
+    font-size: var(--fs-11); padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--proactive-mid);
+    background: var(--surface); color: var(--proactive);
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .msg.is-proactive .msg-action-btn:hover {
+    background: var(--proactive-soft); border-color: var(--proactive);
+  }
+  .msg.is-proactive .msg-action-btn.is-primary {
+    background: var(--proactive); color: var(--surface);
+    border-color: var(--proactive);
+  }
+  .msg.is-proactive .msg-action-btn.is-primary:hover {
+    background: oklch(55% 0.20 270);
+  }
+  .msg.is-proactive .msg-action-btn.is-done {
+    opacity: 0.5; pointer-events: none;
+  }
+
+  /* ═══ 时间分隔 ══ */
+  .chat-divider {
+    display: flex; align-items: center; gap: var(--s-3);
+    font-size: var(--fs-11); color: var(--subtle);
+    font-family: var(--font-mono);
+    padding: var(--s-1) 0;
+  }
+  .chat-divider::before, .chat-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* ══ 底部输入区 ═══ */
+  .panel-footer {
+    padding: var(--s-3) var(--s-4);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0; position: relative;
+  }
+  .panel-input {
+    display: flex; align-items: center; gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .panel-input:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .panel-input input {
+    flex: 1; border: none; outline: none;
+    font-size: var(--fs-13); color: var(--fg);
+    background: transparent; font-family: var(--font-body);
+  }
+  .panel-input input::placeholder { color: var(--subtle); }
+  .panel-input-btn {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    display: grid; place-items: center;
+    color: var(--subtle);
+    transition: background 0.1s, color 0.1s;
+  }
+  .panel-input-btn:hover { background: var(--surface-2); color: var(--fg); }
+  .panel-input-btn svg { width: 14px; height: 14px; }
+  .panel-input-btn.is-primary {
+    background: var(--accent); color: var(--surface);
+  }
+  .panel-input-btn.is-primary:hover { background: oklch(52% 0.18 255); }
+
+  /* ═══ 悬浮通知横幅（展开态·未读） ══ */
+  .proactive-banner {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: var(--s-4); right: var(--s-4);
+    background: var(--surface);
+    border: 1px solid var(--proactive-mid);
+    border-left: 3px solid var(--proactive);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-banner);
+    padding: var(--s-3);
+    cursor: pointer; z-index: 10;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    animation: bannerSlideUp 0.35s ease-out;
+  }
+  @keyframes bannerSlideUp {
+    from { transform: translateY(12px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .proactive-banner:hover {
+    border-color: var(--proactive);
+    box-shadow: 0 -4px 20px oklch(62% 0.20 270 / 0.12);
+  }
+  .proactive-banner-inner {
+    display: flex; align-items: flex-start; gap: var(--s-2);
+  }
+  .proactive-banner-icon {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--proactive-mid);
+    display: grid; place-items: center;
+    flex-shrink: 0; color: var(--proactive);
+  }
+  .proactive-banner-icon svg { width: 14px; height: 14px; }
+  .proactive-banner-text { flex: 1; min-width: 0; }
+  .proactive-banner-label {
+    font-size: var(--fs-10); font-family: var(--font-mono);
+    font-weight: 600; color: var(--proactive);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    margin-bottom: 1px;
+  }
+  .proactive-banner-title {
+    font-size: var(--fs-13); font-weight: 600;
+    color: var(--fg); line-height: 1.4;
+    margin-bottom: 2px;
+  }
+  .proactive-banner-preview {
+    font-size: var(--fs-12); color: var(--muted);
+    line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .proactive-banner-close {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    display: grid; place-items: center;
+    color: var(--subtle); flex-shrink: 0;
+    transition: background 0.1s, color 0.1s;
+  }
+  .proactive-banner-close:hover { background: var(--surface-2); color: var(--fg); }
+  .proactive-banner-close svg { width: 12px; height: 12px; }
+  .proactive-banner-time {
+    font-size: var(--fs-10); color: var(--subtle);
+    font-family: var(--font-mono);
+    margin-top: var(--s-1);
+  }
+
+  /* ══ 折叠态面板 ═══ */
+  .sidebar-mock {
+    width: 48px; height: 720px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-flyout);
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: var(--s-4) 0;
+    gap: var(--s-3); position: relative;
+  }
+  .sidebar-btn {
+    width: 36px; height: 36px;
+    border-radius: var(--radius);
+    display: grid; place-items: center;
+    color: var(--muted);
+    transition: background 0.1s, color 0.1s;
+    position: relative;
+  }
+  .sidebar-btn:hover { background: var(--surface-2); color: var(--fg); }
+  .sidebar-btn svg { width: 18px; height: 18px; }
+  .sidebar-btn.is-proactive {
+    color: var(--proactive);
+    background: var(--proactive-soft);
+  }
+
+  /* 折叠条（模拟 AI 面板折叠态） */
+  .collapsed-strip-mock {
+    width: 44px; height: 720px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-flyout);
+    display: flex; flex-direction: column;
+    align-items: center;
+    padding: var(--s-4) 0;
+    gap: var(--s-3); position: relative;
+  }
+  .collapsed-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--fg); color: var(--bg);
+    display: grid; place-items: center;
+    cursor: pointer; position: relative;
+    transition: background 0.15s;
+  }
+  .collapsed-icon svg { width: 16px; height: 16px; }
+  .collapsed-icon.is-proactive {
+    background: var(--proactive); color: var(--surface);
+  }
+  .collapsed-label {
+    writing-mode: vertical-rl; text-orientation: mixed;
+    font-size: var(--fs-11); color: var(--subtle);
+    letter-spacing: 0.06em;
+  }
+
+  /* 呼吸灯角标 */
+  .breathing-dot {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--proactive);
+    border: 2px solid var(--surface);
+    animation: breathe 2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; }
+  }
+  .breathing-dot::after {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    background: var(--proactive);
+    opacity: 0.3;
+    animation: breatheRing 2s ease-in-out infinite;
+  }
+  @keyframes breatheRing {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.6); opacity: 0; }
+  }
+
+  /* 未读计数角标 */
+  .unread-badge {
+    position: absolute;
+    top: -4px; right: -6px;
+    min-width: 16px; height: 16px;
+    padding: 0 4px;
+    font-size: var(--fs-10);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--surface);
+    background: var(--proactive);
+    border-radius: 999px;
+    display: grid; place-items: center;
+    border: 2px solid var(--surface);
+    line-height: 1;
+  }
+
+  /* ═══ Toggle 区域（头部开关演示） ═══ */
+  .toggle-demo {
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .toggle-demo-label {
+    font-size: var(--fs-11); color: var(--muted);
+  }
+
+  /* ═══ 设计说明 ═══ */
+  .design-notes {
+    position: fixed; bottom: var(--s-4); right: var(--s-4);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: var(--s-3) var(--s-4);
+    font-size: var(--fs-12); color: var(--muted);
+    max-width: 340px; line-height: 1.6;
+    box-shadow: var(--shadow-flyout);
+    z-index: 100;
+  }
+  .design-notes strong { color: var(--fg); display: block; margin-bottom: var(--s-1); }
+  .design-notes ul { margin: 0; padding-left: var(--s-4); }
+  .design-notes li { margin-bottom: 2px; }
+  .design-notes code {
+    font-family: var(--font-mono); font-size: var(--fs-11);
+    background: var(--surface-3); padding: 1px 4px; border-radius: 3px;
+  }
+
+  /* ═══ 减弱动画 ═══ */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<span class="showcase-label">Open Meeting Scribe · AI 主动发起会话原型 v1.0</span>
+
+<div class="showcase">
+
+  <!-- ═══════════════════════════════════════════════
+       状态 A：面板折叠态 — 呼吸灯诱导
+       ══════════════════════════════════════════════ -->
+  <div class="panel-wrapper">
+    <div class="state-label"><strong>状态 A</strong> · 面板折叠 · 呼吸灯 + 未读角标诱导</div>
+    <div class="collapsed-strip-mock">
+      <div class="collapsed-icon is-proactive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        <span class="breathing-dot"></span>
+        <span class="unread-badge">2</span>
+      </div>
+      <span class="collapsed-label">会议助手</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       状态 B：面板展开 · 悬浮通知横幅（未读）
+       ═══════════════════════════════════════════════ -->
+  <div class="panel-wrapper">
+    <div class="state-label"><strong>状态 B</strong> · 面板展开 · 悬浮通知横幅 + 功能开关</div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <div style="width:22px;height:22px;border-radius:6px;background:var(--fg);color:var(--bg);display:grid;place-items:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+          <span style="font-size:var(--fs-13);font-weight:600">会议助手</span>
+        </div>
+        <div class="panel-header-right">
+          <!-- 功能开关 Toggle -->
+          <div class="toggle-demo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:var(--proactive)">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <div class="toggle-switch is-on" id="toggleB" onclick="this.classList.toggle('is-on')"></div>
+          </div>
+          <button class="proactive-toggle" style="width:30px;height:30px" aria-label="清空对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="padding:var(--s-2) var(--s-4);font-size:11px;color:var(--subtle);border-bottom:1px solid var(--border)">
+        产品需求评审 · Q3 路线图 <span style="opacity:0.5">|</span> 9月10日 · 46min · 4人参与
+      </div>
+
+      <div class="tab-bar" role="tablist">
+        <button class="tab-btn is-active" role="tab" aria-selected="true">对话</button>
+        <button class="tab-btn" role="tab" aria-selected="false">分析</button>
+        <button class="tab-btn" role="tab" aria-selected="false">上下文</button>
+      </div>
+
+      <div class="chat-area">
+        <div class="chat-divider">今天 14:32</div>
+
+        <div class="msg is-user">
+          <div class="msg-bubble">这次评审的主要结论是什么？</div>
+          <div class="msg-meta">14:32</div>
+        </div>
+
+        <div class="msg is-ai">
+          <div class="msg-bubble">本次评审共讨论了 5 个议题，核心结论如下：<br>1. Q3 路线图优先级已对齐<br>2. 前端架构升级方案通过<br>3. 竞品分析需在两周内完成</div>
+          <div class="msg-meta">14:32 · AI</div>
+        </div>
+
+        <div class="msg is-user">
+          <div class="msg-bubble">好的，帮我把待办整理一下</div>
+          <div class="msg-meta">14:35</div>
+        </div>
+
+        <div class="msg is-ai">
+          <div class="msg-bubble">已为你整理 3 项待办：<br>1. 完成竞品分析报告（截止 9月24日）<br>2. 更新前端架构设计文档<br>3. 组织技术评审会议</div>
+          <div class="msg-meta">14:35 · AI</div>
+        </div>
+      </div>
+
+      <!-- 悬浮通知横幅 -->
+      <div class="panel-footer">
+        <div class="proactive-banner" role="alert" aria-live="polite">
+          <div class="proactive-banner-inner">
+            <div class="proactive-banner-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <div class="proactive-banner-text">
+              <div class="proactive-banner-label">AI 洞察</div>
+              <div class="proactive-banner-title">会议已结束 · 待办事项已自动提取</div>
+              <div class="proactive-banner-preview">检测到会议录音已停止，我已从对话中提取 3 项待办并关联到项目。点击查看详情或一键同步到任务管理工具。</div>
+            </div>
+            <button class="proactive-banner-close" aria-label="关闭通知" onclick="event.stopPropagation();this.closest('.proactive-banner').style.transform='translateY(8px)';this.closest('.proactive-banner').style.opacity='0';setTimeout(()=>this.closest('.proactive-banner').remove(),200)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="proactive-banner-time">刚刚 · 自动触发</div>
+        </div>
+
+        <div class="panel-input">
+          <input type="text" placeholder="输入问题，/ 打开指令…" />
+          <button class="panel-input-btn" title="添加上下文" aria-label="添加上下文">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button class="panel-input-btn is-primary" title="发送" aria-label="发送">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       状态 C：完整对话流 · AI 主动消息已展开
+       ═══════════════════════════════════════════════ -->
+  <div class="panel-wrapper">
+    <div class="state-label"><strong>状态 C</strong> · 消息展开 · 完整对话流 + 操作按钮</div>
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <div style="width:22px;height:22px;border-radius:6px;background:var(--fg);color:var(--bg);display:grid;place-items:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+          <span style="font-size:var(--fs-13);font-weight:600">会议助手</span>
+        </div>
+        <div class="panel-header-right">
+          <div class="toggle-demo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;color:var(--proactive)">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <div class="toggle-switch is-on" id="toggleC" onclick="this.classList.toggle('is-on')"></div>
+          </div>
+          <button class="proactive-toggle" style="width:30px;height:30px" aria-label="清空对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>
+      <div style="padding:var(--s-2) var(--s-4);font-size:11px;color:var(--subtle);border-bottom:1px solid var(--border)">
+        产品需求评审 · Q3 路线图 <span style="opacity:0.5">|</span> 9月10日 · 46min · 4人参与
+      </div>
+
+      <div class="tab-bar" role="tablist">
+        <button class="tab-btn is-active" role="tab" aria-selected="true">对话</button>
+        <button class="tab-btn" role="tab" aria-selected="false">分析</button>
+        <button class="tab-btn" role="tab" aria-selected="false">上下文</button>
+      </div>
+
+      <div class="chat-area">
+        <div class="chat-divider">今天 14:32</div>
+
+        <div class="msg is-user">
+          <div class="msg-bubble">这次评审的主要结论是什么？</div>
+          <div class="msg-meta">14:32</div>
+        </div>
+
+        <div class="msg is-ai">
+          <div class="msg-bubble">本次评审共讨论了 5 个议题，核心结论如下：<br>1. Q3 路线图优先级已对齐<br>2. 前端架构升级方案通过<br>3. 竞品分析需在两周内完成</div>
+          <div class="msg-meta">14:32 · AI</div>
+        </div>
+
+        <div class="msg is-user">
+          <div class="msg-bubble">好的，帮我把待办整理一下</div>
+          <div class="msg-meta">14:35</div>
+        </div>
+
+        <div class="msg is-ai">
+          <div class="msg-bubble">已为你整理 3 项待办：<br>1. 完成竞品分析报告（截止 9月24日）<br>2. 更新前端架构设计文档<br>3. 组织技术评审会议</div>
+          <div class="msg-meta">14:35 · AI</div>
+        </div>
+
+        <div class="chat-divider">15:22 · 会议已结束</div>
+
+        <!-- AI 主动消息 1：会议结束 → 待办提取 -->
+        <div class="msg is-proactive">
+          <div class="msg-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            AI 主动提示
+          </div>
+          <div class="msg-bubble">
+            <div class="msg-bubble-title">会议已结束 · 待办事项已自动提取</div>
+            <div class="msg-bubble-body">
+              检测到录音已停止，我从对话中自动提取了 <strong>3 项待办</strong>：
+              <ul>
+                <li><strong>完成竞品分析报告</strong> — 截止 9月24日 · 负责人：王永亮</li>
+                <li><strong>更新前端架构设计文档</strong> — 截止 9月20日 · 负责人：张样</li>
+                <li><strong>组织技术评审会议</strong> — 待定 · 需协调 3 人时间</li>
+              </ul>
+              已关联到「财务星瀚项目」文件夹。
+            </div>
+            <div class="msg-actions">
+              <button class="msg-action-btn is-primary" onclick="handleAction(this,'已查看')">查看详情</button>
+              <button class="msg-action-btn" onclick="handleAction(this,'已同步')">同步到任务工具</button>
+              <button class="msg-action-btn" onclick="handleAction(this,'已忽略')">稍后处理</button>
+            </div>
+          </div>
+          <div class="msg-meta">15:22 · 自动触发</div>
+        </div>
+
+        <!-- AI 主动消息 2：长时间无操作 → 总结建议 -->
+        <div class="msg is-proactive">
+          <div class="msg-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            AI 主动提示
+          </div>
+          <div class="msg-bubble">
+            <div class="msg-bubble-title">检测到 15 分钟未操作 · 需要会议总结吗？</div>
+            <div class="msg-bubble-body">
+              你已有一段时间没有与助手交互。本次会话共产生 <strong>8 条消息</strong>，涵盖 3 个议题。我可以为你生成一份完整的会议总结，包含决策要点和后续行动项。
+            </div>
+            <div class="msg-actions">
+              <button class="msg-action-btn is-primary" onclick="handleAction(this,'生成中…')">生成总结</button>
+              <button class="msg-action-btn" onclick="handleAction(this,'已忽略')">不需要</button>
+            </div>
+          </div>
+          <div class="msg-meta">15:37 · 自动触发</div>
+        </div>
+      </div>
+
+      <div class="panel-footer">
+        <div class="panel-input">
+          <input type="text" placeholder="输入问题，/ 打开指令…" />
+          <button class="panel-input-btn" title="添加上下文" aria-label="添加上下文">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button class="panel-input-btn is-primary" title="发送" aria-label="发送">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 设计说明 -->
+<div class="design-notes">
+  <strong>设计思路</strong>
+  <ul>
+    <li><strong>功能开关：</strong>面板头部右侧闪电图标 + Toggle 滑块，紫色=启用，灰色=停用；状态持久化到 localStorage</li>
+    <li><strong>诱导点击：</strong>折叠态用呼吸灯 + 外扩光环 + 未读计数角标；展开态用输入框上方悬浮横幅（slide-up 0.35s 动画）</li>
+    <li><strong>视觉区分：</strong>主动消息使用 <code>--proactive</code> 紫色系，左侧 3px 强调边框 + 「AI 主动提示」徽章 + 闪电图标，与常规气泡形成三级区分</li>
+    <li><strong>业务场景：</strong>A = 会议结束自动提取待办（含操作按钮）；B = 长时间无操作建议生成总结</li>
+    <li><strong>交互闭环：</strong>每条主动消息底部提供操作按钮（圆角药丸），点击后显示「已处理」反馈</li>
+    <li>色板完全复用应用 OKLCH Design Tokens，新增 <code>--proactive</code> 紫色系</li>
+  </ul>
+</div>
+
+<script>
+  // 操作按钮点击反馈
+  function handleAction(btn, label) {
+    const original = btn.textContent;
+    const siblings = btn.parentElement.querySelectorAll('.msg-action-btn');
+    siblings.forEach(s => {
+      s.classList.add('is-done');
+      s.style.opacity = '0.4';
+      s.style.pointerEvents = 'none';
+    });
+    btn.textContent = label;
+    btn.style.opacity = '1';
+    btn.classList.remove('is-done');
+  }
+
+  // 关闭横幅
+  document.querySelectorAll('.proactive-banner-close').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const banner = btn.closest('.proactive-banner');
+      banner.style.transform = 'translateY(8px)';
+      banner.style.opacity = '0';
+      setTimeout(() => banner.remove(), 200);
+    });
+  });
+
+  // 点击横幅 → 滚动到对应消息
+  document.querySelectorAll('.proactive-banner').forEach(banner => {
+    banner.addEventListener('click', () => {
+      banner.style.transform = 'translateY(8px)';
+      banner.style.opacity = '0';
+      setTimeout(() => banner.remove(), 200);
+    });
+  });
+</script>
+
+</body>
+</html>

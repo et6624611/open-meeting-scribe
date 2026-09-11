@@ -3,7 +3,7 @@
     <!-- 紧凑图标工具栏 -->
     <div class="gen-toolbar">
       <div class="gen-toolbar-left">
-        <nav class="gen-breadcrumb" id="genBreadcrumb" aria-label="面包屑导航">
+        <nav class="gen-breadcrumb" id="genBreadcrumb" :aria-label="t('generating.breadcrumb.nav')">
           <template v-for="(crumb, i) in breadcrumbs" :key="i">
             <button class="gen-breadcrumb-item" :title="crumb.label" @click="router.push(crumb.to)">
               <svg v-if="crumb.icon === 'folder'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -16,44 +16,44 @@
         </nav>
       </div>
       <div class="gen-toolbar-right">
-        <button class="gen-toolbar-icon" @click="onCopy" title="复制">
+        <button class="gen-toolbar-icon" @click="onCopy" :title="t('generating.toolbar.copy')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <span class="tb-tip">复制</span>
+          <span class="tb-tip">{{ t('generating.toolbar.copy') }}</span>
         </button>
-        <button class="gen-toolbar-icon" @click="onExport" title="导出与分享">
+        <button class="gen-toolbar-icon" @click="onExport" :title="t('generating.toolbar.export_title')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-          <span class="tb-tip">导出</span>
+          <span class="tb-tip">{{ t('generating.toolbar.export') }}</span>
         </button>
-        <button class="gen-toolbar-icon" @click="onFullscreen" title="全屏">
+        <button class="gen-toolbar-icon" @click="onFullscreen" :title="t('generating.toolbar.fullscreen')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-          <span class="tb-tip">全屏</span>
+          <span class="tb-tip">{{ t('generating.toolbar.fullscreen') }}</span>
         </button>
         <div class="gen-toolbar-divider"></div>
         <div class="gen-toolbar-more-wrap">
-          <button ref="genMoreBtn" class="gen-toolbar-icon" @click="toggleGenMore" aria-label="更多" aria-haspopup="menu">
+          <button ref="genMoreBtn" class="gen-toolbar-icon" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')" aria-haspopup="menu">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           <div ref="genMoreDropdown" class="gen-toolbar-more-menu" :class="{ 'is-open': showMoreMenu }">
             <button class="gen-toolbar-more-item" @click="onEditSummary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              编辑
+              {{ t('generating.toolbar.edit') }}
             </button>
             <button class="gen-toolbar-more-item" @click="onRetrySummary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              重新生成纪要
+              {{ t('generating.toolbar.regenerate') }}
             </button>
             <button class="gen-toolbar-more-item" @click="onRetranscribe">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              重新识别
+              {{ t('generating.toolbar.retranscribe') }}
             </button>
             <div class="gen-toolbar-more-divider"></div>
             <button class="gen-toolbar-more-item" @click="onArchiveConfirm">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-              归档
+              {{ t('generating.toolbar.archive') }}
             </button>
             <button class="gen-toolbar-more-item is-danger" @click="onDelete">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-              删除
+              {{ t('generating.toolbar.delete') }}
             </button>
           </div>
         </div>
@@ -71,12 +71,12 @@
           <span class="gen-meta-sep"></span>
           <span class="gen-meta-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            <span class="gen-meta-val">{{ speakerNames.length }}</span> 人
+            <span class="gen-meta-val">{{ speakerNames.length }}</span> {{ t('generating.meta.person') }}
           </span>
           <span class="gen-meta-sep"></span>
           <span class="gen-meta-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            <span class="gen-meta-val gen-meta-date-btn" title="点击修改会议日期" @click.stop="openDatePicker">{{ metaDateShort }}</span>
+            <span class="gen-meta-val gen-meta-date-btn" :title="t('generating.meta.edit_date')" @click.stop="openDatePicker">{{ metaDateShort }}</span>
           </span>
         </div>
         <span class="gen-meta-project" v-if="projects.length > 0">
@@ -90,7 +90,7 @@
             </button>
             <div class="gen-meta-proj-divider"></div>
             <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
-              不关联项目
+              {{ t('generating.meta.no_project') }}
             </button>
           </div>
         </span>
@@ -114,34 +114,36 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
         <div class="gbb-body">
-          <div class="gbb-title">为说话人关联真实身份</div>
+          <div class="gbb-title">{{ t('generating.binding.title') }}</div>
           <div class="gbb-desc">
-            系统识别到 {{ bindingLegend.length }} 位说话人<span v-if="unboundCount > 0" class="gbb-unbound-hint">，{{ unboundCount }} 位未关联</span>，点击说话人标签为其关联姓名。
+            {{ t('generating.binding.detected', { count: bindingLegend.length }) }}<span v-if="unboundCount > 0" class="gbb-unbound-hint">{{ t('generating.binding.unbound_hint', { count: unboundCount }) }}</span>
           </div>
           <div class="gbb-legend" v-if="bindingLegend.length > 0">
-            <div v-for="item in bindingLegend" :key="item.sid"
-                 class="binding-legend-item"
-                 :class="{ 'is-bound': item.bound }"
-                 :style="{ background: getSpeakerBg(item.sid) }"
-                 @click="openBindingDropdown($event, item.sid)">
-              <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || `说话人${item.sid + 1}` }}</span>
-              <span class="bl-locate" title="定位到该说话人的发言" @click.stop="toggleLocateSpeaker(item.sid)">
+            <div
+              v-for="item in bindingLegend" :key="item.sid"
+              class="binding-legend-item"
+              :class="{ 'is-bound': item.bound }"
+              :style="{ background: getSpeakerBg(item.sid) }"
+              @click="openBindingDropdown($event, item.sid)"
+            >
+              <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || t('generating.speaker_default', { id: item.sid + 1 }) }}</span>
+              <span class="bl-locate" :title="t('generating.binding.locate')" @click.stop="toggleLocateSpeaker(item.sid)">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
               </span>
             </div>
           </div>
         </div>
         <div class="gbb-actions">
-          <a class="gbb-skip" href="javascript:void(0)" @click="skipMapping">暂不关联</a>
-          <button class="btn btn-primary btn-sm" @click="confirmMapping">确认关联</button>
-          <button class="gbb-close" @click="bindingBarHidden = true" title="关闭">
+          <a class="gbb-skip" href="javascript:void(0)" @click="skipMapping">{{ t('generating.binding.skip') }}</a>
+          <button class="btn btn-primary btn-sm" @click="confirmMapping">{{ t('generating.binding.confirm') }}</button>
+          <button class="gbb-close" @click="bindingBarHidden = true" :title="t('generating.binding.close')">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
           </button>
         </div>
       </div>
       <div class="gbb-hint-bar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <span>点击说话人标签可关联已有身份或新建身份，点击「确认关联」后系统将按真实身份生成纪要</span>
+        <span>{{ t('generating.binding.hint') }}</span>
       </div>
     </div>
 
@@ -150,30 +152,32 @@
       <div v-if="bindingDropdown.visible" class="bt-dropdown" :style="{ left: bindingDropdown.x + 'px', top: bindingDropdown.y + 'px' }" @click.stop>
         <div class="bt-dd-search">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="搜索说话人..." autocomplete="off" v-model="bindingDropdown.search" @keydown="onDropdownKeydown">
+          <input type="text" :placeholder="t('generating.binding.search_placeholder')" autocomplete="off" v-model="bindingDropdown.search" @keydown="onDropdownKeydown">
         </div>
         <div class="bt-dd-list">
           <!-- 不关联选项（无搜索词时显示） -->
           <template v-if="!bindingDropdown.search">
             <div class="bt-dropdown-item" :class="{ 'is-selected': !currentBindingMapping[bindingDropdown.speakerId] }" @click="selectBinding(bindingDropdown.speakerId, '')">
-              <span class="bt-di-name">不关联</span>
+              <span class="bt-di-name">{{ t('generating.binding.no_bind') }}</span>
             </div>
             <div class="bt-dropdown-sep"></div>
           </template>
           <!-- 说话人列表 -->
           <template v-if="dropdownSpeakers.length > 0">
-            <div v-for="(s, idx) in dropdownSpeakers" :key="s.id"
-                 class="bt-dropdown-item"
-                 :class="{ 'is-selected': currentBindingMapping[bindingDropdown.speakerId] === s.id, 'is-focused': bindingDropdown.focusIdx === idx }"
-                 @click="selectBinding(bindingDropdown.speakerId, s.id)">
+            <div
+              v-for="(s, idx) in dropdownSpeakers" :key="s.id"
+              class="bt-dropdown-item"
+              :class="{ 'is-selected': currentBindingMapping[bindingDropdown.speakerId] === s.id, 'is-focused': bindingDropdown.focusIdx === idx }"
+              @click="selectBinding(bindingDropdown.speakerId, s.id)"
+            >
               <span class="bt-di-name" :style="{ color: currentBindingMapping[bindingDropdown.speakerId] === s.id ? getSpeakerColor(String(bindingDropdown.speakerId)) : undefined }">{{ s.name }}<span v-if="s.role" class="bt-di-role">({{ s.role }})</span></span>
             </div>
           </template>
-          <div v-else class="bt-dd-empty">无匹配结果</div>
+          <div v-else class="bt-dd-empty">{{ t('generating.binding.no_match') }}</div>
         </div>
-        <div class="bt-dd-footer">
-          <div class="bt-dropdown-item" :class="{ 'is-focused': bindingDropdown.focusIdx === dropdownSpeakers.length }" @click="createAndBind(bindingDropdown.speakerId, bindingDropdown.search)" style="color: var(--accent)">
-            <span style="font-weight: 500">{{ bindingDropdown.search ? `+ 新建"${bindingDropdown.search}"` : '+ 新建说话人' }}</span>
+        <div class="bt-dd-footer" v-if="bindingDropdown.search && dropdownSpeakers.length === 0">
+          <div class="bt-dropdown-item" :class="{ 'is-focused': bindingDropdown.focusIdx === 0 }" @click="createAndBind(bindingDropdown.speakerId, bindingDropdown.search)" style="color: var(--accent)">
+            <span style="font-weight: 500">{{ t('generating.binding.create_named') }}</span>
           </div>
         </div>
       </div>
@@ -181,33 +185,22 @@
 
     <!-- 控制区：Tab + 音频控件 -->
     <div class="gen-control-zone">
-      <div class="gen-tabs" id="genTabsContainer">
-        <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" @click="switchTab(tab.id)">
-          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
-          <span class="tab-label">{{ tab.label }}</span>
-          <span class="tab-dot" :class="dotClass(tab.id)"></span>
-        </button>
+      <!-- 左侧：Tab + 原文控制（亲疏原则分组） -->
+      <div class="gen-tabs-group">
+        <div class="gen-tabs" id="genTabsContainer">
+          <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)">
+            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
+            <span class="tab-label">{{ tab.label }}</span>
+            <span class="tab-dot" :class="dotClass(tab.id)"></span>
+          </button>
+        </div>
       </div>
-      <!-- 原文显示/隐藏切换：仅「原文」Tab 可见 -->
-      <button class="transcript-toggle" v-if="activeTab === 'transcript'" :class="{ 'is-active': showTranscriptLines }"
-        @click="showTranscriptLines = !showTranscriptLines"
-        :title="showTranscriptLines ? '隐藏原文，仅保留章节与要点' : '显示原文'">
-        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-          <line x1="1" y1="1" x2="23" y2="23"/>
-        </svg>
-        <span class="toggle-label">{{ showTranscriptLines ? '隐藏原文' : '显示原文' }}</span>
-      </button>
-      <!-- 音频播放条 -->
+      <!-- 右侧：音频播放控制（亲疏原则分组） -->
       <div class="gen-audio-bar" v-if="audioUrl">
-        <button class="gen-audio-play" @click="toggleAudio" :title="player.playing ? '暂停播放' : '播放录音'" :aria-label="player.playing ? '暂停播放' : '播放录音'">
+        <button class="gen-audio-play" @click="toggleAudio" :title="player.playing ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')" :aria-label="player.playing ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')">
           <svg v-if="!player.playing" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
           <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-          <span class="gen-audio-play-text">{{ player.playing ? '暂停' : '播放' }}</span>
+          <span class="gen-audio-play-text">{{ player.playing ? t('generating.transcript.pause') : t('generating.transcript.play') }}</span>
         </button>
         <span class="gen-audio-time">{{ player.timeStr }}</span>
         <div class="gen-audio-progress" @click="seekAudio">
@@ -217,69 +210,76 @@
       </div>
     </div>
 
+    <!-- 章节导航条（提升到 gen-content 外层，紧贴 control-zone 下方，消除缝隙） -->
+    <div class="chapter-overview" v-if="chapters.length > 0 && activeTab === 'transcript'" id="chapterOverview">
+      <span class="chapter-overview-label">{{ t('generating.chapter.overview_label') }}</span>
+      <div class="chapter-nav-dots" id="chapterNavDots">
+        <div v-for="(ch, i) in chapters" :key="i" class="chapter-nav-dot" :class="{ 'is-active': activeChapterIdx === i, 'is-done': i < activeChapterIdx }" :data-tip="ch.title" @click="scrollToChapter(i)">
+        </div>
+      </div>
+      <div class="chapter-current-info">
+        <span>{{ t('generating.chapter.index_prefix') }}</span>
+        <span class="ch-name">{{ activeChapterIdx + 1 }}</span>
+        <span>{{ t('generating.chapter.index_suffix', { count: chapters.length }) }}</span>
+      </div>
+      <button class="chapter-transcript-toggle" :class="{ 'is-active': allChaptersVisible }" @click="toggleAllTranscript">
+        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
+
     <!-- 内容区 -->
     <div class="gen-content">
       <!-- 原文面板 -->
       <div class="gen-panel spk-layout-active" v-show="activeTab === 'transcript'">
         <div class="spk-transcript-layout">
           <div class="spk-transcript-area" id="spkTranscriptArea" ref="transcriptAreaEl">
-            <!-- 章节导航条 -->
-            <div class="chapter-overview" v-if="chapters.length > 0" id="chapterOverview">
-              <span class="chapter-overview-label">章节</span>
-              <div class="chapter-nav-dots" id="chapterNavDots">
-                <div v-for="(ch, i) in chapters" :key="i" class="chapter-nav-dot" :class="{ 'is-active': activeChapterIdx === i, 'is-done': i < activeChapterIdx }" @click="scrollToChapter(i)">
-                  <span class="chapter-nav-tooltip">{{ ch.title }}</span>
-                </div>
-              </div>
-              <div class="chapter-current-info">
-                <span>第</span>
-                <span class="ch-name">{{ activeChapterIdx + 1 }}</span>
-                <span>章 / 共 {{ chapters.length }} 章</span>
-              </div>
-            </div>
             <!-- 章节生成中提示 -->
             <div class="chapter-loading" v-if="task?.status === 'completed' && !chapters.length">
               <div class="chapter-loading-spinner"></div>
-              <span>章节划分中...</span>
+              <span>{{ t('generating.chapter.dividing') }}</span>
             </div>
 
             <!-- 聚焦模式横幅 -->
             <div class="spk-solo-banner" v-if="speakerFilterSet.size === 1 && focusSpeaker">
               <div class="spk-solo-id">
                 <span class="spk-solo-name" :style="{ color: focusSpeaker.color }">{{ focusSpeaker.name }}</span>
-                <span class="spk-solo-count">· {{ focusSpeaker.turns }} 条</span>
+                <span class="spk-solo-count">{{ t('generating.speaker_solo.turns', { count: focusSpeaker.turns }) }}</span>
               </div>
               <div class="spk-solo-sep"></div>
               <div class="spk-solo-nav">
-                <button class="spk-solo-nav-btn" title="上一条" @click="navFocusLine(-1)">
+                <button class="spk-solo-nav-btn" :title="t('generating.speaker_solo.prev')" @click="navFocusLine(-1)">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
                 </button>
                 <span class="spk-solo-pos">{{ focusLineIdx + 1 }} / {{ focusSpeaker.turns }}</span>
-                <button class="spk-solo-nav-btn" title="下一条" @click="navFocusLine(1)">
+                <button class="spk-solo-nav-btn" :title="t('generating.speaker_solo.next')" @click="navFocusLine(1)">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
               </div>
               <div class="spk-solo-sep"></div>
-              <button class="spk-solo-close" title="退出聚焦" @click="clearSpeakerFilter">
+              <button class="spk-solo-close" :title="t('generating.speaker_solo.exit_focus')" @click="clearSpeakerFilter">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
             <!-- 原文隐藏提示条 -->
-            <div class="gen-hidden-indicator" v-if="!showTranscriptLines && flatTranscript.length">
+            <div class="gen-hidden-indicator" v-if="visibleChapterIndices.size === 0 && flatTranscript.length">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                 <line x1="1" y1="1" x2="23" y2="23"/>
               </svg>
-              <span>已隐藏 {{ flatTranscript.length }} 条原文，当前仅显示章节与要点</span>
-              <button class="gen-hidden-show-btn" @click="showTranscriptLines = true">显示原文</button>
+              <span>{{ t('generating.transcript.hidden_indicator', { count: flatTranscript.length }) }}</span>
+              <button class="gen-hidden-show-btn" @click="showAllChapters()">{{ t('generating.transcript.show') }}</button>
             </div>
 
-            <div class="gen-loading" v-if="!flatTranscript.length">
-              <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>原文整理中...</div>
+            <div class="gen-loading" v-if="!flatTranscript.length && task?.status && ['recording', 'processing', 'transcribing', 'summarizing'].includes(task.status)">
+              <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>{{ t('generating.transcript.loading') }}</div>
               <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
             </div>
-            <div class="gen-transcript-list" v-else ref="transcriptListEl">
+            <div class="gen-empty" v-else-if="!flatTranscript.length && task?.status === 'pending'">
+              <div class="gen-empty-hint">{{ t('generating.transcript.pending') }}</div>
+            </div>
+            <div class="gen-transcript-list" v-else-if="flatTranscript.length" ref="transcriptListEl">
               <template v-for="item in transcriptItems" :key="item.type === 'chapter' ? 'ch-' + item.chapterIdx : 'line-' + item.lineIdx">
                 <!-- 章节分隔卡片 -->
                 <div v-if="item.type === 'chapter'" class="chapter-divider" :class="{ 'is-current': item.chapterIdx === activeChapterIdx, 'is-expanded': expandedChapters.has(item.chapterIdx) }" :data-chapter="item.chapterIdx">
@@ -290,7 +290,7 @@
                       <div class="chapter-meta">
                         <span>{{ formatTimeMs(chapters[item.chapterIdx].start_ms) }} – {{ formatTimeMs(chapters[item.chapterIdx].end_ms) }}</span>
                         <span class="sep">·</span>
-                        <span>{{ (chapters[item.chapterIdx].key_points || []).length }} 个要点</span>
+                        <span>{{ t('generating.chapter.key_points_count', { count: (chapters[item.chapterIdx].key_points || []).length }) }}</span>
                       </div>
                       <div v-if="chapters[item.chapterIdx].summary" class="chapter-summary-text">{{ chapters[item.chapterIdx].summary }}</div>
                     </div>
@@ -304,14 +304,32 @@
                   <div class="chapter-body">
                     <div class="chapter-body-inner">
                       <div class="chapter-key-points" v-if="chapters[item.chapterIdx].key_points?.length">
-                        <div class="chapter-key-points-title">关键要点</div>
+                        <div class="chapter-key-points-title">{{ t('generating.chapter.key_points') }}</div>
                         <div v-for="(p, pi) in chapters[item.chapterIdx].key_points" :key="pi" class="chapter-key-point">{{ p }}</div>
                       </div>
+                      <!-- 展开的章节卡片内始终显示原文显隐切换按钮 -->
+                      <button
+                        v-if="expandedChapters.has(item.chapterIdx)"
+                        class="chapter-view-transcript-btn"
+                        :class="{ 'is-active': visibleChapterIndices.has(item.chapterIdx) }"
+                        @click="toggleChapterTranscript(item.chapterIdx)"
+                      >
+                        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                        {{ visibleChapterIndices.has(item.chapterIdx) ? t('generating.chapter.hide_transcript') : t('generating.chapter.view_transcript') }}
+                      </button>
                     </div>
                   </div>
                 </div>
                 <!-- 转写行 -->
-                <div v-else class="ts-line" v-show="showTranscriptLines"
+                <div
+                  v-else class="ts-line" v-show="isChapterVisible(getChapterIdxAtTime(chapters, flatTranscript[item.lineIdx].begin_time))"
                   :class="{ 
                     'is-me': isMeSpeakerId(flatTranscript[item.lineIdx].speaker_id),
                     'is-located': isLineLocated(flatTranscript[item.lineIdx].speaker_id),
@@ -320,22 +338,28 @@
                   }"
                   :data-begin-time="flatTranscript[item.lineIdx].begin_time"
                   :data-line-idx="item.lineIdx"
-                  @click="seekFromTranscriptClick(flatTranscript[item.lineIdx].begin_time)">
+                  @click="seekFromTranscriptClick(flatTranscript[item.lineIdx].begin_time)"
+                >
                   <div class="ts-line-head">
                     <span class="spk-wrapper" @click.stop>
-                      <span class="spk"
+                      <span
+                        class="spk"
                         :class="[
                           getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) ? 'spk-bound' : 'spk-unbound',
                           { 'spk-bindable': canBind }
                         ]"
                         :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
-                        @click="onSpeakerLabelClick($event, flatTranscript[item.lineIdx].speaker_id)">
-                        {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || `说话人${flatTranscript[item.lineIdx].speaker_id + 1}` }}
+                        @click="onSpeakerLabelClick($event, flatTranscript[item.lineIdx].speaker_id)"
+                      >
+                        {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || t('generating.speaker_default', { id: flatTranscript[item.lineIdx].speaker_id + 1 }) }}
                       </span>
-                      <button class="spk-locate-btn"
+                      <button
+                        class="spk-locate-btn"
+                        :class="{ 'is-active': locateSpeakerId === flatTranscript[item.lineIdx].speaker_id }"
                         v-if="!canBind"
                         @click.stop="toggleLocateSpeaker(flatTranscript[item.lineIdx].speaker_id)"
-                        title="定位此说话人">
+                        :title="locateSpeakerId === flatTranscript[item.lineIdx].speaker_id ? t('generating.speaker_solo.exit_focus_all') : t('generating.speaker_solo.focus_speaker')"
+                      >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
                       <span class="spk-bind-arrow" v-if="canBind">▾</span>
@@ -351,40 +375,48 @@
           </div>
 
           <!-- 播放跟随恢复按钮：用户手动滚动后出现 -->
-          <button class="ts-follow-btn" :class="{ 'is-visible': player.playing && !followPlayback }"
-            @click="resumeFollowPlayback" title="回到当前播放位置" aria-label="回到当前播放位置">
+          <button
+            class="ts-follow-btn" :class="{ 'is-visible': player.playing && !followPlayback }"
+            @click="resumeFollowPlayback" :title="t('generating.speaker_solo.back_to_playback_title')" :aria-label="t('generating.speaker_solo.back_to_playback_title')"
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="10,8 16,12 10,16" fill="currentColor" stroke="none"/></svg>
-            回到播放位置
+            {{ t('generating.speaker_solo.back_to_playback') }}
           </button>
 
           <!-- 右侧说话人面板 -->
           <div class="spk-panel" v-if="speakerPanelVisible">
             <div class="spk-panel-head">
               <span class="spk-panel-title">
-                说话人
-                <span class="spk-count-toggle">{{ panelSpeakerList.length }}</span>
+                {{ t('generating.speaker_panel.title') }}
               </span>
-              <button class="spk-panel-btn" title="收起面板" @click="speakerPanelVisible = false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
+              <div class="spk-panel-head-actions">
+                <button class="spk-panel-btn spk-search-trigger" :class="{ 'is-active': searchExpanded }" @click="toggleSearch" :title="t('generating.speaker_panel.search')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+                <button class="spk-panel-btn" :title="t('generating.speaker_panel.collapse')" @click="speakerPanelVisible = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="spk-search">
+            <div class="spk-search" v-show="searchExpanded || speakerPanelSearch">
               <div class="spk-search-wrap">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" class="spk-search-input" placeholder="搜索说话人..." v-model="speakerPanelSearch">
+                <input type="text" class="spk-search-input" :placeholder="t('generating.speaker_panel.search_placeholder')" v-model="speakerPanelSearch" @blur="onSearchBlur" ref="searchInputEl">
               </div>
             </div>
             <div class="spk-list">
-              <div v-for="sp in panelSpeakerList" :key="sp.speakerId"
-                   class="spk-item"
-                   :class="{ 'is-on': speakerFilterSet.has(sp.speakerId), 'is-active': locateSpeakerId === sp.speakerId }"
-                   @click="toggleSpeakerFilter(sp.speakerId)">
+              <div
+                v-for="sp in panelSpeakerList" :key="sp.speakerId"
+                class="spk-item"
+                :class="{ 'is-on': speakerFilterSet.has(sp.speakerId), 'is-active': locateSpeakerId === sp.speakerId, 'is-playing': playingSpeakerId === sp.speakerId }"
+                @click="toggleSpeakerFilter(sp.speakerId)"
+              >
                 <div class="spk-item-check">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </div>
                 <div class="spk-item-info">
                   <div class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</div>
-                  <div class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? '● 我' : (sp.role || '') }}</div>
+                  <div class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? t('generating.speaker_panel.me_label') : (sp.role || '') }}</div>
                 </div>
                 <div class="spk-item-stats">
                   <span class="spk-item-dur">{{ sp.durationStr }}</span>
@@ -395,23 +427,27 @@
             </div>
             <div class="spk-panel-footer">
               <span class="spk-footer-summary">
-                合计 <span>{{ panelTotalDuration }}</span> · <span>{{ panelTotalTurns }}</span> 条发言
+                {{ t('generating.speaker_panel.total', { duration: panelTotalDuration, turns: panelTotalTurns }) }}
               </span>
             </div>
           </div>
 
           <!-- 面板收起时的展开按钮 -->
-          <button class="spk-panel-toggle" v-if="!speakerPanelVisible" @click="speakerPanelVisible = true" title="展开说话人面板">
+          <button class="spk-panel-toggle" v-if="!speakerPanelVisible" @click="speakerPanelVisible = true" :title="t('generating.speaker_panel.expand')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <span>{{ t('generating.speaker_panel.expand') }}</span>
           </button>
         </div>
       </div>
 
       <!-- 纪要面板 -->
       <div class="gen-panel" v-show="activeTab === 'summary'" :class="{ hidden: activeTab !== 'summary' }">
-        <div class="gen-loading" v-if="!task?.summary && task?.status !== 'completed' && task?.status !== 'failed'">
-          <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>纪要生成中...</div>
+        <div class="gen-loading" v-if="!task?.summary && task?.status && ['recording', 'processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(task.status)">
+          <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>{{ t('generating.summary.loading') }}</div>
           <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
+        </div>
+        <div class="gen-empty" v-else-if="!task?.summary && task?.status === 'pending'">
+          <div class="gen-empty-hint">{{ t('generating.summary.pending') }}</div>
         </div>
         <MdBlockEditor
           v-else-if="task?.summary"
@@ -421,18 +457,20 @@
         />
         <!-- 章节回顾卡片 -->
         <div class="sum-section" v-if="task?.summary && chapters.length > 0">
-          <div class="sum-section-label">章节回顾</div>
-          <div v-for="(ch, idx) in chapters" :key="'sum-ch-' + idx"
-               class="sum-chapter-card"
-               :class="{ 'is-open': summaryExpandedChapters.has(idx) }">
-            <button class="sum-chapter-header" @click="toggleSummaryChapter(idx)">
+          <div class="sum-section-label">{{ t('generating.chapter.review') }}</div>
+          <div
+            v-for="(ch, idx) in chapters" :key="'sum-ch-' + idx"
+            class="sum-chapter-card"
+            :class="{ 'is-open': summaryExpandedChapters.has(idx) }"
+          >
+            <button class="sum-chapter-header" @click="toggleSummaryChapter(idx)" :title="ch.title">
               <div class="sum-chapter-num">{{ ch.id || idx + 1 }}</div>
               <div class="sum-chapter-info">
                 <div class="sum-chapter-title">{{ ch.title }}</div>
                 <div class="sum-chapter-meta">
                   <span>{{ formatTimeMs(ch.start_ms) }} – {{ formatTimeMs(ch.end_ms) }}</span>
                   <span class="sep">·</span>
-                  <span>{{ (ch.key_points || []).length }} 个要点</span>
+                  <span>{{ t('generating.chapter.key_points_count', { count: (ch.key_points || []).length }) }}</span>
                 </div>
               </div>
               <div class="sum-chapter-chevron">
@@ -446,75 +484,78 @@
         </div>
         <!-- 行动项入口 -->
         <div class="sum-section" v-if="task?.summary">
-          <div class="sum-section-label">行动项</div>
-          <button class="sum-todos-link" @click="switchTab('todos')">
+          <div class="sum-section-label">{{ t('generating.summary.action_items') }}</div>
+          <button class="sum-todos-link" @click="switchTab('todos')" :title="t('generating.summary.view_todos')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            <span>本次会议共产生 <span class="count">{{ todos.length || '—' }}</span> 项待办，已完成 <span class="count">{{ todos.filter(t => t.done).length || '0' }}</span> 项</span>
-            <span class="go">查看待办
+            <span>{{ t('generating.summary.todos_stat', { total: todos.length || '—', done: todos.filter(x => x.done).length || '0' }) }}</span>
+            <span class="go">{{ t('generating.summary.view_todos') }}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             </span>
           </button>
         </div>
         <div class="gen-pending" v-else>
-          <div class="gen-pending-text">纪要尚未生成</div>
+          <div class="gen-pending-text">{{ t('generating.summary.pending') }}</div>
         </div>
       </div>
 
       <!-- 随记面板 -->
       <div class="gen-panel" v-show="activeTab === 'notes'" :class="{ hidden: activeTab !== 'notes' }">
         <div class="md-toolbar">
-          <button class="md-toolbar-btn" @click="insertMd('bold')" title="加粗"><strong>B</strong></button>
-          <button class="md-toolbar-btn" @click="insertMd('italic')" title="斜体"><em>I</em></button>
-          <button class="md-toolbar-btn" @click="insertMd('code')" title="代码">&lt;/&gt;</button>
+          <button class="md-toolbar-btn" @click="insertMd('bold')" :title="t('generating.md_toolbar.bold')"><strong>B</strong></button>
+          <button class="md-toolbar-btn" @click="insertMd('italic')" :title="t('generating.md_toolbar.italic')"><em>I</em></button>
+          <button class="md-toolbar-btn" @click="insertMd('code')" :title="t('generating.md_toolbar.code')">&lt;/&gt;</button>
           <span class="md-toolbar-sep"></span>
-          <button class="md-toolbar-btn" @click="insertMd('heading')" title="标题">H</button>
-          <button class="md-toolbar-btn" @click="insertMd('list')" title="列表">
+          <button class="md-toolbar-btn" @click="insertMd('heading')" :title="t('generating.md_toolbar.heading')">H</button>
+          <button class="md-toolbar-btn" @click="insertMd('list')" :title="t('generating.md_toolbar.list')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
           </button>
-          <button class="md-toolbar-btn" @click="insertMd('quote')" title="引用">
+          <button class="md-toolbar-btn" @click="insertMd('quote')" :title="t('generating.md_toolbar.quote')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z"/></svg>
           </button>
-          <span class="md-toolbar-hint">双击文本块可逐块编辑 · 选中文字可呼出操作栏</span>
+          <span class="md-toolbar-hint">{{ t('generating.md_toolbar.hint') }}</span>
         </div>
         <MdBlockEditor
           :markdown="notesContent"
           @change="onNotesChange"
           ref="notesEditor"
-          empty-text="在此记录随记…"
+          :empty-text="t('generating.notes.placeholder')"
         />
-        <span class="task-notes-saved" :class="{ show: notesSaved }">已保存</span>
+        <span class="task-notes-saved" :class="{ show: notesSaved }">{{ t('generating.notes.saved') }}</span>
       </div>
 
       <!-- 待办面板 -->
       <div class="gen-panel" v-show="activeTab === 'todos'" :class="{ hidden: activeTab !== 'todos' }">
         <div class="todos-summary" v-if="todos.length">
-          <span>共 <span class="count">{{ todos.length }}</span> 项，已完成 <span class="count">{{ todos.filter(t => t.done).length }}</span> 项</span>
+          <span>{{ t('generating.todos.stat', { total: todos.length, done: todos.filter(x => x.done).length }) }}</span>
         </div>
         <div class="todos-list" v-if="todos.length">
           <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
             <input type="checkbox" :checked="todo.done" @change="onToggleTodo(todo)">
             <span class="todo-text">{{ todo.text }}</span>
             <span v-if="todo.assignee" class="todo-assignee">{{ todo.assignee }}</span>
-            <span v-if="todo.source" class="todo-source-badge" :class="'source-' + todo.source">{{ todo.source === 'ai' ? 'AI' : '手动' }}</span>
-            <button class="todo-locate-btn" title="定位到原文" @click="locateTodoSource(todo)" aria-label="定位到原文">
+            <span v-if="todo.source" class="todo-source-badge" :class="'source-' + todo.source">{{ todo.source === 'ai' ? t('generating.todos.source_ai') : t('generating.todos.source_manual') }}</span>
+            <button v-if="todo.source === 'ai'" class="todo-locate-btn" :title="t('generating.todos.locate')" @click="locateTodoSource(todo)" :aria-label="t('generating.todos.locate')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button class="todo-delete-btn" :title="t('generating.todos.delete')" @click="onDeleteTodo(todo)" :aria-label="t('generating.todos.delete')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
             </button>
           </div>
         </div>
-        <div class="todos-empty" v-else>暂无待办事项</div>
+        <div class="todos-empty" v-else>{{ t('generating.todos.empty') }}</div>
         <div class="todos-add-bar">
           <button class="todos-add-btn" @click="showAddForm = !showAddForm" v-if="!showAddForm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            添加待办事项
+            {{ t('generating.todos.add') }}
           </button>
           <div class="todos-add-form" v-if="showAddForm">
-            <textarea v-model="newTodoText" placeholder="待办内容…" rows="2"></textarea>
+            <textarea v-model="newTodoText" :placeholder="t('generating.todos.content_placeholder')" rows="2"></textarea>
             <div class="add-form-row">
-              <input type="text" v-model="newTodoAssignee" placeholder="执行人（可选）" style="flex:1">
+              <input type="text" v-model="newTodoAssignee" :placeholder="t('generating.todos.assignee_placeholder')" style="flex:1">
             </div>
             <div class="add-form-actions">
-              <button class="btn-cancel" @click="showAddForm = false">取消</button>
-              <button class="btn-submit" @click="onAddTodo">添加</button>
+              <button class="btn-cancel" @click="showAddForm = false">{{ t('generating.todos.cancel') }}</button>
+              <button class="btn-submit" @click="onAddTodo">{{ t('generating.todos.submit') }}</button>
             </div>
           </div>
         </div>
@@ -531,7 +572,7 @@
       <div class="spk-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="obDialogTitle">
         <!-- 标题区 -->
         <div class="spk-ob-header">
-          <h3 id="obDialogTitle">关联说话人身份</h3>
+          <h3 id="obDialogTitle">{{ t('generating.onboarding.title') }}</h3>
         </div>
         <!-- 数据变化演示区 -->
         <div class="spk-ob-demo">
@@ -553,9 +594,9 @@
         <!-- 底部操作区 -->
         <div class="spk-ob-footer">
           <label class="spk-ob-dont-show">
-            <input type="checkbox" v-model="dontShowAgain"> 不再显示
+            <input type="checkbox" v-model="dontShowAgain"> {{ t('generating.onboarding.dont_show_again') }}
           </label>
-          <button type="button" class="spk-ob-got-it" @click="closeOnboarding">开始关联</button>
+          <button type="button" class="spk-ob-got-it" @click="closeOnboarding">{{ t('generating.onboarding.start') }}</button>
         </div>
       </div>
     </div>
@@ -564,17 +605,17 @@
     <div v-if="showArchiveDialog" class="archive-dialog-overlay" @click.self="showArchiveDialog = false">
       <div class="archive-dialog">
         <div class="archive-dialog-header">
-          <h3>确认归档</h3>
-          <button class="archive-dialog-close" @click="showArchiveDialog = false" title="关闭">
+          <h3>{{ t('generating.archive_dialog.title') }}</h3>
+          <button class="archive-dialog-close" @click="showArchiveDialog = false" :title="t('generating.archive_dialog.close')">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
           </button>
         </div>
         <div class="archive-dialog-body">
-          <p>确定要将此会议归档吗？归档后将移至归档列表。</p>
+          <p>{{ t('generating.archive_dialog.desc') }}</p>
         </div>
         <div class="archive-dialog-footer">
-          <button class="btn-cancel" @click="showArchiveDialog = false">取消</button>
-          <button class="btn-submit" @click="onArchive">确认归档</button>
+          <button class="btn-cancel" @click="showArchiveDialog = false">{{ t('generating.archive_dialog.cancel') }}</button>
+          <button class="btn-submit" @click="onArchive">{{ t('generating.archive_dialog.confirm') }}</button>
         </div>
       </div>
     </div>
@@ -584,12 +625,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, reactive, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { usePlayerStore } from '@/stores/player'
 import { useUserStore } from '@/stores/user'
 import { usePolling } from '@/composables/usePolling'
 import { fetchTask, deleteTask, retranscribe, retrySummary, updateTask } from '@/api/tasks'
-import { fetchNotes, saveNotes, fetchTodos, toggleTodo, createTodo } from '@/api/notes'
+import { fetchNotes, saveNotes, fetchTodos, toggleTodo, createTodo, deleteTodo } from '@/api/notes'
 import { fetchSpeakers, createSpeaker, submitSpeakerMapping, saveSpeakerMapping, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
@@ -599,12 +641,14 @@ import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine } from '@/api/
 import MdBlockEditor from '@/components/MdBlockEditor.vue'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 
-const TABS = [
-  { id: 'transcript', label: '原文', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
-  { id: 'notes', label: '随记', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
-  { id: 'summary', label: '纪要', icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
-  { id: 'todos', label: '待办', icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
-]
+const { t } = useI18n()
+
+const TABS = computed(() => [
+  { id: 'transcript', label: t('generating.tabs.transcript'), icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
+  { id: 'notes', label: t('generating.tabs.notes'), icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+  { id: 'summary', label: t('generating.tabs.summary'), icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
+  { id: 'todos', label: t('generating.tabs.todos'), icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
+])
 
 const route = useRoute()
 const router = useRouter()
@@ -652,8 +696,8 @@ const OB_PAUSE_MS = 1500
 
 const speakers = ref<Speaker[]>([])
 
-// 原文显示/隐藏
-const showTranscriptLines = ref(true)
+// 按章节控制原文显隐（Set 中的章节索引对应的原文行可见）
+const visibleChapterIndices = reactive(new Set<number>())
 
 // 定位高亮说话人
 const locateSpeakerId = ref<number | null>(null)
@@ -665,12 +709,12 @@ const showArchiveDialog = ref(false)
 const projects = ref<Project[]>([])
 const showProjectDropdown = ref(false)
 const currentProjectName = computed(() => {
-  if (!task.value?.project_id) return '点击关联项目'
+  if (!task.value?.project_id) return t('generating.meta.link_project')
   const p = projects.value.find(p => p.id === task.value?.project_id)
-  return p?.name || '点击关联项目'
+  return p?.name || t('generating.meta.link_project')
 })
 
-const breadcrumbTitle = computed(() => task.value?.title || task.value?.audio_name || '会议纪要')
+const breadcrumbTitle = computed(() => task.value?.title || task.value?.audio_name || t('generating.breadcrumb.default_title'))
 
 /** 面包屑祖先层级：已关联项目时展示 项目 / 项目名，否则展示 会议库 */
 const breadcrumbs = computed(() => {
@@ -678,11 +722,11 @@ const breadcrumbs = computed(() => {
   const proj = pid ? projects.value.find(p => p.id === pid) : null
   if (proj) {
     return [
-      { label: '项目', icon: 'folder' as const, to: { name: 'projects' } },
+      { label: t('generating.breadcrumb.project'), icon: 'folder' as const, to: { name: 'projects' } },
       { label: proj.name, icon: null, to: { name: 'projects' } },
     ]
   }
-  return [{ label: '会议库', icon: 'list' as const, to: { name: 'library' } }]
+  return [{ label: t('generating.breadcrumb.library'), icon: 'list' as const, to: { name: 'library' } }]
 })
 
 // 绑定横幅关闭
@@ -693,8 +737,34 @@ const bindBarDismissed = ref(localStorage.getItem(`oms_bind_bar_dismissed:${task
 // ─── 右侧说话人面板 ───
 const speakerPanelVisible = ref(true)
 const speakerPanelSearch = ref('')
+const searchExpanded = ref(false)
+const searchInputEl = ref<HTMLInputElement | null>(null)
 const speakerFilterSet = reactive(new Set<number>())
 const focusLineIdx = ref(0)
+
+/** 切换搜索栏展开/收起 */
+function toggleSearch() {
+  searchExpanded.value = !searchExpanded.value
+  if (searchExpanded.value) {
+    nextTick(() => searchInputEl.value?.focus())
+  }
+}
+
+/** 搜索框失焦时，若无搜索词则收起 */
+function onSearchBlur() {
+  if (!speakerPanelSearch.value) {
+    searchExpanded.value = false
+  }
+}
+
+/** 隐式收起：点击说话人搜索栏外部自动关闭 */
+function onDocClickCloseSearch(e: MouseEvent) {
+  if (!searchExpanded.value) return
+  const target = e.target as HTMLElement
+  if (!target.closest('.spk-search') && !target.closest('.spk-search-trigger')) {
+    searchExpanded.value = false
+  }
+}
 
 /** 面板中的说话人列表（含时长/次数/角色统计） */
 const panelSpeakerList = computed(() => {
@@ -713,7 +783,7 @@ const panelSpeakerList = computed(() => {
     .map(([sid, stats]) => {
       const uuid = currentBindingMapping[sid] || task.value?.speaker_uuid_mapping?.[String(sid)]
       const spk = uuid ? speakers.value.find(s => s.id === uuid) : null
-      const name = spk?.name || `说话人${sid + 1}`
+      const name = spk?.name || t('generating.speaker_default', { id: sid + 1 })
       const role = spk?.role || ''
       const isMe = spk?.linked_user_id ? spk.linked_user_id === userStore.user?.id : false
       const m = Math.floor(stats.durMs / 60000)
@@ -910,7 +980,7 @@ async function selectBinding(speakerId: number, uuid: string) {
 
 /** 新建说话人并绑定 */
 async function createAndBind(speakerId: number, suggestedName: string) {
-  const name = suggestedName || `说话人${speakerId + 1}`
+  const name = suggestedName || t('generating.speaker_default', { id: speakerId + 1 })
   try {
     const newSpk = await createSpeaker(name)
     currentBindingMapping[speakerId] = newSpk.id
@@ -918,7 +988,7 @@ async function createAndBind(speakerId: number, suggestedName: string) {
     closeBindingDropdown()
     await incrementalSave()
   } catch (e) {
-    console.error('新建说话人失败:', e)
+    console.error('create speaker failed:', e)
   }
 }
 
@@ -930,7 +1000,7 @@ async function incrementalSave() {
     await saveSpeakerMapping(taskId, mapping)
     taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping } })
   } catch (e) {
-    console.error('增量保存映射失败:', e)
+    console.error('incremental save mapping failed:', e)
   }
 }
 
@@ -944,7 +1014,7 @@ async function confirmMapping() {
     taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping }, status: 'summarizing' })
     startPolling()
   } catch (e) {
-    console.error('提交映射失败:', e)
+    console.error('submit mapping failed:', e)
     bindingBarHidden.value = false
   }
 }
@@ -959,19 +1029,20 @@ function skipMapping() {
 /** 下拉框键盘导航 */
 function onDropdownKeydown(e: KeyboardEvent) {
   const items = dropdownSpeakers.value
-  const total = items.length + 1 // +1 for "新建说话人"
+  const hasCreateBtn = bindingDropdown.search && items.length === 0
+  const total = hasCreateBtn ? 1 : items.length
   if (e.key === 'ArrowDown') {
     e.preventDefault()
-    bindingDropdown.focusIdx = (bindingDropdown.focusIdx + 1) % total
+    bindingDropdown.focusIdx = total > 0 ? (bindingDropdown.focusIdx + 1) % total : 0
   } else if (e.key === 'ArrowUp') {
     e.preventDefault()
-    bindingDropdown.focusIdx = bindingDropdown.focusIdx <= 0 ? total - 1 : bindingDropdown.focusIdx - 1
+    bindingDropdown.focusIdx = total > 0 ? (bindingDropdown.focusIdx <= 0 ? total - 1 : bindingDropdown.focusIdx - 1) : 0
   } else if (e.key === 'Enter') {
     e.preventDefault()
-    if (bindingDropdown.focusIdx >= 0 && bindingDropdown.focusIdx < items.length) {
-      selectBinding(bindingDropdown.speakerId, items[bindingDropdown.focusIdx].id)
-    } else if (bindingDropdown.focusIdx === items.length) {
+    if (hasCreateBtn && bindingDropdown.focusIdx === 0) {
       createAndBind(bindingDropdown.speakerId, bindingDropdown.search)
+    } else if (bindingDropdown.focusIdx >= 0 && bindingDropdown.focusIdx < items.length) {
+      selectBinding(bindingDropdown.speakerId, items[bindingDropdown.focusIdx].id)
     }
   } else if (e.key === 'Escape') {
     e.preventDefault()
@@ -993,6 +1064,12 @@ const player = usePlayerStore()
 const playingLineIdx = ref(-1)
 /** 是否随播放进度自动滚动原文；用户手动滚动后置 false */
 const followPlayback = ref(true)
+
+/** 当前播放行对应的说话人 ID（用于面板高亮），无播放时为 null */
+const playingSpeakerId = computed<number | null>(() => {
+  if (playingLineIdx.value < 0) return null
+  return flatTranscript.value[playingLineIdx.value]?.speaker_id ?? null
+})
 
 const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId) ?? null)
 // 任务进入 store 时初始化绑定映射：刷新时 store 异步装载可能晚于 onMounted 的初始化
@@ -1036,7 +1113,11 @@ const speakerStats = computed(() => {
   if (totalMs <= 0) return []
   const speakerIds = Object.keys(mapping).sort((a, b) => Number(a) - Number(b))
   return speakerIds.map((sid) => {
-    const name = mapping[sid] || `说话人${Number(sid) + 1}`
+    const sidNum = Number(sid)
+    // 优先从绑定映射解析真实姓名，其次用 ASR 返回的 speaker_mapping，最后 i18n 兜底
+    const uuid = currentBindingMapping[sidNum]
+    const boundSpk = uuid ? speakers.value.find(s => s.id === uuid) : null
+    const name = boundSpk?.name || mapping[sid] || t('generating.speaker_default', { id: sidNum + 1 })
     const durMs = lines.filter(l => String(l.speaker_id) === sid)
       .reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
     const pct = Math.round((durMs / totalMs) * 100)
@@ -1052,6 +1133,13 @@ const expandedChapters = reactive(new Set<number>())
 const summaryExpandedChapters = reactive(new Set<number>())
 
 const chapters = computed<Chapter[]>(() => task.value?.chapters ?? [])
+
+// 章节首次加载时初始化可见集合（默认全部可见），仅执行一次
+watch(chapters, (chs) => {
+  if (chs.length > 0 && visibleChapterIndices.size === 0) {
+    chs.forEach((_, idx) => visibleChapterIndices.add(idx))
+  }
+}, { immediate: true })
 
 function toggleSummaryChapter(idx: number) {
   if (summaryExpandedChapters.has(idx)) summaryExpandedChapters.delete(idx)
@@ -1125,6 +1213,46 @@ function scrollToChapter(idx: number) {
   })
 }
 
+/** 切换单个章节原文显隐（章节卡片按钮调用，带滚动定位） */
+function toggleChapterTranscript(idx: number) {
+  if (idx < 0) return
+  if (visibleChapterIndices.has(idx)) {
+    visibleChapterIndices.delete(idx)
+  } else {
+    visibleChapterIndices.add(idx)
+  }
+  nextTick(() => {
+    const el = transcriptListEl.value?.querySelector(`.chapter-divider[data-chapter="${idx}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+/** 全局切换所有章节原文显隐（导航栏按钮调用） */
+function toggleAllTranscript() {
+  if (allChaptersVisible.value) {
+    visibleChapterIndices.clear()
+  } else {
+    chapters.value.forEach((_, idx) => visibleChapterIndices.add(idx))
+  }
+}
+
+/** 显示所有章节原文 */
+function showAllChapters() {
+  chapters.value.forEach((_, idx) => visibleChapterIndices.add(idx))
+}
+
+/** 判断章节原文是否可见 */
+function isChapterVisible(chapterIdx: number): boolean {
+  if (chapterIdx < 0) return true // 无章节归属的行始终显示
+  return visibleChapterIndices.has(chapterIdx)
+}
+
+/** 是否所有章节原文都可见 */
+const allChaptersVisible = computed(() => {
+  if (chapters.value.length === 0) return true
+  return visibleChapterIndices.size === chapters.value.length
+})
+
 function chapterProgress(idx: number): number {
   const ch = chapters.value[idx]
   if (!ch || !flatTranscript.value.length) return 0
@@ -1169,7 +1297,8 @@ function isMeSpeakerId(speakerId: number): boolean {
 /** 切换定位高亮说话人 */
 function toggleLocateSpeaker(id: number) {
   if (locateSpeakerId.value === id) {
-    locateSpeakerId.value = null
+    // 取消聚焦：清除所有关联状态，确保视觉完全还原
+    clearSpeakerFilter()
   } else {
     locateSpeakerId.value = id
     speakerFilterSet.clear()
@@ -1233,6 +1362,14 @@ async function onAddTodo() {
   } catch { /* */ }
 }
 
+async function onDeleteTodo(todo: TodoItem) {
+  try {
+    await deleteTodo(taskId, todo.id)
+    todos.value = todos.value.filter(x => x.id !== todo.id)
+  } catch { /* */ }
+}
+
+
 function locateTodoSource(_todo: TodoItem) {
   switchTab('transcript')
 }
@@ -1268,13 +1405,13 @@ function onSelectionAction(action: string, text: string, source: string, blockIn
   if (action === 'rewrite') {
     startRewrite(text, source, blockIndex)
     setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请帮我改写以下内容，保持原意但更精炼' } }))
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.rewrite') } }))
   } else if (action === 'summarize') {
     setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请帮我总结以下内容' } }))
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.summarize') } }))
   } else if (action === 'extract-todo') {
     setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: '请从以下内容中提取待办事项' } }))
+    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.extract_todo') } }))
   }
 }
 
@@ -1295,18 +1432,18 @@ function onEditSummary() {
   switchTab('summary')
 }
 
-async function onRetrySummary() { closeGenMore(); await retrySummary(taskId); await taskStore.loadTasks() }
-async function onRetranscribe() { closeGenMore(); await retranscribe(taskId); router.push({ name: 'processing', params: { taskId } }) }
+async function onRetrySummary() { closeGenMore(); await retrySummary(taskId); await taskStore.loadTasks() /* [状态同步] 重试纪要后刷新任务列表 */ }
+async function onRetranscribe() { closeGenMore(); await retranscribe(taskId); router.push({ name: 'generating', params: { taskId } }) }
 async function onDelete() {
   closeGenMore()
-  if (!confirm('确定删除该会议？此操作不可撤销。')) return
-  await deleteTask(taskId); await taskStore.loadTasks(); router.push('/')
+  if (!confirm(t('generating.errors.confirm_delete'))) return
+  await deleteTask(taskId); await taskStore.loadTasks() /* [状态同步] 删除任务后刷新任务列表 */; router.push('/')
 }
 
 async function onArchive() {
   showArchiveDialog.value = false
   // TODO: 实现归档 API 调用
-  console.log('归档任务:', taskId)
+  console.log('archive task:', taskId)
 }
 
 function onArchiveConfirm() {
@@ -1345,7 +1482,11 @@ function syncPlayingLine(ms: number) {
 
 function scrollToPlayingLine() {
   const idx = playingLineIdx.value
-  if (idx < 0 || !showTranscriptLines.value) return
+  if (idx < 0) return
+  const line = flatTranscript.value[idx]
+  if (!line) return
+  const chIdx = getChapterIdxAtTime(chapters.value, line.begin_time)
+  if (chIdx >= 0 && !visibleChapterIndices.has(chIdx)) return
   nextTick(() => {
     const el = transcriptListEl.value?.querySelector(`[data-line-idx="${idx}"]`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1403,7 +1544,7 @@ async function onSelectProject(projectId: string) {
     await updateTask(taskId, { project_id: projectId || undefined })
     taskStore.patchTaskLocal(taskId, { project_id: projectId || null })
   } catch (e) {
-    console.error('更新项目关联失败:', e)
+    console.error('update project link failed:', e)
   }
 }
 
@@ -1424,7 +1565,7 @@ function openDatePicker() {
         await updateTask(taskId, { meeting_date: newDate })
         taskStore.patchTaskLocal(taskId, { meeting_date: newDate })
       } catch (e) {
-        console.error('保存日期失败:', e)
+        console.error('save date failed:', e)
       }
     }
     input.remove()
@@ -1447,6 +1588,7 @@ onMounted(async () => {
   }
 
   // 已完成但缺少章节时，轮询等待后台补生成
+  document.addEventListener('click', onDocClickCloseSearch)
   if (task.value?.status === 'completed' && !task.value?.chapters?.length) {
     startChapterPolling()
   }
@@ -1522,6 +1664,7 @@ const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(asyn
 }, 3000)
 
 onUnmounted(() => {
+  document.removeEventListener('click', onDocClickCloseSearch)
   stopOnboardingAnim()
   const area = transcriptAreaEl.value
   if (area) {
@@ -1642,12 +1785,25 @@ onUnmounted(() => {
   border: none;
   background: transparent;
   cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.2s;
+  opacity: 0.35;
+  transition: opacity 0.2s, color 0.2s, background 0.2s;
+  border-radius: var(--radius-sm);
 }
 
 .spk-locate-btn:hover {
+  opacity: 0.8;
+  background: var(--surface-2);
+}
+
+.spk-locate-btn.is-active {
   opacity: 1;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.spk-locate-btn.is-active:hover {
+  opacity: 1;
+  background: oklch(from var(--accent-soft) calc(l - 0.04) c h);
 }
 
 .spk-locate-btn svg {

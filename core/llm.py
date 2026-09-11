@@ -19,9 +19,12 @@ Provider 配置从 settings.json 动态读取（app.store.get_llm_config），
   - 异步版 async_chat_completion：供 FastAPI async 端点使用，不阻塞事件循环
 """
 
+import asyncio
 import os
 import time
 import logging
+import threading
+from typing import Generator
 import requests
 
 import httpx
@@ -120,9 +123,63 @@ def chat_completion(
     """
     同步调用 LLM（供后台线程使用）。
 
-    注意：不要在 async 函数中直接调用此版本，会阻塞事件循环。
-    async 端点请使用 async_chat_completion。
+    安全守卫：若从 asyncio 事件循环线程直接调用，自动委托到线程池，
+    防止阻塞事件循环。后台线程（管线、Timer）中仍同步执行。
     """
+    # 安全守卫：检测是否从事件循环线程调用（会阻塞事件循环）
+    # FastAPI/Uvicorn 的事件循环始终在主线程中运行
+    _in_loop_thread = False
+    try:
+        asyncio.get_running_loop()
+        _in_loop_thread = threading.current_thread() is threading.main_thread()
+    except RuntimeError:
+        pass  # 无运行中的事件循环，正常同步执行
+    if _in_loop_thread:
+        logger.warning(
+            "chat_completion 从事件循环线程调用，自动委托到线程池以避免阻塞。"
+            "调用方应改用 async_chat_completion_safe 或 asyncio.to_thread。"
+        )
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                _chat_completion_raw, messages, model, temperature, max_tokens
+            )
+            return future.result()
+
+    return _chat_completion_raw(messages, model, temperature, max_tokens)
+
+
+# ============================================================
+# 异步安全包装（供实时模块的 Timer 线程使用）
+# ============================================================
+
+
+async def async_chat_completion_safe(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """
+    异步安全包装：将同步 LLM 调用委托到线程池执行。
+
+    使用 asyncio.to_thread，不阻塞 asyncio 事件循环。
+    供 realtime_summary / realtime_chapters 等模块的定时器线程
+    通过 run_coroutine_threadsafe 调度使用。
+    """
+    return await asyncio.to_thread(
+        _chat_completion_raw,
+        messages, model, temperature, max_tokens,
+    )
+
+
+def _chat_completion_raw(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> str:
+    """同步 LLM 调用的实际执行体（无事件循环守卫，供线程池委托使用）"""
     base_url = _get_base_url()
     headers = _get_headers()
     body = _build_request_body(messages, model, temperature, max_tokens)
@@ -215,10 +272,10 @@ async def async_chat_completion(
 
 def chat_completion_stream(
     messages: list[dict],
-    model: str = None,
+    model: str | None = None,
     temperature: float = 0.7,
     max_tokens: int = 4096,
-):
+) -> Generator[str, None, None]:
     """
     流式调用 LLM。
 

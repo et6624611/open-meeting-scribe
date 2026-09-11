@@ -3,13 +3,305 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: 王永亮
 created_at: 2026-09-03
-updated_at: 2026-09-10
+updated_at: "2026-09-11"
 status: published
 ---
 
 # CHANGELOG — 迭代日志
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
+
+## [v2.x-llm-progressive-loading] - 2026-09-11
+
+### 新增
+- **CODEX.md 功能流图**：新增「功能流图」节，以表格列出 11 个核心功能的前端调用链、后端端点和状态同步关键点（`loadTasks()` 调用标记 ✅/⚠️），LLM 遇到状态同步类 bug 时查表即可定位，预计节省 50-70% 搜索 token
+- **CODEX.md 按任务类型加载细化**：从 8 项粗粒度目录级细化为 20 项精确到文件级，覆盖录音/首页/侧边栏/AI面板/纪要页/TopBar/设置/说话人/热词/项目/任务库/转写管线/实时ASR/Store/主题/登录等场景
+- **`[状态同步]` 代码注释标签**：在 7 个前端文件的 17 处 `loadTasks()` 调用处添加 `[状态同步]` 注释，LLM 通过 `grep "[状态同步]"` 即可找到所有跨组件状态刷新点，对比一致性
+
+### 涉及文件
+- `CODEX.md`：功能流图表 + 按任务类型加载表细化
+- `StartView.vue` / `AIPanel.vue` / `TopBar.vue` / `useAiChat.ts` / `GeneratingView.vue` / `RecordingView.vue` / `App.vue`：`[状态同步]` 注释
+
+## [v2.x-page-context-awareness] - 2026-09-11
+
+### 新增
+- **AI 助手页面上下文感知**：AI 对话现在能感知用户当前所在页面（首页/录音/纪要/说话人/热词/设置/项目/会议库），根据页面注入差异化上下文数据，使回复更贴合用户当前操作场景。
+  - 前端：`chat.ts` 新增 `current_page` 字段，`useAiChat.ts` 自动传入当前路由名
+  - 前端：`AIPanel.vue` 上下文指示器显示当前页面名称（非会议页显示页面名，会议页显示会议标题）
+  - 后端：`chat.py` 新增 `_build_page_context()` 函数，按页面注入差异化上下文（说话人列表、热词列表、设置摘要、项目列表、会议统计等）
+  - 后端：系统提示词增加页面感知指引
+  - i18n：新增 8 个页面名称翻译键（zh-CN + en）
+  - 测试：新增 9 个冒烟测试覆盖页面上下文构建与端点兼容性
+
+## [v2.x-chat-summary-fix] - 2026-09-11
+
+### 修复
+- **AI 对话回复错误：多人会议被误判为"内容过短"**：`generate_summary()` 用 `len(dialogue)` 判断对话是否过短，但 `dialogue` 是按说话人分组的列表（2 人 = 2 条目），不是按句子计数。导致 2 人会议无论内容多丰富都被误判为"仅 2 句，内容过短"，summary 字段存入错误信息，AI 对话时 LLM 看到错误信息后回复"无法生成有效结论"。
+  - `core/summarize.py`：改为展开 `sentences` 字段统计真实句子数（`total_sentences`），仅当实际句子数 < 3 时才判定过短
+  - `app/routers/chat.py`：增加兜底——若 summary 包含"内容过短"/"无法生成有效纪要"等错误信息，视为无纪要，回退到注入 dialogue 片段
+- **AI 对话上下文缺失：待办事项未注入 + 对话片段过少**：chat 端点上下文注入逻辑缺少 `todos` 字段，且 summary 错误时回退的对话片段仅取前 5 条（约 1500 字符），LLM 因上下文不足无法正确回答结论/待办相关问题。
+  - `app/routers/chat.py`：新增待办事项上下文注入（始终注入，含状态与责任人）；对话回退改为展开 `sentences` 字段注入全部对话（上限 3000 字符）
+- **AI 回复中已有待办被误提为“新待办”建议注入**：待办注入上下文后，AI 回复中自然会引用已有待办内容，`_extract_injectable_items` 未做去重，导致前端显示“检测到 1 条待办 → 全部注入”的冗余提示。
+  - `app/routers/chat.py`：新增 `_is_duplicate_todo()` 模糊去重（互相包含 + Jaccard 相似度 > 60%），调用时传入已有待办列表过滤
+
+## [v2.x-silence-detection] - 2026-09-11
+
+### 新增
+- **录音静默检测与用户存在性感知**：解决用户离开后录音持续录制并生成原文造成资源浪费的问题。三层检测机制：
+  - **第一层**：RMS 音量阈值判定静默（嘈杂环境下可能失效）
+  - **第二层**：ASR 无定稿句子超时（5 分钟无语音活动）
+  - **第三层**：基于软件状态的用户存在性评分模型（前端采集 visibilitychange/blur/focus/interaction 信号，衰减计分制，每 30 秒心跳上报）
+  - **三阶段提醒**：温和横幅（120 秒倒计时）→ 紧急模态框（60 秒倒计时）→ 自动关停并保存
+  - **心跳超时硬条件**：前端不可达（90 秒无心跳）直接自动关停
+  - 详见设计文档 `docs/design/SILENCE_DETECTION.md`
+  - 涉及文件：`app/store.py`（新增状态字典 + 配置函数）、`app/routers/record.py`（WebSocket 双向通信 + 静默监测协程 + 自动关停）、`frontend/src/composables/useWebSocket.ts`（心跳发送 + 消息处理）、`frontend/src/views/RecordingView.vue`（存在性信号采集 + 提醒 UI）、`data/settings.json`（配置项）
+
+## [v2.x-recording-summary-linkage] - 2026-09-11
+
+### 新增
+- **录音暂停/恢复联动实时总结**：暂停录音时自动暂停实时总结（若总结正在运行），恢复录音时自动恢复因录音暂停而被暂停的总结。通过 `_paused_by_recording` 标记区分「用户手动暂停」和「录音联动暂停」，避免用户手动暂停总结后恢复录音时被意外恢复。前端 `summaryPaused` 状态改为由 WebSocket `summary_status` 消息驱动，确保后端自动暂停/恢复时 UI 同步更新
+  - `core/realtime_summary.py`：`pause()` 增加 `source` 参数，新增 `auto_resume_for_recording()` 方法和 `is_paused_by_recording` 属性
+  - `app/routers/record.py`：`pause_record()` 和 `resume_record()` 增加总结联动逻辑，返回 `summary_paused`/`summary_resumed` 状态供前端同步
+  - `frontend/src/composables/useWebSocket.ts`：新增 `summaryPaused` ref，处理 `summary_status` WebSocket 消息
+  - `frontend/src/composables/useRecorder.ts`：`pauseRecording()` 和 `resumeRecording()` 返回 API 响应数据
+  - `frontend/src/views/RecordingView.vue`：`summaryPaused` 改为 computed，由 WebSocket 消息驱动；`onTogglePause()` 根据 API 返回值同步总结状态（解决 WebSocket 断开期间无法收到推送的问题）
+
+## [v2.x-library-responsive-table] - 2026-09-11
+
+### 修复
+- **热词管理页布局坍缩导致内容不可见**：`HotwordsView` 根 `<div>` 缺少显式高度，导致内部 `.hw-layout` 的 `height: 100%` 解析为 0，页面内容无法渲染。修复：根元素添加 `height:100%; display:flex; flex-direction:column`，`.hw-layout` 改用 `flex:1; min-height:0` 填充剩余空间
+- **会议库表格窄屏标题列过度压缩**：当浏览器窗口缩小时，`1fr` 标题列被固定宽度列挤压导致文本截断/换行。修复方案：
+  - **最小宽度保障**：标题列从 `1fr` 改为 `minmax(180px, 1fr)`，确保核心信息基本可读
+  - **渐进隐藏次要列**：增加 1000px 断点隐藏说话人列，768px 隐藏时长列，600px 隐藏时间列，每档同步收紧标题 min-width
+  - **ResizeObserver 宽度档位**：新增 `is-compact`/`is-narrow`/`is-xnarrow` 组件级类，与项目现有模式一致，实现状态文字隐藏、行高收紧等精细适配
+
+## [v2.x-smoke-test-expansion] - 2026-09-11
+
+### 新增
+- **冒烟测试覆盖扩展**：为 7 个未覆盖的 router 补充基础端点测试，测试类从 34 个增至 52 个（新增 27 个测试方法）。覆盖范围：
+  - **auth 路由**（4 个）：GitHub OAuth 重定向、/auth/me 未登录 401、logout 正常返回、callback 缺 code 400
+  - **chat 路由**（4 个）：空消息 400、缺 message 字段 422、GET /api/models 模型列表、POST /api/optimize 空文本 400
+  - **update 路由**（2 个）：版本号查询、更新检查（含网络不可达静默降级）
+  - **usage 路由**（3 个）：用量汇总、逐日明细、配额预检
+  - **admin 路由**（5 个）：独立 admin_app 测试客户端 fixture、未配置密码 500、密码错误 401、未认证 401（me/overview）、logout 正常返回
+  - **config 路由**（2 个）：公告列表、配置版本号
+  - **philosophy 路由**（1 个）：随机理念返回
+- **core/text_bridge.py 单元测试**（14 个测试方法）：覆盖 `_normalize_text`（空白去除）、`_text_similarity`（精确/模糊/空输入/长度比过滤）、`text_bridge_match`（空输入/无绑定/精确匹配/多人投票/无匹配/短文本过滤/to_dict 输出格式）
+- **已知问题标注**：`TestVoiceprintRegisterFromBinding` 和 `TestVoiceprintMatchMargin` 两个已有测试因 v4 CAM++ 升级（256→192 维）后测试 mock 未同步而失败，非本次引入
+
+### 修复
+- **AI 动作检测关键词误命中**：`summarize_conclusions` 的关键词「结论」仅 2 字，导致用户说「生成会议纪要包含结论」时被误命中，只回显已有摘要而不触发真正的纪要生成。修复：移除「结论」短词，新增「总结关键决策」替代，保留「关键结论」「总结结论」「总结关键」等 4+ 字关键词；新增 4 个回归测试验证误命中已消除且正常触发不受影响
+
+## [v2.x-eslint-compliance] - 2026-09-11
+
+### 修复
+- **前端 ESLint 合规性审计与修复**：运行 `npm run lint` 发现 11 个 `require-button-label` error + 63 个格式化 warning。修复所有 11 个图标按钮缺少文本定义的问题：
+  - `ResponsiveButtonGroup.vue`：下拉菜单项按钮添加 `:title="btn.label"`
+  - `AIPanel.vue`：会话标签按钮、上下文空状态 3 个操作按钮、发送按钮各添加 `:title`
+  - `TopBar.vue`：主题选项按钮添加 `:title`，同时将循环变量从 `t` 重命名为 `theme` 消除 `vue/no-template-shadow` 警告
+  - `GeneratingView.vue`：Tab 按钮、章节回顾卡片头部、待办链接按钮添加 `:title`
+  - `StartView.vue`：最近会议项按钮添加 `:title`
+- **i18n 补充**：zh-CN/en 的 `ai-panel.json` 新增 `send`、`session_default` 2 个 key
+- **格式化自动修复**：`eslint --fix` 自动修复 63 个 `vue/html-indent`、`vue/first-attribute-linebreak`、`vue/html-closing-bracket-newline` warning
+- **验证**：`npm run lint` 零 error 零 warning；`python cli.py build` 构建部署成功
+
+## [v2.x-i18n-template-audit] - 2026-09-11
+
+### 修复
+- **前端模板硬编码中文审计与修复**：扫描全部 Vue 文件 `<template>` 区域，发现并修复 3 处未通过 `t()` 包裹的硬编码中文：
+  - `DurationDial.vue`：aria-label 和时长文本（「0分钟」「X分钟」「X小时」）改绑 `t('common.duration.*')`
+  - `PlayingEq.vue`：aria-label「播放中/播放暂停」改绑 `t('common.playing')` / `t('common.paused')`
+  - `AIPanel.vue`：「AI 建议」标签改绑 `t('ai-panel.ai_suggestion')`
+- **i18n 补充**：zh-CN/en 的 `common.json` 新增 5 个 key（`duration.zero/hours/aria_label`、`playing`、`paused`）；`ai-panel.json` 新增 1 个 key（`ai_suggestion`）
+- **验证**：模板扫描硬编码中文 0 处；`npm run lint` 通过；`python cli.py build` 构建成功
+
+## [v2.x-input-validation] - 2026-09-11
+
+### 变更
+- **后端 Router 输入校验加固**：为 3 个 router 的 Pydantic 模型添加 Field 约束，防止超大输入攻击：
+  - `speakers.py`：`SpeakerCreate.name` 限制 1-100 字、`role` 100 字、`note` 500 字；`SpeakerUpdate` 同步限制
+  - `hotwords.py`：新建 `HotwordsSaveRequest`/`HotwordMappingsSaveRequest` Pydantic 模型替代原始 `dict`，限制 50000 字符
+  - `notes.py`：`NotesUpdate.notes` 限制 100000 字；`InjectRequest` 各字段限制（type 50/content 10000/source 10000）；`TodoCreateRequest`/`TodoUpdateRequest` 限制（text 500/assignee 100）
+- **新增边界测试**（4 个）：说话人名称超长 422、空名称 400/422、热词正常保存、超大热词 422
+
+## [v2.x-type-hints] - 2026-09-11
+
+### 变更
+- **core/ 类型标注补全**：审计全部 core/ 模块公开函数类型标注，补全关铯缺失：
+  - `core/auth.py`：`cleanup_expired_states()` 添加 `-> None` 返回类型
+  - `core/llm.py`：`chat_completion_stream()` 添加 `-> Generator[str, None, None]` 返回类型，`model` 参数从 `str = None` 修正为 `str | None = None`
+
+## [v2.x-voiceprint-test-fix] - 2026-09-11
+
+### 修复
+- **声纹冒烟测试维度对齐**：v4 CAM++ 升级将声纹嵌入从 256 维改为 192 维，但测试 mock 数据未同步更新，导致 `TestVoiceprintRegisterFromBinding`、`TestVoiceprintMatchMargin`、`TestVoiceprintRebuildAcrossMeetings` 3 个测试类失败（mock 向量被 `match_voiceprint()` 的维度过滤丢弃）。修复：
+  - `TestVoiceprintRegisterFromBinding`：mock 向量从 `np.zeros(256)` 改为 `np.zeros(192)`
+  - `TestVoiceprintRebuildAcrossMeetings`：同上
+  - `TestVoiceprintMatchMargin`：`_vec()` 从返回 2 维 `[cos, sin]` 改为 192 维（前 2 维旋转，其余为 0）
+- **测试状态**：103 通过 / 0 失败（此前 2 个遗留失败已消除）
+
+## [v2.x-error-audit] - 2026-09-11
+
+### 审计
+- **错误处理一致性审查**：审查全部 16 个 router 的 `HTTPException` 使用模式。发现 6 处轻微不一致（`str(e)` 直接传递而非 `_()` 包裹），均位于内部技术错误场景（`record.py` 的 RuntimeError、`admin.py` 的 ValueError），对用户不可见，无需立即修复。整体错误处理体系（`core/errors.py` 分类 + `_()` i18n + Pydantic 422）运作正常，无架构性问题
+
+## [v2.x-speaker-zone-fix] - 2026-09-11
+
+### 修复
+- **已完成会议说话人视图不一致显示**：部分已完成会议的顶部说话人占比横条不显示。根因：`core/pipeline.py` 的 `run_pipeline_stage2` 在 `speaker_mapping` 为空时（如服务重启恢复 `awaiting_mapping` 任务、自动匹配无结果等场景），将 `speaker_mapping` 字段设为 `{}`，导致前端 `speakerStats` 计算属性返回空数组。修复：`run_pipeline_stage2` 的 `else` 分支改为从 dialogue 数据构建默认姓名映射（`说话人1`、`说话人2`...），确保所有已完成任务都有非空的 `speaker_mapping`；同时运行数据迁移脚本修复了 17 个历史任务
+
+## [v2.x-ai-proactive-messaging] - 2026-09-11
+
+**新增**：AI 主动发起会话功能原型与实现。
+
+- **功能开关**：AI 面板头部右侧新增闪电图标 Toggle，控制「AI 主动提示」启用/停用，状态持久化到 localStorage，关闭时清除所有主动消息
+- **折叠态诱导**：AI 面板折叠时，折叠条图标变为 proactive 紫色，右上角显示呼吸灯动画 + 未读计数角标，吸引用户点击展开
+- **展开态横幅**：输入框上方滑入悬浮通知横幅（`bannerSlideUp` 0.35s 动画），展示最新 AI 洞察摘要，点击横幅滚动到对应消息，支持关闭
+- **主动消息气泡**：专属视觉样式——紫色左边框 3px + 淡紫背景 + 「AI 主动提示」徽章（闪电图标）+ 操作按钮区（圆角药丸），与常规气泡形成三级视觉区分
+- **预设场景**：场景 A = 会议结束自动提取待办（含查看详情/同步/稍后处理按钮）；场景 B = 长时间无操作建议生成总结
+- **Design Tokens**：全部 7 个主题文件新增 `--proactive` / `--proactive-soft` / `--proactive-mid` 紫色系变量（夜色主题调整亮度）
+- **i18n 全量支持**：所有 UI 文案（Toggle 标签、徽章、横幅、操作按钮、Toast、场景标题/正文）均通过 `t()` / `tt()` 绑定 i18n 键值，zh-CN 与 en 双语包同步新增 `proactive.*` 命名空间（含 22 个 key）；含 HTML 的翻译值拆为纯文本片段在 composable 中拼接，规避 intlify HTML 拒绝构建失败
+- **新增文件**：`frontend/src/composables/useAiProactive.ts`（状态管理）、`docs/prototypes/ai-proactive-messaging.html`（交互原型）
+- **侧边栏指示器**：底栏新增麦克风图标指示器（`.sb-proactive-indicator`），位于齿轮按钮左侧，显示未读计数角标 + 呼吸灯动画；后迁移入 `.sbp-bar` 单行布局内，消除独立元素的纵向空间占用；修复 `onProactiveClick()` 单向开关问题，改为双向 toggle（展开↔折叠），仅在展开时触发 `ai-scroll-to-unread` 事件；折叠态（52px）下分割线从 `.sb-bottom-panel` 下移至 `.sbp-bar`，指示器通过绝对定位浮于分割线上方居中显示，齿轮留在分割线下方
+
+## [v2.x-sidebar-bottom-panel] - 2026-09-10
+
+**重构**：侧边栏底部交互重新设计为向上展开式面板。
+
+- **背景**：原用户下拉菜单中的设置入口依赖登录状态，违反「无需登录即可配置 API 密钥」的开源策略基准原则；且折叠态设置入口缺失
+- **新设计**：移除 `.sb-user-wrap` + `.sb-mgmt-dropdown` 旧结构，替换为 `.sb-bottom-panel` 向上展开面板
+- **触发按钮**：底部常驻齿轮图标按钮（Lucide `Settings`，`IconButton` 组件，`label="菜单"`），展开/折叠态均可见
+- **面板内容**：账户区（登录/用户信息+登出）、管理区（项目/说话人/热词）、系统区（设置）——设置入口不再依赖登录状态
+- **动画**：`scaleY` + `opacity` 过渡，`transform-origin: bottom center` 实现向上弹出效果
+- **点击外部收起**：`document.click` 监听 `.sb-bottom-panel` 外部点击自动关闭
+- **清理**：移除 `.sb-collapsed-icons` 中单独的设置齿轮图标；移除旧 `.sb-user-wrap`/`.sb-mgmt-dropdown` CSS 规则；新增 i18n 键 `menu_login`/`menu`
+- **底栏合并**：版本号行（`.sb-version-bar`）与菜单触发按钮合并为单行 `.sbp-bar`（左版本号 + 右菜单图标），消除两行堆叠的冗余感；折叠态隐藏版本号，仅居中显示菜单图标
+- **折叠态交互优化**：齿轮按钮点击时若侧边栏处于折叠态，先自动展开侧边栏（`nextTick` 确保 DOM 更新完成），再打开菜单面板，避免 52px 宽度下面板内容被压缩
+
+## [v2.x-processing-status-fix] - 2026-09-10
+
+### 修复
+- **ProcessingView 管线步骤全显示"等待中"**：后端使用 `processing` 状态表示转写/纪要生成中，但 Vue 前端 `TaskStatus` 类型不包含该值，导致：①`ProcessingView` 的 `stepClass()`/`isStageDone()` 不认识 `processing`，所有管线步骤显示为"等待中"；②`statusText` 回退显示原始 message；③侧边栏/任务卡片状态标签缺失。修复：在 `TaskStatus` 类型和 `STATUS_CONFIG` 中添加 `processing`；`ProcessingView` 使用 `progress` 字段（≥70 转写完成，<70 转写中）正确渲染管线步骤；同步更新 `TaskList`/`TaskCard`/`TopBar`/`LibraryView`/`taskStore` 中的状态映射
+
+## [v2.x-sidebar-remove-bottom-settings] - 2026-09-10
+
+**清理**：移除侧边栏底部冗余的设置按钮（`.sb-bottom-section`）。
+
+- **原因**：设置入口已存在于用户下拉菜单中（展开态），`.sb-bottom-section` 在折叠态独占一行仅放一个设置图标，冗余且浪费空间
+- **改动**：移除 `Sidebar.vue` 中 `.sb-bottom-section` 模板块；清理 `sidebar.css` 和 `legacy-views.css` 中对应的 CSS 规则；将设置齿轮图标迁移至 `.sb-collapsed-icons`（折叠态图标条），确保折叠态下设置入口直达
+
+## [v2.x-settings-api-form-restructure] - 2026-09-10
+
+**修复**：设置页 API 配置区表单重构，修复前后端数据结构不匹配导致保存失效的问题。
+
+- **根因**：前端 `Settings` 接口为扁平结构（`api_key`/`asr_model`/`llm_model`），后端期望嵌套结构（`llm.api_key`/`asr.model`），导致 3 个表单字段全部无法正确保存
+- **前端接口重构**：`Settings` 改为嵌套结构 `{ asr: { model }, llm: { provider, base_url, api_key, model } }`
+- **表单重构**：API 配置区拆分为「纪要生成服务」和「语音转写服务」两个子区块；LLM 新增 Provider 下拉（DashScope/OpenAI/DeepSeek/Moonshot/自定义）+ Base URL 字段；ASR 保留只读 Provider 展示 + Model 输入
+- **Provider 联动**：选择 Provider 后自动填充对应 Base URL，海外用户可选「自定义」填入国际版地址
+- **保存逻辑修复**：`onSave()` 改为发送嵌套结构 `{ asr: {...}, llm: {...} }`，与后端 `save_settings()` 期望格式对齐
+- **i18n**：中英文语言包新增 8 个 key（`llm_service`/`llm_provider`/`llm_base_url`/`asr_service`/`asr_provider`/`asr_proxy_managed` 等）
+
+## [v2.x-sidebar-narrow-btn-dash] - 2026-09-10
+
+**优化**：侧边栏窄幅态头部按钮降级符号从省略号“…”改为短横线“一”。
+
+- **改动**：`.sidebar.is-narrow .sb-text-btn::after` 的 `content` 从 `'\2026'`（…）改为 `'\4E00'`（一），图标始终保留，文字隐藏后以短横线表示截断
+- **同步修改**：`legacy-views.css` 中同名规则同步更新，避免优先级冲突
+
+## [v2.x-voiceprint-toggle] - 2026-09-10
+
+**决策**：声纹自动识别（P1 CAM++ 匹配）默认关闭，改为实验性功能开关控制。
+
+- **背景**：CAM++ 192 维声纹模型在真实会议场景下误匹配/漏匹配严重，自动匹配结果反而增加用户纠正成本
+- **改动**：新增 `feature_flags.voiceprint_auto_match`（默认 `false`），控制 `app/store.py` 中 P1 声纹匹配阶段的执行
+- **后端**：`get_feature_flags()` 新增字段；`run_pipeline_task()` 中 P1 声纹匹配前检查开关
+- **前端**：设置页「功能开关」区新增「声纹自动识别」开关，标注「实验性」标签；`FeatureFlags` 接口同步更新
+- **i18n**：中英文语言包新增 `voiceprint_auto_match` / `voiceprint_auto_match_desc` / `experimental` 文案
+- **影响范围**：P0 文本桥接匹配、手动绑定流程、DashScope 说话人分离（L2）均不受影响；仅 P1 声纹身份识别（L3）被关闭
+
+## [v2.x-sidebar-single-line-truncation] - 2026-09-10
+
+**优化**：侧边栏会议条目统一单行省略号截断策略。
+
+- **标题** `.sb-tl-title`：从 `-webkit-line-clamp: 2` 多行截断改为 `white-space: nowrap; text-overflow: ellipsis` 单行截断，所有宽度下统一生效
+- **时间行** `.sb-tl-time`：添加 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`，防止窄宽下换行
+- **元信息行** `.sb-tl-meta`：flex 容器添加 `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`；子元素统一 `flex-shrink: 0; min-width: 0`；`.sb-tl-status` 添加独立截断规则
+
+## [v2.x-sidebar-narrow-responsive] - 2026-09-10
+
+**优化**：侧边栏拖拽缩窄（200px → 140px）时的会议列表窄幅自适应。
+
+- **问题**：侧边栏拖拽至最小宽度 140px 时，会议标题区仅 60px 宽，13px 标题每行仅 4 个汉字，日期组计数与 chevron 争夺空间，元信息行换行混乱
+- **修复**：新增 7 条 `.sidebar.is-narrow` 规则（由 ResizeObserver 在宽度 < 200px 时自动激活）：隐藏日期组计数、缩小标题/时间/元信息字号、减少右内边距、调整“更多”按钮位置
+- **时间轴稳定性**：所有时间轴元素（竖线、节点、连接线）均为绝对定位，拖拽过程中位置固定无偏移
+
+## [v2.x-sidebar-padding-fix] - 2026-09-10
+
+**修复**：左侧边栏会议列表与浏览器窗口左边缘之间存在异常空白间距。
+
+- **根因**：`.sb-history`（展开态 `padding-left: 44px`，为折叠态 logo 区留空）与 `.sb-timeline`（`padding-left: 56px`，时间轴布局）的左侧内边距**叠加**，导致会议列表内容距侧边栏左边缘合计 100px，在 200px 宽的侧边栏中内容区仅剩 ~92px
+- **修复**：将 `.sb-timeline` 的 `padding-left` 从 `56px` 减至 `20px`（足以容纳时间轴节点溢出），同时将 `::before` 竖线 `left` 从 `38px` 修正为 `4px`——竖线为绝对定位不随 padding 自动偏移，需手动对齐节点中心（日期节点 `left: -22px` + 宽 12px → 中心 4px；会议节点 `left: -21px` + 宽 7px → 中心 2.5px）。修复后总左侧偏移 = 44 + 20 = 64px，内容区宽度 ~128px
+
+## [v2.x-sidebar-click-outside-collapse] - 2026-09-10
+
+**新增**：左侧边栏点击外部区域自动折叠。
+
+- **交互逻辑**：侧边栏展开状态下，点击侧边栏 DOM 外部任意区域（主内容区、右侧 AI 面板、顶部导航栏等），侧边栏自动执行折叠收起
+- **边界条件**：① 已折叠时忽略外部点击；② 分隔条拖拽中（`is-divider-dragging`）忽略；③ 点击侧边栏内部元素（列表项、筛选按钮、搜索框、折叠/展开按钮等）不触发；④ 拖拽分隔条拉手不触发
+- **实现方式**：在 `Sidebar.vue` 的 `onMounted` 中注册 `document` 级 `click` 监听，通过 `sidebarRef.contains(target)` 判断点击是否在侧边栏外部，通过 `layout.sidebarCollapsed = true` 执行折叠
+
+## [v2.x-llm-async-guard] - 2026-09-10
+
+**修复**：同步 LLM 调用阻塞 asyncio 事件循环导致服务死机。
+
+- **根因**：录音期间 `realtime_summary` / `realtime_chapters` 的定时器线程通过 `requests.post()` 同步调用 LLM，虽然不在事件循环线程，但 `requests` 持 GIL 做 SSL/JSON 运算与事件循环争抢；若任何代码路径从事件循环线程直接调用 `chat_completion()`，将完全阻塞事件循环导致服务无响应
+- **修复①（事件循环守卫）**：`core/llm.py` 的 `chat_completion()` 新增安全守卫——检测若从事件循环线程调用，自动委托到线程池执行，防止阻塞。同时抽取 `_chat_completion_raw()` 作为无守卫的实际执行体，避免递归守卫
+- **修复②（异步安全包装）**：新增 `async_chat_completion_safe()` 异步函数，内部用 `asyncio.to_thread` 将同步 LLM 调用委托到事件循环线程池；`realtime_summary` / `realtime_chapters` 的定时器回调改为通过 `asyncio.run_coroutine_threadsafe` 调度此包装，LLM 调用在事件循环线程池中执行（`requests` 持 GIL 但不阻塞事件循环本身）
+- **修复③（兜底路径）**：定时器回调保留无事件循环时的兑底同步调用（不应发生，但确保健壮性）
+- **影响范围**：`core/llm.py`、`core/realtime_summary.py`、`core/realtime_chapters.py`；管线后台线程（`summarize.py`/`chapters.py`）不受影响（仍在后台线程同步执行）
+
+## [v2.x-i18n-render-fix] - 2026-09-10
+
+**修复**：前端 i18n 全站渲染原始 key 的灾难性 Bug（语言包命名空间层级错误）——此前 `[v2.x-i18n-foundation]` 声称「前端 UI 文案已全量国际化」，但实际从未在浏览器验证渲染，界面上直接显示 `settings.title`、`common.skip_to_content` 这类原始 key 而非译文。
+
+- **根因**：`frontend/src/i18n/index.ts` 合并各语言模块时用扁平展开 `{...zhCommon, ...zhSettings}`，但 15 个 JSON 文件内部不含模块名前缀（common.json 顶层是 `action`/`status`/`skip_to_content`），而组件全部调用带命名空间的 key（`t('common.skip_to_content')`、`t('settings.title')`）→ 所有 key 解析失败。合并后还产生跨模块 key 冲突（如多个模块都有 `title`）
+- **修复**：合并时按模块名包裹命名空间——静态 `defaultMessages` 与动态 `loadLocaleMessages` 均改为 `{ common: zhCommon, settings: zhSettings, 'ai-panel': zhAiPanel, ... }`（`imports[i]` 对应 `LOCALE_MODULES[i]`）；`MessageSchema` 类型同步改为包裹结构
+- **附带修复①（启动加载）**：`main.ts` 挂载前从未加载初始 locale 语言包，当 `detectLocale()` 返回 en（浏览器英文或 localStorage 持久化）时 en 语言包未加载 → 首屏回退到 zh-CN，造成「语言选择器高亮 English、界面却是中文」的不一致（刷新必现）。改为 `bootstrap()` 中先 `await loadLocaleMessages(getLocale())` 再挂载（含 try/catch 静默回退）
+- **附带修复②（主题名）**：外观主题按钮（默认/夜色/暖阳…）用硬编码 `theme.label`，英文态不翻译；改为 `t('common.theme.' + theme.id)`（common.json 早有 `theme.*` 译文，id 与键名一一对应）
+- **附带修复③（残留硬编码 tooltip）**：ResponsiveButtonGroup「更多」按钮、RecordingView 跳转/总结更多按钮的 `title`/`aria-label` 硬编码中文，改绑 `t('common.action.more')` / `t('recording.jump_latest')`
+- **验证**：脚本全量比对——zh-CN/en 各 597 key、parity 完全一致，组件用到的 567 个静态 key 全部解析（缺失 0）；浏览器实测 en 刷新全英文、zh-CN 刷新全中文、语言 chip 高亮与界面语言一致、无原始 key 残留
+
+## [v2.x-i18n-foundation] - 2026-09-10
+
+**新增**：国际化（i18n）基础设施搭建，前后端均具备多语言适配能力。
+
+- 前端：引入 `vue-i18n@^11.4.0` + `@intlify/unplugin-vue-i18n`；创建 `frontend/src/i18n/` 模块（实例创建、异步加载、语言切换）；按模块拆分 15 个语言文件（common/recording/start/processing/library/speakers/hotwords/settings/projects/sidebar/topbar/generating/task/login/ai-panel）；完成全部 9 个视图（Recording/Start/Processing/Library/Projects/Settings/Speakers/Hotwords/Generating）+ 全部布局与业务组件（Sidebar/TopBar/App/SelectionToolbar/TaskCard/TaskList/LoginModal/AIPanel）的中文文案提取与 `t()` 替换，前端 UI 文案已全量国际化（仅剩演示 mock 数据、代码注释与内部逻辑判别符未翻译）
+- 已知修复：`@intlify/unplugin-vue-i18n` 消息编译器拒绝翻译串中的 HTML，故 LoginModal 页脚 `<br>` 拆为 `footer_line1`/`footer_line2` 两键、模板用 `<br>` 元素拼接（替代 v-html）；AIPanel `formatCount` 的「万」单位改为 locale 感知（仅中文用万，其他语言走 k）；`todos.filter` 箭头参数重命名为 `x` 避免遮蔽 i18n `t`
+- 非组件 TS 文件国际化：`i18n/index.ts` 新增 `tt()`（走全局 composer，供 composables/stores 使用）；`useAiChat.ts`（7 处）与 `useHotwordGroups.ts`（7 处）的 toast/prompt/confirm 用户可见串改为 `tt()`；AI 自动分组产生的内部组名判别符（未分组/其他等）作为数据与去重键保留不译
+- 后端：引入 `Babel>=2.14.0`；创建 `core/i18n/` 模块（`I18nMiddleware` 中间件 + `get_translator()` + `_()` 翻译函数）；`_()` 改为 ContextVar 驱动（参照 `core/users.py` 的 `set_request_user_id` 模式），中间件按请求写入 locale、深层调用栈（router `raise HTTPException`、`core/errors.py`）无需传 request 即可获得请求级语言；`app/server.py` 注册 i18n 中间件；创建 `babel.cfg` 翻译提取配置
+- 后端 router 国际化：将 12 个 router（tasks/record/speakers/notes/projects/auth/user/voiceprint/settings/usage/admin/chat）的 105 条面向用户串改为英文 msgid + `_()`，覆盖 `HTTPException` detail、响应 `message`/`error` 字段（f-string 改 `_("...{x}").format(...)`）；WebSocket 处理器用 `set_current_locale(locale)` 使 WS 流程内 `_()` 生效
+- 架构决策：**持久化的 `tasks[task_id]["message"]` 状态不做后端翻译**（避免把某请求者语言烤进磁盘数据，前端已有 `common.status.*` 通过 `getStatusLabel()` 渲染）；后台线程内推送的 WS 消息不翻译（ContextVar 不跨 `threading.Thread` 传播）；chat.py 的 AI 动作结果 message 与 prompt 字符串保留中文（属模型输入/工具输出而非纯 UI）；日志串保留中文
+- 翻译工作流：新增 `scripts/gen_i18n_po.py`——`pybabel extract` 自动扫描 `_()` 生成 `messages.pot`（105 msgid），脚本按「英文→中文」映射表生成 `zh_CN.po`、en 用 identity 生成 `en.po`，再 `pybabel compile` 编译 `.mo`
+- 翻译文件：`core/i18n/locales/zh_CN/`、`core/i18n/locales/en/`（.po + .mo，各 105 条）
+- API 联动：`frontend/src/api/client.ts` 请求拦截器自动携带 `Accept-Language` 头；WebSocket 连接通过 `?locale=` 参数传递语言偏好；后端 WS 端点接受 locale 并使用翻译函数
+- 语言切换 UI：设置页新增「语言」分区，支持简体中文/English 一键切换，持久化到 localStorage
+- 文档：新增 [ADR-0013 国际化架构](docs/adr/0013-国际化i18n架构.md)（选型/msgid 策略/ContextVar 传递/翻译边界）；`docs/ARCHITECTURE.md` 补国际化模块；ADR 索引补 0012/0013
+
+**修复**：随记时间戳显示为 `00:00` 的 Bug。录音阶段添加的笔记在纪要页全部显示为 `00:00`，根因是多层缺陷叠加：**核心**——`useWebSocket.ts` 的 `sentence` 处理器将后端 WS 正确发送的 `begin_time`/`end_time` 丢失（`rtStore` 有存但 `lines` 数组未存），导致所有实时到达的转写行无时间戳，`formatNoteTime` 始终回退到备用值；叠加——`onSendNote` 无 WS 行时回退到 `Date.now()`（Unix 纪元毫秒数而非录音经过时间）；`restoreNotesFromStorage` 从 localStorage 恢复笔记时硬编码 `lineIndex = -1`；`formatNoteTime` 访问 `wsLines[-1]` 返回 undefined 后直接返回 `'00:00'`。修复：`useWebSocket.ts` `sentence` 处理器补上 `begin_time`/`end_time`；`onSendNote` 改用 `recorder.elapsed.value * 1000`（录音经过毫秒数）；`formatNoteTime` 增加 `fallbackTimeMs` 参数 + `??` 替代 `||` 避免 `begin_time=0` 误判；`restoreNotesFromStorage` 增加旧数据清洗（`Date.now()` 值重置为 0）；`onStop` 调用时传递 `n.time` 作为备用值。
+
+## [v2.x-duration-dial] - 2026-09-10
+
+**修复**：录音页原文栏目内章节分隔卡片由纯文本标签升级为可展开卡片（与纪要生成页一致），新章节出现时自动展开，点击可手动展开/收起。
+
+- `frontend/src/views/RecordingView.vue` — 新增 `recExpandedChapters` 响应式集合 + `watch(wsChapters.length)` 自动展开；`getChapterStart` 重命名为 `getChapterStartInfo` 返回章节索引；`toggleChapterExpand` 由空函数实现为实际切换逻辑；模板章节分隔由 `<span class="chapter-divider-label">` 升级为完整 `.chapter-divider` 卡片（含序号圆徽、标题、时间、箭头）
+- `frontend/src/styles/legacy-views.css` — 移除废弃的 `.chapter-divider-label` 规则
+
+**变更**：侧边栏会议列表的时长由纯文字改为「表盘 + 数字」双重编码（方案 A 落地）。实心圆 = 1 小时（多小时并排，上限 3 个），空心圆 + 扇形 = 不足 1 小时的余数分钟（按实际分钟连续绘制，从 12 点顺时针），所有圆盘右侧附等宽数字标注（`32分钟` / `2小时` / `1h20m`）。表盘服务扫视、数字服务精读，替代原「14:30 · 已完成 · 45分钟」中的纯文字时长段。
+
+- `frontend/src/components/common/DurationDial.vue`（新增）— 表盘组件：props `seconds`，内部换算分钟；配色走 `--fg` / `--border` / `--subtle` token，适配全部主题；带 `aria-label`
+- `frontend/src/components/task/TaskCard.vue` — `.sb-tl-meta` 行的时长 `<span>` 替换为 `DurationDial`（`sb-tl-dur` 类名保留在组件根上，`:has()` 分隔符联动不变）；悬停知识卡片仍用文字格式
+- `frontend/src/styles/sidebar.css` — 移除被组件 scoped 样式取代的 `.sb-tl-dur` font-family 规则
+- `docs/design/DESIGN_DECISIONS.md` §16 — 新增「会议时长 · 表盘化显示」编码规则、应用范围与禁止事项
 
 ## [v2.x-minutes-play-btn-spec] - 2026-09-10
 

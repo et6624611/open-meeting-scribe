@@ -1,7 +1,7 @@
 # ASR 代理服务
 
 ```
-客户端 → ASR 代理 (47.116.10.194:8200) → DashScope API
+客户端 → ASR 代理 (<your-server-ip>:8200) → DashScope API
 ```
 
 持有 DashScope API Key，为客户端提供语音转写中转服务。客户端不再存储任何 DashScope Key。
@@ -81,7 +81,7 @@
 ## 部署
 
 ```bash
-# 在服务器 47.116.10.194 上
+# 在服务器上
 cd /opt/asr-proxy
 source venv/bin/activate
 uvicorn server:app --host 0.0.0.0 --port 8200
@@ -89,7 +89,7 @@ uvicorn server:app --host 0.0.0.0 --port 8200
 
 或使用部署脚本：
 ```bash
-ssh root@47.116.10.194 'bash -s' < asr-proxy/deploy.sh
+ssh root@<your-server-ip> 'bash -s' < asr-proxy/deploy.sh
 ```
 
 ## 环境变量

@@ -68,6 +68,7 @@ audit_logger.propagate = False  # 不重复写入 server.log
 from app.store import STATIC_DIR, load_tasks_from_disk, recover_interrupted_tasks, event_loop
 from app.routers import tasks, record, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update
 from core.auth import verify_jwt
+from core.i18n import I18nMiddleware
 from core.llm import close_async_client
 from core.users import set_request_user_id
 
@@ -82,6 +83,12 @@ app = FastAPI(
     description="会议纪要生成工具",
     version="0.1.0",
 )
+
+# ============================================================
+# 国际化中间件（解析语言偏好，注入 request.state.locale）
+# ============================================================
+
+app.add_middleware(I18nMiddleware)
 
 # ============================================================
 # 用户身份中间件（从 JWT cookie 解析，写入 ContextVar）

@@ -55,8 +55,10 @@ export function useKeyboardShortcuts() {
       return
     }
 
-    // ─── Cmd/Ctrl 组合键 ───
-    if (isMeta) {
+    // ─── Cmd/Ctrl 组合键（排除含 Shift/Alt 的浏览器原生快捷键） ───
+    // Cmd+Shift+R = 强制刷新, Cmd+Shift+N = 无痕窗口, Cmd+Shift+B = 书签栏,
+    // Cmd+Shift+J = 下载面板, Cmd+Shift+K = 开发者控制台, Cmd+Shift+U = 页面源码 等
+    if (isMeta && !e.shiftKey && !e.altKey) {
       switch (e.key.toLowerCase()) {
         // Cmd+B → 切换侧边栏
         case 'b':

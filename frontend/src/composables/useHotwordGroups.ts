@@ -5,6 +5,7 @@
 import { ref, computed } from 'vue'
 import { fetchHotwords, saveHotwords, fetchHotwordMappings, saveHotwordMappings } from '@/api/hotwords'
 import { showToast } from './useToast'
+import { tt } from '@/i18n'
 
 const HW_STORAGE_KEY = 'oms-hotword-groups'
 const HW_ASSIGN_KEY = 'oms-hotword-assign'
@@ -155,14 +156,14 @@ async function saveAll(silent = false) {
   try {
     await Promise.all([saveHotwords(words), saveHotwordMappings(mappings)])
     saveAssignments()
-    if (!silent) showToast('热词已保存，下次识别生效', 'success')
+    if (!silent) showToast(tt('hotwords.saved'), 'success')
   } catch (e: any) {
-    if (!silent) showToast('保存失败: ' + e.message, 'error')
+    if (!silent) showToast(tt('hotwords.save_failed', { err: e.message }), 'error')
   }
 }
 
 function addGroup() {
-  const name = prompt('输入新区块名称：')
+  const name = prompt(tt('hotwords.new_group_prompt'))
   if (!name || !name.trim()) return
   const id = 'g_' + Date.now()
   groups.value.push({ id, name: name.trim(), order: groups.value.length })
@@ -172,7 +173,7 @@ function addGroup() {
 function renameGroup(id: string) {
   const g = groups.value.find(x => x.id === id)
   if (!g) return
-  const name = prompt('重命名区块：', g.name)
+  const name = prompt(tt('hotwords.rename_group_prompt'), g.name)
   if (!name || !name.trim()) return
   g.name = name.trim()
   saveGroupsToStorage()
@@ -181,7 +182,7 @@ function renameGroup(id: string) {
 function deleteGroup(id: string) {
   const g = groups.value.find(x => x.id === id)
   if (!g) return
-  if (!confirm(`删除区块「${g.name}」？其中的内容将移到「未分组」。`)) return
+  if (!confirm(tt('hotwords.delete_group_confirm', { name: g.name }))) return
   items.value.forEach(it => { if (it.groupId === id) it.groupId = 'ungrouped' })
   groups.value = groups.value.filter(x => x.id !== id)
   if (activeGroup.value === id) activeGroup.value = 'all'
@@ -221,7 +222,7 @@ function deleteItem(id: number) {
 
 function aiAutoGroup() {
   const target = items.value.slice()
-  if (!target.length) { showToast('没有可分组的内容', 'warn'); return }
+  if (!target.length) { showToast(tt('hotwords.no_groupable'), 'warn'); return }
 
   const surnames = '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳酆鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹'
 
@@ -267,7 +268,7 @@ function aiAutoGroup() {
 
   const groupedCount = target.length - (newGroups['未分组']?.length || 0) - (newGroups['其他']?.length || 0)
   const groupCount = Object.keys(newGroups).filter(n => n !== '未分组' && n !== '其他').length
-  showToast(`已智能分组 ${groupedCount} 项到 ${groupCount} 个区块`, 'success')
+  showToast(tt('hotwords.auto_grouped', { items: groupedCount, groups: groupCount }), 'success')
 }
 
 export function useHotwordGroups() {

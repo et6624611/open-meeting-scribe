@@ -31,12 +31,15 @@ numpy>=2.0.0
 scipy>=1.14.0
 
 # 声纹姓名化（云端 CAM++ 服务 + MFCC 降级）
-# 批处理声纹提取走云端 API（47.116.10.194:8100），不再依赖本地 torch
+# 批处理声纹提取走云端 API，不再依赖本地 torch
 # 实时说话人分离使用纯本地 MFCC 聚类（numpy + scipy）
 
 # 项目关联：文档文本提取
 python-docx>=1.1.0
 PyPDF2>=3.0.0
+
+# 国际化（i18n）
+Babel>=2.14.0
 
 # 可选：OpenAI SDK（纪要生成可用 OpenAI 兼容端点）
 # openai>=1.12.0

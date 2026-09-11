@@ -3,10 +3,11 @@ core/errors.py — 错误分类与判断
 
 为管线失败提供统一的错误分类机制：
   - 判断是否为瞬时错误（可自动重试）
-  - 分类错误类型，生成用户可读的建议
+  - 分类错误类型，生成用户可读的建议（支持 i18n 多语言）
 """
 
 import logging
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def classify_error(error: Exception) -> dict:
         return {
             "category": "transient",
             "message": str(error),
-            "suggestion": "服务暂时不可用，已自动重试。若仍失败请稍后再试。",
+            "suggestion": _("Service temporarily unavailable, please try again later."),
         }
 
     # ── 音频文件相关错误 ──
@@ -107,7 +108,7 @@ def classify_error(error: Exception) -> dict:
         return {
             "category": "audio",
             "message": str(error),
-            "suggestion": "音频文件可能有问题，请检查文件格式和完整性后重试。",
+            "suggestion": _("Audio file issue detected. Please check the file format and integrity."),
         }
 
     # ── API 配置错误 ──
@@ -129,15 +130,21 @@ def classify_error(error: Exception) -> dict:
         return {
             "category": "api_config",
             "message": str(error),
-            "suggestion": "API 配置异常，请检查 API Key 和账户状态。",
+            "suggestion": _("API configuration error. Please check API Key and account status."),
         }
 
     # ── 转写无有效语音（DashScope 返回 SUCCESS_WITH_NO_VALID_FRAGMENT）──
-    if "no_valid_fragment" in error_str or "未检测到有效语音" in error_str:
+    # 注意：此检查必须在通用「转写任务失败」之前，否则会被后者的宽泛关键词先匹配
+    if any(kw in error_str for kw in [
+        "no_valid_fragment",
+        "no valid fragment",
+        "未检测到有效语音",
+        "no valid speech",
+    ]):
         return {
             "category": "audio",
             "message": str(error),
-            "suggestion": "音频中未检测到有效语音片段，请确认录音是否正常、是否包含人声。",
+            "suggestion": _("No valid speech detected in the audio. Please confirm the recording contains human voice."),
         }
 
     # ── 转写任务失败（DashScope 返回 FAILED）──
@@ -145,12 +152,12 @@ def classify_error(error: Exception) -> dict:
         return {
             "category": "transient",
             "message": str(error),
-            "suggestion": "转写服务返回错误，可尝试重新识别。",
+            "suggestion": _("Transcription service error. Please try re-transcribing."),
         }
 
     # ── 未知错误 ──
     return {
         "category": "unknown",
         "message": str(error),
-        "suggestion": "处理失败，请重试。若问题持续存在请联系支持。",
+        "suggestion": _("Processing failed. Please try again. Contact support if the issue persists."),
     }

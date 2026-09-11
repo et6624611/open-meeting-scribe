@@ -76,7 +76,7 @@ status: published
 
 ## v5 · 声纹云端拆分 ✅
 **目标**：将 CAM++ 声纹推理从主项目剥离，部署为独立云端服务，主项目彻底去掉 torch 依赖，为 Windows 打包瘦身。
-- **云端服务**：CAM++ 192 维嵌入提取部署至 47.116.10.194:8100（systemd 自启，RESTful API）
+- **云端服务**：CAM++ 192 维嵌入提取部署至云端（systemd 自启，RESTful API）
 - **Provider 抽象层**：`core/embedding_provider.py` 统一接口，云端优先 → MFCC 降级
 - **主项目清理**：删除 `LocalCamPlusProvider`、`extract_embedding_local()` 等本地 CAM++ 代码
 - **依赖瘦身**：`requirements.txt` 移除 `torch` + `torchaudio`（~2GB → 0）
@@ -98,12 +98,12 @@ status: published
 - **系统托盘**：最小化到托盘，不占任务栏
 - **自动更新**：检查云端版本，提示升级
 - **安装向导**：NSIS / Inno Setup 安装包，自动创建桌面快捷方式
-- **短信代理改造**：✅ 已完成。`core/sms.py` 改为 HTTP 调用云端代理（47.116.10.194:8080），阿里云 AccessKey 从 .env 移除，密钥不落地
+- **短信代理改造**：✅ 已完成。`core/sms.py` 改为 HTTP 调用云端代理，阿里云 AccessKey 从 .env 移除，密钥不落地
 
 ### 约束
 - 目标包体 ≤ 300MB（去掉 torch 后依赖约 200MB + ffmpeg 约 80MB）
 - 支持 Windows 10/11 x64
-- 声纹识别走云端（47.116.10.194:8100），本地不跑推理
+- 声纹识别走云端，本地不跑推理
 
 ## v7 · 产品介绍页
 **目标**：搭建一个对外展示产品的 Web 页面，让潜在用户快速了解会议助手的核心价值与使用方式。

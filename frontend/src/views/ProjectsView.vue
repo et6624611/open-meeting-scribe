@@ -1,14 +1,14 @@
 <template>
   <div>
     <div class="main-head">
-      <h1>项目</h1>
-      <p class="sub">关联本地文件夹，让 AI 对话基于项目资料回答</p>
+      <h1>{{ t('projects.title') }}</h1>
+      <p class="sub">{{ t('projects.subtitle') }}</p>
     </div>
 
     <!-- 新建项目 -->
     <div class="proj-create">
-      <input v-model="newName" class="proj-create-input" placeholder="输入项目名称…" @keyup.enter="onCreate" />
-      <button class="btn btn-primary" @click="onCreate" :disabled="!newName.trim()">新建项目</button>
+      <input v-model="newName" class="proj-create-input" :placeholder="t('projects.input_placeholder')" @keyup.enter="onCreate" />
+      <button class="btn btn-primary" @click="onCreate" :disabled="!newName.trim()">{{ t('projects.create') }}</button>
     </div>
 
     <!-- 项目列表 -->
@@ -16,31 +16,34 @@
       <div v-for="proj in projects" :key="proj.id" class="proj-card">
         <div class="proj-card-header">
           <h3 class="proj-card-name">{{ proj.name }}</h3>
-          <button class="proj-card-delete" @click="onDelete(proj.id)" title="删除">
+          <button class="proj-card-delete" @click="onDelete(proj.id)" :title="t('common.action.delete')">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div class="proj-card-meta">
-          <span>{{ proj.folders?.length || 0 }} 个文件夹</span>
+          <span>{{ t('projects.folders_count', { count: proj.folders?.length || 0 }) }}</span>
         </div>
         <div v-if="proj.folders?.length" class="proj-folders">
           <div v-for="folder in proj.folders" :key="folder" class="proj-folder">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
             <span>{{ folder }}</span>
-            <button class="proj-folder-rm" @click="onRemoveFolder(proj.id, folder)" title="移除">×</button>
+            <button class="proj-folder-rm" @click="onRemoveFolder(proj.id, folder)" :title="t('projects.remove_folder')">×</button>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" @click="onAddFolder(proj.id)">+ 添加文件夹</button>
+        <button class="btn btn-secondary btn-sm" @click="onAddFolder(proj.id)">{{ t('projects.add_folder') }}</button>
       </div>
     </div>
-    <div v-else class="empty-state">暂无项目，创建一个开始使用</div>
+    <div v-else class="empty-state">{{ t('projects.empty') }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { fetchProjects, createProject, deleteProject, addFolder, removeFolder } from '@/api/projects'
 import type { Project } from '@/api/projects'
+
+const { t } = useI18n()
 
 const projects = ref<Project[]>([])
 const newName = ref('')
@@ -58,13 +61,13 @@ async function onCreate() {
 }
 
 async function onDelete(id: string) {
-  if (!confirm('确定删除该项目？')) return
+  if (!confirm(t('projects.confirm_delete'))) return
   await deleteProject(id)
   await load()
 }
 
 async function onAddFolder(projectId: string) {
-  const path = prompt('输入文件夹路径：')
+  const path = prompt(t('projects.folder_path_prompt'))
   if (!path) return
   await addFolder(projectId, path.trim())
   await load()
