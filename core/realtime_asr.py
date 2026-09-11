@@ -43,7 +43,7 @@ from .hotwords import apply_hotword_mappings
 logger = logging.getLogger(__name__)
 
 # ── 代理配置 ──
-ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "http://47.116.10.194:8200").rstrip("/")
+ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "").rstrip("/")
 ASR_PROXY_TOKEN = os.getenv("ASR_PROXY_TOKEN", "")
 
 # 每包音频大小：3200 帧 × 2 bytes/帧 = 6400 bytes（100ms @16kHz/16bit）

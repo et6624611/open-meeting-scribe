@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 # 云端 SMS 代理地址（代理持有阿里云 AccessKey，密钥不落地）
-SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "http://47.116.10.194:8080").rstrip("/")
+SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "").rstrip("/")
 
 # 代理共享密钥（用于请求签名，防止未授权调用）
 SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "")

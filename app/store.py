@@ -1167,7 +1167,7 @@ def get_asr_config() -> dict:
     """
     return {
         "provider": "DashScope",
-        "proxy_url": os.getenv("ASR_PROXY_URL", "http://47.116.10.194:8200"),
+        "proxy_url": os.getenv("ASR_PROXY_URL", ""),
         "model": "paraformer-v2",
         "source": "platform",
     }

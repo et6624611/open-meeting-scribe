@@ -33,7 +33,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # ── 代理配置 ──
-ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "http://47.116.10.194:8200").rstrip("/")
+ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "").rstrip("/")
 ASR_PROXY_TOKEN = os.getenv("ASR_PROXY_TOKEN", "")
 ASR_SIGN_TTL = 300
 
