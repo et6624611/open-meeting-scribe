@@ -144,9 +144,25 @@
 .reg-guidance-dismiss:hover { background: var(--ann-dismiss-hover, var(--surface-3)); color: var(--fg); }
 .reg-guidance-dismiss svg { width: 16px; height: 16px; }
 
+/* ─── 语言切换器 ─── */
+.lang-switcher { position: relative; }
+.lang-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; color: var(--muted); background: var(--surface); border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; }
+.lang-btn:hover { border-color: var(--border-strong); color: var(--fg); background: var(--surface-2); }
+.lang-btn svg:first-child { flex-shrink: 0; }
+.lang-btn span { max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-caret { flex-shrink: 0; opacity: 0.5; transition: transform 0.15s; }
+.lang-switcher .lang-btn[aria-expanded="true"] .lang-caret,
+.lang-btn:focus .lang-caret { transform: rotate(180deg); }
+.lang-dropdown { display: none; position: absolute; right: 0; top: calc(100% + 4px); min-width: 120px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.12); padding: var(--s-1); z-index: var(--z-popover); }
+.lang-dropdown.is-open { display: block; }
+.lang-option { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 8px 10px; border-radius: calc(var(--radius) - 2px); border: none; background: transparent; color: var(--fg); font-size: var(--fs-13); cursor: pointer; transition: background 0.1s; text-align: left; font-family: var(--font-body); }
+.lang-option:hover { background: var(--surface-2); }
+.lang-option.is-active { color: var(--accent); font-weight: 500; }
+.lang-option svg { flex-shrink: 0; color: var(--accent); }
+
 /* ─── 响应式：右侧控件折叠 ─── */
 @media (max-width: 1280px) {
-  .lang-btn { display: none; }
+  .lang-switcher { display: none; }
   .view-switcher { display: none; }
 }
 @media (max-width: 1100px) {
@@ -165,8 +181,29 @@
 .status .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 
 /* ─── Philosophy (inside status bar) ─── */
-.status .philosophy-text { font-size: 11px; color: var(--subtle); letter-spacing: 0.02em; font-family: var(--font-body); opacity: 0; transition: opacity 0.8s ease; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status .philosophy-text.is-visible { opacity: 1; }
+.status .philosophy-text { font-size: 11px; color: var(--subtle); letter-spacing: 0.02em; font-family: var(--font-body); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; }
+
+/* 逐字显现 */
+.status .philosophy-char { display: inline-block; opacity: 0; transform: translateY(4px); }
+.status .philosophy-text.is-visible .philosophy-char { animation: phil-char-in 0.4s ease forwards; }
+@keyframes phil-char-in { to { opacity: 1; transform: translateY(0); } }
+
+/* 微光扫过（逐字显现完成后启动，周期性循环） */
+.status .philosophy-text.is-shimmer .philosophy-char { animation: phil-char-in 0.4s ease forwards, phil-wave 5s ease-in-out 3s infinite; }
+@keyframes phil-wave { 0%, 25%, 100% { filter: brightness(1); } 12.5% { filter: brightness(1.5); } }
+
+/* 呼吸光晕 */
+.status .philosophy-text.is-visible .philosophy-char { text-shadow: 0 0 0 transparent; animation: phil-char-in 0.4s ease forwards, phil-glow 4s ease-in-out 2s infinite; }
+@keyframes phil-glow { 0%, 100% { text-shadow: 0 0 0 transparent; } 50% { text-shadow: 0 0 8px oklch(from var(--accent) l c h / 0.2); } }
+
+/* 微光 + 光晕合并（is-shimmer 优先级高于 is-visible） */
+.status .philosophy-text.is-shimmer .philosophy-char { animation: phil-char-in 0.4s ease forwards, phil-wave 5s ease-in-out 3s infinite, phil-glow 4s ease-in-out 2s infinite; }
+
+/* 无障碍：减弱动效 */
+@media (prefers-reduced-motion: reduce) {
+  .status .philosophy-char { opacity: 1 !important; transform: none !important; animation: none !important; }
+  .status .philosophy-text.is-visible { opacity: 1; }
+}
 
 /* ─── Usage indicator (status bar) ─── */
 .status .usage-indicator { display: flex; align-items: center; gap: 6px; cursor: default; }

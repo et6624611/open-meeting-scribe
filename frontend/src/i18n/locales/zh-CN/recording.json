@@ -17,7 +17,7 @@
   },
   "tab": {
     "transcript": "原文",
-    "summary": "实时总结"
+    "insights": "AI 洞察"
   },
   "transcript": {
     "show": "显示原文",
@@ -47,20 +47,14 @@
     "send": "发送随记",
     "delete": "删除随记"
   },
-  "summary": {
-    "title": "实时总结",
-    "waiting": "等待中",
-    "countdown": "距下次刷新 {count}s",
-    "paused": "已暂停",
-    "resume_title": "恢复总结",
-    "pause_title": "暂停总结",
-    "stop": "停止总结",
-    "frequency": "刷新频率",
-    "freq_frequent": "频繁",
-    "freq_default": "默认",
-    "freq_moderate": "适中",
-    "freq_economical": "省量",
-    "waiting_content": "等待足够对话内容后自动生成总结…"
+  "insights": {
+    "title": "AI 洞察",
+    "empty": "AI 将在会议过程中实时分析对话并提供洞察",
+    "empty_hint": "包括上下文关联、盲点揭示、共识提炼等分析",
+    "enabled": "洞察已开启",
+    "disabled": "洞察已关闭",
+    "settings": "洞察设置",
+    "unread_count": "{count} 条未读洞察"
   },
   "control": {
     "pause": "暂停",
@@ -90,6 +84,11 @@
     "confirm": "确认放弃"
   },
   "jump_latest": "回到底部",
+  "timeline": {
+    "jump_title": "跳转到指定时间",
+    "jump_placeholder": "MM:SS 或 HH:MM:SS",
+    "jump_go": "前往"
+  },
   "volume_warning": "检测到音量极低，请检查麦克风或音频输入设备",
   "presence_warning": {
     "gentle_text": "已 {minutes} 分钟未检测到语音，且页面暂无操作。是否继续录制？",
@@ -102,9 +101,19 @@
   },
   "errors": {
     "bind_speaker_failed": "绑定说话人失败",
-    "create_bind_speaker_failed": "创建并绑定说话人失败",
-    "set_frequency_failed": "设置总结频率失败",
-    "stop_summary_failed": "停止总结失败",
-    "toggle_summary_failed": "切换总结暂停失败"
-  }
+    "create_bind_speaker_failed": "创建并绑定说话人失败"
+  },
+  "translate": {
+    "title": "翻译",
+    "enable": "开启翻译",
+    "disable": "关闭翻译",
+    "toggle_off": "翻译",
+    "target_lang": "目标语言",
+    "status_active": "翻译中",
+    "status_stopped": "翻译已停止",
+    "display_original": "仅原文",
+    "display_translation": "仅译文",
+    "display_bilingual": "双语对照"
+  },
+  "privacy_banner": "当前录音的音频将实时传输至云端进行语音识别，请勿录入敏感内容。"
 }

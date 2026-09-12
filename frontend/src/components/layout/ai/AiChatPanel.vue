@@ -45,47 +45,10 @@
       </div>
     </div>
     <div v-if="isLoading" class="ai-msg"><div class="ai-bubble" style="opacity:0.6">{{ t('ai-panel.thinking') }}</div></div>
-    <!-- AI 主动消息列表 -->
-    <div v-for="pm in proactiveMessages" :key="pm.id" class="ai-msg is-proactive" :id="'proactive-' + pm.id" :class="{ 'is-expanded': pm.expanded }">
-      <div class="proactive-card-header" @click="$emit('toggleProactive', pm.id)">
-        <span class="proactive-card-category">{{ pm.category }}</span>
-        <span class="proactive-card-title">{{ pm.title }}</span>
-        <span class="proactive-card-time">{{ formatTime(pm.timestamp) }}</span>
-        <span class="proactive-card-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-      </div>
-      <div v-if="pm.expanded" class="proactive-card-body">
-        <div class="proactive-card-summary" v-html="pm.body"></div>
-        <div class="proactive-card-solution">
-          <div class="proactive-solution-label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-            {{ t('ai-panel.ai_suggestion') }}
-          </div>
-          <div class="proactive-solution-text">{{ pm.solution }}</div>
-        </div>
-        <div class="proactive-actions">
-          <button v-for="act in pm.actions" :key="act.key" class="proactive-action-btn" :class="{ 'is-primary': act.primary, 'is-done': actedActions[pm.id + ':' + act.key] }" @click="$emit('proactiveAction', pm, act)">{{ actedActions[pm.id + ':' + act.key] ? t('ai-panel.proactive.action_done') : act.label }}</button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- 输入区 -->
   <div class="ai-input-zone">
-    <!-- AI 主动消息悬浮通知横幅 -->
-    <div v-if="proactiveEnabled && latestUnread" class="proactive-banner-wrap">
-      <div class="proactive-banner" @click="$emit('bannerClick')">
-        <div class="proactive-banner-inner">
-          <div class="proactive-banner-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
-          <div class="proactive-banner-text">
-            <div class="proactive-banner-label">{{ t('ai-panel.proactive.banner_label') }}</div>
-            <div class="proactive-banner-title">{{ latestUnread.title }}</div>
-            <div class="proactive-banner-preview">{{ stripHtml(latestUnread.body) }}</div>
-          </div>
-          <button class="proactive-banner-close" :aria-label="t('ai-panel.proactive.banner_close')" @click.stop="$emit('bannerClose')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-        </div>
-        <div class="proactive-banner-time">{{ t('ai-panel.proactive.banner_time') }}</div>
-      </div>
-    </div>
     <!-- 跟进建议 -->
     <div v-show="suggestions.length > 0" class="ai-suggestions-bar">
       <button v-for="(s, si) in suggestions" :key="si" class="follow-up-chip" @click="$emit('sendRaw', s.text)"><span v-html="s.icon"></span>{{ s.text }}</button>
@@ -122,7 +85,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import type { AiCommand } from '@/composables/useAiCommands'
-import type { ProactiveMessage, ProactiveAction } from '@/composables/useAiProactive'
+
 
 const { t } = useI18n()
 
@@ -132,10 +95,6 @@ defineProps<{
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
   injectPrompt: { desc: string } | null
-  proactiveMessages: ProactiveMessage[]
-  actedActions: Record<string, boolean>
-  proactiveEnabled: boolean
-  latestUnread: ProactiveMessage | null
   suggestions: Array<{ icon: string; text: string }>
   quoteText: string
   quoteSource: string
@@ -156,10 +115,6 @@ defineEmits<{
   (e: 'clearRewrite'): void
   (e: 'injectAll'): void
   (e: 'dismissInject'): void
-  (e: 'toggleProactive', id: string): void
-  (e: 'proactiveAction', pm: ProactiveMessage, act: ProactiveAction): void
-  (e: 'bannerClick'): void
-  (e: 'bannerClose'): void
   (e: 'clearQuote'): void
   (e: 'runCommand', cmd: AiCommand): void
   (e: 'inputKey', ev: KeyboardEvent): void
@@ -180,12 +135,5 @@ function shortText(text: string): string {
   return text.length > 80 ? text.slice(0, 80) + '…' : text
 }
 
-function formatTime(ts: number): string {
-  const d = new Date(ts)
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-}
 
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '')
-}
 </script>

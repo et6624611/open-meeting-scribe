@@ -166,7 +166,7 @@ export function useAiChat() {
       case 'record_start': {
         const tid = d.task_id as string
         if (!tid) break
-        if (taskStore.currentTaskId && taskStore.currentTask?.status === 'recording' && taskStore.currentTaskId !== tid) {
+        if (taskStore.currentTaskId && (taskStore.currentTask?.status === 'recording' || taskStore.currentTask?.status === 'paused') && taskStore.currentTaskId !== tid) {
           showToast(tt('ai-panel.chat.duplicate_record'), 'warn')
         } else {
           // [状态同步] AI 触发录音后刷新任务列表

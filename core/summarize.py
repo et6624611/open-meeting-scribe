@@ -15,6 +15,7 @@ core/summarize.py — 纪要提示词与解析
 """
 
 import logging
+from core.i18n import _
 from .llm import chat_completion
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ def generate_title(
     # 构造对话文本（截取前 2000 字符以控制 token 消耗）
     dialogue_text = ""
     for item in dialogue:
-        speaker_name = item.get("speaker_name", f"说话人{item.get('speaker_id', 0) + 1}")
+        speaker_name = item.get("speaker_name", f"Speaker {item.get('speaker_id', 0) + 1}")
         text = item.get("text", "").strip()
         if text:
             dialogue_text += f"{speaker_name}：{text}\n"
@@ -189,14 +190,14 @@ def generate_summary(
     if total_sentences == 0:
         total_sentences = len([d for d in dialogue if d.get("text", "").strip()])
     if total_sentences < 3:
-        return "对话内容过短（仅 {} 句），无法生成有效纪要。请录制更长时间的会议音频。".format(total_sentences)
+        return _("Dialogue too short (only {count} sentences) to generate meaningful minutes. Please record a longer meeting audio.").format(count=total_sentences)
 
     # 构造发言人说明
     speaker_names = []
     for item in dialogue:
         sid = item.get("speaker_id", 0)
-        name = item.get("speaker_name", f"说话人{sid + 1}")
-        speaker_names.append(f"说话人{sid + 1} = {name}")
+        name = item.get("speaker_name", f"Speaker {sid + 1}")
+        speaker_names.append(f"Speaker {sid + 1} = {name}")
     speaker_info = "，".join(speaker_names)
 
     # 构造用户消息
@@ -215,7 +216,7 @@ def generate_summary(
 
     for item in dialogue:
         speaker_id = item.get("speaker_id", 0)
-        speaker_name = item.get("speaker_name", f"说话人{speaker_id + 1}")
+        speaker_name = item.get("speaker_name", f"Speaker {speaker_id + 1}")
         text = item.get("text", "").strip()
         if text:
             user_content += f"**{speaker_name}**：{text}\n\n"
@@ -249,7 +250,7 @@ def format_dialogue_for_display(dialogue: list[dict]) -> str:
     lines = []
     for item in dialogue:
         speaker_id = item.get("speaker_id", 0)
-        speaker_name = item.get("speaker_name", f"说话人{speaker_id + 1}")
+        speaker_name = item.get("speaker_name", f"Speaker {speaker_id + 1}")
         text = item.get("text", "").strip()
         if text:
             lines.append(f"【{speaker_name}】{text}")

@@ -18,6 +18,7 @@ import time
 import logging
 from pathlib import Path
 from datetime import datetime
+from core.i18n import _
 
 import numpy as np
 
@@ -269,7 +270,7 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 # 瞬时错误且还有重试机会
                 delay = PIPELINE_RETRY_DELAYS[attempt]
                 tasks[task_id]["retry_count"] = attempt + 1
-                tasks[task_id]["message"] = f"遇到临时错误，{delay}秒后自动重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES})..."
+                tasks[task_id]["message"] = _("Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=attempt + 1, max_retries=PIPELINE_MAX_RETRIES)
                 tasks[task_id]["progress"] = max(0, tasks[task_id].get("progress", 0) - 10)
                 save_task_to_disk(task_id)
                 logger.warning(f"[{task_id[:8]}] 瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
@@ -360,7 +361,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
 
             tasks[task_id]["status"] = "completed"
             tasks[task_id]["progress"] = 100
-            tasks[task_id]["message"] = "完成"
+            tasks[task_id]["message"] = _("Completed")
             tasks[task_id]["summary"] = result.get("summary")
             tasks[task_id]["title"] = result.get("title")
             tasks[task_id]["output_path"] = result.get("output_path")
@@ -388,7 +389,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
             if is_transient_error(e) and attempt < PIPELINE_MAX_RETRIES:
                 delay = PIPELINE_RETRY_DELAYS[attempt]
                 tasks[task_id]["retry_count"] = tasks[task_id].get("retry_count", 0) + 1
-                tasks[task_id]["message"] = f"纪要生成遇到临时错误，{delay}秒后自动重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES})..."
+                tasks[task_id]["message"] = _("Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=tasks[task_id].get("retry_count", 0) + 1, max_retries=PIPELINE_MAX_RETRIES)
                 save_task_to_disk(task_id)
                 logger.warning(f"[{task_id[:8]}] 纪要阶段瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
                 joblog.append_event(

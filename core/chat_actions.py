@@ -41,6 +41,7 @@ from core.realtime_asr import RealtimeTranscriber
 from core.realtime_summary import RealtimeSummarizer
 from core.diarization import create_realtime_diarizer
 from core import speakers, hotwords
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -156,18 +157,18 @@ def execute_action(action: ActionDef, task_id: str | None, message: str) -> dict
         elif action.name == "delete_theme":
             return _exec_delete_theme(message)
         else:
-            return {"success": False, "message": f"未知动作: {action.name}", "data": None}
+            return {"success": False, "message": _("Unknown action: {name}").format(name=action.name), "data": None}
 
     except Exception as e:
         logger.error(f"执行动作 {action.name} 失败: {e}")
-        return {"success": False, "message": f"操作失败: {e}", "data": None}
+        return {"success": False, "message": _("Operation failed: {err}").format(err=e), "data": None}
 
 
 # ── 录音控制 ──
 
 def _exec_record_start() -> dict:
     if is_stream_recording():
-        return {"success": False, "message": "当前已在录制中，请先停止当前录音", "data": None}
+        return {"success": False, "message": _("Already recording, please stop the current recording first"), "data": None}
     task_id = str(uuid.uuid4())
     queue: asyncio.Queue = asyncio.Queue()
     realtime_queues[task_id] = queue
@@ -223,32 +224,32 @@ def _exec_record_start() -> dict:
     threading.Thread(target=_start_transcriber_bg, daemon=True).start()
 
     result = start_recording_with_stream(device=RECORD_DEVICE, output_dir=RECORDINGS_DIR, task_id=task_id, pcm_callback=pcm_callback)
-    tasks[task_id] = {"task_id": task_id, "status": "recording", "source": "record", "progress": 0, "message": "正在录制...", "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}}
+    tasks[task_id] = {"task_id": task_id, "status": "recording", "source": "record", "progress": 0, "message": _("Recording..."), "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}}
     save_task_to_disk(task_id)
-    return {"success": True, "message": f"录音已开始，会议 ID: {task_id[:8]}", "data": {"task_id": task_id}}
+    return {"success": True, "message": _("Recording started, meeting ID: {id}").format(id=task_id[:8]), "data": {"task_id": task_id}}
 
 
 def _exec_record_stop() -> dict:
     if not is_stream_recording():
-        return {"success": False, "message": "当前没有正在进行的录音", "data": None}
+        return {"success": False, "message": _("No recording in progress"), "data": None}
     result = stop_recording_with_stream()
     for tid, summ in list(realtime_summarizers.items()):
         summ.stop()
-    return {"success": True, "message": f"录音已停止，音频时长 {result.get('duration', 0):.1f} 秒，正在生成纪要...", "data": result}
+    return {"success": True, "message": _("Recording stopped, audio duration {dur:.1f}s, generating minutes...").format(dur=result.get('duration', 0)), "data": result}
 
 
 def _exec_record_pause() -> dict:
     if not is_stream_recording():
-        return {"success": False, "message": "当前没有正在进行的录音", "data": None}
+        return {"success": False, "message": _("No recording in progress"), "data": None}
     pause_recording_with_stream()
-    return {"success": True, "message": "录音已暂停", "data": None}
+    return {"success": True, "message": _("Recording paused"), "data": None}
 
 
 def _exec_record_resume() -> dict:
     if not is_stream_recording():
-        return {"success": False, "message": "当前没有正在进行的录音", "data": None}
+        return {"success": False, "message": _("No recording in progress"), "data": None}
     resume_recording_with_stream()
-    return {"success": True, "message": "录音已恢复", "data": None}
+    return {"success": True, "message": _("Recording resumed"), "data": None}
 
 
 # ── 会议分析 ──
@@ -264,41 +265,41 @@ def _resolve_task_id(task_id: str | None) -> str | None:
 def _exec_extract_todos(task_id: str | None) -> dict:
     tid = _resolve_task_id(task_id)
     if not tid:
-        return {"success": False, "message": "暂无已完成的会议，无法提取待办", "data": None}
+        return {"success": False, "message": _("No completed meetings available to extract todos"), "data": None}
     task = tasks[tid]
     todos = task.get("todos", [])
     if not todos:
-        return {"success": True, "message": f"会议「{task.get('audio_name', '未命名')}」暂无待办事项", "data": {"todos": []}}
-    todo_list = "\n".join([f"- [{'x' if t.get('done') else ' '}] {t['text']} ({t.get('assignee', '未分配')})" for t in todos])
-    return {"success": True, "message": f"会议「{task.get('audio_name', '未命名')}」共 {len(todos)} 条待办：\n{todo_list}", "data": {"todos": todos}}
+        return {"success": True, "message": _("Meeting '{name}' has no todo items").format(name=task.get('audio_name', _('Untitled'))), "data": {"todos": []}}
+    todo_list = "\n".join([f"- [{'x' if t.get('done') else ' '}] {t['text']} ({t.get('assignee', _('Unassigned'))})" for t in todos])
+    return {"success": True, "message": _("Meeting '{name}' has {count} todo items:\n{list}").format(name=task.get('audio_name', _('Untitled')), count=len(todos), list=todo_list), "data": {"todos": todos}}
 
 
 def _exec_summarize_conclusions(task_id: str | None) -> dict:
     tid = _resolve_task_id(task_id)
     if not tid:
-        return {"success": False, "message": "暂无已完成的会议", "data": None}
+        return {"success": False, "message": _("No completed meetings"), "data": None}
     task = tasks[tid]
     summary = task.get("summary", "")
     if not summary:
-        return {"success": True, "message": "该会议尚未生成纪要", "data": None}
-    return {"success": True, "message": f"会议「{task.get('audio_name', '未命名')}」纪要：\n{summary[:1500]}", "data": {"summary": summary}}
+        return {"success": True, "message": _("Minutes not yet generated for this meeting"), "data": None}
+    return {"success": True, "message": _("Meeting '{name}' minutes:\n{summary}").format(name=task.get('audio_name', _('Untitled')), summary=summary[:1500]), "data": {"summary": summary}}
 
 
 def _exec_analyze_speakers(task_id: str | None) -> dict:
     if not task_id or task_id not in tasks:
-        return {"success": False, "message": "请先选择或创建一个会议", "data": None}
+        return {"success": False, "message": _("Please select or create a meeting first"), "data": None}
     task = tasks[task_id]
     dialogue = task.get("dialogue", [])
     if not dialogue:
-        return {"success": False, "message": "该会议暂无对话数据", "data": None}
+        return {"success": False, "message": _("No dialogue data for this meeting"), "data": None}
     speaker_stats: dict[str, int] = {}
     for item in dialogue:
-        name = item.get("speaker_name", f"说话人{item.get('speaker_id', 0) + 1}")
+        name = item.get("speaker_name", f"Speaker {item.get('speaker_id', 0) + 1}")
         text_len = len(item.get("text", ""))
         speaker_stats[name] = speaker_stats.get(name, 0) + text_len
     total = sum(speaker_stats.values()) or 1
-    analysis = "\n".join([f"- {name}: {chars} 字 ({chars/total*100:.1f}%)" for name, chars in sorted(speaker_stats.items(), key=lambda x: -x[1])])
-    return {"success": True, "message": f"发言分析（共 {len(dialogue)} 条对话）：\n{analysis}", "data": {"speaker_stats": speaker_stats}}
+    analysis = "\n".join([f"- {name}: {chars} chars ({chars/total*100:.1f}%)" for name, chars in sorted(speaker_stats.items(), key=lambda x: -x[1])])
+    return {"success": True, "message": _("Speaker analysis ({count} dialogue entries):\n{analysis}").format(count=len(dialogue), analysis=analysis), "data": {"speaker_stats": speaker_stats}}
 
 
 # ── 信息查询 ──
@@ -306,27 +307,27 @@ def _exec_analyze_speakers(task_id: str | None) -> dict:
 def _exec_list_tasks() -> dict:
     task_list = sorted(tasks.values(), key=lambda x: x.get("created_at", ""), reverse=True)[:10]
     if not task_list:
-        return {"success": True, "message": "暂无会议记录", "data": {"tasks": []}}
+        return {"success": True, "message": _("No meeting records"), "data": {"tasks": []}}
     lines = []
     for t in task_list:
-        status_label = {"recording": " 录制中", "pending": " 待处理", "processing": "️ 处理中", "completed": "✅ 已完成", "failed": "❌ 失败"}.get(t.get("status", ""), t.get("status", ""))
-        lines.append(f"- {t.get('audio_name', '未命名')} [{status_label}] ({t.get('created_at', '')[:16]})")
-    return {"success": True, "message": "最近会议列表：\n" + "\n".join(lines), "data": {"tasks": task_list}}
+        status_label = {"recording": "Recording", "pending": "Pending", "processing": "Processing", "completed": "Completed", "failed": "Failed"}.get(t.get("status", ""), t.get("status", ""))
+        lines.append(f"- {t.get('audio_name', _('Untitled'))} [{status_label}] ({t.get('created_at', '')[:16]})")
+    return {"success": True, "message": _("Recent meetings:\n{list}").format(list="\n".join(lines)), "data": {"tasks": task_list}}
 
 
 def _exec_get_hotwords() -> dict:
     words = hotwords.load_hotwords(HOTWORDS_FILE)
     if not words:
-        return {"success": True, "message": "当前无热词", "data": {"hotwords": []}}
-    return {"success": True, "message": f"当前热词（{len(words)} 个）：\n" + "、".join(words), "data": {"hotwords": words}}
+        return {"success": True, "message": _("No hotwords configured"), "data": {"hotwords": []}}
+    return {"success": True, "message": _("Current hotwords ({count}):\n{list}").format(count=len(words), list=", ".join(words)), "data": {"hotwords": words}}
 
 
 def _exec_get_hotword_mappings() -> dict:
     mappings = hotwords.load_hotword_mappings(HOTWORD_MAPPINGS_FILE)
     if not mappings:
-        return {"success": True, "message": "当前无热词映射", "data": {"mappings": []}}
+        return {"success": True, "message": _("No hotword mappings configured"), "data": {"mappings": []}}
     lines = [f"{k} → {v}" for k, v in mappings]
-    return {"success": True, "message": f"当前热词映射（{len(mappings)} 条）：\n" + "\n".join(lines), "data": {"mappings": [{"from": k, "to": v} for k, v in mappings]}}
+    return {"success": True, "message": _("Current hotword mappings ({count}):\n{list}").format(count=len(mappings), list="\n".join(lines)), "data": {"mappings": [{"from": k, "to": v} for k, v in mappings]}}
 
 
 def _exec_get_settings() -> dict:
@@ -335,48 +336,48 @@ def _exec_get_settings() -> dict:
     else:
         settings = {"model": "qwen-plus", "output_dir": "data/output/"}
     settings_display = "\n".join([f"- {k}: {v}" for k, v in settings.items() if k != "api_key"])
-    return {"success": True, "message": f"当前设置：\n{settings_display}", "data": settings}
+    return {"success": True, "message": _("Current settings:\n{display}").format(display=settings_display), "data": settings}
 
 
 def _exec_get_status() -> dict:
     if is_stream_recording():
         info = get_stream_recording_info()
-        return {"success": True, "message": f"录制状态：进行中\n设备: {RECORD_DEVICE}\n时长: {info.get('duration', 0):.1f} 秒", "data": info}
-    return {"success": True, "message": "当前未在录制", "data": {"recording": False}}
+        return {"success": True, "message": _("Recording in progress\nDevice: {device}\nDuration: {dur:.1f}s").format(device=RECORD_DEVICE, dur=info.get('duration', 0)), "data": info}
+    return {"success": True, "message": _("Not currently recording"), "data": {"recording": False}}
 
 
 # ── 重新处理 ──
 
 def _exec_retranscribe(task_id: str | None) -> dict:
     if not task_id or task_id not in tasks:
-        return {"success": False, "message": "请先选择一个会议，再要求重新解析", "data": None}
+        return {"success": False, "message": _("Please select a meeting first before requesting re-transcription"), "data": None}
     task = tasks[task_id]
     audio_path = task.get("audio_path")
     if not audio_path or not Path(audio_path).exists():
-        return {"success": False, "message": "录音文件不存在，无法重新识别", "data": None}
-    tasks[task_id].update({"status": "processing", "progress": 0, "message": "正在重新识别...", "error": None, "summary": None, "output_path": None, "dialogue": None, "transcription": None, "speaker_mapping": {}, "speaker_uuid_mapping": {}, "title": None})
+        return {"success": False, "message": _("Audio file not found, cannot re-transcribe"), "data": None}
+    tasks[task_id].update({"status": "processing", "progress": 0, "message": _("Re-transcribing..."), "error": None, "summary": None, "output_path": None, "dialogue": None, "transcription": None, "speaker_mapping": {}, "speaker_uuid_mapping": {}, "title": None})
     save_task_to_disk(task_id)
     audio_name = task.get("audio_name", Path(audio_path).name)
     threading.Thread(target=run_pipeline_task, args=(task_id, Path(audio_path), audio_name, None, None), daemon=True).start()
     logger.info(f"[AI动作-重新识别] task={task_id[:8]}, audio={audio_name}")
-    return {"success": True, "message": f"已提交「{task.get('audio_name', '未命名')}」的重新识别任务，正在后台处理中...", "data": {"task_id": task_id}}
+    return {"success": True, "message": _("Re-transcription task submitted for '{name}', processing in background...").format(name=task.get('audio_name', _('Untitled'))), "data": {"task_id": task_id}}
 
 
 def _exec_retry_summary(task_id: str | None) -> dict:
     if not task_id or task_id not in tasks:
-        return {"success": False, "message": "请先选择一个会议，再要求重新生成纪要", "data": None}
+        return {"success": False, "message": _("Please select a meeting first before requesting minute regeneration"), "data": None}
     task = tasks[task_id]
     if not task.get("dialogue"):
-        return {"success": False, "message": "转写结果不存在，请先完成音频识别", "data": None}
+        return {"success": False, "message": _("Transcription results not found, please complete audio recognition first"), "data": None}
     audio_path = task.get("audio_path")
     if not audio_path or not Path(audio_path).exists():
-        return {"success": False, "message": "录音文件不存在", "data": None}
-    tasks[task_id].update({"status": "processing", "progress": 75, "message": "正在重新生成纪要...", "error": None, "summary": None, "output_path": None, "title": None})
+        return {"success": False, "message": _("Audio file not found"), "data": None}
+    tasks[task_id].update({"status": "processing", "progress": 75, "message": _("Regenerating minutes..."), "error": None, "summary": None, "output_path": None, "title": None})
     save_task_to_disk(task_id)
     mapping = {int(k): v for k, v in task.get("speaker_uuid_mapping", {}).items()}
     threading.Thread(target=run_stage2_task, args=(task_id, Path(audio_path), mapping), daemon=True).start()
     logger.info(f"[AI动作-重新生成纪要] task={task_id[:8]}")
-    return {"success": True, "message": f"已提交「{task.get('audio_name', '未命名')}」的纪要重新生成任务，正在后台处理中...", "data": {"task_id": task_id}}
+    return {"success": True, "message": _("Minute regeneration task submitted for '{name}', processing in background...").format(name=task.get('audio_name', _('Untitled'))), "data": {"task_id": task_id}}
 
 
 # ── 主题配色 ──

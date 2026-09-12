@@ -8,24 +8,28 @@
         <span class="sc-dot"></span>
         <span>{{ t('recording.speaker.count', { count: displaySpeakerCount }) }}</span>
       </span>
-      <span class="rec-project-chip-wrap" v-if="projects.length > 0">
-        <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" @click.stop="$emit('toggleProjectDropdown')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span class="rec-project-chip-wrap">
+        <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" :title="projectId ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="$emit('toggleProjectDropdown')">
+          <svg v-if="projectId" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <span>{{ projectName }}</span>
+          <svg v-if="!projectId" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </span>
         <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-          <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': projectId === p.id }" @click="$emit('selectProject', p.id)">{{ p.name }}</button>
-          <div class="gen-meta-proj-divider"></div>
-          <button class="gen-meta-proj-item" :class="{ 'is-selected': !projectId }" @click="$emit('selectProject', '')">{{ t('generating.meta.no_project') }}</button>
+          <template v-if="projects.length > 0">
+            <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': projectId === p.id }" @click="$emit('selectProject', p.id)">{{ p.name }}</button>
+            <div class="gen-meta-proj-divider"></div>
+            <button class="gen-meta-proj-item" :class="{ 'is-selected': !projectId }" @click="$emit('selectProject', '')">{{ t('generating.meta.no_project') }}</button>
+          </template>
+          <button v-else class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            {{ t('generating.meta.create_kb') }}
+          </button>
         </div>
       </span>
     </div>
     <div class="rec-header-right">
-      <button class="btn-translate" :title="t('common.action.translate')">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        {{ t('common.action.translate') }}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-      </button>
       <button v-if="isFocusMode" class="btn-exit-focus" @click="$emit('toggleFocus')" :title="t('recording.focus.exit_title')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         {{ t('recording.focus.exit') }}

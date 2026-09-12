@@ -99,7 +99,8 @@ def set_speaker_as_me(speaker_id: str):
     """
     user = user_module.get_current_user()
     if not user:
-        raise HTTPException(400, _("Please set up user info first"))
+        # 未配置用户信息时，自动创建默认本地用户
+        user = user_module.set_current_user("Local User")
 
     speaker = speakers.get_speaker_by_id(speaker_id)
     if not speaker:
@@ -125,7 +126,7 @@ def get_latest_mapping():
     name_map = speakers.get_speaker_name_map()
     mapping_with_names = {}
     for sid, speaker_uuid in mapping.mapping.items():
-        name = name_map.get(speaker_uuid, f"说话人{sid + 1}")
+        name = name_map.get(speaker_uuid, f"Speaker {sid + 1}")
         mapping_with_names[str(sid)] = {
             "speaker_uuid": speaker_uuid,
             "name": name,
@@ -238,7 +239,7 @@ def set_speaker_mapping(
     # 更新任务状态（提前写入 speaker_uuid_mapping，确保刷新后绑定不丢失）
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 75
-    tasks[task_id]["message"] = "正在生成纪要..."
+    tasks[task_id]["message"] = _("Generating minutes...")
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
     # 作业日志：记录确认绑定（含姓名，便于会议助手回溯）
     names = []
@@ -303,7 +304,7 @@ def regenerate_summary(
     # 更新任务状态
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 75
-    tasks[task_id]["message"] = "正在重新生成纪要..."
+    tasks[task_id]["message"] = _("Regenerating minutes...")
     save_task_to_disk(task_id)
 
     # 后台运行第二阶段

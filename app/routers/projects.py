@@ -126,7 +126,7 @@ def list_projects():
 def create_project(data: ProjectCreate, background_tasks: BackgroundTasks):
     """创建项目（写 projects.json）"""
     if not data.name.strip():
-        raise HTTPException(400, _("Project name cannot be empty"))
+        raise HTTPException(400, _("Knowledge base name cannot be empty"))
     # 验证文件夹路径
     if data.folders:
         for f in data.folders:
@@ -144,7 +144,7 @@ def get_project(project_id: str):
     """获取项目详情（读 projects.json + 索引文件 + 关联会议）"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     # 附加索引信息
     index = projects.get_project_index(project_id)
     if index:
@@ -173,7 +173,7 @@ def update_project(project_id: str, data: ProjectUpdate):
     """更新项目（写 projects.json）"""
     project = projects.update_project(project_id, name=data.name)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     return project
 
 
@@ -181,7 +181,7 @@ def update_project(project_id: str, data: ProjectUpdate):
 def delete_project(project_id: str):
     """删除项目（写 projects.json）"""
     if not projects.delete_project(project_id):
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     return {"deleted": True}
 
 
@@ -193,7 +193,7 @@ def add_project_folder(project_id: str, data: FolderAction, background_tasks: Ba
         raise HTTPException(400, _("Folder not found: {path}").format(path=folder_path))
     project = projects.add_folder(project_id, folder_path)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     # 自动触发索引构建
     background_tasks.add_task(_do_scan_project, project_id)
     return project
@@ -204,7 +204,7 @@ def remove_project_folder(project_id: str, data: FolderAction, background_tasks:
     """从项目移除文件夹（写 projects.json）"""
     project = projects.remove_folder(project_id, data.path)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     # 自动触发索引重建
     background_tasks.add_task(_do_scan_project, project_id)
     return project
@@ -222,7 +222,7 @@ def update_folder_sync_config(project_id: str, data: FolderSyncConfig):
         config["subfolder_name"] = data.subfolder_name
     result = projects.update_folder_sync(project_id, data.path, config)
     if not result:
-        raise HTTPException(404, _("Project or folder not found"))
+        raise HTTPException(404, _("Knowledge base or folder not found"))
     return result
 
 
@@ -231,7 +231,7 @@ def trigger_project_sync(project_id: str):
     """手动触发同步：将项目中所有已完成的会议同步写入启用了同步的文件夹"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
 
     sync_folders = projects.get_sync_enabled_folders(project_id)
     if not sync_folders:
@@ -269,7 +269,7 @@ def scan_project(project_id: str, background_tasks: BackgroundTasks):
     """触发项目索引构建（后台执行）"""
     project = projects.get_project(project_id)
     if not project:
-        raise HTTPException(404, _("Project not found"))
+        raise HTTPException(404, _("Knowledge base not found"))
     background_tasks.add_task(_do_scan_project, project_id)
     return {"status": "scanning", "message": _("Index build started")}
 

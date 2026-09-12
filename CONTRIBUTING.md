@@ -3,7 +3,7 @@ title: 贡献指南
 description: 如何为 Open Meeting Scribe 贡献代码、报告问题或提出建议
 tags: ["contributing", "open-source", "guidelines"]
 created_at: "2026-09-10"
-updated_at: "2026-09-10"
+updated_at: "2026-09-12"
 version: "1.0.0"
 ---
 
@@ -77,4 +77,4 @@ version: "1.0.0"
 
 ## 许可证
 
-提交代码即表示你同意你的贡献以 [MIT License](LICENSE) 授权。
+提交代码即表示你同意你的贡献以 [GNU AGPLv3](LICENSE) 授权。

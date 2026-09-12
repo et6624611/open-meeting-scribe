@@ -25,10 +25,7 @@
       </div>
       <!-- 底部操作区 -->
       <div class="spk-ob-footer">
-        <label class="spk-ob-dont-show">
-          <input type="checkbox" v-model="dontShowAgain"> {{ t('generating.onboarding.dont_show_again') }}
-        </label>
-        <button type="button" class="spk-ob-got-it" @click="emit('close')">{{ t('generating.onboarding.start') }}</button>
+        <button type="button" class="spk-ob-got-it" @click="emit('close')">{{ t('generating.onboarding.got_it') }}</button>
       </div>
     </div>
   </div>
@@ -52,8 +49,6 @@ defineProps<{
     bar2: string
   }>
 }>()
-
-const dontShowAgain = defineModel<boolean>('dontShowAgain', { default: false })
 
 const emit = defineEmits<{
   (e: 'close'): void

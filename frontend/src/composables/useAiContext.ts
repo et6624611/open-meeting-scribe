@@ -8,36 +8,68 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
+import { useRealtimeStore } from '@/stores/realtime'
 import { showToast } from '@/composables/useToast'
-import type { ComputedRef } from 'vue'
 
-interface AnalysisOverview {
-  speakerCount: number
-  dialogueCount: number
-  wordCount: number
-  duration: string
-}
-
-interface TodoStats {
-  done: number
-  total: number
-}
-
-interface ChapterInfo {
-  title: string
-  lineCount: number
-  speakers: Set<string>
-}
-
-interface UseAiContextOptions {
-  overview: ComputedRef<AnalysisOverview | null>
-  todoStats: ComputedRef<TodoStats | null>
-  chapters: ComputedRef<ChapterInfo[]>
-}
-
-export function useAiContext(opts: UseAiContextOptions) {
+export function useAiContext() {
   const { t } = useI18n()
   const taskStore = useTaskStore()
+  const realtimeStore = useRealtimeStore()
+
+  // ── 对话数据源（内联，原 useAiAnalysis 逻辑） ──
+  const isRecording = computed(() => {
+    const s = taskStore.currentTask?.status
+    return s === 'recording' || s === 'paused'
+  })
+
+  const dialogueLines = computed(() => {
+    if (isRecording.value && realtimeStore.entries.length > 0) {
+      return realtimeStore.entries.map(e => ({
+        begin_time: e.begin_time,
+        speaker_id: e.speaker_id,
+        text: e.text,
+      }))
+    }
+    const all: Array<{ begin_time: number; speaker_id: number; text: string }> = []
+    const dialogue = taskStore.currentTask?.dialogue ?? []
+    for (const d of dialogue) {
+      if (!d.sentences) continue
+      for (const s of d.sentences) {
+        all.push({ begin_time: s.begin_time, speaker_id: s.speaker_id, text: s.text })
+      }
+    }
+    all.sort((a, b) => a.begin_time - b.begin_time)
+    return all
+  })
+
+  const speakerCount = computed(() => {
+    const lines = dialogueLines.value
+    if (!lines.length) return 0
+    return new Set(lines.map(d => d.speaker_id)).size
+  })
+
+  const chapterCount = computed(() => {
+    const lines = dialogueLines.value
+    if (!lines.length) return 0
+    const SPAN = 600000 // 10 分钟
+    let count = 1
+    let chapterStart = lines[0].begin_time
+    for (const d of lines) {
+      if (d.begin_time - chapterStart >= SPAN) {
+        count++
+        chapterStart = d.begin_time
+      }
+    }
+    return count
+  })
+
+  const todoStats = computed(() => {
+    const t = taskStore.currentTask
+    if (!t?.todos?.length) return null
+    const total = t.todos.length
+    const done = t.todos.filter(td => td.done).length
+    return { total, done }
+  })
 
   // ── 本地状态 ──
   const projectFiles = ref<Array<{ id: string; name: string; size: string; date: string; type: string }>>([])
@@ -65,9 +97,9 @@ export function useAiContext(opts: UseAiContextOptions) {
   )
 
   const contextStats = computed(() => ({
-    transcript: taskStore.currentTask ? 1 : 0,
-    summary: opts.overview.value && taskStore.currentTask?.summary ? 1 : 0,
-    todos: opts.todoStats.value?.total || 0,
+    transcript: taskStore.currentTask && dialogueLines.value.length > 0 ? 1 : 0,
+    summary: taskStore.currentTask?.summary ? 1 : 0,
+    todos: todoStats.value?.total || 0,
     files: projectFiles.value.length,
   }))
 
@@ -94,15 +126,15 @@ export function useAiContext(opts: UseAiContextOptions) {
     return `${mins}min ${secs.toString().padStart(2, '0')}s`
   })
 
-  const speakerCount = computed(() => opts.overview.value?.speakerCount || 0)
-  const chapterCount = computed(() => opts.chapters.value?.length || 0)
+  const speakerCountDisplay = computed(() => speakerCount.value)
+  const chapterCountDisplay = computed(() => chapterCount.value)
   const hasSummary = computed(() => !!taskStore.currentTask?.summary)
-  const todoCount = computed(() => opts.todoStats.value?.total || 0)
+  const todoCount = computed(() => todoStats.value?.total || 0)
   const todoPending = computed(() => {
-    const ts = opts.todoStats.value
+    const ts = todoStats.value
     return ts ? ts.total - ts.done : 0
   })
-  const todoDone = computed(() => opts.todoStats.value?.done || 0)
+  const todoDone = computed(() => todoStats.value?.done || 0)
 
   const isContextEmpty = computed(() =>
     contextStats.value.transcript === 0 &&
@@ -171,8 +203,8 @@ export function useAiContext(opts: UseAiContextOptions) {
     projectFileCount,
     relatedMeetingCount,
     currentTaskDuration,
-    speakerCount,
-    chapterCount,
+    speakerCount: speakerCountDisplay,
+    chapterCount: chapterCountDisplay,
     hasSummary,
     todoCount,
     todoPending,

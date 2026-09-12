@@ -17,7 +17,7 @@
   },
   "tab": {
     "transcript": "Transcript",
-    "summary": "Live Summary"
+    "insights": "AI Insights"
   },
   "transcript": {
     "show": "Show Transcript",
@@ -47,20 +47,14 @@
     "send": "Send note",
     "delete": "Delete note"
   },
-  "summary": {
-    "title": "Live Summary",
-    "waiting": "Waiting",
-    "countdown": "Next refresh in {count}s",
-    "paused": "Paused",
-    "resume_title": "Resume summary",
-    "pause_title": "Pause summary",
-    "stop": "Stop Summary",
-    "frequency": "Refresh Frequency",
-    "freq_frequent": "Frequent",
-    "freq_default": "Default",
-    "freq_moderate": "Moderate",
-    "freq_economical": "Economical",
-    "waiting_content": "Summary will be generated automatically after enough conversation content..."
+  "insights": {
+    "title": "AI Insights",
+    "empty": "AI will analyze the conversation in real time and provide insights during the meeting",
+    "empty_hint": "Including context association, blind spot revelation, consensus extraction, and more",
+    "enabled": "Insights enabled",
+    "disabled": "Insights disabled",
+    "settings": "Insights Settings",
+    "unread_count": "{count} unread insight(s)"
   },
   "control": {
     "pause": "Pause",
@@ -90,6 +84,11 @@
     "confirm": "Confirm Abandon"
   },
   "jump_latest": "Jump to Latest",
+  "timeline": {
+    "jump_title": "Jump to specific time",
+    "jump_placeholder": "MM:SS or HH:MM:SS",
+    "jump_go": "Go"
+  },
   "volume_warning": "Very low volume detected. Please check your microphone or audio input device.",
   "presence_warning": {
     "gentle_text": "No speech detected for {minutes} minutes and the page is inactive. Continue recording?",
@@ -102,9 +101,19 @@
   },
   "errors": {
     "bind_speaker_failed": "Failed to bind speaker",
-    "create_bind_speaker_failed": "Failed to create and bind speaker",
-    "set_frequency_failed": "Failed to set summary frequency",
-    "stop_summary_failed": "Failed to stop summary",
-    "toggle_summary_failed": "Failed to toggle summary pause"
-  }
+    "create_bind_speaker_failed": "Failed to create and bind speaker"
+  },
+  "translate": {
+    "title": "Translate",
+    "enable": "Enable Translation",
+    "disable": "Disable Translation",
+    "toggle_off": "Translate",
+    "target_lang": "Target Language",
+    "status_active": "Translating",
+    "status_stopped": "Translation Stopped",
+    "display_original": "Original Only",
+    "display_translation": "Translation Only",
+    "display_bilingual": "Bilingual"
+  },
+  "privacy_banner": "Audio is being streamed to the cloud for speech recognition. Do not record sensitive content."
 }

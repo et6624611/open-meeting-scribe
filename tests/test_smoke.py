@@ -317,3 +317,157 @@ class TestTodosNotFound:
     def test_todos_not_found(self, client):
         resp = client.get("/api/tasks/nonexistent-id/todos")
         assert resp.status_code == 404
+
+
+# ============================================================
+# AI 洞察域
+# ============================================================
+
+class TestInsightAnalyzeEmpty:
+    """POST /api/insights/analyze 空输入时返回安全默认值"""
+
+    def test_analyze_empty_lines(self, client):
+        resp = client.post("/api/insights/analyze", json={
+            "recent_lines": [],
+            "chapter_titles": ["主题一"],
+            "analysis_type": "context",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_finding"] is False
+
+    def test_analyze_empty_titles(self, client):
+        resp = client.post("/api/insights/analyze", json={
+            "recent_lines": [{"text": "测试", "speaker_id": 0, "begin_time": 0}],
+            "chapter_titles": [],
+            "analysis_type": "blindspot",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_finding"] is False
+
+    def test_analyze_unknown_type(self, client):
+        """未知分析类型返回安全默认值"""
+        resp = client.post("/api/insights/analyze", json={
+            "recent_lines": [{"text": "测试", "speaker_id": 0, "begin_time": 0}],
+            "chapter_titles": ["主题"],
+            "analysis_type": "unknown_type",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_finding"] is False
+
+
+class TestInsightMessagesPersistence:
+    """洞察消息按会议持久化"""
+
+    def test_get_messages_not_found(self, client):
+        """不存在的会议返回空列表"""
+        resp = client.get("/api/insights/messages/nonexistent-task-id")
+        assert resp.status_code == 200
+        assert resp.json()["messages"] == []
+
+    def test_save_and_load_messages(self, client, tmp_path, monkeypatch):
+        """保存后加载应返回相同消息"""
+        import app.routers.insights as insights_router
+        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        task_id = "test-task-123"
+        messages = [
+            {"id": "msg-1", "title": "测试洞察", "body": "内容", "timestamp": 1234567890},
+        ]
+        resp = client.post(f"/api/insights/messages/{task_id}", json={"messages": messages})
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        # 加载
+        resp = client.get(f"/api/insights/messages/{task_id}")
+        assert resp.status_code == 200
+        loaded = resp.json()["messages"]
+        assert len(loaded) == 1
+        assert loaded[0]["title"] == "测试洞察"
+
+
+# ============================================================
+# 实时翻译
+# ============================================================
+
+class TestRealtimeTranslator:
+    """实时翻译器基本功能"""
+
+    def test_translator_init_and_feed(self):
+        """翻译器初始化、接收句子、停止不抛异常"""
+        from core.translate import RealtimeTranslator
+
+        translations_received = []
+
+        def on_translation(translations):
+            translations_received.extend(translations)
+
+        translator = RealtimeTranslator(
+            target_lang="en",
+            on_translation=on_translation,
+            on_status=lambda s: None,
+        )
+        assert translator.target_lang == "en"
+        assert not translator.is_running
+        assert not translator.is_stopped
+
+        # 启动
+        translator.start()
+        assert translator.is_running
+
+        # 送入句子（未启动 LLM，仅测试缓冲逻辑）
+        translator.feed_sentence({
+            "text": "今天我们来讨论项目进度",
+            "speaker_id": 0,
+            "speaker_name": "发言人1",
+            "begin_time": 0,
+            "end_time": 3000,
+        })
+
+        # 停止（会尝试翻译缓冲中的句子，但 LLM 调用会失败，不应抛异常）
+        translator.stop()
+        assert translator.is_stopped
+        assert not translator.is_running
+
+    def test_translator_set_target_lang(self):
+        """热切换目标语言"""
+        from core.translate import RealtimeTranslator
+
+        translator = RealtimeTranslator(target_lang="en")
+        translator.start()
+        assert translator.target_lang == "en"
+
+        translator.set_target_lang("ja")
+        assert translator.target_lang == "ja"
+
+        translator.stop()
+
+    def test_translator_get_all_translations(self):
+        """获取全量翻译结果"""
+        from core.translate import RealtimeTranslator
+
+        translator = RealtimeTranslator(target_lang="en")
+        translator.start()
+        translations = translator.get_all_translations()
+        assert isinstance(translations, list)
+        assert len(translations) == 0
+        translator.stop()
+
+    def test_translator_parse_response(self):
+        """解析 LLM 返回的翻译结果"""
+        from core.translate import RealtimeTranslator
+
+        translator = RealtimeTranslator(target_lang="en")
+
+        # 正常 JSON 数组
+        result = translator._parse_response('["Hello", "World"]', 2)
+        assert result == ["Hello", "World"]
+
+        # 带 markdown 代码块
+        result = translator._parse_response('```json\n["Hello", "World"]\n```', 2)
+        assert result == ["Hello", "World"]
+
+        # 数量不匹配时兆底
+        result = translator._parse_response('invalid', 3)
+        assert len(result) == 3
+        assert all(t == "[翻译失败]" for t in result)

@@ -16,17 +16,24 @@
     />
 
     <!-- 内容区 -->
-    <div class="rec-content-area" :class="{ 'tab-summary': recTab === 'summary' }">
+    <div class="rec-content-area" :class="{ 'tab-insights': recTab === 'insights' }">
       <!-- Tab 切换 -->
       <div class="rec-tab-bar">
         <button class="rec-tab" :class="{ active: recTab === 'transcript' }" @click="recTab = 'transcript'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           {{ t('recording.tab.transcript') }}
         </button>
-        <button class="rec-tab" :class="{ active: recTab === 'summary' }" @click="recTab = 'summary'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="21" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="3" y2="18"/></svg>
-          {{ t('recording.tab.summary') }}
+        <button class="rec-tab" :class="{ active: recTab === 'insights' }" @click="recTab = 'insights'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          {{ t('recording.tab.insights') }}
         </button>
+      </div>
+
+      <!-- 隐私警告横幅 -->
+      <div class="rec-privacy-warning" v-if="showPrivacyBanner">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>{{ t('recording.privacy_banner') }}</span>
+        <button class="rec-volume-dismiss" @click="showPrivacyBanner = false">&times;</button>
       </div>
 
       <!-- 音量警告 -->
@@ -59,11 +66,6 @@
         </div>
       </div>
 
-      <!-- 总结进度条 -->
-      <div class="rec-summary-progress" v-if="recTab === 'summary' && summaryCountdown > 0 && !summaryPaused">
-        <div class="rec-summary-progress-bar" :class="{ 'is-warning': summaryCountdown <= 10 }" :style="{ width: summaryProgressPercent + '%' }"></div>
-      </div>
-
       <!-- 结束过渡遮罩 -->
       <div class="rec-ending-overlay" v-if="ending">
         <template v-if="stopFailed">
@@ -79,10 +81,9 @@
         </template>
       </div>
 
-      <!-- 左栏：转写原文 -->
+      <!-- 左栏：转写原文（宽屏并排，窄屏由 CSS tab-insights 切换） -->
       <RecTranscriptPanel
         ref="transcriptRef"
-        :is-visible="recTab === 'transcript'"
         :lines="wsLines"
         :partial-text="wsPartial"
         :chapters="wsChapters"
@@ -92,33 +93,68 @@
         :compressed-count="compressedCount"
         :expanded-chapters="recExpandedChapters"
         :locate-id="locateSpeakerId"
-        :show-jump-btn="showJumpBtn"
+        :total-duration-ms="elapsedMs"
+        :current-time-ms="elapsedMs"
         :get-speaker-name="getSpeakerDisplayName"
         :is-me="isMeSpeaker"
         :has-note-at="hasNoteAt"
-        :get-chapter-start="getChapterStartInfo"
+        :chapter-start-map="chapterStartMap"
+        :translation-map="translation.translationMap.value"
+        :translation-display="translation.displayMode.value"
+        :translate-enabled="translation.enabled.value"
+        :target-lang="translation.targetLang.value"
+        :target-lang-label="translation.targetLangLabel.value"
+        :supported-languages="translation.supportedLanguages"
+        @toggle-translate="translation.toggle()"
+        @set-translate-lang="translation.setTargetLang($event)"
         @update:show-transcript="showTranscript = $event"
         @update:marker-mode="markerMode = $event"
         @toggle-chapter="toggleChapterExpand"
         @open-bind="openBindPopover"
         @toggle-locate="toggleLocateSpeaker"
         @delete-note="notes.deleteNote"
-        @jump-latest="jumpToLatest"
       />
 
-      <!-- 右栏：实时总结 -->
-      <RecSummaryPanel
-        :is-active="recTab === 'summary'"
-        :summary-html="summaryHtml"
-        :paused="summaryPaused"
-        :status-text="summaryStatusText"
-        :countdown="summaryCountdown"
-        :progress-percent="summaryProgressPercent"
-        :interval="summaryInterval"
-        @toggle-pause="onToggleSummaryPause"
-        @stop-summary="onStopSummary"
-        @set-frequency="onSetFrequency"
+      <!-- 右栏：AI 洞察（宽屏并排，窄屏由 CSS tab-insights 切换） -->
+      <RecInsightsPanel
+        :messages="insights.insightMessages.value"
+        :enabled="insights.insightsEnabled.value"
+        :unread-count="insights.unreadCount.value"
+        :config="insights.insightsConfig.value"
+        :acted-actions="actedActions"
+        :show-settings="showInsightsSettings"
+        :analyzing="insights.manualAnalyzing.value"
+        @toggle-enabled="insights.toggleEnabled()"
+        @toggle-settings="showInsightsSettings = !showInsightsSettings"
+        @request-close-settings="showInsightsSettings = false"
+        @toggle-message="insights.toggleExpanded($event)"
+        @action="onInsightAction"
+        @category-toggle="onInsightCategoryToggle"
+        @scan-interval-change="onInsightScanIntervalChange"
+        @sensitivity-change="onInsightSensitivityChange"
+        @notif-toggle="onInsightNotifToggle"
+        @dnd-toggle="onInsightDndToggle"
+        @dnd-time-change="onInsightDndTimeChange"
+        @manual-check="onInsightManualCheck"
       />
+    </div>
+
+    <!-- 洞察通知横幅 -->
+    <div v-if="insightBannerMsg" class="insight-banner-wrap">
+      <div class="insight-banner" @click="onBannerClick">
+        <div class="insight-banner-inner">
+          <div class="insight-banner-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+          <div class="insight-banner-text">
+            <div class="insight-banner-label">{{ t('ai-panel.insights.banner_label') }}</div>
+            <div class="insight-banner-title">{{ insightBannerMsg.title }}</div>
+          </div>
+          <button class="insight-banner-close" :aria-label="t('ai-panel.insights.banner_close')" @click.stop="insightBannerMsg = null">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 随记输入栏 -->
@@ -201,13 +237,16 @@ import { useQuoteRef } from '@/composables/useQuoteRef'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { usePresenceDetection } from '@/composables/usePresenceDetection'
 import { useRecordingNotes } from '@/composables/useRecordingNotes'
+import { useTranslation } from '@/composables/useTranslation'
 import { fetchSpeakers, createSpeaker, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
 import { updateTask } from '@/api/tasks'
-import { pauseSummary, resumeSummary, stopSummary, setSummaryInterval, bindSpeaker } from '@/api/record'
+import { bindSpeaker } from '@/api/record'
 import RecControlBar from './recording/RecControlBar.vue'
 import RecTranscriptPanel from './recording/RecTranscriptPanel.vue'
-import RecSummaryPanel from './recording/RecSummaryPanel.vue'
+import RecInsightsPanel from './recording/RecInsightsPanel.vue'
+import { useAiInsights } from '@/composables/useAiInsights'
+import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
 import RecNotesBar from './recording/RecNotesBar.vue'
 import RecSpeakerBind from './recording/RecSpeakerBind.vue'
 
@@ -219,8 +258,8 @@ const recPaused = recorder.isPaused
 const ws = useWebSocketTranscript()
 const wsLines = ws.lines
 const wsPartial = ws.partialText
-const wsSummary = ws.summary
 const wsChapters = ws.chapters
+const translation = useTranslation(ws)
 const taskStore = useTaskStore()
 const userStore = useUserStore()
 const layout = useLayoutStore()
@@ -235,13 +274,12 @@ const elapsedMs = computed(() => recorder.elapsed.value * 1000)
 const notes = useRecordingNotes(wsLines, elapsedMs)
 
 // ── 本地状态 ──
-const recTab = ref<'transcript' | 'summary'>('transcript')
+const recTab = ref<'transcript' | 'insights'>('transcript')
 const noteText = ref('')
 const notesBarRef = ref<InstanceType<typeof RecNotesBar> | null>(null)
 const transcriptRef = ref<InstanceType<typeof RecTranscriptPanel> | null>(null)
 const showTranscript = ref(true)
 const markerMode = ref(false)
-const showJumpBtn = ref(false)
 const locateSpeakerId = ref<number | null>(null)
 const isFocusMode = ref(false)
 let preFocusViewMode: import('@/stores/layout').ViewMode = 'full'
@@ -266,27 +304,18 @@ let speakerCountFlashTimer: ReturnType<typeof setTimeout> | null = null
 const recExpandedChapters = reactive(new Set<number>())
 const recAutoExpandedCount = ref(0)
 
-// 总结
-const summaryInterval = ref(60)
-const summaryCountdown = ref(0)
-const summaryPaused = computed(() => ws.summaryPaused.value)
-const summaryStatusText = computed(() => {
-  if (summaryPaused.value) return t('recording.summary.paused')
-  if (!wsSummary.value) return t('recording.summary.waiting')
-  return t('recording.summary.countdown', { count: summaryCountdown.value })
-})
-const summaryHtml = computed(() => {
-  if (wsSummary.value) return renderMd(wsSummary.value)
-  return `<p style="color:var(--subtle)">${t('recording.summary.waiting_content')}</p>`
-})
-const summaryProgressPercent = computed(() => summaryInterval.value <= 0 ? 0 : Math.max(0, Math.min(100, ((summaryInterval.value - summaryCountdown.value) / summaryInterval.value) * 100)))
-let fallbackTimer: ReturnType<typeof setInterval> | null = null
+// AI 洞察
+const insights = useAiInsights()
+const actedActions = reactive<Record<string, boolean>>({})
+const showInsightsSettings = ref(false)
+const insightBannerMsg = ref<InsightMessage | null>(null)
 
 // 结束/放弃
 const ending = ref(false)
 const stopFailed = ref(false)
 const stopErrorMsg = ref('')
 const showAbandon = ref(false)
+const showPrivacyBanner = ref(true)
 
 // 弹出菜单
 const recMoreBtn = ref<HTMLElement | null>(null)
@@ -313,29 +342,27 @@ function isMeSpeaker(speakerId: number): boolean {
   return !!spk?.linked_user_id && !!userStore.user?.id && spk.linked_user_id === userStore.user.id
 }
 
-function getChapterStartInfo(lineIdx: number): { title: string; chapterIdx: number } | null {
-  if (wsChapters.value.length === 0) return null
-  const line = wsLines.value[lineIdx]
-  if (!line?.begin_time) return null
-  for (let c = wsChapters.value.length - 1; c >= 0; c--) {
-    const ch = wsChapters.value[c]
-    if (line.begin_time >= ch.start_ms && (c === 0 || line.begin_time < wsChapters.value[c - 1].start_ms || lineIdx === 0)) {
-      if (lineIdx === 0 || (wsLines.value[lineIdx - 1]?.begin_time || 0) < ch.start_ms) return { title: ch.title, chapterIdx: c }
+// ── 章节起始映射（预计算，避免模板内重复调用） ──
+const chapterStartMap = computed(() => {
+  const map = new Map<number, { title: string; chapterIdx: number }>()
+  if (wsChapters.value.length === 0 || wsLines.value.length === 0) return map
+  for (let i = 0; i < wsLines.value.length; i++) {
+    const line = wsLines.value[i]
+    if (!line?.begin_time) continue
+    for (let c = wsChapters.value.length - 1; c >= 0; c--) {
+      const ch = wsChapters.value[c]
+      if (line.begin_time >= ch.start_ms) {
+        if (i === 0 || (wsLines.value[i - 1]?.begin_time ?? 0) < ch.start_ms) {
+          map.set(i, { title: ch.title, chapterIdx: c })
+        }
+        break
+      }
     }
   }
-  return null
-}
+  return map
+})
 
 function toggleChapterExpand(idx: number) { recExpandedChapters.has(idx) ? recExpandedChapters.delete(idx) : recExpandedChapters.add(idx) }
-
-function renderMd(md: string): string {
-  return md.replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/^- \[ \] (.+)$/gm, '<li style="list-style:none;display:flex;align-items:center;gap:4px">☐ $1</li>')
-    .replace(/^- \[x\] (.+)$/gm, '<li style="list-style:none;display:flex;align-items:center;gap:4px">☑ $1</li>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>').replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>').replace(/^---$/gm, '<hr>').replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>')
-}
 
 // ── 操作回调 ──
 function onSelectProject(id: string) { showProjectDropdown.value = false; updateTask(taskId.value, { project_id: id || undefined }).then(() => taskStore.patchTaskLocal(taskId.value, { project_id: id || null })).catch(() => {}) }
@@ -355,12 +382,52 @@ async function onCreateAndBind() {
 }
 
 function onSendNote() { const text = noteText.value.trim(); if (!text) return; notes.addNote(text); noteText.value = '' }
-function jumpToLatest() { const el = transcriptRef.value?.bodyRef; if (el) { el.scrollTop = el.scrollHeight; showJumpBtn.value = false } }
 
-// 总结控制
-async function onToggleSummaryPause() { try { summaryPaused.value ? await resumeSummary() : await pauseSummary() } catch {} }
-async function onStopSummary() { try { await stopSummary() } catch {} }
-async function onSetFrequency(f: number) { summaryInterval.value = f; summaryCountdown.value = f; try { await setSummaryInterval(f) } catch {} }
+// AI 洞察回调
+function onInsightAction(msg: InsightMessage, act: InsightAction) {
+  const key = msg.id + ':' + act.key
+  if (actedActions[key]) return
+  actedActions[key] = true
+  // 确认消息：折叠卡片 + 切换为系统默认色系
+  insights.acknowledgeMessage(msg.id)
+  // 差异化处理
+  switch (act.key) {
+    case 'adjust':
+      recTab.value = 'transcript'
+      break
+    case 'generate':
+      // 切换到洞察面板查看总结建议
+      recTab.value = 'insights'
+      break
+    case 'view':
+      // 滚动到洞察面板查看消息详情
+      recTab.value = 'insights'
+      break
+  }
+}
+
+function onShowBanner(e: Event) {
+  const msg = (e as CustomEvent).detail as InsightMessage
+  insightBannerMsg.value = msg
+}
+function onBannerClick() {
+  recTab.value = 'insights'
+  insightBannerMsg.value = null
+}
+function onInsightCategoryToggle(key: string, val: boolean) { insights.insightsConfig.value.categories[key] = val; insights.saveConfig() }
+function onInsightScanIntervalChange(key: string, val: number) { insights.insightsConfig.value.scanIntervals[key] = val; insights.saveConfig() }
+function onInsightSensitivityChange(field: string, val: number) { (insights.insightsConfig.value.sensitivity as Record<string, number>)[field] = val; insights.saveConfig() }
+function onInsightNotifToggle(field: string, val: boolean) { (insights.insightsConfig.value.notifications as Record<string, boolean>)[field] = val; insights.saveConfig() }
+function onInsightDndToggle(val: boolean) { insights.insightsConfig.value.dnd.enabled = val; insights.saveConfig() }
+function onInsightDndTimeChange(field: 'startHour' | 'endHour', val: number) { insights.insightsConfig.value.dnd[field] = val; insights.saveConfig() }
+
+function onInsightManualCheck(category: string) {
+  insights.runManualAnalysis(
+    wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
+    wsChapters.value.map(c => c.title),
+    category
+  )
+}
 
 // 存在性警告
 function onPresenceContinue() { presence.acknowledge(); ws.clearPresenceWarning() }
@@ -377,7 +444,8 @@ async function onTogglePause() {
 // 结束录音
 async function onStop() {
   ending.value = true; stopFailed.value = false; ws.disconnect()
-  if (fallbackTimer) clearInterval(fallbackTimer)
+  insights.stopEngine()  // 停止洞察引擎
+  translation.reset()    // 重置翻译状态
   try {
     const result = await recorder.stopRecording(notes.getNotesText())
     notes.clearStorage()
@@ -390,67 +458,76 @@ async function onStop() {
 
 function onForceQuit() { ending.value = false; stopFailed.value = false; notes.clearStorage(); const tid = recorder.taskId.value; taskStore.loadTasks().then(() => { if (tid) router.push({ name: 'generating', params: { taskId: tid } }); else router.push('/') }) }
 
-async function onAbandon() { showAbandon.value = false; ws.disconnect(); if (fallbackTimer) clearInterval(fallbackTimer); notes.clearStorage(); await recorder.abandonRecording(); await taskStore.loadTasks(); router.push('/') }
-
-// ── 自动滚动 ──
-function scrollIfAtBottom() { const el = transcriptRef.value?.bodyRef; if (!el) return; if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight; else showJumpBtn.value = true }
-function scheduleScrollCheck() { nextTick(() => requestAnimationFrame(() => scrollIfAtBottom())) }
-function onTranscriptScroll() { const el = transcriptRef.value?.bodyRef; if (!el) return; showJumpBtn.value = el.scrollHeight - el.scrollTop - el.clientHeight >= 80 }
-
-// ── 总结倒计时 ──
-function startFallbackTimer() { if (fallbackTimer) clearInterval(fallbackTimer); summaryCountdown.value = summaryInterval.value; fallbackTimer = setInterval(() => { if (ws.summaryCountdownSec.value < 0 && !summaryPaused.value && summaryCountdown.value > 0) summaryCountdown.value-- }, 1000) }
+async function onAbandon() { showAbandon.value = false; ws.disconnect(); notes.clearStorage(); await recorder.abandonRecording(); await taskStore.loadTasks(); router.push('/') }
 
 // ── Watchers ──
-watch(() => wsLines.value.length, () => scheduleScrollCheck())
-watch(wsPartial, () => scheduleScrollCheck())
-watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n; scheduleScrollCheck() })
-watch(() => ws.summaryCountdownSec.value, (r) => { if (r >= 0) summaryCountdown.value = r })
-watch(summaryPaused, (p) => { summaryCountdown.value = p ? 0 : summaryInterval.value })
-watch(wsSummary, () => { summaryCountdown.value = summaryInterval.value })
+watch(() => wsLines.value.length, () => {
+  insights.feedTranscriptActivity()  // 新行到达 → 重置 idle 计时器
+})
+watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n })
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
 watch(recTab, (tab) => localStorage.setItem('oms_rec_active_tab', tab))
-watch(noteText, () => { nextTick(() => { const el = notesBarRef.value?.textareaRef; if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; requestAnimationFrame(() => scrollIfAtBottom()) }) })
+watch(noteText, () => { nextTick(() => { const el = notesBarRef.value?.textareaRef; if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' }) })
 
 // ── 生命周期 ──
 onMounted(async () => {
   const saved = localStorage.getItem('oms_rec_active_tab')
-  if (saved === 'transcript' || saved === 'summary') recTab.value = saved
+  if (saved === 'transcript' || saved === 'insights') recTab.value = saved
   registerNotesAppender((md: string) => { noteText.value = noteText.value ? noteText.value + '\n\n' + md : md })
   registerSummaryAppender((md: string) => { noteText.value = noteText.value ? noteText.value + '\n\n' + md : md })
-  const bodyEl = transcriptRef.value?.bodyRef
-  if (bodyEl) bodyEl.addEventListener('scroll', onTranscriptScroll)
   fetchProjects().then(l => { projects.value = l }).catch(() => {})
   ws.onSpeakerBound((id: number, uuid: string) => { realtimeSpeakerBindings.value[id] = uuid })
+  // 注册翻译回调
+  ws.onTranslationUpdate(translation.handleTranslationUpdate)
+  ws.onTranslationStatus(translation.handleTranslationStatus)
+  translation.loadPreferences()
   presence.start()
   const tid = taskId.value
-  if (tid) { recorder.taskId.value = tid; await recorder.checkStatus(); ws.connect(tid); try { speakers.value = await fetchSpeakers() } catch {}; startFallbackTimer(); notes.restoreFromStorage() }
+  if (tid) { recorder.taskId.value = tid; await recorder.checkStatus(); ws.connect(tid); try { speakers.value = await fetchSpeakers() } catch {}; notes.restoreFromStorage() }
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKeydown)
+  // 启动洞察引擎（先绑定当前会议，加载已有洞察消息）
+  await insights.setCurrentTask(taskId.value)
+  insights.startEngine()
+  insights.onInsightCheck(() => {
+    insights.runAutoInsightCheck(
+      wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
+      wsChapters.value.map(c => c.title)
+    )
+  })
+  window.addEventListener('insights:show-banner', onShowBanner)
+  window.addEventListener('insights:auto-expand', onAutoExpand)
+  // 处理从侧边栏跳转过来时自动切换到洞察 tab
+  if (route.query.tab === 'insights') {
+    recTab.value = 'insights'
+    insights.markAllRead()
+    const firstUnread = insights.getFirstUnread()
+    if (firstUnread && !firstUnread.expanded) insights.toggleExpanded(firstUnread.id)
+  }
 })
 
 onUnmounted(() => {
-  const el = transcriptRef.value?.bodyRef; if (el) el.removeEventListener('scroll', onTranscriptScroll)
   presence.stop(); ws.disconnect()
-  if (fallbackTimer) clearInterval(fallbackTimer)
+  insights.stopEngine()  // 停止洞察引擎
   if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer)
   document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('insights:show-banner', onShowBanner)
+  window.removeEventListener('insights:auto-expand', onAutoExpand)
 })
 
 function onDocClick(e: Event) { if (bindPopover.value.visible && !(e.target as HTMLElement).closest('.rec-bind-popover')) closeBindPopover() }
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && isFocusMode.value) onFocusMode() }
+
+/** 侧边栏洞察按钮点击 → 切换到洞察 tab + 标记已读 + 展开首条未读 */
+function onAutoExpand() {
+  recTab.value = 'insights'
+  insights.markAllRead()
+  const firstUnread = insights.getFirstUnread()
+  if (firstUnread && !firstUnread.expanded) insights.toggleExpanded(firstUnread.id)
+}
 </script>
 
 <style scoped>
-.rec-line-body { display: flex; width: 100%; }
-.rec-line-text { display: inline-block; background: var(--surface); border: 1px solid var(--border-strong); padding: var(--s-2) var(--s-3); border-radius: var(--radius-lg); color: var(--fg); max-width: 85%; }
-.rec-line.is-me { align-items: flex-end; background: transparent; border: none; border-radius: 0; padding: var(--s-1) 0; margin: var(--s-1) 0; }
-.rec-line.is-me .rec-line-head { flex-direction: row-reverse; justify-content: flex-start; }
-.rec-line.is-me .rec-line-body { display: flex; justify-content: flex-end; width: 100%; }
-.rec-line.is-me .rec-line-text { display: inline-block; background: var(--mine-soft); border: 1px solid var(--mine); padding: var(--s-2) var(--s-3); border-radius: 12px; color: var(--fg); text-align: left; max-width: 70%; }
-.rec-line.is-me .rec-line-speaker { color: var(--mine); }
-.rec-line.is-located { opacity: 1 !important; }
-.rec-line.is-dimmed { opacity: 0.2; }
-.rec-line-locate-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 6px; padding: 0; border: none; background: transparent; color: var(--subtle); cursor: pointer; border-radius: 4px; transition: all 0.2s; }
-.rec-line-locate-btn:hover { background: var(--border); color: var(--fg); }
+/* 转写行气泡样式已迁移至 recording-view.css 全局样式 */
 </style>

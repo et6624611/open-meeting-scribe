@@ -30,7 +30,7 @@ def usage_summary():
 
     subscription = user.get("subscription", {})
     tier = subscription.get("tier", "free")
-    TIER_NAMES = {"free": "体验版", "personal": "个人版", "pro": "专业版", "team": "团队版"}
+    TIER_NAMES = {"free": "体验期"}
 
     if not is_metered():
         return {

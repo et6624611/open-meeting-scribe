@@ -97,7 +97,7 @@ def generate_chapters(
     all_sentences = []
     for speaker in dialogue:
         sid = speaker.get("speaker_id", 0)
-        speaker_name = speaker.get("speaker_name", f"说话人{sid + 1}")
+        speaker_name = speaker.get("speaker_name", f"Speaker {sid + 1}")
         for sent in (speaker.get("sentences") or []):
             all_sentences.append({
                 "speaker_id": sid,

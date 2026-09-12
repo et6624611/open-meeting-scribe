@@ -322,7 +322,7 @@ tr:last-child td { border-bottom: none; }
   font-size: 14px;
 }
 
-/* ── 订阅编辑 ── */
+/* ── 授权编辑 ── */
 .subscription-form {
   display: flex;
   gap: 12px;
@@ -495,14 +495,10 @@ tr:last-child td { border-bottom: none; }
           <!-- 动态填充 -->
         </div>
         <div class="subscription-form">
-          <span style="font-size:14px;color:var(--muted);">修改订阅档位：</span>
+          <span style="font-size:14px;color:var(--muted);">授权档位：</span>
           <select id="detailTierSelect">
-            <option value="free">体验版（免费）</option>
-            <option value="personal">个人版</option>
-            <option value="pro">专业版</option>
-            <option value="team">团队版</option>
+            <option value="free">体验期</option>
           </select>
-          <button onclick="updateSubscription()">保存</button>
           <span style="margin-left:12px;font-size:14px;color:var(--muted);">账号状态：</span>
           <select id="detailStatusSelect">
             <option value="active">正常</option>
@@ -517,19 +513,14 @@ tr:last-child td { border-bottom: none; }
         <div class="table-toolbar">
           <input type="text" id="searchInput" placeholder="搜索名称、手机号、邮箱..." oninput="debounceSearch()">
           <select id="tierFilter" onchange="loadUsers()">
-            <option value="">全部档位</option>
-            <option value="free">体验版</option>
-            <option value="personal">个人版</option>
-            <option value="pro">专业版</option>
-            <option value="team">团队版</option>
+            <option value="">全部</option>
+            <option value="free">体验期</option>
           </select>
-        </div>
-        <table>
           <thead>
             <tr>
               <th>用户</th>
               <th>登录方式</th>
-              <th>订阅</th>
+              <th>授权</th>
               <th>本月用量</th>
               <th>状态</th>
               <th>注册时间</th>
@@ -577,9 +568,7 @@ tr:last-child td { border-bottom: none; }
               <option value="guest">未登录用户</option>
               <option value="logged_in">已登录用户</option>
               <option value="all">所有用户</option>
-              <option value="tier:free">免费用户</option>
-              <option value="tier:personal">个人版用户</option>
-              <option value="tier:pro">专业版用户</option>
+              <option value="tier:free">体验期用户</option>
             </select>
           </div>
           <div>
@@ -676,10 +665,7 @@ tr:last-child td { border-bottom: none; }
             <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">生效对象</label>
             <select id="flagTarget" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
               <option value="all">所有用户</option>
-              <option value="tier:free">体验版用户</option>
-              <option value="tier:personal">个人版用户</option>
-              <option value="tier:pro">专业版用户</option>
-              <option value="tier:team">团队版用户</option>
+              <option value="tier:free">体验期用户</option>
               <option value="users">指定用户 ID</option>
             </select>
           </div>
@@ -830,26 +816,22 @@ async function loadOverview() {
 
     // 统计卡片
     const tierCounts = data.tier_counts || {};
-    const totalPaid = (tierCounts.personal || 0) + (tierCounts.pro || 0) + (tierCounts.team || 0);
+    const totalUsers = data.total_users;
+    const freeCount = tierCounts.free || 0;
 
     document.getElementById('statsGrid').innerHTML = `
       <div class="stat-card">
         <div class="label">总用户数</div>
-        <div class="value">${data.total_users}</div>
+        <div class="value">${totalUsers}</div>
       </div>
       <div class="stat-card">
-        <div class="label">付费用户</div>
-        <div class="value">${totalPaid}</div>
-        <div class="sub">个人 ${tierCounts.personal || 0} / 专业 ${tierCounts.pro || 0} / 团队 ${tierCounts.team || 0}</div>
+        <div class="label">体验期用户</div>
+        <div class="value">${freeCount}</div>
       </div>
       <div class="stat-card">
         <div class="label">本月总用量</div>
         <div class="value">${data.total_monthly_minutes}</div>
         <div class="sub">${data.month_key} 分钟</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">免费用户</div>
-        <div class="value">${tierCounts.free || 0}</div>
       </div>
     `;
 
@@ -1001,7 +983,7 @@ async function updateSubscription() {
   const tier = document.getElementById('detailTierSelect').value;
   try {
     await api('PUT', `/api/admin/users/${currentUser.id}/subscription`, { tier });
-    showToast('订阅已更新为 ' + tierLabel(tier));
+    showToast('授权已更新为 ' + tierLabel(tier));
     loadUsers();
   } catch (err) {
     showToast('更新失败: ' + err.message);
@@ -1044,7 +1026,7 @@ async function loadMessages() {
       const typeLabel = { banner: '横幅', toast: '提示', announcement: '公告' }[m.type] || m.type;
       const targetLabel = {
         'all': '所有用户', 'guest': '未登录', 'logged_in': '已登录',
-        'tier:free': '免费用户', 'tier:personal': '个人版', 'tier:pro': '专业版', 'tier:team': '团队版',
+        'tier:free': '体验期',
       }[m.target] || m.target;
       const dismissLabel = {
         'session': '会话级', 'delayed': `延迟 ${m.dismiss_policy?.delay_days || 7} 天`, 'permanent': '永久',
@@ -1210,10 +1192,7 @@ async function loadFlags() {
       const targetLabel = {
         'all': '所有用户',
         'users': '指定用户',
-        'tier:free': '体验版用户',
-        'tier:personal': '个人版用户',
-        'tier:pro': '专业版用户',
-        'tier:team': '团队版用户',
+        'tier:free': '体验期用户',
       }[f.target] || f.target;
       const usersHint = f.target === 'users' && f.target_users?.length
         ? ` (${f.target_users.length} 人)` : '';
@@ -1343,8 +1322,7 @@ async function toggleFlag(flagId) {
 // 工具函数
 // ============================================================
 function tierLabel(tier) {
-  const map = { free: '体验版', personal: '个人版', pro: '专业版', team: '团队版' };
-  return map[tier] || tier;
+  return tier === 'free' ? '体验期' : (tier || '体验期');
 }
 
 function esc(str) {

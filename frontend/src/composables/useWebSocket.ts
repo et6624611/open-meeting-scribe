@@ -41,6 +41,16 @@ export interface AutoStopped {
   message: string
 }
 
+export interface TranslationEntry {
+  index: number
+  original_text: string
+  translated_text: string
+  speaker_id: number
+  speaker_name: string
+  begin_time: number
+  end_time: number
+}
+
 export function useWebSocketTranscript() {
   const lines = ref<TranscriptLine[]>([])
   const partialText = ref('')
@@ -58,10 +68,23 @@ export function useWebSocketTranscript() {
 
   // 说话人绑定更新回调（供外部组件注册，同步本地绑定映射表）
   let onSpeakerBoundCb: ((speakerId: number, speakerUuid: string, speakerName: string) => void) | null = null
+  // 翻译回调（供 useTranslation composable 注册）
+  let onTranslationUpdateCb: ((translations: TranslationEntry[]) => void) | null = null
+  let onTranslationStatusCb: ((msg: { status: string; target_lang: string }) => void) | null = null
 
   /** 注册 speaker_bound 事件回调 */
   function onSpeakerBound(cb: (speakerId: number, speakerUuid: string, speakerName: string) => void) {
     onSpeakerBoundCb = cb
+  }
+
+  /** 注册翻译更新回调 */
+  function onTranslationUpdate(cb: (translations: TranslationEntry[]) => void) {
+    onTranslationUpdateCb = cb
+  }
+
+  /** 注册翻译状态回调 */
+  function onTranslationStatus(cb: (msg: { status: string; target_lang: string }) => void) {
+    onTranslationStatusCb = cb
   }
 
   let ws: WebSocket | null = null
@@ -143,6 +166,8 @@ export function useWebSocketTranscript() {
       case 'partial':
         // 临时识别结果
         partialText.value = msg.text as string
+        // 转写已有文字 → 麦克风正常，自动关闭音量警告
+        if (volumeWarning.value) volumeWarning.value = ''
         break
 
       case 'sentence':
@@ -154,6 +179,8 @@ export function useWebSocketTranscript() {
         })
         // 定稿句子 — 清除 partial，追加到 lines
         partialText.value = ''
+        // 转写已有文字 → 麦克风正常，自动关闭音量警告
+        if (volumeWarning.value) volumeWarning.value = ''
         lines.value.push({
           speaker_id: msg.speaker_id as number,
           speaker_name: msg.speaker_name as string || '',
@@ -228,6 +255,17 @@ export function useWebSocketTranscript() {
         }
         break
 
+      case 'translation_update':
+        onTranslationUpdateCb?.(msg.translations as TranslationEntry[])
+        break
+
+      case 'translation_status':
+        onTranslationStatusCb?.({
+          status: (msg.status as string) || '',
+          target_lang: (msg.target_lang as string) || '',
+        })
+        break
+
       case 'error':
         error.value = msg.message as string
         break
@@ -245,6 +283,17 @@ export function useWebSocketTranscript() {
         type: 'heartbeat',
         presence_score: score,
         user_ack: userAck,
+      }))
+    }
+  }
+
+  /** 发送翻译控制命令 */
+  function sendTranslationControl(action: string, targetLang?: string) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'translation_control',
+        action,
+        target_lang: targetLang,
       }))
     }
   }
@@ -298,6 +347,7 @@ export function useWebSocketTranscript() {
     lines, partialText, summary, chapters, connected, error,
     speakerCount, speakerNames, summaryCountdownSec, summaryPaused, volumeWarning,
     presenceWarning, autoStopped, wsRetryCount,
-    connect, disconnect, reset, sendHeartbeat, clearPresenceWarning, onSpeakerBound,
+    connect, disconnect, reset, sendHeartbeat, sendTranslationControl,
+    clearPresenceWarning, onSpeakerBound, onTranslationUpdate, onTranslationStatus,
   }
 }

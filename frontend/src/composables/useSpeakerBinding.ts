@@ -62,7 +62,7 @@ export function useSpeakerBinding(
 
   const canBind = computed(() => {
     const s = task.value?.status
-    return unboundCount.value > 0 && (s === 'awaiting_mapping' || s === 'completed')
+    return s === 'awaiting_mapping' || s === 'completed'
   })
 
   const showBindingBar = computed(() => canBind.value && !bindingBarHidden.value && !bindBarDismissed.value)

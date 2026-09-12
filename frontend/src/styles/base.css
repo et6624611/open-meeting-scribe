@@ -82,7 +82,7 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   transition: opacity 0.12s;
   box-shadow: 0 2px 8px oklch(0% 0 0 / 0.06);
   z-index: var(--z-popover, 500);
-  max-width: 240px;
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
 }

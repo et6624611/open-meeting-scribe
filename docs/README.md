@@ -67,7 +67,7 @@ docs/
 |------|------|
 | [`../MVP_PLAN.md`](../MVP_PLAN.md) | 当前版本的**施工蓝图**（阶段步骤 / 验收 / 风险） |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 迭代痕迹，每次功能迭代追加一条 |
-| [`../MISSION.md`](../MISSION.md) | 产品长期使命（「本地优先」定位） |
+| [`../MISSION.md`](../MISSION.md) | 产品长期使命（「本地数据·云端智能」定位） |
 | [`../AGENTS.md`](../AGENTS.md) | AI / 新人协作约定与单一事实源总表 |
 | [`../CODEX.md`](../CODEX.md) | 开工第一入口，模块速查 + 按任务类型加载路径 |
 

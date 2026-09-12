@@ -1,6 +1,6 @@
 ---
 title: 版本路线
-description: 渐进构建路线图（版本主线），从 v1 云方案到本地优先。零散需求与缺陷修复见 BACKLOG.md
+description: 渐进构建路线图（版本主线），从 v1 云方案到本地数据·云端智能。零散需求与缺陷修复见 BACKLOG.md
 author: 王永亮
 created_at: 2026-09-03
 updated_at: 2026-09-09
@@ -9,7 +9,7 @@ status: published
 
 # ROADMAP — 版本路线
 
-> 渐进构建：先跑通最小链路，再叠加能力。呼应 MISSION「本地优先」长期方向。
+> 渐进构建：先跑通最小链路，再叠加能力。呼应 MISSION「本地数据·云端智能」长期方向。
 > 零散缺陷修复与体验优化条目见 [BACKLOG.md](BACKLOG.md)。
 
 ## v1 · 云方案（当前）

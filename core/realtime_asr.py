@@ -39,6 +39,7 @@ from urllib.parse import urlencode
 import websockets
 
 from .hotwords import apply_hotword_mappings
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +301,7 @@ class RealtimeTranscriber:
                                 })
 
                         elif msg_type == "error":
-                            error_msg = data.get("message", "未知错误")
+                            error_msg = data.get("message", _("Unknown error"))
                             logger.error(f"[实时转写] 代理返回错误: {error_msg}")
                             if self._on_error:
                                 self._on_error(error_msg)

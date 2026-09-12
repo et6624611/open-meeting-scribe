@@ -20,6 +20,7 @@ import logging
 from core.realtime_asr import RealtimeTranscriber
 from core.realtime_summary import RealtimeSummarizer
 from core.realtime_chapters import RealtimeChapterGenerator
+from core.translate import RealtimeTranslator
 from core.diarization import SpeakerDiarizer
 from core import speakers
 
@@ -34,6 +35,8 @@ realtime_transcribers: dict[str, RealtimeTranscriber] = {}  # 实时转写器
 realtime_diarizers: dict[str, SpeakerDiarizer] = {}  # 声纹聚类器
 realtime_summarizers: dict[str, RealtimeSummarizer] = {}  # 实时总结器
 realtime_chapter_generators: dict[str, RealtimeChapterGenerator] = {}  # 实时章节生成器
+realtime_translators: dict[str, RealtimeTranslator] = {}  # 实时翻译器（按需创建）
+realtime_translations: dict[str, list[dict]] = {}  # 全量翻译结果（task_id → 翻译条目列表，供 WebSocket 回放）
 realtime_transcript_buffers: dict[str, list[dict]] = {}  # 实时转写缓冲（task_id → 最近 N 条句子）
 realtime_full_transcripts: dict[str, list[dict]] = {}  # 全量实时转写（task_id → 所有句子，供文本桥接匹配）
 realtime_speaker_maps: dict[str, dict[int, str]] = {}  # 实时说话人绑定（task_id → {speaker_id: speaker_uuid}）
@@ -91,14 +94,14 @@ def push_realtime_msg(task_id: str, msg: dict) -> None:
 
 def resolve_realtime_speaker_name(task_id: str, speaker_id: int) -> str:
     """
-    解析实时说话人姓名。
+    Resolve realtime speaker display name.
 
-    优先级：
-      1. 实时绑定映射（realtime_speaker_maps）
-      2. 全局说话人列表（speakers.json）
-      3. 兜底：发言人{speaker_id}
+    Priority:
+      1. Realtime binding map (realtime_speaker_maps)
+      2. Global speaker list (speakers.json)
+      3. Fallback: empty string — frontend i18n renders "Speaker {id}"
     """
-    # 1. 查实时绑定映射
+    # 1. Check realtime binding map
     binding_map = realtime_speaker_maps.get(task_id, {})
     speaker_uuid = binding_map.get(speaker_id)
     if speaker_uuid:
@@ -106,5 +109,5 @@ def resolve_realtime_speaker_name(task_id: str, speaker_id: int) -> str:
         if spk:
             return spk.name
 
-    # 2. 兜底
-    return f"发言人{speaker_id + 1}"
+    # 2. Fallback: return empty so frontend i18n handles display
+    return ""

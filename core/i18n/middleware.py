@@ -21,11 +21,9 @@ from starlette.requests import Request
 
 # ─── 配置 ───
 SUPPORTED_LOCALES = {"zh_CN", "en"}
-DEFAULT_LOCALE = "zh_CN"
-LOCALES_DIR = os.path.join(os.path.dirname(__file__), "locales")
+DEFAULT_LOCALE = "en"
 DOMAIN = "messages"
-
-# 请求级 locale（ContextVar，异步安全，随请求隔离）
+LOCALES_DIR = os.path.join(os.path.dirname(__file__), "locales")
 _current_locale: ContextVar[str] = ContextVar("i18n_locale", default=DEFAULT_LOCALE)
 
 
@@ -85,7 +83,7 @@ class I18nMiddleware(BaseHTTPMiddleware):
       1. 查询参数 ?lang=zh_CN
       2. Cookie "locale"
       3. Accept-Language 请求头
-      4. 默认 locale（zh_CN）
+      4. 默认 locale（en）
 
     注入：
       - ContextVar（供 _() 全局读取）

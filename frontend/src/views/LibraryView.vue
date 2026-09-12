@@ -292,8 +292,8 @@ async function batchDelete() {
 // ─── 导航 ───
 function openTask(task: Task) {
   taskStore.selectTask(task.task_id)
-  // 所有非录音任务统一进入纪要页（中间状态由 GeneratingView 内联处理）
-  if (task.status === 'recording') {
+  // 录音中（含暂停）任务进入录音页，其余进入纪要页（中间状态由 GeneratingView 内联处理）
+  if (task.status === 'recording' || task.status === 'paused') {
     router.push({ name: 'recording', params: { taskId: task.task_id } })
   } else {
     router.push({ name: 'generating', params: { taskId: task.task_id } })

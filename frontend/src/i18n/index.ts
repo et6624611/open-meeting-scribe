@@ -2,45 +2,45 @@
  * i18n 国际化模块
  *
  * 基于 vue-i18n v11，采用 Composition API 模式（legacy: false）。
- * 默认语言 zh-CN 静态导入（零延迟），其他语言按需动态加载。
+ * 默认语言 en 静态导入（零延迟），其他语言按需动态加载。
  */
 import { createI18n, type Composer } from 'vue-i18n'
 import { nextTick } from 'vue'
 
-// ─── 静态导入默认语言（zh-CN）所有模块 ───
-import zhCommon from './locales/zh-CN/common.json'
-import zhRecording from './locales/zh-CN/recording.json'
-import zhStart from './locales/zh-CN/start.json'
-import zhProcessing from './locales/zh-CN/processing.json'
-import zhLibrary from './locales/zh-CN/library.json'
-import zhSpeakers from './locales/zh-CN/speakers.json'
-import zhHotwords from './locales/zh-CN/hotwords.json'
-import zhSettings from './locales/zh-CN/settings.json'
-import zhProjects from './locales/zh-CN/projects.json'
-import zhSidebar from './locales/zh-CN/sidebar.json'
-import zhTopbar from './locales/zh-CN/topbar.json'
-import zhGenerating from './locales/zh-CN/generating.json'
-import zhTask from './locales/zh-CN/task.json'
-import zhLogin from './locales/zh-CN/login.json'
-import zhAiPanel from './locales/zh-CN/ai-panel.json'
+// ─── 静态导入默认语言（en）所有模块 ───
+import enCommon from './locales/en/common.json'
+import enRecording from './locales/en/recording.json'
+import enStart from './locales/en/start.json'
+import enProcessing from './locales/en/processing.json'
+import enLibrary from './locales/en/library.json'
+import enSpeakers from './locales/en/speakers.json'
+import enHotwords from './locales/en/hotwords.json'
+import enSettings from './locales/en/settings.json'
+import enProjects from './locales/en/projects.json'
+import enSidebar from './locales/en/sidebar.json'
+import enTopbar from './locales/en/topbar.json'
+import enGenerating from './locales/en/generating.json'
+import enTask from './locales/en/task.json'
+import enLogin from './locales/en/login.json'
+import enAiPanel from './locales/en/ai-panel.json'
 
 /** 合并所有模块的翻译结构（按模块名命名空间包裹，与组件 t('common.xxx') 调用一致） */
 type MessageSchema = {
-  common: typeof zhCommon
-  recording: typeof zhRecording
-  start: typeof zhStart
-  processing: typeof zhProcessing
-  library: typeof zhLibrary
-  speakers: typeof zhSpeakers
-  hotwords: typeof zhHotwords
-  settings: typeof zhSettings
-  projects: typeof zhProjects
-  sidebar: typeof zhSidebar
-  topbar: typeof zhTopbar
-  generating: typeof zhGenerating
-  task: typeof zhTask
-  login: typeof zhLogin
-  'ai-panel': typeof zhAiPanel
+  common: typeof enCommon
+  recording: typeof enRecording
+  start: typeof enStart
+  processing: typeof enProcessing
+  library: typeof enLibrary
+  speakers: typeof enSpeakers
+  hotwords: typeof enHotwords
+  settings: typeof enSettings
+  projects: typeof enProjects
+  sidebar: typeof enSidebar
+  topbar: typeof enTopbar
+  generating: typeof enGenerating
+  task: typeof enTask
+  login: typeof enLogin
+  'ai-panel': typeof enAiPanel
 }
 
 /** 支持的语言列表 */
@@ -56,30 +56,30 @@ const LOCALE_MODULES = [
 
 /** 默认语言的全量消息（按模块名命名空间包裹，各 JSON 内部不含模块名前缀） */
 const defaultMessages: MessageSchema = {
-  common: zhCommon,
-  recording: zhRecording,
-  start: zhStart,
-  processing: zhProcessing,
-  library: zhLibrary,
-  speakers: zhSpeakers,
-  hotwords: zhHotwords,
-  settings: zhSettings,
-  projects: zhProjects,
-  sidebar: zhSidebar,
-  topbar: zhTopbar,
-  generating: zhGenerating,
-  task: zhTask,
-  login: zhLogin,
-  'ai-panel': zhAiPanel,
+  common: enCommon,
+  recording: enRecording,
+  start: enStart,
+  processing: enProcessing,
+  library: enLibrary,
+  speakers: enSpeakers,
+  hotwords: enHotwords,
+  settings: enSettings,
+  projects: enProjects,
+  sidebar: enSidebar,
+  topbar: enTopbar,
+  generating: enGenerating,
+  task: enTask,
+  login: enLogin,
+  'ai-panel': enAiPanel,
 }
 
 // ─── 创建 i18n 实例 ───
 const i18n = createI18n({
   legacy: false,
   locale: detectLocale(),
-  fallbackLocale: 'zh-CN',
+  fallbackLocale: 'en',
   messages: {
-    'zh-CN': defaultMessages,
+    'en': defaultMessages,
   },
 })
 
@@ -88,7 +88,7 @@ const composer = i18n.global as Composer
 
 /**
  * 检测当前语言
- * 优先级：localStorage > 浏览器语言 > 默认 zh-CN
+ * 优先级：localStorage > 浏览器语言 > 默认 en
  */
 function detectLocale(): SupportedLocale {
   const saved = localStorage.getItem('locale') as SupportedLocale | null
@@ -98,7 +98,7 @@ function detectLocale(): SupportedLocale {
   if (browserLang.startsWith('zh')) return 'zh-CN'
   if (browserLang.startsWith('en')) return 'en'
 
-  return 'zh-CN'
+  return 'en'
 }
 
 /**

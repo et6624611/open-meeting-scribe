@@ -276,7 +276,7 @@
 .body.sidebar-collapsed .sidebar { flex-basis: 52px !important; min-width: 52px !important; max-width: 52px !important; z-index: 15; }
 .body.sidebar-collapsed .sidebar .sb-header-actions,
 .body.sidebar-collapsed .sidebar .sb-filter-row,
-.body.sidebar-collapsed .sidebar .sb-timeline,
+.body.sidebar-collapsed .sidebar .sb-history-inner,
 .body.sidebar-collapsed .sidebar .sb-meeting-list-wrap { display: none !important; }
 /* ── 折叠态功能图标条（方案 B） ── */
 .sb-collapsed-icons { display: none; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }

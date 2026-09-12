@@ -18,6 +18,7 @@ import struct
 import logging
 from pathlib import Path
 from datetime import datetime
+from core.i18n import _
 
 from core import joblog
 
@@ -138,7 +139,7 @@ def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
         # 更新任务状态为 pending，供用户触发处理
         task["status"] = "pending"
         task["progress"] = 0
-        task["message"] = "服务重启前正在录制，音频已恢复，等待处理"
+        task["message"] = _("Recording was in progress before restart, audio recovered, awaiting processing")
         task["audio_duration"] = round(duration, 1)
         task["_recovered_from_orphan"] = True
         tasks[task_id] = task
@@ -279,7 +280,7 @@ def recover_interrupted_tasks() -> None:
                     pass
 
             task["progress"] = 75
-            task["message"] = "服务重启，正在恢复纪要生成..."
+            task["message"] = _("Server restart, resuming minute generation...")
             save_task_to_disk(task_id)
 
             logger.info(f"[恢复] {task_id[:8]} 从 Stage 2（纪要生成）恢复")
@@ -299,7 +300,7 @@ def recover_interrupted_tasks() -> None:
 
             # 重置 Stage 1 相关字段
             task["progress"] = 0
-            task["message"] = "服务重启，正在恢复转写..."
+            task["message"] = _("Server restart, resuming transcription...")
             task["dialogue"] = None
             task["transcription"] = None
             task["speaker_count"] = None

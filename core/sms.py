@@ -20,6 +20,7 @@ import time
 import hmac
 import hashlib
 import logging
+from core.i18n import _
 import urllib.request
 import urllib.error
 import json
@@ -84,11 +85,11 @@ def can_send(phone: str) -> tuple[bool, str]:
     elapsed = now - last_send
     if elapsed < SMS_COOLDOWN_SECONDS:
         remaining = int(SMS_COOLDOWN_SECONDS - elapsed)
-        return False, f"请等待 {remaining} 秒后再试"
+        return False, _("Please wait {seconds} seconds before trying again").format(seconds=remaining)
 
     # 每日上限检查
     if len(records) >= SMS_DAILY_MAX:
-        return False, "今日发送次数已达上限，请明天再试"
+        return False, _("Daily send limit reached, please try again tomorrow")
 
     return True, ""
 

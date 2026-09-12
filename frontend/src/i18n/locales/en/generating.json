@@ -1,7 +1,7 @@
 {
   "breadcrumb": {
     "nav": "Breadcrumb navigation",
-    "project": "Projects",
+    "project": "Knowledge Base",
     "library": "Meeting Library",
     "default_title": "Meeting Minutes"
   },
@@ -20,18 +20,23 @@
   "meta": {
     "person": "people",
     "edit_date": "Click to change meeting date",
-    "no_project": "No project linked",
-    "link_project": "Click to link project"
+    "no_project": "No knowledge base linked",
+    "link_project": "Link knowledge base",
+    "link_kb_tip": "Link a knowledge base so AI understands meetings through your documents",
+    "linked_kb_tip": "Knowledge base linked, click to switch",
+    "create_kb": "Create knowledge base"
   },
   "binding": {
     "title": "Link speakers to real identities",
+    "title_all_bound": "Speaker linking complete",
     "detected": "Detected {count} speaker(s)",
     "unbound_hint": ", {count} unlinked",
     "locate": "Locate this speaker's utterances",
     "skip": "Skip for now",
     "confirm": "Confirm Linking",
     "close": "Close",
-    "hint": "Click a speaker tag to link an existing identity or create a new one. After clicking \"Confirm Linking\", minutes will be generated with real identities.",
+    "click_to_bind": "Click to select or create identity",
+    "click_to_rebind": "Click to modify linking",
     "search_placeholder": "Search speakers...",
     "no_bind": "No link",
     "no_match": "No matching results",
@@ -113,12 +118,22 @@
   },
   "onboarding": {
     "title": "Link Speaker Identities",
-    "dont_show_again": "Don't show again",
-    "start": "Start Linking",
+    "got_it": "Got it",
+    "info_icon_tip": "What is speaker linking?",
     "demo_label_1": "Speaker 1",
     "demo_label_2": "Speaker 2",
     "demo_name_1": "Alex",
     "demo_name_2": "Jamie"
+  },
+  "project_onboarding": {
+    "title": "Link Knowledge Base",
+    "got_it": "Got it",
+    "info_icon_tip": "What is knowledge base linking?",
+    "knowledge_base": "Knowledge Base",
+    "ai_context": "AI Context",
+    "ai_citation": "AI cites docs",
+    "notes_sync": "Notes sync to folder",
+    "user_eco": "User · Other tools"
   },
   "archive_dialog": {
     "title": "Confirm Archive",
@@ -126,6 +141,13 @@
     "desc": "Archive this meeting? It will be moved to the archive list.",
     "cancel": "Cancel",
     "confirm": "Confirm Archive"
+  },
+  "delete_dialog": {
+    "title": "Confirm Delete",
+    "close": "Close",
+    "desc": "Delete this meeting? This cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Confirm Delete"
   },
   "tabs": {
     "transcript": "Transcript",
@@ -142,9 +164,8 @@
     "create_speaker_failed": "Failed to create speaker",
     "save_mapping_failed": "Failed to save mapping incrementally",
     "submit_mapping_failed": "Failed to submit mapping",
-    "update_project_failed": "Failed to update project link",
-    "save_date_failed": "Failed to save date",
-    "confirm_delete": "Delete this meeting? This cannot be undone."
+    "update_project_failed": "Failed to update knowledge base link",
+    "save_date_failed": "Failed to save date"
   },
   "source": {
     "minutes": "Minutes",

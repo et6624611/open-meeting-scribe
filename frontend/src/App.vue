@@ -50,7 +50,7 @@
     </div>
 
     <!-- 水印氛围层 -->
-    <div class="wm-layer" id="wmLayer">
+    <div class="wm-layer" id="wmLayer" :class="{ 'is-hidden': !watermark.enabled }" :style="watermark.enabled ? { '--wm-opacity': watermark.opacity } : undefined">
       <div class="wm-glow wm-glow-1"></div>
       <div class="wm-glow wm-glow-2"></div>
       <div class="wm-glow wm-glow-3"></div>
@@ -86,7 +86,7 @@
     <!-- 底部状态栏 -->
     <footer class="status">
       <div class="left">
-        <div class="item"><span class="pip"></span> {{ t('common.usage.dashscope_connected') }}</div>
+        <div class="item"><span class="pip"></span> {{ t('common.usage.cloud_connected') }}</div>
         <div class="item status-models">paraformer-v2 + qwen-plus</div>
         <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
@@ -94,7 +94,7 @@
           <span class="usage-text" id="usageText"></span>
         </div>
       </div>
-      <span class="philosophy-text" id="philosophyText">{{ philosophyText }}</span>
+      <span class="philosophy-text" id="philosophyText"><span v-for="(ch, i) in philosophyChars" :key="i" class="philosophy-char" :style="{ animationDelay: `${i * 0.08}s` }">{{ ch }}</span></span>
       <div class="right">
         <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
       </div>
@@ -113,6 +113,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import { useLayoutStore } from '@/stores/layout'
+import { useWatermarkStore } from '@/stores/watermark'
 import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
@@ -129,12 +130,14 @@ const themeStore = useThemeStore()
 const taskStore = useTaskStore()
 const userStore = useUserStore()
 const layout = useLayoutStore()
+const watermark = useWatermarkStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
 const mainWidthClass = ref('')
 let mainResizeObs: ResizeObserver | null = null
 const philosophyText = ref('')
+const philosophyChars = computed(() => philosophyText.value.split(''))
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
 // 公告横幅
@@ -228,7 +231,12 @@ async function loadPhilosophy() {
     setTimeout(() => {
       const el = document.getElementById('philosophyText')
       if (el) el.classList.add('is-visible')
-    }, 800)
+    }, 500)
+    // 逐字显现完成后启动微光扫过效果
+    setTimeout(() => {
+      const el = document.getElementById('philosophyText')
+      if (el) el.classList.add('is-shimmer')
+    }, 500 + text.length * 80 + 800)
   } catch { /* 静默 */ }
 }
 

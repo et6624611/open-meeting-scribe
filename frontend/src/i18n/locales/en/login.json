@@ -11,7 +11,7 @@
   "submitting": "Signing in...",
   "submit": "Sign In",
   "footer_line1": "By signing in you agree to the open-source terms",
-  "footer_line2": "Personal edition is completely free, no subscription required",
+  "footer_line2": "Log in to experience all features",
   "errors": {
     "invalid_phone": "Please enter a valid 11-digit phone number",
     "send_failed": "Send failed, please try again later",

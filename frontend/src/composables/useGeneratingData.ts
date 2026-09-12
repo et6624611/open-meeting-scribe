@@ -281,6 +281,9 @@ export function useGeneratingData(
     console.log('archive task:', taskId)
   }
 
+  // ─── 删除 ───
+  const showDeleteDialog = ref(false)
+
   // ─── 生命周期 ───
   onMounted(async () => {
     const saved = localStorage.getItem('oms_gen_active_tab')
@@ -339,5 +342,7 @@ export function useGeneratingData(
     speakers,
     // 归档
     showArchiveDialog, onArchive,
+    // 删除
+    showDeleteDialog,
   }
 }

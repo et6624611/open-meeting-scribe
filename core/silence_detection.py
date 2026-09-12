@@ -18,6 +18,7 @@ import asyncio
 import time
 import logging
 from datetime import datetime
+from core.i18n import _
 
 from app.store import (
     tasks,
@@ -175,7 +176,7 @@ async def auto_stop_recording(task_id: str, reason: str = "unknown") -> None:
             tasks[task_id]["auto_stop_reason"] = reason
             save_task_to_disk(task_id)
 
-        push_realtime_msg(task_id, {"type": "auto_stopped", "reason": reason, "duration": duration, "message": f"因长时间无活动已自动停止录制（已保存 {duration:.0f} 秒录音）"})
+        push_realtime_msg(task_id, {"type": "auto_stopped", "reason": reason, "duration": duration, "message": _("Recording automatically stopped due to prolonged inactivity (saved {dur:.0f}s of audio)").format(dur=duration)})
         push_realtime_msg(task_id, {"type": "ended"})
 
         asyncio.get_event_loop().call_soon(

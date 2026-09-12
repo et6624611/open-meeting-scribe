@@ -1,16 +1,15 @@
 /**
- * 说话人绑定引导弹窗 — 动画与持久化
+ * 说话人绑定引导弹窗 — 动画与展示控制
  */
-import { ref, reactive, computed, nextTick, type ComputedRef } from 'vue'
+import { ref, reactive, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-export function useOnboarding(
-  _taskId: string,
-  showBindingBar: ComputedRef<boolean>,
-) {
+export function useOnboarding() {
   const { t } = useI18n()
   const showOnboarding = ref(false)
-  const dontShowAgain = ref(false)
+  const hasSeenOnboarding = ref(
+    localStorage.getItem('oms_onboarding_seen') === 'true',
+  )
 
   /* 静态模板数据（语言无关字段）；label / name 通过 i18n 响应式解析 */
   const demoTemplate = [
@@ -55,21 +54,22 @@ export function useOnboarding(
     obLoopTimer = setTimeout(() => { startOnboardingAnim() }, OB_CYCLE_MS + OB_PAUSE_MS)
   }
 
+  function openOnboarding() {
+    showOnboarding.value = true
+    if (!hasSeenOnboarding.value) {
+      localStorage.setItem('oms_onboarding_seen', 'true')
+      hasSeenOnboarding.value = true
+    }
+    nextTick(() => startOnboardingAnim())
+  }
+
   function closeOnboarding() {
     stopOnboardingAnim()
-    if (dontShowAgain.value) localStorage.setItem('spk_onboarding_dismissed', 'true')
     showOnboarding.value = false
   }
 
-  function tryShowOnboarding() {
-    if (showBindingBar.value && localStorage.getItem('spk_onboarding_dismissed') !== 'true') {
-      showOnboarding.value = true
-      nextTick(() => startOnboardingAnim())
-    }
-  }
-
   return {
-    showOnboarding, dontShowAgain, demoLines,
-    startOnboardingAnim, stopOnboardingAnim, closeOnboarding, tryShowOnboarding,
+    showOnboarding, demoLines, hasSeenOnboarding,
+    startOnboardingAnim, stopOnboardingAnim, openOnboarding, closeOnboarding,
   }
 }

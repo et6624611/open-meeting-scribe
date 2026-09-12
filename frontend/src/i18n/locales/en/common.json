@@ -87,7 +87,7 @@
   },
   "usage": {
     "title": "Monthly recognition quota",
-    "dashscope_connected": "DashScope Connected"
+    "cloud_connected": "Cloud AI Connected"
   },
   "playing": "Playing",
   "paused": "Paused"

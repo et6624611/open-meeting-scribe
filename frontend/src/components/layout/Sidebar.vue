@@ -147,21 +147,21 @@
           <span class="sb-version-dot" id="sbVersionDot" :title="t('sidebar.version_update')"></span>
         </div>
         <button
-          v-if="proactive.proactiveEnabled.value"
-          class="sb-proactive-indicator"
+          v-if="insights.insightsEnabled.value && insights.insightsConfig.value.notifications.sidebarIndicator && activeRecordingTaskId"
+          class="sb-insights-indicator"
           :class="{
-            'is-enabled': proactive.unreadCount.value === 0,
-            'has-unread': proactive.unreadCount.value > 0,
+            'is-enabled': insights.unreadCount.value === 0,
+            'has-unread': insights.unreadCount.value > 0,
           }"
-          :title="proactive.unreadCount.value > 0 ? t('ai-panel.proactive.sidebar_indicator_tip', { count: proactive.unreadCount.value }) : t('ai-panel.proactive.sidebar_indicator')"
-          :aria-label="t('ai-panel.proactive.sidebar_indicator')"
-          @click.stop="onProactiveClick"
+          :title="insights.unreadCount.value > 0 ? t('ai-panel.insights.sidebar_indicator_tip', { count: insights.unreadCount.value }) : t('ai-panel.insights.sidebar_indicator')"
+          :aria-label="t('ai-panel.insights.sidebar_indicator')"
+          @click.stop="onInsightsClick"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
           </svg>
-          <span v-if="proactive.unreadCount.value > 0" class="sb-proactive-badge">{{ proactive.unreadCount.value }}</span>
+          <span v-if="insights.unreadCount.value > 0" class="sb-insights-badge">{{ insights.unreadCount.value }}</span>
         </button>
         <IconButton class="sbp-menu-btn" :label="t('sidebar.menu')" @click.stop="toggleBottomPanel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -174,7 +174,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
@@ -184,7 +184,7 @@ import TaskList from '@/components/task/TaskList.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import { beginResize } from '@/composables/useDivider'
 import { getRecordStatus, recoverRecord } from '@/api/record'
-import { useAiProactive } from '@/composables/useAiProactive'
+import { useAiInsights } from '@/composables/useAiInsights'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -192,7 +192,13 @@ const route = useRoute()
 const taskStore = useTaskStore()
 const userStore = useUserStore()
 const layout = useLayoutStore()
-const proactive = useAiProactive()
+const insights = useAiInsights()
+
+/** 当前是否有活跃录音（洞察仅服务于录音阶段） */
+const activeRecordingTaskId = computed(() => {
+  const task = taskStore.tasks.find(t => t.status === 'recording' || t.status === 'paused')
+  return task?.task_id ?? ''
+})
 
 const sidebarRef = ref<HTMLElement | null>(null)
 const isNarrow = ref(false)
@@ -322,14 +328,21 @@ async function onLogout() {
   router.push('/')
 }
 
-/** 点击主动 AI 指示器：双向 toggle AI 面板，展开时滚动到未读消息 */
-function onProactiveClick() {
-  const wasCollapsed = layout.aiCollapsed
-  layout.toggleAi()
-  // 仅在展开操作时触发滚动到未读消息
-  if (wasCollapsed) {
-    nextTick(() => {
-      window.dispatchEvent(new CustomEvent('ai-scroll-to-unread'))
+/** 点击洞察指示器：直达录音页洞察面板 */
+function onInsightsClick() {
+  const recTaskId = activeRecordingTaskId.value
+  if (!recTaskId) return  // 无活跃录音，按钮已隐藏，不应到达此处
+
+  if (route.name === 'recording' && route.params.taskId === recTaskId) {
+    // 已在当前录音页 → 派发事件切换 tab + 标记已读
+    window.dispatchEvent(new CustomEvent('insights:auto-expand'))
+  } else {
+    // 不在录音页 → 路由跳转到录音页洞察 tab
+    taskStore.selectTask(recTaskId)
+    router.push({
+      name: 'recording',
+      params: { taskId: recTaskId },
+      query: { tab: 'insights' },
     })
   }
 }

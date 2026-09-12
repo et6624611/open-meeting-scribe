@@ -51,12 +51,9 @@
   "self_key": "自带 Key",
   "used_self": "已使用（自费）",
   "platform_remaining": "平台额度剩余",
-  "cloud_mode_hint": "当前使用云端代理模式，识别费用已包含在订阅额度中。",
+  "cloud_mode_hint": "当前使用开发者共享代理，体验期配额内免费使用。",
   "tier_names": {
-    "free": "体验版",
-    "personal": "个人版",
-    "pro": "专业版",
-    "team": "团队版"
+    "free": "体验期"
   },
   "voiceprint": "声纹服务",
   "voiceprint_desc": "配置声纹识别云端服务（留空则使用本地 CAM++ 模型）",
@@ -73,8 +70,8 @@
   "diarization_effective_local": "本地分离",
   "diarization_effective_cloud": "云端分离",
   "diarization_local_toggle": "优先使用本地分离",
-  "diarization_local_toggle_desc": "关闭后将使用云端分离（需个人版及以上）",
-  "diarization_requires_subscription": "需个人版及以上订阅",
+  "diarization_local_toggle_desc": "关闭后将使用云端分离（需自持 Key）",
+  "diarization_requires_subscription": "需配置自有 API Key 或使用体验期配额",
   "output_dir": "输出目录",
   "output_dir_desc": "转写结果与录音文件的存储路径",
   "output_dir_placeholder": "data/output/",
@@ -88,5 +85,13 @@
   "disabled_commands_desc": "禁用的 AI 快捷指令不会在界面中出现",
   "no_disabled_commands": "当前未禁用任何指令",
   "command_enable": "启用",
-  "command_disable": "禁用"
+  "command_disable": "禁用",
+  "watermark": "水印氛围",
+  "watermark_desc": "界面背景光晕装饰效果，跟随主题配色变化",
+  "watermark_enabled": "显示光晕",
+  "watermark_opacity": "透明度",
+  "privacy_notice": {
+    "text": "隐私提示：语音识别、纪要生成等 AI 功能依赖云端 API，会议音频与文本内容将被传输至第三方服务处理。请勿处理敏感内容。",
+    "learn_more": "了解详情"
+  }
 }

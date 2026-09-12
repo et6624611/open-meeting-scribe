@@ -5,6 +5,14 @@
       <p class="sub">{{ t('settings.subtitle') }}</p>
     </div>
 
+    <!-- 隐私提示条 -->
+    <div class="settings-privacy-bar" v-if="showPrivacyNotice">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span>{{ t('settings.privacy_notice.text') }}</span>
+      <a class="settings-privacy-link" href="https://github.com/et6624611/open-meeting-scribe/blob/main/SECURITY.md" target="_blank" rel="noopener">{{ t('settings.privacy_notice.learn_more') }}</a>
+      <button class="rec-volume-dismiss" @click="showPrivacyNotice = false">&times;</button>
+    </div>
+
     <!-- 账户信息 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.account') }}</h2>
@@ -53,7 +61,7 @@
         <h3 class="api-subsection-title">{{ t('settings.asr_service') }}</h3>
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.asr_provider') }}</label>
-          <span class="api-readonly">{{ settings.asr?.provider || 'DashScope' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
+          <span class="api-readonly">{{ settings.asr?.provider || 'Cloud AI' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
         </div>
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.asr_model') }}</label>
@@ -147,6 +155,33 @@
       </div>
     </div>
 
+    <!-- 水印氛围 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.watermark') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.watermark_desc') }}</p>
+      <div class="wm-setting-row">
+        <label>{{ t('settings.watermark_enabled') }}</label>
+        <div class="wm-toggle-wrap">
+          <div
+            class="wm-toggle"
+            :class="{ 'is-on': wmEnabled }"
+            role="switch"
+            :aria-checked="wmEnabled"
+            tabindex="0"
+            @click="wmToggle"
+            @keydown.enter.prevent="wmToggle"
+            @keydown.space.prevent="wmToggle"
+          ></div>
+          <span class="wm-setting-val">{{ wmEnabled ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+        </div>
+      </div>
+      <div class="wm-setting-row">
+        <label>{{ t('settings.watermark_opacity') }}</label>
+        <input type="range" min="10" max="100" step="5" :value="Math.round(wmOpacity * 100)" @input="onWmOpacityInput" />
+        <span class="wm-setting-val">{{ Math.round(wmOpacity * 100) }}%</span>
+      </div>
+    </div>
+
     <!-- 语言 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.language') }}</h2>
@@ -206,20 +241,7 @@
             ></div>
             <span class="wm-setting-val">{{ featureFlags.realtime_summary ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
           </div>
-          <div v-if="featureFlags.realtime_summary" class="interval-selector">
-            <span class="interval-label">{{ t('recording.summary.frequency') }}：</span>
-            <div class="freq-btns">
-              <button 
-                v-for="sec in [30, 60, 120, 300]" 
-                :key="sec"
-                type="button" 
-                class="wm-freq-btn" 
-                :class="{ 'is-active': featureFlags.realtime_summary_interval === sec }"
-                @click="setInterval(sec)"
-              >{{ sec }}s</button>
-            </div>
-            <span class="interval-hint">{{ t('settings.interval_hint') }}</span>
-          </div>
+
         </div>
 
         <div class="wm-setting-row">
@@ -318,7 +340,7 @@
       </div>
     </div>
 
-    <!-- 用量与订阅 -->
+    <!-- 用量与配额 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.usage') }}</h2>
       <p class="settings-section-desc">{{ t('settings.usage') }}</p>
@@ -396,6 +418,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
+import { useWatermarkStore } from '@/stores/watermark'
 import { fetchSettings, saveSettings, testApiConnection, fetchSystemPrompts, fetchCliReference } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset, SystemPromptItem } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory } from '@/api/usage'
@@ -405,6 +428,22 @@ import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 const { t } = useI18n()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
+const watermarkStore = useWatermarkStore()
+
+const showPrivacyNotice = ref(true)
+
+// ─── 水印氛围 ───
+const wmEnabled = computed(() => watermarkStore.enabled)
+const wmOpacity = computed(() => watermarkStore.opacity)
+
+function wmToggle() {
+  watermarkStore.toggle()
+}
+
+function onWmOpacityInput(e: Event) {
+  const val = Number((e.target as HTMLInputElement).value)
+  watermarkStore.setOpacity(val / 100)
+}
 const settings = reactive<Settings>({})
 const testing = ref(false)
 const testResult = ref('')
@@ -470,10 +509,8 @@ function onEnableCommand(cmd: string) {
   saveSettings({ disabled_commands: settings.disabled_commands })
 }
 
-const TIER_NAMES: Record<string, string> = { free: t('settings.tier_names.free'), personal: t('settings.tier_names.personal'), pro: t('settings.tier_names.pro'), team: t('settings.tier_names.team') }
-
-function tierName(tier?: string) {
-  return tier ? (TIER_NAMES[tier] || tier) : t('settings.tier_names.free')
+function tierName(_tier?: string) {
+  return t('settings.tier_names.free')
 }
 
 // ─── 语言切换 ───
@@ -551,10 +588,7 @@ function toggleFlag(key: keyof FeatureFlags) {
   saveFeatureFlags()
 }
 
-function setInterval(sec: number) {
-  featureFlags.realtime_summary_interval = sec
-  saveFeatureFlags()
-}
+
 
 async function saveFeatureFlags() {
   await saveSettings({ feature_flags: { ...featureFlags } })

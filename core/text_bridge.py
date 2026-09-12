@@ -181,7 +181,7 @@ def text_bridge_match(
 
     for old_sid, speaker_uuid in bound_sids.items():
         texts = realtime_texts[old_sid]
-        speaker_name = speaker_names.get(speaker_uuid, f"发言人{old_sid + 1}")
+        speaker_name = speaker_names.get(speaker_uuid, f"Speaker {old_sid + 1}")
 
         # {new_speaker_id: {"hits": count, "best_sim": float}}
         hit_stats: dict[int, dict] = {}

@@ -109,34 +109,37 @@
               :data-line-idx="item.lineIdx"
               @click="emit('seek', flatTranscript[item.lineIdx].begin_time)"
             >
-              <div class="ts-line-head">
-                <span class="spk-wrapper" @click.stop>
-                  <span
-                    class="spk"
-                    :class="[
-                      getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) ? 'spk-bound' : 'spk-unbound',
-                      { 'spk-bindable': canBind }
-                    ]"
-                    :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
-                    @click="emit('speaker-label-click', $event, flatTranscript[item.lineIdx].speaker_id)"
-                  >
-                    {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || t('generating.speaker_default', { id: flatTranscript[item.lineIdx].speaker_id + 1 }) }}
+              <div class="ts-line-avatar" :style="{ background: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }">{{ avatarInitial(getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id), flatTranscript[item.lineIdx].speaker_id) }}</div>
+              <div class="ts-line-content">
+                <div class="ts-line-head">
+                  <span class="spk-wrapper" @click.stop>
+                    <span
+                      class="spk"
+                      :class="[
+                        getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) ? 'spk-bound' : 'spk-unbound',
+                        { 'spk-bindable': canBind }
+                      ]"
+                      :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
+                      @click="emit('speaker-label-click', $event, flatTranscript[item.lineIdx].speaker_id)"
+                    >
+                      {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || t('generating.speaker_default', { id: flatTranscript[item.lineIdx].speaker_id + 1 }) }}
+                    </span>
+                    <button
+                      class="spk-locate-btn"
+                      :class="{ 'is-active': locateSpeakerId === flatTranscript[item.lineIdx].speaker_id }"
+                      v-if="!canBind"
+                      @click.stop="emit('toggle-locate', flatTranscript[item.lineIdx].speaker_id)"
+                      :title="locateSpeakerId === flatTranscript[item.lineIdx].speaker_id ? t('generating.speaker_solo.exit_focus_all') : t('generating.speaker_solo.focus_speaker')"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                    <span class="spk-bind-arrow" v-if="canBind">▾</span>
                   </span>
-                  <button
-                    class="spk-locate-btn"
-                    :class="{ 'is-active': locateSpeakerId === flatTranscript[item.lineIdx].speaker_id }"
-                    v-if="!canBind"
-                    @click.stop="emit('toggle-locate', flatTranscript[item.lineIdx].speaker_id)"
-                    :title="locateSpeakerId === flatTranscript[item.lineIdx].speaker_id ? t('generating.speaker_solo.exit_focus_all') : t('generating.speaker_solo.focus_speaker')"
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
-                  </button>
-                  <span class="spk-bind-arrow" v-if="canBind">▾</span>
-                </span>
-                <span class="ts" @click.stop="emit('seek', flatTranscript[item.lineIdx].begin_time)">{{ formatTimeMs(flatTranscript[item.lineIdx].begin_time) }}</span>
-              </div>
-              <div class="ts-line-body">
-                <span class="txt">{{ flatTranscript[item.lineIdx].text }}</span>
+                  <span class="ts" @click.stop="emit('seek', flatTranscript[item.lineIdx].begin_time)">{{ formatTimeMs(flatTranscript[item.lineIdx].begin_time) }}</span>
+                </div>
+                <div class="ts-line-body">
+                  <span class="txt">{{ flatTranscript[item.lineIdx].text }}</span>
+                </div>
               </div>
             </div>
           </template>
@@ -184,8 +187,8 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div class="spk-item-info">
-              <div class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</div>
-              <div class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? t('generating.speaker_panel.me_label') : (sp.role || '') }}</div>
+              <span class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</span>
+              <span class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? t('generating.speaker_panel.me_label') : (sp.role || '') }}</span>
             </div>
             <div class="spk-item-stats">
               <span class="spk-item-dur">{{ sp.durationStr }}</span>
@@ -316,6 +319,12 @@ function getBindingSpeakerName(speakerId: number): string {
   if (!uuid) return ''
   const spk = props.speakers.find(s => s.id === uuid)
   return spk?.name || ''
+}
+
+/** 头像首字：取名称首字符，无名则用编号 */
+function avatarInitial(name: string, speakerId: number): string {
+  if (name && name.trim()) return name.trim()[0]
+  return String(speakerId + 1)
 }
 
 function isMeSpeakerId(speakerId: number): boolean {

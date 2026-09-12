@@ -60,7 +60,7 @@
         <div class="ctx-section-header" @click="sections.meeting = !sections.meeting">
           <div class="ctx-section-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <h4>{{ t('ai-panel.context.section_meeting') }}</h4>
+            <h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.meeting" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4>
           </div>
           <div class="ctx-section-header-right">
             <span class="ctx-section-count">{{ meetingOutputCount }} 项</span>
@@ -89,7 +89,7 @@
       <!-- 项目文件 -->
       <div class="ctx-section" :class="{ 'is-collapsed': !sections.files }">
         <div class="ctx-section-header" @click="sections.files = !sections.files">
-          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4>{{ t('ai-panel.context.section_files') }}</h4></div>
+          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.files" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4></div>
           <div class="ctx-section-header-right"><span class="ctx-section-count">{{ projectFileCount }} 项</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
@@ -107,7 +107,7 @@
       <!-- 相关会议 -->
       <div class="ctx-section" :class="{ 'is-collapsed': !sections.related }">
         <div class="ctx-section-header" @click="sections.related = !sections.related">
-          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><h4>{{ t('ai-panel.context.section_related') }}</h4></div>
+          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.related" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4></div>
           <div class="ctx-section-header-right"><span class="ctx-section-count">{{ relatedMeetingCount }} 项</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.related }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
@@ -131,10 +131,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+
+// 分区标题逐字显现触发
+const panelMounted = ref(false)
+onMounted(() => { setTimeout(() => { panelMounted.value = true }, 200) })
+const sectionTitleChars = computed(() => ({
+  meeting: t('ai-panel.context.section_meeting').split(''),
+  files: t('ai-panel.context.section_files').split(''),
+  related: t('ai-panel.context.section_related').split(''),
+}))
 
 defineProps<{
   isEmpty: boolean

@@ -86,9 +86,10 @@
 }
 .spk-item.is-on .spk-item-check svg { opacity: 1; }
 .spk-item-check svg { width: 10px; height: 10px; color: white; opacity: 0; transition: opacity 0.12s; }
-.spk-item-info { flex: 1; min-width: 0; }
+.spk-item-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
 .spk-item-name {
   font-size: var(--fs-13); font-weight: 500;
+  min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .spk-item-role {
@@ -536,10 +537,16 @@
 
 /* 说话人概览条 */
 .binding-legend { display: flex; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-.binding-legend-item { display: flex; align-items: center; gap: 6px; font-size: var(--fs-12); padding: 4px 10px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s; user-select: none; }
-.binding-legend-item:hover { filter: brightness(0.95); }
+.binding-legend-item { display: flex; align-items: center; gap: 6px; font-size: var(--fs-12); padding: 4px 10px; border-radius: var(--radius); cursor: pointer; transition: background 0.15s, box-shadow 0.15s; user-select: none; }
+.binding-legend-item:hover { filter: brightness(0.95); box-shadow: 0 0 0 1px var(--accent-soft); }
 .binding-legend-item .bl-name { font-weight: 500; }
 .binding-legend-item .bl-unbound { color: var(--muted); font-style: italic; font-weight: 400; }
+/* 未关联说话人下拉箭头 */
+.binding-legend-item .bl-chevron { width: 12px; height: 12px; flex-shrink: 0; color: var(--muted); opacity: 0.5; transition: opacity 0.15s, transform 0.15s; }
+.binding-legend-item:hover .bl-chevron { opacity: 1; transform: translateY(1px); }
+/* 已关联说话人勾选标记 */
+.binding-legend-item .bl-check { width: 12px; height: 12px; flex-shrink: 0; color: var(--accent); opacity: 0.7; transition: opacity 0.15s; }
+.binding-legend-item:hover .bl-check { opacity: 1; }
 /* 绑定栏说话人「定位」图标 */
 .binding-legend-item .bl-locate { margin-left: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: var(--radius-sm); color: var(--muted); opacity: 0.35; transition: opacity 0.15s, color 0.15s, background 0.15s; flex-shrink: 0; }
 .binding-legend-item:hover .bl-locate { opacity: 1; }
@@ -653,8 +660,8 @@
 .spk-item.is-off .spk-item-check { border-color: var(--border); }
 .spk-item.is-off .spk-item-check svg { opacity: 0; }
 .spk-item-check svg { width: 10px; height: 10px; color: white; transition: opacity 0.12s; }
-.spk-item-info { flex: 1; min-width: 0; }
-.spk-item-name { font-size: var(--fs-13); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spk-item-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.spk-item-name { font-size: var(--fs-13); font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spk-item-role { font-size: var(--fs-12); color: var(--subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spk-item-stats { display: flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: var(--fs-12); font-family: var(--font-mono); color: var(--subtle); white-space: nowrap; }
 .spk-item-dur { font-weight: 500; color: var(--muted); }
@@ -882,6 +889,7 @@
 
 /* L1：元数据区项目绑定芯片 */
 .gen-meta-project { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+.gen-meta-proj-info-icon { margin-left: 6px; }
 .gen-meta-project-chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 12px; border-radius: 999px;
@@ -898,10 +906,15 @@
   background: transparent; color: var(--accent); border: 1px dashed var(--accent);
 }
 .gen-meta-project-chip.is-unbound:hover { background: var(--accent-soft); border-style: solid; }
-.gen-meta-project-chip .chip-swap {
-  font-size: 11px; opacity: 0; margin-left: 2px; transition: opacity 0.15s;
-}
-.gen-meta-project-chip.is-bound:hover .chip-swap { opacity: 0.7; }
+/* 尾部状态图标：未关联 +，已关联 hover ✕ */
+.chip-tail-icon { flex-shrink: 0; opacity: 0.5; transition: opacity 0.15s, transform 0.12s; }
+.gen-meta-project-chip.is-unbound .chip-tail-add { opacity: 0.7; }
+.gen-meta-project-chip.is-unbound:hover .chip-tail-add { opacity: 1; transform: scale(1.15); }
+.chip-tail-remove { opacity: 0; }
+.gen-meta-project-chip.is-bound:hover .chip-tail-remove { opacity: 0.8; transform: scale(1.15); }
+/* 空知识库引导按钮 */
+.gen-meta-proj-cta { display: flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 500; }
+.gen-meta-proj-cta:hover { background: var(--accent-soft); }
 .gen-meta-proj-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0; min-width: 220px;
   max-height: 260px; overflow-y: auto; background: var(--surface);
@@ -1079,17 +1092,17 @@
   .rec-content-area { flex-direction: column; }
   .rec-transcript { flex: 1; border-right: 0; border-bottom: 0; }
   .rec-transcript-body { padding: var(--s-4); }
-  .rec-summary-panel { flex: 1; }
-  /* 默认显示转写，隐藏总结 */
-  .rec-summary-panel { display: none; }
-  /* 窄屏下 is-hidden-narrow 类隐藏总结面板 */
-  .rec-summary-panel.is-hidden-narrow { display: none; }
-  /* 切换到总结模式 */
-  .rec-content-area.tab-summary .rec-transcript { display: none; }
-  .rec-content-area.tab-summary .rec-summary-panel { display: flex; }
-  .rec-content-area.tab-summary .rec-summary-panel.is-hidden-narrow { display: flex; }
+  .rec-insights-panel { flex: 1; }
+  /* 默认显示转写，隐藏洞察 */
+  .rec-insights-panel { display: none; }
+  /* 窄屏下 is-hidden-narrow 类隐藏洞察面板 */
+  .rec-insights-panel.is-hidden-narrow { display: none; }
+  /* 切换到洞察模式 */
+  .rec-content-area.tab-insights .rec-transcript { display: none; }
+  .rec-content-area.tab-insights .rec-insights-panel { display: flex; }
+  .rec-content-area.tab-insights .rec-insights-panel.is-hidden-narrow { display: flex; }
   /* Tab 模式下折叠状态不生效（由 Tab 切换控制可见性） */
-  .rec-content-area.tab-summary .rec-summary-panel.is-collapsed { display: flex; }
+  .rec-content-area.tab-insights .rec-insights-panel.is-collapsed { display: flex; }
   .topbar-title { display: none; }
 }
 /* ── 快速启动卡片（空闲态） ─── */

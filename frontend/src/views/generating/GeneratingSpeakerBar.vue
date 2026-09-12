@@ -6,9 +6,11 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
       <div class="gbb-body">
-        <div class="gbb-title">{{ t('generating.binding.title') }}</div>
-        <div class="gbb-desc">
-          {{ t('generating.binding.detected', { count: legend.length }) }}<span v-if="unboundCount > 0" class="gbb-unbound-hint">{{ t('generating.binding.unbound_hint', { count: unboundCount }) }}</span>
+        <div class="gbb-title-row">
+          <span class="gbb-title">{{ unboundCount === 0 ? t('generating.binding.title_all_bound') : t('generating.binding.title') }}</span>
+          <button class="gbb-title-info" type="button" :title="t('generating.onboarding.info_icon_tip')" @click="emit('open-info')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
         </div>
         <div class="gbb-legend" v-if="legend.length > 0">
           <div
@@ -16,9 +18,12 @@
             class="binding-legend-item"
             :class="{ 'is-bound': item.bound }"
             :style="{ background: getSpeakerBg(item.sid) }"
+            :title="item.bound ? t('generating.binding.click_to_rebind') : t('generating.binding.click_to_bind')"
             @click="emit('open-dropdown', $event, item.sid)"
           >
             <span class="bl-name" :style="{ color: item.color }" :class="{ 'bl-unbound': !item.bound }">{{ item.name || t('generating.speaker_default', { id: item.sid + 1 }) }}</span>
+            <svg v-if="!item.bound" class="bl-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg v-else class="bl-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             <span class="bl-locate" :title="t('generating.binding.locate')" @click.stop="emit('locate-speaker', item.sid)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
             </span>
@@ -26,16 +31,14 @@
         </div>
       </div>
       <div class="gbb-actions">
-        <a class="gbb-skip" href="javascript:void(0)" @click="emit('skip')">{{ t('generating.binding.skip') }}</a>
-        <button class="btn btn-primary btn-sm" @click="emit('confirm')">{{ t('generating.binding.confirm') }}</button>
+        <template v-if="unboundCount > 0">
+          <a class="gbb-skip" href="javascript:void(0)" @click="emit('skip')">{{ t('generating.binding.skip') }}</a>
+          <button class="btn btn-primary btn-sm" @click="emit('confirm')">{{ t('generating.binding.confirm') }}</button>
+        </template>
         <button class="gbb-close" @click="emit('close')" :title="t('generating.binding.close')">
           <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
         </button>
       </div>
-    </div>
-    <div class="gbb-hint-bar">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <span>{{ t('generating.binding.hint') }}</span>
     </div>
   </div>
 
@@ -100,6 +103,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'open-info'): void
   (e: 'open-dropdown', event: MouseEvent, speakerId: number): void
   (e: 'locate-speaker', speakerId: number): void
   (e: 'skip'): void

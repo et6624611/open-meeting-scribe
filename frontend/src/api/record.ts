@@ -53,27 +53,6 @@ export async function recoverRecord(): Promise<RecoverResult> {
   return data
 }
 
-// 实时总结控制
-export async function pauseSummary(): Promise<void> {
-  await client.post('/api/record/summary/pause')
-}
-
-export async function resumeSummary(): Promise<void> {
-  await client.post('/api/record/summary/resume')
-}
-
-export async function stopSummary(): Promise<void> {
-  await client.post('/api/record/summary/stop')
-}
-
-export async function restartSummary(): Promise<void> {
-  await client.post('/api/record/summary/restart')
-}
-
-export async function setSummaryInterval(interval: number): Promise<void> {
-  await client.post('/api/record/summary/interval', { interval })
-}
-
 // 实时说话人绑定
 export async function bindSpeaker(taskId: string, speakerId: number, speakerUuid: string): Promise<void> {
   await client.post('/api/record/bind-speaker', {

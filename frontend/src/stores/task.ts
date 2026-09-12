@@ -8,7 +8,7 @@
  *  - 搜索/筛选
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { fetchTasks, deleteTask as apiDeleteTask } from '@/api/tasks'
 import client from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
@@ -19,15 +19,22 @@ export const useTaskStore = defineStore('task', () => {
   const currentTaskId = ref<string | null>(null)
   const loading = ref(false)
   const searchQuery = ref('')
+  /** 防抖后的搜索词（300ms），避免每次按键都触发全量过滤 */
+  const debouncedQuery = ref('')
+  let _debounceTimer: ReturnType<typeof setTimeout> | null = null
+  watch(searchQuery, (val) => {
+    if (_debounceTimer) clearTimeout(_debounceTimer)
+    _debounceTimer = setTimeout(() => { debouncedQuery.value = val }, 300)
+  })
 
   // ─── 计算属性 ───
   const currentTask = computed(() =>
     tasks.value.find(t => t.task_id === currentTaskId.value) ?? null,
   )
 
-  /** 按搜索词过滤后的任务列表 */
+  /** 按搜索词过滤后的任务列表（依赖防抖后的 debouncedQuery） */
   const filteredTasks = computed(() => {
-    const q = searchQuery.value.trim().toLowerCase()
+    const q = debouncedQuery.value.trim().toLowerCase()
     if (!q) return tasks.value
     return tasks.value.filter(t => {
       const title = (t.title || t.audio_name || '').toLowerCase()
@@ -131,11 +138,13 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
-  /** 更新本地任务数据（乐观更新，不请求后端） */
+  /** 更新本地任务数据（乐观更新，不请求后端）；任务不存在时自动添加 */
   function patchTaskLocal(taskId: string, patch: Partial<Task>) {
     const idx = tasks.value.findIndex(t => t.task_id === taskId)
     if (idx >= 0) {
       tasks.value[idx] = { ...tasks.value[idx], ...patch }
+    } else {
+      tasks.value.push({ task_id: taskId, ...patch } as Task)
     }
   }
 

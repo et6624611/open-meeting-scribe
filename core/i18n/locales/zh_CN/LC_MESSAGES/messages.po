@@ -124,14 +124,14 @@ msgstr "文件夹不存在: {path}"
 msgid "Failed to open folder: {err}"
 msgstr "打开文件夹失败: {err}"
 
-msgid "Project name cannot be empty"
-msgstr "项目名称不能为空"
+msgid "Knowledge base name cannot be empty"
+msgstr "知识库名称不能为空"
 
-msgid "Project not found"
-msgstr "项目不存在"
+msgid "Knowledge base not found"
+msgstr "知识库不存在"
 
-msgid "Project or folder not found"
-msgstr "项目或文件夹不存在"
+msgid "Knowledge base or folder not found"
+msgstr "知识库或文件夹不存在"
 
 msgid "No folders with sync enabled"
 msgstr "没有启用同步的文件夹"
@@ -217,9 +217,6 @@ msgstr "连接超时（15s），请检查网络或 Base URL"
 msgid "Name cannot be empty"
 msgstr "姓名不能为空"
 
-msgid "Please set up user info first"
-msgstr "请先设置用户信息"
-
 msgid "Operation failed"
 msgstr "操作失败"
 
@@ -265,14 +262,14 @@ msgstr "日期格式无效，应为 YYYY-MM-DD"
 msgid "Task not completed, cannot sync"
 msgstr "任务未完成，无法同步"
 
-msgid "Task is not linked to a project"
-msgstr "任务未关联项目"
+msgid "Task is not linked to a knowledge base"
+msgstr "任务未关联知识库"
 
 msgid "No target folder to sync"
 msgstr "没有可同步的目标文件夹"
 
-msgid "Wrote {count} file(s) to project folder"
-msgstr "已写入 {count} 个文件到项目文件夹"
+msgid "Wrote {count} file(s) to knowledge base folder"
+msgstr "已写入 {count} 个文件到知识库文件夹"
 
 msgid "Self-hosted Key, not metered"
 msgstr "自带 Key，不计量"
@@ -327,3 +324,162 @@ msgstr "API 配置异常，请检查 API Key 和账户状态。"
 
 msgid "Transcription service error. Please try re-transcribing."
 msgstr "转写服务返回错误，可尝试重新识别。"
+
+msgid "Unknown action: {name}"
+msgstr "未知动作：{name}"
+
+msgid "Operation failed: {err}"
+msgstr "操作失败：{err}"
+
+msgid "Already recording, please stop the current recording first"
+msgstr "当前已在录制中，请先停止当前录音"
+
+msgid "Recording..."
+msgstr "正在录制..."
+
+msgid "Recording started, meeting ID: {id}"
+msgstr "录音已开始，会议 ID: {id}"
+
+msgid "No recording in progress"
+msgstr "当前没有正在进行的录音"
+
+msgid "Recording stopped, audio duration {dur:.1f}s, generating minutes..."
+msgstr "录音已停止，音频时长 {dur:.1f} 秒，正在生成纪要..."
+
+msgid "Recording paused"
+msgstr "录音已暂停"
+
+msgid "Recording resumed"
+msgstr "录音已恢复"
+
+msgid "No completed meetings available to extract todos"
+msgstr "暂无已完成的会议，无法提取待办"
+
+msgid "Meeting '{name}' has no todo items"
+msgstr "会议「{name}」暂无待办事项"
+
+msgid "Meeting '{name}' has {count} todo items:\n{list}"
+msgstr "会议「{name}」共 {count} 条待办：\n{list}"
+
+msgid "No completed meetings"
+msgstr "暂无已完成的会议"
+
+msgid "Minutes not yet generated for this meeting"
+msgstr "该会议尚未生成纪要"
+
+msgid "Meeting '{name}' minutes:\n{summary}"
+msgstr "会议「{name}」纪要：\n{summary}"
+
+msgid "Untitled"
+msgstr "未命名"
+
+msgid "Unassigned"
+msgstr "未分配"
+
+msgid "Please select or create a meeting first"
+msgstr "请先选择或创建一个会议"
+
+msgid "No dialogue data for this meeting"
+msgstr "该会议暂无对话数据"
+
+msgid "Speaker analysis ({count} dialogue entries):\n{analysis}"
+msgstr "发言分析（共 {count} 条对话）：\n{analysis}"
+
+msgid "No meeting records"
+msgstr "暂无会议记录"
+
+msgid "Recent meetings:\n{list}"
+msgstr "最近会议列表：\n{list}"
+
+msgid "No hotwords configured"
+msgstr "当前无热词"
+
+msgid "Current hotwords ({count}):\n{list}"
+msgstr "当前热词（{count} 个）：\n{list}"
+
+msgid "No hotword mappings configured"
+msgstr "当前无热词映射"
+
+msgid "Current hotword mappings ({count}):\n{list}"
+msgstr "当前热词映射（{count} 条）：\n{list}"
+
+msgid "Current settings:\n{display}"
+msgstr "当前设置：\n{display}"
+
+msgid "Recording in progress\nDevice: {device}\nDuration: {dur:.1f}s"
+msgstr "录制状态：进行中\n设备：{device}\n时长：{dur:.1f} 秒"
+
+msgid "Not currently recording"
+msgstr "当前未在录制"
+
+msgid "Please select a meeting first before requesting re-transcription"
+msgstr "请先选择一个会议，再要求重新识别"
+
+msgid "Audio file not found, cannot re-transcribe"
+msgstr "录音文件不存在，无法重新识别"
+
+msgid "Re-transcribing..."
+msgstr "正在重新识别..."
+
+msgid "Re-transcription task submitted for '{name}', processing in background..."
+msgstr "已提交「{name}」的重新识别任务，正在后台处理中..."
+
+msgid "Please select a meeting first before requesting minute regeneration"
+msgstr "请先选择一个会议，再要求重新生成纪要"
+
+msgid "Transcription results not found, please complete audio recognition first"
+msgstr "转写结果不存在，请先完成音频识别"
+
+msgid "Audio file not found"
+msgstr "录音文件不存在"
+
+msgid "Minute regeneration task submitted for '{name}', processing in background..."
+msgstr "已提交「{name}」的纪要重新生成任务，正在后台处理中..."
+
+msgid "Please wait {seconds} seconds before trying again"
+msgstr "请等待 {seconds} 秒后再试"
+
+msgid "Daily send limit reached, please try again tomorrow"
+msgstr "今日发送次数已达上限，请明天再试"
+
+msgid "Recording automatically stopped due to prolonged inactivity (saved {dur:.0f}s of audio)"
+msgstr "因长时间无活动已自动停止录制（已保存 {dur:.0f} 秒录音）"
+
+msgid "Dialogue too short (only {count} sentences) to generate meaningful minutes. Please record a longer meeting audio."
+msgstr "对话内容过短（仅 {count} 句），无法生成有效纪要。请录制更长时间的会议音频。"
+
+msgid "Unknown error"
+msgstr "未知错误"
+
+msgid "Recording was in progress before restart, audio recovered, awaiting processing"
+msgstr "服务重启前正在录制，音频已恢复，等待处理"
+
+msgid "Server restart, resuming minute generation..."
+msgstr "服务重启，正在恢复纪要生成..."
+
+msgid "Server restart, resuming transcription..."
+msgstr "服务重启，正在恢复转写..."
+
+msgid "Awaiting processing"
+msgstr "等待处理"
+
+msgid "Task not completed or not linked to a knowledge base"
+msgstr "任务未完成或未关联知识库"
+
+msgid "Linked knowledge base does not exist"
+msgstr "关联的知识库不存在"
+
+msgid "Knowledge base folder sync not enabled"
+msgstr "知识库未启用文件夹同步"
+
+msgid "Realtime transcription unavailable: {err}, recording will continue normally"
+msgstr "实时转写不可用：{err}，录音仍会正常进行"
+
+msgid "Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+msgstr "遇到临时错误，{delay}秒后自动重试 ({attempt}/{max_retries})..."
+
+msgid "Completed"
+msgstr "完成"
+
+msgid "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+msgstr "纪要生成遇到临时错误，{delay}秒后自动重试 ({attempt}/{max_retries})..."

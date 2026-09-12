@@ -1,7 +1,7 @@
 {
   "breadcrumb": {
     "nav": "面包屑导航",
-    "project": "项目",
+    "project": "知识库",
     "library": "会议库",
     "default_title": "会议纪要"
   },
@@ -20,18 +20,23 @@
   "meta": {
     "person": "人",
     "edit_date": "点击修改会议日期",
-    "no_project": "不关联项目",
-    "link_project": "点击关联项目"
+    "no_project": "不关联知识库",
+    "link_project": "关联知识库",
+    "link_kb_tip": "关联知识库，让 AI 基于你的资料理解会议",
+    "linked_kb_tip": "已关联知识库，点击可切换",
+    "create_kb": "新建知识库"
   },
   "binding": {
     "title": "为说话人关联真实身份",
+    "title_all_bound": "说话人关联已完成",
     "detected": "系统识别到 {count} 位说话人",
     "unbound_hint": "，{count} 位待关联",
     "locate": "定位到该说话人的发言",
     "skip": "暂不关联",
     "confirm": "确认关联",
     "close": "关闭",
-    "hint": "点击说话人标签可关联已有身份或新建身份，点击「确认关联」后系统将按真实身份生成纪要",
+    "click_to_bind": "点击选择或新建身份",
+    "click_to_rebind": "点击修改关联",
     "search_placeholder": "搜索说话人...",
     "no_bind": "不关联",
     "no_match": "无匹配结果",
@@ -115,12 +120,22 @@
   },
   "onboarding": {
     "title": "关联说话人身份",
-    "dont_show_again": "不再显示",
-    "start": "开始关联",
+    "got_it": "我知道了",
+    "info_icon_tip": "什么是说话人关联？",
     "demo_label_1": "说话人 1",
     "demo_label_2": "说话人 2",
     "demo_name_1": "张明",
     "demo_name_2": "李婷"
+  },
+  "project_onboarding": {
+    "title": "关联知识库",
+    "got_it": "我知道了",
+    "info_icon_tip": "什么是知识库关联？",
+    "knowledge_base": "知识库",
+    "ai_context": "AI 上下文",
+    "ai_citation": "AI 引用文档",
+    "notes_sync": "纪要同步回文件夹",
+    "user_eco": "用户 · 其他工具"
   },
   "archive_dialog": {
     "title": "确认归档",
@@ -128,6 +143,13 @@
     "desc": "确定要将此会议归档吗？归档后将移至归档列表。",
     "cancel": "取消",
     "confirm": "确认归档"
+  },
+  "delete_dialog": {
+    "title": "确认删除",
+    "close": "关闭",
+    "desc": "确定删除该会议？此操作不可撤销。",
+    "cancel": "取消",
+    "confirm": "确认删除"
   },
   "tabs": {
     "transcript": "原文",
@@ -144,9 +166,8 @@
     "create_speaker_failed": "新建说话人失败",
     "save_mapping_failed": "增量保存映射失败",
     "submit_mapping_failed": "提交映射失败",
-    "update_project_failed": "更新项目关联失败",
-    "save_date_failed": "保存日期失败",
-    "confirm_delete": "确定删除该会议？此操作不可撤销。"
+    "update_project_failed": "更新知识库关联失败",
+    "save_date_failed": "保存日期失败"
   },
   "source": {
     "minutes": "纪要",

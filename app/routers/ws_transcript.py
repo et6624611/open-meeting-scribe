@@ -3,12 +3,12 @@ app/routers/ws_transcript.py — WebSocket 实时转写端点
 
 作者：王永亮
 创建：2026-09-12
-版本：1.0.0
+版本：1.1.0（新增实时翻译支持）
 
 职责：
   - WebSocket 实时转写端点（/ws/transcript/{task_id}）
-  - 历史回放（句子 + 总结 + 章节）
-  - 双向监听（队列消息 + 客户端心跳）
+  - 历史回放（句子 + 总结 + 章节 + 翻译）
+  - 双向监听（队列消息 + 客户端心跳 + 翻译控制命令）
 
 从 app/routers/record.py 拆分而来。
 """
@@ -22,10 +22,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.store import (
     realtime_queues, realtime_summarizers, realtime_chapter_generators,
+    realtime_translators, realtime_translations,
     realtime_full_transcripts, realtime_last_heartbeat, realtime_presence_scores,
     realtime_silence_warnings,
     resolve_realtime_speaker_name,
+    push_realtime_msg,
 )
+from core.translate import RealtimeTranslator
 from core.i18n import _, set_current_locale
 
 logger = logging.getLogger(__name__)
@@ -44,8 +47,14 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
       {"type": "partial", "text": "...", "speaker_id": N, "speaker_name": "..."}    临时结果
       {"type": "sentence", "text": "...", "speaker_id": N, "speaker_name": "..."}   定稿句子
       {"type": "speaker_bound", "speaker_id": N, "speaker_name": "..."}             说话人绑定更新
+      {"type": "translation_update", "translations": [...]}                          批量译文推送
+      {"type": "translation_status", "status": "...", "target_lang": "..."}          翻译状态同步
       {"type": "error", "message": "..."}       错误
       {"type": "ended"}                         转写结束
+
+    消息格式（上行）：
+      {"type": "heartbeat", ...}                                                     心跳
+      {"type": "translation_control", "action": "start|stop|set_lang", ...}          翻译控制
     """
     await websocket.accept()
     set_current_locale(locale)
@@ -93,6 +102,19 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
             logger.info(f"[WebSocket] 回放实时章节: task={task_id[:8]}, {len(current_chapters)} 个章节")
             await websocket.send_json({"type": "chapters_update", "chapters": current_chapters})
 
+    # 回放实时翻译（已有翻译结果 + 翻译器状态）
+    translations = realtime_translations.get(task_id, [])
+    if translations:
+        logger.info(f"[WebSocket] 回放实时翻译: task={task_id[:8]}, {len(translations)} 条译文")
+        await websocket.send_json({"type": "translation_update", "translations": translations})
+    translator = realtime_translators.get(task_id)
+    if translator and translator.is_running:
+        await websocket.send_json({
+            "type": "translation_status",
+            "status": "active",
+            "target_lang": translator.target_lang,
+        })
+
     # 初始化心跳时间戳
     realtime_last_heartbeat[task_id] = time.time()
 
@@ -136,6 +158,8 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
                         if data.get("user_ack"):
                             realtime_silence_warnings[task_id] = 0
                             logger.info(f"[静默检测] 用户确认继续录制: task={task_id[:8]}")
+                    elif data.get("type") == "translation_control":
+                        _handle_translation_control(task_id, data, websocket)
                 except WebSocketDisconnect:
                     logger.info(f"[WebSocket] 客户端断开: task={task_id[:8]}")
                     break
@@ -149,3 +173,84 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
     finally:
         realtime_last_heartbeat.pop(task_id, None)
         logger.info(f"[WebSocket] 连接结束: task={task_id[:8]}")
+
+
+# ============================================================
+# 翻译控制辅助函数
+# ============================================================
+
+
+def _handle_translation_control(task_id: str, data: dict, websocket: WebSocket) -> None:
+    """
+    处理客户端上行的翻译控制命令。
+
+    支持的动作：
+      - start: 创建并启动翻译器（若已存在则切换语言）
+      - stop: 停止并移除翻译器
+      - set_lang: 热切换目标语言
+    """
+    action = data.get("action", "")
+    logger.info(f"[翻译控制] 收到命令: action={action}, task={task_id[:8]}, data={data}")
+
+    if action == "start":
+        target_lang = data.get("target_lang", "en")
+        # 若已存在翻译器，先停止
+        existing = realtime_translators.get(task_id)
+        if existing:
+            existing.stop()
+
+        def _on_translation(translations: list[dict]) -> None:
+            """翻译完成回调：推送译文 + 追加到全量结果"""
+            # 追加到全量翻译结果（供 WebSocket 回放）
+            all_trans = realtime_translations.setdefault(task_id, [])
+            all_trans.extend(translations)
+            # 通过 WebSocket 推送给前端
+            push_realtime_msg(task_id, {
+                "type": "translation_update",
+                "translations": translations,
+            })
+
+        def _on_status(status: str) -> None:
+            """翻译状态回调：推送给前端"""
+            translator = realtime_translators.get(task_id)
+            push_realtime_msg(task_id, {
+                "type": "translation_status",
+                "status": status,
+                "target_lang": translator.target_lang if translator else target_lang,
+            })
+
+        translator = RealtimeTranslator(
+            target_lang=target_lang,
+            on_translation=_on_translation,
+            on_status=_on_status,
+        )
+        realtime_translators[task_id] = translator
+        translator.start()
+        logger.info(f"[WebSocket] 翻译器已启动: task={task_id[:8]}, lang={target_lang}")
+
+    elif action == "stop":
+        translator = realtime_translators.pop(task_id, None)
+        if translator:
+            translator.stop()
+            # 保存全量翻译结果到任务（供会后查看）
+            final_translations = translator.get_all_translations()
+            if final_translations:
+                realtime_translations[task_id] = final_translations
+            logger.info(f"[WebSocket] 翻译器已停止: task={task_id[:8]}, {translator.translation_count} 次翻译")
+        push_realtime_msg(task_id, {
+            "type": "translation_status",
+            "status": "stopped",
+            "target_lang": "",
+        })
+
+    elif action == "set_lang":
+        target_lang = data.get("target_lang", "en")
+        translator = realtime_translators.get(task_id)
+        if translator and translator.is_running:
+            translator.set_target_lang(target_lang)
+            logger.info(f"[WebSocket] 翻译目标语言切换: task={task_id[:8]}, lang={target_lang}")
+        else:
+            logger.warning(f"[WebSocket] 翻译器不存在或未运行，无法切换语言: task={task_id[:8]}")
+
+    else:
+        logger.warning(f"[WebSocket] 未知翻译控制动作: {action}")

@@ -1,75 +1,78 @@
 ---
 title: Open Meeting Scribe
-description: 开源、本地优先的会议纪要工具——音频输入即一切，不绑定任何会议平台。
-tags: ["meeting", "transcription", "ASR", "speaker-diarization", "open-source"]
+description: Open-source meeting minutes tool — audio in, structured minutes out. Platform-agnostic, your data stays on your device.
+tags: ["meeting", "transcription", "ASR", "speaker-diarization", "voiceprint", "open-source"]
 created_at: "2026-09-03"
-updated_at: "2026-09-10"
-version: "2.0.0"
+updated_at: "2026-09-12"
+version: "2.1.0"
 ---
 
 <p align="center">
   <h1 align="center">Open Meeting Scribe</h1>
   <p align="center">
-    <strong>开源、本地优先的会议纪要工具</strong>
+    <strong>Open-source meeting minutes tool — audio in, minutes out</strong>
   </p>
   <p align="center">
-    音频 → 转写 + 说话人分离 → 结构化纪要（结论 / 待办）
+    Audio → Transcription + Speaker Diarization → Structured Minutes (Conclusions / Action Items)
+  </p>
+  <p align="center">
+    <a href="README_zh-CN.md">中文文档</a>
   </p>
 </p>
 
 ---
 
-**不绑定任何会议平台，音频输入即一切。** 无论是腾讯会议、飞书、Zoom 还是线下会议室，只要能输出音频，就能自动转写并生成结构化纪要。
+**Platform-agnostic — audio is the only input.** Whether it's an online video call, a phone conference, or an in-person meeting room — if it produces audio, Open Meeting Scribe can transcribe it and generate structured minutes automatically.
 
-## ✨ 功能特性
+## ✨ Features
 
-- **多种音频输入**：文件拖拽上传（wav/mp3/m4a）+ BlackHole 系统内录 + 麦克风实时录音
-- **高精度转写**：基于 DashScope paraformer-v2，中文识别 SOTA
-- **说话人分离**：自动识别不同发言人，标注「说话人 1 / 说话人 2 / ...」
-- **声纹姓名化**：注册声纹后，「说话人 1」自动变为「张三」，一次注册全局生效
-- **热词增强**：自定义企业人名、专业术语，识别时自动加权纠正
-- **结构化纪要**：LLM 自动生成结论摘要 + 待办事项（谁 / 做什么 / 截止日）
-- **AI 对话驱动**：自然语言对话完成录音、转写、查询、设置等全流程操作
-- **实时转写**：会议进行中即可查看实时转写文本与增量摘要
-- **项目管理**：按项目组织会议，支持跨会议搜索与资料归档
-- **多主题**：7 套内置主题，支持明/暗模式切换
+- **Multiple audio inputs**: Drag-and-drop file upload (wav/mp3/m4a) + system loopback recording (BlackHole on macOS) + live microphone capture
+- **High-accuracy transcription**: Powered by DashScope paraformer-v2, state-of-the-art for CJK languages
+- **Speaker diarization**: Automatically identifies and labels different speakers (Speaker 1, Speaker 2, ...)
+- **Voiceprint naming**: Register a voiceprint once, and "Speaker 1" becomes "John Smith" across all future meetings
+- **Hotword boosting**: Custom vocabulary (names, jargon) weighted during recognition for higher accuracy
+- **Structured minutes**: LLM-generated conclusions + action items (who / what / deadline)
+- **AI chat-driven workflow**: Control recording, transcription, queries, and settings through natural language
+- **Real-time transcription**: Live transcript view with incremental summaries during the meeting
+- **Project management**: Organize meetings by project, cross-meeting search, and archive
+- **Themes**: 7 built-in themes with light/dark mode
 
-## 🖥 系统要求
+## 🖥 Requirements
 
-| 项目 | 要求 |
-|------|------|
-| 操作系统 | macOS 12+（主要开发平台） |
+| Item | Requirement |
+|------|-------------|
+| OS | macOS 12+ (primary development platform) |
 | Python | 3.11+ |
-| Node.js | 18+（前端构建） |
-| ffmpeg | 音频处理必需 |
-| BlackHole | 系统内录需要（[安装指南](https://github.com/ExistentialAudio/BlackHole)） |
+| Node.js | 18+ (frontend build) |
+| ffmpeg | Required for audio processing |
+| BlackHole | Required for system loopback ([Install](https://github.com/ExistentialAudio/BlackHole)) |
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 1. 克隆仓库
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/et6624611/open-meeting-scribe.git
 cd open-meeting-scribe
 ```
 
-### 2. 配置环境变量
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，填入你的 API Key：
+Edit `.env` and fill in your API keys:
 
-| 变量 | 说明 | 获取方式 |
-|------|------|----------|
-| `DASHSCOPE_API_KEY` | 阿里云百炼 API Key（纪要生成） | [百炼控制台](https://bailian.console.aliyun.com/) |
-| `ASR_PROXY_URL` | ASR 代理服务地址（转写中转） | 自建或使用订阅服务 |
-| `ASR_PROXY_TOKEN` | ASR 代理共享密钥 | 与代理端配置一致 |
+| Variable | Description | How to obtain |
+|----------|-------------|---------------|
+| `DASHSCOPE_API_KEY` | Alibaba Cloud DashScope API Key (for minutes generation) | [DashScope Console](https://dashscope.console.aliyun.com/) |
+| `ASR_PROXY_URL` | ASR proxy service URL (transcription relay) | Self-host or use a subscription service |
+| `ASR_PROXY_TOKEN` | ASR proxy shared secret | Must match the proxy server config |
 
-> **关于 ASR 代理**：为保护 API Key 安全，转写请求通过代理服务中转，客户端不存储 DashScope Key。你可以自行部署 `asr-proxy/` 服务，或使用第三方提供的代理服务。
+> **About the ASR proxy**: To protect your API key, transcription requests are relayed through a proxy service. The client never stores the DashScope key directly. You can self-host the `asr-proxy/` service or use a third-party proxy.
 
-### 3. 安装后端依赖
+### 3. Install backend dependencies
 
 ```bash
 python3 -m venv venv
@@ -77,7 +80,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. 构建前端
+### 4. Build the frontend
 
 ```bash
 cd frontend
@@ -86,65 +89,77 @@ npm run build
 cd ..
 ```
 
-### 5. 启动服务
+### 5. Start the server
 
 ```bash
 python cli.py server
 ```
 
-访问 http://localhost:8000 即可使用。
+Visit http://localhost:8000 to use the app.
 
-### CLI 方式
+### CLI usage
 
 ```bash
-# 直接转写音频文件
+# Transcribe an audio file directly
 python cli.py transcribe samples/your-meeting.wav
 ```
 
-## 🏗 技术架构
+## 🏗 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    前端 (Vue 3 + TypeScript)              │
-│              拖拽上传 / 实时录音 / AI 对话框               │
+│                  Frontend (Vue 3 + TypeScript)            │
+│            Drag & Drop / Live Recording / AI Chat         │
 └────────────────────────┬────────────────────────────────┘
                          │ HTTP / WebSocket
 ┌────────────────────────▼────────────────────────────────┐
-│              后端 (Python + FastAPI)                      │
+│                 Backend (Python + FastAPI)                │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ 转写管线  │ │ 声纹匹配  │ │ LLM纪要  │ │ 项目管理  │   │
+│  │ Pipeline │  │Voiceprint│  │LLM Mins. │  │ Projects │   │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────────┘   │
 └───────┼────────────┼────────────┼───────────────────────┘
         │            │            │
    ┌────▼────┐  ┌────▼────┐  ┌───▼─────┐
-   │ASR 代理  │  │CAM++ 服务│  │DashScope │
-   │(转写中转)│  │(声纹嵌入)│  │(通义千问) │
+   │ASR Proxy│  │ CAM++   │  │DashScope │
+   │(relay)  │  │(embed)  │  │  (LLM)  │
    └─────────┘  └─────────┘  └─────────┘
 ```
 
-**核心技术栈**：
-- **后端**：Python 3.11+ / FastAPI / Uvicorn
-- **前端**：Vue 3 / TypeScript / Vite / Pinia
-- **语音识别**：DashScope paraformer-v2（批处理）+ qwen-audio-asr-flash（实时流式）
-- **声纹识别**：CAM++ (FunASR CAMPPlus) 192 维嵌入 + 余弦相似度聚类 + 匈牙利算法匹配
-- **纪要生成**：通义千问 qwen-plus
-- **音频处理**：ffmpeg + BlackHole（macOS 系统内录）
+**Core tech stack**:
+- **Backend**: Python 3.11+ / FastAPI / Uvicorn
+- **Frontend**: Vue 3 / TypeScript / Vite / Pinia
+- **ASR**: DashScope paraformer-v2 (batch) + qwen-audio-asr-flash (real-time streaming)
+- **Voiceprint**: CAM++ (FunASR CAMPPlus) 192-dim embeddings + cosine similarity clustering + Hungarian algorithm matching
+- **Minutes generation**: Qwen-plus (OpenAI-compatible API)
+- **Audio processing**: ffmpeg + BlackHole (macOS system loopback)
 
-## 📖 文档
+## 🌐 Internationalization
 
-| 文档 | 说明 |
-|------|------|
-| [MISSION.md](MISSION.md) | 项目使命与设计原则 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 系统架构与模块说明 |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 云服务器部署指南 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 版本路线图 |
-| [docs/PRD.md](docs/PRD.md) | 产品需求文档 |
-| [CHANGELOG.md](CHANGELOG.md) | 更新日志 |
+The UI supports multiple languages. The default language is **English**; Chinese (zh-CN) is available as a first-class translation.
 
-## 🤝 贡献
+| Language | Code | Status |
+|----------|------|--------|
+| English | `en` | Default |
+| 中文 | `zh-CN` | Full translation |
 
-欢迎提交 Issue 和 Pull Request！详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Language detection priority: `localStorage` → browser language → English (default).
 
-## 📄 许可证
+## 📖 Documentation
 
-[MIT License](LICENSE) © 2026 王永亮
+| Document | Description |
+|----------|-------------|
+| [MISSION.md](MISSION.md) | Project mission & design principles |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture & module details |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Cloud deployment guide |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Version roadmap |
+| [docs/PRD.md](docs/PRD.md) | Product requirements document |
+| [SECURITY.md](SECURITY.md) | Security policy & data privacy |
+| [CHANGELOG.md](CHANGELOG.md) | Changelog |
+
+## 🤝 Contributing
+
+Issues and Pull Requests are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## 📄 License
+
+[GNU AGPLv3](LICENSE) © 2026 Yongliang Wang

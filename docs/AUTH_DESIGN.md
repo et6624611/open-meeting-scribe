@@ -1,6 +1,8 @@
-# 认证与订阅系统 — 技术设计文档
+# 认证与授权系统 — 技术设计文档
 
 > 配套 ADR-0006。本文档描述具体实现方案，供开发参考。
+>
+> **定位说明**：本项目为个人开发者维护的开源软件，不提供商业订阅服务。下文「授权」指开发者对用户的使用权限管理，而非商业订阅关系。
 
 ## 目录
 
@@ -23,7 +25,7 @@
 
 ### 双服务架构
 
-系统将 AI 能力拆分为两个独立服务，各自拥有独立的 API Key 和配置：
+系统将 AI 能力拆分为两个独立服务，各自拥有独立的 API Key 和配置。默认厂商为 DashScope（可替换为任意兼容 API）：
 
 | 服务 | 职责 | 默认厂商 | 默认模型 |
 |------|------|----------|----------|
@@ -34,22 +36,34 @@
 
 | 受众 | 话语 | 示例 |
 |------|------|------|
-| **订阅用户** | 服务 | "语音转写服务已连接"、"纪要生成服务已连接" |
+| **普通用户** | 服务状态 | "语音转写服务已连接"、"纪要生成服务已连接" |
 | **开发者** | 模型 | "DashScope Paraformer"、"qwen-plus" |
 | **系统** | API | `asr.api_key`、`llm.base_url` |
 
-三个层级不要混。设置页面对订阅用户展示「平台提供」状态，对开发者展示完整的配置表单。
+三个层级不要混。设置页面对使用共享 proxy 的用户展示「开发者共享代理」状态，对自持 Key 用户展示完整的配置表单。
 
-### 订阅用户 vs 未订阅用户
+### 共享 proxy 用户 vs 自持 Key 用户
 
-| | 订阅用户 | 未订阅用户 |
+| | 共享 proxy 用户 | 自持 Key 用户 |
 |---|---|---|
-| **ASR 服务** | 平台提供，无需配置 | 用户自行配置 API Key |
-| **LLM 服务** | 平台提供，无需配置 | 用户自行配置 API Key |
+| **注册方式** | 国内手机号（SMS 验证） | 任意注册方式 |
+| **ASR 服务** | 开发者共享代理，体验期内免费 | 用户自行配置 API Key |
+| **LLM 服务** | 开发者共享代理，体验期内免费 | 用户自行配置 API Key |
 | **功能范围** | 完整功能 | 完整功能（不阉割） |
-| **付费方式** | 按流量付费 | 免费使用，自带 Key |
+| **费用承担** | 体验期内由开发者承担 | 用户自行承担 API 费用 |
 
-**核心原则：功能不分级，门槛分级。** 付费买的是「开箱即用」的便利，而不是功能解锁。
+**核心原则：功能不分级，资源分配策略分级。** 共享 proxy 用户默认走本地 MFCC 以节约开发者成本，自持 Key 用户可使用云端 CAM++（用户自担费用）。
+
+### 体验期服务区域限制
+
+体验期共享 proxy **仅限通过国内手机号（SMS）注册的用户**。GitHub OAuth 和本地账户用户需自行配置 API Key。
+
+**原因**：
+- 开发者 API Key 部署在国内云服务器，云端 AI 国内服务通常仅限中国大陆地区使用
+- 境外用户通过共享 proxy 访问可能涉及服务区域限制与数据跨境合规问题
+- 国内手机号 SMS 验证作为天然的地理屏障，无需额外的 IP 检测基础设施
+
+**代码实现**：`core/metering.py` 的 `is_metered()` 检查 `user.provider == "sms"`，非 SMS 用户返回 `False`（不计量，需自持 Key）。
 
 ### 设置文件结构（v3）
 
@@ -312,15 +326,15 @@ def require_feature(feature: str):
     """依赖注入：检查当前用户是否有某功能权限"""
     def checker(request: Request):
         user = await auth_required(request)
-        # 个人版基础功能不需要 License
+        # 体验期基础功能不需要额外授权
         if feature in PERSONAL_FEATURES:
             return user
-        # 团队功能需要有效 License
+        # 协作功能需要有效授权
         license = get_current_license()
         if not license or not license.is_valid:
-            raise HTTPException(403, "需要团队版订阅")
+            raise HTTPException(403, "需要协作授权")
         if feature not in license.features:
-            raise HTTPException(403, f"当前订阅不包含此功能: {feature}")
+            raise HTTPException(403, f"当前授权不包含此功能: {feature}")
         return user
     return checker
 ```
@@ -328,7 +342,7 @@ def require_feature(feature: str):
 ### 功能分层表
 
 ```python
-# 个人版免费功能（无需 License）
+# 体验期免费功能（无需额外授权）
 PERSONAL_FEATURES = {
     "transcribe",      # 录音转写
     "summary",         # AI 纪要
@@ -340,7 +354,7 @@ PERSONAL_FEATURES = {
     "chat",            # AI 对话
 }
 
-# 团队版功能（需要 License）
+# 协作功能（需要授权）
 TEAM_FEATURES = {
     "sharing",         # 项目共享
     "team_admin",      # 团队管理
@@ -540,9 +554,9 @@ APP_URL=http://127.0.0.1:8000  # OAuth 回调需要
 ### 可选（第二期）
 
 | 资源 | 用途 | 获取方式 |
-|------|------|---------|
-| 微信支付商户号 | 团队版收款 | [微信支付](https://pay.weixin.qq.com/)（需企业资质） |
-| 支付宝商户号 | 团队版收款 | [支付宝开放平台](https://open.alipay.com/)（需企业资质） |
+|------|------|--------|
+| ~~微信支付商户号~~ | ~~团队版收款~~ | 已取消：本项目不提供商业订阅服务 |
+| ~~支付宝商户号~~ | ~~团队版收款~~ | 已取消：本项目不提供商业订阅服务 |
 
 ### 我会帮你生成
 

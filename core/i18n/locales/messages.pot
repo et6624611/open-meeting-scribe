@@ -336,10 +336,6 @@ msgstr ""
 msgid "Name cannot be empty"
 msgstr ""
 
-#: app/routers/speakers.py:102
-msgid "Please set up user info first"
-msgstr ""
-
 #: app/routers/speakers.py:114
 msgid "Operation failed"
 msgstr ""

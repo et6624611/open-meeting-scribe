@@ -4,7 +4,7 @@ app/routers/admin.py — 管理后台 API 路由
 职责：
   1. 管理员登录/登出（独立密码认证，与用户 JWT 互不干扰）
   2. 用户管理（列表、详情、禁用/启用）
-  3. 订阅管理（修改用户档位）
+  3. 授权管理（修改用户配额档位）
   4. 系统概览（统计摘要）
 
 远程配置（消息/功能开关）已拆分至 admin_config.py
@@ -144,16 +144,18 @@ def admin_overview(_: dict = Depends(require_admin)):
     """
     系统概览统计。
 
-    返回：用户总数、各档位分布、本月总用量、最近注册用户。
+    返回：用户总数、各授权档位分布、本月总用量、最近注册用户。
     """
     data = _load_user_data()
     users = data.get("users", [])
 
-    # 各档位统计
-    tier_counts = {"free": 0, "personal": 0, "pro": 0, "team": 0}
+    # 体验期用户统计
+    tier_counts = {"free": 0}
     for user in users:
         tier = user.get("subscription", {}).get("tier", "free")
-        tier_counts[tier] = tier_counts.get(tier, 0) + 1
+        if tier in tier_counts:
+            tier_counts[tier] += 1
+        # 非 free 档位视为自持 Key 用户（不计入配额统计）
 
     # 本月总用量
     month_key = __import__("datetime").datetime.now(
@@ -205,7 +207,7 @@ def admin_list_users(
     """
     用户列表。
 
-    支持按名称/手机号搜索，按订阅档位筛选。
+    支持按名称/手机号搜索，按授权档位筛选。
     """
     data = _load_user_data()
     users = data.get("users", [])
@@ -222,7 +224,7 @@ def admin_list_users(
                     and search.lower() not in email):
                 continue
 
-        # 档位过滤
+        # 授权档位过滤
         user_tier = u.get("subscription", {}).get("tier", "free")
         if tier and user_tier != tier:
             continue
@@ -295,11 +297,11 @@ def admin_get_user(user_id: str, _: dict = Depends(require_admin)):
 
 
 # ============================================================
-# 订阅管理
+# 授权管理
 # ============================================================
 
 class UpdateSubscriptionRequest(BaseModel):
-    tier: str = Field(..., description="订阅档位: free/personal/pro/team")
+    tier: str = Field(..., description="授权档位: free")
     expires_at: str = Field(default=None, description="到期时间（ISO 8601）")
 
 
@@ -309,7 +311,7 @@ def admin_update_subscription(
     req: UpdateSubscriptionRequest,
     _: dict = Depends(require_admin),
 ):
-    """修改用户订阅档位"""
+    """修改用户授权档位"""
     valid_tiers = list(TIER_QUOTAS.keys())
     if req.tier not in valid_tiers:
         raise HTTPException(400, _("Invalid tier, options: {opts}").format(opts=', '.join(valid_tiers)))
@@ -327,7 +329,7 @@ def admin_update_subscription(
     if not updated:
         raise HTTPException(500, _("Update failed"))
 
-    logger.info(f"管理员修改订阅: user={user_id[:8]}, tier={req.tier}")
+    logger.info(f"管理员修改授权: user={user_id[:8]}, tier={req.tier}")
     return {
         "success": True,
         "user_id": user_id,

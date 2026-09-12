@@ -83,6 +83,8 @@ from app.realtime_store import (  # noqa: E402, F401
     realtime_diarizers,
     realtime_summarizers,
     realtime_chapter_generators,
+    realtime_translators,
+    realtime_translations,
     realtime_transcript_buffers,
     realtime_full_transcripts,
     realtime_speaker_maps,

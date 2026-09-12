@@ -406,18 +406,20 @@ def bind_current_user_to_speaker(task_id: str, speaker_id: str) -> str | None:
     return speaker_uuid
 
 
-# ── 订阅管理 ──
+# ── 授权管理 ──
+# 注：JSON 字段名 "subscription" 保留以向后兼容已有 users.json 数据。
+# 概念上已重定义为「授权/配额」，不再代表商业订阅。
 
 
 def get_user_subscription(user_id: str | None = None) -> dict | None:
     """
-    获取用户订阅信息。
+    获取用户授权信息（兼容旧字段名 subscription）。
 
     Args:
         user_id: 用户 ID，默认当前用户
 
     Returns:
-        {"tier": "free"|"personal"|"pro"|"team", "started_at": ..., "expires_at": ..., "auto_renew": ...}
+        {"tier": "free", "started_at": ..., "expires_at": ...}
         未登录或用户不存在返回 None
     """
     if user_id:
@@ -435,17 +437,15 @@ def set_user_subscription(
     tier: str,
     started_at: str | None = None,
     expires_at: str | None = None,
-    auto_renew: bool = False,
 ) -> dict | None:
     """
-    设置/更新用户订阅信息。
+    设置/更新用户授权信息。
 
     Args:
         user_id: 用户 ID
-        tier: 订阅档位 ("free" | "personal" | "pro" | "team")
-        started_at: 订阅开始时间（ISO 8601），默认当前时间
+        tier: 授权档位（当前仅 "free"）
+        started_at: 授权开始时间（ISO 8601），默认当前时间
         expires_at: 到期时间（ISO 8601），free 为 None
-        auto_renew: 是否自动续费
 
     Returns:
         更新后的用户对象，用户不存在返回 None
@@ -457,10 +457,9 @@ def set_user_subscription(
                 "tier": tier,
                 "started_at": started_at or datetime.now(timezone.utc).isoformat(),
                 "expires_at": expires_at,
-                "auto_renew": auto_renew,
             }
             _save_user_data(data)
-            logger.info(f"用户订阅已更新: user={user_id[:8]}, tier={tier}")
+            logger.info(f"用户授权已更新: user={user_id[:8]}, tier={tier}")
             return user
     return None
 
@@ -472,9 +471,9 @@ def should_use_local_diarization() -> bool:
     """判断当前用户是否应使用本地 MFCC 声纹（而非云端 CAM++）。
 
     规则：
-      - 未登录 → True（无订阅信息，强制本地）
-      - free 用户 → True（非订阅用户，强制本地 MFCC）
-      - 订阅用户（personal/pro/team）→ 检查 prefs.local_diarization，
+      - 未登录 → True（无授权信息，强制本地）
+      - free 用户 → True（体验期默认本地 MFCC，节约共享 proxy 成本）
+      - 体验期用户（free）→ 检查 prefs.local_diarization，
         默认 False（使用云端 CAM++），用户可主动开启本地 MFCC
 
     Returns:

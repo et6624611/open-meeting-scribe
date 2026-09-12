@@ -214,7 +214,7 @@ def run_pipeline_stage2(
         speaker_name_map = {}
         for item in dialogue:
             sid = item.get("speaker_id", 0)
-            name = item.get("speaker_name", f"说话人{sid + 1}")
+            name = item.get("speaker_name", f"Speaker {sid + 1}")
             speaker_name_map[sid] = name
         result["speaker_mapping"] = speaker_name_map
         result["speaker_uuid_mapping"] = {str(k): v for k, v in speaker_mapping.items()}
@@ -225,7 +225,7 @@ def run_pipeline_stage2(
         for item in dialogue:
             sid = item.get("speaker_id", 0)
             if sid not in speaker_name_map:
-                speaker_name_map[sid] = item.get("speaker_name", f"说话人{sid + 1}")
+                speaker_name_map[sid] = item.get("speaker_name", f"Speaker {sid + 1}")
         result["speaker_mapping"] = speaker_name_map
         result["speaker_uuid_mapping"] = {}
         progress("speakers", f"未配置姓名映射，使用默认名称（{len(speaker_name_map)} 位说话人）", 80)

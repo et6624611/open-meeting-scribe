@@ -98,10 +98,19 @@
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>{{ hasRecordingTask ? t('topbar.return_record') : t('topbar.new_meeting') }}</span>
         </button>
-        <button class="lang-btn" id="langBtn" :title="t('topbar.recognition_lang')" disabled>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          <span>{{ t('topbar.chinese') }}</span>
-        </button>
+        <div class="lang-switcher">
+          <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" @click="showLangMenu = !showLangMenu">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>{{ currentLangLabel }}</span>
+            <svg class="lang-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="lang-dropdown" :class="{ 'is-open': showLangMenu }" role="listbox">
+            <button v-for="lang in langOptions" :key="lang.code" class="lang-option" :class="{ 'is-active': currentLocale === lang.code }" role="option" :aria-selected="currentLocale === lang.code" @click="onSwitchLang(lang.code); showLangMenu = false">
+              {{ lang.label }}
+              <svg v-if="currentLocale === lang.code" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+          </div>
+        </div>
 
         <!-- 主题切换器 -->
         <div class="theme-switcher">
@@ -175,6 +184,7 @@ import { usePlayerStore } from '@/stores/player'
 import IconButton from '@/components/common/IconButton.vue'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -203,6 +213,18 @@ function onSeekPlayer(e: MouseEvent) {
 
 const showThemeMenu = ref(false)
 const showUserMenu = ref(false)
+const showLangMenu = ref(false)
+
+// ─── 语言切换 ───
+const currentLocale = computed(() => getLocale())
+const langOptions: { code: SupportedLocale; label: string }[] = [
+  { code: 'zh-CN', label: '中文' },
+  { code: 'en', label: 'English' },
+]
+const currentLangLabel = computed(() => langOptions.find(l => l.code === currentLocale.value)?.label ?? '中文')
+async function onSwitchLang(locale: SupportedLocale) {
+  await setI18nLocale(locale)
+}
 
 // ─ 录音中指示 pill（更多菜单）───
 const recMoreBtn = ref<HTMLElement | null>(null)
@@ -412,5 +434,6 @@ document.addEventListener('click', (e) => {
   const target = e.target as HTMLElement
   if (!target.closest('.theme-switcher')) showThemeMenu.value = false
   if (!target.closest('.user-avatar-wrapper')) showUserMenu.value = false
+  if (!target.closest('.lang-switcher')) showLangMenu.value = false
 })
 </script>

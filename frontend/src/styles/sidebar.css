@@ -55,24 +55,27 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-history { flex: 1; overflow-y: auto; padding: 0 8px 16px; }
 .body:not(.sidebar-collapsed) .sb-history { padding-left: 44px; padding-top: 40px; }
 
-/* ─── 时间轴 ─── */
-.sb-timeline { position: relative; padding-left: 20px; min-height: 100%; }
-.sb-timeline::before { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: var(--timeline-line); }
+/* ─── 时间轴（虚拟滚动容器） ─── */
+.sb-history-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 注意：虚拟滚动 item 为绝对定位，不受本容器 padding 影响；左侧留白由 .sb-vs-item 的 padding-left 提供 */
+.sb-virtual-scroller { flex: 1; min-height: 0; }
+/* 虚拟滚动内部 item wrapper 继承 padding，确保绝对定位子项正确偏移 */
+.sb-virtual-scroller :deep(.vue-recycle-scroller__item-wrapper) { position: relative; }
 
-/* ─── 日期组 ─── */
-.sb-date-group { position: relative; transition: margin 0.25s ease; }
+/* ─── 日期组（虚拟滚动内禁用 transition，避免高度测量不同步） ─── */
+.sb-date-group { position: relative; }
 .sb-date-marker { position: relative; padding: 12px var(--s-3) 6px 0; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; border-radius: var(--radius-sm); transition: background 0.12s; }
 .sb-date-marker:hover { background: var(--surface-2); }
-.sb-date-marker .sb-date-node { position: absolute; left: -22px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2.5px solid var(--timeline-node); z-index: 2; transition: transform 0.2s, box-shadow 0.2s; flex-shrink: 0; }
-.sb-date-marker.is-today .sb-date-node { background: var(--timeline-today); border-color: var(--timeline-today); box-shadow: 0 0 0 3px var(--timeline-today-glow); }
+.sb-date-marker .sb-date-node { display: none; }
+.sb-date-marker.is-today .sb-date-node { display: none; }
 .sb-date-marker .sb-date-label { font-size: var(--fs-13); font-weight: 600; color: var(--fg); letter-spacing: 0.02em; }
 .sb-date-marker .sb-date-sub { font-size: 11px; color: var(--subtle); font-family: var(--font-mono); }
 .sb-date-marker.is-today .sb-date-label { color: var(--accent); }
 .sb-date-chevron { margin-left: auto; width: 14px; height: 14px; color: var(--subtle); transition: transform 0.25s ease; flex-shrink: 0; }
 .sb-date-group.is-collapsed .sb-date-chevron { transform: rotate(-90deg); }
 .sb-date-group.is-collapsed .sb-date-marker { padding: 8px var(--s-3) 8px 0; }
-.sb-date-content { overflow: hidden; transition: max-height 0.3s ease, opacity 0.25s ease; max-height: 2000px; opacity: 1; }
-.sb-date-group.is-collapsed .sb-date-content { max-height: 0; opacity: 0; }
+/* 虚拟滚动内折叠由 computed 控制 item 显隐，不再需要 max-height 动画 */
+.sb-date-content { overflow: hidden; }
 
 /* ─── 时间间距 ─── */
 .sb-time-gap { height: var(--gap-h, 32px); transition: height 0.25s ease; }
@@ -87,14 +90,34 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-gap-1week { --gap-h: 116px; }
 .sb-gap-2weeks { --gap-h: 132px; }
 
+/* ─── 虚拟滚动适配 ─── */
+.sb-virtual-scroller :deep(.sb-date-group.is-collapsed) .sb-date-content { display: none; }
+/* 时间轴：圆形节点 + 连接线（轴线中心统一 x=12） */
+/* 组头/会议 item 保留 24px 左侧留白槽（正常流）；线/节点全部以 ≥0 偏移定位在槽内，
+   避免负偏移超出虚拟滚动容器 overflow 裁剪边界导致圆环被剪切 */
+.sb-vs-item { position: relative; }
+.sb-vs-item.is-header, .sb-vs-item.is-task { padding-left: 24px; }
+/* 圆形节点：仅日期组头显示，作为时间轴主节点（border-box 下 width 即外径 16px，圆心 x=12、y=20 与组头文字居中） */
+.sb-vs-item.is-header::after { content: ''; position: absolute; left: 4px; top: 12px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2.5px solid var(--bg); z-index: 2; pointer-events: none; box-shadow: 0 0 0 1.5px var(--accent-soft); }
+/* “今天”节点高亮：主题色填充 + 光晕 */
+.sb-vs-item.is-today::after { background: var(--timeline-today); border-color: var(--timeline-today); box-shadow: 0 0 0 3px var(--timeline-today-glow), 0 0 0 1.5px var(--timeline-today); }
+/* 折叠态组头较矮，节点上移保持居中；首项线段起点同步上移 */
+.sb-vs-item.is-collapsed::after { top: 8px; }
+.sb-vs-item.is-first.is-collapsed::before { top: 16px; }
+/* 连接线：贯穿整个 item，相邻 item 拼接为连续竖线（中心 x=12） */
+.sb-vs-item.is-header::before, .sb-vs-item.is-task::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--timeline-line); z-index: 1; pointer-events: none; }
+/* 组头线段贯穿全高（从节点背后穿过，节点 z-index 更高盖住线），与上一段无缝衔接消除空档；
+   仅列表首个组头节点上方不画线，避免顶部悬空线段 */
+.sb-vs-item.is-first::before { top: 20px; }
+
 /* ─── 会议条目 ─── */
 .sb-tl-item { position: relative; padding: 8px var(--s-3) 8px 0; cursor: pointer; transition: background 0.12s; border-radius: var(--radius-sm); margin-right: 4px; border-bottom: 1px solid var(--border); }
 .sb-tl-item:last-child { border-bottom: none; }
 .sb-tl-item:hover { background: var(--surface-2); }
 .sb-tl-item.is-active { background: var(--accent-soft); }
-.sb-tl-item::before { content: ''; position: absolute; left: -21px; top: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--timeline-line); border: 2px solid var(--surface); z-index: 2; box-shadow: 0 0 0 1px var(--timeline-line); }
+/* 小圆环：border-box 下 width 即外径 11px，圆心 x=12 对齐轴线；y=19 与标题行（padding 8 + 行高 22/2）垂直居中 */
+.sb-tl-item::before { content: ''; position: absolute; left: -17.5px; top: 13.5px; width: 11px; height: 11px; border-radius: 50%; background: var(--timeline-line); border: 2px solid var(--surface); z-index: 2; box-shadow: 0 0 0 1px var(--timeline-line); }
 .sb-tl-item.is-active::before { background: var(--timeline-node); box-shadow: 0 0 0 1px var(--timeline-node); }
-.sb-tl-item::after { content: ''; position: absolute; left: -14px; top: 15px; width: 10px; height: 1px; background: var(--border); }
 .sb-tl-time { font-size: 11px; font-family: var(--font-mono); color: var(--subtle); letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-tl-time::after { content: ' ·'; color: var(--border); }
 .sb-tl-title { font-size: var(--fs-13); font-weight: 500; line-height: 1.7; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -155,7 +178,7 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-bottom-panel { position: relative; z-index: 12; }
 
 /* ─── 主动 AI 指示器（底栏内，齿轮按钮左侧） ─── */
-.sb-proactive-indicator {
+.sb-insights-indicator {
   display: flex; align-items: center; justify-content: center;
   width: 24px; height: 24px;
   border-radius: var(--radius-sm);
@@ -167,22 +190,22 @@ body.is-divider-dragging .ai { transition: none !important; }
   transition: all 0.15s;
   flex-shrink: 0;
 }
-.sb-proactive-indicator:hover {
+.sb-insights-indicator:hover {
   background: var(--proactive-soft);
   color: var(--proactive);
 }
 /* 启用态（无未读）：低频呼吸光晕 + 强背景，建立持续存在感 */
-.sb-proactive-indicator.is-enabled {
+.sb-insights-indicator.is-enabled {
   background: var(--proactive-mid);
   color: var(--proactive);
   box-shadow: 0 0 0 1px var(--proactive-mid);
-  animation: sb-proactive-glow 3.5s ease-in-out infinite;
+  animation: sb-insights-glow 3.5s ease-in-out infinite;
 }
-@keyframes sb-proactive-glow {
+@keyframes sb-insights-glow {
   0%, 100% { box-shadow: 0 0 0 1px var(--proactive-mid), 0 0 0 2px oklch(62% 0.20 270 / 0); }
   50%      { box-shadow: 0 0 0 1px var(--proactive-mid), 0 0 6px 3px oklch(62% 0.20 270 / 0.25); }
 }
-.sb-proactive-indicator.has-unread {
+.sb-insights-indicator.has-unread {
   background: var(--proactive);
   color: var(--surface);
   animation: sb-proactive-heartbeat 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -195,8 +218,8 @@ body.is-divider-dragging .ai { transition: none !important; }
   24%       { box-shadow: 0 0 0 5px oklch(62% 0.20 270 / 0.25); transform: scale(1.06); }
   32%, 100% { box-shadow: 0 0 0 0 oklch(62% 0.20 270 / 0); transform: scale(1); }
 }
-.sb-proactive-indicator svg { width: 16px; height: 16px; }
-.sb-proactive-badge {
+.sb-insights-indicator svg { width: 16px; height: 16px; }
+.sb-insights-badge {
   position: absolute;
   top: -4px; right: -4px;
   min-width: 14px; height: 14px;
@@ -226,7 +249,7 @@ body.is-divider-dragging .ai { transition: none !important; }
 /* 折叠态：版本号隐藏，指示器浮于分割线上方，齿轮留在分割线下方 */
 .body.sidebar-collapsed .sidebar .sbp-version { display: none; }
 .body.sidebar-collapsed .sidebar .sbp-bar { justify-content: center; padding: 0; }
-.body.sidebar-collapsed .sidebar .sb-proactive-indicator {
+.body.sidebar-collapsed .sidebar .sb-insights-indicator {
   position: absolute;
   bottom: 100%;
   left: 50%;
@@ -299,6 +322,8 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sidebar.is-narrow .sb-tl-meta { display: none; }
 /* 缩减间距 */
 .sidebar.is-narrow .sb-tl-item { padding: 6px var(--s-2) 6px 0; }
+/* 窄屏卡片更矮（padding 6 + 行高 17/2 ≈ 14.5），圆环上移保持与标题居中 */
+.sidebar.is-narrow .sb-tl-item::before { top: 9px; }
 .sidebar.is-narrow .sb-date-marker { padding-right: var(--s-2); }
 .sidebar.is-narrow .sb-time-gap { height: 16px !important; }
 /* 时间戳缩小 */
@@ -311,11 +336,11 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sidebar.is-narrow .sb-text-btn:hover::after { color: var(--fg); }
 
 /* ─── 全部折叠态 ─── */
-.sb-timeline.all-collapsed .sb-time-gap { --gap-h: 4px !important; }
+.sb-time-gap.all-collapsed { --gap-h: 4px !important; }
 
 /* ─── Reduced motion ─── */
 @media (prefers-reduced-motion: reduce) {
-  .sb-date-group, .sb-date-content, .sb-date-chevron, .sb-time-gap, .sb-tl-item { transition-duration: 0.01ms !important; }
+  .sb-date-chevron, .sb-time-gap, .sb-tl-item { transition-duration: 0.01ms !important; }
 }
 
 /* ═══ 从 legacy-views.css 迁移：legacy 独有 sidebar 规则 ═══ */

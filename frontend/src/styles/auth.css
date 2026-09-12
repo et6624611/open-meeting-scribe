@@ -1,44 +1,5 @@
-/* ═══ 登录/注册/水印（从 legacy-views.css 提取） ═══ */
-
-/* ══════════════════════════════════════════════════════════
-   WATERMARK ATMOSPHERE LAYER
-   ═══════════════════════════════════════════════════════════ */
-.wm-layer {
-  position: fixed; inset: 0; z-index: 2;
-  pointer-events: none; overflow: hidden;
-  transition: opacity 0.3s ease;
-}
-.wm-layer.is-hidden { opacity: 0; }
-.wm-glow {
-  position: absolute; border-radius: 50%;
-  filter: blur(80px);
-  transition: background 0.25s ease, opacity 0.25s ease;
-}
-.wm-glow-1 { width: 600px; height: 600px; top: -100px; right: -100px; opacity: 0.8; background: var(--wm-glow); }
-.wm-glow-2 { width: 500px; height: 500px; bottom: -150px; left: 10%; opacity: 0.6; background: var(--accent-soft); }
-.wm-glow-3 { width: 350px; height: 350px; top: 40%; left: 50%; opacity: 0.5; background: var(--wm-glow); }
-.wm-shape {
-  position: absolute;
-  opacity: var(--wm-opacity);
-  transition: color 0.25s ease, opacity 0.25s ease, transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  will-change: transform;
-}
-.wm-shape svg { display: block; }
-@keyframes wm-float-a {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-6px) rotate(3deg); }
-}
-@keyframes wm-float-b {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(4px) rotate(-2deg); }
-}
-@keyframes wm-float-c {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.03); }
-}
-.wm-float-a { animation: wm-float-a 12s ease-in-out infinite; }
-.wm-float-b { animation: wm-float-b 15s ease-in-out infinite; }
-.wm-float-c { animation: wm-float-c 18s ease-in-out infinite; }
+/* ═══ 登录/注册/水印设置控件（从 legacy-views.css 提取） ═══ */
+/* 水印氛围层基础样式已统一在 layout.css 中，此处仅保留登录页专属控件 */
 
 /* 水印设置控件 */
 .wm-setting-row {

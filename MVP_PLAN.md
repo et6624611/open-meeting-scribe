@@ -17,7 +17,7 @@ status: published
 > - 音频采集 = 文件输入 + 实时系统内录（BlackHole，用 ffmpeg 采集）
 > - 声纹姓名化 = 后续增强（P3）
 >
-> **与 MISSION 的关系**：MISSION 的「本地优先」是长期方向；v1 为快速跑通先走云。原本地链路（FunASR + pyannote + Ollama）作为 v2 备选保留，不在本版实施。
+> **与 MISSION 的关系**：MISSION 的「本地数据·云端智能」是长期方向；v1 为快速跑通先走云。原本地链路（FunASR + pyannote + Ollama）作为 v2 备选保留，不在本版实施。
 >
 > **文档定位**：本文件是 v1 的**施工蓝图**（分阶段步骤/验收/风险）。稳态设计以 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 为准，API 硬约束以 [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md) 为准，决策来由见 [docs/adr/](docs/adr/)。冲突时以 docs 为准。
 
@@ -33,7 +33,7 @@ status: published
 | 通义录音文件识别 | **一个 API 同时做 ASR + 说话人分离**，返回 `speaker_id` |
 | 成本 | 约 **0.288 元/小时**量级，只对语音内容时长计费（以百炼控制台实价为准） |
 
-**净收益**：砍掉 pyannote、FunASR、torch/MPS、Ollama、6–8GB 模型下载、HF 授权、micromamba 强依赖。代价=音频上云（已确认可接受）、需联网、异步任务有排队延迟。
+**净收益**：砍掉 pyannote、FunASR、torch/MPS、Ollama、6–8GB 模型下载、HF 授权、micromamba 强依赖。代价=需联网、异步任务有排队延迟；音频经云端 API 处理属架构特性（用户自行接入服务商，数据隐私由服务商条款约束）。
 
 ---
 
@@ -240,7 +240,7 @@ open-meeting-scribe/
 
 | 风险 | 影响 | 对策 |
 |------|------|------|
-| 音频上云隐私 | 合规 | 已确认可上云；临时存储 48h 自动清理；涉密会议待 v2 上本地 |
+| 音频经云端 API | 架构特性 | 软件本身不存储用户音频到外部；用户自行接入 API 服务商，数据隐私由服务商条款约束，与软件方无关 |
 | 分离仅支持单声道 | 多声道不分离 | ffmpeg 强制下混单声道 |
 | API 只认公网 URL | 本地/内录文件不能直传 | 走 DashScope 免费临时存储换 `oss://` URL（≤1GB/48h） |
 | `oss://` URL 需 RESTful + 特定 header | SDK 不支持 | 转写调用用 `requests`，加 `X-DashScope-OssResourceResolve: enable` |

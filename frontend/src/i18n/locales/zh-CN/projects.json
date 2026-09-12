@@ -1,12 +1,12 @@
 {
-  "title": "项目",
-  "subtitle": "关联本地文件夹，让 AI 对话基于项目资料回答",
-  "input_placeholder": "输入项目名称…",
-  "create": "新建项目",
+  "title": "文档知识库",
+  "subtitle": "关联包含文档（.md / .txt / .docx / .pdf）的本地文件夹，让 AI 基于你的资料理解会议",
+  "input_placeholder": "输入知识库名称…",
+  "create": "新建知识库",
   "folders_count": "{count} 个文件夹",
   "add_folder": "+ 添加文件夹",
   "remove_folder": "移除",
-  "empty": "暂无项目，创建一个开始使用",
-  "confirm_delete": "确定删除该项目？",
+  "empty": "暂无知识库，将包含文档的文件夹添加为知识库，AI 即可基于你的资料理解会议",
+  "confirm_delete": "确定删除该知识库？",
   "folder_path_prompt": "输入文件夹路径："
 }

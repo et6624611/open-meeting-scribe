@@ -67,7 +67,7 @@ audit_logger.addHandler(audit_handler)
 audit_logger.propagate = False  # 不重复写入 server.log
 
 from app.store import STATIC_DIR, load_tasks_from_disk, recover_interrupted_tasks, event_loop
-from app.routers import tasks, record, ws_transcript, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update
+from app.routers import tasks, record, ws_transcript, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update, insights
 from core.auth import verify_jwt
 from core.i18n import I18nMiddleware
 from core.llm import close_async_client
@@ -202,6 +202,7 @@ app.include_router(auth.router)
 app.include_router(usage.router)
 app.include_router(config.router)
 app.include_router(update.router)
+app.include_router(insights.router)
 app.include_router(ws_transcript.router)
 
 # ============================================================

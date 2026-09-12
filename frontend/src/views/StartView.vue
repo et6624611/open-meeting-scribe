@@ -54,6 +54,84 @@
     </div>
     <!-- 隐藏的文件输入 -->
     <input type="file" ref="fileInputRef" accept="audio/*,video/*" style="display:none" @change="onFileSelected">
+
+    <!-- 首次启动隐私声明弹窗 -->
+    <Teleport to="body">
+      <div class="privacy-overlay" v-if="!acknowledged">
+        <div class="privacy-dialog">
+          <div class="privacy-dialog-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="privacy-dialog-title">{{ t('start.privacy.disclaimer_title') }}</div>
+          <div class="privacy-dialog-body">
+            <div class="privacy-dialog-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              {{ t('start.privacy.disclaimer_local') }}
+            </div>
+            <div class="privacy-dialog-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+              {{ t('start.privacy.disclaimer_cloud') }}
+            </div>
+            <div class="privacy-dialog-warn">{{ t('start.privacy.disclaimer_warn') }}</div>
+            <div class="privacy-dialog-region">{{ t('start.privacy.disclaimer_region') }}</div>
+            <div class="privacy-dialog-prohibit">{{ t('start.privacy.disclaimer_prohibit') }}</div>
+            <div class="privacy-dialog-detail">{{ t('start.privacy.disclaimer_detail') }}</div>
+          </div>
+          <div class="privacy-dialog-actions">
+            <button class="privacy-dialog-btn-primary" @click="acknowledge">{{ t('start.privacy.disclaimer_acknowledge') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 录音前确认弹窗 -->
+    <Teleport to="body">
+      <div class="privacy-overlay" v-if="showRecordConfirm" @click.self="showRecordConfirm = false">
+        <div class="privacy-dialog">
+          <div class="privacy-dialog-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="privacy-dialog-title">{{ t('start.privacy.record_confirm_title') }}</div>
+          <div class="privacy-dialog-desc">{{ t('start.privacy.record_confirm_desc') }}</div>
+          <div class="privacy-dialog-checklist-title">{{ t('start.privacy.record_confirm_checklist_title') }}</div>
+          <div class="privacy-dialog-checklist">
+            <div class="privacy-dialog-check-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              {{ t('start.privacy.check_state_secrets') }}
+            </div>
+            <div class="privacy-dialog-check-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              {{ t('start.privacy.check_trade_secrets') }}
+            </div>
+            <div class="privacy-dialog-check-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              {{ t('start.privacy.check_personal_privacy') }}
+            </div>
+          </div>
+          <div class="privacy-dialog-actions">
+            <button class="privacy-dialog-btn-cancel" @click="showRecordConfirm = false">{{ t('common.action.cancel') }}</button>
+            <button class="privacy-dialog-btn-primary" @click="confirmStartRecord">{{ t('start.privacy.confirm_start') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 文件上传确认弹窗 -->
+    <Teleport to="body">
+      <div class="privacy-overlay" v-if="showUploadConfirm" @click.self="showUploadConfirm = false">
+        <div class="privacy-dialog">
+          <div class="privacy-dialog-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="privacy-dialog-title">{{ t('start.privacy.upload_confirm_title') }}</div>
+          <div class="privacy-dialog-desc">{{ t('start.privacy.upload_confirm_desc') }}</div>
+          <div class="privacy-dialog-actions">
+            <button class="privacy-dialog-btn-cancel" @click="showUploadConfirm = false">{{ t('common.action.cancel') }}</button>
+            <button class="privacy-dialog-btn-primary" @click="confirmUpload">{{ t('start.privacy.confirm_upload') }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -63,6 +141,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useRecorder } from '@/composables/useRecorder'
+import { usePrivacyDisclaimer } from '@/composables/usePrivacyDisclaimer'
 import { submitTranscribe } from '@/api/tasks'
 import { getRecordStatus } from '@/api/record'
 import type { Task } from '@/api/types'
@@ -72,8 +151,11 @@ const { t } = useI18n()
 const router = useRouter()
 const taskStore = useTaskStore()
 const recorder = useRecorder()
+const { acknowledged, acknowledge } = usePrivacyDisclaimer()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const showRecordConfirm = ref(false)
+const showUploadConfirm = ref(false)
 
 // ─── 图标组件 ───
 const MicIcon = {
@@ -179,7 +261,12 @@ function jumpToRecording() {
   }
 }
 
-async function onStartRecord() {
+function onStartRecord() {
+  showRecordConfirm.value = true
+}
+
+async function confirmStartRecord() {
+  showRecordConfirm.value = false
   try {
     const data = await recorder.startRecording()
     if (data?.task_id) {
@@ -207,6 +294,11 @@ async function onStartRecord() {
 }
 
 function onUploadClick() {
+  showUploadConfirm.value = true
+}
+
+function confirmUpload() {
+  showUploadConfirm.value = false
   fileInputRef.value?.click()
 }
 

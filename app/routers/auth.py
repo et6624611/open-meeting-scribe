@@ -134,16 +134,25 @@ def get_me(request: Request):
     """
     获取当前登录用户信息。
     从 cookie 中的 JWT 解析用户 ID，再查本地数据。
+    若无 JWT，回退到 current_user_id（本地用户）。
     """
     token = request.cookies.get(SESSION_COOKIE)
-    if not token:
+    user_id = None
+
+    if token:
+        payload = verify_jwt(token)
+        if payload:
+            user_id = payload.get("sub")
+
+    # 回退到 current_user_id（本地用户场景）
+    if not user_id:
+        from core.users import _load_user_data
+        data = _load_user_data()
+        user_id = data.get("current_user_id")
+
+    if not user_id:
         raise HTTPException(401, _("Not logged in"))
 
-    payload = verify_jwt(token)
-    if not payload:
-        raise HTTPException(401, _("Login expired, please log in again"))
-
-    user_id = payload.get("sub")
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(401, _("User not found"))

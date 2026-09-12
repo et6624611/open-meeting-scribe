@@ -79,20 +79,40 @@
             <span class="gen-meta-val gen-meta-date-btn" :title="t('generating.meta.edit_date')" @click.stop="openDatePicker">{{ metaDateShort }}</span>
           </span>
         </div>
-        <span class="gen-meta-project" v-if="projects.length > 0">
-          <span class="gen-meta-project-chip" :class="{ 'is-unbound': !task?.project_id }" role="button" tabindex="0" @click.stop="showProjectDropdown = !showProjectDropdown">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="gen-meta-project">
+          <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown">
+            <!-- book-open 图标：知识库语义 -->
+            <svg v-if="task?.project_id" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
             <span>{{ currentProjectName }}</span>
+            <!-- 尾部状态图标：未关联 +，已关联 hover ✕ -->
+            <svg v-if="!task?.project_id" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </span>
           <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-            <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
-              {{ p.name }}
-            </button>
-            <div class="gen-meta-proj-divider"></div>
-            <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
-              {{ t('generating.meta.no_project') }}
+            <template v-if="projects.length > 0">
+              <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
+                {{ p.name }}
+              </button>
+              <div class="gen-meta-proj-divider"></div>
+              <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
+                {{ t('generating.meta.no_project') }}
+              </button>
+            </template>
+            <button v-else class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              {{ t('generating.meta.create_kb') }}
             </button>
           </div>
+          <!-- 知识库关联引导图标（仅未关联时显示） -->
+          <span
+            v-if="!task?.project_id"
+            class="gen-spk-info-icon gen-meta-proj-info-icon"
+            :title="t('generating.project_onboarding.info_icon_tip')"
+            @click="openProjOnboarding"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </span>
         </span>
       </div>
 
@@ -115,6 +135,7 @@
       :current-mapping="currentBindingMapping"
       :dropdown="bindingDropdown"
       :filtered-speakers="dropdownSpeakers"
+      @open-info="openOnboarding"
       @open-dropdown="openBindingDropdown"
       @locate-speaker="toggleLocateSpeaker"
       @skip="skipMapping"
@@ -261,9 +282,15 @@
     <!-- 说话人绑定引导弹窗（子组件） -->
     <OnboardingDialog
       v-model="showOnboarding"
-      v-model:dont-show-again="dontShowAgain"
       :demo-lines="demoLines"
       @close="closeOnboarding"
+    />
+
+    <!-- 知识库关联引导弹窗（子组件） -->
+    <ProjectOnboardingDialog
+      v-model="showProjectOnboarding"
+      :connected="projConnected"
+      @close="closeProjOnboarding"
     />
 
     <!-- 归档确认对话框（子组件） -->
@@ -271,11 +298,17 @@
       v-model="showArchiveDialog"
       @confirm="onArchive"
     />
+
+    <!-- 删除确认对话框（子组件） -->
+    <DeleteDialog
+      v-model="showDeleteDialog"
+      @confirm="onDeleteConfirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
@@ -288,13 +321,16 @@ import NotesPanel from './generating/NotesPanel.vue'
 import TodosPanel from './generating/TodosPanel.vue'
 import GeneratingSpeakerBar from './generating/GeneratingSpeakerBar.vue'
 import OnboardingDialog from './generating/OnboardingDialog.vue'
+import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
+import DeleteDialog from './generating/DeleteDialog.vue'
 import { useGeneratingData } from '@/composables/useGeneratingData'
 import { useSpeakerBinding } from '@/composables/useSpeakerBinding'
 import { useSpeakerPanel } from '@/composables/useSpeakerPanel'
 import { usePlaybackFollow } from '@/composables/usePlaybackFollow'
 import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
 import { useOnboarding } from '@/composables/useOnboarding'
+import { useProjectOnboarding } from '@/composables/useProjectOnboarding'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -329,7 +365,8 @@ const notes = useNotesAndTodos(
   data.todos, data.activeTab, data.task,
 )
 
-const onboarding = useOnboarding(data.taskId, binding.showBindingBar)
+const onboarding = useOnboarding()
+const projOnboarding = useProjectOnboarding()
 
 // ─── 解构到模板作用域 ───
 const {
@@ -337,7 +374,7 @@ const {
   chapters, activeChapterIdx, scrollToChapter, allChaptersVisible,
   visibleChapterIndices, expandedChapters, summaryExpandedChapters,
   transcriptItems, flatTranscript, summaryMd, todos, notesContent, notesSaved,
-  showArchiveDialog, onArchive, metaDuration, metaDateShort,
+  showArchiveDialog, onArchive, showDeleteDialog, metaDuration, metaDateShort,
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
   player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
@@ -358,9 +395,15 @@ const {
   showAddForm, newTodoText, newTodoAssignee,
   onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo, insertMd,
 } = notes
-const { showOnboarding, dontShowAgain, demoLines, closeOnboarding } = onboarding
+const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
+const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
 
-// ─── 更多菜单 ───
+// ─── 首次进入时自动弹出说话人关联引导弹窗 ───
+watch(showBindingBar, (visible) => {
+  if (visible && !hasSeenOnboarding.value) openOnboarding()
+}, { immediate: true })
+
+// ─── 更多菜单 ──
 const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
 const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore } = usePopMenu(genMoreDropdown, genMoreBtn)
@@ -371,7 +414,10 @@ async function onRetrySummary() { closeGenMore(); await retrySummary(data.taskId
 async function onRetranscribe() { closeGenMore(); await retranscribe(data.taskId); router.push({ name: 'generating', params: { taskId: data.taskId } }) }
 async function onDelete() {
   closeGenMore()
-  if (!confirm(t('generating.errors.confirm_delete'))) return
+  data.showDeleteDialog.value = true
+}
+async function onDeleteConfirm() {
+  data.showDeleteDialog.value = false
   await deleteTask(data.taskId); await taskStore.loadTasks(); router.push('/')
 }
 function onArchiveConfirm() { closeGenMore(); data.showArchiveDialog.value = true }
@@ -420,10 +466,12 @@ const speakerNames = computed(() => {
 
 // ─── 生命周期 ───
 onMounted(async () => {
-  binding.initBindingMapping()
+  // 任务数据可能尚未加载（刷新页面时 store 为空），用 watch 等待任务就绪后初始化绑定映射
+  const stopWatch = watch(() => data.task.value, (t) => {
+    if (t) { binding.initBindingMapping(); stopWatch() }
+  }, { immediate: true })
   document.addEventListener('click', panel.onDocClickCloseSearch)
   document.addEventListener('click', binding.onDocClickForDropdown)
-  onboarding.tryShowOnboarding()
 
   // 章节滚动追踪 + 用户主动滚动时停止播放跟随
   nextTick(() => {
@@ -438,6 +486,7 @@ onUnmounted(() => {
   document.removeEventListener('click', panel.onDocClickCloseSearch)
   document.removeEventListener('click', binding.onDocClickForDropdown)
   onboarding.stopOnboardingAnim()
+  projOnboarding.stopAnim()
 })
 </script>
 

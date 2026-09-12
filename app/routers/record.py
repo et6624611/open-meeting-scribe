@@ -27,7 +27,8 @@ from pydantic import BaseModel
 from app.store import (
     tasks, RECORD_DEVICE, RECORDINGS_DIR, TASKS_DIR,
     realtime_queues, realtime_transcribers, realtime_diarizers,
-    realtime_summarizers, realtime_chapter_generators, realtime_speaker_maps,
+    realtime_summarizers, realtime_chapter_generators, realtime_translators,
+    realtime_speaker_maps,
     realtime_full_transcripts,
     realtime_last_heartbeat, realtime_last_sentence,
     realtime_presence_scores, realtime_silence_warnings, realtime_silence_monitors,
@@ -146,7 +147,7 @@ def start_record():
     _last_speaker_count = 0  # 上次推送的说话人数量（避免重复推送）
     _volume_warned = False  # 音量过低警告只发一次
     _volume_samples: list[float] = []  # 前 N 次回调的 RMS dB 样本
-    _VOLUME_CHECK_LIMIT = 50  # 前 50 次回调（≈5 秒）用于音量检测
+    _VOLUME_CHECK_LIMIT = 600  # 前 600 次回调（≈60 秒）用于音量检测，窗口足够长以避免间歇沉默误报
     _VOLUME_THRESHOLD_DB = -50.0  # 低于此值视为音量极低
 
     def pcm_callback(data: bytes) -> None:
@@ -158,7 +159,7 @@ def start_record():
         # 送入声纹聚类器
         diarizer.feed_audio(data)
 
-        # ── 前 5 秒音量检测：提醒用户麦克风是否异常 ──
+        # ── 前 60 秒音量检测：提醒用户麦克风是否异常 ──
         if not _volume_warned and _pcm_call_count <= _VOLUME_CHECK_LIMIT:
             if len(data) >= 64:  # 至少 32 个样本才计算
                 n_samples = len(data) // 2
@@ -172,7 +173,7 @@ def start_record():
                 if avg_db < _VOLUME_THRESHOLD_DB:
                     _volume_warned = True
                     logger.warning(
-                        f"[录制] 前 5 秒音量极低 (mean={avg_db:.1f} dB)，"
+                        f"[录制] 前 60 秒音量极低 (mean={avg_db:.1f} dB)，"
                         f"请检查麦克风或音频输入设备"
                     )
                     push_realtime_msg(task_id, {
@@ -242,6 +243,17 @@ def start_record():
                     **s,
                     "speaker_name": speaker_name,
                 })
+            # 送入实时翻译器（若已启用）
+            translator = realtime_translators.get(task_id)
+            if translator and translator.is_running:
+                logger.debug(f"[录制] 句子送入翻译器: task={task_id[:8]}, text={s['text'][:40]}")
+                translator.feed_sentence({
+                    "text": s["text"],
+                    "speaker_id": speaker_id,
+                    "speaker_name": speaker_name,
+                    "begin_time": s.get("begin_time", 0),
+                    "end_time": s.get("end_time", 0),
+                })
 
         transcriber = RealtimeTranscriber(
             on_partial=lambda text: push_realtime_msg(task_id, {
@@ -271,7 +283,7 @@ def start_record():
                 transcriber_ref["ref"] = None
                 push_realtime_msg(task_id, {
                     "type": "error",
-                    "message": f"实时转写不可用: {e}，录音仍会正常进行"
+                    "message": _("Realtime transcription unavailable: {err}, recording will continue normally").format(err=e)
                 })
 
         threading.Thread(target=_start_transcriber_bg, daemon=True).start()
@@ -285,7 +297,7 @@ def start_record():
             "status": "recording",
             "source": "record",
             "progress": 0,
-            "message": "正在录制...",
+            "message": _("Recording..."),
             "audio_name": "",
             "audio_path": str(output_path),
             "audio_duration": None,
@@ -398,6 +410,14 @@ def stop_record(
                 if final_chapters and task_id in tasks:
                     tasks[task_id]["realtime_chapters"] = final_chapters
                 logger.info(f"[录制] 实时章节停止: {chapter_gen.update_count} 次更新")
+            # 停止实时翻译器，保存翻译结果
+            translator = realtime_translators.pop(task_id, None)
+            if translator:
+                translator.stop()
+                final_translations = translator.get_all_translations()
+                if final_translations and task_id in tasks:
+                    tasks[task_id]["translations"] = final_translations
+                logger.info(f"[录制] 实时翻译停止: {translator.translation_count} 次翻译")
             # 提取实时说话人绑定（供批管线使用）
             realtime_binding = realtime_speaker_maps.pop(task_id, {})
             if realtime_binding and task_id in tasks:
@@ -568,6 +588,10 @@ def abandon_record():
             chapter_gen = realtime_chapter_generators.pop(task_id, None)
             if chapter_gen:
                 chapter_gen.stop()
+
+            translator = realtime_translators.pop(task_id, None)
+            if translator:
+                translator.stop()
 
             realtime_speaker_maps.pop(task_id, None)
             realtime_full_transcripts.pop(task_id, None)
@@ -750,7 +774,7 @@ async def realtime_get_speaker_bindings():
         spk = speakers.get_speaker_by_id(uuid)
         result[str(sid)] = {
             "speaker_uuid": uuid,
-            "speaker_name": spk.name if spk else f"发言人{sid + 1}",
+            "speaker_name": spk.name if spk else "",
         }
     return {"bindings": result, "task_id": task_id}
 

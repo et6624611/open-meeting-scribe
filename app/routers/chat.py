@@ -273,7 +273,7 @@ async def chat(data: ChatRequest):
         lines = []
         for entry in realtime_entries[-10:]:
             sid = entry.get("speaker_id")
-            name = speaker_name_map.get(sid, f"发言人{sid + 1}" if sid else "未知")
+            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
             text = entry.get("text", "").strip()
             if text:
                 lines.append(f"{name}：{text}")
@@ -308,7 +308,7 @@ async def chat(data: ChatRequest):
         elif task.get("dialogue") and not realtime_entries:
             dialogue_lines = []
             for item in task["dialogue"]:
-                name = item.get("speaker_name", f"说话人{item.get('speaker_id', 0) + 1}")
+                name = item.get("speaker_name", f"Speaker {item.get('speaker_id', 0) + 1}")
                 sents = item.get("sentences") or []
                 for s in sents:
                     text = s.get("text", "").strip()

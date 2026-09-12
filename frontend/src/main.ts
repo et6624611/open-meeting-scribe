@@ -33,16 +33,16 @@ import './styles/notes-editor.css'
 import './styles/summary-panel.css'
 
 // ─── 启动：先确保「初始语言」的语言包已加载，再挂载应用 ───
-// zh-CN 已在 i18n 模块静态内置（零延迟）；但 detectLocale() 可能返回 en
-// （浏览器语言为英文，或上次切换后 localStorage 持久化了 en）。此时若不先
-// 动态加载 en 语言包，首屏会因缺少消息而回退到 zh-CN，造成「语言选择器
-// 高亮 English、界面却是中文」的不一致（刷新后必现）。故挂载前先 await 加载。
+// en 已在 i18n 模块静态内置（零延迟）；但 detectLocale() 可能返回 zh-CN
+// （浏览器语言为中文，或上次切换后 localStorage 持久化了 zh-CN）。此时若不先
+// 动态加载 zh-CN 语言包，首屏会因缺少消息而回退到 en，造成「语言选择器
+// 高亮 中文、界面却是英文」的不一致（刷新后必现）。故挂载前先 await 加载。
 async function bootstrap() {
   try {
     await loadLocaleMessages(getLocale())
   } catch (err) {
-    // 加载失败时静默回退：zh-CN 已静态内置，保证应用仍可挂载
-    console.error('初始语言包加载失败，回退到默认语言 zh-CN', err)
+    // 加载失败时静默回退：en 已静态内置，保证应用仍可挂载
+    console.error('初始语言包加载失败，回退到默认语言 en', err)
   }
 
   const app = createApp(App)

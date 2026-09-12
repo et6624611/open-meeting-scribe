@@ -53,9 +53,9 @@ ZH_MAP = {
     "No permission to access: {path}": "无权限访问: {path}",
     "Folder not found: {path}": "文件夹不存在: {path}",
     "Failed to open folder: {err}": "打开文件夹失败: {err}",
-    "Project name cannot be empty": "项目名称不能为空",
-    "Project not found": "项目不存在",
-    "Project or folder not found": "项目或文件夹不存在",
+    "Knowledge base name cannot be empty": "知识库名称不能为空",
+    "Knowledge base not found": "知识库不存在",
+    "Knowledge base or folder not found": "知识库或文件夹不存在",
     "No folders with sync enabled": "没有启用同步的文件夹",
     "Synced {count} meeting(s), wrote {files} file(s)": "已同步 {count} 个会议，写入 {files} 个文件",
     "Index build started": "索引构建已启动",
@@ -74,7 +74,6 @@ ZH_MAP = {
     "Connection successful, model {model} responding": "连接成功，模型 {model} 响应正常",
     # speakers
     "Name cannot be empty": "姓名不能为空",
-    "Please set up user info first": "请先设置用户信息",
     "Operation failed": "操作失败",
     "Current status does not allow setting speaker mapping": "当前状态不允许设置说话人映射",
     "Task not yet completed": "任务尚未完成",
@@ -88,7 +87,7 @@ ZH_MAP = {
     "Transcription result not found, please use Re-transcribe": "转写结果不存在，请使用「重新识别」",
     "Invalid date format, expected YYYY-MM-DD": "日期格式无效，应为 YYYY-MM-DD",
     "Task not completed, cannot sync": "任务未完成，无法同步",
-    "Task is not linked to a project": "任务未关联项目",
+    "Task is not linked to a knowledge base": "任务未关联知识库",
     "Monthly transcription quota exhausted ({remaining} min remaining). Configure your own API Key to continue.": "本月转写额度已用完（剩余 {remaining} 分钟），可配置自有 API Key 继续使用",
     # usage
     "Self-hosted Key, not metered": "自带 Key，不计量",
@@ -136,7 +135,7 @@ ZH_MAP = {
     "Regenerating minutes...": "正在重新生成纪要...",
     "Generating minutes...": "正在生成纪要...",
     "No target folder to sync": "没有可同步的目标文件夹",
-    "Wrote {count} file(s) to project folder": "已写入 {count} 个文件到项目文件夹",
+    "Wrote {count} file(s) to knowledge base folder": "已写入 {count} 个文件到知识库文件夹",
     # chat (HTTP errors)
     "Message cannot be empty": "消息不能为空",
     "AI conversation failed: {err}": "AI 对话失败: {err}",

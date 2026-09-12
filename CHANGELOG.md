@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: 王永亮
 created_at: 2026-09-03
-updated_at: "2026-09-12"
+updated_at: "2026-09-13"
 status: published
 ---
 
@@ -11,13 +11,266 @@ status: published
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 
+## [v2.x-rename-project-to-knowledge-base] - 2026-09-13
+
+### 变更
+- **术语重命名**：「项目 / Project」→「文档知识库 / Document Knowledge Base」，解决 GitHub 开发者对「Project」一词的心智模型冲突（易与代码仓库混淆）。新名称自带「需要文档」暗示，降低用户理解成本
+- **前端 i18n**：zh-CN 全部「项目」→「知识库」，en 全部「Project」→「Knowledge Base」；涉及 projects.json、generating.json、sidebar.json、ai-panel.json 四个语言包
+- **前端 UX 引导**：空状态文案增加文件类型提示（.md / .txt / .docx / .pdf）与行动指引；副标题明确说明文档类型要求
+- **后端 gettext**：所有用户可见错误消息的 msgid/msgstr 同步更新（「知识库不存在」「任务未关联知识库」等）；涉及 `app/routers/projects.py`、`app/routers/tasks.py`、`scripts/gen_i18n_po.py`、两个 `.po` 文件
+- **内部代码不变**：`project_id`、`projects.json`、API 路由路径、TypeScript `Project` 接口等内部标识符保持不变，避免破坏性变更
+- **知识库关联 chip 交互升级**：
+  - 图标从「文件夹」→「书本打开」（book-open），与「知识库」语义匹配
+  - 新增尾部状态图标：未关联态显示 `+`（暗示可添加），已关联态 hover 显示 `✕`（暗示可移除）
+  - 新增 tooltip 引导：未关联时提示「关联知识库，让 AI 基于你的资料理解会议」，已关联时提示「已关联知识库，点击可切换」
+  - 空知识库列表时下拉菜单显示「新建知识库」引导按钮，点击跳转至知识库管理页
+  - 涉及 `GeneratingView.vue`、`RecControlBar.vue`、`meeting-view.css`、`speakers.css`
+
+## [v2.x-trial-region-restriction] - 2026-09-13
+
+### 决策
+- **体验期共享 proxy 仅限中国大陆地区用户**：开发者 API Key 部署在国内云端服务器，云端 AI 服务区域限制与数据跨境合规问题要求限制体验期用户范围。国内手机号（SMS）验证作为天然地理屏障，GitHub OAuth / 本地账户用户需自行配置 API Key。
+
+### 变更
+- **后端代码**：`core/metering.py` 的 `is_metered()` 增加 `provider == "sms"` 检查，非 SMS 用户返回 `False`（不计量，需自持 Key）
+- **文档**：`SECURITY.md` 新增「体验期服务区域限制」章节（含注册方式对照表）；`AUTH_DESIGN.md` 补充区域限制策略与代码实现说明
+- **前端**：`StartView.vue` 隐私弹窗新增区域限制提示；i18n 新增 `disclaimer_region` 条目（zh-CN/en）；`start-page.css` 新增 `.privacy-dialog-region` 样式
+- **前端 UI 抽象化**：用户可见文案中的具体云端 AI 服务商名称统一替换为「云端 AI 服务」，包括：隐私弹窗 `disclaimer_cloud`、底部状态栏 `cloud_connected`（i18n key 从 `dashscope_connected` 重命名）、`SettingsView.vue` ASR provider 回退值；代码内部与开发者文档中的技术依赖名称保留不变
+- **文档抽象化**：`SECURITY.md` 全文云端 AI 服务商品牌引用替换为「云端 AI 服务提供商」通用描述（数据流向表、架构图、免责条款、第三方依赖表、UI 文案模板）；`AUTH_DESIGN.md` 加注「默认厂商为 DashScope（可替换为任意兼容 API）」并抽象化区域限制说明
+
+## [v2.x-i18n-speaker-fallback] - 2026-09-12
+
+### 修复
+- 后端发言人名称 fallback 从硬编码中文（"发言人N"/"说话人N"）改为空字符串或英文（"Speaker N"），由前端 i18n 系统统一渲染，解决英文模式下仍显示中文发言人名称的问题
+- 自动创建默认用户的名称从 "本地用户" 改为 "Local User"
+- 涉及文件：`app/realtime_store.py`、`app/routers/record.py`、`app/routers/chat.py`、`app/routers/speakers.py`、`app/routers/voiceprint.py`、`core/text_bridge.py`、`core/chapters.py`、`core/summarize.py`、`core/pipeline.py`、`core/speakers.py`、`core/chat_actions.py`
+
+## [v2.x-decommercialize-subscription] - 2026-09-12
+
+### 决策
+- **去除商业订阅概念，重新定位为「个人开发者 + 体验授权」**：项目代码和文档中存在系统性的 SaaS 商业化假设（四档订阅套餐、月费定价、自动续费、转化漏斗等），与实际定位「个人开发者维护的开源软件，不提供商业订阅服务」严重不符。本次清理覆盖 8 个代码文件 + 7 个文档文件，共 30+ 处修改。
+
+### 变更
+- **后端代码**：`core/metering.py` 简化 `TIER_QUOTAS` 为单一体验期档位（删除 personal/pro/team）、注释重命名（订阅→授权）；`core/users.py` 去除 `auto_renew` 字段并重命名注释；`core/diarization_cluster.py` 更新功能门控注释；`app/routers/usage.py` 简化 TIER_NAMES；`app/routers/admin.py` 简化统计与授权端点
+- **管理后台**：`admin.html` 去除多档位选择器，仅保留「体验期」；删除「付费用户」统计卡片；简化 `tierLabel()` 函数
+- **前端 i18n**：`settings.json`（zh-CN/en）简化 `tier_names` 为单一 `free` 键；修正 `cloud_mode_hint`、`diarization_requires_subscription`、`diarization_local_toggle_desc` 文案；`login.json`（zh-CN/en）修正自相矛盾的「个人版完全免费，无需订阅」→「登录即可体验全部功能」
+- **前端组件**：`SettingsView.vue` 简化 `tierName()` 函数，注释「用量与订阅」→「用量与配额」
+- **文档 AUTH_DESIGN.md**：标题「认证与订阅」→「认证与授权」；「订阅用户 vs 未订阅用户」→「共享 proxy 用户 vs 自持 Key 用户」；去除「平台提供」「按流量付费」等 SaaS 术语；支付方案标记为已取消
+- **文档 USAGE_METERING_DESIGN.md**：删除资费梯度表（¥29/¥79/¥59）；删除「查看资费方案」「引导升级」等 UI 设计；删除 `auto_renew` 字段；术语全部从「订阅」改为「授权」
+- **ADR-0006**：状态从 `Proposed` 改为 `Superseded`；添加定位说明；支付方案标记为已取消
+- **ADR-0015**：「商业模式演进」→「体验授权机制」；「引流授权服务」→「体验授权服务」；去除「转化追踪」「转化路径」等商业术语；「团队订阅付费」→「协作授权」
+- **ADR-0009**：「订阅增值服务」→「授权用户的可选云端能力」；功能门控描述从「订阅用户」改为「扩展授权用户」
+
+### 话语体系对照表
+
+| 旧表述 | 新表述 |
+|------|------|
+| 订阅 | 授权 |
+| 平台提供 | 开发者共享代理 |
+| 按流量付费 | 体验期内免费 |
+| 体验版 / 个人版 / 专业版 / 团队版 | 体验期（唯一档位） |
+| 引流 / 转化 | 体验 / 试用 |
+| 自带 Key | 自持 Key |
+
+## [v2.x-terminology] - 2026-09-12
+
+### 变更
+- **全局术语替换：「本地优先」→「本地数据·云端智能」**：项目文档中长期使用「本地优先」来描述架构理念，但该表述容易让用户误读为「纯离线运行」或「拒绝云端 API」，与软件实际架构（用户数据本地生成与存储，计算智能由云端模型 API 提供）不符。本次全局替换覆盖 MISSION.md、AGENTS.md、MVP_PLAN.md、ROADMAP.md、CHANGELOG.md、docs/README.md、docs/design/MOBILE_DESIGN.md 以及 ADR-0001/0006/0009/0014/0015/0016 等文档，统一采用「本地数据·云端智能」作为核心架构理念的标准表述。ADR-0015 文件名与标题保留原文作为历史决策记录。
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `MISSION.md` | 修改 | 4 处替换（front matter、一句话定位、设计原则、注释） |
+| `AGENTS.md` | 修改 | 禁区条款替换 |
+| `MVP_PLAN.md` | 修改 | 与 MISSION 关系说明替换 |
+| `docs/ROADMAP.md` | 修改 | 2 处替换（front matter、正文） |
+| `docs/README.md` | 修改 | 文档索引表 MISSION 定位描述替换 |
+| `docs/design/MOBILE_DESIGN.md` | 修改 | 3 处替换（变更摘要、问题描述、核心约束） |
+| `docs/adr/README.md` | 修改 | ADR-0015 索引描述替换 |
+| `docs/adr/0001-mvp走云方案.md` | 修改 | 后果条款替换 |
+| `docs/adr/0006-认证与订阅架构.md` | 修改 | 2 处替换（约束条件、后果） |
+| `docs/adr/0009-声纹识别服务云端拆分.md` | 修改 | 默认模式描述替换 |
+| `docs/adr/0014-移动端走Webhook消息流.md` | 修改 | 项目定位描述替换 |
+| `docs/adr/0015-本地优先原则重定义与引流授权服务.md` | 修改 | 正文术语替换 + 添加编者注（标题保留原文） |
+| `docs/adr/0016-开源许可证变更为AGPLv3.md` | 修改 | 背景条款替换 |
+| `CHANGELOG.md` | 修改 | 历史条目术语同步更新 |
+
+## [v2.x-i18n-default-en] - 2026-09-12
+
+### 变更
+- **默认语言由中文改为英文（开源国际化对齐）**
+  - 后端 `DEFAULT_LOCALE` 从 `"zh_CN"` 改为 `"en"`（`core/i18n/middleware.py`）
+  - 前端静态导入从 `zh-CN` 切换为 `en`，`fallbackLocale` 改为 `'en'`，`detectLocale()` 回退值改为 `'en'`（`frontend/src/i18n/index.ts`）
+  - 编译 `en/LC_MESSAGES/messages.mo`（此前仅有 .po 无 .mo）
+  - README.md 重写为英文主版本，原中文版保存为 `README_zh-CN.md`
+  - pyproject.toml `description` 改为英文
+  - 中文（zh-CN）作为一等翻译语言保留，浏览器语言检测仍优先识别中文
+
+## [v2.x-security-disclaimer] - 2026-09-12
+
+### 新增
+- **数据安全与隐私保护免责声明**
+  - SECURITY.md 新增「数据安全与隐私保护声明」章节，涵盖：架构数据流向说明（本地 vs 云端）、敏感数据使用警告、标准免责条款、第三方服务依赖声明
+  - 提供 5 套 UI 提示文案：首次启动弹窗、录音页顶部警告横幅、录音前二次确认弹窗、设置页提示条、文件上传确认
+- **隐私警告 UI 实现**
+  - 新建 `usePrivacyDisclaimer` composable，管理免责声明确认状态（localStorage 持久化）
+  - StartView：首次访问弹出数据安全须知弹窗（不可跳过）；录音前弹出确认弹窗（含涉密/商业机密/隐私三项检查）；上传前弹出确认弹窗
+  - RecordingView：录音页顶部显示隐私警告横幅（可关闭）
+  - SettingsView：设置页顶部显示隐私提示条（含“了解详情”链接，可关闭）
+  - i18n 中英文翻译同步更新（start.json / recording.json / settings.json）
+
+## [v2.x-sidebar-perf] - 2026-09-12
+
+### 变更
+- **侧边栏 TaskList 性能优化：虚拟滚动 + 搜索防抖 + 增量更新**
+  - TaskList.vue 从 plain `v-for` 改造为 DynamicScroller 虚拟滚动，仅渲染可视区域内的 TaskCard，解决会议列表增大时的 DOM 爆炸与渲染卡顿
+  - task store 搜索过滤新增 300ms 防抖（`debouncedQuery`），避免每次按键触发全量过滤重算
+  - rename / retry 操作改为 `patchTaskLocal` 增量更新，不再调用 `loadTasks()` 全量重新拉取
+  - CSS 适配：虚拟滚动容器内禁用 transition 动画，避免高度测量不同步导致内容重叠
+  - 播放定位从 `scrollIntoView` 改为 `scrollToItem` + flatItems 索引查找
+  - 时间轴视觉修复：圆形节点/小圆环/连接线统一以 24px 留白槽内轴线（中心 x=12，border-box 外径语义）定位且偏移均 ≥0，修复虚拟滚动容器 overflow 剪切圆环、圆环与标题未垂直居中、连线与圆环未水平对齐问题；组头线段改为贯穿全高（节点盖线）消除与上一段的衔接空档（仅列表首项节点上方留空）；移除小圆环后的水平短杠
+
+## [v2.x-auto-scroll-and-alignment] - 2026-09-12
+
+### 修复
+- **录音页自动滚动逻辑内聚化 + 回到底部按钮归属修正 + 转写行与 partial 文本对齐**
+  - 自动滚动逻辑从 RecordingView 迁移到 RecTranscriptPanel 内部，新行到达时自动 `scrollToItem(len-1)`
+  - 用户手动滚动时暂停自动跟随（`autoFollow = false`），显示「回到底部」按钮；滚回底部或点击按钮时恢复
+  - 「回到底部」按钮从 `.rec-transcript` 根级移到 `.rec-scroll-wrap` 内，作为 DynamicScroller 的 absolute 定位子元素
+  - item-wrapper 水平 padding 改为由 `.rec-transcript-item` 统一处理（`padding-left/right: var(--s-7)`），解决 DynamicScroller 绝对定位 items 不受 wrapper padding 影响导致的左对齐错位
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/views/recording/RecTranscriptPanel.vue` | 自动滚动逻辑内聚；jump 按钮移入 `.rec-scroll-wrap`；items 包裹 `.rec-transcript-item`；移除 `showJumpBtn` prop 和 `jumpLatest` emit |
+| `frontend/src/views/RecordingView.vue` | 移除自动滚动相关代码（`showJumpBtn`/`scrollIfAtBottom`/`onTranscriptScroll`/`scheduleScrollCheck`） |
+| `frontend/src/styles/recording-view.css` | 新增 `.rec-scroll-wrap`/`.rec-transcript-item` 规则；item-wrapper padding 改为垂直-only |
+
+## [v2.x-virtual-scroll-size-estimate] - 2026-09-12
+
+### 修复
+- **DynamicScroller 转写行预估值改为动态计算**：原固定 80px 预估值在长文本（多行换行）场景下导致 `scrollToEnd()` 定位不准，最后一行内容被裁剪无法完整查看
+  - 新增 `estimateLineHeight(idx)` 函数：根据文本长度、翻译显示模式、内联笔记等动态估算渲染高度
+  - 文本换行估算基于气泡内宽 ≈ 360px、中文字宽 ≈ 13px（每行约 38 字符）
+  - 双语/译文模式自动追加翻译行高度，笔记卡片自动追加卡片高度
+  - ResizeObserver 实测后仍以实测值为准，预估值仅影响首帧布局与滚动定位
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/views/recording/RecTranscriptPanel.vue` | 新增 `estTextLines` / `estimateLineHeight`；`mixedItems` 改用动态预估 |
+
+## [v2.x-insights-per-task-isolation] - 2026-09-12
+
+### 新增
+- **录音页转写原文虚拟滚动 + 时间轴导航**：解决长会议（2-3 小时）场景下转写原文 DOM 节点过多导致的渲染卡顿
+  - 引入 `vue-virtual-scroller` 的 `DynamicScroller` 替代原有 `v-for` 全量渲染，仅渲染可视区域内的转写行
+  - 新增 `RecTimeline.vue` 时间轴组件：Canvas 绘制说话人色带（按 10 秒分桶统计各说话人发言量，以颜色+高度可视化）、可拖拽滑块、章节刻度线、时间跳转输入框
+  - 二分查找实现 O(log N) 时间→行索引定位，支持点击时间轴/输入时间快速跳转到指定位置
+  - `RecordingView.vue` 预计算 `chapterStartMap`（章节起始映射），替代原有每行重复调用的 `getChapterStartInfo` 函数
+  - 相关文档：[ADR-0018](docs/adr/0018-录音页虚拟滚动与时间轴导航.md)
+- **AI 洞察消息按会议隔离 + 持久化**：洞察消息从属于各个独立的会议纪要，不同会议的洞察数据互不干扰
+  - 后端新增 `GET/POST /api/insights/messages/{task_id}` 端点，消息持久化到 `data/tasks/{task_id}.insights.json`
+  - 前端 `useAiInsights.ts` 消息存储从单一数组改为 `Record<taskId, InsightMessage[]>` 按会议分桶
+  - 新增 `setCurrentTask(taskId)` 函数：切换会议时自动加载已有消息、重置引擎状态
+  - 引擎停止时自动持久化当前会议的消息
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `app/routers/insights.py` | 新增消息持久化端点（GET/POST） |
+| `frontend/src/api/insights.ts` | 新增 `loadInsightMessages` / `saveInsightMessages` |
+| `frontend/src/composables/useAiInsights.ts` | 消息按 taskId 分桶；新增 `setCurrentTask` / `persistMessages`；引擎状态按会议重置 |
+| `frontend/src/views/RecordingView.vue` | onMounted 中先 `setCurrentTask` 再 `startEngine` |
+| `tests/test_smoke.py` | 新增 `TestInsightMessagesPersistence` 冒烟测试 |
+
+## [v2.x-per-category-scan-interval] - 2026-09-12
+
+### 新增
+- **AI 洞察按类别自定义扫描频率**：三类洞察（上下文关联/盲点揭示/共识提炼）各自拥有独立的扫描频率配置，用户可在设置面板中为每个类别单独选择扫描间隔（1/2/3/5/10/15/30 分钟）
+- 引擎改造：原全局 60 秒定时器对三类分析统一执行，改为每 60 秒基础轮询 + 各类别独立频率守卫（`scanIntervals` 配置项）
+- 默认值：上下文关联 2 分钟、盲点揭示 5 分钟、共识提炼 10 分钟
+- 设置 UI：每个开启的类别下方显示频率选择器（select 下拉）
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/composables/useAiInsights.ts` | 配置新增 `scanIntervals` 字段；引擎增加 `lastScanTimeByCategory` 追踪；`runAutoInsightCheck` 增加频率守卫 |
+| `frontend/src/components/layout/ai/AiInsightsSettings.vue` | 类别行新增频率选择器 UI；新增 `scanIntervalChange` 事件 |
+| `frontend/src/views/recording/RecInsightsPanel.vue` | 透传 `scanIntervalChange` 事件 |
+| `frontend/src/views/RecordingView.vue` | 新增 `onInsightScanIntervalChange` 处理函数 |
+| `frontend/src/styles/ai-panel.css` | 新增 `.ai-ps-scan-freq` / `.ai-ps-scan-freq-label` / `.ai-ps-scan-freq-select` 样式 |
+| `frontend/src/i18n/locales/zh-CN/ai-panel.json` | 新增 `scan_interval` / `scan_interval_unit` |
+| `frontend/src/i18n/locales/en/ai-panel.json` | 新增 `scan_interval` / `scan_interval_unit` |
+
+## [v2.x-insight-categories-redesign] - 2026-09-12
+
+### 变更
+- **AI 洞察类别重构：从「错误检测」到「上下文赋能」**：洞察引擎从偏离检测单一视角重构为三类深度分析：
+  - **上下文关联 (context)**：引入讨论之外的相关背景、历史决策、跨项目关联，帮助参会者看到更大图景
+  - **盲点揭示 (blindspot)**：指出被忽视的利益相关者、未验证的假设、长期影响等局部认知之外的因素
+  - **共识提炼 (consensus)**：从散乱讨论中萃取真正的共识点，定位分歧根源，推进有意义的共识
+- 后端统一端点 `/api/insights/analyze` 替代原 `/api/insights/check-deviation`，支持 `analysis_type` 参数
+- 前端类别从 6 个（偏离/矛盾/遗漏/待办/总结/卡壳）精简为 3 个（上下文/盲点/共识）
+- 配置迁移：`deviationThreshold` → `insightThreshold`，旧配置自动迁移
+
+### 涉及文件
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `core/insights.py` | 重写 | 三类分析 LLM 提示词 + 统一 `run_analysis()` 入口 |
+| `app/routers/insights.py` | 重写 | `/api/insights/analyze` 统一端点 |
+| `frontend/src/api/insights.ts` | 重写 | `runInsightAnalysis()` API 客户端 |
+| `frontend/src/composables/useAiInsights.ts` | 重写 | 类别、引擎、手动分析、demo 数据全面更新 |
+| `frontend/src/views/recording/RecInsightsPanel.vue` | 修改 | 下拉菜单更新为三类分析 |
+| `frontend/src/components/layout/ai/AiInsightsSettings.vue` | 修改 | 类别标签 + 灵敏度滑块更新 |
+| `frontend/src/views/RecordingView.vue` | 修改 | 引擎 API 名称更新 |
+| `frontend/src/i18n/locales/zh-CN/ai-panel.json` | 修改 | 新类别文案 + demo 场景 |
+| `frontend/src/i18n/locales/en/ai-panel.json` | 修改 | 新类别英文文案 |
+| `tests/test_smoke.py` | 修改 | 端点测试更新为 `/api/insights/analyze` |
+
+## [v2.x-license-change] - 2026-09-12
+
+### 决策
+- **开源许可证变更：MIT License → GNU AGPLv3**：项目开源许可证从 MIT License 变更为 GNU Affero General Public License v3（AGPLv3）。AGPLv3 的 copyleft 特性确保衍生作品同样开源，第 13 条（Remote Network Interaction）覆盖网络服务场景，与项目「开源、本地数据·云端智能、摆脱商业平台锁定」的使命高度一致。详见 [ADR-0016](docs/adr/0016-开源许可证变更为AGPLv3.md)。
+
+## [v2.x-insights-engine] - 2026-09-12
+
+### 新增
+- **AI 洞察引擎实现**：为 `useAiInsights.ts` 接入真正的洞察引擎，消费原已定义但未使用的配置项：
+  - **idle 计时器**：读取 `idleMinutes` 配置，新转写行到达时重置，超时后触发总结建议
+  - **LLM 偏离检测**：新增后端端点 `/api/insights/check-deviation`，每 60 秒调用 LLM 判断最近讨论是否偏离章节主题，读取 `deviationThreshold` 配置
+  - **冷却限流 + 会话上限**：`cooldownMinutes` 控制同类消息最小间隔，`sessionMax` 限制单次会议消息总数
+  - **通知方式接入 UI**：`sidebarIndicator` 控制侧边栏指示器可见性，`breathing` 控制 AIPanel 折叠态呼吸灯，`banner` 控制录音页悬浮横幅，`autoExpand` 控制新消息自动切换到洞察面板
+  - **录音结束待办提取**：`triggerMeetingEndTodos()` 已接入录音结束事件
+  - **action 差异化处理**：洞察消息操作按钮根据 key 执行不同行为（调整→切回转写、生成/查看→切换到洞察）
+
+### 涉及文件
+- 新建：`core/insights.py`（偏离检测 LLM 调用逻辑）
+- 新建：`app/routers/insights.py`（`/api/insights/check-deviation` 端点）
+- 新建：`frontend/src/api/insights.ts`（前端 API 客户端）
+- 修改：`frontend/src/composables/useAiInsights.ts`（核心引擎：idle/冷却/偏离/通知/生命周期）
+- 修改：`frontend/src/views/RecordingView.vue`（引擎接入 + 横幅 UI + action 差异化）
+- 修改：`frontend/src/components/layout/Sidebar.vue`（sidebarIndicator 配置门控）
+- 修改：`frontend/src/components/layout/AIPanel.vue`（breathing 配置门控）
+- 修改：`app/server.py`（注册 insights router）
+- 修改：`zh-CN/ai-panel.json`、`en/ai-panel.json`（新增偏离检测文案）
+- 修改：`tests/test_smoke.py`（新增偏离检测端点冒烟测试）
+
 ## [v2.x-admin-split] - 2026-09-12
 
 ### 变更
-- **app/routers/admin.py 拆分重构（P2）**：原 601 行的管理后台路由将远程配置域（消息 CRUD + 功能开关 CRUD）独立为 `app/routers/admin_config.py`（259行）。原文件保留为 363 行的认证 + 登录登出 + 用户管理 + 订阅管理 + 系统概览 + re-export 兼容层。`admin_server.py` 同步注册新 router。
+- **录音页「实时总结」Tab 重新定位为「AI 洞察」**：将原定时总结面板（倒计时环 + 频率设置 + 滚动摘要）完全移除，替换为 AI 洞察面板，承载原 AIPanel 中的主动 AI 消息流与配置能力。同时将全局术语从「主动 AI / proactive」统一更名为「AI 洞察 / insights」。章节总结功能已在转写原文中提供，定时总结不再需要。
 
 ### 涉及文件
-- `app/routers/admin.py`：601行 → 363行（认证+用户管理+兼容层）
+- 重命名：`useAiProactive.ts` → `useAiInsights.ts`，`AiProactiveSettings.vue` → `AiInsightsSettings.vue`，`RecSummaryPanel.vue` → `RecInsightsPanel.vue`
+- 修改：`RecordingView.vue`、`AIPanel.vue`、`AiChatPanel.vue`、`Sidebar.vue`、`SettingsView.vue`
+- 修改：`ai-panel.css`、`recording-view.css`、`sidebar.css`、`speakers.css`、`meeting-view.css`
+- 修改：`zh-CN/ai-panel.json`、`en/ai-panel.json`、`zh-CN/recording.json`、`en/recording.json`
+- 清理：`api/record.ts` 移除 `pauseSummary` / `resumeSummary` / `stopSummary` / `setSummaryInterval`
 - `app/routers/admin_config.py`：新增（远程配置路由域）
 - `app/admin_server.py`：新增 admin_config router 注册
 - `CHANGELOG.md`：本条目
@@ -25,7 +278,7 @@ status: published
 ## [v2.x-asr-proxy-split] - 2026-09-12
 
 ### 变更
-- **asr-proxy/server.py 拆分重构（P2）**：原 641 行的 ASR 代理服务将 WebSocket 实时流式中继域独立为 `asr-proxy/ws_relay.py`（241行，DashScope SDK 回调 + PCM 帧中继 + 签名校验）。原文件保留为 448 行的批处理转写 + 配置 + 签名 + 健康检查 + router 注册。
+- **asr-proxy/server.py 拆分重构（P2）**：原 641 行的 ASR 代理服务将 WebSocket 实时流式中继域独立为 `asr-proxy/ws_relay.py`（241行，云端 ASR SDK 回调 + PCM 帧中继 + 签名校验）。原文件保留为 448 行的批处理转写 + 配置 + 签名 + 健康检查 + router 注册。
 
 ### 涉及文件
 - `asr-proxy/server.py`：641行 → 448行（批处理转写+配置+健康检查）
@@ -408,7 +661,7 @@ status: published
 - **后端**：`get_feature_flags()` 新增字段；`run_pipeline_task()` 中 P1 声纹匹配前检查开关
 - **前端**：设置页「功能开关」区新增「声纹自动识别」开关，标注「实验性」标签；`FeatureFlags` 接口同步更新
 - **i18n**：中英文语言包新增 `voiceprint_auto_match` / `voiceprint_auto_match_desc` / `experimental` 文案
-- **影响范围**：P0 文本桥接匹配、手动绑定流程、DashScope 说话人分离（L2）均不受影响；仅 P1 声纹身份识别（L3）被关闭
+- **影响范围**：P0 文本桥接匹配、手动绑定流程、云端 ASR 说话人分离（L2）均不受影响；仅 P1 声纹身份识别（L3）被关闭
 
 ## [v2.x-sidebar-single-line-truncation] - 2026-09-10
 
@@ -728,7 +981,7 @@ status: published
 - **纵向空间优化**：将"关联前"和"关联后"两个独立转写块合并为单一容器，用 JS 动画在 1.5 秒后自动切换状态，弹窗高度减半
 - 移除 v2 的三步骤卡片（点击/选择/确认），改为**关联前/关联后**的转写数据对比
 - 关联前：灰色虚线边框的通用标签（说话人 1/说话人 2）+ 无气泡的裸文本
-- 关联后：彩色实底实名标签（赵里海/沈天雅）+ 气泡化文本 + "我的"行右对齐绿色气泡
+- 关联后：彩色实底实名标签（说话人 A/说话人 B）+ 气泡化文本 + "我的"行右对齐绿色气泡
 - 转换箭头动画（1.2s 延迟淡入）分隔前后两态
 - 底部变化摘要条（2.4s 延迟入场）：「3 条转写已更新姓名」「纪要将同步显示」
 - 按钮文案从「我知道了」改为「开始关联」——引导用户立即操作
@@ -1182,22 +1435,22 @@ status: published
 ## [v2.0-asr-proxy] - 2026-09-07
 
 ### 新增
-- **ASR 代理服务**：新增 `asr-proxy/` 目录，FastAPI 服务运行在 47.116.10.194:8200，持有 DashScope API Key，为客户端提供批处理转写（`/asr/transcribe`）和实时流式转写（`/asr/ws`）中转。通信协议：HTTP POST + HMAC-SHA256 签名（`X-ASR-Timestamp` / `X-ASR-Sign`），WebSocket 通过查询参数传递签名。详见 ADR-0012。服务端已部署（`/opt/asr-proxy`，systemd 管理，开机自启）。
+- **ASR 代理服务**：新增 `asr-proxy/` 目录，FastAPI 服务运行在 <server-ip>:8200，持有云端 ASR API Key，为客户端提供批处理转写（`/asr/transcribe`）和实时流式转写（`/asr/ws`）中转。通信协议：HTTP POST + HMAC-SHA256 签名（`X-ASR-Timestamp` / `X-ASR-Sign`），WebSocket 通过查询参数传递签名。详见 ADR-0012。服务端已部署（`/opt/asr-proxy`，systemd 管理，开机自启）。
 
 ### 变更
-- **客户端转写管线改造**：`core/transcribe.py` 从直连 DashScope 改为调用 ASR 代理 `/asr/transcribe`，一站式提交音频文件并获取完整转写结果（代理内部处理上传 + 提交 + 轮询 + 下载）。`core/pipeline.py` 移除独立的上传步骤（不再调用 `core/upload.py`）。
-- **实时转写改造**：`core/realtime_asr.py` 从 DashScope SDK 直连改为通过代理 WebSocket 中继，使用 `websockets` 库连接 `ws://proxy:8200/asr/ws`。
+- **客户端转写管线改造**：`core/transcribe.py` 从直连云端 ASR 改为调用 ASR 代理 `/asr/transcribe`，一站式提交音频文件并获取完整转写结果（代理内部处理上传 + 提交 + 轮询 + 下载）。`core/pipeline.py` 移除独立的上传步骤（不再调用 `core/upload.py`）。
+- **实时转写改造**：`core/realtime_asr.py` 从云端 ASR SDK 直连改为通过代理 WebSocket 中继，使用 `websockets` 库连接 `ws://proxy:8200/asr/ws`。
 - **计量逻辑简化**：`core/metering.py` 的 `is_metered()` 不再判断"自带 Key"分支，代理模式下所有已登录用户均走计量。
 - **设置页精简**：移除 ASR API Key、Base URL、Provider 配置入口，仅保留模型选择。新增代理模式说明。
-- **`app/store.py`**：`get_asr_config()` 返回代理地址而非 DashScope 直连配置。
+- **`app/store.py`**：`get_asr_config()` 返回代理地址而非云端 ASR 直连配置。
 - **`app/routers/settings.py`**：`save_settings()` 不再保存 ASR API Key；`_test_asr_connection()` 改为调用代理健康检查端点。
 
 ### 环境变量
-- 新增：`ASR_PROXY_URL`（默认 `http://47.116.10.194:8200`）、`ASR_PROXY_TOKEN`（共享密钥）
-- `DASHSCOPE_API_KEY` 仅用于 LLM 纪要生成，ASR 不再使用
+- 新增：`ASR_PROXY_URL`（默认 `http://<server-ip>:8200`）、`ASR_PROXY_TOKEN`（共享密钥）
+- `DASHSCOPE_API_KEY` 仅用于 LLM 纪要生成，ASR 不再直连
 
 ### 决策
-- ASR 转写走云端代理，DashScope Key 不落地客户端。详见 ADR-0012。
+- ASR 转写走云端代理，云端 AI Key 不落地客户端。详见 ADR-0012。
 
 ## [v3++-speaker-binding-loop] - 2026-09-07
 
@@ -1311,11 +1564,11 @@ status: published
 ## [v1.x-sms-proxy] - 2026-09-07
 
 ### 新增
-- **SMS 代理服务**（`sms-proxy/`）：独立 FastAPI 服务，部署于 47.116.10.194:8080，持有阿里云 AccessKey 并调用 PNVS SDK，为客户端提供短信发送/核验中转。含签名校验（HMAC-SHA256 + 时间戳防重放）、systemd 部署脚本、完整 README。
+- **SMS 代理服务**（`sms-proxy/`）：独立 FastAPI 服务，部署于 <server-ip>:8080，持有云端服务密钥并调用短信 SDK，为客户端提供短信发送/核验中转。含签名校验（HMAC-SHA256 + 时间戳防重放）、systemd 部署脚本、完整 README。
 
 ### 变更
-- **短信代理改造**：`core/sms.py` 从直调阿里云 PNVS SDK 改为 HTTP 调用云端代理（47.116.10.194:8080），阿里云 AccessKey 从 `.env` 完全移除，密钥不落地。客户端通过 HMAC-SHA256 签名 + 共享密钥与代理通信，防未授权调用。
-- **`.env` / `.env.example`**：移除 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`、`SMS_SIGN_NAME`、`SMS_TEMPLATE_CODE` 等 PNVS 配置，新增 `SMS_PROXY_URL` 和 `SMS_PROXY_TOKEN`。
+- **短信代理改造**：`core/sms.py` 从直调云端短信 SDK 改为 HTTP 调用云端代理（<server-ip>:8080），云端服务密钥从 `.env` 完全移除，密钥不落地。客户端通过 HMAC-SHA256 签名 + 共享密钥与代理通信，防未授权调用。
+- **`.env` / `.env.example`**：移除云端短信服务相关配置，新增 `SMS_PROXY_URL` 和 `SMS_PROXY_TOKEN`。
 - **依赖简化**：不再需要 `alibabacloud_dypnsapi20170525` SDK（代理端持有，客户端仅用标准库 `urllib` 发 HTTP 请求）。
 
 ### 决策
@@ -1341,12 +1594,12 @@ status: published
 ## [v1.x-cloud-deploy] - 2026-09-06
 
 ### 新增
-- **云服务器部署**：阿里云轻量应用服务器（2核4G，Ubuntu 24.04，IP: 47.116.10.194），systemd 托管 Web 服务（8000）+ 管理后台（8001），开机自启 + 崩溃自动重启。
+- **云服务器部署**：云端轻量应用服务器（2核4G，Ubuntu 24.04，IP: <server-ip>），systemd 托管 Web 服务（8000）+ 管理后台（8001），开机自启 + 崩溃自动重启。
 - **部署文档**：`docs/DEPLOYMENT.md` 记录服务器信息、端口、SSH、服务管理、代码更新流程、API 调用路径、systemd 配置。
 - **部署脚本**：`scripts/deploy.sh` 一键部署脚本（系统依赖 + venv + pip install + systemd + 防火墙）。
 
 ### 架构
-- 本地开发与云服务器各自独立调用 DashScope API，互不影响
+- 本地开发与云服务器各自独立调用云端 API，互不影响
 - 代码在哪台机器运行，API 就从哪台机器发出
 
 ## [v1.x-voiceprint-cloud-split] - 2026-09-06
@@ -1401,7 +1654,7 @@ status: published
 ## [v1.x-sms-login] - 2026-09-06
 
 ### 新增
-- **手机号短信验证码登录**：接入阿里云短信认证服务 (PNVS)，支持个人账号无需企业资质。新增 `core/sms.py` 封装 `SendSmsVerifyCode` / `CheckSmsVerifyCode` 两个 API，内置 60 秒冷却 + 每天 10 次频率限制。
+- **手机号短信验证码登录**：接入云端短信认证服务，支持个人账号无需企业资质。新增 `core/sms.py` 封装 `SendSmsVerifyCode` / `CheckSmsVerifyCode` 两个 API，内置 60 秒冷却 + 每天 10 次频率限制。
 - **新增端点** `POST /auth/sms/send`（发送验证码）和 `POST /auth/sms/verify`（核验并登录），核验通过后签发 JWT 并设置 httpOnly cookie，与 GitHub OAuth 登录机制完全一致。
 - **登录卡片 Tab 化**：前端登录页新增「GitHub / 手机号」双 Tab 切换，手机号 Tab 包含号码输入框、验证码输入框、60 秒倒计时发送按钮、错误提示区域。
 - **SMS 用户模型**：`core/users.py` 新增 `find_or_create_sms_user`，用户 `provider="sms"`，`provider_id` 为手机号，默认名称为掩码手机号（如 `133****3103`）。
@@ -1596,7 +1849,7 @@ status: published
 ### 变更
 - **实时声纹聚类升级：MFCC 14维 → CAM++ 192维神经声纹**（方案 A）。`core/diarization.py` 的 `extract_speaker_feature()` 优先调用 `voiceprint.extract_embedding_from_pcm()` 提取 CAM++ 嵌入，区分度提升一个量级。CAM++ 不可用时自动降级为 MFCC（向后兼容）。相似度阈值从 0.65 调整为 0.55（适配 192 维空间），特征窗口从 1.5s 增至 2.5s（CAM++ 需要更长的音频段）。
 - **VAD 前置过滤**（方案 B）。新增 `_is_speech()` 能量阈值 VAD，RMS < 0.01 或时长 < 0.8s 的音频段跳过特征提取，避免静音段产生噪声聚类。新增 `get_vad_stats()` 调试接口。
-- **批处理说话人分离兜底**（方案 C）。`core/pipeline.py` 的 `run_pipeline_stage1()` 中，当音频时长 > 30 秒但估算说话人数量 < 2 时，强制传 `speaker_count=2` 给 DashScope，确保长音频至少尝试 2 人分离。
+- **批处理说话人分离兜底**（方案 C）。`core/pipeline.py` 的 `run_pipeline_stage1()` 中，当音频时长 > 30 秒但估算说话人数量 < 2 时，强制传 `speaker_count=2` 给云端 ASR，确保长音频至少尝试 2 人分离。
 
 ### 修复
 - **说话人未被识别**：根因为 MFCC 14维特征区分度不足 + speaker_count=1 时 DashScope 不做分离。三方案联合修复：CAM++ 提升实时聚类精度 → VAD 减少噪声 → 兜底确保批处理不遗漏。
@@ -1646,7 +1899,7 @@ status: published
 ## [v1.x-voiceprint-cross-meeting-rebuild] - 2026-09-04
 
 ### 新增
-- **跨会议声纹重建端点 `POST /api/voiceprint/rebuild/{speaker_uuid}`**：人员独立于会议记录——扫描该说话人参与的所有已完成会议（按 `speaker_uuid_mapping` 反查），从每场会议的归一化音频中按其发言时间段提取声纹嵌入，均值融合后整体覆盖注册表（`sample_count` = 参与会议数）。此前说话人详情页「注册/更新声纹」只取发言最长的**单场**会议音频，声纹被绑死在一个录音文件上；现改为聚合全部已绑定会议，抑制单场录音的信道偏置。实测王永亮声纹基于 2 场会议、共 222.6s 发言重建。
+- **跨会议声纹重建端点 `POST /api/voiceprint/rebuild/{speaker_uuid}`**：人员独立于会议记录——扫描该说话人参与的所有已完成会议（按 `speaker_uuid_mapping` 反查），从每场会议的归一化音频中按其发言时间段提取声纹嵌入，均值融合后整体覆盖注册表（`sample_count` = 参与会议数）。此前说话人详情页「注册/更新声纹」只取发言最长的**单场**会议音频，声纹被绑死在一个录音文件上；现改为聚合全部已绑定会议，抑制单场录音的信道偏置。实测基于 2 场会议、共 222.6s 发言重建。
 
 ### 变更
 - **前端「注册/更新声纹」改调重建端点**：删除前端单会议挑选与时间段计算逻辑（约 80 行），聚合逻辑收敛到后端；按钮反馈显示「已基于 N 场会议更新 ✓」。
@@ -1701,7 +1954,7 @@ status: published
 ## [v1.x-voiceprint-backfill] - 2026-09-04
 
 ### 新增
-- **声纹回溯采集脚本**（`scripts/backfill_voiceprints.py`）：扫描已完成且带确认绑定的任务，按绑定从归一化音频补录声纹。首次回溯两场会议共 8 人（郑思、张天雷、任亚单、王永亮、廖书豪、赵沂波、赵里海、沈天雅），注册表自此可用，回测绑定命中 8/8。
+- **声纹回溯采集脚本**（`scripts/backfill_voiceprints.py`）：扫描已完成且带确认绑定的任务，按绑定从归一化音频补录声纹。首次回溯两场会议共 8 人（说话人 S1、说话人 S2、说话人 S3、说话人 S4、说话人 S5、说话人 S6、说话人 S7、说话人 S8），注册表自此可用，回测绑定命中 8/8。
 - **匹配次优优势门槛**（`MIN_MATCH_MARGIN = 0.02`）：同通道内录音频下不同人余弦相似度实测可达 0.97，仅靠绝对阈值 0.75 会误判；现要求最佳匹配显著优于次优候选才接受，回测中 3 条 0.94~0.96 的跨人误判被拦截。
 
 ### 修复
@@ -2170,7 +2423,7 @@ status: published
   - `DELETE /api/tasks/{id}/todos/{id}` — 删除待办
 
 ### 变更
-- **移除「原始转写」Tab**：完成态不再展示 DashScope 原始返回 JSON，减少无意义数据暴露
+- **移除「原始转写」Tab**：完成态不再展示云端 ASR 原始返回 JSON，减少无意义数据暴露
 - **任务 JSON 瘦身**：`_save_task_to_disk()` 持久化时排除 `transcription` 字段，单任务文件从 ~124KB 降至 ~10KB
 - **启动迁移**：`_load_tasks_from_disk()` 自动检测并剔除旧文件中的 `transcription` 字段
 

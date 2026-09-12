@@ -5,12 +5,11 @@ core/metering.py — 用量计量
   1. 记录每次转写的用量事件（追加写入 JSONL）
   2. 按月汇总用量
   3. 预检配额是否充足
-  4. 判断当前用户是否需要计量（自带 Key 则跳过）
+  4. 判断当前用户是否需要计量（自持 Key 则跳过）
 
 设计决策（已确认）：
   - 实时转写按录制时长计量（后续优化为字节数）
-  - 体验版额度用尽后允许用户配置自有 Key 继续
-  - 团队版先扣共享池，超出后扣个人额度（v1 暂不实现共享池）
+  - 体验期额度用尽后允许用户配置自有 Key 继续
   - 月度额度跨月清零
   - v1 不做异常告警风控
 """
@@ -24,25 +23,31 @@ logger = logging.getLogger(__name__)
 
 USAGE_DIR = Path("data/usage")
 
-# ── 订阅档位配额（分钟/月）──
+# ── 体验期配额（分钟/月）──
+# 本项目为个人开发者维护的开源软件，不提供商业订阅服务。
+# 仅设一个体验期档位，由开发者根据 API 费用承担能力调整。
+# 自持 Key 用户不在此表，不计量。
+#
+# 体验期共享 proxy 仅限通过国内手机号（SMS）注册的用户。
+# 原因：开发者 API Key 部署在国内阿里云服务器，境外用户访问
+# 可能涉及 DashScope 服务区域限制与数据跨境合规问题。
+# GitHub OAuth / 本地账户用户需自行配置 API Key。
 TIER_QUOTAS = {
-    "free":       300,    # 体验版
-    "personal":   1500,   # 个人版
-    "pro":        5000,   # 专业版
-    "team":       3000,   # 团队版（每人）
+    "free": 300,    # 体验期（默认，仅 SMS 注册用户）
 }
 
 
 def is_metered() -> bool:
     """
-    判断当前用户是否需要计量。
+    判断当前用户是否需要计量（消耗体验期配额）。
 
-    代理模式下（详见 docs/adr/0012），所有 ASR 请求通过云端代理中转，
-    客户端不再持有 API Key，因此所有已登录用户均走计量模式。
+    体验期共享 proxy 仅限通过国内手机号（SMS）注册的用户，
+    因为开发者 API Key 部署在国内阿里云服务器。
+    GitHub OAuth / 本地账户用户需自行配置 API Key，不走计量。
 
     Returns:
-        True = 需要计量（消耗平台配额）
-        False = 未登录（本地模式）
+        True = 需要计量（SMS 注册用户，消耗体验期配额）
+        False = 未登录 / 非 SMS 用户（需自持 Key）
     """
     from core.users import get_current_user
 
@@ -50,7 +55,11 @@ def is_metered() -> bool:
     if not user:
         return False  # 未登录 = 本地模式，不计量
 
-    # 有订阅信息且档位为有效档位 → 需要计量
+    # 仅 SMS（国内手机号）注册用户可使用体验期共享 proxy
+    if user.get("provider") != "sms":
+        return False  # GitHub OAuth / 本地账户 → 需自持 Key
+
+    # 有授权信息且档位为有效档位 → 需要计量
     subscription = user.get("subscription", {})
     return subscription.get("tier") in TIER_QUOTAS
 

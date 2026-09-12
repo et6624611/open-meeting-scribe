@@ -124,14 +124,14 @@ msgstr "Folder not found: {path}"
 msgid "Failed to open folder: {err}"
 msgstr "Failed to open folder: {err}"
 
-msgid "Project name cannot be empty"
-msgstr "Project name cannot be empty"
+msgid "Knowledge base name cannot be empty"
+msgstr "Knowledge base name cannot be empty"
 
-msgid "Project not found"
-msgstr "Project not found"
+msgid "Knowledge base not found"
+msgstr "Knowledge base not found"
 
-msgid "Project or folder not found"
-msgstr "Project or folder not found"
+msgid "Knowledge base or folder not found"
+msgstr "Knowledge base or folder not found"
 
 msgid "No folders with sync enabled"
 msgstr "No folders with sync enabled"
@@ -217,9 +217,6 @@ msgstr "Connection timeout (15s), please check network or Base URL"
 msgid "Name cannot be empty"
 msgstr "Name cannot be empty"
 
-msgid "Please set up user info first"
-msgstr "Please set up user info first"
-
 msgid "Operation failed"
 msgstr "Operation failed"
 
@@ -265,14 +262,14 @@ msgstr "Invalid date format, expected YYYY-MM-DD"
 msgid "Task not completed, cannot sync"
 msgstr "Task not completed, cannot sync"
 
-msgid "Task is not linked to a project"
-msgstr "Task is not linked to a project"
+msgid "Task is not linked to a knowledge base"
+msgstr "Task is not linked to a knowledge base"
 
 msgid "No target folder to sync"
 msgstr "No target folder to sync"
 
-msgid "Wrote {count} file(s) to project folder"
-msgstr "Wrote {count} file(s) to project folder"
+msgid "Wrote {count} file(s) to knowledge base folder"
+msgstr "Wrote {count} file(s) to knowledge base folder"
 
 msgid "Self-hosted Key, not metered"
 msgstr "Self-hosted Key, not metered"
@@ -327,3 +324,162 @@ msgstr "API configuration error. Please check API Key and account status."
 
 msgid "Transcription service error. Please try re-transcribing."
 msgstr "Transcription service error. Please try re-transcribing."
+
+msgid "Unknown action: {name}"
+msgstr "Unknown action: {name}"
+
+msgid "Operation failed: {err}"
+msgstr "Operation failed: {err}"
+
+msgid "Already recording, please stop the current recording first"
+msgstr "Already recording, please stop the current recording first"
+
+msgid "Recording..."
+msgstr "Recording..."
+
+msgid "Recording started, meeting ID: {id}"
+msgstr "Recording started, meeting ID: {id}"
+
+msgid "No recording in progress"
+msgstr "No recording in progress"
+
+msgid "Recording stopped, audio duration {dur:.1f}s, generating minutes..."
+msgstr "Recording stopped, audio duration {dur:.1f}s, generating minutes..."
+
+msgid "Recording paused"
+msgstr "Recording paused"
+
+msgid "Recording resumed"
+msgstr "Recording resumed"
+
+msgid "No completed meetings available to extract todos"
+msgstr "No completed meetings available to extract todos"
+
+msgid "Meeting '{name}' has no todo items"
+msgstr "Meeting '{name}' has no todo items"
+
+msgid "Meeting '{name}' has {count} todo items:\n{list}"
+msgstr "Meeting '{name}' has {count} todo items:\n{list}"
+
+msgid "No completed meetings"
+msgstr "No completed meetings"
+
+msgid "Minutes not yet generated for this meeting"
+msgstr "Minutes not yet generated for this meeting"
+
+msgid "Meeting '{name}' minutes:\n{summary}"
+msgstr "Meeting '{name}' minutes:\n{summary}"
+
+msgid "Untitled"
+msgstr "Untitled"
+
+msgid "Unassigned"
+msgstr "Unassigned"
+
+msgid "Please select or create a meeting first"
+msgstr "Please select or create a meeting first"
+
+msgid "No dialogue data for this meeting"
+msgstr "No dialogue data for this meeting"
+
+msgid "Speaker analysis ({count} dialogue entries):\n{analysis}"
+msgstr "Speaker analysis ({count} dialogue entries):\n{analysis}"
+
+msgid "No meeting records"
+msgstr "No meeting records"
+
+msgid "Recent meetings:\n{list}"
+msgstr "Recent meetings:\n{list}"
+
+msgid "No hotwords configured"
+msgstr "No hotwords configured"
+
+msgid "Current hotwords ({count}):\n{list}"
+msgstr "Current hotwords ({count}):\n{list}"
+
+msgid "No hotword mappings configured"
+msgstr "No hotword mappings configured"
+
+msgid "Current hotword mappings ({count}):\n{list}"
+msgstr "Current hotword mappings ({count}):\n{list}"
+
+msgid "Current settings:\n{display}"
+msgstr "Current settings:\n{display}"
+
+msgid "Recording in progress\nDevice: {device}\nDuration: {dur:.1f}s"
+msgstr "Recording in progress\nDevice: {device}\nDuration: {dur:.1f}s"
+
+msgid "Not currently recording"
+msgstr "Not currently recording"
+
+msgid "Please select a meeting first before requesting re-transcription"
+msgstr "Please select a meeting first before requesting re-transcription"
+
+msgid "Audio file not found, cannot re-transcribe"
+msgstr "Audio file not found, cannot re-transcribe"
+
+msgid "Re-transcribing..."
+msgstr "Re-transcribing..."
+
+msgid "Re-transcription task submitted for '{name}', processing in background..."
+msgstr "Re-transcription task submitted for '{name}', processing in background..."
+
+msgid "Please select a meeting first before requesting minute regeneration"
+msgstr "Please select a meeting first before requesting minute regeneration"
+
+msgid "Transcription results not found, please complete audio recognition first"
+msgstr "Transcription results not found, please complete audio recognition first"
+
+msgid "Audio file not found"
+msgstr "Audio file not found"
+
+msgid "Minute regeneration task submitted for '{name}', processing in background..."
+msgstr "Minute regeneration task submitted for '{name}', processing in background..."
+
+msgid "Please wait {seconds} seconds before trying again"
+msgstr "Please wait {seconds} seconds before trying again"
+
+msgid "Daily send limit reached, please try again tomorrow"
+msgstr "Daily send limit reached, please try again tomorrow"
+
+msgid "Recording automatically stopped due to prolonged inactivity (saved {dur:.0f}s of audio)"
+msgstr "Recording automatically stopped due to prolonged inactivity (saved {dur:.0f}s of audio)"
+
+msgid "Dialogue too short (only {count} sentences) to generate meaningful minutes. Please record a longer meeting audio."
+msgstr "Dialogue too short (only {count} sentences) to generate meaningful minutes. Please record a longer meeting audio."
+
+msgid "Unknown error"
+msgstr "Unknown error"
+
+msgid "Recording was in progress before restart, audio recovered, awaiting processing"
+msgstr "Recording was in progress before restart, audio recovered, awaiting processing"
+
+msgid "Server restart, resuming minute generation..."
+msgstr "Server restart, resuming minute generation..."
+
+msgid "Server restart, resuming transcription..."
+msgstr "Server restart, resuming transcription..."
+
+msgid "Awaiting processing"
+msgstr "Awaiting processing"
+
+msgid "Task not completed or not linked to a knowledge base"
+msgstr "Task not completed or not linked to a knowledge base"
+
+msgid "Linked knowledge base does not exist"
+msgstr "Linked knowledge base does not exist"
+
+msgid "Knowledge base folder sync not enabled"
+msgstr "Knowledge base folder sync not enabled"
+
+msgid "Realtime transcription unavailable: {err}, recording will continue normally"
+msgstr "Realtime transcription unavailable: {err}, recording will continue normally"
+
+msgid "Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+msgstr "Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+
+msgid "Completed"
+msgstr "Completed"
+
+msgid "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+msgstr "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."

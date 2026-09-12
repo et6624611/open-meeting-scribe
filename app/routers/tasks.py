@@ -103,7 +103,7 @@ async def create_transcribe_task(
         "status": "pending",
         "source": "upload",
         "progress": 0,
-        "message": "等待处理",
+        "message": _("Awaiting processing"),
         "audio_name": file.filename,
         "audio_path": str(audio_path),
         "audio_duration": None,
@@ -274,7 +274,7 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
     # 重置任务状态
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 0
-    tasks[task_id]["message"] = "正在重新识别..."
+    tasks[task_id]["message"] = _("Re-transcribing...")
     tasks[task_id]["error"] = None
     tasks[task_id]["error_category"] = None
     tasks[task_id]["error_suggestion"] = None
@@ -321,7 +321,7 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     # 只重置 stage2 相关字段
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 75
-    tasks[task_id]["message"] = "正在重新生成纪要..."
+    tasks[task_id]["message"] = _("Regenerating minutes...")
     tasks[task_id]["error"] = None
     tasks[task_id]["error_category"] = None
     tasks[task_id]["error_suggestion"] = None
@@ -378,16 +378,16 @@ def get_task_sync_status(task_id: str):
     task = tasks[task_id]
     project_id = task.get("project_id")
     if not project_id or task.get("status") != "completed":
-        return {"can_sync": False, "reason": "任务未完成或未关联项目"}
+        return {"can_sync": False, "reason": _("Task not completed or not linked to a knowledge base")}
 
     from core.projects import get_project, get_sync_enabled_folders
     project = get_project(project_id)
     if not project:
-        return {"can_sync": False, "reason": "关联的项目不存在"}
+        return {"can_sync": False, "reason": _("Linked knowledge base does not exist")}
 
     sync_folders = get_sync_enabled_folders(project_id)
     if not sync_folders:
-        return {"can_sync": False, "reason": "项目未启用文件夹同步"}
+        return {"can_sync": False, "reason": _("Knowledge base folder sync not enabled")}
 
     return {
         "can_sync": True,
@@ -415,7 +415,7 @@ def sync_task_to_project(task_id: str):
 
     project_id = task.get("project_id")
     if not project_id:
-        raise HTTPException(400, _("Task is not linked to a project"))
+        raise HTTPException(400, _("Task is not linked to a knowledge base"))
 
     from core.projects import sync_meeting_to_folders
     written = sync_meeting_to_folders(task)
@@ -426,5 +426,5 @@ def sync_task_to_project(task_id: str):
     return {
         "synced": True,
         "files": written,
-        "message": _("Wrote {count} file(s) to project folder").format(count=len(written)),
+        "message": _("Wrote {count} file(s) to knowledge base folder").format(count=len(written)),
     }

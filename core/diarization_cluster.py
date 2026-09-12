@@ -469,15 +469,15 @@ class SpeakerDiarizer:
 
 
 # ============================================================
-# 工厂函数：根据用户订阅状态创建实时分离器
+# 工厂函数：根据用户授权状态创建实时分离器
 # ============================================================
 
 def create_realtime_diarizer(**kwargs) -> SpeakerDiarizer:
-    """根据用户订阅状态和偏好创建实时说话人分离器。
+    """根据用户授权状态和偏好创建实时说话人分离器。
 
     策略：
-      - 非订阅用户（free）/ 未登录 → 强制 MFCC 14 维本地
-      - 订阅用户（personal/pro/team）→ 默认云端 CAM++ 192 维，
+      - 体验期用户（free）/ 未登录 → 强制 MFCC 14 维本地（节约共享 proxy 成本）
+      - 自持 Key 用户 → 默认云端 CAM++ 192 维，
         用户可通过 prefs.local_diarization=True 切换为本地 MFCC
 
     额外的 kwargs 透传给 SpeakerDiarizer 构造函数。
@@ -486,8 +486,8 @@ def create_realtime_diarizer(**kwargs) -> SpeakerDiarizer:
 
     if should_use_local_diarization():
         from core.embedding_provider import MfccFallbackProvider
-        logger.info("[声纹聚类] 用户策略: 本地 MFCC 14 维")
+        logger.info("[声纹聚类] 用户策略: 本地 MFCC 14 维（体验期默认）")
         return SpeakerDiarizer(provider=MfccFallbackProvider(), **kwargs)
 
-    logger.info("[声纹聚类] 用户策略: 云端 CAM++ 192 维（默认）")
+    logger.info("[声纹聚类] 用户策略: 云端 CAM++ 192 维")
     return SpeakerDiarizer(**kwargs)

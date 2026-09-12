@@ -1,12 +1,12 @@
 {
-  "title": "Projects",
-  "subtitle": "Link local folders to let AI respond based on project materials",
-  "input_placeholder": "Enter project name...",
-  "create": "New Project",
+  "title": "Document Knowledge Base",
+  "subtitle": "Link local folders containing documents (.md / .txt / .docx / .pdf) so AI understands meetings through your materials",
+  "input_placeholder": "Enter knowledge base name...",
+  "create": "New Knowledge Base",
   "folders_count": "{count} folder(s)",
   "add_folder": "+ Add Folder",
   "remove_folder": "Remove",
-  "empty": "No projects yet, create one to get started",
-  "confirm_delete": "Delete this project?",
+  "empty": "No knowledge base yet. Add a folder with documents as a knowledge base so AI can understand meetings through your materials.",
+  "confirm_delete": "Delete this knowledge base?",
   "folder_path_prompt": "Enter folder path:"
 }

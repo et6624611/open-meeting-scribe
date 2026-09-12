@@ -1,7 +1,9 @@
 # 用量计量技术方案
 
-> 状态：草案 v1 · 2026-09-06
-> 依赖：AUTH_DESIGN.md（订阅模型）、API_CONTRACTS.md（ASR/LLM 调用契约）
+> 状态：草案 v2 · 2026-09-12（去除商业订阅概念，重新定位为体验期用量管理）
+> 依赖：AUTH_DESIGN.md（授权模型）、API_CONTRACTS.md（ASR/LLM 调用契约）
+>
+> **定位说明**：本项目为个人开发者维护的开源软件，不提供商业订阅服务。计量系统仅用于管理体验期用量，不涉及计费、资费、套餐等商业概念。
 
 ## 1. 设计目标
 
@@ -9,7 +11,7 @@
 |------|------|
 | 精确计量 | 按实际转写的音频分钟数计量，非按文件大小或请求次数 |
 | 零侵入 | 计量逻辑与转写管线解耦，不改变现有 pipeline 调用签名 |
-| 双轨并行 | 订阅用户走平台配额、自带 Key 用户不计量（直接消耗自己的额度） |
+| 双轨并行 | 共享 proxy 用户走体验期配额、自持 Key 用户不计量（直接消耗自己的额度） |
 | 实时可见 | 前端可随时查询本月已用 / 剩余 / 趋势 |
 | 可审计 | 每次消耗都有不可篡改的日志记录 |
 
@@ -34,16 +36,13 @@
   1 小时会议 → 60.00 分钟
 ```
 
-### 2.3 计费规则（与资费梯度联动）
+### 2.3 配额规则（由开发者按需调整）
 
-| 档位 | 月费 | 月额度 | 超出单价 |
-|------|------|--------|----------|
-| 体验版 | 免费 | 300 分钟 | 用完即止 |
-| 个人版 | ¥29 | 1500 分钟 | ¥0.04/分钟 |
-| 专业版 | ¥79 | 5000 分钟 | ¥0.03/分钟 |
-| 团队版 | ¥59/人 | 3000 分钟/人 + 共享池 | ¥0.025/分钟 |
+| 授权档位 | 月配额 | 说明 |
+|------|--------|------|
+| 体验期（free） | 300 分钟 | 唯一档位，由开发者根据 API 费用承担能力调整 |
 
-> 资费梯度为建议值，最终由运营确定。计量系统只提供数据，不硬编码价格。
+自持 Key 用户不在此表，不计量。
 
 ## 3. 架构设计
 
@@ -80,7 +79,7 @@
 │  └── ...                                                  │
 │                                                           │
 │  data/users.json                                          │
-│  └── users[].subscription  ← 订阅档位 + 配额信息           │
+│  └── users[].subscription  ← 授权档位 + 配额信息           │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -96,7 +95,7 @@ core/metering.py — 用量计量
   1. 记录每次转写的用量事件（追加写入 JSONL）
   2. 按月汇总用量
   3. 预检配额是否充足
-  4. 判断当前用户是否需要计量（自带 Key 则跳过）
+  4. 判断当前用户是否需要计量（自持 Key 则跳过）
 """
 
 import json
@@ -108,13 +107,10 @@ logger = logging.getLogger(__name__)
 
 USAGE_DIR = Path("data/usage")
 
-# ── 订阅档位配额（分钟/月）──
+# ── 授权配额（分钟/月）──
 # 最终由运营配置，此处为默认值
 TIER_QUOTAS = {
-    "free":       300,    # 体验版
-    "personal":   1500,   # 个人版
-    "pro":        5000,   # 专业版
-    "team":       3000,   # 团队版（每人）
+    "free": 300,    # 体验期
 }
 
 
@@ -124,12 +120,12 @@ def is_metered() -> bool:
 
     不需要计量的情况：
       - 未登录（本地模式）
-      - 自带 ASR API Key（用户自己承担费用）
-      - 平台 Key 未配置（回退到自带 Key 模式）
+      - 自持 ASR API Key（用户自己承担费用）
+      - 开发者共享 Key 未配置（回退到自持 Key 模式）
 
     Returns:
-        True = 需要计量（消耗平台配额）
-        False = 不计量（用户自费或未启用平台服务）
+        True = 需要计量（消耗体验期配额）
+        False = 不计量（用户自费或未启用共享服务）
     """
     from core.users import get_current_user
     from app.routers.settings import get_asr_config
@@ -139,11 +135,11 @@ def is_metered() -> bool:
         return False  # 未登录 = 本地模式，不计量
 
     asr_config = get_asr_config()
-    # 如果 ASR Key 来自用户自行配置（非平台预设），不计量
+    # 如果 ASR Key 来自用户自行配置（非共享 proxy），不计量
     if asr_config.get("source") == "user":
         return False
 
-    # 有订阅信息且档位为有效档位 → 需要计量
+    # 有授权信息且档位为有效档位 → 需要计量
     subscription = user.get("subscription", {})
     return subscription.get("tier") in TIER_QUOTAS
 
@@ -442,7 +438,7 @@ def usage_summary():
 
     from core.metering import is_metered
     if not is_metered():
-        return {"metered": False, "message": "自带 Key，不计量"}
+        return {"metered": False, "message": "自持 Key，不计量"}
 
     from datetime import datetime, timezone
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -497,22 +493,20 @@ def quota_check(estimated_minutes: float = 0):
   "subscription": {
     "tier": "personal",
     "started_at": "2026-09-01T00:00:00Z",
-    "expires_at": "2026-10-01T00:00:00Z",
-    "auto_renew": false
+    "expires_at": "2026-10-01T00:00:00Z"
   }
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `tier` | `"free"` \| `"personal"` \| `"pro"` \| `"team"` | 订阅档位 |
-| `started_at` | ISO 8601 | 订阅开始时间 |
+| `tier` | `"free"` | 授权档位（当前仅体验期） |
+| `started_at` | ISO 8601 | 授权开始时间 |
 | `expires_at` | ISO 8601 | 到期时间（free 为 null） |
-| `auto_renew` | bool | 是否自动续费 |
 
 **向后兼容**：没有 `subscription` 字段的用户视为 `tier: "free"`。
 
-## 5. 自带 Key 用户的判定
+## 5. 自持 Key 用户的判定
 
 ### 5.1 判定逻辑
 
@@ -521,9 +515,9 @@ def quota_check(estimated_minutes: float = 0):
 ├── 未登录 → 否（本地模式）
 ├── 已登录
 │   ├── subscription.tier ∈ 有效档位
-│   │   ├── ASR Key 来源 = "platform" → 是（消耗平台配额）
+│   │   ├── ASR Key 来源 = "shared_proxy" → 是（消耗体验期配额）
 │   │   └── ASR Key 来源 = "user" → 否（用户自费）
-│   └── 无 subscription → 否（视为自带 Key）
+│   └── 无 subscription → 否（视为自持 Key）
 ```
 
 ### 5.2 Key 来源标记
@@ -536,11 +530,11 @@ def save_asr_config(config: dict):
     config["source"] = "user"  # 用户自行配置
     ...
 
-# 平台预设 Key 在启动时标记
+# 共享 proxy Key 在启动时标记
 def get_asr_config() -> dict:
     ...
     if not settings_has_asr:
-        config["source"] = "platform"  # 平台预设（来自 .env 或订阅）
+        config["source"] = "shared_proxy"  # 开发者共享 proxy
     return config
 ```
 
@@ -554,8 +548,8 @@ def get_asr_config() -> dict:
 └──────────────────────────────────────────────────────────┘
 ```
 
-- **自带 Key 用户**：显示"自带 API Key · 不受限"，不显示进度条
-- **订阅用户**：显示剩余时长 + 百分比进度条
+- **自持 Key 用户**：显示"自持 API Key · 不受限"，不显示进度条
+- **共享 proxy 用户**：显示剩余时长 + 百分比进度条
 - **颜色编码**：
   - 绿色（> 50%）：`oklch(0.7 0.15 145)`
   - 黄色（20-50%）：`oklch(0.75 0.15 85)`
@@ -563,11 +557,11 @@ def get_asr_config() -> dict:
 
 ### 6.2 设置页 — 用量面板
 
-在设置页增加「用量与订阅」卡片：
+在设置页增加「用量与配额」卡片：
 
 ```
 ┌─────────────────────────────────────────────┐
-│  用量与订阅                                  │
+│  用量与配额                                  │
 │                                              │
 │  本月已使用          12h 28m / 25h           │
 │  ▓▓▓▓▓▓▓▓░░░░░░░░  50%                     │
@@ -581,9 +575,8 @@ def get_asr_config() -> dict:
 │  │  9/6  ███ 90min                     │    │
 │  └─────────────────────────────────────┘    │
 │                                              │
-│  当前档位：个人版                              │
+│  当前授权：体验期                            │
 │  到期时间：2026-10-01                         │
-│  [查看资费方案]                               │
 └─────────────────────────────────────────────┘
 ```
 
@@ -597,7 +590,7 @@ async function refreshUsageBar() {
 
   const usageEl = document.getElementById('usage-indicator');
   if (!data.metered) {
-    usageEl.textContent = '自带 API Key · 不受限';
+    usageEl.textContent = '自持 API Key · 不受限';
     return;
   }
 
@@ -622,7 +615,7 @@ async function refreshUsageBar() {
         │
         ▼
   ┌─ 配额预检 ─┐
-  │ check_quota │─── 额度不足 → 返回 402 + 引导升级
+  │ check_quota │─── 额度不足 → 返回提示 + 引导配置自有 Key
   └──────┬──────┘
          │ 通过
          ▼
@@ -658,7 +651,7 @@ async function refreshUsageBar() {
 | **M5** | 配额预检 | `app/routers/record.py` + upload | P1 |
 | **M6** | 底部状态栏展示 | `app/static/index.html` | P1 |
 | **M7** | 设置页用量面板 | `app/static/index.html` | P2 |
-| **M8** | 用户 subscription 字段 | `core/users.py` | P1 |
+| **M8** | 用户授权字段 | `core/users.py` | P1 |
 | **M9** | Key 来源标记 | `app/routers/settings.py` | P1 |
 
 建议先做 M1-M4（核心计量 + 查询），验证数据准确性后再做 M5-M9（管控 + 展示）。
@@ -668,8 +661,8 @@ async function refreshUsageBar() {
 | # | 问题 | 决策结论 |
 |---|------|----------|
 | 1 | 实时转写的计量时机：按录制时长 or 按实际发送到 ASR 的字节数？ | **先按录制时长**，后续优化为字节数 |
-| 2 | 体验版额度用尽后，是否允许用户用自己的 Key 继续？ | **允许**，在额度用尽提示中引导配置自有 Key |
-| 3 | 团队版共享池如何扣减？先扣个人还是先扣共享？ | **先扣团队共享池，超出后再扣个人额度** |
+| 2 | 体验期额度用尽后，是否允许用户用自己的 Key 继续？ | **允许**，在额度用尽提示中引导配置自有 Key |
+| 3 | 协作授权共享池如何扣减？先扣共享还是先扣个人？ | **v1 暂不实现共享池**，后续按需设计 |
 | 4 | 月度额度是否跨月清零？是否支持累积？ | **按月度额度处理，跨月清零**，后续可加「溢出结转」 |
 | 5 | 是否需要用量异常告警（单日突增）？ | **v1 不做风控**，先观察数据分布 |
 
@@ -680,7 +673,7 @@ async function refreshUsageBar() {
 | `app/store.py` | 转写完成后调用 `record_usage()` | +5 行 |
 | `app/routers/record.py` | 录制结束时调用 `record_usage()`；开始前调用 `check_quota()` | +10 行 |
 | `app/routers/settings.py` | 保存 Key 时标记 `source` | +3 行 |
-| `core/users.py` | 用户对象增加 `subscription` 字段 | +10 行 |
+| `core/users.py` | 用户对象增加授权字段 | +10 行 |
 | `app/server.py` | 注册 `usage` router | +2 行 |
 | `app/static/index.html` | 底部状态栏 + 设置页面板 | +80 行 |
 

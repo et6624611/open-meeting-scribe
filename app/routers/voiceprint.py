@@ -57,7 +57,7 @@ def list_voiceprint_registry():
         speaker = speakers.get_speaker_by_id(uuid)
         items.append({
             "speaker_uuid": uuid,
-            "speaker_name": speaker.name if speaker else "未知",
+            "speaker_name": speaker.name if speaker else "Unknown",
             "registered_at": record.registered_at,
             "updated_at": record.updated_at,
             "sample_count": record.sample_count,

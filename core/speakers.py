@@ -340,7 +340,7 @@ def apply_speaker_names(
     for item in dialogue:
         sid = item.get("speaker_id", 0)
         speaker_uuid = mapping.get(sid)
-        speaker_name = name_map.get(speaker_uuid, f"说话人{sid + 1}") if speaker_uuid else f"说话人{sid + 1}"
+        speaker_name = name_map.get(speaker_uuid, f"Speaker {sid + 1}") if speaker_uuid else f"Speaker {sid + 1}"
 
         new_item = dict(item)
         new_item["speaker_name"] = speaker_name
@@ -351,15 +351,14 @@ def apply_speaker_names(
 
 
 def build_speaker_prompt(dialogue: list[dict]) -> str:
-    """
-    构造纪要提示词中的发言人说明。
+    """Build speaker name description for summary prompt.
 
     Returns:
-        如："说话人1 = 张三，说话人2 = 李四"
+        e.g. "Speaker 1 = Alice, Speaker 2 = Bob"
     """
     parts = []
     for item in dialogue:
         sid = item.get("speaker_id", 0)
-        name = item.get("speaker_name", f"说话人{sid + 1}")
-        parts.append(f"说话人{sid + 1} = {name}")
-    return "，".join(parts)
+        name = item.get("speaker_name", f"Speaker {sid + 1}")
+        parts.append(f"Speaker {sid + 1} = {name}")
+    return ", ".join(parts)
