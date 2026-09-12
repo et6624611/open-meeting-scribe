@@ -1,0 +1,417 @@
+"""
+core/pipeline_runner.py — 管线编排（后台执行）
+
+职责：
+  - 管线 Stage 1（转写）后台执行，含瞬时错误自动重试
+  - 管线 Stage 2（纪要生成）后台执行，含瞬时错误自动重试
+  - 分层说话人匹配（P0 文本桥接 → P1 声纹匹配 → P2 手动绑定）
+
+说话人数量估算已拆分至 core/speaker_count.py
+
+从 app/store.py 拆分而来。依赖：
+  - app.task_store：任务字典与持久化
+  - app.settings_store：功能开关
+  - app.realtime_store：全量实时转写缓冲
+"""
+
+import time
+import logging
+from pathlib import Path
+from datetime import datetime
+
+import numpy as np
+
+from core.pipeline import run_pipeline_stage1, run_pipeline_stage2, PipelineProgress
+from core.summarize import parse_todos_from_summary
+from core.errors import is_transient_error, classify_error
+from core.speaker_count import estimate_speaker_count
+from core import speakers
+from core import voiceprint
+from core import text_bridge
+from core import joblog
+
+from app.task_store import tasks, save_task_to_disk, infer_task_source
+from app.settings_store import get_feature_flags
+from app.realtime_store import realtime_full_transcripts
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# 常量
+# ============================================================
+
+# 自动重试配置（仅针对瞬时错误）
+PIPELINE_MAX_RETRIES = 2
+PIPELINE_RETRY_DELAYS = [2, 5]  # 秒
+
+
+# ============================================================
+# 后台管线函数
+# ============================================================
+
+
+def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_mapping: dict = None, speaker_count: int = None):
+    """后台执行管线第一阶段（转写），完成后等待说话人绑定。含瞬时错误自动重试。"""
+    def on_progress(p: PipelineProgress):
+        tasks[task_id]["progress"] = p.percent
+        tasks[task_id]["message"] = p.message
+        tasks[task_id]["status"] = "processing" if p.percent >= 0 else "failed"
+        logger.info(f"[{task_id[:8]}] {p}")
+
+    def on_failure(e: Exception):
+        """统一处理失败：分类错误、记录字段、落盘"""
+        logger.exception(f"[{task_id[:8]}] 管线执行失败")
+        err_info = classify_error(e)
+        tasks[task_id]["status"] = "failed"
+        tasks[task_id]["error"] = str(e)
+        tasks[task_id]["failed_stage"] = "transcribe"
+        tasks[task_id]["error_category"] = err_info["category"]
+        tasks[task_id]["error_suggestion"] = err_info["suggestion"]
+        joblog.append_event(
+            task_id, joblog.STAGE_ERROR, f"转写阶段失败: {e}", level="error",
+            detail={"category": err_info["category"], "suggestion": err_info["suggestion"]},
+        )
+        save_task_to_disk(task_id)
+
+    tasks[task_id]["status"] = "processing"
+    tasks[task_id]["progress"] = 0
+    tasks[task_id]["retry_count"] = 0
+    task_start = time.perf_counter()
+    joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "开始转写（stage1）")
+
+    # 自动重试循环（仅针对瞬时错误）
+    for attempt in range(PIPELINE_MAX_RETRIES + 1):
+        try:
+            # 文件上传路径：若未提供 speaker_count，自动估算
+            if speaker_count is None:
+                speaker_count = estimate_speaker_count(audio_path)
+                if speaker_count:
+                    logger.info(f"[{task_id[:8]}] 自动估算说话人数量: {speaker_count}")
+
+            # 若估算时已生成归一化文件，复用之（避免重复 ffmpeg）
+            normalized_path = audio_path.with_stem(f"{audio_path.stem}_normalized").with_suffix(".wav")
+            pre_normalized = normalized_path if normalized_path.exists() else None
+
+            # 只运行第一阶段：音频 → 对话稿
+            result = run_pipeline_stage1(
+                audio_path=pre_normalized or audio_path,
+                on_progress=on_progress,
+                speaker_count=speaker_count,
+            )
+
+            # 存储转写结果
+            tasks[task_id]["audio_duration"] = result.get("audio_duration")
+            tasks[task_id]["dialogue"] = result.get("dialogue")
+            tasks[task_id]["transcription"] = result.get("transcription")
+            dialogue = result.get("dialogue", [])
+            tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+            joblog.append_event(
+                task_id, joblog.STAGE_TRANSCRIBE,
+                f"转写完成，识别 {tasks[task_id]['speaker_count']} 位说话人",
+            )
+
+            # 用量计量：转写成功后记录音频时长
+            try:
+                from core.metering import is_metered, record_usage
+                from core.users import get_current_user
+                audio_dur = result.get("audio_duration")
+                if audio_dur and is_metered():
+                    current_user = get_current_user()
+                    if current_user:
+                        record_usage(
+                            user_id=current_user["id"],
+                            service="asr_batch",
+                            duration_seconds=audio_dur,
+                            task_id=task_id,
+                            metadata={"model": "paraformer-v2", "provider": "DashScope"},
+                        )
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 用量记录失败（不影响主流程）: {e}")
+
+            # 检查是否有预设的说话人映射（向后兼容）
+            if speaker_mapping:
+                # 有预设映射，直接运行第二阶段
+                save_task_to_disk(task_id)
+                _run_stage2_for_task(task_id, audio_path, speaker_mapping)
+            else:
+                # V3++ 分层匹配策略：P0 文本桥接 → P1 声纹匹配 → P2 手动绑定
+                normalized_path = result.get("normalized_path")
+                if not normalized_path and pre_normalized:
+                    normalized_path = str(pre_normalized)
+                # 持久化归一化音频路径：供绑定后声纹补录与回溯采集脚本使用
+                tasks[task_id]["normalized_path"] = normalized_path
+                dialogue = result.get("dialogue", [])
+                auto_mapping = {}
+                match_sources = []  # 记录匹配来源（用于日志和提示）
+
+                # ── P0：文本桥接匹配（确定性证据） ──
+                realtime_full_transcript = tasks[task_id].get("realtime_full_transcript")
+                realtime_speaker_binding = tasks[task_id].get("realtime_speaker_binding")
+                text_bridge_matched = 0
+                if realtime_full_transcript and realtime_speaker_binding and dialogue:
+                    try:
+                        tb_start = time.perf_counter()
+                        # 构建说话人姓名映射
+                        speaker_names = {}
+                        for uuid in set(realtime_speaker_binding.values()):
+                            spk = speakers.get_speaker_by_id(uuid)
+                            if spk:
+                                speaker_names[uuid] = spk.name
+                        tb_results, tb_mapping = text_bridge.text_bridge_match(
+                            realtime_full_transcript=realtime_full_transcript,
+                            realtime_speaker_binding=realtime_speaker_binding,
+                            dialogue=dialogue,
+                            speaker_names=speaker_names,
+                        )
+                        tb_elapsed = time.perf_counter() - tb_start
+                        text_bridge_matched = len(tb_mapping)
+                        logger.info(f"[PERF] {task_id[:8]} P0 文本桥接匹配: {tb_elapsed:.3f}s, {text_bridge_matched} 位")
+                        if tb_mapping:
+                            auto_mapping.update(tb_mapping)
+                            match_sources.append(f"文本桥接({text_bridge_matched}位)")
+                            tasks[task_id]["text_bridge_match"] = [r.to_dict() for r in tb_results]
+                            logger.info(
+                                f"[{task_id[:8]}] P0 文本桥接匹配: "
+                                f"{text_bridge_matched} 位说话人识别成功"
+                            )
+                            joblog.append_event(
+                                task_id, joblog.STAGE_VOICEPRINT,
+                                f"P0 文本桥接匹配命中 {text_bridge_matched} 位说话人",
+                            )
+                    except Exception as e:
+                        logger.warning(f"[{task_id[:8]}] P0 文本桥接匹配失败: {e}")
+                        joblog.append_event(
+                            task_id, joblog.STAGE_VOICEPRINT,
+                            f"P0 文本桥接匹配失败: {e}", level="warn",
+                        )
+
+                # ── P1：声纹向量匹配（概率性证据） ──
+                # 仅对文本桥接未覆盖的说话人执行声纹匹配
+                # 受 feature_flags.voiceprint_auto_match 开关控制（默认关闭）
+                vp_enabled = get_feature_flags().get("voiceprint_auto_match", False)
+                if vp_enabled and normalized_path and dialogue:
+                    try:
+                        vp_start = time.perf_counter()
+                        vp_results = voiceprint.auto_identify_speakers(
+                            audio_path=normalized_path,
+                            dialogue=dialogue,
+                        )
+                        vp_elapsed = time.perf_counter() - vp_start
+                        vp_mapping = voiceprint.build_auto_mapping(vp_results)
+                        logger.info(f"[PERF] {task_id[:8]} P1 声纹匹配: {vp_elapsed:.3f}s")
+                        # 合并：声纹匹配仅补充文本桥接未覆盖的 speaker_id
+                        new_vp_matches = {
+                            sid: uuid for sid, uuid in vp_mapping.items()
+                            if sid not in auto_mapping
+                        }
+                        if new_vp_matches:
+                            auto_mapping.update(new_vp_matches)
+                            match_sources.append(f"声纹匹配({len(new_vp_matches)}位)")
+                            logger.info(
+                                f"[{task_id[:8]}] P1 声纹匹配补充: "
+                                f"{len(new_vp_matches)} 位说话人"
+                            )
+                        # 始终记录声纹匹配结果（供前端展示）
+                        tasks[task_id]["voiceprint_match"] = [r.to_dict() for r in vp_results]
+                        tasks[task_id]["voiceprint_auto_mapping"] = {str(k): v for k, v in vp_mapping.items()}
+                        if not new_vp_matches and not text_bridge_matched:
+                            joblog.append_event(
+                                task_id, joblog.STAGE_VOICEPRINT,
+                                "P0+P1 均无匹配，降级为手动绑定", level="warn",
+                            )
+                    except Exception as e:
+                        logger.warning(f"[{task_id[:8]}] P1 声纹匹配失败: {e}")
+                        joblog.append_event(
+                            task_id, joblog.STAGE_VOICEPRINT,
+                            f"P1 声纹匹配失败: {e}", level="error",
+                        )
+
+                if match_sources:
+                    logger.info(
+                        f"[{task_id[:8]}] 分层匹配完成: {len(auto_mapping)} 位说话人, "
+                        f"来源: {', '.join(match_sources)}"
+                    )
+
+                if auto_mapping:
+                    # 有自动匹配结果，自动注册/更新声纹（时长加权）
+                    if normalized_path and dialogue:
+                        try:
+                            reg_results = voiceprint.register_from_binding(
+                                audio_path=normalized_path,
+                                dialogue=dialogue,
+                                mapping=auto_mapping,
+                                meeting_id=task_id,
+                            )
+                            reg_ok = sum(1 for r in reg_results.values() if r["status"] == "registered")
+                            if reg_ok > 0:
+                                logger.info(
+                                    f"[{task_id[:8]}] 自动匹配后声纹更新: "
+                                    f"{reg_ok}/{len(auto_mapping)} 位说话人"
+                                )
+                        except Exception as e:
+                            logger.warning(f"[{task_id[:8]}] 自动声纹更新失败（不影响主流程）: {e}")
+                else:
+                    # 无自动匹配：不阻塞管线，纪要先以通用说话人标签生成；
+                    # 前端绑定栏保留，用户确认关联后按真实身份重新生成纪要
+                    joblog.append_event(
+                        task_id, joblog.STAGE_BIND,
+                        "未命中自动匹配，先以通用标签生成纪要，等待用户事后关联说话人",
+                    )
+
+                # 直接运行第二阶段（不再等待用户确认绑定）
+                save_task_to_disk(task_id)
+                _run_stage2_for_task(task_id, audio_path, auto_mapping)
+
+            return  # 成功，退出重试循环
+
+        except Exception as e:
+            if is_transient_error(e) and attempt < PIPELINE_MAX_RETRIES:
+                # 瞬时错误且还有重试机会
+                delay = PIPELINE_RETRY_DELAYS[attempt]
+                tasks[task_id]["retry_count"] = attempt + 1
+                tasks[task_id]["message"] = f"遇到临时错误，{delay}秒后自动重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES})..."
+                tasks[task_id]["progress"] = max(0, tasks[task_id].get("progress", 0) - 10)
+                save_task_to_disk(task_id)
+                logger.warning(f"[{task_id[:8]}] 瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
+                joblog.append_event(
+                    task_id, joblog.STAGE_TRANSCRIBE,
+                    f"瞬时错误，{delay}s 后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}", level="warn",
+                )
+                time.sleep(delay)
+                continue
+            else:
+                # 永久错误或重试耗尽
+                on_failure(e)
+                return
+
+    # 记录任务总耗时（无论成功失败）
+    task_elapsed = time.perf_counter() - task_start
+    logger.info(f"[PERF] {task_id[:8]} 管线任务总计: {task_elapsed:.3f}s")
+
+
+def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict = None):
+    """为指定任务运行管线第二阶段（纪要生成）。含瞬时错误自动重试。"""
+    stage2_start = time.perf_counter()
+
+    def on_progress(p: PipelineProgress):
+        tasks[task_id]["progress"] = p.percent
+        tasks[task_id]["message"] = p.message
+        logger.info(f"[{task_id[:8]}] {p}")
+
+    def on_failure(e: Exception):
+        """统一处理纪要阶段失败"""
+        logger.exception(f"[{task_id[:8]}] 纪要生成失败")
+        err_info = classify_error(e)
+        tasks[task_id]["status"] = "failed"
+        tasks[task_id]["error"] = str(e)
+        tasks[task_id]["failed_stage"] = "summarize"
+        tasks[task_id]["error_category"] = err_info["category"]
+        tasks[task_id]["error_suggestion"] = err_info["suggestion"]
+        joblog.append_event(
+            task_id, joblog.STAGE_ERROR, f"纪要生成失败: {e}", level="error",
+            detail={"category": err_info["category"], "suggestion": err_info["suggestion"]},
+        )
+        save_task_to_disk(task_id)
+
+    # 自动重试循环（仅针对瞬时错误）
+    for attempt in range(PIPELINE_MAX_RETRIES + 1):
+        try:
+            dialogue = tasks[task_id].get("dialogue", [])
+
+            # 优先使用用户指定的 meeting_date，否则从 created_at 提取
+            meeting_time = None
+            if tasks[task_id].get("meeting_date"):
+                try:
+                    md = tasks[task_id]["meeting_date"]
+                    created_dt = datetime.fromisoformat(tasks[task_id].get("created_at", ""))
+                    time_str = created_dt.strftime("%H:%M")
+                    meeting_time = f"{md} {time_str}"
+                except (ValueError, TypeError):
+                    meeting_time = tasks[task_id]["meeting_date"]
+            if not meeting_time:
+                created_at_str = tasks[task_id].get("created_at", "")
+                if created_at_str:
+                    try:
+                        created_dt = datetime.fromisoformat(created_at_str)
+                        meeting_time = created_dt.strftime("%Y-%m-%d %H:%M")
+                    except (ValueError, TypeError):
+                        pass
+
+            # 兜底：从音频文件名提取时间（格式：xxxxxxxx_YYYYMMDD_HHMMSS.wav）
+            if not meeting_time and audio_path:
+                import re
+                m = re.search(r'_(\d{8})_(\d{6})\.', audio_path.name)
+                if m:
+                    try:
+                        dt = datetime.strptime(f"{m.group(1)}_{m.group(2)}", "%Y%m%d_%H%M%S")
+                        meeting_time = dt.strftime("%Y-%m-%d %H:%M")
+                    except ValueError:
+                        pass
+
+            joblog.append_event(task_id, joblog.STAGE_SUMMARY, "开始生成纪要（stage2）")
+            result = run_pipeline_stage2(
+                dialogue=dialogue,
+                speaker_mapping=speaker_mapping,
+                audio_path=audio_path,
+                on_progress=on_progress,
+                meeting_time=meeting_time,
+                user_notes=tasks[task_id].get("user_notes"),
+            )
+
+            tasks[task_id]["status"] = "completed"
+            tasks[task_id]["progress"] = 100
+            tasks[task_id]["message"] = "完成"
+            tasks[task_id]["summary"] = result.get("summary")
+            tasks[task_id]["title"] = result.get("title")
+            tasks[task_id]["output_path"] = result.get("output_path")
+            tasks[task_id]["dialogue"] = result.get("dialogue")
+            tasks[task_id]["speaker_mapping"] = result.get("speaker_mapping", {})
+            tasks[task_id]["speaker_uuid_mapping"] = result.get("speaker_uuid_mapping", {})
+            tasks[task_id]["chapters"] = result.get("chapters", [])
+
+            summary_text = result.get("summary", "")
+            if summary_text:
+                parsed_todos = parse_todos_from_summary(summary_text)
+                if parsed_todos:
+                    tasks[task_id]["todos"] = parsed_todos
+                    logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_todos)} 条待办")
+
+            joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
+            save_task_to_disk(task_id)
+
+            stage2_elapsed = time.perf_counter() - stage2_start
+            logger.info(f"[PERF] {task_id[:8]} 纪要任务总计: {stage2_elapsed:.3f}s")
+
+            return  # 成功
+
+        except Exception as e:
+            if is_transient_error(e) and attempt < PIPELINE_MAX_RETRIES:
+                delay = PIPELINE_RETRY_DELAYS[attempt]
+                tasks[task_id]["retry_count"] = tasks[task_id].get("retry_count", 0) + 1
+                tasks[task_id]["message"] = f"纪要生成遇到临时错误，{delay}秒后自动重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES})..."
+                save_task_to_disk(task_id)
+                logger.warning(f"[{task_id[:8]}] 纪要阶段瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
+                joblog.append_event(
+                    task_id, joblog.STAGE_SUMMARY,
+                    f"纪要瞬时错误，{delay}s 后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}", level="warn",
+                )
+                time.sleep(delay)
+                continue
+            else:
+                on_failure(e)
+                return
+
+
+def run_stage2_task(task_id: str, audio_path: Path, speaker_mapping: dict = None):
+    """后台执行管线第二阶段（供 API 调用）"""
+    _run_stage2_for_task(task_id, audio_path, speaker_mapping)
+
+
+# ============================================================
+# Re-export（兼容现有 import 路径）
+# ============================================================
+
+from core.speaker_count import (  # noqa: E402
+    SPEAKER_COUNT_MIN,
+    SPEAKER_COUNT_MAX,
+)

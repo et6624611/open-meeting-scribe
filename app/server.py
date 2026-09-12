@@ -14,7 +14,8 @@ app/server.py — FastAPI 应用入口
 
 路由模块（app/routers/）：
   tasks     — 转录提交 + 任务 CRUD + 音频/下载
-  record    — 录制控制 + 实时转写 WS + 实时总结/绑定
+  record    — 录制控制 + 实时总结/绑定
+  ws_transcript — WebSocket 实时转写端点
   speakers  — 说话人 CRUD + 会议级绑定/纪要生成
   projects  — 项目管理 + 文件系统浏览
   chat      — AI 对话 + 动作检测/执行
@@ -66,7 +67,7 @@ audit_logger.addHandler(audit_handler)
 audit_logger.propagate = False  # 不重复写入 server.log
 
 from app.store import STATIC_DIR, load_tasks_from_disk, recover_interrupted_tasks, event_loop
-from app.routers import tasks, record, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update
+from app.routers import tasks, record, ws_transcript, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update
 from core.auth import verify_jwt
 from core.i18n import I18nMiddleware
 from core.llm import close_async_client
@@ -201,6 +202,7 @@ app.include_router(auth.router)
 app.include_router(usage.router)
 app.include_router(config.router)
 app.include_router(update.router)
+app.include_router(ws_transcript.router)
 
 # ============================================================
 # 生命周期
@@ -210,12 +212,13 @@ app.include_router(update.router)
 @app.on_event("startup")
 async def startup():
     """捕获主事件循环引用；从磁盘恢复任务；自动恢复中断的任务；同步 API Key"""
-    import app.store as store
-    store.event_loop = asyncio.get_running_loop()
+    import app.realtime_store as rt_store
+    rt_store.event_loop = asyncio.get_running_loop()
 
     # 从 settings.json 同步 API Key 到环境变量（确保重启后仍有效）
     try:
-        api_key = store.get_active_api_key()
+        from app.settings_store import get_active_api_key
+        api_key = get_active_api_key()
         if api_key:
             os.environ["DASHSCOPE_API_KEY"] = api_key
     except Exception:

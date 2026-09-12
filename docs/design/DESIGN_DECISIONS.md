@@ -661,5 +661,5 @@ npm run lint:fix    # 自动修复可修复的问题
 
 **操作按钮设计**：圆角药丸按钮（`border-radius: 999px`），主操作使用 `--proactive` 填充，次操作使用描边样式。点击后显示「已处理」反馈并禁用，避免重复操作。
 
-**原型参考**：`docs/prototypes/ai-proactive-messaging.html`，展示折叠态、横幅态、完整对话流三种状态。
+**原型参考**：已移除（原 `docs/prototypes/ai-proactive-messaging.html`，展示折叠态、横幅态、完整对话流三种状态）。
 

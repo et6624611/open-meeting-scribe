@@ -3,13 +3,204 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: 王永亮
 created_at: 2026-09-03
-updated_at: "2026-09-11"
+updated_at: "2026-09-12"
 status: published
 ---
 
 # CHANGELOG — 迭代日志
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
+
+## [v2.x-admin-split] - 2026-09-12
+
+### 变更
+- **app/routers/admin.py 拆分重构（P2）**：原 601 行的管理后台路由将远程配置域（消息 CRUD + 功能开关 CRUD）独立为 `app/routers/admin_config.py`（259行）。原文件保留为 363 行的认证 + 登录登出 + 用户管理 + 订阅管理 + 系统概览 + re-export 兼容层。`admin_server.py` 同步注册新 router。
+
+### 涉及文件
+- `app/routers/admin.py`：601行 → 363行（认证+用户管理+兼容层）
+- `app/routers/admin_config.py`：新增（远程配置路由域）
+- `app/admin_server.py`：新增 admin_config router 注册
+- `CHANGELOG.md`：本条目
+
+## [v2.x-asr-proxy-split] - 2026-09-12
+
+### 变更
+- **asr-proxy/server.py 拆分重构（P2）**：原 641 行的 ASR 代理服务将 WebSocket 实时流式中继域独立为 `asr-proxy/ws_relay.py`（241行，DashScope SDK 回调 + PCM 帧中继 + 签名校验）。原文件保留为 448 行的批处理转写 + 配置 + 签名 + 健康检查 + router 注册。
+
+### 涉及文件
+- `asr-proxy/server.py`：641行 → 448行（批处理转写+配置+健康检查）
+- `asr-proxy/ws_relay.py`：新增（WebSocket 流式中继域）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-pipeline-runner-split] - 2026-09-12
+
+### 变更
+- **core/pipeline_runner.py 拆分重构（P2）**：原 655 行的管线编排模块将说话人数量估算域独立为 `core/speaker_count.py`（257行，采样+谱聚类 eigengap 启发式）。原文件保留为 418 行的管线编排层（stage1/stage2 后台执行 + 分层匹配 + 自动重试）+ re-export 兼容层。
+
+### 涉及文件
+- `core/pipeline_runner.py`：655行 → 418行（管线编排+兼容层）
+- `core/speaker_count.py`：新增（说话人数量估算域）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-audio-split] - 2026-09-12
+
+### 变更
+- **core/audio.py 拆分重构（P2）**：原 679 行的音频模块按职责拆分为音频处理与录制控制两层。音频归一化 + 时长查询保留在 `core/audio.py`（132行），录制控制独立为 `core/audio_recording.py`（567行，系统内录 + 流式录音 + 暂停/恢复 + 设备列表）。原文件保留为 re-export 兼容层。
+
+### 涉及文件
+- `core/audio.py`：679行 → 132行（归一化+时长+兼容层）
+- `core/audio_recording.py`：新增（录制控制域）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-diarization-split] - 2026-09-12
+
+### 变更
+- **core/diarization.py 拆分重构（P2）**：原 712 行的说话人分离模块按职责拆分为特征提取层与聚类引擎层。VAD + MFCC 特征提取保留在 `core/diarization.py`（225行），聚类引擎独立为 `core/diarization_cluster.py`（493行，SpeakerDiarizer 类 + 数据模型 + 工厂函数）。原文件保留为 re-export 兼容层。
+
+### 涉及文件
+- `core/diarization.py`：712行 → 225行（VAD+MFCC+兼容层）
+- `core/diarization_cluster.py`：新增（聚类引擎）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-cli-split] - 2026-09-12
+
+### 变更
+- **cli.py 拆分重构（P2）**：原 735 行的 CLI 入口按本地/远程职责拆分。本地命令（transcribe/normalize/upload/server/build/admin）保留在 `cli.py`（320行），远程 API 命令（record/tasks/speakers/hotwords/settings/chat）及 `_api_request` 工具函数独立为 `cli_remote.py`（440行），通过 `register_remote_commands(subparsers)` 注册 argparse 子命令。
+
+### 涉及文件
+- `cli.py`：735行 → 320行（本地命令 + main 入口）
+- `cli_remote.py`：新增（远程 API 命令 + argparse 注册）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-projects-split] - 2026-09-12
+
+### 变更
+- **core/projects.py 拆分重构（P2）**：原 794 行的项目管理模块按职责拆分为 CRUD+同步 与 索引+检索 两层。索引与检索域独立为 `core/project_index.py`（456行，文本提取+关键词+文件扫描+搜索+上下文构建）。原文件保留为 371 行的项目 CRUD + 文件夹同步 + re-export 兼容层。
+
+### 涉及文件
+- `core/projects.py`：794行 → 371行（CRUD+同步+兼容层）
+- `core/project_index.py`：新增（索引+检索域）
+- `CHANGELOG.md`：本条目
+
+## [v2.x-voiceprint-split] - 2026-09-12
+
+### 变更
+- **core/voiceprint.py 拆分重构（P2）**：原 867 行的声纹模块按职责拆分为数据层与管线层。数据层独立为 `core/voiceprint_registry.py`（409行，常量+注册表+匹配算法），管线层独立为 `core/voiceprint_identify.py`（480行，自动识别+绑定注册+跨会议重建）。原文件保留为 52 行的 re-export 兼容层。
+
+### 涉及文件
+- `core/voiceprint.py`：867行 → 52行（兼容层）
+- `core/voiceprint_registry.py`：新增
+- `core/voiceprint_identify.py`：新增
+- `tests/test_voiceprint.py`：monkeypatch 指向源模块 voiceprint_registry
+- `CHANGELOG.md`：本条目
+
+## [v2.x-test-split] - 2026-09-12
+
+### 变更
+- **tests/test_smoke.py 拆分重构（P2）**：原 1544 行的测试文件按功能域拆分为 5 个测试文件。test_smoke.py 保留基础可用性+任务+说话人+设置+热词+用户+录制+项目+笔记等核心域（319行）。新增：`tests/test_voiceprint.py`（声纹域，268行）、`tests/test_chat.py`（AI 对话域，395行）、`tests/test_text_bridge.py`（文本桥接匹配域，213行）、`tests/test_misc.py`（杂项域：SMS/认证/版本/用量/管理/配置/理念/错误分类/静默检测，440行）
+
+### 涉及文件
+- `tests/test_smoke.py`：1544行 → 319行
+- `tests/test_voiceprint.py`：新增
+- `tests/test_chat.py`：新增
+- `tests/test_text_bridge.py`：新增
+- `tests/test_misc.py`：新增
+- `CHANGELOG.md`：本条目
+
+## [v2.x-record-split] - 2026-09-12
+
+### 变更
+- **app/routers/record.py 拆分重构（P1）**：原 1128 行的录制路由按职责拆分。WebSocket 实时转写端点独立为 `app/routers/ws_transcript.py`（152行），静默检测协程与自动关停逻辑提取至 `core/silence_detection.py`（192行）。路由层保留为 ~757 行的端点编排层。
+
+### 涉及文件
+- `app/routers/record.py`：1128行 → 757行
+- `app/routers/ws_transcript.py`：新增
+- `core/silence_detection.py`：新增
+- `app/server.py`：注册 ws_transcript router
+- `CHANGELOG.md`：本条目
+
+## [v2.x-chat-split] - 2026-09-12
+
+### 变更
+- **app/routers/chat.py 拆分重构（P1）**：原 1231 行的 AI 对话路由按职责拆分为 3 个 core 层子模块。路由层保留为 443 行的端点编排层。新增：`core/chat_actions.py`（动作检测与执行引擎，430行）、`core/chat_edits.py`（编辑意图 LLM 解析+执行+磁盘回读校验，205行）、`core/chat_context.py`（页面上下文构建+注入内容提取，175行）
+
+### 涉及文件
+- `app/routers/chat.py`：1231行 → 443行
+- `core/chat_actions.py`：新增
+- `core/chat_edits.py`：新增
+- `core/chat_context.py`：新增
+- `tests/test_smoke.py`：monkeypatch 同步 patch chat_edits 模块
+- `CHANGELOG.md`：本条目
+
+## [v2.x-recording-view-split] - 2026-09-12
+
+### 变更
+- **RecordingView.vue 拆分重构（P1）**：原 1337 行的录音页面拆分为 5 个子组件 + 2 个 composable。父组件保留为 456 行的布局编排层。新增子组件：`RecTranscriptPanel.vue`（转写原文+章节）、`RecSummaryPanel.vue`（实时总结+倒计时）、`RecNotesBar.vue`（随记输入栏）、`RecSpeakerBind.vue`（说话人绑定弹窗）、`RecControlBar.vue`（顶栏+项目关联）。新增 composable：`usePresenceDetection.ts`（存在性检测）、`useRecordingNotes.ts`（笔记持久化+自动关联）
+
+### 涉及文件
+- `frontend/src/views/RecordingView.vue`：1337行 → 456行
+- `frontend/src/views/recording/RecTranscriptPanel.vue`：新增
+- `frontend/src/views/recording/RecSummaryPanel.vue`：新增
+- `frontend/src/views/recording/RecNotesBar.vue`：新增
+- `frontend/src/views/recording/RecSpeakerBind.vue`：新增
+- `frontend/src/views/recording/RecControlBar.vue`：新增
+- `frontend/src/composables/usePresenceDetection.ts`：新增
+- `frontend/src/composables/useRecordingNotes.ts`：新增
+- `CHANGELOG.md`：本条目
+
+## [v2.x-ai-panel-split] - 2026-09-12
+
+### 变更
+- **AIPanel.vue 拆分重构（P0）**：原 1445 行的前端最大组件按职责拆分为 5 个子组件 + 2 个 composable。父组件 `AIPanel.vue` 保留为 398 行的布局编排层。新增子组件：`AiChatPanel.vue`（对话 Tab + 输入区）、`AiAnalysisPanel.vue`（分析 Tab）、`AiContextPanel.vue`（上下文 Tab）、`AiSessionTabs.vue`（会话标签栏）、`AiProactiveSettings.vue`（主动 AI 设置面板）。新增 composable：`useAiContext.ts`（上下文数据）、`useAiCommandActions.ts`（指令操作回调）
+
+### 涉及文件
+- `frontend/src/components/layout/AIPanel.vue`：1445行 → 398行
+- `frontend/src/components/layout/ai/AiChatPanel.vue`：新增
+- `frontend/src/components/layout/ai/AiAnalysisPanel.vue`：新增
+- `frontend/src/components/layout/ai/AiContextPanel.vue`：新增
+- `frontend/src/components/layout/ai/AiSessionTabs.vue`：新增
+- `frontend/src/components/layout/ai/AiProactiveSettings.vue`：新增
+- `frontend/src/composables/useAiContext.ts`：新增
+- `frontend/src/composables/useAiCommandActions.ts`：新增
+- `CHANGELOG.md`：本条目
+
+## [v2.x-store-split] - 2026-09-12
+
+### 变更
+- **app/store.py 拆分重构（P0）**：原 1272 行的“上帝模块”按职责拆分为 4 个子模块：`app/task_store.py`（任务持久化与恢复，335行）、`app/settings_store.py`（设置管理，262行）、`app/realtime_store.py`（实时消息推送状态，110行）、`core/pipeline_runner.py`（管线编排，654行）。原 `app/store.py` 保留为 111 行兼容入口，统一 re-export 所有符号，既有 `from app.store import X` 零修改。同步更新 `server.py`（event_loop 赋值指向 realtime_store）、`record.py`（event_loop 读取指向 realtime_store）、`test_smoke.py`（monkeypatch 指向源模块）
+
+### 涉及文件
+- `app/store.py`：1272行 → 111行（兼容 re-export 层）
+- `app/task_store.py`：新增，任务持久化与恢复
+- `app/settings_store.py`：新增，设置管理
+- `app/realtime_store.py`：新增，实时状态与消息推送
+- `core/pipeline_runner.py`：新增，管线编排与说话人估算
+- `app/server.py`：startup 中 event_loop 赋值指向 realtime_store
+- `app/routers/record.py`：event_loop 读取指向 realtime_store
+- `tests/test_smoke.py`：monkeypatch 指向 task_store 源模块
+- `CHANGELOG.md`：本条目
+
+## [v2.x-mobile-webhook-design] - 2026-09-12
+
+### 新增
+- **移动端消息流设计方案**：基于 Webhook 的消息流移动端交互设计，用户通过自选消息应用（Telegram / Bark / ntfy 等）与本地服务双向通信。引入会话锚点模型解决多会议上下文问题，支持会议状态监控、随记、超时告警推送。详见 `docs/design/MOBILE_DESIGN.md`
+- **ADR-0014**：移动端走 Webhook 消息流架构决策记录
+- **ROADMAP v8**：移动端消息流版本条目
+
+### 涉及文件
+- `docs/design/MOBILE_DESIGN.md`：移动端消息流完整设计方案
+- `docs/adr/0014-移动端走Webhook消息流.md`：架构决策记录
+- `docs/adr/README.md`：ADR 索引更新
+- `docs/ROADMAP.md`：新增 v8 条目
+- `CHANGELOG.md`：本条目
+
+## [v2.x-rec-auto-scroll] - 2026-09-11
+
+### 修复
+- **录音页原文区未随实时转写自动滚动**：`RecordingView.vue` 的自动滚动仅监听 `wsLines.length` 和 `wsPartial` 变化，未监听 `wsChapters.length` 变化。新章节出现时章节卡片与关键要点插入 DOM 改变内容高度，但滚动未被触发。同时 `nextTick()` 不足以等待浏览器完成布局计算，导致滚动位置计算不准确。另外，随记输入框自动增高时挤压上方 transcript body 的 `clientHeight`，但滚动检查未触发，导致内容满屏后底部出现空白。修复：抽取 `scheduleScrollCheck()` 统一使用 `nextTick() + requestAnimationFrame()` 双层延迟确保 DOM 渲染与布局均完成后再滚动；新增 `wsChapters.length` watcher 触发滚动检查；textarea 自动调整高度后也触发滚动检查。
+
+### 涉及文件
+- `frontend/src/views/RecordingView.vue`：自动滚动逻辑重构
 
 ## [v2.x-llm-progressive-loading] - 2026-09-11
 

@@ -1,0 +1,173 @@
+/**
+ * 说话人身份绑定逻辑
+ *
+ * 管理绑定映射、下拉框、增量保存、确认/跳过关联。
+ */
+import { ref, computed, reactive, nextTick, type ComputedRef, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useTaskStore } from '@/stores/task'
+import { createSpeaker, submitSpeakerMapping, saveSpeakerMapping, type Speaker } from '@/api/speakers'
+import { getSpeakerColor } from '@/utils/speakerColors'
+import type { FlatTranscriptLine, Task } from '@/api/types'
+
+export function useSpeakerBinding(
+  taskId: string,
+  task: ComputedRef<Task | null>,
+  flatTranscript: ComputedRef<FlatTranscriptLine[]>,
+  speakers: Ref<Speaker[]>,
+  switchTab: (tabId: string) => void,
+  startPolling: () => void,
+) {
+  const { t } = useI18n()
+  const taskStore = useTaskStore()
+
+  const currentBindingMapping = reactive<Record<number, string>>({})
+  const bindingDropdown = reactive<{
+    visible: boolean; speakerId: number; x: number; y: number; search: string; focusIdx: number
+  }>({ visible: false, speakerId: -1, x: 0, y: 0, search: '', focusIdx: -1 })
+  let dropdownEl: HTMLElement | null = null
+
+  const bindingBarHidden = ref(false)
+  const bindBarDismissed = ref(localStorage.getItem(`oms_bind_bar_dismissed:${taskId}`) === 'true')
+
+  function initBindingMapping() {
+    const m = task.value?.speaker_uuid_mapping
+    Object.keys(currentBindingMapping).forEach(k => delete currentBindingMapping[Number(k)])
+    if (m) {
+      for (const [k, v] of Object.entries(m)) {
+        if (v) currentBindingMapping[Number(k)] = v
+      }
+    }
+  }
+
+  const bindingLegend = computed(() => {
+    const lines = flatTranscript.value
+    if (!lines.length) return []
+    const totalMs = lines.reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
+    const speakerMap = new Map<number, number>()
+    for (const l of lines) {
+      speakerMap.set(l.speaker_id, (speakerMap.get(l.speaker_id) || 0) + (l.end_time - l.begin_time))
+    }
+    return Array.from(speakerMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([sid, durMs]) => {
+        const uuid = currentBindingMapping[sid]
+        const bound = uuid ? speakers.value.find(s => s.id === uuid) : null
+        const pct = totalMs > 0 ? Math.round((durMs / totalMs) * 100) : 0
+        return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: bound?.name || '', bound: !!bound }
+      })
+  })
+
+  const unboundCount = computed(() => bindingLegend.value.filter(b => !b.bound).length)
+
+  const canBind = computed(() => {
+    const s = task.value?.status
+    return unboundCount.value > 0 && (s === 'awaiting_mapping' || s === 'completed')
+  })
+
+  const showBindingBar = computed(() => canBind.value && !bindingBarHidden.value && !bindBarDismissed.value)
+
+  const dropdownSpeakers = computed(() => {
+    const q = bindingDropdown.search.toLowerCase()
+    if (!q) return speakers.value
+    return speakers.value.filter(s => s.name.toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q))
+  })
+
+  function openBindingDropdown(e: MouseEvent, speakerId: number) {
+    e.stopPropagation()
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    bindingDropdown.speakerId = speakerId
+    bindingDropdown.x = rect.left
+    bindingDropdown.y = rect.bottom + 4
+    bindingDropdown.search = ''
+    bindingDropdown.focusIdx = -1
+    bindingDropdown.visible = true
+    nextTick(() => {
+      const dd = document.querySelector('.bt-dropdown') as HTMLElement
+      if (dd) {
+        dropdownEl = dd
+        const input = dd.querySelector('input') as HTMLInputElement
+        input?.focus()
+        adjustDropdownPosition(dd)
+      }
+    })
+  }
+
+  function adjustDropdownPosition(dd: HTMLElement) {
+    const vw = window.innerWidth, vh = window.innerHeight
+    const r = dd.getBoundingClientRect()
+    if (r.right > vw - 8) bindingDropdown.x = vw - r.width - 8
+    if (r.bottom > vh - 8) bindingDropdown.y = bindingDropdown.y - r.height - 28
+  }
+
+  function closeBindingDropdown() { bindingDropdown.visible = false; dropdownEl = null }
+
+  async function incrementalSave() {
+    if (!['awaiting_mapping', 'completed'].includes(task.value?.status ?? '')) return
+    const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
+    try {
+      await saveSpeakerMapping(taskId, mapping)
+      taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping } })
+    } catch (e) { console.error('incremental save mapping failed:', e) }
+  }
+
+  async function selectBinding(speakerId: number, uuid: string) {
+    if (uuid) currentBindingMapping[speakerId] = uuid
+    else delete currentBindingMapping[speakerId]
+    closeBindingDropdown()
+    await incrementalSave()
+  }
+
+  async function createAndBind(speakerId: number, suggestedName: string) {
+    const name = suggestedName || t('generating.speaker_default', { id: speakerId + 1 })
+    try {
+      const newSpk = await createSpeaker(name)
+      currentBindingMapping[speakerId] = newSpk.id
+      speakers.value.push(newSpk)
+      closeBindingDropdown()
+      await incrementalSave()
+    } catch (e) { console.error('create speaker failed:', e) }
+  }
+
+  async function confirmMapping() {
+    bindingBarHidden.value = true
+    switchTab('summary')
+    const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
+    try {
+      await submitSpeakerMapping(taskId, mapping)
+      taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping }, status: 'summarizing' })
+      startPolling()
+    } catch (e) { console.error('submit mapping failed:', e); bindingBarHidden.value = false }
+  }
+
+  function skipMapping() {
+    bindingBarHidden.value = true
+    bindBarDismissed.value = true
+    localStorage.setItem(`oms_bind_bar_dismissed:${taskId}`, 'true')
+  }
+
+  function onDropdownKeydown(e: KeyboardEvent) {
+    const items = dropdownSpeakers.value
+    const hasCreateBtn = bindingDropdown.search && items.length === 0
+    const total = hasCreateBtn ? 1 : items.length
+    if (e.key === 'ArrowDown') { e.preventDefault(); bindingDropdown.focusIdx = total > 0 ? (bindingDropdown.focusIdx + 1) % total : 0 }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); bindingDropdown.focusIdx = total > 0 ? (bindingDropdown.focusIdx <= 0 ? total - 1 : bindingDropdown.focusIdx - 1) : 0 }
+    else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (hasCreateBtn && bindingDropdown.focusIdx === 0) createAndBind(bindingDropdown.speakerId, bindingDropdown.search)
+      else if (bindingDropdown.focusIdx >= 0 && bindingDropdown.focusIdx < items.length) selectBinding(bindingDropdown.speakerId, items[bindingDropdown.focusIdx].id)
+    } else if (e.key === 'Escape') { e.preventDefault(); closeBindingDropdown() }
+  }
+
+  function onDocClickForDropdown(e: MouseEvent) {
+    if (bindingDropdown.visible && dropdownEl && !dropdownEl.contains(e.target as Node)) closeBindingDropdown()
+  }
+
+  return {
+    currentBindingMapping, bindingDropdown, bindingBarHidden,
+    bindingLegend, unboundCount, canBind, showBindingBar, dropdownSpeakers,
+    initBindingMapping, openBindingDropdown, closeBindingDropdown: closeBindingDropdown,
+    selectBinding, createAndBind, confirmMapping, skipMapping,
+    onDropdownKeydown, onDocClickForDropdown,
+  }
+}

@@ -116,7 +116,11 @@
   "onboarding": {
     "title": "关联说话人身份",
     "dont_show_again": "不再显示",
-    "start": "开始关联"
+    "start": "开始关联",
+    "demo_label_1": "说话人 1",
+    "demo_label_2": "说话人 2",
+    "demo_name_1": "张明",
+    "demo_name_2": "李婷"
   },
   "archive_dialog": {
     "title": "确认归档",

@@ -26,7 +26,10 @@
     "hide_title": "隐藏原文，仅保留章节与要点",
     "hidden_indicator": "已隐藏 {count} 条原文，当前仅显示章节与要点",
     "empty": "等待识别结果…",
-    "empty_hint": "开始说话后，识别内容将实时显示在这里"
+    "empty_hint": "开始说话后，识别内容将实时显示在这里",
+    "connect_failed": "转写连接已断开",
+    "reconnecting": "正在重新连接…（第 {attempt} 次）",
+    "retry": "重新连接"
   },
   "chapter": {
     "discussing": "讨论中",

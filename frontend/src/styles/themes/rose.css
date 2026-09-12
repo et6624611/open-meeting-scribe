@@ -26,6 +26,10 @@ html[data-theme="rose"] {
   --ok-soft: oklch(64% 0.16 155 / 0.10);
   --warn: oklch(75% 0.16 80);
   --warn-soft: oklch(75% 0.16 80 / 0.10);
+  --info: oklch(56% 0.14 200);
+  --info-soft: oklch(56% 0.14 200 / 0.10);
+  --purple: oklch(56% 0.12 320);
+  --purple-soft: oklch(56% 0.12 320 / 0.10);
   --proactive: oklch(62% 0.20 270);
   --proactive-soft: oklch(62% 0.20 270 / 0.08);
   --proactive-mid: oklch(62% 0.20 270 / 0.18);

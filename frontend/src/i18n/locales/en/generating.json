@@ -114,7 +114,11 @@
   "onboarding": {
     "title": "Link Speaker Identities",
     "dont_show_again": "Don't show again",
-    "start": "Start Linking"
+    "start": "Start Linking",
+    "demo_label_1": "Speaker 1",
+    "demo_label_2": "Speaker 2",
+    "demo_name_1": "Alex",
+    "demo_name_2": "Jamie"
   },
   "archive_dialog": {
     "title": "Confirm Archive",

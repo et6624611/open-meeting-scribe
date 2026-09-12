@@ -26,7 +26,10 @@
     "hide_title": "Hide transcript, keep only chapters and key points",
     "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
     "empty": "Waiting for recognition results...",
-    "empty_hint": "Start speaking and the recognized content will appear here in real time"
+    "empty_hint": "Start speaking and the recognized content will appear here in real time",
+    "connect_failed": "Transcription connection lost",
+    "reconnecting": "Reconnecting... (attempt {attempt})",
+    "retry": "Reconnect"
   },
   "chapter": {
     "discussing": "In Discussion",

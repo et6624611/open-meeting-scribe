@@ -65,9 +65,14 @@ export function useWebSocketTranscript() {
   }
 
   let ws: WebSocket | null = null
+  let wsRetryTimer: ReturnType<typeof setTimeout> | null = null
+  const wsRetryCount = ref(0)
+  const MAX_WS_RETRIES = 8
 
-  /** 连接 WebSocket */
+  /** 连接 WebSocket（支持自动重连） */
   function connect(taskId: string) {
+    // 清除旧的重连定时器
+    if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
     disconnect()
     error.value = ''
 
@@ -79,6 +84,9 @@ export function useWebSocketTranscript() {
 
     ws.onopen = () => {
       connected.value = true
+      // 连接成功，重置重连计数
+      wsRetryCount.value = 0
+      if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
     }
 
     ws.onmessage = (event) => {
@@ -97,6 +105,15 @@ export function useWebSocketTranscript() {
 
     ws.onclose = () => {
       connected.value = false
+      // 区分主动断开（disconnect() 已将 ws 置 null）和意外断开
+      if (!ws || wsRetryCount.value >= MAX_WS_RETRIES) return
+      // 指数退避重连：2s → 4s → 8s → 16s → 30s（上限）
+      wsRetryCount.value++
+      const delay = Math.min(2000 * Math.pow(2, wsRetryCount.value - 1), 30000)
+      console.warn(`[WS] 意外断开，${delay}ms 后第 ${wsRetryCount.value} 次重连...`)
+      wsRetryTimer = setTimeout(() => {
+        connect(taskId)
+      }, delay)
     }
   }
 
@@ -237,8 +254,11 @@ export function useWebSocketTranscript() {
     presenceWarning.value = null
   }
 
-  /** 断开连接 */
+  /** 断开连接（主动断开，不触发重连） */
   function disconnect() {
+    // 清除重连定时器
+    if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
+    wsRetryCount.value = 0
     if (ws) {
       ws.close()
       ws = null
@@ -277,7 +297,7 @@ export function useWebSocketTranscript() {
   return {
     lines, partialText, summary, chapters, connected, error,
     speakerCount, speakerNames, summaryCountdownSec, summaryPaused, volumeWarning,
-    presenceWarning, autoStopped,
+    presenceWarning, autoStopped, wsRetryCount,
     connect, disconnect, reset, sendHeartbeat, clearPresenceWarning, onSpeakerBound,
   }
 }

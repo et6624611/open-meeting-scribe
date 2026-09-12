@@ -153,3 +153,56 @@
   .topbar-new-btn span { display: none; }
   .topbar-new-btn { padding: 5px 8px; }
 }
+
+.topbar-title { font-size: var(--fs-13); color: var(--muted); }
+.topbar-title strong { color: var(--fg); font-weight: 500; }
+
+/* ─── Status bar + Usage ─── */
+/* ─── Status bar ─── */
+.status { border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.status .left, .status .right { display: flex; align-items: center; gap: var(--s-4); }
+.status .item { display: flex; align-items: center; gap: 6px; }
+.status .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+
+/* ─── Philosophy (inside status bar) ─── */
+.status .philosophy-text { font-size: 11px; color: var(--subtle); letter-spacing: 0.02em; font-family: var(--font-body); opacity: 0; transition: opacity 0.8s ease; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status .philosophy-text.is-visible { opacity: 1; }
+
+/* ─── Usage indicator (status bar) ─── */
+.status .usage-indicator { display: flex; align-items: center; gap: 6px; cursor: default; }
+.status .usage-indicator .usage-bar { width: 48px; height: 4px; border-radius: 2px; background: oklch(90% 0.01 250); overflow: hidden; }
+.status .usage-indicator .usage-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease, background 0.4s ease; }
+.status .usage-indicator .usage-bar-fill.level-ok { background: oklch(55% 0.15 155); }
+.status .usage-indicator .usage-bar-fill.level-low { background: oklch(65% 0.16 80); }
+.status .usage-indicator .usage-bar-fill.level-critical { background: oklch(55% 0.2 25); }
+.status .usage-indicator .usage-text { white-space: nowrap; }
+
+/* ─── Performance indicator (status bar) ─── */
+.status .perf-indicator { font-size: 10px; color: var(--subtle); opacity: 0.7; }
+
+/* ─── Usage panel (settings) ─── */
+.usage-panel { display: flex; flex-direction: column; gap: var(--s-5); }
+.usage-summary-row { display: flex; align-items: center; gap: var(--s-5); }
+.usage-stat { flex: 1; text-align: center; padding: var(--s-3) 0; }
+.usage-stat .stat-value { font-size: 24px; font-weight: 700; font-family: var(--font-mono); color: var(--fg); line-height: 1.2; }
+.usage-stat .stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; }
+.usage-progress { width: 100%; height: 8px; border-radius: 4px; background: oklch(92% 0.01 250); overflow: hidden; margin: var(--s-3) 0; }
+.usage-progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+.usage-tier-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-family: var(--font-mono); font-weight: 600; }
+.usage-tier-badge.tier-free { background: oklch(93% 0.01 250); color: var(--muted); }
+.usage-tier-badge.tier-personal { background: oklch(90% 0.06 220); color: oklch(40% 0.12 220); }
+.usage-tier-badge.tier-pro { background: oklch(88% 0.08 280); color: oklch(40% 0.15 280); }
+.usage-tier-badge.tier-team { background: oklch(88% 0.08 155); color: oklch(35% 0.12 155); }
+.usage-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; padding: var(--s-2) 0; }
+.usage-chart-bar { flex: 1; min-width: 3px; max-width: 12px; border-radius: 2px 2px 0 0; background: oklch(70% 0.08 220); transition: height 0.3s ease; position: relative; }
+.usage-chart-bar:hover { background: oklch(55% 0.12 220); }
+.usage-chart-bar:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 2px 6px; border-radius: 3px; font-size: 10px; font-family: var(--font-mono); white-space: nowrap; pointer-events: none; }
+.usage-not-metered { font-size: var(--fs-13); color: var(--muted); line-height: 1.6; padding: var(--s-3) 0; }
+
+/* ─── 持久录音胶囊 ─── */
+/* ─── 持久录音胶囊（顶部右侧） ─── */
+.rec-pill { display: none; align-items: center; gap: var(--s-2); padding: 3px 10px; border-radius: 999px; border: 1px solid oklch(from var(--rec) l c h / 0.3); background: var(--rec-soft); font-size: 11px; color: var(--rec); font-family: var(--font-mono); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.rec-pill.is-visible { display: inline-flex; }
+.rec-pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--rec); animation: blink 1.4s ease-in-out infinite; }
+.rec-pill:hover { background: oklch(from var(--rec) l c h / 0.18); border-color: oklch(from var(--rec) l c h / 0.45); }
+.rec-pill:active { background: oklch(from var(--rec) l c h / 0.25); }

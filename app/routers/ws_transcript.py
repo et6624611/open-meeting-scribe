@@ -1,0 +1,151 @@
+"""
+app/routers/ws_transcript.py — WebSocket 实时转写端点
+
+作者：王永亮
+创建：2026-09-12
+版本：1.0.0
+
+职责：
+  - WebSocket 实时转写端点（/ws/transcript/{task_id}）
+  - 历史回放（句子 + 总结 + 章节）
+  - 双向监听（队列消息 + 客户端心跳）
+
+从 app/routers/record.py 拆分而来。
+"""
+
+import asyncio
+import json
+import time
+import logging
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from app.store import (
+    realtime_queues, realtime_summarizers, realtime_chapter_generators,
+    realtime_full_transcripts, realtime_last_heartbeat, realtime_presence_scores,
+    realtime_silence_warnings,
+    resolve_realtime_speaker_name,
+)
+from core.i18n import _, set_current_locale
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.websocket("/ws/transcript/{task_id}")
+async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str = "zh_CN"):
+    """
+    实时转写 WebSocket。
+
+    前端在录音期间连接此端点，接收实时识别结果。
+    通过 ?locale=zh_CN 查询参数传递语言偏好。
+    消息格式（下行）：
+      {"type": "partial", "text": "...", "speaker_id": N, "speaker_name": "..."}    临时结果
+      {"type": "sentence", "text": "...", "speaker_id": N, "speaker_name": "..."}   定稿句子
+      {"type": "speaker_bound", "speaker_id": N, "speaker_name": "..."}             说话人绑定更新
+      {"type": "error", "message": "..."}       错误
+      {"type": "ended"}                         转写结束
+    """
+    await websocket.accept()
+    set_current_locale(locale)
+
+    queue = realtime_queues.get(task_id)
+    if not queue:
+        await websocket.send_json({"type": "error", "message": _("Task not found or not recording")})
+        await websocket.close()
+        return
+
+    logger.info(f"[WebSocket] 实时转写连接: task={task_id[:8]}")
+
+    # 回放全量历史句子
+    history = realtime_full_transcripts.get(task_id, [])
+    if history:
+        logger.info(f"[WebSocket] 回放历史: task={task_id[:8]}, {len(history)} 条句子")
+        for item in history:
+            sid = item.get("speaker_id", 0)
+            speaker_name = resolve_realtime_speaker_name(task_id, sid) if sid else ""
+            await websocket.send_json({
+                "type": "history", "text": item.get("text", ""),
+                "speaker_id": sid, "speaker_name": speaker_name,
+                "begin_time": item.get("begin_time", 0), "end_time": item.get("end_time", 0),
+            })
+
+    # 回放实时总结
+    summarizer = realtime_summarizers.get(task_id)
+    if summarizer:
+        current_summary = summarizer.get_final_summary()
+        if current_summary:
+            logger.info(f"[WebSocket] 回放实时总结: task={task_id[:8]}, {len(current_summary)} 字符")
+            await websocket.send_json({"type": "summary_update", "content": current_summary})
+        if summarizer.is_stopped:
+            await websocket.send_json({"type": "summary_status", "status": "stopped"})
+        elif summarizer.is_paused:
+            await websocket.send_json({"type": "summary_status", "status": "paused", "remaining": summarizer.get_remaining(), "interval": summarizer.interval})
+        elif summarizer.is_running:
+            await websocket.send_json({"type": "summary_status", "status": "idle", "remaining": summarizer.get_remaining(), "interval": summarizer.interval})
+
+    # 回放实时章节
+    chapter_gen = realtime_chapter_generators.get(task_id)
+    if chapter_gen:
+        current_chapters = chapter_gen.get_chapters()
+        if current_chapters:
+            logger.info(f"[WebSocket] 回放实时章节: task={task_id[:8]}, {len(current_chapters)} 个章节")
+            await websocket.send_json({"type": "chapters_update", "chapters": current_chapters})
+
+    # 初始化心跳时间戳
+    realtime_last_heartbeat[task_id] = time.time()
+
+    try:
+        while True:
+            queue_task = asyncio.create_task(queue.get())
+            receive_task = asyncio.create_task(websocket.receive_text())
+
+            done, pending = await asyncio.wait(
+                {queue_task, receive_task}, timeout=60.0, return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            for task in pending:
+                task.cancel()
+                try: await task
+                except (asyncio.CancelledError, Exception): pass
+
+            if not done:
+                logger.info(f"[WebSocket] 超时关闭: task={task_id[:8]}")
+                break
+
+            if queue_task in done:
+                try:
+                    msg = queue_task.result()
+                    await websocket.send_json(msg)
+                    if msg.get("type") == "ended":
+                        break
+                except Exception as e:
+                    logger.error(f"[WebSocket] 队列消息处理异常: {e}")
+                    break
+
+            if receive_task in done:
+                try:
+                    raw = receive_task.result()
+                    data = json.loads(raw)
+                    if data.get("type") == "heartbeat":
+                        realtime_last_heartbeat[task_id] = time.time()
+                        score = data.get("presence_score")
+                        if score is not None:
+                            realtime_presence_scores[task_id] = float(score)
+                        if data.get("user_ack"):
+                            realtime_silence_warnings[task_id] = 0
+                            logger.info(f"[静默检测] 用户确认继续录制: task={task_id[:8]}")
+                except WebSocketDisconnect:
+                    logger.info(f"[WebSocket] 客户端断开: task={task_id[:8]}")
+                    break
+                except Exception as e:
+                    logger.debug(f"[WebSocket] 客户端消息处理异常: {e}")
+
+    except WebSocketDisconnect:
+        logger.info(f"[WebSocket] 客户端断开: task={task_id[:8]}")
+    except Exception as e:
+        logger.error(f"[WebSocket] 异常: {e}")
+    finally:
+        realtime_last_heartbeat.pop(task_id, None)
+        logger.info(f"[WebSocket] 连接结束: task={task_id[:8]}")

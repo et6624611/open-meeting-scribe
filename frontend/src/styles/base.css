@@ -90,3 +90,48 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
 #global-tooltip.is-visible {
   opacity: 1;
 }
+
+/* ─── Z-INDEX 分层阶梯（全局唯一取值来源） ─── */
+:root {
+  --z-topbar: 100;
+  --z-popover: 500;
+  --z-modal: 1000;
+  --z-toast: 1100;
+  --radius-xl: 16px;
+}
+
+/* ─── 全局滚动条：hover 触发，默认隐藏 ─── */
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+
+/* 悬停时显示滚动条滑块 */
+.sb-history:hover::-webkit-scrollbar-thumb,
+.ai-feed:hover::-webkit-scrollbar-thumb,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb,
+.gen-content:hover::-webkit-scrollbar-thumb,
+.spk-transcript-area:hover::-webkit-scrollbar-thumb,
+.main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+.sb-history:hover::-webkit-scrollbar-thumb:hover,
+.ai-feed:hover::-webkit-scrollbar-thumb:hover,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
+.gen-content:hover::-webkit-scrollbar-thumb:hover,
+.spk-transcript-area:hover::-webkit-scrollbar-thumb:hover,
+.main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+
+/* Firefox hover 触发 */
+.sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
+.gen-content:hover, .spk-transcript-area:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
+
+/* ─── Utility ─── */
+.hidden { display: none !important; }
+
+/* ─── 减弱动效 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

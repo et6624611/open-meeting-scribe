@@ -60,8 +60,10 @@ admin_app = FastAPI(
 # ============================================================
 
 from app.routers import admin as admin_router
+from app.routers import admin_config as admin_config_router
 
 admin_app.include_router(admin_router.router)
+admin_app.include_router(admin_config_router.router)
 
 # ============================================================
 # 前端页面

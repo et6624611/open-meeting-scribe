@@ -70,7 +70,7 @@
       </div>
 
       <!-- 主内容区 -->
-      <main class="main" id="mainContent" tabindex="-1">
+      <main class="main" id="mainContent" tabindex="-1" ref="mainEl" :class="mainWidthClass">
         <router-view :key="$route.fullPath" />
       </main>
 
@@ -106,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
@@ -131,6 +131,9 @@ const userStore = useUserStore()
 const layout = useLayoutStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
+const mainEl = ref<HTMLElement | null>(null)
+const mainWidthClass = ref('')
+let mainResizeObs: ResizeObserver | null = null
 const philosophyText = ref('')
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
@@ -169,6 +172,24 @@ onMounted(async () => {
   checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
+
+  // ─── 主内容区宽度档位（ResizeObserver 驱动）───
+  // 与 LibraryView 同一套模式，用于触发 legacy-views.css / hotwords.css 中的响应式规则
+  function updateMainWidthClass(w: number) {
+    if (w <= 480) mainWidthClass.value = 'is-xnarrow'
+    else if (w <= 640) mainWidthClass.value = 'is-narrow'
+    else if (w <= 860) mainWidthClass.value = 'is-compact'
+    else mainWidthClass.value = ''
+  }
+  if (mainEl.value) {
+    updateMainWidthClass(mainEl.value.clientWidth)
+    mainResizeObs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        updateMainWidthClass(entry.contentRect.width)
+      }
+    })
+    mainResizeObs.observe(mainEl.value)
+  }
 })
 
 /** 检查后端是否有进行中的录音，自动恢复到录音页 */
@@ -228,6 +249,13 @@ onMounted(() => {
     observer.observe({ entryTypes: ['resource'] })
   } catch {
     // Fallback: Performance API not supported
+  }
+})
+
+onUnmounted(() => {
+  if (mainResizeObs) {
+    mainResizeObs.disconnect()
+    mainResizeObs = null
   }
 })
 </script>

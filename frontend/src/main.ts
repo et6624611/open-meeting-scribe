@@ -13,15 +13,24 @@ import './styles/themes/forest.css'
 import './styles/themes/ocean.css'
 import './styles/themes/lavender.css'
 import './styles/themes/rose.css'
-// 2. 旧版全量 CSS（过渡文件，确保所有视图视觉完整）
-import './styles/legacy-views.css'
-// 3. 新版模块化 CSS（覆盖 legacy 中的重复规则）
+// 2. 模块化 CSS（按功能域拆分）
 import './styles/base.css'
 import './styles/layout.css'
 import './styles/topbar.css'
 import './styles/sidebar.css'
 import './styles/ai-panel.css'
 import './styles/components.css'
+import './styles/recording.css'
+import './styles/recording-view.css'
+import './styles/speakers.css'
+import './styles/hotwords.css'
+import './styles/start-page.css'
+import './styles/meeting-view.css'
+import './styles/ai-canvas.css'
+import './styles/auth.css'
+import './styles/update-panel.css'
+import './styles/notes-editor.css'
+import './styles/summary-panel.css'
 
 // ─── 启动：先确保「初始语言」的语言包已加载，再挂载应用 ───
 // zh-CN 已在 i18n 模块静态内置（零延迟）；但 detectLocale() 可能返回 en

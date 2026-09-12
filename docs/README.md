@@ -3,7 +3,7 @@ title: docs 目录导航
 description: Open Meeting Scribe 文档中心索引，说明 docs/ 下各文件的定位、存储内容与「单一事实源」归属，帮助新人与 AI 快速定位该改哪份文档。
 tags: ["docs", "index", "navigation", "single-source-of-truth"]
 created_at: "2026-09-09"
-updated_at: "2026-09-09"
+updated_at: "2026-09-11"
 version: "1.0.0"
 author: "wangyongliang"
 status: "published"
@@ -51,16 +51,13 @@ docs/
 │   ├── README.md                # ADR 索引 + 新建模板
 │   └── 000X-*.md                # 各篇决策
 ├── design/                      # 界面设计
-│   ├── DESIGN_DECISIONS.md      # 界面设计决策与原则
-│   └── wireframes/              # HTML 线框原型
-└── prototypes/                  # 独立页面原型（HTML）
+│   └── DESIGN_DECISIONS.md      # 界面设计决策与原则
 ```
 
 ## 三、子目录说明
 
 - **`adr/`** — 架构决策记录。编号递增，不删不改旧记录，作废改状态为 `Superseded by ADR-xxxx`。索引与模板见 [`adr/README.md`](adr/README.md)。
-- **`design/`** — 界面设计。`DESIGN_DECISIONS.md` 记录设计原则与决策（布局、状态机、交互策略）；具体组件实现以 `frontend/src/` Vue 源码为准；`wireframes/` 存可视化 HTML 线框稿。
-- **`prototypes/`** — 具体页面的高保真 HTML 原型（如转写页、纪要页），可独立打开预览。
+- **`design/`** — 界面设计。`DESIGN_DECISIONS.md` 记录设计原则与决策（布局、状态机、交互策略）；具体组件实现以 `frontend/src/` Vue 源码为准。
 
 ## 四、与根目录文档的关系
 
