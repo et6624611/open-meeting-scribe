@@ -17,8 +17,20 @@
       </div>
     </div>
 
+    <!-- Tab 切换：全部 / 已归档 -->
+    <div class="lib-tabs">
+      <button class="lib-tab" :class="{ active: !taskStore.showArchived }" @click="switchTab(false)">
+        {{ t('library.tab_active') }}
+        <span class="lib-tab-count">{{ taskStore.activeTasks.length }}</span>
+      </button>
+      <button class="lib-tab" :class="{ active: taskStore.showArchived }" @click="switchTab(true)">
+        {{ t('library.tab_archived') }}
+        <span class="lib-tab-count">{{ taskStore.archivedTasks.length }}</span>
+      </button>
+    </div>
+
     <!-- 表格容器 -->
-    <div v-if="taskStore.groupedTasks.length > 0" class="table-container">
+    <div v-if="libGroupedTasks.length > 0" class="table-container">
       <!-- 列标题（仅在第一个分组上方显示一次） -->
       <div class="table-head">
         <div class="cell-checkbox">
@@ -50,7 +62,7 @@
 
       <!-- 按日期分组的表格内容 -->
       <div class="table-body">
-        <template v-for="group in taskStore.groupedTasks" :key="group.label">
+        <template v-for="group in libGroupedTasks" :key="group.label">
           <div class="table-group-header">{{ group.label }}</div>
           <div
             v-for="task in sortGroupTasks(group.tasks)"
@@ -105,8 +117,8 @@
     </div>
 
     <!-- 空状态 -->
-    <div v-if="taskStore.groupedTasks.length === 0 && !taskStore.loading" class="empty-state">
-      {{ taskStore.searchQuery ? t('library.empty_search') : t('library.empty') }}
+    <div v-if="libGroupedTasks.length === 0 && !taskStore.loading" class="empty-state">
+      {{ taskStore.searchQuery ? t('library.empty_search') : (taskStore.showArchived ? t('library.empty_archived') : t('library.empty')) }}
     </div>
 
     <!-- 批量操作栏 -->
@@ -114,7 +126,8 @@
       <span class="batch-count">{{ t('library.batch_count', { count: selectedIds.size }) }}</span>
       <div class="batch-spacer"></div>
       <button class="batch-btn" @click="batchExport">{{ t('library.batch_export') }}</button>
-      <button class="batch-btn" @click="batchArchive">{{ t('library.batch_archive') }}</button>
+      <button v-if="!taskStore.showArchived" class="batch-btn" @click="batchArchive">{{ t('library.batch_archive') }}</button>
+      <button v-else class="batch-btn" @click="batchUnarchive">{{ t('library.batch_unarchive') }}</button>
       <button class="batch-btn danger" @click="batchDelete">{{ t('library.batch_delete') }}</button>
       <button class="batch-close" @click="clearSelection" :title="t('library.batch_close')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -124,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
@@ -132,6 +145,7 @@ import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { useContainerSize } from '@/composables/useContainerSize'
 import type { Task, TaskStatus } from '@/api/types'
 
 const { t } = useI18n()
@@ -139,42 +153,73 @@ const router = useRouter()
 const taskStore = useTaskStore()
 const player = usePlayerStore()
 
-// ─── 宽度档位（ResizeObserver 驱动，与 is-compact/is-narrow/is-xnarrow 模式一致）───
+// ─── 宽度档位（统一 composable 驱动）───
 const libPageRef = ref<HTMLElement | null>(null)
-const widthClass = ref('')
-let resizeObs: ResizeObserver | null = null
-
-function updateWidthClass(w: number) {
-  if (w <= 480) widthClass.value = 'is-xnarrow'
-  else if (w <= 640) widthClass.value = 'is-narrow'
-  else if (w <= 860) widthClass.value = 'is-compact'
-  else widthClass.value = ''
-}
-
-onMounted(() => {
-  if (!libPageRef.value) return
-  resizeObs = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      updateWidthClass(entry.contentRect.width)
-    }
-  })
-  resizeObs.observe(libPageRef.value)
-  updateWidthClass(libPageRef.value.clientWidth)
-})
-
-onUnmounted(() => {
-  resizeObs?.disconnect()
-  resizeObs = null
-})
+const { widthClass } = useContainerSize(libPageRef)
 
 // ─── 选择状态 ───
 const selectedIds = ref<Set<string>>(new Set())
 const lastSelectedId = ref<string | null>(null)
 
+function switchTab(showArchived: boolean) {
+  taskStore.showArchived = showArchived
+  clearSelection()
+}
+
+/** 会议库专用分组：根据 showArchived 切换数据源，复用 store 的分组逻辑 */
+const libGroupedTasks = computed(() => {
+  const source = taskStore.showArchived ? taskStore.archivedTasks : taskStore.activeTasks
+  const q = taskStore.searchQuery.trim().toLowerCase()
+  const filtered = q
+    ? source.filter(t => {
+        const title = (t.title || t.audio_name || '').toLowerCase()
+        const summary = (t.summary || '').toLowerCase()
+        return title.includes(q) || summary.includes(q)
+      })
+    : source
+
+  // 复用 store 的分组逻辑（通过临时替换 filteredTasks 的数据源）
+  // 这里直接按 meeting_date 分组，与 store 保持一致
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86400000)
+  const dayOfWeek = (now.getDay() + 6) % 7
+  const thisWeekStart = new Date(today.getTime() - dayOfWeek * 86400000)
+  const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86400000)
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const groupOrder = ['今天', '昨天', '本周', '上周', '本月', '上个月', '更早']
+  const groups = new Map<string, { label: string; tasks: Task[]; isToday: boolean; sortKey: number }>()
+
+  for (const task of filtered) {
+    const dateStr = task.meeting_date || task.created_at?.slice(0, 10) || 'unknown'
+    const taskDate = new Date(dateStr + 'T00:00:00')
+    const taskDay = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate())
+    const ts = taskDay.getTime()
+    let label: string
+    let isToday = false
+    if (ts === today.getTime()) { label = '今天'; isToday = true }
+    else if (ts === yesterday.getTime()) { label = '昨天' }
+    else if (ts >= thisWeekStart.getTime()) { label = '本周' }
+    else if (ts >= lastWeekStart.getTime()) { label = '上周' }
+    else if (ts >= thisMonthStart.getTime()) { label = '本月' }
+    else if (ts >= lastMonthStart.getTime()) { label = '上个月' }
+    else { label = '更早' }
+    if (!groups.has(label)) {
+      groups.set(label, { label, tasks: [], isToday, sortKey: groupOrder.indexOf(label) })
+    }
+    groups.get(label)!.tasks.push(task)
+  }
+  for (const group of groups.values()) {
+    group.tasks.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+  }
+  return Array.from(groups.values()).filter(g => g.tasks.length > 0).sort((a, b) => a.sortKey - b.sortKey)
+})
+
 // 当前分组内所有可见的 task id 列表（用于 Shift 范围选择）
 const allVisibleIds = computed(() => {
   const ids: string[] = []
-  for (const group of taskStore.groupedTasks) {
+  for (const group of libGroupedTasks.value) {
     for (const task of group.tasks) {
       ids.push(task.task_id)
     }
@@ -272,7 +317,21 @@ function batchExport() {
 }
 
 function batchArchive() {
-  alert(t('library.archive_todo', { count: selectedIds.value.size }))
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length) return
+  for (const id of ids) {
+    taskStore.archiveTask(id).catch(e => console.error(`archive ${id} failed:`, e))
+  }
+  clearSelection()
+}
+
+async function batchUnarchive() {
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length) return
+  for (const id of ids) {
+    taskStore.unarchiveTask(id).catch(e => console.error(`unarchive ${id} failed:`, e))
+  }
+  clearSelection()
 }
 
 async function batchDelete() {
@@ -436,6 +495,53 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 .lib-search-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+
+/* ─── Tab 切换 ─── */
+.lib-tabs {
+  display: flex;
+  gap: var(--s-1);
+  margin-bottom: var(--s-4);
+}
+
+.lib-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lib-tab:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.lib-tab.active {
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: 0 1px 3px color-mix(in oklch, var(--fg) 8%, transparent);
+}
+
+.lib-tab-count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--subtle);
+  line-height: 1.4;
+}
+
+.lib-tab.active .lib-tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* ─── 表格容器 ─── */

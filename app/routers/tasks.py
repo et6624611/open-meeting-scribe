@@ -39,6 +39,10 @@ class TaskUpdate(BaseModel):
     project_id: Optional[str] = None  # 关联的项目 ID，传空字符串表示取消关联
 
 
+class BatchArchiveRequest(BaseModel):
+    task_ids: list[str]
+
+
 @router.post("/api/transcribe")
 async def create_transcribe_task(
     background_tasks: BackgroundTasks,
@@ -401,6 +405,41 @@ def get_task_sync_status(task_id: str):
             for f in sync_folders
         ],
     }
+
+
+@router.post("/api/tasks/{task_id}/archive")
+def archive_task(task_id: str):
+    """归档任务（标记 archived_at 时间戳）"""
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+    tasks[task_id]["archived_at"] = datetime.now().isoformat()
+    save_task_to_disk(task_id)
+    logger.info(f"[{task_id[:8]}] 任务已归档")
+    return tasks[task_id]
+
+
+@router.post("/api/tasks/{task_id}/unarchive")
+def unarchive_task(task_id: str):
+    """取消归档"""
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+    tasks[task_id]["archived_at"] = None
+    save_task_to_disk(task_id)
+    logger.info(f"[{task_id[:8]}] 任务已取消归档")
+    return tasks[task_id]
+
+
+@router.post("/api/tasks/batch-archive")
+def batch_archive_tasks(data: BatchArchiveRequest):
+    """批量归档任务"""
+    archived = []
+    for task_id in data.task_ids:
+        if task_id in tasks:
+            tasks[task_id]["archived_at"] = datetime.now().isoformat()
+            save_task_to_disk(task_id)
+            archived.append(task_id)
+    logger.info(f"批量归档 {len(archived)}/{len(data.task_ids)} 个任务")
+    return {"archived": len(archived)}
 
 
 @router.post("/api/tasks/{task_id}/sync-to-project")

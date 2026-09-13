@@ -228,7 +228,7 @@
 .gbb-close svg { width: 12px; height: 12px; }
 
 /* 说话人绑定引导弹窗（数据变化感知版） */
-.spk-onboarding-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: oklch(0% 0 0 / 0.4); display: flex; align-items: center; justify-content: center; animation: spk-ob-fadein 0.2s ease; }
+.spk-onboarding-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; animation: spk-ob-fadein 0.2s ease; }
 @keyframes spk-ob-fadein { from { opacity: 0; } to { opacity: 1; } }
 .spk-onboarding-overlay.hidden { display: none; }
 .spk-onboarding-card { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05); width: 480px; max-width: calc(100% - var(--s-6)); overflow: hidden; animation: spk-ob-cardin 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -282,7 +282,7 @@
 }
 
 /* ═══ 知识库关联引导弹窗 ═══ */
-.proj-onboarding-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: oklch(0% 0 0 / 0.4); display: flex; align-items: center; justify-content: center; animation: spk-ob-fadein 0.2s ease; }
+.proj-onboarding-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; animation: spk-ob-fadein 0.2s ease; }
 .proj-onboarding-card { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05); width: 480px; max-width: calc(100% - var(--s-6)); overflow: hidden; animation: spk-ob-cardin 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 /* 演示区 */
@@ -813,45 +813,6 @@
 .lib-quick-create:focus-within .lib-quick-create-hint {
   opacity: 1;
 }
-
-/* ── 新建会议向导 ─── */
-.wizard-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.45); display: grid; place-items: center; z-index: var(--z-modal); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-.wizard-overlay.is-open { opacity: 1; pointer-events: auto; }
-.wizard { background: var(--surface); border-radius: var(--radius-lg); width: 560px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px oklch(0% 0 0 / 0.2); }
-.wizard-head { display: flex; align-items: center; justify-content: space-between; padding: var(--s-5) var(--s-6); border-bottom: 1px solid var(--border); }
-.wizard-head h2 { font-size: var(--fs-18); font-weight: 600; margin: 0; letter-spacing: -0.01em; }
-.wizard-close { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; transition: all 0.12s; }
-.wizard-close:hover { background: var(--surface-2); color: var(--fg); }
-.wizard-stepper { display: flex; align-items: center; padding: var(--s-4) var(--s-6); border-bottom: 1px solid var(--border); gap: var(--s-2); }
-.wizard-step { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-12); color: var(--subtle); }
-.wizard-step .step-num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; border: 1.5px solid var(--border-strong); color: var(--subtle); transition: all 0.15s; }
-.wizard-step.is-active .step-num { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-.wizard-step.is-done .step-num { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
-.wizard-step.is-active .step-label { color: var(--fg); font-weight: 500; }
-.wizard-step.is-done .step-label { color: var(--fg); }
-.wizard-step-conn { flex: 1; height: 1px; background: var(--border); margin: 0 var(--s-1); }
-.wizard-step-conn.is-done { background: var(--ok); }
-.wizard-body { flex: 1; overflow-y: auto; padding: var(--s-6); }
-.wizard-foot { display: flex; align-items: center; justify-content: space-between; padding: var(--s-4) var(--s-6); border-top: 1px solid var(--border); background: var(--surface-2); }
-.wizard-foot .left { display: flex; gap: var(--s-2); }
-.wizard-foot .right { display: flex; gap: var(--s-2); }
-.wiz-fields { display: flex; flex-direction: column; gap: var(--s-4); }
-.wiz-field-row { display: flex; flex-direction: column; gap: var(--s-2); }
-.wiz-field-row label { font-size: var(--fs-12); font-weight: 500; color: var(--muted); }
-.wiz-field-row input, .wiz-field-row select { padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-13); outline: none; background: var(--surface); color: var(--fg); transition: border-color 0.15s; }
-.wiz-field-row input:focus, .wiz-field-row select:focus { border-color: var(--accent); box-shadow: var(--shadow-focus); }
-.wiz-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
-.wiz-source-card { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-5) var(--s-4); border: 1.5px solid var(--border); border-radius: var(--radius-lg); cursor: pointer; transition: all 0.15s; text-align: center; background: var(--surface); }
-.wiz-source-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.wiz-source-card.is-selected { border-color: var(--accent); background: var(--accent-soft); }
-.wiz-source-card .src-icon { width: 40px; height: 40px; border-radius: var(--radius); display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
-.wiz-source-card.is-selected .src-icon { background: var(--accent); color: var(--accent-fg); }
-.wiz-source-card .src-title { font-size: var(--fs-13); font-weight: 500; color: var(--fg); }
-.wiz-source-card .src-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
-.wiz-summary { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-4); background: var(--surface-2); border-radius: var(--radius-lg); border: 1px solid var(--border); }
-.wiz-summary-row { display: flex; align-items: center; gap: var(--s-3); font-size: var(--fs-13); }
-.wiz-summary-row .label { color: var(--muted); min-width: 72px; }
-.wiz-summary-row .value { color: var(--fg); font-weight: 500; }
 
 /* ── 响应式断点 ─── */
 /* 窄屏(≤1200px)：AI 面板未手动展开时默认折叠为窄条 */

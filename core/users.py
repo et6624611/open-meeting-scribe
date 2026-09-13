@@ -464,6 +464,38 @@ def set_user_subscription(
     return None
 
 
+# ── 隐私同意留痕 ──
+
+
+def record_privacy_consent(user_id: str) -> bool:
+    """记录用户隐私同意时间戳。
+
+    仅对 SMS 用户生效（共享 proxy 场景需要服务端留痕免责）。
+    其他用户（自带 Key / 本地）无需服务端留痕。
+
+    Returns:
+        True = 成功记录；False = 用户不存在或非 SMS 用户
+    """
+    data = _load_user_data()
+    for user in data.get("users", []):
+        if user["id"] == user_id:
+            if user.get("provider") != "sms":
+                return False
+            user["privacy_consent_at"] = datetime.now(timezone.utc).isoformat()
+            _save_user_data(data)
+            logger.info(f"隐私同意已记录: user={user_id[:8]}")
+            return True
+    return False
+
+
+def get_privacy_consent_at(user_id: str) -> str | None:
+    """获取用户隐私同意时间戳，未同意返回 None"""
+    user = get_user_by_id(user_id)
+    if not user:
+        return None
+    return user.get("privacy_consent_at")
+
+
 # ── 声纹偏好 ──
 
 

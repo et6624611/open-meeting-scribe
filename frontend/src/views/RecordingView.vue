@@ -29,13 +29,6 @@
         </button>
       </div>
 
-      <!-- 隐私警告横幅 -->
-      <div class="rec-privacy-warning" v-if="showPrivacyBanner">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <span>{{ t('recording.privacy_banner') }}</span>
-        <button class="rec-volume-dismiss" @click="showPrivacyBanner = false">&times;</button>
-      </div>
-
       <!-- 音量警告 -->
       <div class="rec-volume-warning" v-if="ws.volumeWarning.value">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
@@ -209,7 +202,7 @@
     />
 
     <!-- 放弃录音确认弹窗 -->
-    <div class="abandon-overlay" :class="{ 'is-open': showAbandon }" v-if="showAbandon">
+    <div class="abandon-overlay" data-vue-overlay :class="{ 'is-open': showAbandon }" v-if="showAbandon">
       <div class="abandon-dialog">
         <div class="abandon-dialog-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
         <div class="abandon-dialog-title">{{ t('recording.abandon_dialog.title') }}</div>
@@ -235,6 +228,7 @@ import { useLayoutStore } from '@/stores/layout'
 import { useUserStore } from '@/stores/user'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useEscClose } from '@/composables/useEscClose'
 import { usePresenceDetection } from '@/composables/usePresenceDetection'
 import { useRecordingNotes } from '@/composables/useRecordingNotes'
 import { useTranslation } from '@/composables/useTranslation'
@@ -315,7 +309,7 @@ const ending = ref(false)
 const stopFailed = ref(false)
 const stopErrorMsg = ref('')
 const showAbandon = ref(false)
-const showPrivacyBanner = ref(true)
+useEscClose(showAbandon, () => { showAbandon.value = false })
 
 // 弹出菜单
 const recMoreBtn = ref<HTMLElement | null>(null)

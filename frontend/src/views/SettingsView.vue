@@ -1,18 +1,50 @@
 <template>
-  <div>
-    <div class="main-head">
-      <h1>{{ t('settings.title') }}</h1>
-      <p class="sub">{{ t('settings.subtitle') }}</p>
-    </div>
+  <div class="settings-layout">
+    <!-- 左栏：类别导航 -->
+    <nav class="settings-nav">
+      <h1 class="settings-nav-title">{{ t('settings.title') }}</h1>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        {{ t('settings.cat_account') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'services' }" @click="activeCategory = 'services'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        {{ t('settings.cat_services') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'transcription' }" @click="activeCategory = 'transcription'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        {{ t('settings.cat_transcription') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'appearance' }" @click="activeCategory = 'appearance'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+        {{ t('settings.cat_appearance') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'features' }" @click="activeCategory = 'features'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        {{ t('settings.cat_features') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'prompts' }" @click="activeCategory = 'prompts'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        {{ t('settings.cat_prompts') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'system' }" @click="activeCategory = 'system'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1.1a1.7 1.7 0 0 0-1.8.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1.1a2 2 0 1 1 2.8 2.8l.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        {{ t('settings.cat_system') }}
+      </button>
+    </nav>
 
-    <!-- 隐私提示条 -->
-    <div class="settings-privacy-bar" v-if="showPrivacyNotice">
+    <!-- 右栏：内容区 -->
+    <div class="settings-content">
+
+    <!-- 数据安全说明入口（静态，不可关闭） -->
+    <div class="settings-privacy-bar">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       <span>{{ t('settings.privacy_notice.text') }}</span>
       <a class="settings-privacy-link" href="https://github.com/et6624611/open-meeting-scribe/blob/main/SECURITY.md" target="_blank" rel="noopener">{{ t('settings.privacy_notice.learn_more') }}</a>
-      <button class="rec-volume-dismiss" @click="showPrivacyNotice = false">&times;</button>
     </div>
 
+    <!-- ═══ 账户 ═══ -->
+    <div v-show="activeCategory === 'account'">
     <!-- 账户信息 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.account') }}</h2>
@@ -28,7 +60,10 @@
         <button class="btn btn-primary" @click="showLogin">{{ t('settings.login') }}</button>
       </div>
     </div>
+    </div>
 
+    <!-- ═══ 服务 ═══ -->
+    <div v-show="activeCategory === 'services'">
     <!-- API 配置 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.api_config') }}</h2>
@@ -97,7 +132,10 @@
         <input v-model="settings.voiceprint!.cloud_api_key" type="password" class="settings-input" :placeholder="t('settings.voiceprint_cloud_api_key_placeholder')" />
       </div>
     </div>
+    </div>
 
+    <!-- ═══ 转写 ═══ -->
+    <div v-show="activeCategory === 'transcription'">
     <!-- 说话人分离 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.diarization') }}</h2>
@@ -140,7 +178,10 @@
         <input v-model="settings.output_dir" class="settings-input" :placeholder="t('settings.output_dir_placeholder')" />
       </div>
     </div>
+    </div>
 
+    <!-- ═══ 外观 ═══ -->
+    <div v-show="activeCategory === 'appearance'">
     <!-- 主题 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.appearance') }}</h2>
@@ -196,7 +237,10 @@
         >{{ lang.label }}</button>
       </div>
     </div>
+    </div>
 
+    <!-- ═══ 功能 ═══ -->
+    <div v-show="activeCategory === 'features'">
     <!-- 功能开关 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.features') }}</h2>
@@ -286,10 +330,14 @@
         </div>
       </div>
     </div>
+    </div>
+
+    <!-- ═══ 提示词 ═══ -->
+    <div v-show="activeCategory === 'prompts'">
     <!-- 系统提示词 -->
     <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.system_prompts') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.system_prompts_desc') }}</p>
+      <h2 class="settings-title">{{ t('settings.prompts_title') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.prompts_desc') }}</p>
       <div class="prompt-list">
         <div v-for="(item, name) in systemPrompts" :key="name" class="prompt-item">
           <div class="prompt-item-header">
@@ -305,7 +353,10 @@
         <p v-if="!Object.keys(systemPrompts).length" class="settings-empty">—</p>
       </div>
     </div>
+    </div>
 
+    <!-- ═══ 系统 ═══ -->
+    <div v-show="activeCategory === 'system'">
     <!-- CLI 命令参考 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.cli_reference') }}</h2>
@@ -410,7 +461,10 @@
         <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">{{ t('settings.cloud_mode_hint') }}</p>
       </div>
     </div>
-  </div>
+    </div>
+
+    </div><!-- .settings-content -->
+  </div><!-- .settings-layout -->
 </template>
 
 <script setup lang="ts">
@@ -430,7 +484,8 @@ const userStore = useUserStore()
 const themeStore = useThemeStore()
 const watermarkStore = useWatermarkStore()
 
-const showPrivacyNotice = ref(true)
+/** 当前选中的设置类别 */
+const activeCategory = ref<string>('account')
 
 // ─── 水印氛围 ───
 const wmEnabled = computed(() => watermarkStore.enabled)
@@ -661,6 +716,16 @@ async function loadCliReference() {
 </script>
 
 <style scoped>
+/* ─── 两栏布局 ─── */
+.settings-layout { display: flex; height: 100%; min-height: 0; }
+.settings-nav { flex: 0 0 160px; display: flex; flex-direction: column; gap: 2px; padding: var(--s-3) var(--s-2); border-right: 1px solid var(--border); overflow-y: auto; }
+.settings-nav-title { font-size: 15px; font-weight: 600; padding: var(--s-2) var(--s-2); margin-bottom: var(--s-2); }
+.settings-nav-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-2); border: none; background: none; color: var(--fg); font-size: 13px; cursor: pointer; text-align: left; border-radius: var(--radius-sm); transition: background 0.12s, color 0.12s; width: 100%; }
+.settings-nav-item:hover { background: var(--surface-2); }
+.settings-nav-item.is-active { background: var(--surface-3, var(--surface-2)); color: var(--accent); font-weight: 500; }
+.settings-nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; padding: var(--s-4) var(--s-6); }
+
 .settings-section { margin-bottom: var(--s-7); }
 .settings-title { font-size: 16px; font-weight: 600; margin-bottom: var(--s-3); padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
 .settings-account { display: flex; align-items: center; gap: var(--s-3); }

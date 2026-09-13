@@ -55,9 +55,9 @@
     <!-- 隐藏的文件输入 -->
     <input type="file" ref="fileInputRef" accept="audio/*,video/*" style="display:none" @change="onFileSelected">
 
-    <!-- 首次启动隐私声明弹窗 -->
+    <!-- 隐私同意弹窗（首次录音/上传时强制显示，确认后不再出现） -->
     <Teleport to="body">
-      <div class="privacy-overlay" v-if="!acknowledged">
+      <div class="privacy-overlay" v-if="showConsentDialog" @click.self="cancelConsent">
         <div class="privacy-dialog">
           <div class="privacy-dialog-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -75,59 +75,17 @@
             <div class="privacy-dialog-warn">{{ t('start.privacy.disclaimer_warn') }}</div>
             <div class="privacy-dialog-region">{{ t('start.privacy.disclaimer_region') }}</div>
             <div class="privacy-dialog-prohibit">{{ t('start.privacy.disclaimer_prohibit') }}</div>
+            <div class="privacy-dialog-checklist">
+              <label class="privacy-dialog-check-item privacy-dialog-check-label">
+                <input type="checkbox" v-model="participantConfirmed" />
+                <span>{{ t('start.privacy.check_participants') }}</span>
+              </label>
+            </div>
             <div class="privacy-dialog-detail">{{ t('start.privacy.disclaimer_detail') }}</div>
           </div>
           <div class="privacy-dialog-actions">
-            <button class="privacy-dialog-btn-primary" @click="acknowledge">{{ t('start.privacy.disclaimer_acknowledge') }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- 录音前确认弹窗 -->
-    <Teleport to="body">
-      <div class="privacy-overlay" v-if="showRecordConfirm" @click.self="showRecordConfirm = false">
-        <div class="privacy-dialog">
-          <div class="privacy-dialog-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div class="privacy-dialog-title">{{ t('start.privacy.record_confirm_title') }}</div>
-          <div class="privacy-dialog-desc">{{ t('start.privacy.record_confirm_desc') }}</div>
-          <div class="privacy-dialog-checklist-title">{{ t('start.privacy.record_confirm_checklist_title') }}</div>
-          <div class="privacy-dialog-checklist">
-            <div class="privacy-dialog-check-item">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-              {{ t('start.privacy.check_state_secrets') }}
-            </div>
-            <div class="privacy-dialog-check-item">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-              {{ t('start.privacy.check_trade_secrets') }}
-            </div>
-            <div class="privacy-dialog-check-item">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-              {{ t('start.privacy.check_personal_privacy') }}
-            </div>
-          </div>
-          <div class="privacy-dialog-actions">
-            <button class="privacy-dialog-btn-cancel" @click="showRecordConfirm = false">{{ t('common.action.cancel') }}</button>
-            <button class="privacy-dialog-btn-primary" @click="confirmStartRecord">{{ t('start.privacy.confirm_start') }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- 文件上传确认弹窗 -->
-    <Teleport to="body">
-      <div class="privacy-overlay" v-if="showUploadConfirm" @click.self="showUploadConfirm = false">
-        <div class="privacy-dialog">
-          <div class="privacy-dialog-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          </div>
-          <div class="privacy-dialog-title">{{ t('start.privacy.upload_confirm_title') }}</div>
-          <div class="privacy-dialog-desc">{{ t('start.privacy.upload_confirm_desc') }}</div>
-          <div class="privacy-dialog-actions">
-            <button class="privacy-dialog-btn-cancel" @click="showUploadConfirm = false">{{ t('common.action.cancel') }}</button>
-            <button class="privacy-dialog-btn-primary" @click="confirmUpload">{{ t('start.privacy.confirm_upload') }}</button>
+            <button class="privacy-dialog-btn-cancel" @click="cancelConsent">{{ t('common.action.cancel') }}</button>
+            <button class="privacy-dialog-btn-primary" :disabled="!participantConfirmed" @click="confirmConsent">{{ t('start.privacy.disclaimer_acknowledge') }}</button>
           </div>
         </div>
       </div>
@@ -146,16 +104,45 @@ import { submitTranscribe } from '@/api/tasks'
 import { getRecordStatus } from '@/api/record'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
+import { useEscClose } from '@/composables/useEscClose'
 
 const { t } = useI18n()
 const router = useRouter()
 const taskStore = useTaskStore()
 const recorder = useRecorder()
-const { acknowledged, acknowledge } = usePrivacyDisclaimer()
+const { acknowledged, acknowledge, init: initPrivacy } = usePrivacyDisclaimer()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const showRecordConfirm = ref(false)
-const showUploadConfirm = ref(false)
+const showConsentDialog = ref(false)
+const participantConfirmed = ref(false)
+let pendingAction: (() => void) | null = null
+
+useEscClose(showConsentDialog, () => { cancelConsent() })
+
+function cancelConsent() {
+  showConsentDialog.value = false
+  pendingAction = null
+  participantConfirmed.value = false
+}
+
+async function confirmConsent() {
+  showConsentDialog.value = false
+  participantConfirmed.value = false
+  await acknowledge()
+  if (pendingAction) {
+    const action = pendingAction
+    pendingAction = null
+    action()
+  }
+}
+
+/** 检查同意状态，未同意则弹窗并暂存操作 */
+function requireConsent(action: () => void): boolean {
+  if (acknowledged.value) return true
+  pendingAction = action
+  showConsentDialog.value = true
+  return false
+}
 
 // ─── 图标组件 ───
 const MicIcon = {
@@ -234,19 +221,46 @@ const recElapsed = ref('00:00')
 let recTimer: ReturnType<typeof setInterval> | null = null
 let recElapsedSec = 0
 
-function tickRecTimer() {
-  recElapsedSec++
-  const h = Math.floor(recElapsedSec / 3600)
-  const m = Math.floor((recElapsedSec % 3600) / 60)
-  const s = recElapsedSec % 60
-  recElapsed.value = h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+function formatRecTime(totalSec: number): string {
+  const s = Math.floor(totalSec)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
-watch(recTask, (task) => {
-  if (task && task.status !== 'paused') {
-    if (!recTimer) recTimer = setInterval(tickRecTimer, 1000)
+/** 基于任务 created_at 计算已过秒数（页面刷新后仍能还原） */
+function calcElapsedFromTask(task: { created_at?: string }): number {
+  if (!task?.created_at) return 0
+  const created = new Date(task.created_at).getTime()
+  return Math.max(0, Math.floor((Date.now() - created) / 1000))
+}
+
+function tickRecTimer() {
+  recElapsedSec++
+  recElapsed.value = formatRecTime(recElapsedSec)
+}
+
+watch(recTask, async (task) => {
+  if (task) {
+    // 优先从后端获取精确已过时长（已扣除暂停），失败则回退到 created_at 估算
+    try {
+      const status = await getRecordStatus()
+      if (status.recording && status.elapsed != null) {
+        recElapsedSec = Math.floor(status.elapsed)
+      } else {
+        recElapsedSec = calcElapsedFromTask(task)
+      }
+    } catch {
+      recElapsedSec = calcElapsedFromTask(task)
+    }
+    recElapsed.value = formatRecTime(recElapsedSec)
+    if (task.status !== 'paused') {
+      if (!recTimer) recTimer = setInterval(tickRecTimer, 1000)
+    }
+    // 暂停中：冻结计时器，保留已过时长
   } else {
     if (recTimer) { clearInterval(recTimer); recTimer = null }
     recElapsedSec = 0
@@ -262,26 +276,22 @@ function jumpToRecording() {
 }
 
 function onStartRecord() {
-  showRecordConfirm.value = true
+  if (!requireConsent(() => doStartRecord())) return
+  doStartRecord()
 }
 
-async function confirmStartRecord() {
-  showRecordConfirm.value = false
-  try {
-    const data = await recorder.startRecording()
+function doStartRecord() {
+  recorder.startRecording().then(async (data) => {
     if (data?.task_id) {
-      // [状态同步] 录音成功后刷新任务列表，否则侧边栏不显示新录音
       await taskStore.loadTasks()
       router.push({ name: 'recording', params: { taskId: data.task_id } })
     }
-  } catch (e: unknown) {
+  }).catch(async (e: unknown) => {
     const err = e as { response?: { data?: { detail?: string }; status?: number } }
-    // 后端提示"已在录制中"时，自动导航到已有录音页
     if (err.response?.status === 400) {
       try {
         const status = await getRecordStatus()
         if (status.recording && status.task_id) {
-          // [状态同步] 恢复活跃录音时刷新任务列表
           await taskStore.loadTasks()
           taskStore.selectTask(status.task_id)
           router.push({ name: 'recording', params: { taskId: status.task_id } })
@@ -290,15 +300,15 @@ async function confirmStartRecord() {
       } catch { /* 静默 */ }
     }
     alert(err.response?.data?.detail || t('start.errors.start_failed'))
-  }
+  })
 }
 
 function onUploadClick() {
-  showUploadConfirm.value = true
+  if (!requireConsent(() => doUpload())) return
+  doUpload()
 }
 
-function confirmUpload() {
-  showUploadConfirm.value = false
+function doUpload() {
   fileInputRef.value?.click()
 }
 
@@ -359,6 +369,7 @@ function formatStatus(status: string): string {
 
 // ── 全局快捷键事件（由 useKeyboardShortcuts 分发） ───
 onMounted(() => {
+  initPrivacy()
   window.addEventListener('global-start-record', onStartRecord)
   window.addEventListener('global-start-upload', onUploadClick)
 })

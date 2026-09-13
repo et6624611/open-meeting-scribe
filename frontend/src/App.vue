@@ -61,6 +61,9 @@
 
     <!-- 三栏主体 -->
     <div class="body" :class="bodyClasses">
+      <!-- 常驻导航轨 -->
+      <ActivityRail />
+
       <!-- 侧边栏 -->
       <Sidebar />
 
@@ -106,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
@@ -118,9 +121,11 @@ import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
+import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
 import TopBar from '@/components/layout/TopBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
+import ActivityRail from '@/components/layout/ActivityRail.vue'
 import AIPanel from '@/components/layout/AIPanel.vue'
 import LoginModal from '@/components/modals/LoginModal.vue'
 
@@ -134,8 +139,7 @@ const watermark = useWatermarkStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
-const mainWidthClass = ref('')
-let mainResizeObs: ResizeObserver | null = null
+const { widthClass: mainWidthClass } = useContainerSize(mainEl)
 const philosophyText = ref('')
 const philosophyChars = computed(() => philosophyText.value.split(''))
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
@@ -176,23 +180,8 @@ onMounted(async () => {
   loadAnnouncements()
   loadPhilosophy()
 
-  // ─── 主内容区宽度档位（ResizeObserver 驱动）───
-  // 与 LibraryView 同一套模式，用于触发 legacy-views.css / hotwords.css 中的响应式规则
-  function updateMainWidthClass(w: number) {
-    if (w <= 480) mainWidthClass.value = 'is-xnarrow'
-    else if (w <= 640) mainWidthClass.value = 'is-narrow'
-    else if (w <= 860) mainWidthClass.value = 'is-compact'
-    else mainWidthClass.value = ''
-  }
-  if (mainEl.value) {
-    updateMainWidthClass(mainEl.value.clientWidth)
-    mainResizeObs = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        updateMainWidthClass(entry.contentRect.width)
-      }
-    })
-    mainResizeObs.observe(mainEl.value)
-  }
+  // ─── 主内容区宽度档位（统一 composable 驱动）───
+  // 断点与 CSS 类名由 useContainerSize 统一管理，触发 legacy-views.css 等响应式规则
 })
 
 /** 检查后端是否有进行中的录音，自动恢复到录音页 */
@@ -260,10 +249,5 @@ onMounted(() => {
   }
 })
 
-onUnmounted(() => {
-  if (mainResizeObs) {
-    mainResizeObs.disconnect()
-    mainResizeObs = null
-  }
-})
+
 </script>

@@ -18,15 +18,6 @@
     "disclaimer_prohibit": "请勿用于处理国家机密、核心商业机密或高度敏感个人隐私的会议内容。",
     "disclaimer_acknowledge": "我已了解，继续使用",
     "disclaimer_detail": "详细数据流向说明请查阅 SECURITY.md。",
-    "record_confirm_title": "即将开始录音",
-    "record_confirm_desc": "录音期间，音频数据将实时传输至云端 ASR 服务进行语音识别。录音结束后，转写全文将发送至 LLM 服务生成会议纪要。",
-    "record_confirm_checklist_title": "请确认本次会议内容不包含：",
-    "check_state_secrets": "国家机密或涉密信息",
-    "check_trade_secrets": "核心商业机密",
-    "check_personal_privacy": "高度敏感的个人隐私",
-    "confirm_start": "确认开始",
-    "upload_confirm_title": "即将上传文件",
-    "upload_confirm_desc": "该音频文件将上传至云端进行转写处理（临时存储 48h 后自动删除）。请确认文件内容不包含敏感信息。",
-    "confirm_upload": "确认上传"
+    "check_participants": "我确认已告知所有参会人本次录音将进行云端 AI 处理"
   }
 }

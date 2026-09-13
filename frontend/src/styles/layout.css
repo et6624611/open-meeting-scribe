@@ -28,7 +28,6 @@ body.is-divider-dragging .divider-line { width: 2px; background: var(--accent); 
 .settings-privacy-bar span { flex: 1; }
 .settings-privacy-link { color: var(--accent); text-decoration: none; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
 .settings-privacy-link:hover { text-decoration: underline; }
-
 /* ─── 水印氛围层（z-index: 15 — 面板之上、弹窗之下，确保光晕可见） ─── */
 .wm-layer { position: fixed; inset: 0; z-index: 15; pointer-events: none; overflow: hidden; transition: opacity 0.3s ease; }
 .wm-layer.is-hidden { opacity: 0; }

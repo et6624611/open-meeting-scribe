@@ -204,11 +204,6 @@
 .rec-volume-dismiss { background: none; border: none; color: inherit; cursor: pointer; font-size: 16px; opacity: 0.5; padding: 0 2px; line-height: 1; }
 .rec-volume-dismiss:hover { opacity: 1; }
 
-/* ─── 隐私警告横幅 ─── */
-.rec-privacy-warning { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: oklch(96% 0.03 25); border-bottom: 1px solid oklch(90% 0.04 25); color: oklch(40% 0.1 25); font-size: 12px; flex-shrink: 0; }
-.rec-privacy-warning svg { flex-shrink: 0; opacity: 0.7; }
-.rec-privacy-warning span { flex: 1; }
-
 /* ─── 存在性警告（静默检测）─── */
 .rec-presence-warning { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: oklch(95% 0.04 250); border-bottom: 1px solid oklch(88% 0.05 250); color: oklch(35% 0.1 250); font-size: 12px; flex-shrink: 0; }
 .rec-presence-warning svg { flex-shrink: 0; opacity: 0.7; }
@@ -221,8 +216,10 @@
 .rec-presence-btn-stop:hover { background: oklch(90% 0.05 25); border-color: oklch(75% 0.1 25); }
 
 /* 存在性警告紧急模态框 */
-.rec-presence-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.4); display: grid; place-items: center; z-index: 1000; }
-.rec-presence-dialog { background: var(--bg); border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.2); text-align: center; }
+.rec-presence-overlay { position: fixed; inset: 0; background: var(--overlay-bg); display: grid; place-items: center; z-index: var(--z-modal); animation: oms-overlay-in 0.2s ease; }
+.rec-presence-dialog { background: var(--bg); border-radius: 12px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.2); text-align: center; animation: oms-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes oms-overlay-in { from { opacity: 0; } }
+@keyframes oms-card-in { from { opacity: 0; transform: translateY(8px); } }
 .rec-presence-dialog-icon { margin-bottom: 12px; color: var(--warn); }
 .rec-presence-dialog-title { font-size: 15px; font-weight: 600; color: var(--fg); margin-bottom: 8px; }
 .rec-presence-dialog-desc { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
@@ -393,9 +390,10 @@
 .more-menu-item.danger:hover { background: oklch(from var(--rec) l c h / 0.14); }
 
 /* 放弃录音确认弹窗 */
-.abandon-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.35); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.abandon-overlay { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 .abandon-overlay.is-open { opacity: 1; pointer-events: auto; }
-.abandon-dialog { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 360px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.12); }
+.abandon-overlay.is-open .abandon-dialog { transform: translateY(0); opacity: 1; }
+.abandon-dialog { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 360px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.12); transform: translateY(8px); opacity: 0; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
 .abandon-dialog-icon { width: 40px; height: 40px; border-radius: 50%; background: oklch(from var(--rec) l c h / 0.1); display: grid; place-items: center; color: var(--rec); margin-bottom: 12px; }
 .abandon-dialog-title { font-size: var(--fs-16); font-weight: 600; color: var(--fg); margin-bottom: 6px; }
 .abandon-dialog-desc { font-size: var(--fs-13); color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
@@ -408,7 +406,7 @@
 
 /* 录音结束过渡态 */
 .rec-content-area.is-ending { position: relative; }
-.rec-ending-overlay { position: absolute; inset: 0; background: var(--bg); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); z-index: 10; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+.rec-ending-overlay { position: absolute; inset: 0; background: oklch(from var(--bg) l a b / 0.7); backdrop-filter: var(--glass-blur-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); z-index: 10; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
 .rec-main.is-ending .rec-ending-overlay { opacity: 1; pointer-events: auto; }
 .rec-ending-spinner { width: 32px; height: 32px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: rec-end-spin 0.8s linear infinite; }
 @keyframes rec-end-spin { to { transform: rotate(360deg); } }

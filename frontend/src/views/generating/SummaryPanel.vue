@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MdBlockEditor from '@/components/MdBlockEditor.vue'
 import type { Chapter } from '@/api/types'
@@ -95,7 +95,9 @@ function formatTimeMs(ms: number): string {
 
 const loading = computed(() => props.processing)
 
+const summaryEditor = ref<InstanceType<typeof MdBlockEditor> | null>(null)
+
 defineExpose({
-  // 暴露 editor 实例供父组件调用 updateBlock
+  updateBlock: (blockIndex: number, newSource: string) => summaryEditor.value?.updateBlock(blockIndex, newSource),
 })
 </script>

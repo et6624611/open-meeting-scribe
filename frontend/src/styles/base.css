@@ -98,6 +98,21 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   --z-modal: 1000;
   --z-toast: 1100;
   --radius-xl: 16px;
+
+  /* ── 蒙版体系 token ── */
+  --overlay-bg: oklch(0% 0 0 / 0.4);        /* 标准 Modal 蒙版背景（硬阻断） */
+  --overlay-enter: 0.2s ease;               /* 蒙版淡入时长 */
+  --card-enter: 0.25s cubic-bezier(0.16, 1, 0.3, 1); /* 卡片入场时长 */
+
+  /* ── 毛玻璃体系 token ──
+     blur 值按「临时过渡 → 浮层卡片 → 常驻结构」三级递增，
+     --glass-bg 由各主题文件覆盖以适配明暗底色。 */
+  --glass-blur-sm: blur(4px);    /* 过渡态（录音结束等临时遮罩） */
+  --glass-blur-md: blur(8px);    /* 浮层卡片（AI 上下文气泡等） */
+  --glass-blur-lg: blur(12px);   /* 常驻结构（顶栏、侧栏） */
+  --modal-width-sm: 400px;   /* 确认弹窗 */
+  --modal-width-md: 480px;   /* 标准弹窗、引导弹窗 */
+  --modal-width-lg: 560px;   /* 向导 */
 }
 
 /* ─── 全局滚动条：hover 触发，默认隐藏 ─── */
@@ -134,4 +149,57 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ═══ 统一蒙版基础类 ═══
+   所有 L3 硬阻断 Modal 复用此基础类，确保蒙版背景、z-index、
+   入场动效、卡片样式全局一致。业务弹窗通过叠加业务类名
+   （如 .wizard、.spk-onboarding-card）覆盖尺寸与内部布局。 */
+
+/* 蒙版层：全屏半透明背景 */
+.oms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--overlay-bg);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--overlay-enter);
+}
+.oms-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 卡片层：居中内容容器 */
+.oms-overlay-card {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05);
+  width: var(--modal-width-md);
+  max-width: calc(100% - var(--s-6));
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 入场：从下方 8px 滑入 + 淡入 */
+  transform: translateY(8px);
+  opacity: 0;
+  transition: transform var(--card-enter), opacity var(--card-enter);
+}
+.oms-overlay.is-open .oms-overlay-card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* 引导型 Modal 入场（含丰富演示动画，需要更大幅度） */
+.oms-overlay-card.oms-card-guided {
+  transform: translateY(16px) scale(0.97);
+}
+.oms-overlay.is-open .oms-overlay-card.oms-card-guided {
+  transform: translateY(0) scale(1);
+  transition-duration: 0.4s;
 }

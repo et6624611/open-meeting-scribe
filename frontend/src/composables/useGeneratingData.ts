@@ -276,9 +276,19 @@ export function useGeneratingData(
 
   // ─── 归档 ───
   const showArchiveDialog = ref(false)
+  const isArchived = computed(() => !!task.value?.archived_at)
+
   async function onArchive() {
     showArchiveDialog.value = false
-    console.log('archive task:', taskId)
+    try {
+      if (isArchived.value) {
+        await taskStore.unarchiveTask(taskId)
+      } else {
+        await taskStore.archiveTask(taskId)
+      }
+    } catch (e) {
+      console.error('archive/unarchive failed:', e)
+    }
   }
 
   // ─── 删除 ───
@@ -341,7 +351,7 @@ export function useGeneratingData(
     // 说话人
     speakers,
     // 归档
-    showArchiveDialog, onArchive,
+    showArchiveDialog, onArchive, isArchived,
     // 删除
     showDeleteDialog,
   }

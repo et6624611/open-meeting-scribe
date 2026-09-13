@@ -1089,7 +1089,7 @@
 
 /* ─── AI · 跟进建议（AI 回复后的对话引导） ─── */
 .follow-up-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
-.follow-up-suggestions-sticky { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 4px; margin-top: auto; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; gap: 6px; z-index: 1; }
+.follow-up-suggestions-sticky { position: sticky; bottom: 0; background: color-mix(in oklch, var(--surface) 65%, transparent); backdrop-filter: var(--glass-blur-md); -webkit-backdrop-filter: var(--glass-blur-md); padding: 10px 0 4px; margin-top: auto; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; gap: 6px; z-index: 1; }
 .follow-up-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; background: var(--accent-soft); border-radius: 999px; font-size: var(--fs-11); color: var(--accent); transition: all 0.15s ease; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
 .follow-up-chip:hover { background: color-mix(in oklch, var(--accent) 16%, transparent); border-color: color-mix(in oklch, var(--accent) 20%, transparent); }
 .follow-up-chip:active { transform: scale(0.97); }
@@ -1128,7 +1128,7 @@
 .ai-ctx-tag.is-pending { color: var(--subtle); background: var(--surface-2); }
 .ai-ctx-tag svg { width: 10px; height: 10px; flex-shrink: 0; }
 /* 上下文气泡卡片 — 半透明，对话区域内展示 */
-.ai-ctx-bubbles { width: 100%; border-radius: var(--radius); padding: var(--s-3); display: flex; flex-direction: column; gap: 0; background: color-mix(in oklch, var(--surface) 60%, transparent); border: 1px solid var(--border); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.ai-ctx-bubbles { width: 100%; border-radius: var(--radius); padding: var(--s-3); display: flex; flex-direction: column; gap: 0; background: color-mix(in oklch, var(--surface) 60%, transparent); border: 1px solid var(--border); backdrop-filter: var(--glass-blur-md); -webkit-backdrop-filter: var(--glass-blur-md); }
 .ai-ctx-bubbles .ctx-bubble-header { font-size: var(--fs-10); color: var(--subtle); font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: var(--s-2); }
 .ai-ctx-bubble-row { display: flex; align-items: center; gap: var(--s-2); padding: 7px var(--s-3); margin: 0 calc(var(--s-3) * -1); border-radius: 8px; outline: none; cursor: default; transition: background 0.15s ease, box-shadow 0.15s ease; }
 .ai-ctx-bubble-row + .ai-ctx-bubble-row { border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent); }

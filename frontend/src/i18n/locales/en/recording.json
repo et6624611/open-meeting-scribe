@@ -114,6 +114,5 @@
     "display_original": "Original Only",
     "display_translation": "Translation Only",
     "display_bilingual": "Bilingual"
-  },
-  "privacy_banner": "Audio is being streamed to the cloud for speech recognition. Do not record sensitive content."
+  }
 }

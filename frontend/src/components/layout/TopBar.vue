@@ -74,7 +74,7 @@
         </div>
 
         <!-- 放弃录音确认弹窗 -->
-        <div class="abandon-overlay" :class="{ 'is-open': showAbandon }" v-if="showAbandon">
+        <div class="abandon-overlay" data-vue-overlay :class="{ 'is-open': showAbandon }" v-if="showAbandon">
           <div class="abandon-dialog">
             <div class="abandon-dialog-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -184,7 +184,9 @@ import { usePlayerStore } from '@/stores/player'
 import IconButton from '@/components/common/IconButton.vue'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useEscClose } from '@/composables/useEscClose'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
+import { getRecordStatus } from '@/api/record'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -231,6 +233,7 @@ const recMoreBtn = ref<HTMLElement | null>(null)
 const recDropdown = ref<HTMLElement | null>(null)
 const { visible: showRecMore, toggle: toggleRecMore, close: closeRecMore } = usePopMenu(recDropdown, recMoreBtn)
 const showAbandon = ref(false)
+useEscClose(showAbandon, () => { showAbandon.value = false })
 
 // ─── 录音中指示 pill ───
 // 会议相关路由的状态由页面自身承载（录音页头部/控制栏），顶栏不叠加录音中胶囊
@@ -290,14 +293,26 @@ const recTask = computed(() => {
 })
 const isRecPaused = computed(() => recTask.value?.status === 'paused')
 
+function formatRecTime(totalSec: number): string {
+  const s = Math.floor(totalSec)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+/** 基于任务 created_at 计算已过秒数（页面刷新后仍能还原） */
+function calcElapsedFromTask(task: { created_at?: string }): number {
+  if (!task?.created_at) return 0
+  const created = new Date(task.created_at).getTime()
+  return Math.max(0, Math.floor((Date.now() - created) / 1000))
+}
+
 function tickRecTimer() {
   recElapsedSec++
-  const h = Math.floor(recElapsedSec / 3600)
-  const m = Math.floor((recElapsedSec % 3600) / 60)
-  const s = recElapsedSec % 60
-  recElapsed.value = h > 0
-    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  recElapsed.value = formatRecTime(recElapsedSec)
 }
 
 function startRecTimer() {
@@ -309,18 +324,39 @@ function stopRecTimer() {
   if (recTimer) { clearInterval(recTimer); recTimer = null }
 }
 
-watch(recTask, (task) => {
+watch(recTask, async (task) => {
   if (task) {
-    if (task.status === 'paused') stopRecTimer()
-    else startRecTimer()
+    // 优先从后端获取精确已过时长（已扣除暂停），失败则回退到 created_at 估算
+    try {
+      const status = await getRecordStatus()
+      if (status.recording && status.elapsed != null) {
+        recElapsedSec = Math.floor(status.elapsed)
+      } else {
+        recElapsedSec = calcElapsedFromTask(task)
+      }
+    } catch {
+      recElapsedSec = calcElapsedFromTask(task)
+    }
+    recElapsed.value = formatRecTime(recElapsedSec)
+    if (task.status === 'paused') {
+      // 暂停中：冻结计时器，保留已过时长
+      stopRecTimer()
+    } else {
+      startRecTimer()
+    }
   } else {
     stopRecTimer(); recElapsedSec = 0; recElapsed.value = '00:00'
   }
 }, { immediate: true })
 
 watch(isRecPaused, (paused) => {
-  if (paused) stopRecTimer()
-  else if (recTask.value) startRecTimer()
+  if (paused) {
+    // 暂停：冻结当前已过时长，停止自增
+    stopRecTimer()
+  } else if (recTask.value) {
+    // 恢复：从冻结值继续
+    startRecTimer()
+  }
 })
 
 async function onToggleRecPause() {

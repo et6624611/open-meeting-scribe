@@ -43,5 +43,14 @@
     "rename_failed": "Rename failed, please try again",
     "retry_failed": "Retry failed, please check network connection",
     "reupload_wip": "Re-upload feature is under development"
-  }
+  },
+  "copy_title": "Copy Title",
+  "copy_summary": "Copy Summary",
+  "copied": "Copied",
+  "stat_speakers": "Speakers",
+  "stat_duration": "Duration",
+  "stat_created": "Created",
+  "stat_source": "Source",
+  "source_record": "Recording",
+  "source_upload": "Upload"
 }

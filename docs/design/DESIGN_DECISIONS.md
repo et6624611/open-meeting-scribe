@@ -3,8 +3,8 @@ title: "界面设计决策"
 description: "Open Meeting Scribe 的 UI 设计原则、交互策略与产品蓝图。具体组件实现以 Vue 源码为准，本文记录「为什么这样设计」。"
 tags: ["design", "ui", "architecture", "frontend"]
 created_at: "2026-09-03"
-updated_at: "2026-09-11"
-version: "2.11.0"
+updated_at: "2026-09-13"
+version: "2.12.0"
 author: "wangyongliang"
 status: "published"
 category: "design"
@@ -662,4 +662,37 @@ npm run lint:fix    # 自动修复可修复的问题
 **操作按钮设计**：圆角药丸按钮（`border-radius: 999px`），主操作使用 `--proactive` 填充，次操作使用描边样式。点击后显示「已处理」反馈并禁用，避免重复操作。
 
 **原型参考**：已移除（原 `docs/prototypes/ai-proactive-messaging.html`，展示折叠态、横幅态、完整对话流三种状态）。
+
+## 17. 蒙版（Overlay）统一规范
+
+所有 L3 硬阻断 Modal 遵循统一的蒙版体系，详细方案见 [`OVERLAY_PLAN.md`](./OVERLAY_PLAN.md)。核心规则：
+
+### 动效分级
+
+| 类型 | 蒙版入场 | 卡片入场 | 适用场景 |
+|------|---------|---------|----------|
+| **标准 Modal** | opacity 0→1, 0.2s ease | translateY(8px)→0 + opacity 0→1, 0.25s | 确认弹窗、管理弹窗 |
+| **引导型 Modal** | opacity 0→1, 0.2s ease | translateY(16px) scale(0.97)→0 + opacity 0→1, 0.4s | 说话人绑定引导、知识库关联引导 |
+
+### 交互规则
+
+- **ESC 关闭**：所有可关闭 Modal 必须支持 ESC 关闭，使用 `useEscClose` composable（window 级 keydown 监听）
+- **ESC 标识**：取消/关闭按钮文字右侧显示 `<kbd>ESC</kbd>` 键帽标识
+- **点击蒙版关闭**：所有非破坏性 Modal 支持 `@click.self` 关闭
+- **例外**：存在性警告弹窗不支持 ESC 和点击关闭（需用户做出明确操作决策）
+
+### CSS Token
+
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--overlay-bg` | `oklch(0% 0 0 / 0.4)` | 标准 Modal 蒙版 |
+| `--overlay-bg-soft` | `oklch(0% 0 0 / 0.25)` | Drawer / 软阻断 |
+| `--overlay-bg-heavy` | `oklch(0% 0 0 / 0.55)` | 极重阻断（登录全屏） |
+| `--modal-width-sm/md/lg` | 400/480/560px | 弹窗宽度分级 |
+
+### 禁止事项
+
+- 禁止在弹窗 CSS 中硬编码蒙版背景色或 z-index 数值——一律使用 token
+- 禁止为图标按钮手写裸 `<button>` 不加 `<kbd>` 标识——关闭按钮必须标识 ESC 快捷键
+- 禁止新增弹窗时重复实现 overlay 定位与动效——复用 `.oms-overlay` + `.oms-overlay-card` 全局类
 

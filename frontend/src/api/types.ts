@@ -84,6 +84,7 @@ export interface Task {
   chapters: Chapter[]
   project_id: string | null
   source?: 'record' | 'upload'
+  archived_at: string | null
 }
 
 // ─── 用户 ───
@@ -96,6 +97,7 @@ export interface User {
   role: string
   provider: string
   prefs: Record<string, unknown>
+  privacy_consent_at?: string | null
 }
 
 // ─── 状态配置（与后端 STATUS_CONFIG 对齐） ───

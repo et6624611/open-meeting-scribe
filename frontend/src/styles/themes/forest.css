@@ -39,7 +39,7 @@ html[data-theme="forest"] {
   --timeline-today-glow: oklch(52% 0.14 150 / 0.15);
   --dropdown-bg: oklch(99.5% 0.004 150);
   --dropdown-shadow: 0 8px 32px oklch(18% 0.020 155 / 0.10), 0 2px 8px oklch(18% 0.020 155 / 0.06);
-  --topbar-bg: oklch(98% 0.008 150 / 0.85);
+  --glass-bg: oklch(98% 0.008 150 / 0.72);
   --shadow-focus: 0 0 0 3px oklch(52% 0.14 150 / 0.18);
   --wm-opacity: 0.16;
   --wm-glow: oklch(52% 0.14 150 / 0.10);

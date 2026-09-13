@@ -18,15 +18,6 @@
     "disclaimer_prohibit": "Do not use for classified information, core trade secrets, or highly sensitive personal privacy.",
     "disclaimer_acknowledge": "I Understand, Continue",
     "disclaimer_detail": "See SECURITY.md for detailed data flow description.",
-    "record_confirm_title": "About to Start Recording",
-    "record_confirm_desc": "During recording, audio will be streamed to cloud ASR service. After recording, the full transcript will be sent to LLM for meeting summary generation.",
-    "record_confirm_checklist_title": "Please confirm this meeting does not contain:",
-    "check_state_secrets": "Classified or state secrets",
-    "check_trade_secrets": "Core trade secrets",
-    "check_personal_privacy": "Highly sensitive personal privacy",
-    "confirm_start": "Confirm & Start",
-    "upload_confirm_title": "About to Upload File",
-    "upload_confirm_desc": "This audio file will be uploaded to the cloud for transcription (temporarily stored for 48h then auto-deleted). Please confirm it does not contain sensitive information.",
-    "confirm_upload": "Confirm Upload"
+    "check_participants": "I confirm that all participants have been informed that this recording will undergo cloud AI processing"
   }
 }

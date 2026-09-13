@@ -21,5 +21,12 @@
   "menu_settings": "Settings",
   "menu_logout": "Log Out",
   "menu_login": "Log In",
-  "menu": "Menu"
+  "menu": "Menu",
+  "rail_meetings": "All Meetings",
+  "rail_projects": "Knowledge Base",
+  "rail_speakers": "Speakers",
+  "rail_hotwords": "Hotwords",
+  "rail_settings": "Settings",
+  "rail_settings_version": "Settings · {version}",
+  "rail_toggle_sidebar": "Toggle Sidebar"
 }

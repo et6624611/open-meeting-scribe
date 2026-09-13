@@ -58,3 +58,21 @@ export async function submitTranscribe(
   })
   return data
 }
+
+/** 归档任务 */
+export async function archiveTask(taskId: string): Promise<Task> {
+  const { data } = await client.post<Task>(`/api/tasks/${taskId}/archive`)
+  return data
+}
+
+/** 取消归档 */
+export async function unarchiveTask(taskId: string): Promise<Task> {
+  const { data } = await client.post<Task>(`/api/tasks/${taskId}/unarchive`)
+  return data
+}
+
+/** 批量归档 */
+export async function batchArchiveTasks(taskIds: string[]): Promise<{ archived: number }> {
+  const { data } = await client.post<{ archived: number }>('/api/tasks/batch-archive', { task_ids: taskIds })
+  return data
+}

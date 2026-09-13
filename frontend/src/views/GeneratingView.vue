@@ -48,8 +48,8 @@
             </button>
             <div class="gen-toolbar-more-divider"></div>
             <button class="gen-toolbar-more-item" @click="onArchiveConfirm">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-              {{ t('generating.toolbar.archive') }}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
+              {{ data.isArchived.value ? t('generating.toolbar.unarchive') : t('generating.toolbar.archive') }}
             </button>
             <button class="gen-toolbar-more-item is-danger" @click="onDelete">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -196,6 +196,7 @@
     <div class="gen-content">
       <TranscriptPanel
         ref="transcriptPanelRef"
+        :visible="activeTab === 'transcript'"
         :transcript-items="transcriptItems"
         :chapters="chapters"
         :expanded-chapters="expandedChapters"
@@ -293,10 +294,10 @@
       @close="closeProjOnboarding"
     />
 
-    <!-- 归档确认对话框（子组件） -->
     <ArchiveDialog
       v-model="showArchiveDialog"
-      @confirm="onArchive"
+      :is-unarchive="data.isArchived.value"
+      @confirm="onArchiveDone"
     />
 
     <!-- 删除确认对话框（子组件） -->
@@ -374,7 +375,7 @@ const {
   chapters, activeChapterIdx, scrollToChapter, allChaptersVisible,
   visibleChapterIndices, expandedChapters, summaryExpandedChapters,
   transcriptItems, flatTranscript, summaryMd, todos, notesContent, notesSaved,
-  showArchiveDialog, onArchive, showDeleteDialog, metaDuration, metaDateShort,
+  showArchiveDialog, showDeleteDialog, metaDuration, metaDateShort,
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
   player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
@@ -421,6 +422,13 @@ async function onDeleteConfirm() {
   await deleteTask(data.taskId); await taskStore.loadTasks(); router.push('/')
 }
 function onArchiveConfirm() { closeGenMore(); data.showArchiveDialog.value = true }
+async function onArchiveDone() {
+  await data.onArchive()
+  if (data.isArchived.value) {
+    // 归档后跳转至会议库
+    router.push('/library')
+  }
+}
 
 function onSpeakerLabelClick(e: MouseEvent, speakerId: number) {
   if (binding.canBind.value) binding.openBindingDropdown(e, speakerId)

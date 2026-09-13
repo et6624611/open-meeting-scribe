@@ -37,3 +37,22 @@ export async function smsVerify(
 export function githubLogin(): void {
   window.location.href = '/auth/github'
 }
+
+/** 查询隐私同意状态 */
+export async function fetchPrivacyConsent(): Promise<{
+  consented: boolean
+  consented_at: string | null
+  need_server_consent: boolean
+}> {
+  const { data } = await client.get('/auth/privacy-consent')
+  return data
+}
+
+/** 记录隐私同意（SMS 用户写入服务端留痕） */
+export async function recordPrivacyConsent(): Promise<{
+  recorded: boolean
+  consented_at: string | null
+}> {
+  const { data } = await client.post('/auth/privacy-consent')
+  return data
+}

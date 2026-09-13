@@ -32,8 +32,8 @@ export function useKeyboardShortcuts() {
         return
       }
 
-      // 2. 关闭所有可见的下拉菜单
-      const openDropdowns = document.querySelectorAll('.is-open, [data-dropdown].is-visible')
+      // 2. 关闭所有可见的下拉菜单（排除 Vue 响应式管理的 overlay，它们由 useEscClose 自行处理）
+      const openDropdowns = document.querySelectorAll('.is-open:not([data-vue-overlay]), [data-dropdown].is-visible')
       if (openDropdowns.length > 0) {
         openDropdowns.forEach(el => {
           el.classList.remove('is-open', 'is-visible')

@@ -48,23 +48,17 @@
       </svg>
     </button>
 
-    <!-- 右键菜单 -->
-    <Teleport to="body">
-      <div v-if="showContextMenu" class="sb-dropdown is-open is-down" :style="menuStyle" @click.stop>
-        <button @click="onRename">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          {{ t('task.rename') }}
-        </button>
-        <button v-if="task.status === 'failed'" @click="onRetry">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          {{ t('task.retry') }}
-        </button>
-        <button class="is-danger" @click="onDelete">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          {{ t('task.delete') }}
-        </button>
-      </div>
-    </Teleport>
+    <!-- 任务上下文菜单（独立组件，贴侧边栏右边缘定位） -->
+    <TaskContextMenu
+      :task="task"
+      :open="showContextMenu"
+      :sidebar-el="sidebarEl"
+      :button-rect="buttonRect"
+      @close="closeMenu"
+      @rename="onRename"
+      @retry="onRetry"
+      @delete="onDelete"
+    />
 
     <!-- 悬停知识卡片 -->
     <Teleport to="body">
@@ -91,6 +85,7 @@ import { STATUS_CONFIG } from '@/api/types'
 import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
+import TaskContextMenu from './TaskContextMenu.vue'
 
 const { t } = useI18n()
 const player = usePlayerStore()
@@ -115,7 +110,8 @@ const emit = defineEmits<{
 
 const showContextMenu = ref(false)
 const showHoverCard = ref(false)
-const menuStyle = ref<Record<string, string>>({})
+const sidebarEl = ref<HTMLElement | null>(null)
+const buttonRect = ref<DOMRect | null>(null)
 const hoverStyle = ref<Record<string, string>>({})
 
 const displayTitle = computed(() =>
@@ -268,15 +264,9 @@ function onMenuClick(e: MouseEvent) {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
   showHoverCard.value = false
   const btn = e.currentTarget as HTMLElement
-  const rect = btn.getBoundingClientRect()
-  menuStyle.value = {
-    position: 'fixed',
-    left: rect.left + 'px',
-    top: (rect.bottom + 4) + 'px',
-  }
+  buttonRect.value = btn.getBoundingClientRect()
+  sidebarEl.value = btn.closest('.sidebar')
   showContextMenu.value = true
-  // 点击外部关闭
-  setTimeout(() => document.addEventListener('click', closeMenu, { once: true }), 0)
 }
 
 function closeMenu() { showContextMenu.value = false }

@@ -1,0 +1,139 @@
+<template>
+  <nav class="activity-rail">
+    <!-- 顶部：Sidebar 折叠/展开 -->
+    <div class="ar-top">
+      <IconButton
+        class="ar-btn ar-toggle-btn"
+        :class="{ 'is-collapsed': layout.sidebarCollapsed }"
+        :label="t('sidebar.rail_toggle_sidebar')"
+        tip-position="right"
+        @click="layout.toggleSidebar()"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="9" y1="3" x2="9" y2="21"/>
+          <polyline class="ar-toggle-arrow" points="13 8 17 12 13 16"/>
+        </svg>
+      </IconButton>
+    </div>
+
+    <!-- 中部：导航图标组 -->
+    <div class="ar-nav">
+      <IconButton
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'library' }"
+        :label="t('sidebar.rail_meetings')"
+        tip-position="right"
+        @click="navigate('/library')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      </IconButton>
+      <IconButton
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'projects' }"
+        :label="t('sidebar.rail_projects')"
+        tip-position="right"
+        @click="navigate('/projects')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </IconButton>
+      <IconButton
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'speakers' }"
+        :label="t('sidebar.rail_speakers')"
+        tip-position="right"
+        @click="navigate('/speakers')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </IconButton>
+      <IconButton
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'hotwords' }"
+        :label="t('sidebar.rail_hotwords')"
+        tip-position="right"
+        @click="navigate('/hotwords')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
+      </IconButton>
+    </div>
+
+    <!-- 底部：AI 洞察指示器 + 设置 -->
+    <div class="ar-bottom">
+      <!-- AI 洞察指示器 -->
+      <button
+        v-if="insights.insightsEnabled.value && insights.insightsConfig.value.notifications.sidebarIndicator && activeRecordingTaskId"
+        class="ar-insights"
+        :class="{
+          'is-enabled': insights.unreadCount.value === 0,
+          'has-unread': insights.unreadCount.value > 0,
+        }"
+        :title="insights.unreadCount.value > 0 ? t('ai-panel.insights.sidebar_indicator_tip', { count: insights.unreadCount.value }) : t('ai-panel.insights.sidebar_indicator')"
+        :aria-label="t('ai-panel.insights.sidebar_indicator')"
+        @click="onInsightsClick"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        </svg>
+        <span v-if="insights.unreadCount.value > 0" class="ar-insights-badge">{{ insights.unreadCount.value }}</span>
+      </button>
+      <!-- 设置按钮（tooltip 含版本号） -->
+      <IconButton
+        class="ar-btn ar-settings"
+        :class="{ 'is-active': route.name === 'settings' }"
+        :label="t('sidebar.rail_settings_version', { version: appVersion })"
+        tip-position="right"
+        @click="navigate('/settings')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1.1a1.7 1.7 0 0 0-1.8.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1.1a2 2 0 1 1 2.8 2.8l.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </IconButton>
+    </div>
+  </nav>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { useLayoutStore } from '@/stores/layout'
+import { useTaskStore } from '@/stores/task'
+import { useAiInsights } from '@/composables/useAiInsights'
+import IconButton from '@/components/common/IconButton.vue'
+
+const { t } = useI18n()
+const router = useRouter()
+const route = useRoute()
+const layout = useLayoutStore()
+const taskStore = useTaskStore()
+const insights = useAiInsights()
+
+/** 应用版本号（与 Sidebar 原版本号一致） */
+const appVersion = 'v2.0.0'
+
+/** 当前是否有活跃录音 */
+const activeRecordingTaskId = computed(() => {
+  const task = taskStore.tasks.find(t => t.status === 'recording' || t.status === 'paused')
+  return task?.task_id ?? ''
+})
+
+function navigate(path: string) {
+  router.push(path)
+}
+
+/** 点击洞察指示器：直达录音页洞察面板 */
+function onInsightsClick() {
+  const recTaskId = activeRecordingTaskId.value
+  if (!recTaskId) return
+
+  if (route.name === 'recording' && route.params.taskId === recTaskId) {
+    window.dispatchEvent(new CustomEvent('insights:auto-expand'))
+  } else {
+    taskStore.selectTask(recTaskId)
+    router.push({
+      name: 'recording',
+      params: { taskId: recTaskId },
+      query: { tab: 'insights' },
+    })
+  }
+}
+</script>

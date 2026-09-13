@@ -169,6 +169,121 @@ class TestRetrySummaryOk:
 
 
 # ============================================================
+# 归档域
+# ============================================================
+
+class TestArchiveTask:
+    """POST /api/tasks/{id}/archive 归档任务"""
+
+    def test_archive_ok(self, client):
+        from app.store import tasks
+        import uuid
+
+        task_id = str(uuid.uuid4())
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "message": "完成",
+            "audio_name": "test.wav",
+            "audio_path": "/nonexistent/test.wav",
+            "archived_at": None,
+        }
+        try:
+            resp = client.post(f"/api/tasks/{task_id}/archive")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["archived_at"] is not None
+        finally:
+            tasks.pop(task_id, None)
+
+    def test_archive_not_found(self, client):
+        resp = client.post("/api/tasks/nonexistent-id/archive")
+        assert resp.status_code == 404
+
+
+class TestUnarchiveTask:
+    """POST /api/tasks/{id}/unarchive 取消归档"""
+
+    def test_unarchive_ok(self, client):
+        from app.store import tasks
+        import uuid
+
+        task_id = str(uuid.uuid4())
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "message": "完成",
+            "audio_name": "test.wav",
+            "audio_path": "/nonexistent/test.wav",
+            "archived_at": "2026-09-13T10:00:00",
+        }
+        try:
+            resp = client.post(f"/api/tasks/{task_id}/unarchive")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["archived_at"] is None
+        finally:
+            tasks.pop(task_id, None)
+
+
+class TestBatchArchive:
+    """POST /api/tasks/batch-archive 批量归档"""
+
+    def test_batch_archive_ok(self, client):
+        from app.store import tasks
+        import uuid
+
+        ids = []
+        for _ in range(3):
+            tid = str(uuid.uuid4())
+            tasks[tid] = {
+                "task_id": tid,
+                "status": "completed",
+                "progress": 100,
+                "message": "完成",
+                "audio_name": "test.wav",
+                "audio_path": "/nonexistent/test.wav",
+                "archived_at": None,
+            }
+            ids.append(tid)
+        try:
+            resp = client.post("/api/tasks/batch-archive", json={"task_ids": ids})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["archived"] == 3
+            for tid in ids:
+                assert tasks[tid]["archived_at"] is not None
+        finally:
+            for tid in ids:
+                tasks.pop(tid, None)
+
+    def test_batch_archive_partial(self, client):
+        """部分 ID 不存在时，仅归档存在的任务"""
+        from app.store import tasks
+        import uuid
+
+        tid = str(uuid.uuid4())
+        tasks[tid] = {
+            "task_id": tid,
+            "status": "completed",
+            "progress": 100,
+            "message": "完成",
+            "audio_name": "test.wav",
+            "audio_path": "/nonexistent/test.wav",
+            "archived_at": None,
+        }
+        try:
+            resp = client.post("/api/tasks/batch-archive", json={"task_ids": [tid, "nonexistent"]})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["archived"] == 1
+        finally:
+            tasks.pop(tid, None)
+
+
+# ============================================================
 # 说话人域
 # ============================================================
 

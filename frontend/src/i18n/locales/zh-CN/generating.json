@@ -15,6 +15,7 @@
     "regenerate": "重新生成纪要",
     "retranscribe": "重新识别",
     "archive": "归档",
+    "unarchive": "取消归档",
     "delete": "删除"
   },
   "meta": {
@@ -140,9 +141,12 @@
   "archive_dialog": {
     "title": "确认归档",
     "close": "关闭",
-    "desc": "确定要将此会议归档吗？归档后将移至归档列表。",
+    "desc": "确定要将此会议归档吗？归档后可在会议库中查看。",
     "cancel": "取消",
-    "confirm": "确认归档"
+    "confirm": "确认归档",
+    "unarchive_title": "取消归档",
+    "unarchive_desc": "确定要取消归档此会议吗？它将重新出现在会议列表中。",
+    "unarchive_confirm": "确认取消"
   },
   "delete_dialog": {
     "title": "确认删除",

@@ -11,6 +11,18 @@ status: published
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 
+## [v2.x-overlay-standardization] - 2026-09-13
+
+### 变更
+- **蒙版体系统一**（6 Phase 实施，详见 `docs/design/OVERLAY_PLAN.md`）：
+  - **Token 化**：`base.css` 新增 `--overlay-bg` / `--overlay-bg-soft` / `--overlay-bg-heavy` / `--overlay-enter` / `--card-enter` / `--modal-width-*` 蒙版 token；新增全局基础类 `.oms-overlay` + `.oms-overlay-card` + `.oms-card-guided`
+  - **背景收敛**：12 处蒙版背景色统一为 `var(--overlay-bg)`，2 处硬编码 `z-index: 1000` 改为 `var(--z-modal)`
+  - **ESC 关闭**：新增 `useEscClose` composable（window 级 keydown 监听），5 个弹窗补全 ESC 关闭支持；所有可关闭弹窗的取消按钮添加 `<kbd>ESC</kbd>` 键帽标识
+  - **动效统一**：10 个弹窗统一为 2 种标准入场动效（标准 Modal: overlay fade 0.2s + card translateY(8px) 0.25s；引导型 Modal: overlay fade 0.2s + card translateY(16px) scale(0.97) 0.4s）
+  - **全局类迁移**：DeleteDialog / ArchiveDialog 从 `v-if` + scoped 样式迁移到 `v-show` + 全局 `.oms-overlay` + `.oms-overlay-card`
+  - **死代码清理**：删除 `meeting-view.css` 和 `speakers.css` 中各 40 行无引用的向导 CSS（`.wizard-overlay` / `.wizard` / `.wiz-*`）
+- 涉及文件：`base.css` / `meeting-view.css` / `speakers.css` / `recording-view.css` / `update-panel.css` / `start-page.css` / `DeleteDialog.vue` / `ArchiveDialog.vue` / `SpeakersView.vue` / `StartView.vue` / 新增 `useEscClose.ts`
+
 ## [v2.x-rename-project-to-knowledge-base] - 2026-09-13
 
 ### 变更

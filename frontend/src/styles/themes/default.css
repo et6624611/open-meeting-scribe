@@ -40,7 +40,7 @@ html[data-theme="default"] {
   --timeline-today-glow: oklch(55% 0.22 250 / 0.15);
   --dropdown-bg: oklch(100% 0 0);
   --dropdown-shadow: 0 8px 32px oklch(18% 0.012 250 / 0.12), 0 2px 8px oklch(18% 0.012 250 / 0.08);
-  --topbar-bg: oklch(99% 0.002 240 / 0.85);
+  --glass-bg: oklch(99% 0.002 240 / 0.72);
   --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
   --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-18: 18px; --fs-20: 20px; --fs-24: 24px;

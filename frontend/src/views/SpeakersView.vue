@@ -199,7 +199,7 @@
         <h3>{{ confirmDialogTitle }}</h3>
         <p>{{ confirmDialogMsg }}</p>
         <div class="spk-dialog-actions">
-          <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('speakers.cancel') }}</button>
+          <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('speakers.cancel') }} <kbd>ESC</kbd></button>
           <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
         </div>
       </div>
@@ -219,6 +219,7 @@ import { useRouter } from 'vue-router'
 import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
 import { useUserStore } from '@/stores/user'
+import { useEscClose } from '@/composables/useEscClose'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -242,6 +243,8 @@ const renameInputRef = ref<HTMLInputElement | null>(null)
 const showConfirmDialog = ref(false)
 const confirmDialogTitle = ref('')
 const confirmDialogMsg = ref('')
+
+useEscClose(showConfirmDialog, () => { showConfirmDialog.value = false })
 let confirmCallback: (() => void) | null = null
 
 /** 判断说话人是否为当前用户（通过 linked_user_id 比较） */
@@ -612,8 +615,10 @@ onMounted(load)
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* 确认对话框 */
-.spk-dialog-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.spk-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--s-6); max-width: 400px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.15); }
+.spk-dialog-overlay { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); animation: oms-overlay-in 0.2s ease; }
+.spk-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--s-6); max-width: 400px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.15); animation: oms-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes oms-overlay-in { from { opacity: 0; } }
+@keyframes oms-card-in { from { opacity: 0; transform: translateY(8px); } }
 .spk-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 var(--s-3); color: var(--fg); }
 .spk-dialog p { font-size: 14px; color: var(--muted); margin: 0 0 var(--s-5); line-height: 1.5; }
 .spk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
@@ -628,6 +633,19 @@ onMounted(load)
 
 /* 待办事项 */
 .todo-body { flex: 1; min-width: 0; }
+
+/* ESC 快捷键标识 */
+.spk-dialog-actions kbd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--subtle);
+  line-height: 1.3;
+  margin-left: 4px;
+}
 
 @media (max-width: 920px) {
   .empty-state { padding: var(--s-7) var(--s-4); }

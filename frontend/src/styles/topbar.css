@@ -1,6 +1,6 @@
 /* ═══ 顶部导航栏 ═══ */
 
-.topbar { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; border-bottom: 1px solid var(--border); background: var(--topbar-bg); backdrop-filter: blur(12px); position: relative; z-index: var(--z-topbar); }
+.topbar { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; padding: 0; border-bottom: 1px solid var(--border); background: var(--glass-bg); backdrop-filter: var(--glass-blur-lg); position: relative; z-index: var(--z-topbar); }
 .topbar > .topbar-main { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); height: 48px; width: 100%; }
 .topbar-left { display: flex; align-items: center; gap: var(--s-4); }
 .topbar-right { display: flex; align-items: center; gap: var(--s-3); }

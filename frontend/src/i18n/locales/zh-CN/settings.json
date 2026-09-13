@@ -90,6 +90,15 @@
   "watermark_desc": "界面背景光晕装饰效果，跟随主题配色变化",
   "watermark_enabled": "显示光晕",
   "watermark_opacity": "透明度",
+  "cat_account": "账户",
+  "cat_services": "服务",
+  "cat_transcription": "转写",
+  "cat_appearance": "外观",
+  "cat_features": "功能",
+  "cat_prompts": "提示词",
+  "cat_system": "系统",
+  "prompts_title": "提示词管理",
+  "prompts_desc": "查看或设置 AI 各环节引用的提示词内容，自定义后可优化输出质量",
   "privacy_notice": {
     "text": "隐私提示：语音识别、纪要生成等 AI 功能依赖云端 API，会议音频与文本内容将被传输至第三方服务处理。请勿处理敏感内容。",
     "learn_more": "了解详情"

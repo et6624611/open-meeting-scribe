@@ -27,7 +27,7 @@
           >
             <!-- 空状态 -->
             <div v-if="item.type === 'empty'" style="padding: 20px 0; text-align: center; color: var(--subtle); font-size: 12px;">
-              {{ taskStore.searchQuery ? t('task.empty_search') : t('task.empty') }}
+              {{ taskStore.sidebarSearchQuery ? t('task.empty_search') : t('task.empty') }}
             </div>
             <!-- 加载中 -->
             <div v-else-if="item.type === 'loading'" style="padding: 20px 0; text-align: center; color: var(--subtle); font-size: 12px;">
@@ -75,7 +75,7 @@
 
     <!-- 空状态（无数据且非加载中） -->
     <div v-if="virtualItems.length === 0 && !taskStore.loading" style="padding: 20px 0; text-align: center; color: var(--subtle); font-size: 12px;">
-      {{ taskStore.searchQuery ? t('task.empty_search') : t('task.empty') }}
+      {{ taskStore.sidebarSearchQuery ? t('task.empty_search') : t('task.empty') }}
     </div>
 
     <!-- 加载中（无数据时） -->

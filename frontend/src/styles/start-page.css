@@ -229,8 +229,10 @@
 .body.sidebar-collapsed.ai-collapsed .start-recent-section { max-width: 780px; }
 
 /* ═══ 隐私免责声明弹窗 ═══ */
-.privacy-overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.4); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); }
-.privacy-dialog { background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 28px; max-width: 440px; width: 90%; box-shadow: 0 12px 40px oklch(0% 0 0 / 0.15); }
+.privacy-overlay { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); animation: oms-overlay-in 0.2s ease; }
+.privacy-dialog { background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 28px; max-width: 440px; width: 90%; box-shadow: 0 12px 40px oklch(0% 0 0 / 0.15); animation: oms-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes oms-overlay-in { from { opacity: 0; } }
+@keyframes oms-card-in { from { opacity: 0; transform: translateY(8px); } }
 .privacy-dialog-icon { width: 44px; height: 44px; border-radius: 50%; background: oklch(95% 0.03 250); display: grid; place-items: center; color: var(--accent); margin-bottom: 16px; }
 .privacy-dialog-title { font-size: var(--fs-18); font-weight: 600; color: var(--fg); margin-bottom: 16px; }
 .privacy-dialog-body { margin-bottom: 20px; }
@@ -245,8 +247,12 @@
 .privacy-dialog-checklist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .privacy-dialog-check-item { display: flex; align-items: center; gap: 8px; font-size: var(--fs-13); color: oklch(45% 0.1 25); }
 .privacy-dialog-check-item svg { flex-shrink: 0; color: oklch(55% 0.15 25); }
+.privacy-dialog-check-label { cursor: pointer; }
+.privacy-dialog-check-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.privacy-dialog-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .privacy-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .privacy-dialog-btn-primary { padding: 10px 24px; border-radius: var(--radius); border: none; background: var(--accent); color: var(--accent-fg, #fff); font-size: var(--fs-14); font-weight: 500; cursor: pointer; font-family: var(--font-body); transition: background 0.15s; }
 .privacy-dialog-btn-primary:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
 .privacy-dialog-btn-cancel { padding: 10px 20px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-size: var(--fs-14); cursor: pointer; font-family: var(--font-body); transition: background 0.15s; }
 .privacy-dialog-btn-cancel:hover { background: var(--surface-2); }
+.privacy-dialog-btn-cancel kbd { font-family: var(--font-mono); font-size: 9px; padding: 1px 4px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--subtle); line-height: 1.3; margin-left: 4px; }

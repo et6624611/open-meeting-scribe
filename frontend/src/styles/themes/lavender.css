@@ -39,7 +39,7 @@ html[data-theme="lavender"] {
   --timeline-today-glow: oklch(60% 0.16 285 / 0.15);
   --dropdown-bg: oklch(99.5% 0.004 290);
   --dropdown-shadow: 0 8px 32px oklch(20% 0.015 285 / 0.10), 0 2px 8px oklch(20% 0.015 285 / 0.06);
-  --topbar-bg: oklch(98.5% 0.008 290 / 0.85);
+  --glass-bg: oklch(98.5% 0.008 290 / 0.72);
   --shadow-focus: 0 0 0 3px oklch(60% 0.16 285 / 0.18);
   --wm-opacity: 0.16;
   --wm-glow: oklch(60% 0.16 285 / 0.10);

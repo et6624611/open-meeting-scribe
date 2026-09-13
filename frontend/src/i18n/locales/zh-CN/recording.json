@@ -114,6 +114,5 @@
     "display_original": "仅原文",
     "display_translation": "仅译文",
     "display_bilingual": "双语对照"
-  },
-  "privacy_banner": "当前录音的音频将实时传输至云端进行语音识别，请勿录入敏感内容。"
+  }
 }

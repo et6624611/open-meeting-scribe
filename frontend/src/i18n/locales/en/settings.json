@@ -90,6 +90,15 @@
   "watermark_desc": "Background glow decoration effect, follows theme color scheme",
   "watermark_enabled": "Show glow",
   "watermark_opacity": "Opacity",
+  "cat_account": "Account",
+  "cat_services": "Services",
+  "cat_transcription": "Transcription",
+  "cat_appearance": "Appearance",
+  "cat_features": "Features",
+  "cat_prompts": "Prompts",
+  "cat_system": "System",
+  "prompts_title": "Prompt Management",
+  "prompts_desc": "View or customize prompts used by AI at each stage to optimize output quality",
   "privacy_notice": {
     "text": "Privacy notice: AI features such as speech recognition and summary generation rely on cloud APIs. Meeting audio and text will be transmitted to third-party services. Do not process sensitive content.",
     "learn_more": "Learn more"

@@ -43,5 +43,14 @@
     "rename_failed": "重命名失败，请重试",
     "retry_failed": "重试失败，请检查网络连接",
     "reupload_wip": "重新上传功能开发中"
-  }
+  },
+  "copy_title": "复制标题",
+  "copy_summary": "复制摘要",
+  "copied": "已复制",
+  "stat_speakers": "说话人",
+  "stat_duration": "时长",
+  "stat_created": "创建日期",
+  "stat_source": "来源",
+  "source_record": "录音",
+  "source_upload": "上传"
 }

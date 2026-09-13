@@ -105,7 +105,9 @@
   bottom: 0;
   width: 380px;
   max-width: 90vw;
-  background: var(--surface);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
   border-left: 1px solid var(--border);
   box-shadow: -4px 0 24px oklch(0% 0 0 / 0.08);
   transform: translateX(100%);
@@ -320,7 +322,7 @@
   z-index: var(--z-modal);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity 0.2s;
 }
 .restart-modal.is-open {
   opacity: 1;
@@ -329,7 +331,7 @@
 .restart-modal-overlay {
   position: absolute;
   inset: 0;
-  background: oklch(0% 0 0 / 0.35);
+  background: var(--overlay-bg);
 }
 .restart-dialog {
   position: relative;
@@ -339,11 +341,13 @@
   max-width: 360px;
   width: 90%;
   box-shadow: 0 20px 60px oklch(0% 0 0 / 0.15);
-  transform: scale(0.95);
-  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+  transform: translateY(8px);
+  opacity: 0;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .restart-modal.is-open .restart-dialog {
-  transform: scale(1);
+  transform: translateY(0);
+  opacity: 1;
 }
 .restart-icon {
   width: 48px;

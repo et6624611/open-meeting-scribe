@@ -15,6 +15,7 @@
     "regenerate": "Regenerate Minutes",
     "retranscribe": "Re-transcribe",
     "archive": "Archive",
+    "unarchive": "Unarchive",
     "delete": "Delete"
   },
   "meta": {
@@ -138,9 +139,12 @@
   "archive_dialog": {
     "title": "Confirm Archive",
     "close": "Close",
-    "desc": "Archive this meeting? It will be moved to the archive list.",
+    "desc": "Archive this meeting? It will be available in the Archived tab.",
     "cancel": "Cancel",
-    "confirm": "Confirm Archive"
+    "confirm": "Confirm Archive",
+    "unarchive_title": "Unarchive",
+    "unarchive_desc": "Unarchive this meeting? It will reappear in the meeting list.",
+    "unarchive_confirm": "Confirm"
   },
   "delete_dialog": {
     "title": "Confirm Delete",

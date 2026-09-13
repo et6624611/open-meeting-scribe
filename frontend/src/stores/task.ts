@@ -9,7 +9,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { fetchTasks, deleteTask as apiDeleteTask } from '@/api/tasks'
+import { fetchTasks, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
 import client from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
 
@@ -19,12 +19,23 @@ export const useTaskStore = defineStore('task', () => {
   const currentTaskId = ref<string | null>(null)
   const loading = ref(false)
   const searchQuery = ref('')
+  /** 侧边栏专用搜索词（与 Library 的 searchQuery 互不干扰） */
+  const sidebarSearchQuery = ref('')
+  /** 是否查看已归档任务（会议库 Tab 切换用） */
+  const showArchived = ref(false)
   /** 防抖后的搜索词（300ms），避免每次按键都触发全量过滤 */
   const debouncedQuery = ref('')
+  /** 侧边栏专用防抖搜索词 */
+  const debouncedSidebarQuery = ref('')
   let _debounceTimer: ReturnType<typeof setTimeout> | null = null
+  let _sidebarDebounceTimer: ReturnType<typeof setTimeout> | null = null
   watch(searchQuery, (val) => {
     if (_debounceTimer) clearTimeout(_debounceTimer)
     _debounceTimer = setTimeout(() => { debouncedQuery.value = val }, 300)
+  })
+  watch(sidebarSearchQuery, (val) => {
+    if (_sidebarDebounceTimer) clearTimeout(_sidebarDebounceTimer)
+    _sidebarDebounceTimer = setTimeout(() => { debouncedSidebarQuery.value = val }, 300)
   })
 
   // ─── 计算属性 ───
@@ -32,11 +43,17 @@ export const useTaskStore = defineStore('task', () => {
     tasks.value.find(t => t.task_id === currentTaskId.value) ?? null,
   )
 
-  /** 按搜索词过滤后的任务列表（依赖防抖后的 debouncedQuery） */
+  /** 未归档任务（侧边栏 + 会议库默认视图） */
+  const activeTasks = computed(() => tasks.value.filter(t => !t.archived_at))
+
+  /** 已归档任务 */
+  const archivedTasks = computed(() => tasks.value.filter(t => !!t.archived_at))
+
+  /** 按搜索词过滤后的未归档任务列表（侧边栏专用，始终基于 activeTasks） */
   const filteredTasks = computed(() => {
-    const q = debouncedQuery.value.trim().toLowerCase()
-    if (!q) return tasks.value
-    return tasks.value.filter(t => {
+    const q = debouncedSidebarQuery.value.trim().toLowerCase()
+    if (!q) return activeTasks.value
+    return activeTasks.value.filter(t => {
       const title = (t.title || t.audio_name || '').toLowerCase()
       const summary = (t.summary || '').toLowerCase()
       return title.includes(q) || summary.includes(q)
@@ -138,6 +155,18 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  /** 归档任务 */
+  async function archiveTask(taskId: string) {
+    await apiArchiveTask(taskId)
+    patchTaskLocal(taskId, { archived_at: new Date().toISOString() })
+  }
+
+  /** 取消归档 */
+  async function unarchiveTask(taskId: string) {
+    await apiUnarchiveTask(taskId)
+    patchTaskLocal(taskId, { archived_at: null })
+  }
+
   /** 更新本地任务数据（乐观更新，不请求后端）；任务不存在时自动添加 */
   function patchTaskLocal(taskId: string, patch: Partial<Task>) {
     const idx = tasks.value.findIndex(t => t.task_id === taskId)
@@ -215,9 +244,9 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   return {
-    tasks, currentTaskId, loading, searchQuery,
-    currentTask, filteredTasks, groupedTasks,
-    loadTasks, selectTask, removeTask, patchTaskLocal,
+    tasks, currentTaskId, loading, searchQuery, sidebarSearchQuery, showArchived,
+    currentTask, filteredTasks, groupedTasks, activeTasks, archivedTasks,
+    loadTasks, selectTask, removeTask, patchTaskLocal, archiveTask, unarchiveTask,
     pauseRecording, resumeRecording, abandonRecording, stopRecording, getStatusLabel,
   }
 })

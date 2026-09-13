@@ -39,7 +39,7 @@ html[data-theme="ocean"] {
   --timeline-today-glow: oklch(56% 0.14 210 / 0.15);
   --dropdown-bg: oklch(99.5% 0.004 220);
   --dropdown-shadow: 0 8px 32px oklch(16% 0.015 230 / 0.10), 0 2px 8px oklch(16% 0.015 230 / 0.06);
-  --topbar-bg: oklch(98.5% 0.008 220 / 0.85);
+  --glass-bg: oklch(98.5% 0.008 220 / 0.72);
   --shadow-focus: 0 0 0 3px oklch(56% 0.14 210 / 0.18);
   --wm-opacity: 0.18;
   --wm-glow: oklch(56% 0.14 210 / 0.10);

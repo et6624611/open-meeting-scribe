@@ -30,7 +30,11 @@ from core.auth import (
     create_jwt,
     verify_jwt,
 )
-from core.users import find_or_create_oauth_user, find_or_create_sms_user, get_user_by_id, clear_current_user
+from core.users import (
+    find_or_create_oauth_user, find_or_create_sms_user,
+    get_user_by_id, clear_current_user, get_current_user,
+    record_privacy_consent, get_privacy_consent_at,
+)
 from core.sms import validate_phone, can_send, send_verify_code, check_verify_code
 from core.i18n import _
 
@@ -165,6 +169,7 @@ def get_me(request: Request):
         "role": user.get("role", "personal"),
         "provider": user.get("provider", ""),
         "prefs": user.get("prefs", {}),
+        "privacy_consent_at": user.get("privacy_consent_at"),
     }
 
 
@@ -176,6 +181,48 @@ def logout(request: Request):
     response.delete_cookie(key=SESSION_COOKIE, path="/")
     logger.info("用户已登出")
     return response
+
+
+# ============================================================
+# 隐私同意留痕
+# ============================================================
+
+
+@router.get("/privacy-consent")
+def get_consent():
+    """
+    查询当前用户隐私同意状态。
+
+    Returns:
+        {"consented": bool, "consented_at": str|null, "need_server_consent": bool}
+    """
+    user = get_current_user()
+    if not user:
+        return {"consented": False, "consented_at": None, "need_server_consent": False}
+    consented_at = get_privacy_consent_at(user["id"])
+    return {
+        "consented": consented_at is not None,
+        "consented_at": consented_at,
+        "need_server_consent": user.get("provider") == "sms",
+    }
+
+
+@router.post("/privacy-consent")
+def post_consent():
+    """
+    记录用户隐私同意。
+
+    仅对 SMS 用户写入服务端留痕（与实名记录绑定，用于免责举证）。
+    其他用户（自带 Key / 本地）不经手数据，无需服务端留痕。
+    """
+    user = get_current_user()
+    if not user:
+        raise HTTPException(401, _("Not logged in"))
+    recorded = record_privacy_consent(user["id"])
+    return {
+        "recorded": recorded,
+        "consented_at": get_privacy_consent_at(user["id"]),
+    }
 
 
 # ============================================================

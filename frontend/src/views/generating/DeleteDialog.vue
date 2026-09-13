@@ -1,7 +1,7 @@
 <template>
   <!-- 删除确认对话框 -->
-  <div v-if="modelValue" class="delete-dialog-overlay" @click.self="emit('update:modelValue', false)">
-    <div class="delete-dialog">
+  <div v-show="modelValue" class="oms-overlay delete-overlay" data-vue-overlay :class="{ 'is-open': modelValue }" @click.self="emit('update:modelValue', false)">
+    <div class="oms-overlay-card delete-dialog">
       <div class="delete-dialog-header">
         <h3>{{ t('generating.delete_dialog.title') }}</h3>
         <button class="delete-dialog-close" @click="emit('update:modelValue', false)" :title="t('generating.delete_dialog.close')">
@@ -12,7 +12,7 @@
         <p>{{ t('generating.delete_dialog.desc') }}</p>
       </div>
       <div class="delete-dialog-footer">
-        <button class="btn-cancel" @click="emit('update:modelValue', false)">{{ t('generating.delete_dialog.cancel') }}</button>
+        <button class="btn-cancel" @click="emit('update:modelValue', false)">{{ t('generating.delete_dialog.cancel') }} <kbd>ESC</kbd></button>
         <button class="btn-danger" @click="emit('confirm')">{{ t('generating.delete_dialog.confirm') }}</button>
       </div>
     </div>
@@ -20,11 +20,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useEscClose } from '@/composables/useEscClose'
 
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
 }>()
 
@@ -32,28 +34,18 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'confirm'): void
 }>()
+
+useEscClose(computed(() => props.modelValue), () => emit('update:modelValue', false))
 </script>
 
 <style scoped>
-.delete-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal);
-}
-
+/* 尺寸覆盖（全局 .oms-overlay-card 默认 480px） */
 .delete-dialog {
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--dropdown-shadow);
   min-width: 400px;
   max-width: 500px;
+  border-radius: var(--radius-lg);
+  border: none;
+  box-shadow: var(--dropdown-shadow);
 }
 
 .delete-dialog-header {
@@ -71,26 +63,37 @@ const emit = defineEmits<{
 }
 
 .delete-dialog-close {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
+  gap: 4px;
+  padding: 2px 6px;
   border: none;
   background: transparent;
   cursor: pointer;
   opacity: 0.6;
   transition: opacity 0.2s;
+  border-radius: var(--radius-sm);
 }
 
 .delete-dialog-close:hover {
   opacity: 1;
+  background: var(--surface-2);
 }
 
 .delete-dialog-close svg {
   width: 12px;
   height: 12px;
+}
+
+.delete-dialog-close kbd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--subtle);
+  line-height: 1.3;
 }
 
 .delete-dialog-body {

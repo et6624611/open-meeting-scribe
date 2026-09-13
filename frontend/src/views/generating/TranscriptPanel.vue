@@ -1,6 +1,6 @@
 <template>
   <!-- 原文面板 -->
-  <div class="gen-panel spk-layout-active">
+  <div class="gen-panel spk-layout-active" :class="{ hidden: !visible }">
     <div class="spk-transcript-layout">
       <div class="spk-transcript-area" ref="transcriptAreaEl">
         <!-- 章节生成中提示 -->
@@ -227,6 +227,7 @@ const userStore = useUserStore()
 type TranscriptItem = { type: 'chapter'; chapterIdx: number } | { type: 'line'; lineIdx: number }
 
 const props = defineProps<{
+  visible: boolean
   transcriptItems: TranscriptItem[]
   chapters: Chapter[]
   expandedChapters: Set<number>
