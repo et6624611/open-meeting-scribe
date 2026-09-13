@@ -12,11 +12,11 @@ core/chat_edits.py — 数据编辑意图：LLM 结构化解析 → 后端执行
 从 app/routers/chat.py 拆分而来。
 """
 
-import re
 import json
 import logging
+import re
 
-from app.task_store import tasks, save_task_to_disk, TASKS_DIR
+from app.task_store import TASKS_DIR, save_task_to_disk, tasks
 from core.llm import async_chat_completion
 
 logger = logging.getLogger(__name__)

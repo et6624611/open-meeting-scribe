@@ -17,9 +17,9 @@ core/voiceprint_registry.py — 声纹数据层：常量 + 注册表 + 匹配算
 
 import json
 import logging
-from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -180,8 +180,8 @@ def save_registry(registry: dict[str, VoiceprintRecord]) -> None:
     """保存声纹注册表"""
     try:
         data = {k: v.to_dict() for k, v in registry.items()}
-        with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        from core.fs_atomic import atomic_write_json
+        atomic_write_json(REGISTRY_FILE, data)
         logger.info(f"[声纹] 注册表已保存: {len(registry)} 条")
     except Exception as e:
         logger.error(f"[声纹] 保存注册表失败: {e}")

@@ -29,13 +29,6 @@
 .main.is-xnarrow .bt-line .bt-chip { justify-self: start; }
 .main.is-xnarrow .ts-line { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
 .main.is-xnarrow .ts-line .spk { justify-self: start; }
-/* 主区极窄：控制区两行化 —— Tab 一行、播放器独占一行，进度条弹性伸展，
-   避免倍速按钮被裁（控件 min-content 超过主区可用宽时的经典换行解法） */
-.main.is-xnarrow .gen-control-zone { height: auto; flex-wrap: wrap; padding: var(--s-1) var(--s-3); row-gap: 2px; }
-.main.is-xnarrow .gen-audio-bar { flex: 1 1 100%; }
-.main.is-xnarrow .gen-audio-progress { flex-grow: 1; }
-/* 主区极窄：播放器时间显示让位给进度条与倍速按钮 */
-.main.is-xnarrow .gen-audio-time { display: none; }
 
 /* ── 顶栏 / 状态栏溢出保护 ── */
 .topbar-left { min-width: 0; }
@@ -49,6 +42,7 @@
 /* 侧边栏窄幅态（JS 在宽度 <200px 时加 is-narrow）：标题单行截断、降低行高 */
 .sidebar.is-narrow .sb-tl-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
 .sidebar.is-narrow .sb-tl-meta .sb-tl-dur { display: none; }
+.sidebar.is-narrow .sb-tl-speakers { display: none; }
 
 /* 悬停卡片：任何视口下都不超出屏幕 */
 .sb-hover-card { min-width: min(260px, calc(100vw - 16px)); max-width: min(340px, calc(100vw - 16px)); }
@@ -259,6 +253,8 @@
 /* ─── 顶栏新建会议按钮 ─── */
 .topbar-new-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 999px; border: none; background: var(--fg); color: var(--bg); font-size: var(--fs-13); font-weight: 500; cursor: pointer; transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease, opacity 0.2s ease, max-width 0.25s ease, padding 0.25s ease, margin 0.25s ease; overflow: hidden; max-width: 200px; opacity: 1; white-space: nowrap; }
 .topbar-new-btn.is-hidden { opacity: 0; max-width: 0; padding: 0; margin: 0; pointer-events: none; }
+.topbar-new-btn.is-disabled { opacity: 0.5; cursor: default; }
+.topbar-new-btn.is-disabled:hover { filter: none; box-shadow: none; }
 .topbar-new-btn:hover { filter: brightness(1.15); box-shadow: 0 1px 3px oklch(0% 0 0 / 0.12); }
 .topbar-new-btn:active { transform: scale(0.97); box-shadow: none; }
 .topbar-new-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -273,7 +269,7 @@
 .sb-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px; border-bottom: 1px solid var(--border); }
 .sb-header-actions { display: flex; align-items: center; gap: var(--s-2); }
 /* 边栏已折叠态 — 完全隐藏（导航职责已迁移到 Activity Rail） */
-.body.sidebar-collapsed .sidebar { flex-basis: 0 !important; min-width: 0 !important; max-width: 0 !important; overflow: hidden; border: none; }
+.body.sidebar-collapsed .sidebar { flex-basis: 0 !important; min-width: 0 !important; max-width: 0 !important; margin-left: 0 !important; overflow: hidden; border: none; }
 .body.sidebar-collapsed .sidebar .sb-toggle { display: none; }
 /* 折叠时同时隐藏左侧分隔缝，避免残留 10px 视觉占位 */
 .body.sidebar-collapsed .layout-divider-left { display: none; }

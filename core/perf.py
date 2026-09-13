@@ -25,10 +25,9 @@ core/perf.py — 轻量性能监控工具
   collector.dump()  # 输出汇总日志
 """
 
-import time
-import logging
 import functools
-from contextlib import contextmanager
+import logging
+import time
 
 logger = logging.getLogger(__name__)
 

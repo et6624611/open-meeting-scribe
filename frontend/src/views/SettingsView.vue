@@ -2,6 +2,11 @@
   <div class="settings-layout">
     <!-- 左栏：类别导航 -->
     <nav class="settings-nav">
+      <button class="page-back-btn" @click="goBack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        <span>{{ t('common.action.back') }}</span>
+        <kbd>ESC</kbd>
+      </button>
       <h1 class="settings-nav-title">{{ t('settings.title') }}</h1>
       <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -95,13 +100,40 @@
       <div class="api-subsection">
         <h3 class="api-subsection-title">{{ t('settings.asr_service') }}</h3>
         <div class="settings-field">
-          <label class="settings-label">{{ t('settings.asr_provider') }}</label>
-          <span class="api-readonly">{{ settings.asr?.provider || 'Cloud AI' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
+          <label class="settings-label">{{ t('settings.asr_mode') }}</label>
+          <select v-model="settings.asr!.mode" class="settings-input">
+            <option value="proxy">{{ t('settings.asr_mode_proxy') }}</option>
+            <option value="direct">{{ t('settings.asr_mode_direct') }}</option>
+          </select>
         </div>
-        <div class="settings-field">
-          <label class="settings-label">{{ t('settings.asr_model') }}</label>
-          <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
-        </div>
+
+        <!-- 代理模式：只读展示 -->
+        <template v-if="settings.asr?.mode !== 'direct'">
+          <div class="settings-field">
+            <label class="settings-label">{{ t('settings.asr_provider') }}</label>
+            <span class="api-readonly">{{ settings.asr?.provider || 'Cloud AI' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">{{ t('settings.asr_model') }}</label>
+            <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
+          </div>
+        </template>
+
+        <!-- 直连模式：可配置 Base URL 和 API Key -->
+        <template v-else>
+          <div class="settings-field">
+            <label class="settings-label">{{ t('settings.asr_base_url') }}</label>
+            <input v-model="settings.asr!.base_url" class="settings-input" placeholder="https://dashscope.aliyuncs.com" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">{{ t('settings.api_key') }}</label>
+            <input v-model="settings.asr!.api_key" type="password" class="settings-input" :placeholder="t('settings.asr_api_key_placeholder')" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">{{ t('settings.asr_model') }}</label>
+            <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
+          </div>
+        </template>
       </div>
 
       <div class="settings-actions">
@@ -378,6 +410,28 @@
       </div>
     </div>
 
+    <!-- 键盘快捷键参考 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.keyboard_shortcuts') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.keyboard_shortcuts_desc') }}</p>
+      <div class="kbd-shortcut-list">
+        <div v-for="s in shortcutList" :key="s.key" class="kbd-shortcut-item">
+          <span class="kbd-shortcut-label">{{ s.label }}</span>
+          <kbd class="kbd-shortcut-key">{{ s.key }}</kbd>
+        </div>
+      </div>
+    </div>
+
+    <!-- 重新加载页面 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.reload_page') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.reload_page_desc') }}</p>
+      <button class="btn btn-secondary" @click="onReloadPage">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        {{ t('settings.reload_page_btn') }}
+      </button>
+    </div>
+
     <!-- 禁用快捷指令 -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.disabled_commands') }}</h2>
@@ -461,6 +515,114 @@
         <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">{{ t('settings.cloud_mode_hint') }}</p>
       </div>
     </div>
+
+    <!-- 存储空间 -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.storage') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.storage_desc') }}</p>
+
+      <div v-if="storageLoading" class="settings-empty">{{ t('common.loading') }}</div>
+      <div v-else-if="storageUsage" class="storage-panel">
+        <!-- 总览 -->
+        <div class="storage-overview">
+          <div class="storage-stat">
+            <div class="storage-stat-value">{{ formatBytes(storageUsage.total_bytes) }}</div>
+            <div class="storage-stat-label">{{ t('settings.storage_total') }}</div>
+          </div>
+          <div class="storage-stat">
+            <div class="storage-stat-value" style="color:var(--accent)">{{ formatBytes(storageUsage.reclaimable_bytes) }}</div>
+            <div class="storage-stat-label">{{ t('settings.storage_reclaimable') }}</div>
+          </div>
+        </div>
+
+        <!-- 分类明细 -->
+        <div class="storage-breakdown">
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_recordings') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.recordings.size_bytes) }} <small>({{ storageUsage.recordings.file_count }})</small></span>
+          </div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_uploads') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.uploads.size_bytes) }} <small>({{ storageUsage.uploads.file_count }})</small></span>
+          </div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_tasks') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.tasks.size_bytes) }} <small>({{ storageUsage.tasks.file_count }})</small></span>
+          </div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_output') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.output.size_bytes) }} <small>({{ storageUsage.output.file_count }})</small></span>
+          </div>
+        </div>
+
+        <!-- 中间产物 -->
+        <div v-if="storageUsage.intermediate" class="storage-intermediate">
+          <div class="storage-intermediate-title">{{ t('settings.storage_intermediate') }}</div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_normalized') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.normalized_files.size_bytes) }} <small>({{ storageUsage.intermediate.normalized_files.file_count }})</small></span>
+          </div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_raw_files') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.raw_files.size_bytes) }} <small>({{ storageUsage.intermediate.raw_files.file_count }})</small></span>
+          </div>
+          <div class="storage-breakdown-item">
+            <span class="storage-breakdown-label">{{ t('settings.storage_duplicate') }}</span>
+            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.duplicate_normalized.size_bytes) }} <small>({{ storageUsage.intermediate.duplicate_normalized.file_count }})</small></span>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="storage-actions">
+          <button class="btn btn-secondary" @click="onCleanIntermediate" :disabled="cleaning">
+            {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_btn') }}
+          </button>
+          <button class="btn btn-secondary" @click="onCleanOrphaned" :disabled="cleaning">
+            {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_orphaned_btn') }}
+          </button>
+          <button class="btn btn-sm btn-secondary" @click="onRefreshStorage" :disabled="storageLoading" style="margin-left:auto">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            {{ t('common.action.refresh') }}
+          </button>
+        </div>
+        <p v-if="cleanResult" class="storage-clean-result">{{ cleanResult }}</p>
+
+        <!-- 自动归档设置 -->
+        <div class="storage-auto-archive">
+          <div class="wm-setting-row">
+            <label>
+              {{ t('settings.storage_auto_clean') }}
+            </label>
+            <div class="wm-toggle-wrap">
+              <div 
+                class="wm-toggle" 
+                :class="{ 'is-on': storageConfig.auto_clean_intermediate }" 
+                role="switch" 
+                :aria-checked="storageConfig.auto_clean_intermediate"
+                tabindex="0"
+                @click="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                @keydown.enter.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                @keydown.space.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+              ></div>
+              <span class="wm-setting-val">{{ storageConfig.auto_clean_intermediate ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+            </div>
+          </div>
+          <div class="wm-setting-row" style="margin-top:var(--s-3)">
+            <label>
+              {{ t('settings.storage_auto_archive') }}
+              <span class="toggle-desc">{{ t('settings.storage_auto_archive_desc') }}</span>
+            </label>
+            <select v-model="storageConfig.auto_archive_days" class="settings-input" style="max-width:160px;padding:4px 8px;font-size:12px">
+              <option :value="0">{{ t('settings.storage_auto_archive_off') }}</option>
+              <option :value="7">7 {{ t('settings.storage_days') }}</option>
+              <option :value="30">30 {{ t('settings.storage_days') }}</option>
+              <option :value="90">90 {{ t('settings.storage_days') }}</option>
+              <option :value="180">180 {{ t('settings.storage_days') }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
     </div>
 
     </div><!-- .settings-content -->
@@ -473,16 +635,23 @@ import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
 import { useWatermarkStore } from '@/stores/watermark'
+import { useTaskStore } from '@/stores/task'
 import { fetchSettings, saveSettings, testApiConnection, fetchSystemPrompts, fetchCliReference } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset, SystemPromptItem } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory } from '@/api/usage'
 import type { UsageSummary, UsageHistoryItem } from '@/api/usage'
+import { fetchStorageUsage, cleanIntermediateFiles, cleanOrphanedFiles } from '@/api/storage'
+import type { StorageUsage } from '@/api/storage'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
+import { usePageBack } from '@/composables/usePageBack'
+import { modKey } from '@/utils/platform'
 
 const { t } = useI18n()
+const { goBack } = usePageBack()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const watermarkStore = useWatermarkStore()
+const taskStore = useTaskStore()
 
 /** 当前选中的设置类别 */
 const activeCategory = ref<string>('account')
@@ -557,6 +726,36 @@ function togglePromptExpand(name: string) {
 // ─── CLI 参考 ───
 const cliReference = reactive<Record<string, unknown>>({})
 
+// ─── 键盘快捷键参考 ───
+const shortcutList = computed(() => [
+  { key: `${modKey}B`, label: t('settings.shortcut_toggle_sidebar') },
+  { key: `${modKey}J`, label: t('settings.shortcut_toggle_ai') },
+  { key: `${modKey}K`, label: t('settings.shortcut_focus_search') },
+  { key: `${modKey}N`, label: t('settings.shortcut_new_meeting') },
+  { key: `${modKey}R`, label: t('settings.shortcut_start_recording') },
+  { key: `${modKey}U`, label: t('settings.shortcut_upload_audio') },
+  { key: 'F5', label: t('settings.shortcut_reload') },
+  { key: 'ESC', label: t('settings.shortcut_close_dialog') },
+])
+
+// ─── 重新加载页面 ───
+function onReloadPage() {
+  const now = Date.now()
+  const oneDayAgo = now - 24 * 60 * 60 * 1000
+  const hasRecording = taskStore.tasks.some(t => {
+    if (t.status !== 'recording' && t.status !== 'paused') return false
+    if (t.created_at) {
+      const created = new Date(t.created_at).getTime()
+      if (created < oneDayAgo) return false
+    }
+    return true
+  })
+  if (hasRecording) {
+    if (!window.confirm(t('common.reload_recording_confirm'))) return
+  }
+  window.location.reload()
+}
+
 // ─── 禁用指令 ───
 function onEnableCommand(cmd: string) {
   if (!settings.disabled_commands) return
@@ -618,6 +817,7 @@ async function onSave() {
     voiceprint: { ...settings.voiceprint },
     output_dir: settings.output_dir,
     feature_flags: { ...featureFlags },
+    storage: { ...storageConfig },
   })
   alert(t('settings.saved'))
 }
@@ -626,9 +826,46 @@ async function onTest() {
   testing.value = true
   testResult.value = ''
   try {
-    const res = await testApiConnection()
-    testResult.value = res.message || (res.success ? t('settings.connection_success') : t('settings.connection_failed'))
-    testIsError.value = !res.success
+    // 测试 ASR 连接（传递当前模式配置）
+    const asrParams = {
+      service_type: 'asr',
+      asr: {
+        mode: settings.asr?.mode || 'proxy',
+        base_url: settings.asr?.base_url,
+        api_key: settings.asr?.api_key,
+      },
+    }
+    const asrRes = await testApiConnection(asrParams)
+    const asrOk = asrRes.ok ?? asrRes.success
+    const asrMsg = asrRes.message || asrRes.error || ''
+
+    // 测试 LLM 连接
+    const llmParams = {
+      service_type: 'llm',
+      llm: {
+        base_url: settings.llm?.base_url,
+        api_key: settings.llm?.api_key,
+        model: settings.llm?.model,
+      },
+    }
+    const llmRes = await testApiConnection(llmParams)
+    const llmOk = llmRes.ok ?? llmRes.success
+    const llmMsg = llmRes.message || llmRes.error || ''
+
+    // 合并结果
+    const parts: string[] = []
+    if (asrOk) {
+      parts.push(`ASR: ${asrMsg || t('settings.connection_success')}`)
+    } else {
+      parts.push(`ASR: ${asrMsg || t('settings.connection_failed')}`)
+    }
+    if (llmOk) {
+      parts.push(`LLM: ${llmMsg || t('settings.connection_success')}`)
+    } else {
+      parts.push(`LLM: ${llmMsg || t('settings.connection_failed')}`)
+    }
+    testResult.value = parts.join(' | ')
+    testIsError.value = !asrOk || !llmOk
   } catch {
     testResult.value = t('settings.connection_failed')
     testIsError.value = true
@@ -647,6 +884,71 @@ function toggleFlag(key: keyof FeatureFlags) {
 
 async function saveFeatureFlags() {
   await saveSettings({ feature_flags: { ...featureFlags } })
+}
+
+// ─── 存储管理 ───
+const storageUsage = ref<StorageUsage | null>(null)
+const storageLoading = ref(false)
+const cleaning = ref(false)
+const cleanResult = ref('')
+const storageConfig = reactive({
+  auto_clean_intermediate: true,
+  auto_archive_days: 0,
+})
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const val = bytes / Math.pow(1024, i)
+  return `${val.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
+}
+
+async function loadStorageUsage() {
+  storageLoading.value = true
+  try {
+    storageUsage.value = await fetchStorageUsage()
+  } catch (e) {
+    console.error('[Storage] 加载用量失败:', e)
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+async function onRefreshStorage() {
+  await loadStorageUsage()
+}
+
+async function onCleanIntermediate() {
+  cleaning.value = true
+  cleanResult.value = ''
+  try {
+    const result = await cleanIntermediateFiles()
+    const freed = formatBytes(result.total_freed_bytes || result.freed_bytes || 0)
+    cleanResult.value = t('settings.storage_cleaned', { freed })
+    await loadStorageUsage()
+  } catch (e) {
+    console.error('[Storage] 清理失败:', e)
+    cleanResult.value = t('settings.storage_clean_failed')
+  } finally {
+    cleaning.value = false
+  }
+}
+
+async function onCleanOrphaned() {
+  cleaning.value = true
+  cleanResult.value = ''
+  try {
+    const result = await cleanOrphanedFiles()
+    const freed = formatBytes(result.freed_bytes || 0)
+    cleanResult.value = t('settings.storage_cleaned', { freed })
+    await loadStorageUsage()
+  } catch (e) {
+    console.error('[Storage] 清理失败:', e)
+    cleanResult.value = t('settings.storage_clean_failed')
+  } finally {
+    cleaning.value = false
+  }
 }
 
 onMounted(async () => {
@@ -677,9 +979,17 @@ onMounted(async () => {
   if (s.output_dir) {
     settings.output_dir = s.output_dir
   }
+  // 存储配置
+  if (s.storage) {
+    Object.assign(storageConfig, {
+      auto_clean_intermediate: s.storage.auto_clean_intermediate !== false,
+      auto_archive_days: s.storage.auto_archive_days || 0,
+    })
+  }
   loadUsage()
   loadSystemPrompts()
   loadCliReference()
+  loadStorageUsage()
 })
 
 async function loadUsage() {
@@ -775,8 +1085,30 @@ async function loadCliReference() {
 .cli-ref-item { display: flex; align-items: baseline; gap: var(--s-3); padding: 4px 0; font-size: 13px; }
 .cli-ref-cmd { font-weight: 500; min-width: 80px; color: var(--fg); }
 .cli-ref-item code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 2px 6px; border-radius: var(--radius-sm); word-break: break-all; }
+/* 键盘快捷键参考 */
+.kbd-shortcut-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.kbd-shortcut-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-4); font-size: 13px; }
+.kbd-shortcut-item + .kbd-shortcut-item { border-top: 1px solid var(--border); }
+.kbd-shortcut-label { color: var(--fg); }
+.kbd-shortcut-key { font-family: var(--font-mono); font-size: 11px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; min-width: 48px; text-align: center; }
 /* 禁用指令 */
 .disabled-cmd-list { display: flex; flex-direction: column; gap: var(--s-2); }
 .disabled-cmd-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); }
 .disabled-cmd-item code { font-family: var(--font-mono); font-size: 12px; color: var(--fg); }
+/* 存储管理 */
+.storage-panel { display: flex; flex-direction: column; gap: var(--s-4); }
+.storage-overview { display: flex; gap: var(--s-6); padding: var(--s-4); background: var(--surface-2); border-radius: var(--radius); border: 1px solid var(--border); }
+.storage-stat { flex: 1; text-align: center; }
+.storage-stat-value { font-size: 22px; font-weight: 700; font-family: var(--font-mono); color: var(--fg); line-height: 1.3; }
+.storage-stat-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; }
+.storage-breakdown { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.storage-breakdown-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-2) var(--s-3); font-size: 13px; }
+.storage-breakdown-item + .storage-breakdown-item { border-top: 1px solid var(--border); }
+.storage-breakdown-label { color: var(--fg); }
+.storage-breakdown-value { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.storage-breakdown-value small { font-size: 11px; opacity: 0.7; }
+.storage-intermediate { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.storage-intermediate-title { font-size: 12px; font-weight: 600; color: var(--muted); padding: var(--s-2) var(--s-3); background: var(--surface-2); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
+.storage-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.storage-clean-result { font-size: 12px; color: var(--accent); margin: 0; font-weight: 500; }
 </style>

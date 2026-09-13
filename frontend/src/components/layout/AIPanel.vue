@@ -2,7 +2,7 @@
   <div class="ai" :class="{ 'is-collapsed': layout.aiCollapsed }">
     <button
       class="ai-toggle"
-      :title="layout.aiCollapsed ? t('ai-panel.expand') : t('ai-panel.collapse')"
+      :title="(layout.aiCollapsed ? t('ai-panel.expand') : t('ai-panel.collapse')) + ` (${modKey}J)`"
       :aria-label="layout.aiCollapsed ? t('ai-panel.expand') : t('ai-panel.collapse')"
       :aria-expanded="!layout.aiCollapsed"
       @mousedown="onToggleDown($event)"
@@ -55,7 +55,7 @@
 
     <!-- 对话 Tab -->
     <AiChatPanel
-      v-show="aiTab === 'chat'"
+      v-if="aiTab === 'chat'"
       ref="chatPanelRef"
       :messages="chat.messages.value"
       :is-loading="chat.isLoading.value"
@@ -88,7 +88,7 @@
 
     <!-- 上下文 Tab -->
     <AiContextPanel
-      v-show="aiTab === 'context'"
+      v-if="aiTab === 'context'"
       :is-empty="ctx.isContextEmpty.value"
       :stats="ctx.contextStats.value"
       :meeting-output-count="ctx.meetingOutputCount.value"
@@ -134,6 +134,7 @@ import { useAiContext } from '@/composables/useAiContext'
 import { useAiCommandActions } from '@/composables/useAiCommandActions'
 import { useAiInsights } from '@/composables/useAiInsights'
 import IconButton from '@/components/common/IconButton.vue'
+import { modKey } from '@/utils/platform'
 
 import AiSessionTabs from './ai/AiSessionTabs.vue'
 import AiChatPanel from './ai/AiChatPanel.vue'

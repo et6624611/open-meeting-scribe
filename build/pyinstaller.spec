@@ -14,7 +14,7 @@ ROOT = Path(SPECPATH).parent
 block_cipher = None
 
 a = Analysis(
-    [str(ROOT / 'cli.py')],
+    [str(ROOT / 'desktop.py')],  # 桌面应用入口
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
@@ -54,6 +54,9 @@ a = Analysis(
         'app.routers.usage',
         'app.routers.user',
         'app.routers.voiceprint',
+        # pywebview 桌面窗口
+        'webview',
+        'webview.platforms.winforms',  # Windows 平台后端
         # 其他
         'multipart',
         'jose',
@@ -92,7 +95,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # 保留控制台窗口（显示日志）
+    console=False,  # 桌面模式隐藏控制台窗口
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

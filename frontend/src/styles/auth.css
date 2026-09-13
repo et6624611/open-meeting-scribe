@@ -51,11 +51,16 @@
   transition: opacity 0.3s ease;
 }
 .login-overlay.is-hidden { opacity: 0; pointer-events: none; }
-/* 左上角返回按钮：图标 + 文本 + ESC 键帽标识，与 ESC 快捷键行为一致 */
-.login-overlay .login-back-btn.icon-btn--with-label {
-  position: absolute;
-  top: 20px;
-  left: 24px;
+/* 卡片底部：提示文字 + 下方右对齐返回按钮 */
+.login-footer {
+  margin-top: 24px; font-size: 12px; color: var(--subtle);
+  line-height: 1.6; text-align: left; margin-bottom: 0;
+}
+.login-footer-action {
+  display: flex; justify-content: flex-end;
+  margin-top: 12px;
+}
+.login-footer-action .login-back-btn.icon-btn--with-label {
   height: 36px;
   padding: 0 12px;
   gap: 8px;
@@ -65,11 +70,11 @@
   border-radius: 10px;
   background: var(--surface);
 }
-.login-overlay .login-back-btn.icon-btn--with-label:hover {
+.login-footer-action .login-back-btn.icon-btn--with-label:hover {
   background: var(--surface-2);
   color: var(--fg);
 }
-.login-overlay .login-back-btn kbd {
+.login-footer-action .login-back-btn kbd {
   font-family: var(--font-mono);
   font-size: 10px;
   padding: 1px 5px;
@@ -118,10 +123,6 @@
 }
 .login-btn:hover { background: var(--border); }
 .login-btn svg { width: 20px; height: 20px; }
-.login-footer {
-  margin-top: 24px; font-size: 12px; color: var(--subtle);
-  line-height: 1.6;
-}
 
 /* ─── 登录 Tab 切换 ─── */
 .login-tabs {

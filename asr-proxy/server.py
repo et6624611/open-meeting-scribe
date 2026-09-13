@@ -16,18 +16,18 @@ WebSocket 实时流式转写已拆分至 ws_relay.py
   - timestamp 超过 TTL（默认 5 分钟）视为过期拒绝
 """
 
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
 import os
 import sys
 import time
-import hmac
-import hashlib
-import json
-import logging
-import asyncio
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -274,7 +274,6 @@ def asr_upload(request: Request, file: bytes = None):
     if "multipart/form-data" not in content_type:
         raise HTTPException(400, "请使用 multipart/form-data 上传文件")
 
-    import asyncio
     # FastAPI 的 sync 端点中读取 form data
     # 由于是 sync def，FastAPI 在线程池中运行
     # 我们需要从 request 中获取文件
@@ -417,6 +416,7 @@ async def asr_transcribe(request: Request):
 
 # 注册 WebSocket 路由（从 ws_relay 模块）
 import ws_relay
+
 ws_router = ws_relay.create_router(server_module=sys.modules[__name__])
 app.include_router(ws_router)
 

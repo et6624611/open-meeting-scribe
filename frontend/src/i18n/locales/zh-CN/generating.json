@@ -38,6 +38,7 @@
     "close": "关闭",
     "click_to_bind": "点击选择或新建身份",
     "click_to_rebind": "点击修改关联",
+    "edit_bindings": "编辑说话人关联",
     "search_placeholder": "搜索说话人...",
     "no_bind": "不关联",
     "no_match": "无匹配结果",
@@ -51,6 +52,8 @@
     "pause": "暂停",
     "play_title": "播放录音",
     "pause_title": "暂停播放",
+    "skip_back": "快退 15 秒",
+    "skip_forward": "快进 15 秒",
     "hidden_indicator": "已隐藏 {count} 条原文，当前仅显示章节与要点",
     "loading": "原文整理中...",
     "pending": "录音已完成，点击开始处理以生成转写内容"
@@ -91,19 +94,30 @@
     "action_items": "行动项",
     "todos_stat": "本次会议共产生 {total} 项待办，已完成 {done} 项",
     "view_todos": "查看待办",
-    "pending": "纪要尚未生成"
+    "pending": "纪要尚未生成",
+    "placeholder": "双击此处开始编辑纪要… Enter 新建块 · ↑↓ 跨块移动"
   },
-  "md_toolbar": {
-    "bold": "加粗",
-    "italic": "斜体",
-    "code": "代码",
-    "heading": "标题",
-    "list": "列表",
-    "quote": "引用",
-    "hint": "双击文本块可逐块编辑 · 选中文字可呼出操作栏"
+  "block_editor": {
+    "shortcut": {
+      "dblclick": "双击",
+      "edit": "编辑块",
+      "new_block": "新建块",
+      "line_break": "块内换行",
+      "navigate": "跨块移动",
+      "confirm": "确认编辑",
+      "cancel": "取消编辑",
+      "delete": "删除块（空块或全选后）"
+    }
+  },
+  "block_menu": {
+    "edit": "编辑",
+    "to_heading": "转为标题",
+    "to_list": "转为列表",
+    "to_paragraph": "转为段落",
+    "delete": "删除"
   },
   "notes": {
-    "placeholder": "在此记录随记…",
+    "placeholder": "在此记录随记… Enter 新建块 · ↑↓ 跨块移动",
     "saved": "已保存"
   },
   "todos": {

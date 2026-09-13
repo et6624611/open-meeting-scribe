@@ -189,8 +189,8 @@ class CloudEmbeddingProvider:
 
 def _float32_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
     """将 float32 音频转为 WAV 格式字节（16bit PCM）"""
-    import struct
     import io
+    import struct
 
     pcm_data = (audio * 32767).clip(-32768, 32767).astype(np.int16)
     data_bytes = pcm_data.tobytes()

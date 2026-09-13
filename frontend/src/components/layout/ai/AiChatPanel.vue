@@ -84,6 +84,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
+import { escapeHtml } from '@/utils/sanitize'
 import type { AiCommand } from '@/composables/useAiCommands'
 
 
@@ -128,7 +129,8 @@ const feedRef = ref<HTMLElement | null>(null)
 defineExpose({ inputRef, feedRef })
 
 function fmt(c: string): string {
-  return c.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>').replace(/\n/g, '<br>')
+  const safe = escapeHtml(c)
+  return safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>').replace(/\n/g, '<br>')
 }
 
 function shortText(text: string): string {

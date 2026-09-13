@@ -13,9 +13,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.routers.admin import require_admin
 from core import remote_config
 from core.i18n import _
-from app.routers.admin import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class UpdateMessageRequest(BaseModel):
 
 
 @router.get("/config/messages")
-def admin_list_messages(_: dict = Depends(require_admin)):
+def admin_list_messages(_admin: dict = Depends(require_admin)):
     """消息列表（含已禁用的）"""
     messages = remote_config.list_messages()
     return {"messages": messages, "total": len(messages)}
@@ -66,7 +66,7 @@ def admin_list_messages(_: dict = Depends(require_admin)):
 @router.post("/config/messages")
 def admin_create_message(
     req: CreateMessageRequest,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """创建消息"""
     valid_types = ("banner", "toast", "announcement")
@@ -103,7 +103,7 @@ def admin_create_message(
 def admin_update_message(
     message_id: str,
     req: UpdateMessageRequest,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """更新消息"""
     existing = remote_config.get_message(message_id)
@@ -132,7 +132,7 @@ def admin_update_message(
 @router.delete("/config/messages/{message_id}")
 def admin_delete_message(
     message_id: str,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """删除消息"""
     deleted = remote_config.delete_message(message_id)
@@ -144,7 +144,7 @@ def admin_delete_message(
 @router.put("/config/messages/{message_id}/toggle")
 def admin_toggle_message(
     message_id: str,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """切换消息启用/禁用"""
     msg = remote_config.toggle_message(message_id)
@@ -174,7 +174,7 @@ class UpdateFeatureFlagRequest(BaseModel):
 
 
 @router.get("/config/feature-flags")
-def admin_list_feature_flags(_: dict = Depends(require_admin)):
+def admin_list_feature_flags(_admin: dict = Depends(require_admin)):
     """功能开关列表"""
     flags = remote_config.list_feature_flags()
     return {"flags": flags, "total": len(flags)}
@@ -183,7 +183,7 @@ def admin_list_feature_flags(_: dict = Depends(require_admin)):
 @router.post("/config/feature-flags")
 def admin_create_feature_flag(
     req: CreateFeatureFlagRequest,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """创建功能开关"""
     if not req.name.strip():
@@ -212,7 +212,7 @@ def admin_create_feature_flag(
 def admin_update_feature_flag(
     flag_id: str,
     req: UpdateFeatureFlagRequest,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """更新功能开关"""
     existing = remote_config.get_feature_flag(flag_id)
@@ -238,7 +238,7 @@ def admin_update_feature_flag(
 @router.delete("/config/feature-flags/{flag_id}")
 def admin_delete_feature_flag(
     flag_id: str,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """删除功能开关"""
     deleted = remote_config.delete_feature_flag(flag_id)
@@ -250,7 +250,7 @@ def admin_delete_feature_flag(
 @router.put("/config/feature-flags/{flag_id}/toggle")
 def admin_toggle_feature_flag(
     flag_id: str,
-    _: dict = Depends(require_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """切换功能开关启用/禁用"""
     flag = remote_config.toggle_feature_flag(flag_id)

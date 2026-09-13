@@ -233,9 +233,9 @@ def extract_speaker_feature(pcm_bytes: bytes, sample_rate: int = SAMPLE_RATE) ->
 # Re-export（兼容现有 import 路径）
 # ============================================================
 
-from core.diarization_cluster import (  # noqa: E402
-    SpeakerProfile,
+from core.diarization_cluster import (  # noqa: E402,F401
     FeatureTimestamp,
     SpeakerDiarizer,
+    SpeakerProfile,
     create_realtime_diarizer,
 )

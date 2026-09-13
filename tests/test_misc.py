@@ -38,7 +38,7 @@ class TestErrorClassification:
     """core.errors 错误分类模块"""
 
     def test_module_imports(self):
-        from core.errors import is_transient_error, classify_error
+        from core.errors import classify_error, is_transient_error
         assert callable(is_transient_error)
         assert callable(classify_error)
 
@@ -398,6 +398,21 @@ class TestPhilosophyRandom:
         data = resp.json()
         assert "text" in data
         assert isinstance(data["text"], str)
+        assert "variants" in data
+        assert isinstance(data["variants"], dict)
+
+    def test_variants_contain_zh_and_en(self, client):
+        resp = client.get("/api/philosophy/random")
+        data = resp.json()
+        variants = data["variants"]
+        assert "zh" in variants
+        assert "en" in variants
+
+    def test_lang_param_selects_en(self, client):
+        resp = client.get("/api/philosophy/random?lang=en")
+        data = resp.json()
+        # text 应与 en 变体一致
+        assert data["text"] == data["variants"].get("en", data["variants"].get("zh", ""))
 
 
 # ============================================================
@@ -429,9 +444,11 @@ class TestSilenceDetectionConfig:
     def test_silence_detection_state_dicts_exist(self):
         """静默检测状态字典应已初始化"""
         from app.store import (
-            realtime_last_heartbeat, realtime_last_sentence,
-            realtime_presence_scores, realtime_silence_warnings,
+            realtime_last_heartbeat,
+            realtime_last_sentence,
+            realtime_presence_scores,
             realtime_silence_monitors,
+            realtime_silence_warnings,
         )
         assert isinstance(realtime_last_heartbeat, dict)
         assert isinstance(realtime_last_sentence, dict)

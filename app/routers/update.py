@@ -16,7 +16,7 @@ import logging
 from fastapi import APIRouter
 
 from app.store import load_settings
-from core.version_check import get_current_version, check_for_update
+from core.version_check import check_for_update, get_current_version
 
 logger = logging.getLogger(__name__)
 

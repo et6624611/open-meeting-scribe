@@ -47,13 +47,14 @@ cli.py — Open Meeting Scribe 命令行助手
     python cli.py chat "提取待办事项"
 """
 
-import sys
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 # 加载环境变量
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # 配置日志
@@ -71,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 def cmd_transcribe(args):
     """转写 + 生成纪要"""
-    from core.pipeline import run_pipeline, PipelineProgress
+    from core.pipeline import PipelineProgress, run_pipeline
 
     audio_path = Path(args.audio)
     if not audio_path.exists():
@@ -118,7 +119,7 @@ def cmd_transcribe(args):
 
 def cmd_normalize(args):
     """仅归一化音频"""
-    from core.audio import normalize_audio, get_audio_duration
+    from core.audio import get_audio_duration, normalize_audio
 
     audio_path = Path(args.audio)
     if not audio_path.exists():
@@ -189,8 +190,8 @@ def cmd_server(args):
 
 def cmd_build(args):
     """构建前端（Vue 3 + Vite）并部署到 app/static/"""
-    import subprocess
     import shutil
+    import subprocess
 
     frontend_dir = Path(__file__).parent / "frontend"
     static_dir = Path(__file__).parent / "app" / "static"
@@ -250,6 +251,19 @@ def cmd_admin(args):
     return 0
 
 
+def cmd_app(args):
+    """启动桌面应用（原生窗口模式）"""
+    from desktop import main as desktop_main
+
+    host = args.host
+    port = args.port
+
+    print(f"启动桌面应用: http://{host}:{port}")
+    print("关闭窗口即可退出")
+
+    return desktop_main(host=host, port=port)
+
+
 # ============================================================
 # 主入口
 # ============================================================
@@ -300,6 +314,12 @@ def main():
     p_admin.add_argument("--port", type=int, default=8001, help="监听端口（默认 8001）")
     p_admin.add_argument("--reload", action="store_true", help="开发模式（自动重载）")
     p_admin.set_defaults(func=cmd_admin)
+
+    # ── app 命令（桌面应用模式） ──
+    p_app = subparsers.add_parser("app", help="启动桌面应用（原生窗口）")
+    p_app.add_argument("--host", default="127.0.0.1", help="服务地址（默认 127.0.0.1）")
+    p_app.add_argument("--port", type=int, default=8000, help="服务端口（默认 8000）")
+    p_app.set_defaults(func=cmd_app)
 
     # ── 注册远程 API 命令（录音/任务/说话人/热词/设置/对话） ──
     from cli_remote import register_remote_commands

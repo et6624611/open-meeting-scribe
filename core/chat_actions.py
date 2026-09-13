@@ -13,35 +13,47 @@ core/chat_actions.py — AI 对话动作检测与执行
 从 app/routers/chat.py 拆分而来。路由层仅保留端点定义与编排逻辑。
 """
 
-import re
-import json
-import uuid
 import asyncio
+import json
 import logging
+import re
 import threading
-from pathlib import Path
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 from app.store import (
-    tasks, HOTWORDS_FILE, HOTWORD_MAPPINGS_FILE, SETTINGS_FILE, RECORD_DEVICE,
+    HOTWORD_MAPPINGS_FILE,
+    HOTWORDS_FILE,
+    RECORD_DEVICE,
     RECORDINGS_DIR,
-    realtime_queues, realtime_transcribers, realtime_diarizers,
-    realtime_summarizers, realtime_speaker_maps,
-    push_realtime_msg, resolve_realtime_speaker_name,
-    run_pipeline_task, run_stage2_task, save_task_to_disk,
+    SETTINGS_FILE,
     get_feature_flags,
+    push_realtime_msg,
+    realtime_diarizers,
+    realtime_queues,
+    realtime_speaker_maps,
+    realtime_summarizers,
+    realtime_transcribers,
+    resolve_realtime_speaker_name,
+    run_pipeline_task,
+    run_stage2_task,
+    save_task_to_disk,
+    tasks,
 )
-from app.task_store import TASKS_DIR
+from core import hotwords
 from core.audio import (
-    start_recording_with_stream, stop_recording_with_stream,
-    pause_recording_with_stream, resume_recording_with_stream,
-    is_stream_recording, get_stream_recording_info,
+    get_stream_recording_info,
+    is_stream_recording,
+    pause_recording_with_stream,
+    resume_recording_with_stream,
+    start_recording_with_stream,
+    stop_recording_with_stream,
 )
+from core.diarization import create_realtime_diarizer
+from core.i18n import _
 from core.realtime_asr import RealtimeTranscriber
 from core.realtime_summary import RealtimeSummarizer
-from core.diarization import create_realtime_diarizer
-from core import speakers, hotwords
-from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -384,25 +396,42 @@ def _exec_retry_summary(task_id: str | None) -> dict:
 
 def _exec_create_theme(message: str) -> dict:
     hue = 255
-    if any(k in message for k in ["红", "赤", "火", "红橙"]): hue = 10
-    elif any(k in message for k in ["橙", "橘", "珊瑚", "暖"]): hue = 40
-    elif any(k in message for k in ["黄", "金", "琥珀"]): hue = 70
-    elif any(k in message for k in ["绿", "森林", "草", "翠", "薄荷"]): hue = 145
-    elif any(k in message for k in ["青", "碧", "松石"]): hue = 185
-    elif any(k in message for k in ["蓝", "海", "天", "靛"]): hue = 230
-    elif any(k in message for k in ["紫", "薰衣草", "丁香", "葡萄"]): hue = 280
-    elif any(k in message for k in ["粉", "玫", "樱", "桃", "玫瑰"]): hue = 350
-    elif any(k in message for k in ["棕", "褐", "咖", "土"]): hue = 50
+    if any(k in message for k in ["红", "赤", "火", "红橙"]):
+        hue = 10
+    elif any(k in message for k in ["橙", "橘", "珊瑚", "暖"]):
+        hue = 40
+    elif any(k in message for k in ["黄", "金", "琥珀"]):
+        hue = 70
+    elif any(k in message for k in ["绿", "森林", "草", "翠", "薄荷"]):
+        hue = 145
+    elif any(k in message for k in ["青", "碧", "松石"]):
+        hue = 185
+    elif any(k in message for k in ["蓝", "海", "天", "靛"]):
+        hue = 230
+    elif any(k in message for k in ["紫", "薰衣草", "丁香", "葡萄"]):
+        hue = 280
+    elif any(k in message for k in ["粉", "玫", "樱", "桃", "玫瑰"]):
+        hue = 350
+    elif any(k in message for k in ["棕", "褐", "咖", "土"]):
+        hue = 50
     chroma = 0.16
-    if any(k in message for k in ["鲜艳", "明亮", "饱和", "浓", "亮色"]): chroma = 0.24
-    elif any(k in message for k in ["灰", "淡", "素", "低饱和", "莫兰迪", "柔和", "淡雅"]): chroma = 0.08
+    if any(k in message for k in ["鲜艳", "明亮", "饱和", "浓", "亮色"]):
+        chroma = 0.24
+    elif any(k in message for k in ["灰", "淡", "素", "低饱和", "莫兰迪", "柔和", "淡雅"]):
+        chroma = 0.08
     lightness = 0.98
-    if any(k in message for k in ["深色", "暗黑", "夜间", "暗色", "黑夜", "dark"]): lightness = 0.14
-    elif any(k in message for k in ["中灰", "灰色背景"]): lightness = 0.50
-    if any(k in message for k in ["赛博", "赛博朋克", "cyberpunk"]): hue, chroma, lightness = 290, 0.28, 0.12
-    elif any(k in message for k in ["霓虹", "neon"]): hue, chroma, lightness = 310, 0.30, 0.13
-    elif any(k in message for k in ["莫兰迪"]): chroma = 0.06
-    elif any(k in message for k in ["暗夜", "暗黑", "哥特"]): hue, chroma, lightness = 260, 0.15, 0.10
+    if any(k in message for k in ["深色", "暗黑", "夜间", "暗色", "黑夜", "dark"]):
+        lightness = 0.14
+    elif any(k in message for k in ["中灰", "灰色背景"]):
+        lightness = 0.50
+    if any(k in message for k in ["赛博", "赛博朋克", "cyberpunk"]):
+        hue, chroma, lightness = 290, 0.28, 0.12
+    elif any(k in message for k in ["霓虹", "neon"]):
+        hue, chroma, lightness = 310, 0.30, 0.13
+    elif any(k in message for k in ["莫兰迪"]):
+        chroma = 0.06
+    elif any(k in message for k in ["暗夜", "暗黑", "哥特"]):
+        hue, chroma, lightness = 260, 0.15, 0.10
     name = "自定义主题"
     quoted = re.search(r'["\u201c]([^"\u201d]+)["\u201d]', message)
     if quoted:

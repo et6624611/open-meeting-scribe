@@ -1,5 +1,10 @@
 <template>
   <div style="height:100%;display:flex;flex-direction:column">
+    <button class="page-back-btn" @click="goBack">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <span>{{ t('common.action.back') }}</span>
+      <kbd>ESC</kbd>
+    </button>
     <div class="main-head">
       <h1>{{ t('hotwords.title') }}</h1>
       <p class="sub">{{ t('hotwords.subtitle') }}</p>
@@ -220,8 +225,10 @@
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useHotwordGroups } from '@/composables/useHotwordGroups'
+import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
+const { goBack } = usePageBack()
 const hw = useHotwordGroups()
 
 const toolbarRef = ref<HTMLElement | null>(null)

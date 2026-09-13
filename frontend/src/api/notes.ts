@@ -15,6 +15,11 @@ export async function saveNotes(taskId: string, notes: string): Promise<void> {
   await client.put(`/api/tasks/${taskId}/notes`, { notes })
 }
 
+/** 保存用户编辑的纪要 */
+export async function saveSummary(taskId: string, summary: string): Promise<void> {
+  await client.put(`/api/tasks/${taskId}/summary`, { notes: summary })
+}
+
 /** 获取待办列表 */
 export async function fetchTodos(taskId: string): Promise<TodoItem[]> {
   const { data } = await client.get<{ todos: TodoItem[] }>(`/api/tasks/${taskId}/todos`)

@@ -8,14 +8,31 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
+from app.store import tasks
 from core import projects
 from core.i18n import _
-from app.store import tasks
 
 logger = logging.getLogger(__name__)
+
+# 允许浏览/打开的根目录白名单
+_ALLOWED_BROWSE_ROOTS = [
+    Path.home(),                           # 用户主目录
+    Path("data").resolve(),                # 项目 data 目录
+]
+
+
+def _is_path_allowed(path: Path, allowed_roots: list[Path]) -> bool:
+    """检查路径是否在允许的根目录范围内（防止目录遍历）。
+
+    使用 Path.is_relative_to 而非字符串 startswith，避免同前缀目录绕过
+    （如 /home/user2 被 str.startswith("/home/user") 误判为允许）。
+    """
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(root.resolve()) for root in allowed_roots)
+
 
 router = APIRouter(tags=["projects"])
 
@@ -55,6 +72,10 @@ def browse_filesystem(path: Optional[str] = None):
     """
     target = Path(path) if path else Path.home()
     target = target.resolve()
+
+    # 安全校验：限制可浏览范围
+    if not _is_path_allowed(target, _ALLOWED_BROWSE_ROOTS):
+        raise HTTPException(403, _("Access denied: path outside allowed directories"))
 
     if not target.exists():
         raise HTTPException(404, _("Path not found: {path}").format(path=target))
@@ -97,6 +118,11 @@ def open_folder_in_finder(data: FolderAction):
     """
     folder_path = data.path.strip()
     target = Path(folder_path)
+
+    # 安全校验：限制可打开范围
+    if not _is_path_allowed(target, _ALLOWED_BROWSE_ROOTS):
+        raise HTTPException(403, _("Access denied: path outside allowed directories"))
+
     if not target.exists():
         raise HTTPException(404, _("Folder not found: {path}").format(path=folder_path))
     if not target.is_dir():

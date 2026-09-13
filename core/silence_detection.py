@@ -15,21 +15,31 @@ core/silence_detection.py — 静默检测与用户存在性感知
 """
 
 import asyncio
-import time
 import logging
+import time
 from datetime import datetime
-from core.i18n import _
 
 from app.store import (
-    tasks,
-    realtime_transcribers, realtime_diarizers, realtime_summarizers,
-    realtime_chapter_generators, realtime_speaker_maps, realtime_full_transcripts,
-    realtime_queues, realtime_last_heartbeat, realtime_last_sentence,
-    realtime_presence_scores, realtime_silence_warnings, realtime_silence_monitors,
-    save_task_to_disk, push_realtime_msg, run_pipeline_task,
     get_silence_detection_config,
+    push_realtime_msg,
+    realtime_chapter_generators,
+    realtime_diarizers,
+    realtime_full_transcripts,
+    realtime_last_heartbeat,
+    realtime_last_sentence,
+    realtime_presence_scores,
+    realtime_queues,
+    realtime_silence_monitors,
+    realtime_silence_warnings,
+    realtime_speaker_maps,
+    realtime_summarizers,
+    realtime_transcribers,
+    run_pipeline_task,
+    save_task_to_disk,
+    tasks,
 )
 from core.audio import is_stream_recording, stop_recording_with_stream
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -147,19 +157,25 @@ async def auto_stop_recording(task_id: str, reason: str = "unknown") -> None:
     try:
         transcriber = realtime_transcribers.pop(task_id, None)
         if transcriber:
-            try: transcriber.stop()
-            except Exception as e: logger.warning(f"自动关停-转写停止异常: {e}")
+            try:
+                transcriber.stop()
+            except Exception as e:
+                logger.warning(f"自动关停-转写停止异常: {e}")
 
         diarizer = realtime_diarizers.pop(task_id, None)
         if diarizer:
-            try: diarizer.stop()
-            except Exception as e: logger.warning(f"自动关停-聚类停止异常: {e}")
+            try:
+                diarizer.stop()
+            except Exception as e:
+                logger.warning(f"自动关停-聚类停止异常: {e}")
 
         summarizer = realtime_summarizers.pop(task_id, None)
-        if summarizer: summarizer.stop()
+        if summarizer:
+            summarizer.stop()
 
         chapter_gen = realtime_chapter_generators.pop(task_id, None)
-        if chapter_gen: chapter_gen.stop()
+        if chapter_gen:
+            chapter_gen.stop()
 
         realtime_speaker_maps.pop(task_id, None)
         realtime_full_transcripts.pop(task_id, None)

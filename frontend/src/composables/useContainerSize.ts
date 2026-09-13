@@ -1,13 +1,29 @@
 import { ref, computed, onMounted, onBeforeUnmount, type Ref, type ComputedRef } from 'vue'
 
 /**
- * 容器宽度档位检测 composable
+ * 容器宽度档位检测 composable + 全局断点常量
  *
  * 统一封装 ResizeObserver 逻辑，将容器宽度映射为标准化 tier 等级，
  * 并输出兼容现有 CSS 类名约定的 class（is-xnarrow / is-narrow / is-compact）。
  *
- * 默认断点与原有 App.vue / LibraryView 内联逻辑完全一致，确保迁移零回归。
+ * ## 断点体系
+ * - **JS 层（容器级）**：通过 `BREAKPOINTS` 常量统一管理，供 composable 和组件引用
+ * - **CSS 层（视口级）**：@media 查询处理结构性布局切换（如并排→Tab），断点值独立维护
+ * - 两层职责分离：JS 管内容降级，CSS 管结构切换
  */
+
+/**
+ * 全局容器断点常量（单位 px）
+ *
+ * 所有需要按容器宽度做降级判断的 JS/TS 代码应引用此常量，
+ * 而非各自硬编码魔法数字。
+ */
+export const BREAKPOINTS = {
+  xs: 480,
+  sm: 640,
+  md: 860,
+  lg: 1080,
+} as const
 
 /** 容器宽度档位：xs → 最窄，full → 最宽 */
 export type SizeTier = 'xs' | 'sm' | 'md' | 'lg' | 'full'
@@ -45,12 +61,12 @@ export function useContainerSize(
   const width = ref(0)
   let observer: ResizeObserver | null = null
 
-  // 合并断点：用户自定义覆盖默认值
+  // 合并断点：用户自定义覆盖默认值（引用全局常量）
   const bp = {
-    xs: 480,
-    sm: 640,
-    md: 860,
-    lg: 1080,
+    xs: BREAKPOINTS.xs,
+    sm: BREAKPOINTS.sm,
+    md: BREAKPOINTS.md,
+    lg: BREAKPOINTS.lg,
     ...options?.breakpoints,
   }
 

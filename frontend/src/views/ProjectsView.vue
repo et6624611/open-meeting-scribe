@@ -1,5 +1,10 @@
 <template>
   <div>
+    <button class="page-back-btn" @click="goBack">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <span>{{ t('common.action.back') }}</span>
+      <kbd>ESC</kbd>
+    </button>
     <div class="main-head">
       <h1>{{ t('projects.title') }}</h1>
       <p class="sub">{{ t('projects.subtitle') }}</p>
@@ -42,8 +47,10 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchProjects, createProject, deleteProject, addFolder, removeFolder } from '@/api/projects'
 import type { Project } from '@/api/projects'
+import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
+const { goBack } = usePageBack()
 
 const projects = ref<Project[]>([])
 const newName = ref('')

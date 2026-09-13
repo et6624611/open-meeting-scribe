@@ -52,5 +52,7 @@
   "stat_created": "创建日期",
   "stat_source": "来源",
   "source_record": "录音",
-  "source_upload": "上传"
+  "source_upload": "上传",
+  "speakers_more": "更多{count}人",
+  "speakers_total": "{count}人参会"
 }

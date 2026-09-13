@@ -26,7 +26,7 @@ core/text_bridge.py — 文本桥接匹配（说话人绑定体验闭环 P0）
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Optional
 

@@ -14,13 +14,13 @@ app/task_store.py — 任务持久化与恢复
 """
 
 import json
-import struct
 import logging
-from pathlib import Path
+import struct
 from datetime import datetime
-from core.i18n import _
+from pathlib import Path
 
 from core import joblog
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +78,8 @@ def save_task_to_disk(task_id: str) -> None:
         # 排除 transcription 字段（原始 ASR 返回数据，体积大且无实际消费场景）
         task_for_disk = {k: v for k, v in task.items() if k != "transcription"}
         task_file = TASKS_DIR / f"{task_id}.json"
-        with open(task_file, "w", encoding="utf-8") as f:
-            json.dump(task_for_disk, f, ensure_ascii=False, indent=2)
+        from core.fs_atomic import atomic_write_json
+        atomic_write_json(task_file, task_for_disk)
     except Exception as e:
         logger.error(f"保存任务到磁盘失败: {e}")
 
@@ -245,8 +245,9 @@ def recover_interrupted_tasks() -> None:
       - audio_path 不存在 → 标记为 failed
     """
     import threading
+
     # 延迟导入，避免与 pipeline_runner 的循环依赖
-    from core.pipeline_runner import run_pipeline_task, _run_stage2_for_task
+    from core.pipeline_runner import _run_stage2_for_task, run_pipeline_task
 
     recovered = 0
     failed = 0
@@ -334,3 +335,65 @@ def recover_interrupted_tasks() -> None:
         logger.info(f"[恢复] 已恢复 {recovered} 个中断任务")
     if failed:
         logger.warning(f"[恢复] {failed} 个任务因录音文件丢失无法恢复")
+
+
+def cleanup_orphaned_intermediate_files() -> dict:
+    """
+    清理磁盘上的冗余/孤儿中间文件。
+
+    清理目标：
+      1. _normalized_normalized* 文件（重复归一化产物，管线 Bug 遗留）
+      2. 孤儿 .raw 文件（不属于任何活跃任务的临时 PCM）
+
+    Returns:
+        {"duplicate_normalized": int, "orphan_raw": int, "freed_bytes": int}
+    """
+    freed = 0
+    dup_count = 0
+    raw_count = 0
+
+    # 收集所有任务关联的音频路径（用于判断 .raw 是否为孤儿）
+    known_audio_stems = set()
+    for task in tasks.values():
+        ap = task.get("audio_path")
+        if ap:
+            known_audio_stems.add(Path(ap).stem)
+
+    # 扫描 recordings 和 uploads 目录
+    for scan_dir in [Path("data/recordings"), Path("data/uploads")]:
+        if not scan_dir.exists():
+            continue
+
+        for f in scan_dir.iterdir():
+            if not f.is_file():
+                continue
+
+            # 1. 清理重复归一化文件（_normalized_normalized*）
+            if "_normalized_normalized" in f.name:
+                size = f.stat().st_size
+                try:
+                    f.unlink()
+                    dup_count += 1
+                    freed += size
+                    logger.debug(f"[清理] 删除冗余归一化文件: {f.name} ({size / 1024 / 1024:.1f} MB)")
+                except Exception as e:
+                    logger.warning(f"[清理] 删除失败: {f.name}: {e}")
+                continue
+
+            # 2. 清理孤儿 .raw 文件（不属于任何已知任务）
+            if f.suffix == ".raw":
+                stem = f.stem
+                if stem not in known_audio_stems:
+                    size = f.stat().st_size
+                    try:
+                        f.unlink()
+                        raw_count += 1
+                        freed += size
+                        logger.debug(f"[清理] 删除孤儿 .raw 文件: {f.name} ({size / 1024 / 1024:.1f} MB)")
+                    except Exception as e:
+                        logger.warning(f"[清理] 删除失败: {f.name}: {e}")
+
+    result = {"duplicate_normalized": dup_count, "orphan_raw": raw_count, "freed_bytes": freed}
+    if dup_count or raw_count:
+        logger.info(f"[清理] 启动清理完成: {dup_count} 个冗余归一化 + {raw_count} 个孤儿 .raw = {freed / 1024 / 1024:.1f} MB")
+    return result

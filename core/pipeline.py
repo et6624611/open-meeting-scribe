@@ -15,22 +15,21 @@ core/pipeline.py — 串联全流程
   → 组装对话稿 → qwen-plus 纪要 → Markdown 输出
 """
 
-import os
-import time
 import logging
-from pathlib import Path
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
 
-from .audio import normalize_audio, get_audio_duration
-from .transcribe import transcribe_audio
-from .hotwords import get_or_create_vocabulary
-from .summarize import generate_summary, generate_title, save_summary
-from .chapters import generate_chapters
 from . import speakers
+from .audio import get_audio_duration, normalize_audio
+from .chapters import generate_chapters
+from .hotwords import get_or_create_vocabulary
 from .perf import perf_timer
+from .summarize import generate_summary, generate_title, save_summary
+from .transcribe import transcribe_audio
 
 logger = logging.getLogger(__name__)
 

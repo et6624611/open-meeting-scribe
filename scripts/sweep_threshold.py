@@ -9,7 +9,6 @@ import json
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -19,9 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.voiceprint import (
     VOICEPRINT_MODEL_VERSION,
+    _l2,
     extract_embedding,
     load_registry,
-    _l2,
 )
 
 MEETING_ID = "e6cda37b-4879-416d-ad81-c3035ec7eb43"

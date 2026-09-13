@@ -83,7 +83,7 @@ def main():
                 suffix += f" ({deadline})"
             print(f"    - [ ] {item['text']}{suffix}")
 
-    print(f"\n===== 回填完成 =====")
+    print("\n===== 回填完成 =====")
     print(f"扫描任务: {total}")
     print(f"成功回填: {backfilled}")
     print(f"跳过(无纪要): {skipped_no_summary}")

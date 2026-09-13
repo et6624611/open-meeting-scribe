@@ -12,15 +12,15 @@ core/audio_recording.py — macOS 系统内录与流式录音控制
   ffmpeg（系统已装）、BlackHole 2ch（虚拟声卡）
 """
 
-import subprocess
 import logging
-import time
-import struct
 import re
-import uuid
+import struct
+import subprocess
 import threading
-from pathlib import Path
+import time
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 from core.audio import check_ffmpeg
 

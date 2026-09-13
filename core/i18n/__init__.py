@@ -7,14 +7,14 @@ core/i18n — 国际化支持
   - _()：便捷翻译函数（无 request context 时使用默认 locale）
 """
 from core.i18n.middleware import (
-    I18nMiddleware,
-    get_translator,
-    _,
-    set_current_locale,
-    reset_current_locale,
-    get_current_locale,
-    SUPPORTED_LOCALES,
     DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+    I18nMiddleware,
+    _,
+    get_current_locale,
+    get_translator,
+    reset_current_locale,
+    set_current_locale,
 )
 
 __all__ = [

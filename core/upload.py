@@ -14,11 +14,11 @@ core/upload.py — 本地文件 → DashScope 临时存储 → oss:// 临时 URL
   - 上传凭证接口限流 100 QPS
 """
 
-import os
 import logging
-import requests
 from pathlib import Path
 from urllib.parse import quote
+
+import requests
 
 logger = logging.getLogger(__name__)
 

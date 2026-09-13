@@ -15,21 +15,26 @@ app/routers/ws_transcript.py — WebSocket 实时转写端点
 
 import asyncio
 import json
-import time
 import logging
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.store import (
-    realtime_queues, realtime_summarizers, realtime_chapter_generators,
-    realtime_translators, realtime_translations,
-    realtime_full_transcripts, realtime_last_heartbeat, realtime_presence_scores,
-    realtime_silence_warnings,
-    resolve_realtime_speaker_name,
     push_realtime_msg,
+    realtime_chapter_generators,
+    realtime_full_transcripts,
+    realtime_last_heartbeat,
+    realtime_presence_scores,
+    realtime_queues,
+    realtime_silence_warnings,
+    realtime_summarizers,
+    realtime_translations,
+    realtime_translators,
+    resolve_realtime_speaker_name,
 )
-from core.translate import RealtimeTranslator
 from core.i18n import _, set_current_locale
+from core.translate import RealtimeTranslator
 
 logger = logging.getLogger(__name__)
 
@@ -129,8 +134,10 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
 
             for task in pending:
                 task.cancel()
-                try: await task
-                except (asyncio.CancelledError, Exception): pass
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
             if not done:
                 logger.info(f"[WebSocket] 超时关闭: task={task_id[:8]}")

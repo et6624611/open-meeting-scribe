@@ -1,5 +1,10 @@
 <template>
   <div class="lib-page" ref="libPageRef" :class="widthClass">
+    <button class="page-back-btn" @click="goBack">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <span>{{ t('common.action.back') }}</span>
+      <kbd>ESC</kbd>
+    </button>
     <!-- 整合标题区与搜索框 -->
     <div class="lib-header-bar">
       <div class="lib-title-group">
@@ -27,6 +32,35 @@
         {{ t('library.tab_archived') }}
         <span class="lib-tab-count">{{ taskStore.archivedTasks.length }}</span>
       </button>
+    </div>
+
+    <!-- 筛选工具栏：日期范围 + 说话人 -->
+    <div class="lib-filter-bar" :class="{ 'is-active': hasActiveFilter }">
+      <div class="lib-filter-group">
+        <label class="lib-filter-label">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </label>
+        <input type="date" v-model="dateFrom" class="lib-date-input" :title="t('library.filter_date_from')" />
+        <span class="lib-date-sep">–</span>
+        <input type="date" v-model="dateTo" class="lib-date-input" :title="t('library.filter_date_to')" />
+      </div>
+      <div class="lib-filter-group">
+        <label class="lib-filter-label">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </label>
+        <select v-model="filterSpeakerId" class="lib-speaker-select">
+          <option value="">{{ t('library.filter_speaker_all') }}</option>
+          <option v-for="name in allSpeakerNames" :key="name" :value="name">{{ name }}</option>
+        </select>
+      </div>
+      <div v-if="hasActiveFilter" class="lib-filter-actions">
+        <button class="lib-filter-chip" @click="setQuickDateRange(7)">{{ t('library.filter_week') }}</button>
+        <button class="lib-filter-chip" @click="setQuickDateRange(30)">{{ t('library.filter_30days') }}</button>
+        <button class="lib-filter-clear" @click="clearAllFilters">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          {{ t('library.filter_clear') }}
+        </button>
+      </div>
     </div>
 
     <!-- 表格容器 -->
@@ -80,7 +114,7 @@
             </div>
             <div class="cell-title">
               <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
-              <span class="cell-title-text">{{ task.title || task.audio_name || t('common.untitled') }}</span>
+              <span class="cell-title-text" v-html="highlightLibTitle(task)"></span>
             </div>
             <div class="cell-status">
               <span class="status-dot" :class="statusDotClass(task.status)"></span>
@@ -146,16 +180,58 @@ import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useContainerSize } from '@/composables/useContainerSize'
+import { usePageBack } from '@/composables/usePageBack'
+import { matchTask, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
 const { t } = useI18n()
 const router = useRouter()
+const { goBack } = usePageBack()
 const taskStore = useTaskStore()
 const player = usePlayerStore()
 
 // ─── 宽度档位（统一 composable 驱动）───
 const libPageRef = ref<HTMLElement | null>(null)
 const { widthClass } = useContainerSize(libPageRef)
+
+// ─── 日期范围筛选 ───
+const dateFrom = ref('')
+const dateTo = ref('')
+
+// ─── 说话人筛选 ───
+const filterSpeakerId = ref('')
+
+/** 从全部任务中收集去重的说话人名称列表 */
+const allSpeakerNames = computed(() => {
+  const names = new Set<string>()
+  for (const task of taskStore.tasks) {
+    const mapping = task.speaker_mapping
+    if (mapping) {
+      for (const name of Object.values(mapping)) {
+        if (name) names.add(name)
+      }
+    }
+  }
+  return Array.from(names).sort((a, b) => a.localeCompare(b))
+})
+
+/** 是否有任意筛选条件激活 */
+const hasActiveFilter = computed(() => !!dateFrom.value || !!dateTo.value || !!filterSpeakerId.value)
+
+function clearAllFilters() {
+  dateFrom.value = ''
+  dateTo.value = ''
+  filterSpeakerId.value = ''
+}
+
+function setQuickDateRange(days: number) {
+  const now = new Date()
+  const from = new Date(now)
+  from.setDate(from.getDate() - days)
+  dateFrom.value = from.toISOString().slice(0, 10)
+  dateTo.value = now.toISOString().slice(0, 10)
+  filterSpeakerId.value = ''
+}
 
 // ─── 选择状态 ───
 const selectedIds = ref<Set<string>>(new Set())
@@ -166,17 +242,37 @@ function switchTab(showArchived: boolean) {
   clearSelection()
 }
 
-/** 会议库专用分组：根据 showArchived 切换数据源，复用 store 的分组逻辑 */
+/** 会议库专用分组：根据 showArchived 切换数据源，叠加文本搜索 + 日期 + 说话人筛选 */
 const libGroupedTasks = computed(() => {
   const source = taskStore.showArchived ? taskStore.archivedTasks : taskStore.activeTasks
   const q = taskStore.searchQuery.trim().toLowerCase()
-  const filtered = q
-    ? source.filter(t => {
-        const title = (t.title || t.audio_name || '').toLowerCase()
-        const summary = (t.summary || '').toLowerCase()
-        return title.includes(q) || summary.includes(q)
-      })
-    : source
+  const dFrom = dateFrom.value
+  const dTo = dateTo.value
+  const spk = filterSpeakerId.value
+
+  // 文本搜索（多维度）
+  let filtered = q ? source.filter(t => matchTask(t, q)) : source
+
+  // 日期范围筛选（AND 组合）
+  if (dFrom || dTo) {
+    const fromTs = dFrom ? new Date(dFrom + 'T00:00:00').getTime() : -Infinity
+    const toTs = dTo ? new Date(dTo + 'T23:59:59').getTime() : Infinity
+    filtered = filtered.filter(t => {
+      const dateStr = t.meeting_date || t.created_at?.slice(0, 10) || ''
+      if (!dateStr) return false
+      const ts = new Date(dateStr + 'T00:00:00').getTime()
+      return ts >= fromTs && ts <= toTs
+    })
+  }
+
+  // 说话人筛选（AND 组合）
+  if (spk) {
+    filtered = filtered.filter(t => {
+      const mapping = t.speaker_mapping
+      if (!mapping) return false
+      return Object.values(mapping).some(name => name === spk)
+    })
+  }
 
   // 复用 store 的分组逻辑（通过临时替换 filteredTasks 的数据源）
   // 这里直接按 meeting_date 分组，与 store 保持一致
@@ -188,27 +284,36 @@ const libGroupedTasks = computed(() => {
   const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86400000)
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const groupOrder = ['今天', '昨天', '本周', '上周', '本月', '上个月', '更早']
-  const groups = new Map<string, { label: string; tasks: Task[]; isToday: boolean; sortKey: number }>()
+  const groupOrder = ['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'earlier']
+  const labelKey: Record<string, string> = {
+    today: 'sidebar.date_today',
+    yesterday: 'sidebar.date_yesterday',
+    this_week: 'sidebar.date_this_week',
+    last_week: 'sidebar.date_last_week',
+    this_month: 'sidebar.date_this_month',
+    last_month: 'sidebar.date_last_month',
+    earlier: 'sidebar.date_earlier',
+  }
+  const groups = new Map<string, { key: string; label: string; tasks: Task[]; isToday: boolean; sortKey: number }>()
 
   for (const task of filtered) {
     const dateStr = task.meeting_date || task.created_at?.slice(0, 10) || 'unknown'
     const taskDate = new Date(dateStr + 'T00:00:00')
     const taskDay = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate())
     const ts = taskDay.getTime()
-    let label: string
+    let key: string
     let isToday = false
-    if (ts === today.getTime()) { label = '今天'; isToday = true }
-    else if (ts === yesterday.getTime()) { label = '昨天' }
-    else if (ts >= thisWeekStart.getTime()) { label = '本周' }
-    else if (ts >= lastWeekStart.getTime()) { label = '上周' }
-    else if (ts >= thisMonthStart.getTime()) { label = '本月' }
-    else if (ts >= lastMonthStart.getTime()) { label = '上个月' }
-    else { label = '更早' }
-    if (!groups.has(label)) {
-      groups.set(label, { label, tasks: [], isToday, sortKey: groupOrder.indexOf(label) })
+    if (ts === today.getTime()) { key = 'today'; isToday = true }
+    else if (ts === yesterday.getTime()) { key = 'yesterday' }
+    else if (ts >= thisWeekStart.getTime()) { key = 'this_week' }
+    else if (ts >= lastWeekStart.getTime()) { key = 'last_week' }
+    else if (ts >= thisMonthStart.getTime()) { key = 'this_month' }
+    else if (ts >= lastMonthStart.getTime()) { key = 'last_month' }
+    else { key = 'earlier' }
+    if (!groups.has(key)) {
+      groups.set(key, { key, label: t(labelKey[key]), tasks: [], isToday, sortKey: groupOrder.indexOf(key) })
     }
-    groups.get(label)!.tasks.push(task)
+    groups.get(key)!.tasks.push(task)
   }
   for (const group of groups.values()) {
     group.tasks.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
@@ -366,6 +471,13 @@ function statusDotClass(status: TaskStatus): string {
   if (status === 'paused') return 'is-paused'
   if (['recording', 'processing', 'transcribing', 'summarizing'].includes(status)) return 'is-processing'
   return 'is-pending'
+}
+
+/** 会议库表格标题高亮 */
+function highlightLibTitle(task: Task): string {
+  const title = task.title || task.audio_name || t('common.untitled')
+  const q = taskStore.searchQuery.trim().toLowerCase()
+  return q ? highlightText(title, q) : title
 }
 
 function formatDuration(sec: number | null): string {
@@ -544,6 +656,103 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   color: var(--accent);
 }
 
+/* ─── 筛选工具栏 ─── */
+.lib-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: border-color 0.15s;
+  flex-wrap: wrap;
+}
+.lib-filter-bar.is-active {
+  border-color: var(--accent);
+}
+.lib-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.lib-filter-label {
+  color: var(--subtle);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.lib-date-input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.12s;
+}
+.lib-date-input:focus {
+  border-color: var(--accent);
+}
+.lib-date-sep {
+  color: var(--subtle);
+  font-size: 12px;
+}
+.lib-speaker-select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.12s;
+  min-width: 120px;
+}
+.lib-speaker-select:focus {
+  border-color: var(--accent);
+}
+.lib-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+.lib-filter-chip {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.lib-filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.lib-filter-clear {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  background: transparent;
+  color: var(--subtle);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.lib-filter-clear:hover {
+  color: var(--fg);
+}
+
 /* ─── 表格容器 ─── */
 .table-container {
   flex: 1;
@@ -661,7 +870,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .cell-muted { color: var(--subtle); }
 
-/* 说话人列：彩色名称 + 占比横条，参照 .gen-spk-label 视觉模式 */
+/* 说话人列：彩色名称 + 占比横条，参照 .gs-chip 视觉模式 */
 .cell-speakers {
   flex-wrap: wrap;
   gap: 4px 10px;

@@ -1,34 +1,36 @@
 """
-core/transcribe.py — 通过 ASR 代理提交转写任务 + 组装对话稿
+core/transcribe.py — 语音转写引擎（代理模式 + 直连模式）
 
 作者：王永亮
 创建：2026-09-03
-版本：2.0.0（代理模式）
+版本：2.1.0（双模式）
 
 职责：
-  1. 通过 ASR 代理提交音频文件进行转写（代理负责上传 + 提交 + 轮询 + 下载）
-  2. 碎片句子合并 + 说话人修正 → 按 speaker_id 归并 → 组装发言人对话稿
+  1. 代理模式：通过 ASR 代理提交音频文件进行转写（代理负责上传 + 提交 + 轮询 + 下载）
+  2. 直连模式：用户自持 API Key，主服务直连 DashScope API（上传 + 提交 + 轮询 + 下载）
+  3. 碎片句子合并 + 说话人修正 → 按 speaker_id 归并 → 组装发言人对话稿
 
-架构（详见 docs/adr/0012-ASR转写走云端代理.md）：
-  - 客户端不再直连 DashScope，所有 ASR 请求通过代理服务器中转
-  - 代理持有 DashScope API Key，客户端仅持有代理地址和共享密钥
-  - 通信协议：HTTP POST + HMAC-SHA256 签名
+架构：
+  - 代理模式：客户端 → ASR 代理 → DashScope（详见 docs/adr/0012-ASR转写走云端代理.md）
+  - 直连模式：客户端 → DashScope RESTful API（用户自持 Key）
 
 硬约束（详见 docs/API_CONTRACTS.md §2-4）：
   - 分离仅单声道生效
   - 音频格式：PCM 16bit / 16kHz / 单声道
 """
 
+import hashlib
+import hmac
+import json
+import logging
 import os
 import re
-import json
 import time
-import hmac
-import hashlib
-import logging
-import urllib.request
 import urllib.error
+import urllib.request
 from pathlib import Path
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,15 @@ COMMON_BIGRAMS = {
     "定位", "转出", "营销", "文案", "客服", "人力", "资源", "配置",
     "设计", "实现", "支持", "提供", "使用", "操作", "控制", "处理",
 }
+
+
+def _get_asr_mode() -> str:
+    """获取当前 ASR 接入模式（proxy / direct）"""
+    try:
+        from app.store import get_asr_config
+        return get_asr_config().get("mode", "proxy")
+    except Exception:
+        return "proxy"
 
 
 def _make_sign(timestamp: str) -> str:
@@ -122,7 +133,7 @@ def transcribe_audio(
     speaker_count: int | None = None,
 ) -> tuple[list[dict], dict]:
     """
-    一站式转写：通过代理提交音频 → 等待结果 → 组装对话稿。
+    一站式转写：根据 ASR 模式选择代理或直连路径。
 
     Args:
         file_path: 本地音频文件路径
@@ -145,7 +156,131 @@ def transcribe_audio(
     if file_size > 1024 * 1024 * 1024:
         raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
 
-    logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}")
+    mode = _get_asr_mode()
+    logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}, mode={mode}")
+
+    if mode == "direct":
+        return _transcribe_direct(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+    else:
+        return _transcribe_proxy(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+
+
+def _transcribe_direct(
+    file_path: Path,
+    model: str,
+    diarization_enabled: bool,
+    language_hints: list[str] | None,
+    vocabulary_id: str | None,
+    speaker_count: int | None,
+) -> tuple[list[dict], dict]:
+    """直连模式：用户自持 API Key，主服务直连 DashScope API"""
+    from app.store import get_asr_config
+    cfg = get_asr_config()
+    api_key = cfg.get("api_key", "")
+    base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com").rstrip("/")
+
+    if not api_key:
+        raise RuntimeError("未配置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")
+
+    start = time.perf_counter()
+
+    # 1. 上传到 DashScope 临时存储
+    from core.upload import upload_file
+    oss_url = upload_file(file_path, model=model)
+
+    # 2. 提交转写任务
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable",
+        "X-DashScope-OssResourceResolve": "enable",
+    }
+    parameters = {}
+    if diarization_enabled:
+        parameters["diarization_enabled"] = True
+    if language_hints:
+        parameters["language_hints"] = language_hints
+    if speaker_count:
+        parameters["speaker_count"] = speaker_count
+    if vocabulary_id:
+        parameters["vocabulary_id"] = vocabulary_id
+
+    body = {
+        "model": model,
+        "input": {"file_urls": [oss_url]},
+        "parameters": parameters,
+    }
+
+    submit_url = f"{base_url}/api/v1/services/audio/asr/transcription"
+    resp = requests.post(submit_url, headers=headers, json=body, timeout=30)
+    resp.raise_for_status()
+    submit_data = resp.json()
+
+    if "output" not in submit_data or "task_id" not in submit_data["output"]:
+        raise RuntimeError(f"提交转写任务失败: {submit_data}")
+    task_id = submit_data["output"]["task_id"]
+    logger.info(f"[直连模式] 任务已提交: task_id={task_id}")
+
+    # 3. 轮询任务状态
+    poll_url = f"{base_url}/api/v1/tasks/{task_id}"
+    poll_headers = {"Authorization": f"Bearer {api_key}"}
+    poll_interval = 3
+    poll_timeout = 600
+    start_poll = time.time()
+
+    while True:
+        if time.time() - start_poll > poll_timeout:
+            raise TimeoutError(f"转写任务超时（>{poll_timeout}s）: task_id={task_id}")
+
+        poll_resp = requests.get(poll_url, headers=poll_headers, timeout=30)
+        poll_resp.raise_for_status()
+        poll_data = poll_resp.json()
+        status = poll_data.get("output", {}).get("task_status", "UNKNOWN")
+
+        if status == "SUCCEEDED":
+            results = poll_data["output"].get("results", [])
+            if not results:
+                raise RuntimeError("转写结果为空")
+            transcription_url = results[0].get("transcription_url")
+            if not transcription_url:
+                raise RuntimeError("未获取到 transcription_url")
+            break
+        elif status == "FAILED":
+            error_msg = poll_data.get("output", {}).get("message", "未知错误")
+            raise RuntimeError(f"转写任务失败: {error_msg}")
+
+        time.sleep(poll_interval)
+
+    # 4. 下载转写结果
+    dl_resp = requests.get(transcription_url, timeout=60)
+    dl_resp.raise_for_status()
+    transcription = dl_resp.json()
+
+    elapsed = time.perf_counter() - start
+    logger.info(f"[PERF] 直连转写完成: {elapsed:.3f}s, task_id={task_id}")
+
+    dialogue = assemble_dialogue(transcription)
+    return dialogue, transcription
+
+
+def _transcribe_proxy(
+    file_path: Path,
+    model: str,
+    diarization_enabled: bool,
+    language_hints: list[str] | None,
+    vocabulary_id: str | None,
+    speaker_count: int | None,
+) -> tuple[list[dict], dict]:
+    """代理模式：通过 ASR 代理提交转写"""
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"文件不存在: {file_path}")
+
+    file_size = file_path.stat().st_size
+    if file_size > 1024 * 1024 * 1024:
+        raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
+
+    logger.info(f"提交转写（代理模式）: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}")
 
     # 构造 multipart/form-data
     boundary = f"----ASRProxyBoundary{int(time.time() * 1000)}"

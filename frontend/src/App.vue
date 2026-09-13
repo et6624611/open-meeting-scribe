@@ -38,7 +38,7 @@
           <path d="M2 17l10 5 10-5"/>
           <path d="M2 12l10 5 10-5"/>
         </svg>
-        <span class="reg-guidance-text" v-html="annMessage.content"></span>
+        <span class="reg-guidance-text" v-html="safeAnnContent"></span>
         <button v-if="annMessage.cta_text && annCtaUrl()" class="reg-guidance-cta" @click="onCtaClick">{{ annMessage.cta_text }}</button>
         <button class="reg-guidance-dismiss" @click="annDismiss" :title="t('common.announcement.dismiss')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -73,7 +73,7 @@
       </div>
 
       <!-- 主内容区 -->
-      <main class="main" id="mainContent" tabindex="-1" ref="mainEl" :class="mainWidthClass">
+      <main class="main" id="mainContent" tabindex="-1" ref="mainEl" :class="mainWidthClass" :data-tier="mainTier">
         <router-view :key="$route.fullPath" />
       </main>
 
@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
@@ -121,8 +121,10 @@ import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
+import { escapeHtml } from '@/utils/sanitize'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
+import { getLocale } from '@/i18n'
 import TopBar from '@/components/layout/TopBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import ActivityRail from '@/components/layout/ActivityRail.vue'
@@ -139,13 +141,18 @@ const watermark = useWatermarkStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
-const { widthClass: mainWidthClass } = useContainerSize(mainEl)
-const philosophyText = ref('')
-const philosophyChars = computed(() => philosophyText.value.split(''))
+const { widthClass: mainWidthClass, tier: mainTier } = useContainerSize(mainEl)
+const philosophyVariants = ref<Record<string, string>>({})
+const philosophyText = computed(() => {
+  const lang = getLocale().startsWith('zh') ? 'zh' : 'en'
+  return philosophyVariants.value[lang] || philosophyVariants.value.zh || ''
+})
+const philosophyChars = computed(() => philosophyText.value.split('').map(ch => ch === ' ' ? '\u00A0' : ch))
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
 // 公告横幅
 const { visible: annVisible, currentMessage: annMessage, load: loadAnnouncements, dismiss: annDismiss, getCtaUrl: annCtaUrl } = useAnnouncements()
+const safeAnnContent = computed(() => annMessage.value ? escapeHtml(annMessage.value.content) : '')
 
 function onCtaClick() {
   const url = annCtaUrl()
@@ -182,7 +189,47 @@ onMounted(async () => {
 
   // ─── 主内容区宽度档位（统一 composable 驱动）───
   // 断点与 CSS 类名由 useContainerSize 统一管理，触发 legacy-views.css 等响应式规则
+
+  // ─── 页面刷新保护（桌面端数据保护）───
+  // 录音中刷新/关闭页面时弹出浏览器原生确认对话框，防止误操作丢失录音数据
+  window.addEventListener('beforeunload', onBeforeUnload)
+  // 桌面端 F5 刷新请求（由 pywebview 注入层派发）
+  window.addEventListener('oms:reload-requested', onReloadRequested)
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  window.removeEventListener('oms:reload-requested', onReloadRequested)
+})
+
+/** 检测当前是否有录音中的任务（含暂停） */
+function isRecordingActive(): boolean {
+  const now = Date.now()
+  const oneDayAgo = now - 24 * 60 * 60 * 1000
+  return taskStore.tasks.some(t => {
+    if (t.status !== 'recording' && t.status !== 'paused') return false
+    if (t.created_at) {
+      const created = new Date(t.created_at).getTime()
+      if (created < oneDayAgo) return false
+    }
+    return true
+  })
+}
+
+/** beforeunload：录音中阻止意外关闭/刷新 */
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (isRecordingActive()) {
+    e.preventDefault()
+  }
+}
+
+/** 桌面端 F5 刷新请求：录音中弹确认，否则直接刷新 */
+function onReloadRequested() {
+  if (isRecordingActive()) {
+    if (!window.confirm(t('common.reload_recording_confirm'))) return
+  }
+  window.location.reload()
+}
 
 /** 检查后端是否有进行中的录音，自动恢复到录音页 */
 async function checkActiveRecording() {
@@ -207,16 +254,23 @@ async function loadPhilosophy() {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
     const now = Date.now()
-    let text = cached.text
-    if (!text || !cached.ts || now - cached.ts > WEEK_MS) {
+    let variants = cached.variants as Record<string, string> | undefined
+    // 校验缓存格式：值必须为字符串（旧版本可能写入嵌套对象）
+    if (variants && typeof variants === 'object') {
+      const hasStringValue = Object.values(variants).some(v => typeof v === 'string')
+      if (!hasStringValue) variants = undefined
+    }
+    if (!variants || !cached.ts || now - cached.ts > WEEK_MS) {
       const res = await fetch('/api/philosophy/random')
       if (!res.ok) return
       const data = await res.json()
-      if (!data.text) return
-      text = data.text
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ text, ts: now }))
+      variants = data.variants
+        || (typeof data.text === 'object' && data.text !== null ? data.text : { zh: String(data.text || '') })
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ variants, ts: now }))
     }
-    philosophyText.value = text || ''
+    philosophyVariants.value = variants || {}
+    const text = philosophyText.value
+    if (!text) return
     setTimeout(() => {
       const el = document.getElementById('philosophyText')
       if (el) el.classList.add('is-visible')

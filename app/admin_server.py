@@ -21,11 +21,11 @@ import logging
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-
 from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
 load_dotenv()
 
 # ── 日志（独立日志文件）──

@@ -9,7 +9,8 @@
     <!-- 标题 -->
     <div class="sb-tl-title">
       <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
-      <span>{{ displayTitle }}</span>
+      <span v-if="searchQuery" v-html="highlightedTitle"></span>
+      <span v-else>{{ displayTitle }}</span>
     </div>
 
     <!-- 元数据：时间 + 状态 + 时长 -->
@@ -18,6 +19,23 @@
       <span class="sb-tl-dot" :class="dotClass"></span>
       <span class="sb-tl-status">{{ statusLabel }}</span>
       <DurationDial v-if="task.audio_duration" class="sb-tl-dur" :seconds="task.audio_duration" />
+    </div>
+
+    <!-- 主要讲话人 -->
+    <div v-if="topSpeakers.length > 0" class="sb-tl-speakers">
+      <div
+        v-for="sp in topSpeakers"
+        :key="sp.id"
+        class="sb-tl-spk-item"
+        :title="`${sp.name} · ${sp.pct}%`"
+      >
+        <span class="sb-tl-spk-name" :style="{ color: sp.color }">{{ sp.name }}</span>
+        <div class="sb-tl-spk-bar"><div class="sb-tl-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></div></div>
+      </div>
+      <span v-if="extraSpeakerCount > 0" class="sb-tl-spk-more">
+        …{{ t('task.speakers_more', { count: extraSpeakerCount }) }} · {{ t('task.speakers_total', { count: task.speaker_count || 0 }) }}
+      </span>
+      <span v-else-if="task.speaker_count" class="sb-tl-spk-total">{{ t('task.speakers_total', { count: task.speaker_count }) }}</span>
     </div>
 
     <!-- 失败详情 -->
@@ -86,6 +104,8 @@ import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
+import { highlightText } from '@/utils/search'
+import { getSpeakerColor } from '@/utils/speakerColors'
 
 const { t } = useI18n()
 const player = usePlayerStore()
@@ -94,6 +114,7 @@ const props = defineProps<{
   task: Task
   isActive: boolean
   isLatest?: boolean
+  searchQuery?: string
 }>()
 
 const emit = defineEmits<{
@@ -117,6 +138,13 @@ const hoverStyle = ref<Record<string, string>>({})
 const displayTitle = computed(() =>
   props.task.title || props.task.audio_name || t('task.untitled'),
 )
+
+/** 搜索高亮标题（HTML） */
+const highlightedTitle = computed(() => {
+  const title = displayTitle.value
+  if (!props.searchQuery) return title
+  return highlightText(title, props.searchQuery)
+})
 
 const timeStr = computed(() => {
   // 优先用 created_at 的完整时间戳，回退到 meeting_date
@@ -144,6 +172,44 @@ const statusLabel = computed(() => {
     completed: t('task.status.completed'), failed: t('task.status.failed'),
   }
   return map[props.task.status] || props.task.status
+})
+
+/** 主要讲话人：从 dialogue 计算时长，取前 3 */
+interface CardSpeakerInfo { id: string; name: string; color: string; pct: number }
+
+const topSpeakers = computed((): CardSpeakerInfo[] => {
+  const mapping = props.task.speaker_mapping
+  if (!mapping || Object.keys(mapping).length === 0) return []
+  if (props.task.status !== 'completed' || !props.task.dialogue) return []
+
+  const durMap: Record<string, number> = {}
+  let total = 0
+  for (const line of props.task.dialogue) {
+    const sid = String(line.speaker_id)
+    for (const s of line.sentences) {
+      const d = s.end_time - s.begin_time
+      durMap[sid] = (durMap[sid] || 0) + d
+      total += d
+    }
+  }
+  if (total === 0) return []
+
+  return Object.entries(mapping)
+    .filter(([, name]) => name)
+    .map(([id, name]) => ({
+      id,
+      name,
+      color: getSpeakerColor(id),
+      pct: Math.round((durMap[id] || 0) / total * 100),
+    }))
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3)
+})
+
+const extraSpeakerCount = computed(() => {
+  const mapping = props.task.speaker_mapping
+  if (!mapping) return 0
+  return Math.max(0, Object.keys(mapping).filter(k => mapping[k]).length - 3)
 })
 
 const durationStr = computed(() => {

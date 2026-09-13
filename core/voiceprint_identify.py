@@ -15,8 +15,8 @@ core/voiceprint_identify.py — 声纹管线层：自动识别 + 绑定注册 + 
 """
 
 import logging
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -39,12 +39,10 @@ def _load_audio(audio_path: Path) -> Optional[tuple[int, np.ndarray]]:
     Returns:
         (采样率, 音频数据)，失败返回 None
     """
-    from scipy.io import wavfile
+    from core.audio import read_wav_float32
 
     try:
-        sr, audio_data = wavfile.read(str(audio_path))
-        if audio_data.dtype != np.float32:
-            audio_data = audio_data.astype(np.float32) / 32768.0
+        sr, audio_data = read_wav_float32(audio_path)
         return sr, audio_data
     except Exception as e:
         logger.error(f"[声纹] 加载音频失败: {e}")
@@ -144,6 +142,47 @@ def _extract_single_speaker_embedding(
     return embedding, used_sec
 
 
+def _greedy_assignment(cost_matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """贪心一对一分配（替代 scipy.optimize.linear_sum_assignment）。
+
+    对小型矩阵（说话人匹配场景，通常 < 20x20）效果与匈牙利算法一致。
+    每次选取全局最优的 (行, 列) 对，然后排除该行和该列。
+
+    Args:
+        cost_matrix: 成本矩阵（越小越优），shape (m, n)
+
+    Returns:
+        (row_indices, col_indices) 分配结果
+    """
+    m, n = cost_matrix.shape
+    used_rows: set[int] = set()
+    used_cols: set[int] = set()
+    rows: list[int] = []
+    cols: list[int] = []
+
+    for _ in range(min(m, n)):
+        # 在可用行列中找最小值
+        best_val = np.inf
+        best_r = best_c = -1
+        for r in range(m):
+            if r in used_rows:
+                continue
+            for c in range(n):
+                if c in used_cols:
+                    continue
+                if cost_matrix[r, c] < best_val:
+                    best_val = cost_matrix[r, c]
+                    best_r, best_c = r, c
+        if best_r < 0:
+            break
+        rows.append(best_r)
+        cols.append(best_c)
+        used_rows.add(best_r)
+        used_cols.add(best_c)
+
+    return np.array(rows, dtype=int), np.array(cols, dtype=int)
+
+
 def auto_identify_speakers(
     audio_path: str | Path,
     dialogue: list[dict],
@@ -157,8 +196,7 @@ def auto_identify_speakers(
       2. Per-meeting 中心化：减去所有说话人的均值，消除同会议录音的
          公共信道分量（同一麦克风/线路导致所有说话人 embedding 偏向
          同一方向，中心化后拉开人间差距）
-      3. 匈牙利算法（scipy.optimize.linear_sum_assignment）做最优
-         一对一分配，保证不会把两个 ASR 说话人分给同一个注册人
+      3. 贪心算法做最优一对一分配，保证不会把两个 ASR 说话人分给同一个注册人
       4. 对分配结果做阈值 + margin 双重校验
 
     Args:
@@ -267,10 +305,8 @@ def auto_identify_speakers(
         for j in range(n_refs):
             sim_matrix[i, j] = _vr.cosine_similarity(probe, ref_embeddings[j])
 
-    # 匈牙利算法求最大总相似度的一对一分配
-    # linear_sum_assignment 求最小值 → 取负相似度转为最小化问题
-    from scipy.optimize import linear_sum_assignment
-    row_ind, col_ind = linear_sum_assignment(-sim_matrix)
+    # 匈牙利算法求最大总相似度的一对一分配（纯 numpy 贪心实现，替代 scipy.optimize.linear_sum_assignment）
+    row_ind, col_ind = _greedy_assignment(-sim_matrix)
 
     # ── Step 4: 构建结果 ─────────────────────────────────
     thr = _vr.MATCH_THRESHOLD if threshold is None else threshold

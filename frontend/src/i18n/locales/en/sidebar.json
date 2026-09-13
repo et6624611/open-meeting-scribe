@@ -28,5 +28,12 @@
   "rail_hotwords": "Hotwords",
   "rail_settings": "Settings",
   "rail_settings_version": "Settings · {version}",
-  "rail_toggle_sidebar": "Toggle Sidebar"
+  "rail_toggle_sidebar": "Toggle Sidebar",
+  "date_today": "Today",
+  "date_yesterday": "Yesterday",
+  "date_this_week": "This Week",
+  "date_last_week": "Last Week",
+  "date_this_month": "This Month",
+  "date_last_month": "Last Month",
+  "date_earlier": "Earlier"
 }

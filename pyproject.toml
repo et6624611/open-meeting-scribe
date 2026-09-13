@@ -75,6 +75,14 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+ignore = [
+    "E501",  # Line too long（>120 字符的长字符串/URL/注释，保持现状）
+    "E402",  # Module import not at top（底部 re-export 兼容层 + 懒加载 import 是刻意设计）
+    "N806",  # Variable in function should be lowercase（函数级常量用大写是团队约定）
+    "N801",  # Class name should use CapWords（perf_timer 装饰器式类名是刻意设计）
+    "N812",  # Lowercase imported as non-lowercase（kaldi 声纹库别名 K 是行业惯例）
+    "N999",  # Invalid module name（voiceprint-service 目录名是服务命名约定）
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

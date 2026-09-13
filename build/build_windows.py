@@ -20,7 +20,7 @@ from pathlib import Path
 # ── 配置 ──────────────────────────────────────────────
 PYTHON_MIN_VERSION = (3, 11)
 FFMPEG_VERSION = "7.1"
-FFMPEG_URL = f"https://github.com/BtbN/ffmpeg-builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+FFMPEG_URL = "https://github.com/BtbN/ffmpeg-builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 DIST_DIR = Path("dist/MeetingScribe")
 # ─────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ def download_ffmpeg():
             if name.endswith('/bin/ffmpeg.exe'):
                 data = zf.read(name)
                 ffmpeg_exe.write_bytes(data)
-                print(f"ffmpeg.exe 提取完成 ✓")
+                print("ffmpeg.exe 提取完成 ✓")
                 break
         else:
             print("警告：未在压缩包中找到 ffmpeg.exe，请手动放置")
@@ -110,7 +110,7 @@ def assemble_distribution():
     exe_dst = DIST_DIR / "MeetingScribe.exe"
     if exe_src.exists():
         shutil.move(str(exe_src), str(exe_dst))
-        print(f"MeetingScribe.exe 就位 ✓")
+        print("MeetingScribe.exe 就位 ✓")
 
     # 复制启动器
     launcher_src = Path("build/launcher.bat")

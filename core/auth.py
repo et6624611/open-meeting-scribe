@@ -12,11 +12,10 @@ core/auth.py — 认证核心模块
   - state 用内存字典存储（单实例足够）
 """
 
-import os
-import time
-import uuid
-import secrets
 import logging
+import os
+import secrets
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -30,8 +29,18 @@ logger = logging.getLogger(__name__)
 
 GITHUB_CLIENT_ID = os.getenv("OAUTH_GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("OAUTH_GITHUB_CLIENT_SECRET", "")
-JWT_SECRET = os.getenv("JWT_SECRET", "")
 JWT_EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+
+# JWT 签名密钥：严禁使用空密钥（空密钥会导致 JWT 可被任意伪造）。
+# 未显式配置时生成进程级随机密钥——重启后所有会话失效，仅适用于本地单用户开发；
+# 生产或多用户（REQUIRE_AUTH=true）部署必须在 .env 中设置固定的强 JWT_SECRET。
+JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_urlsafe(32)
+    logger.warning(
+        "JWT_SECRET 未配置，已生成临时随机密钥（进程重启后所有登录会话失效）。"
+        "生产或多用户部署请在 .env 中设置固定的强 JWT_SECRET。"
+    )
 APP_URL = os.getenv("APP_URL", "http://127.0.0.1:8000")
 
 # GitHub OAuth 端点

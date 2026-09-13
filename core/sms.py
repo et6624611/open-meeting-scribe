@@ -14,16 +14,17 @@ core/sms.py — 短信认证服务（云端代理模式）
   - 频率限制用内存字典，与 _oauth_states 同一模式（单实例够用）
 """
 
+import hashlib
+import hmac
+import json
+import logging
 import os
 import re
 import time
-import hmac
-import hashlib
-import logging
-from core.i18n import _
-import urllib.request
 import urllib.error
-import json
+import urllib.request
+
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 

@@ -37,6 +37,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.fs_atomic import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 # 用户数据文件
@@ -86,11 +88,9 @@ def _load_user_data() -> dict:
 
 
 def _save_user_data(data: dict) -> None:
-    """保存用户数据到磁盘"""
+    """保存用户数据到磁盘（原子写入，避免崩溃产生半截文件）"""
     try:
-        USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(USERS_FILE, data)
     except Exception as e:
         logger.error(f"保存用户数据失败: {e}")
 

@@ -91,12 +91,13 @@
         <button
           class="topbar-new-btn"
           :class="{ 'is-hidden': isStartRoute || showRecPill, 'is-disabled': hasRecordingTask }"
-          :title="hasRecordingTask ? t('topbar.recording_in_progress', { elapsed: recElapsed }) : t('topbar.new_meeting')"
+          :title="hasRecordingTask ? t('topbar.recording_in_progress', { elapsed: recElapsed }) : t('topbar.new_meeting') + ` (${modKey}N)`"
           @click="hasRecordingTask ? jumpBackToRecording() : router.push('/')"
         >
           <svg v-if="hasRecordingTask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>{{ hasRecordingTask ? t('topbar.return_record') : t('topbar.new_meeting') }}</span>
+          <kbd v-if="!hasRecordingTask" class="topbar-shortcut-kbd">{{ modKey }}N</kbd>
         </button>
         <div class="lang-switcher">
           <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" @click="showLangMenu = !showLangMenu">
@@ -187,6 +188,7 @@ import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 import { getRecordStatus } from '@/api/record'
+import { modKey } from '@/utils/platform'
 
 const { t } = useI18n()
 const router = useRouter()

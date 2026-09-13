@@ -20,14 +20,14 @@ Provider 配置从 settings.json 动态读取（app.store.get_llm_config），
 """
 
 import asyncio
-import os
-import time
 import logging
+import os
 import threading
+import time
 from typing import Generator
-import requests
 
 import httpx
+import requests
 
 logger = logging.getLogger(__name__)
 

@@ -28,7 +28,7 @@ websockets>=12.0
 
 # 声纹特征提取（实时说话人分离：MFCC + 余弦相似度聚类）
 numpy>=2.0.0
-scipy>=1.14.0
+# scipy 已移除：wavfile→wave 标准库、eigh→numpy.linalg.eigvalsh、linear_sum_assignment→贪心分配
 
 # 声纹姓名化（云端 CAM++ 服务 + MFCC 降级）
 # 批处理声纹提取走云端 API，不再依赖本地 torch
@@ -40,6 +40,9 @@ PyPDF2>=3.0.0
 
 # 国际化（i18n）
 Babel>=2.14.0
+
+# 桌面应用（原生窗口模式）
+pywebview>=5.0.0
 
 # 可选：OpenAI SDK（纪要生成可用 OpenAI 兼容端点）
 # openai>=1.12.0

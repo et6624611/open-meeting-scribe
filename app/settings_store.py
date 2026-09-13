@@ -13,9 +13,9 @@ app/settings_store.py — 设置管理
 从 app/store.py 拆分而来，与原模块通过 re-export 保持向后兼容。
 """
 
-import os
 import json
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,9 @@ def load_settings() -> dict:
 
 
 def save_settings_to_disk(settings: dict) -> None:
-    """持久化设置到 settings.json"""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    """持久化设置到 settings.json（原子写入）"""
+    from core.fs_atomic import atomic_write_json
+    atomic_write_json(SETTINGS_FILE, settings)
 
 
 # ============================================================
@@ -142,24 +142,49 @@ def get_llm_config() -> dict:
 
 def get_asr_config() -> dict:
     """
-    获取 ASR（语音转写）配置。
+    获取 ASR（语音转写）配置（从 settings.json）。
 
-    代理模式下，客户端不再持有 DashScope API Key，所有 ASR 请求通过代理服务器中转。
+    支持两种接入模式：
+      - proxy（默认）：通过 ASR 代理服务器中转，客户端不持有 API Key
+      - direct：用户自持 DashScope API Key，主服务直连 DashScope API
+
     返回格式：
       {
+        "mode": "proxy",               # "proxy" / "direct"
         "provider": "DashScope",
-        "proxy_url": "http://your-asr-proxy-server:8200",
+        "base_url": "https://...",      # 直连模式下的 API 地址
+        "api_key": "sk-...",            # 直连模式下的 API Key（明文，仅内部使用）
+        "proxy_url": "http://...",      # 代理模式下的代理地址
         "model": "paraformer-v2",
-        "source": "platform"  # 始终为 platform（代理模式）
       }
 
-    详见 docs/adr/0012-ASR转写走云端代理.md
+    优先级：
+      - mode 从 settings.json 的 asr.mode 读取，缺省为 "proxy"
+      - 直连模式 api_key 兜底：settings.json → DASHSCOPE_API_KEY 环境变量
+      - 直连模式 base_url 兜底：settings.json → "https://dashscope.aliyuncs.com"
     """
+    settings = load_settings()
+    asr_config = settings.get("asr", {})
+    mode = asr_config.get("mode", "proxy")
+
+    if mode == "direct":
+        return {
+            "mode": "direct",
+            "provider": asr_config.get("provider", "DashScope"),
+            "base_url": asr_config.get("base_url", "https://dashscope.aliyuncs.com"),
+            "api_key": asr_config.get("api_key", "") or os.getenv("DASHSCOPE_API_KEY", ""),
+            "model": asr_config.get("model", "paraformer-v2"),
+            "proxy_url": "",
+        }
+
+    # 代理模式（默认）
     return {
+        "mode": "proxy",
         "provider": "DashScope",
         "proxy_url": os.getenv("ASR_PROXY_URL", ""),
-        "model": "paraformer-v2",
-        "source": "platform",
+        "model": asr_config.get("model", "paraformer-v2"),
+        "base_url": "",
+        "api_key": "",
     }
 
 
@@ -259,4 +284,22 @@ def get_silence_detection_config() -> dict:
             "urgent_countdown_sec": sd.get("action", {}).get("urgent_countdown_sec", 60),
             "max_warnings_per_session": sd.get("action", {}).get("max_warnings_per_session", 2),
         },
+    }
+
+
+def get_storage_config() -> dict:
+    """
+    获取存储管理配置（从 settings.json）。
+
+    返回格式：
+      {
+        "auto_clean_intermediate": true,   # 转写完成后自动清理归一化中间文件
+        "auto_archive_days": 0             # 0=关闭；N=N天前的已完成会议自动删除音频
+      }
+    """
+    settings = load_settings()
+    sc = settings.get("storage", {})
+    return {
+        "auto_clean_intermediate": sc.get("auto_clean_intermediate", True),
+        "auto_archive_days": sc.get("auto_archive_days", 0),
     }

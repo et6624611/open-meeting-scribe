@@ -19,8 +19,8 @@ core/joblog.py — 会议纪要作业日志（per-task 事件流）
 
 import json
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)

@@ -1,10 +1,6 @@
 <template>
   <Teleport to="body">
     <div class="login-overlay" :class="{ 'is-hidden': !visible }" id="loginOverlay">
-      <IconButton class="login-back-btn" :label="t('login.back')" show-label @click="hide">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        <template #label>{{ t('login.back_label') }} <kbd>ESC</kbd></template>
-      </IconButton>
       <div class="login-card">
         <div class="login-card-brand">
           <div class="brand-mark">
@@ -60,6 +56,12 @@
         </div>
 
         <p class="login-footer">{{ t('login.footer_line1') }}<br>{{ t('login.footer_line2') }}</p>
+        <div class="login-footer-action">
+          <IconButton class="login-back-btn" :label="t('login.back')" show-label @click="hide">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <template #label>{{ t('login.back_label') }} <kbd>ESC</kbd></template>
+          </IconButton>
+        </div>
       </div>
     </div>
   </Teleport>

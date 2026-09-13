@@ -10,13 +10,15 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from app.store import (
-    tasks, save_task_to_disk, run_stage2_task,
+    run_stage2_task,
+    save_task_to_disk,
+    tasks,
 )
-from core import speakers, voiceprint, joblog
+from core import joblog, speakers, voiceprint
 from core import users as user_module
 from core.i18n import _
 

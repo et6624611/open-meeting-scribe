@@ -10,6 +10,8 @@ status: published
 # CHANGELOG — 迭代日志
 
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
+>
+> **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
 
 ## [v2.x-overlay-standardization] - 2026-09-13
 

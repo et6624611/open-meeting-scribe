@@ -17,12 +17,12 @@ app/realtime_store.py — 实时消息推送状态
 import asyncio
 import logging
 
-from core.realtime_asr import RealtimeTranscriber
-from core.realtime_summary import RealtimeSummarizer
-from core.realtime_chapters import RealtimeChapterGenerator
-from core.translate import RealtimeTranslator
-from core.diarization import SpeakerDiarizer
 from core import speakers
+from core.diarization import SpeakerDiarizer
+from core.realtime_asr import RealtimeTranscriber
+from core.realtime_chapters import RealtimeChapterGenerator
+from core.realtime_summary import RealtimeSummarizer
+from core.translate import RealtimeTranslator
 
 logger = logging.getLogger(__name__)
 

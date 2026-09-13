@@ -19,16 +19,24 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.store import (
-    tasks, TASKS_DIR,
-    realtime_transcript_buffers, REALTIME_BUFFER_MAX,
+from app.store import (  # noqa: F401
+    REALTIME_BUFFER_MAX,
+    TASKS_DIR,
+    realtime_transcript_buffers,
+    tasks,
 )
-from core.chat_actions import detect_action, execute_action
-from core.chat_edits import has_edit_intent, parse_edit_intent, execute_and_verify_edits, describe_change, audit_reply_claims
-from core.chat_edits import _sanitize_edit_ops
-from core.chat_context import is_joblog_intent, build_speaker_name_map, build_page_context, extract_injectable_items
-from core.llm import async_chat_completion
 from core import joblog
+from core.chat_actions import detect_action, execute_action
+from core.chat_context import build_page_context, build_speaker_name_map, extract_injectable_items, is_joblog_intent
+from core.chat_edits import (  # noqa: F401
+    _sanitize_edit_ops,
+    audit_reply_claims,
+    describe_change,
+    execute_and_verify_edits,
+    has_edit_intent,
+    parse_edit_intent,
+)
+from core.llm import async_chat_completion
 
 # 向后兼容别名（测试与外部引用）
 _detect_action = detect_action
@@ -41,6 +49,9 @@ from core.i18n import _
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
+
+# 单条用户消息最大长度（字符），防止超长输入耗尽 LLM token / 内存
+MAX_CHAT_MESSAGE_LEN = 8000
 
 
 # ============================================================
@@ -207,6 +218,11 @@ async def chat(data: ChatRequest):
     user_message = data.message.strip()
     if not user_message:
         raise HTTPException(400, _("Message cannot be empty"))
+    if len(user_message) > MAX_CHAT_MESSAGE_LEN:
+        raise HTTPException(
+            400,
+            _("Message too long (max {max} characters)").format(max=MAX_CHAT_MESSAGE_LEN),
+        )
 
     is_qa_mode = data.mode == "qa"
     system_prompt = CHAT_QA_SYSTEM_PROMPT if is_qa_mode else CHAT_SYSTEM_PROMPT
@@ -356,7 +372,9 @@ async def chat(data: ChatRequest):
     if context_blocks:
         system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
 
-    logger.info("[AI对话] 注入块 task=%s mode=%s blocks=%d 详情=%s", data.task_id, data.mode, len(context_blocks), [{"head": b[:120].replace("\n", " "), "len": len(b)} for b in context_blocks])
+    logger.info("[AI对话] 注入块 task=%s mode=%s blocks=%d", data.task_id, data.mode, len(context_blocks))
+    # 注入块内容含会议原文/纪要，仅在 DEBUG 级别落盘，避免 INFO 日志泄露敏感内容
+    logger.debug("[AI对话] 注入块详情=%s", [{"head": b[:120].replace("\n", " "), "len": len(b)} for b in context_blocks])
 
     # ── 维度 4: 对话历史 ──
     messages = [{"role": "system", "content": system_prompt}]

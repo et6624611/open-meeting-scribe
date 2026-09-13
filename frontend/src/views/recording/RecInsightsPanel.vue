@@ -89,10 +89,10 @@
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
           </div>
           <div v-if="msg.expanded" class="rec-insight-card-body">
-            <div class="rec-insight-body-text" v-html="msg.body"></div>
+            <div class="rec-insight-body-text" v-html="escapeHtml(msg.body)"></div>
             <div v-if="msg.solution" class="rec-insight-solution">
               <span class="rec-insight-solution-label">{{ t('ai-panel.insights.expand_detail') }}</span>
-              <div class="rec-insight-solution-text" v-html="msg.solution"></div>
+              <div class="rec-insight-solution-text" v-html="msg.solution ? escapeHtml(msg.solution) : ''"></div>
             </div>
             <div class="rec-insight-actions" v-if="msg.actions.length > 0">
               <button
@@ -123,6 +123,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction, InsightConfig } from '@/composables/useAiInsights'
 import AiInsightsSettings from '@/components/layout/ai/AiInsightsSettings.vue'
 

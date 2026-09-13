@@ -89,7 +89,6 @@
 
 /* AI 洞察面板 */
 .rec-insights-panel { flex: 45; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--surface-2); }
-.rec-insights-panel.is-hidden-narrow { display: none; }
 .rec-insights-header { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 52px; }
 .rec-insights-title { font-size: var(--fs-13); font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: var(--s-2); }
 .rec-insights-badge { font-size: var(--fs-10); font-weight: 600; color: var(--surface); background: var(--proactive); border-radius: 999px; padding: 1px 6px; min-width: 16px; text-align: center; line-height: 14px; }

@@ -90,5 +90,6 @@
     "cloud_connected": "Cloud AI Connected"
   },
   "playing": "Playing",
-  "paused": "Paused"
+  "paused": "Paused",
+  "reload_recording_confirm": "There is an active recording. Reloading will interrupt it. Continue?"
 }

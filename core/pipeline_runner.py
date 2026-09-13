@@ -14,26 +14,19 @@ core/pipeline_runner.py — 管线编排（后台执行）
   - app.realtime_store：全量实时转写缓冲
 """
 
-import time
 import logging
-from pathlib import Path
+import time
 from datetime import datetime
-from core.i18n import _
+from pathlib import Path
 
-import numpy as np
-
-from core.pipeline import run_pipeline_stage1, run_pipeline_stage2, PipelineProgress
-from core.summarize import parse_todos_from_summary
-from core.errors import is_transient_error, classify_error
-from core.speaker_count import estimate_speaker_count
-from core import speakers
-from core import voiceprint
-from core import text_bridge
-from core import joblog
-
-from app.task_store import tasks, save_task_to_disk, infer_task_source
 from app.settings_store import get_feature_flags
-from app.realtime_store import realtime_full_transcripts
+from app.task_store import save_task_to_disk, tasks
+from core import joblog, speakers, text_bridge, voiceprint
+from core.errors import classify_error, is_transient_error
+from core.i18n import _
+from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
+from core.speaker_count import estimate_speaker_count
+from core.summarize import parse_todos_from_summary
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +37,35 @@ logger = logging.getLogger(__name__)
 # 自动重试配置（仅针对瞬时错误）
 PIPELINE_MAX_RETRIES = 2
 PIPELINE_RETRY_DELAYS = [2, 5]  # 秒
+
+
+def _cleanup_normalized_intermediate(task_id: str) -> None:
+    """
+    清理归一化中间文件（_normalized.wav）。
+
+    Stage 1 完成后调用：声纹注册已在 Stage 1 内完成，
+    归一化文件不再需要，删除以释放磁盘空间。
+    仅当 auto_clean_intermediate 设置开启时执行。
+    """
+    try:
+        from app.settings_store import get_storage_config
+        if not get_storage_config().get("auto_clean_intermediate", True):
+            return
+
+        task = tasks.get(task_id, {})
+        normalized_path = task.get("normalized_path")
+        if not normalized_path:
+            return
+
+        np = Path(normalized_path)
+        original_path = task.get("audio_path", "")
+        # 确保不删除原始音频（仅删除与原始音频不同的归一化文件）
+        if np.exists() and str(np) != str(original_path):
+            size_mb = np.stat().st_size / 1024 / 1024
+            np.unlink()
+            logger.info(f"[{task_id[:8]}] 已清理归一化中间文件: {np.name} ({size_mb:.1f} MB)")
+    except Exception as e:
+        logger.warning(f"[{task_id[:8]}] 清理归一化文件失败（不影响主流程）: {e}")
 
 
 # ============================================================
@@ -133,6 +155,7 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
             if speaker_mapping:
                 # 有预设映射，直接运行第二阶段
                 save_task_to_disk(task_id)
+                _cleanup_normalized_intermediate(task_id)
                 _run_stage2_for_task(task_id, audio_path, speaker_mapping)
             else:
                 # V3++ 分层匹配策略：P0 文本桥接 → P1 声纹匹配 → P2 手动绑定
@@ -261,6 +284,11 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
 
                 # 直接运行第二阶段（不再等待用户确认绑定）
                 save_task_to_disk(task_id)
+
+                # 清理中间产物：归一化文件在 Stage 1 完成后不再需要
+                # （声纹注册已在 Stage 1 内完成，Stage 2 不依赖归一化音频）
+                _cleanup_normalized_intermediate(task_id)
+
                 _run_stage2_for_task(task_id, audio_path, auto_mapping)
 
             return  # 成功，退出重试循环
@@ -412,7 +440,7 @@ def run_stage2_task(task_id: str, audio_path: Path, speaker_mapping: dict = None
 # Re-export（兼容现有 import 路径）
 # ============================================================
 
-from core.speaker_count import (  # noqa: E402
-    SPEAKER_COUNT_MIN,
+from core.speaker_count import (  # noqa: E402,F401
     SPEAKER_COUNT_MAX,
+    SPEAKER_COUNT_MIN,
 )

@@ -64,4 +64,4 @@
 .summary-content th { white-space: nowrap; }
 .table-squeeze-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .table-squeeze-wrap table { min-width: max-content; }
-.gen-panel th, .spk-transcript-area th { white-space: nowrap; }
+.gen-panel th, .spk-transcript-scroll th { white-space: nowrap; }

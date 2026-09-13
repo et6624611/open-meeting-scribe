@@ -50,6 +50,20 @@ async function bootstrap() {
   app.use(createPinia())
   app.use(router)
   app.use(i18n)
+
+  // ─── 全局错误捕获（自愈层）───
+  // 未捕获的组件异常统一记录到控制台，便于桌面端排查；
+  // 各业务模块已有局部 try/catch，此处仅作兜底。
+  app.config.errorHandler = (err, instance, info) => {
+    console.error('[OMS] Unhandled error:', err)
+    console.error('[OMS] Component:', (instance as any)?.$options?.name || '<unknown>')
+    console.error('[OMS] Info:', info)
+  }
+  // 捕获 Promise 未处理拒绝（如 API 调用失败后未 catch）
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[OMS] Unhandled promise rejection:', event.reason)
+  })
+
   app.mount('#app')
 }
 bootstrap()

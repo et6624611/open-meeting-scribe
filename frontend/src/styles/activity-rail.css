@@ -71,6 +71,12 @@
   background: var(--surface-3, var(--surface-2));
   color: var(--accent);
 }
+/* 抑制 focus-visible 轮廓：hover / is-active 已提供充分视觉反馈，
+   且 outline-offset 会在圆角按钮边缘产生弧形残影。
+   双类选择器提升特异性以覆盖 IconButton scoped 样式（0-2-1）。 */
+.ar-btn.icon-btn:focus-visible {
+  outline: none;
+}
 
 /* ─── AI 洞察指示器 ─── */
 .ar-insights {
@@ -117,6 +123,10 @@
   32%, 100% { box-shadow: 0 0 0 0 oklch(62% 0.20 270 / 0); transform: scale(1); }
 }
 .ar-insights svg { width: 18px; height: 18px; }
+/* 同 .ar-btn：hover / is-enabled / has-unread 已提供充分视觉反馈 */
+.ar-insights:focus-visible {
+  outline: none;
+}
 /* 未读角标 */
 .ar-insights-badge {
   position: absolute;

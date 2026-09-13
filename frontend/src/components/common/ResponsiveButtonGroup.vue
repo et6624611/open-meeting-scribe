@@ -48,6 +48,7 @@
 import { ref, computed, onMounted, onUnmounted, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { BREAKPOINTS } from '@/composables/useContainerSize'
 
 export interface ButtonItem {
   key: string
@@ -67,8 +68,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  iconThreshold: 480,
-  mixedThreshold: 640,
+  iconThreshold: BREAKPOINTS.xs,
+  mixedThreshold: BREAKPOINTS.sm,
 })
 
 const { t } = useI18n()

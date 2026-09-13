@@ -1,5 +1,10 @@
 <template>
   <div>
+    <button class="page-back-btn" @click="goBack">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      <span>{{ t('common.action.back') }}</span>
+      <kbd>ESC</kbd>
+    </button>
     <!-- 列表视图 -->
     <Transition name="fade" mode="out-in">
     <div v-if="!selectedSpeaker" key="list">
@@ -220,9 +225,11 @@ import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
 import { useUserStore } from '@/stores/user'
 import { useEscClose } from '@/composables/useEscClose'
+import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
 const router = useRouter()
+const { goBack } = usePageBack()
 const userStore = useUserStore()
 const speakers = ref<Speaker[]>([])
 const newName = ref('')

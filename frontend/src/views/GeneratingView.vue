@@ -115,41 +115,33 @@
           </span>
         </span>
       </div>
-
-      <!-- 说话人名单（含占比横条） -->
-      <div class="gen-speaker-zone" v-if="speakerStats.length > 0">
-        <div class="gen-speaker-labels" id="genSpeakerLabels">
-          <span v-for="(sp, idx) in speakerStats" :key="idx" class="gen-spk-label">
-            <span class="gen-spk-name" :style="{ color: sp.color }">{{ sp.name }}</span>
-            <span class="gen-spk-bar"><span class="gen-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
-          </span>
-        </div>
-      </div>
     </div>
 
-    <!-- 说话人绑定条（子组件） -->
-    <GeneratingSpeakerBar
-      :visible="showBindingBar"
-      :legend="bindingLegend"
+    <!-- 说话人区（三态合并：只读名单 / 绑定提示 / 绑定完成） -->
+    <GeneratingSpeakerZone
+      :mode="speakerZoneMode"
+      :visible="bindingLegend.length > 0"
+      :speakers="bindingLegend"
       :unbound-count="unboundCount"
+      :can-edit-bindings="canBind"
       :current-mapping="currentBindingMapping"
       :dropdown="bindingDropdown"
       :filtered-speakers="dropdownSpeakers"
       @open-info="openOnboarding"
       @open-dropdown="openBindingDropdown"
-      @locate-speaker="toggleLocateSpeaker"
+      @locate-speaker="onLocateSpeaker"
       @skip="skipMapping"
       @confirm="confirmMapping"
       @close="bindingBarHidden = true"
+      @reenter-binding="reenterBinding"
       @select="selectBinding"
       @create-and-bind="createAndBind"
       @dropdown-keydown="onDropdownKeydown"
       @update:dropdown-search="bindingDropdown.search = $event"
     />
 
-    <!-- 控制区：Tab + 音频控件 -->
+    <!-- 控制区：Tab -->
     <div class="gen-control-zone">
-      <!-- 左侧：Tab + 原文控制（亲疏原则分组） -->
       <div class="gen-tabs-group">
         <div class="gen-tabs" id="genTabsContainer">
           <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)">
@@ -158,19 +150,6 @@
             <span class="tab-dot" :class="dotClass(tab.id)"></span>
           </button>
         </div>
-      </div>
-      <!-- 右侧：音频播放控制（亲疏原则分组） -->
-      <div class="gen-audio-bar" v-if="audioUrl">
-        <button class="gen-audio-play" @click="toggleAudio" :title="player.playing ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')" :aria-label="player.playing ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')">
-          <svg v-if="!player.playing" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-          <span class="gen-audio-play-text">{{ player.playing ? t('generating.transcript.pause') : t('generating.transcript.play') }}</span>
-        </button>
-        <span class="gen-audio-time">{{ player.timeStr }}</span>
-        <div class="gen-audio-progress" @click="seekAudio">
-          <div class="gen-audio-progress-fill" :style="{ width: player.progress + '%' }"></div>
-        </div>
-        <button class="gen-audio-speed" @click="player.cycleSpeed()">{{ player.speed }}×</button>
       </div>
     </div>
 
@@ -221,11 +200,23 @@
         :panel-total-turns="panelTotalTurns"
         :current-binding-mapping="currentBindingMapping"
         :speakers="speakers"
+        :audio-url="audioUrl"
+        :audio-playing="player.playing"
+        :audio-progress="player.progress"
+        :audio-time-str="player.timeStr"
+        :audio-current-time-str="player.currentTimeStr"
+        :audio-remaining-time-str="player.remainingTimeStr"
+        :audio-speed="player.speed"
+        :audio-current-time="player.currentTime"
+        @toggle-audio="toggleAudio"
+        @seek-audio="seekAudio"
+        @skip-audio="(s) => player.skip(s)"
+        @cycle-speed="player.cycleSpeed()"
         @toggle-chapter="toggleChapterExpand"
         @toggle-chapter-transcript="toggleChapterTranscript"
         @seek="seekFromTranscriptClick"
         @speaker-label-click="onSpeakerLabelClick"
-        @toggle-locate="toggleLocateSpeaker"
+        @toggle-locate="onLocateSpeaker"
         @toggle-speaker="toggleSpeakerFilter"
         @clear-filter="clearSpeakerFilter"
         @nav-focus="navFocusLine"
@@ -258,7 +249,6 @@
         :markdown="notesContent"
         :notes-saved="notesSaved"
         @change="onNotesChange"
-        @insert-md="insertMd"
       />
 
       <TodosPanel
@@ -320,7 +310,7 @@ import TranscriptPanel from './generating/TranscriptPanel.vue'
 import SummaryPanel from './generating/SummaryPanel.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import TodosPanel from './generating/TodosPanel.vue'
-import GeneratingSpeakerBar from './generating/GeneratingSpeakerBar.vue'
+import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
 import OnboardingDialog from './generating/OnboardingDialog.vue'
 import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
@@ -383,18 +373,18 @@ const {
 const {
   showBindingBar, bindingLegend, unboundCount, currentBindingMapping,
   bindingDropdown, dropdownSpeakers, openBindingDropdown,
-  skipMapping, confirmMapping, bindingBarHidden, selectBinding, createAndBind, onDropdownKeydown, canBind,
+  skipMapping, confirmMapping, bindingBarHidden, selectBinding, createAndBind, onDropdownKeydown, canBind, reenterBinding,
 } = binding
 const {
   speakerPanelVisible, speakerPanelSearch, searchExpanded, speakerFilterSet,
   focusSpeaker, focusLineIdx, locateSpeakerId,
   panelSpeakerList, panelTotalDuration, panelTotalTurns,
-  toggleSearch, onSearchBlur, toggleSpeakerFilter, clearSpeakerFilter, navFocusLine, toggleLocateSpeaker,
+  toggleSearch, onSearchBlur, toggleSpeakerFilter, clearSpeakerFilter, navFocusLine,
 } = panel
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
   showAddForm, newTodoText, newTodoAssignee,
-  onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo, insertMd,
+  onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo,
 } = notes
 const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
 const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
@@ -435,6 +425,23 @@ function onSpeakerLabelClick(e: MouseEvent, speakerId: number) {
   else panel.toggleLocateSpeaker(speakerId)
 }
 
+/** 说话人区定位按钮：切换到原文 Tab 并滚动到目标说话人首条发言 */
+function onLocateSpeaker(speakerId: number) {
+  // 1. 若当前不在原文 Tab，先切换
+  if (activeTab.value !== 'transcript') {
+    switchTab('transcript')
+  }
+  // 2. 设置定位状态（高亮目标说话人、淡化其余）
+  panel.toggleLocateSpeaker(speakerId)
+  // 3. DOM 更新后滚动到该说话人的第一条发言
+  nextTick(() => {
+    const firstLine = flatTranscript.value.find(l => l.speaker_id === speakerId)
+    if (!firstLine) return
+    const el = transcriptPanelRef.value?.transcriptListEl?.querySelector(`[data-begin-time="${firstLine.begin_time}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 function onSelectionAction(action: string, text: string, source: string, blockIndex: number) {
   if (action === 'rewrite') {
     data.startRewrite(text, source, blockIndex); data.setQuote(text, source, blockIndex)
@@ -464,7 +471,11 @@ function seekFromTranscriptClick(ms: number) {
 }
 
 // ─── 计算属性（组合 composable 输出） ───
-const speakerStats = computed(() => data.computeSpeakerStats(data.speakers.value, binding.currentBindingMapping))
+// 说话人区三态：非绑定态或用户已关闭绑定条 → readonly；否则按是否存在未关联切换 actionable/complete
+const speakerZoneMode = computed<'readonly' | 'actionable' | 'complete'>(() => {
+  if (!showBindingBar.value) return 'readonly'
+  return unboundCount.value > 0 ? 'actionable' : 'complete'
+})
 const breadcrumbs = computed(() => data.computeBreadcrumbs(data.projects.value))
 const currentProjectName = computed(() => data.computeCurrentProjectName(data.projects.value))
 const speakerNames = computed(() => {

@@ -14,12 +14,12 @@ core/chat_context.py — AI 对话上下文构建与注入内容提取
 从 app/routers/chat.py 拆分而来。
 """
 
-import re
 import logging
+import re
 
 from app.store import tasks
+from core import hotwords, projects, speakers
 from core.audio import is_stream_recording
-from core import speakers, projects, hotwords, joblog
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def build_page_context(page: str) -> str | None:
         if not settings:
             return "## 当前页面\n用户在系统设置页面，当前使用默认配置。"
         safe_keys = ["language", "default_model", "record_device", "theme", "hotwords_enabled"]
-        lines = [f"- {k}: {v}" for k in safe_keys if settings.get(k) is not None]
+        lines = [f"- {k}: {settings.get(k)}" for k in safe_keys if settings.get(k) is not None]
         if lines:
             return "## 当前页面：系统设置\n当前配置：\n" + "\n".join(lines)
         return "## 当前页面\n用户在系统设置页面。"

@@ -42,10 +42,13 @@ def estimate_speaker_count(audio_path: Path) -> int | None:
     """
     try:
         import struct as _struct
+
         from core.audio import normalize_audio
         from core.diarization import (
-            SpeakerDiarizer, SAMPLE_RATE,
-            extract_speaker_feature, _is_speech,
+            SAMPLE_RATE,
+            SpeakerDiarizer,
+            _is_speech,
+            extract_speaker_feature,
         )
 
         # 先归一化为 WAV（上传文件可能是 MP3/M4A 等）
@@ -62,7 +65,6 @@ def estimate_speaker_count(audio_path: Path) -> int | None:
             f.read(4)  # WAVE
 
             data_offset = None
-            audio_format = 1  # PCM
             num_channels = 1
             sample_rate = SAMPLE_RATE
             bits_per_sample = 16
@@ -75,7 +77,6 @@ def estimate_speaker_count(audio_path: Path) -> int | None:
 
                 if chunk_id == b"fmt ":
                     fmt_data = f.read(chunk_size)
-                    audio_format = _struct.unpack("<H", fmt_data[0:2])[0]
                     num_channels = _struct.unpack("<H", fmt_data[2:4])[0]
                     sample_rate = _struct.unpack("<I", fmt_data[4:8])[0]
                     bits_per_sample = _struct.unpack("<H", fmt_data[14:16])[0]
@@ -218,14 +219,11 @@ def _spectral_estimate_k(
     # 对称化（消除数值误差）
     L_sym = (L_sym + L_sym.T) / 2
 
-    # 求最小的 max_k+1 个特征值
+    # 求最小的 max_k+1 个特征值（numpy.linalg.eigh 替代 scipy.linalg.eigh）
     try:
-        from scipy.linalg import eigh
-        eigenvalues = eigh(
-            L_sym,
-            subset_by_index=[0, min(max_k, n - 1)],
-            eigvals_only=True,
-        )
+        all_eigenvalues = np.linalg.eigvalsh(L_sym)
+        k = min(max_k, n - 1) + 1
+        eigenvalues = all_eigenvalues[:k]
     except Exception:
         return None
 

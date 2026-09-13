@@ -20,10 +20,16 @@ export interface ProviderPreset {
 
 export interface Settings {
   asr?: {
+    /** 接入模式：proxy（代理）/ direct（直连） */
+    mode?: 'proxy' | 'direct'
     provider?: string
+    base_url?: string
+    api_key?: string
+    api_key_set?: boolean
     model?: string
     /** 代理模式下由服务器持有，前端仅展示 */
     api_key_managed_by_proxy?: boolean
+    proxy_url?: string
   }
   llm?: {
     provider?: string
@@ -47,6 +53,11 @@ export interface Settings {
   output_dir?: string
   disabled_commands?: string[]
   feature_flags?: Partial<FeatureFlags>
+  /** 存储管理配置 */
+  storage?: {
+    auto_clean_intermediate?: boolean
+    auto_archive_days?: number
+  }
   /** 后端返回的 LLM Provider 预设列表 */
   llm_provider_presets?: ProviderPreset[]
   [key: string]: unknown
@@ -61,8 +72,8 @@ export async function saveSettings(settings: Partial<Settings>): Promise<void> {
   await client.post('/api/settings', settings)
 }
 
-export async function testApiConnection(): Promise<{ success: boolean; message?: string }> {
-  const { data } = await client.post<{ success: boolean; message?: string }>('/api/settings/test')
+export async function testApiConnection(params?: { service_type?: string; asr?: Record<string, unknown>; llm?: Record<string, unknown> }): Promise<{ success: boolean; message?: string; ok?: boolean; error?: string }> {
+  const { data } = await client.post<{ success: boolean; message?: string; ok?: boolean; error?: string }>('/api/settings/test', params || {})
   return data
 }
 

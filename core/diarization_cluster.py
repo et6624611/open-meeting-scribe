@@ -17,12 +17,16 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from core.diarization import (
-    FEATURE_WINDOW_SEC, FEATURE_STEP_SEC,
-    SIMILARITY_THRESHOLD, MIN_FEATURES_PER_SPEAKER,
+    CLOUD_MERGE_THRESHOLD,
+    CLOUD_SIMILARITY_THRESHOLD,
+    FEATURE_STEP_SEC,
+    FEATURE_WINDOW_SEC,
+    MIN_FEATURES_PER_SPEAKER,
     SAMPLE_RATE,
-    CLOUD_SIMILARITY_THRESHOLD, CLOUD_MERGE_THRESHOLD,
+    SIMILARITY_THRESHOLD,
     VAD_ENERGY_THRESHOLD,
-    _is_speech, _compute_rms,
+    _compute_rms,
+    _is_speech,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { escapeHtml } from '@/utils/sanitize'
 
 export interface MdBlock {
   source: string
@@ -66,8 +67,12 @@ export function splitMdBlocks(md: string): MdBlock[] {
 
 function renderBlockHtml(block: MdBlock): string {
   const clean = cleanAiMarker(block.source)
-  let html = clean
-    .replace(/```[\s\S]*?```/g, (m) => `<pre><code>${m.slice(3, -3).trim()}</code></pre>`)
+  let html = escapeHtml(clean)
+    .replace(/```[\s\S]*?```/g, (m) => {
+      // escapeHtml 已转义了反引号内的内容，此处重新包装
+      const inner = m.slice(3, -3).trim()
+      return `<pre><code>${inner}</code></pre>`
+    })
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -79,7 +84,7 @@ function renderBlockHtml(block: MdBlock): string {
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
     .replace(/^---$/gm, '<hr>')
   if (block.type === 'paragraph' && !html.startsWith('<')) {
-    html = '<p>' + html + '</p>'
+    html = '<p>' + html.replace(/\n/g, '<br>') + '</p>'
   }
   return html
 }
@@ -120,6 +125,45 @@ export function useBlockEditor(onChange?: (md: string) => void) {
     if (onChange) onChange(getMarkdown())
   }
 
+  function insertAfter(idx: number, source: string = ''): number {
+    const newBlock: MdBlock = { source, type: classifyBlockSource(source), isAi: false, index: 0 }
+    blocks.value.splice(idx + 1, 0, newBlock)
+    // re-index
+    for (let i = 0; i < blocks.value.length; i++) blocks.value[i].index = i
+    if (onChange) onChange(getMarkdown())
+    return idx + 1
+  }
+
+  function removeBlock(idx: number): number {
+    blocks.value.splice(idx, 1)
+    // re-index
+    for (let i = 0; i < blocks.value.length; i++) blocks.value[i].index = i
+    if (onChange) onChange(getMarkdown())
+    return Math.max(0, idx - 1)
+  }
+
+  /** 将块内容转换为目标类型（strip 旧标记 + 加新标记） */
+  function convertBlock(idx: number, targetType: 'heading' | 'list' | 'paragraph') {
+    const block = blocks.value[idx]
+    if (!block) return
+    // 去除现有类型标记
+    let text = block.source
+      .replace(/^#{1,3}\s+/gm, '')   // heading
+      .replace(/^[-*]\s+/gm, '')     // unordered list
+      .replace(/^\d+\.\s+/gm, '')    // ordered list
+      .replace(/^>\s/gm, '')         // blockquote
+    // 按目标类型添加新标记
+    if (targetType === 'heading') {
+      text = text.split('\n').map(l => l.trim() ? `## ${l}` : l).join('\n')
+    } else if (targetType === 'list') {
+      text = text.split('\n').map(l => l.trim() ? `- ${l}` : l).join('\n')
+    }
+    // paragraph: 不加标记
+    const newType = classifyBlockSource(text)
+    blocks.value[idx] = { source: text, type: newType, isAi: block.isAi, index: idx }
+    if (onChange) onChange(getMarkdown())
+  }
+
   function renderBlock(block: MdBlock): string {
     return renderBlockHtml(block)
   }
@@ -133,6 +177,9 @@ export function useBlockEditor(onChange?: (md: string) => void) {
     exitEdit,
     cancelEdit,
     updateBlock,
+    insertAfter,
+    removeBlock,
+    convertBlock,
     renderBlock,
   }
 }

@@ -17,11 +17,11 @@ asr-proxy/ws_relay.py — WebSocket 实时流式转写中继
   - {"type": "complete"} — 识别完成
 """
 
+import asyncio
 import json
 import logging
-import asyncio
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ async def _handle_ws_connection(
     try:
         # 导入 DashScope SDK
         import dashscope
-        from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+        from dashscope.audio.asr import Recognition, RecognitionCallback
 
         dashscope.base_websocket_api_url = DASHSCOPE_WS_URL
         dashscope.api_key = DASHSCOPE_API_KEY

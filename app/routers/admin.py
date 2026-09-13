@@ -15,24 +15,25 @@ app/routers/admin.py — 管理后台 API 路由
   - 所有 /api/admin/* 端点须携带管理员 cookie
 """
 
-import os
-import time
-import logging
 import hashlib
+import logging
+import os
 import secrets
+import time
 
-from fastapi import APIRouter, Request, HTTPException, Depends
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-import jwt
-
-from core.users import (
-    _load_user_data, _save_user_data,
-    get_user_by_id, set_user_subscription,
-)
-from core.metering import get_monthly_usage, TIER_QUOTAS
 from core.i18n import _
+from core.metering import TIER_QUOTAS, get_monthly_usage
+from core.users import (
+    _load_user_data,
+    _save_user_data,
+    get_user_by_id,
+    set_user_subscription,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,40 @@ router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 # ============================================================
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
-ADMIN_JWT_SECRET = os.getenv("JWT_SECRET", "admin-fallback-secret")
+# 复用 core.auth 中已校验的 JWT_SECRET（永不为空，未配置时为进程级随机密钥），
+# 不再使用硬编码兜底密钥，避免密钥可预测导致管理员 JWT 被伪造。
+from core.auth import JWT_SECRET as ADMIN_JWT_SECRET
+
 ADMIN_COOKIE = "oms_admin_session"
 ADMIN_JWT_EXPIRE_SECONDS = 12 * 3600  # 12 小时
+
+# Cookie Secure 标志：HTTPS 部署时设为 true，本地开发保持 false
+_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+# 占位符/弱口令黑名单：避免直接沿用 .env.example 中的可猜测密码
+_WEAK_ADMIN_PASSWORDS = {
+    "your-strong-password-here", "admin", "password", "changeme",
+    "123456", "12345678", "admin123", "root",
+}
+_ADMIN_PASSWORD_MIN_LEN = 8
+
+# 管理员登录速率限制（内存计数，单实例够用）
+_login_attempts: dict[str, list[float]] = {}
+_LOGIN_MAX_ATTEMPTS = 5          # 窗口内最大失败次数
+_LOGIN_WINDOW_SEC = 300          # 计数窗口 5 分钟
+
+
+def _prune_attempts(ip: str) -> list[float]:
+    """清理过期计数并返回当前窗口内的失败时间戳"""
+    now = time.time()
+    recent = [t for t in _login_attempts.get(ip, []) if now - t < _LOGIN_WINDOW_SEC]
+    _login_attempts[ip] = recent
+    return recent
+
+
+def _record_failed_login(ip: str) -> None:
+    """记录一次失败尝试"""
+    _login_attempts.setdefault(ip, []).append(time.time())
 
 
 def _hash_password(password: str) -> str:
@@ -96,23 +128,43 @@ class AdminLoginRequest(BaseModel):
 
 
 @router.post("/login")
-def admin_login(req: AdminLoginRequest):
-    """管理员登录"""
+def admin_login(req: AdminLoginRequest, request: Request):
+    """管理员登录（带速率限制与弱口令校验）"""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 速率限制：窗口内失败次数超限则拒绝
+    if len(_prune_attempts(client_ip)) >= _LOGIN_MAX_ATTEMPTS:
+        logger.warning(f"管理员登录频率超限: ip={client_ip}")
+        raise HTTPException(429, _("Too many login attempts, please try again later"))
+
     if not ADMIN_PASSWORD:
         raise HTTPException(500, _("Admin password not configured (ADMIN_PASSWORD)"))
 
+    # 弱口令/占位符拒绝：避免使用 .env.example 默认值或过短密码
+    if (ADMIN_PASSWORD.strip().lower() in _WEAK_ADMIN_PASSWORDS
+            or len(ADMIN_PASSWORD) < _ADMIN_PASSWORD_MIN_LEN):
+        logger.error("ADMIN_PASSWORD 为弱口令/占位符，拒绝登录，请立即修改")
+        raise HTTPException(
+            500,
+            _("Admin password is too weak, please set a strong ADMIN_PASSWORD"),
+        )
+
     if not secrets.compare_digest(req.password, ADMIN_PASSWORD):
-        logger.warning("管理员登录失败：密码错误")
+        _record_failed_login(client_ip)
+        logger.warning(f"管理员登录失败：密码错误 | ip={client_ip}")
         raise HTTPException(401, _("Incorrect password"))
 
+    # 登录成功，清空该 IP 的失败计数
+    _login_attempts.pop(client_ip, None)
     token = _create_admin_token()
-    logger.info("管理员登录成功")
+    logger.info(f"管理员登录成功 | ip={client_ip}")
 
     response = JSONResponse({"success": True})
     response.set_cookie(
         key=ADMIN_COOKIE,
         value=token,
         httponly=True,
+        secure=_COOKIE_SECURE,
         samesite="lax",
         max_age=ADMIN_JWT_EXPIRE_SECONDS,
         path="/",

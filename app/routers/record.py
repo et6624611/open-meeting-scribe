@@ -10,50 +10,65 @@ v2.0 重构：WebSocket 端点与静默检测已拆分至独立模块。
   - core/silence_detection.py    — 静默检测协程与自动关停
 """
 
-import uuid
 import asyncio
 import logging
 import math
 import struct
-import time
 import threading
-from pathlib import Path
+import time
+import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from app.store import (
-    tasks, RECORD_DEVICE, RECORDINGS_DIR, TASKS_DIR,
-    realtime_queues, realtime_transcribers, realtime_diarizers,
-    realtime_summarizers, realtime_chapter_generators, realtime_translators,
-    realtime_speaker_maps,
-    realtime_full_transcripts,
-    realtime_last_heartbeat, realtime_last_sentence,
-    realtime_presence_scores, realtime_silence_warnings, realtime_silence_monitors,
-    save_task_to_disk, push_realtime_msg, resolve_realtime_speaker_name,
-    run_pipeline_task, get_feature_flags, get_silence_detection_config,
-    SPEAKER_COUNT_MIN, SPEAKER_COUNT_MAX,
-)
 # 以模块方式引用 realtime_store：event_loop 全局在 startup 时才赋值，必须运行时通过
 # rt_store.event_loop 读取（若按值 import 会像 _stream_task_id 一样恒为初始值 None）
 import app.realtime_store as rt_store
+from app.store import (
+    RECORD_DEVICE,
+    RECORDINGS_DIR,
+    SPEAKER_COUNT_MAX,
+    SPEAKER_COUNT_MIN,
+    TASKS_DIR,
+    get_feature_flags,
+    get_silence_detection_config,
+    push_realtime_msg,
+    realtime_chapter_generators,
+    realtime_diarizers,
+    realtime_full_transcripts,
+    realtime_last_heartbeat,
+    realtime_last_sentence,
+    realtime_presence_scores,
+    realtime_queues,
+    realtime_silence_monitors,
+    realtime_silence_warnings,
+    realtime_speaker_maps,
+    realtime_summarizers,
+    realtime_transcribers,
+    realtime_translators,
+    resolve_realtime_speaker_name,
+    run_pipeline_task,
+    save_task_to_disk,
+    tasks,
+)
+from core import speakers
 from core.audio import (
-    start_recording_with_stream,
-    stop_recording_with_stream,
+    get_stream_recording_info,
+    is_stream_recording,
     pause_recording_with_stream,
     resume_recording_with_stream,
-    is_stream_recording,
-    get_stream_recording_info,
+    start_recording_with_stream,
+    stop_recording_with_stream,
 )
-from core.realtime_asr import RealtimeTranscriber
-from core.realtime_summary import RealtimeSummarizer
-from core.realtime_chapters import RealtimeChapterGenerator
 from core.diarization import create_realtime_diarizer
+from core.i18n import _
+from core.realtime_asr import RealtimeTranscriber
+from core.realtime_chapters import RealtimeChapterGenerator
+from core.realtime_summary import RealtimeSummarizer
 from core.silence_detection import cleanup_silence_detection, silence_monitor_loop
-from core import speakers
-from core.i18n import _, set_current_locale
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +87,7 @@ def start_record():
 
     # 配额预检：订阅用户额度用尽时阻止录制（自带 Key 用户不受限）
     try:
-        from core.metering import is_metered, check_quota
+        from core.metering import check_quota, is_metered
         from core.users import get_current_user
         current_user = get_current_user()
         if current_user and is_metered():
@@ -770,10 +785,10 @@ async def realtime_get_speaker_bindings():
     binding_map = realtime_speaker_maps.get(task_id, {})
     # 补充姓名
     result = {}
-    for sid, uuid in binding_map.items():
-        spk = speakers.get_speaker_by_id(uuid)
+    for sid, spk_uuid in binding_map.items():
+        spk = speakers.get_speaker_by_id(spk_uuid)
         result[str(sid)] = {
-            "speaker_uuid": uuid,
+            "speaker_uuid": spk_uuid,
             "speaker_name": spk.name if spk else "",
         }
     return {"bindings": result, "task_id": task_id}

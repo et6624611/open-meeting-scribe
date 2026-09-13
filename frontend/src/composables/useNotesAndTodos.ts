@@ -2,7 +2,7 @@
  * 随记 & 待办 CRUD
  */
 import { ref, watch, type ComputedRef, type Ref } from 'vue'
-import { saveNotes, fetchTodos, toggleTodo, createTodo, deleteTodo } from '@/api/notes'
+import { saveNotes, saveSummary, fetchTodos, toggleTodo, createTodo, deleteTodo } from '@/api/notes'
 import type { TodoItem, Task } from '@/api/types'
 
 export function useNotesAndTodos(
@@ -30,15 +30,15 @@ export function useNotesAndTodos(
   function onNotesChange(md: string) {
     notesContent.value = md; notesSaved.value = false
     if (notesTimer) clearTimeout(notesTimer)
-    notesTimer = setTimeout(onSaveNotes, 2000)
+    notesTimer = setTimeout(onSaveNotes, 1000)
   }
 
   function onSummaryChange(md: string) {
     summaryMd.value = md
     if (summaryTimer) clearTimeout(summaryTimer)
     summaryTimer = setTimeout(async () => {
-      try { await saveNotes(taskId + ':summary', md) } catch { /* */ }
-    }, 2000)
+      try { await saveSummary(taskId, md) } catch { /* */ }
+    }, 1000)
   }
 
   async function onToggleTodo(todo: TodoItem) {
@@ -61,17 +61,16 @@ export function useNotesAndTodos(
 
   function locateTodoSource(_todo: TodoItem) { /* 由父组件 switchTab('transcript') 处理 */ }
 
-  function insertMd(_type: string) { /* MdBlockEditor 内部处理编辑，占位 */ }
-
-  // 自动加载
+  // 自动加载（用 flag 区分「未加载」与「用户清空」）
+  let notesLoaded = false
   watch(activeTab, (tab) => {
-    if (tab === 'notes' && !notesContent.value) loadNotes()
+    if (tab === 'notes' && !notesLoaded) { notesLoaded = true; loadNotes() }
     if (tab === 'todos' && todos.value.length === 0) loadTodos()
   })
 
   return {
     showAddForm, newTodoText, newTodoAssignee,
     loadNotes, loadTodos, onNotesChange, onSummaryChange,
-    onToggleTodo, onAddTodo, onDeleteTodo, locateTodoSource, insertMd,
+    onToggleTodo, onAddTodo, onDeleteTodo, locateTodoSource,
   }
 }

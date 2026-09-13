@@ -14,7 +14,6 @@ import { fetchNotes, fetchTodos } from '@/api/notes'
 import { fetchSpeakers, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
-import { getSpeakerColor } from '@/utils/speakerColors'
 import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine } from '@/api/types'
 
 export function useGeneratingData(
@@ -122,6 +121,7 @@ export function useGeneratingData(
   })
 
   // ─── Tab 切换 ───
+  const TAB_IDS = ['transcript', 'notes', 'summary', 'todos'] as const
   const TABS = computed(() => [
     { id: 'transcript', label: t('generating.tabs.transcript'), icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
     { id: 'notes', label: t('generating.tabs.notes'), icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
@@ -138,6 +138,7 @@ export function useGeneratingData(
 
   function dotClass(tabId: string): string {
     if (!task.value) return ''
+    if (tabId === 'transcript' && flatTranscript.value.length > 0) return 'is-done'
     if (tabId === 'summary' && task.value.summary) return 'is-done'
     if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
     return ''
@@ -151,27 +152,6 @@ export function useGeneratingData(
     const m = Math.floor(sec / 60), s = Math.floor(sec % 60)
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   })
-
-  // speakerStats 需要 speakers 和 currentBindingMapping，由外部注入
-  function computeSpeakerStats(speakers: Speaker[], currentBindingMapping: Record<number, string>) {
-    const mapping = task.value?.speaker_mapping
-    if (!mapping) return []
-    const lines = flatTranscript.value
-    if (!lines.length) return []
-    const totalMs = lines.reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
-    if (totalMs <= 0) return []
-    const speakerIds = Object.keys(mapping).sort((a, b) => Number(a) - Number(b))
-    return speakerIds.map((sid) => {
-      const sidNum = Number(sid)
-      const uuid = currentBindingMapping[sidNum]
-      const boundSpk = uuid ? speakers.find(s => s.id === uuid) : null
-      const name = boundSpk?.name || mapping[sid] || t('generating.speaker_default', { id: sidNum + 1 })
-      const durMs = lines.filter(l => String(l.speaker_id) === sid)
-        .reduce((sum, l) => sum + (l.end_time - l.begin_time), 0)
-      const pct = Math.round((durMs / totalMs) * 100)
-      return { name, pct, color: getSpeakerColor(sid) }
-    })
-  }
 
   // ─── 面包屑 ───
   const breadcrumbTitle = computed(() => task.value?.title || task.value?.audio_name || t('generating.breadcrumb.default_title'))
@@ -211,7 +191,12 @@ export function useGeneratingData(
   const summaryMd = ref('')
   const todos = ref<TodoItem[]>([])
 
-  watch(() => task.value?.summary, (s) => { if (s) summaryMd.value = s }, { immediate: true })
+  watch(() => task.value, (t) => {
+    if (t) {
+      const us = (t as any).user_summary
+      summaryMd.value = us != null ? us : (t.summary || '')
+    }
+  }, { immediate: true })
 
   async function loadNotes() { notesContent.value = await fetchNotes(taskId) }
   async function loadTodos() { todos.value = await fetchTodos(taskId) }
@@ -297,7 +282,7 @@ export function useGeneratingData(
   // ─── 生命周期 ───
   onMounted(async () => {
     const saved = localStorage.getItem('oms_gen_active_tab')
-    if (saved) activeTab.value = saved
+    if (saved && (TAB_IDS as readonly string[]).includes(saved)) activeTab.value = saved
 
     try { const t = await fetchTask(taskId); taskStore.patchTaskLocal(taskId, t) } catch { /* */ }
     taskStore.selectTask(taskId)
@@ -335,7 +320,7 @@ export function useGeneratingData(
     // Tab
     TABS, activeTab, switchTab, dotClass,
     // 元信息
-    metaDateShort, metaDuration, computeSpeakerStats, breadcrumbTitle, computeBreadcrumbs, computeCurrentProjectName,
+    metaDateShort, metaDuration, breadcrumbTitle, computeBreadcrumbs, computeCurrentProjectName,
     // 工具栏
     onCopy, onExport, onFullscreen,
     // 随记 & 待办

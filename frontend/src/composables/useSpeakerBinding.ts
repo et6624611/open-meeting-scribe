@@ -40,6 +40,9 @@ export function useSpeakerBinding(
     }
   }
 
+  // 统一的说话人展示数据源：同时驱动「绑定态交互 chip」与「只读态名单」，
+  // 避免与旧的 speakerStats 重复计算。displayName 解析优先级：
+  // 已绑定真人名 > ASR 分配名(speaker_mapping) > 默认「说话人N」。
   const bindingLegend = computed(() => {
     const lines = flatTranscript.value
     if (!lines.length) return []
@@ -48,13 +51,15 @@ export function useSpeakerBinding(
     for (const l of lines) {
       speakerMap.set(l.speaker_id, (speakerMap.get(l.speaker_id) || 0) + (l.end_time - l.begin_time))
     }
+    const mapping = task.value?.speaker_mapping
     return Array.from(speakerMap.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([sid, durMs]) => {
         const uuid = currentBindingMapping[sid]
         const bound = uuid ? speakers.value.find(s => s.id === uuid) : null
         const pct = totalMs > 0 ? Math.round((durMs / totalMs) * 100) : 0
-        return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: bound?.name || '', bound: !!bound }
+        const displayName = bound?.name || mapping?.[String(sid)] || t('generating.speaker_default', { id: sid + 1 })
+        return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: bound?.name || '', displayName, bound: !!bound }
       })
   })
 
@@ -146,6 +151,13 @@ export function useSpeakerBinding(
     localStorage.setItem(`oms_bind_bar_dismissed:${taskId}`, 'true')
   }
 
+  // 从只读态重新进入绑定横幅（用户点击「编辑关联」按钮时调用）
+  function reenterBinding() {
+    bindingBarHidden.value = false
+    bindBarDismissed.value = false
+    localStorage.removeItem(`oms_bind_bar_dismissed:${taskId}`)
+  }
+
   function onDropdownKeydown(e: KeyboardEvent) {
     const items = dropdownSpeakers.value
     const hasCreateBtn = bindingDropdown.search && items.length === 0
@@ -167,7 +179,7 @@ export function useSpeakerBinding(
     currentBindingMapping, bindingDropdown, bindingBarHidden,
     bindingLegend, unboundCount, canBind, showBindingBar, dropdownSpeakers,
     initBindingMapping, openBindingDropdown, closeBindingDropdown: closeBindingDropdown,
-    selectBinding, createAndBind, confirmMapping, skipMapping,
+    selectBinding, createAndBind, confirmMapping, skipMapping, reenterBinding,
     onDropdownKeydown, onDocClickForDropdown,
   }
 }

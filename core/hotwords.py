@@ -14,11 +14,11 @@ core/hotwords.py — 热词表管理
   - 热词表为账号级资源（每账号最多 10 个），所有兼容模型共享
 """
 
-import os
-import re
 import logging
-import requests
+import re
 from pathlib import Path
+
+import requests
 
 logger = logging.getLogger(__name__)
 

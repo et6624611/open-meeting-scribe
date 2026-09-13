@@ -160,6 +160,7 @@ class TestChatEditVerification:
     def _patch_storage(self, monkeypatch, tmp_path, task_id):
         """隔离存储：tasks 字典与 TASKS_DIR 均指向测试沙箱"""
         import json
+
         from app import task_store
         from app.routers import chat as chat_mod
         from core import chat_edits

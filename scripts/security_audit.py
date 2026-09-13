@@ -19,13 +19,12 @@ scripts/security_audit.py — 开发阶段安全审计日志扫描
   python scripts/security_audit.py --since 1h   # 只扫描最近 1 小时的日志
 """
 
-import re
-import sys
-import time
 import argparse
-from pathlib import Path
-from datetime import datetime, timedelta
+import re
+import time
 from collections import defaultdict
+from datetime import datetime, timedelta
+from pathlib import Path
 
 # ── 路径 ──
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -128,7 +127,6 @@ class AuditScanner:
         # 规则 5: 收集 HTTP 4xx 错误（用于后续频率分析）
         http_match = HTTP_ERROR_PATTERN.search(line)
         if http_match:
-            status = int(http_match.group(1))
             # 提取 IP（uvicorn 日志格式中通常在行首）
             ip_match = re.match(r'(\d+\.\d+\.\d+\.\d+)', line)
             if ip_match:
@@ -302,7 +300,7 @@ def main():
     if args.watch:
         print(f"🔍 安全审计监控已启动（间隔 {args.interval}s）...")
         print(f"   日志文件: {target_log}")
-        print(f"   按 Ctrl+C 停止\n")
+        print("   按 Ctrl+C 停止\n")
 
         # 先扫描已有内容
         scanner.scan_file(target_log, since=since)
@@ -317,7 +315,6 @@ def main():
                 old_count = len(scanner.findings)
                 scanner.scan_new_lines(target_log)
                 if len(scanner.findings) > old_count:
-                    new_findings = scanner.findings[old_count:]
                     report = scanner.report()
                     print(report)
                     _write_audit_log(report)

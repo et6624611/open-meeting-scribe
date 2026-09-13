@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
 sys.path.insert(0, str(ROOT))
 
-from core import voiceprint                      # noqa: E402
-from core.speakers import get_speaker_by_id      # noqa: E402
+from core import voiceprint  # noqa: E402
+from core.speakers import get_speaker_by_id  # noqa: E402
 
 
 def resolve_normalized(task: dict) -> Path | None:

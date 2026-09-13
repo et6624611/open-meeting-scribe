@@ -60,9 +60,13 @@ class TestVoiceprintModuleLoad:
     """core.voiceprint 模块可正常加载"""
 
     def test_module_imports(self):
-        from core.voiceprint import (
-            extract_embedding, load_registry, match_voiceprint,
-            cosine_similarity, auto_identify_speakers, MATCH_THRESHOLD,
+        from core.voiceprint import (  # noqa: F401
+            MATCH_THRESHOLD,
+            auto_identify_speakers,
+            cosine_similarity,
+            extract_embedding,
+            load_registry,
+            match_voiceprint,
         )
         assert MATCH_THRESHOLD > 0
         registry = load_registry()
@@ -73,8 +77,10 @@ class TestVoiceprintRegisterFromBinding:
     """声纹自动注册闭环：绑定确认后补录注册表，并可被后续自动匹配命中"""
 
     def test_register_from_binding_then_auto_match(self, tmp_path, monkeypatch):
+        import wave
+
         import numpy as np
-        from scipy.io import wavfile
+
         from core import voiceprint
         from core import voiceprint_registry as vp_reg
 
@@ -83,8 +89,10 @@ class TestVoiceprintRegisterFromBinding:
         monkeypatch.setattr(vp_reg, "REGISTRY_FILE", tmp_path / "voiceprint_registry.json")
 
         # 模拟嵌入提取（避免加载重模型）：按调用次序交替返回两个正交 192 维向量
-        vec_a = np.zeros(192, dtype=np.float32); vec_a[0] = 1.0
-        vec_b = np.zeros(192, dtype=np.float32); vec_b[1] = 1.0
+        vec_a = np.zeros(192, dtype=np.float32)
+        vec_a[0] = 1.0
+        vec_b = np.zeros(192, dtype=np.float32)
+        vec_b[1] = 1.0
         calls = {"n": 0}
 
         def fake_extract(audio, sample_rate=vp_reg.SAMPLE_RATE):
@@ -97,7 +105,11 @@ class TestVoiceprintRegisterFromBinding:
         # 合成 16kHz 单声道 WAV（5 秒）
         sr = 16000
         wav_path = tmp_path / "normalized.wav"
-        wavfile.write(str(wav_path), sr, np.zeros(sr * 5, dtype=np.int16))
+        with wave.open(str(wav_path), 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(np.zeros(sr * 5, dtype=np.int16).tobytes())
 
         dialogue = [
             {"speaker_id": 0, "sentences": [{"begin_time": 0, "end_time": 4000}]},
@@ -148,11 +160,13 @@ class TestVoiceprintRebuildAcrossMeetings:
 
     def _prepare(self, tmp_path, monkeypatch, meeting_count):
         """隔离注册表、模拟嵌入提取、注入已完成会议任务"""
-        import numpy as np
-        from scipy.io import wavfile
+        import wave
         from types import SimpleNamespace
+
+        import numpy as np
+
         from app import task_store
-        from core import voiceprint, speakers
+        from core import speakers
         from core import voiceprint_registry as vp_reg
 
         monkeypatch.setattr(vp_reg, "REGISTRY_FILE", tmp_path / "registry.json")
@@ -171,7 +185,11 @@ class TestVoiceprintRebuildAcrossMeetings:
         fake_tasks = {}
         for i in range(meeting_count):
             wav = tmp_path / f"m{i}_normalized.wav"
-            wavfile.write(str(wav), 16000, np.zeros(16000 * 5, dtype=np.int16))
+            with wave.open(str(wav), 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(np.zeros(16000 * 5, dtype=np.int16).tobytes())
             fake_tasks[f"task-{i}"] = {
                 "task_id": f"task-{i}",
                 "status": "completed",
@@ -226,6 +244,7 @@ class TestVoiceprintMatchMargin:
 
     def test_margin_gate(self, tmp_path, monkeypatch):
         import numpy as np
+
         from core import voiceprint
         from core import voiceprint_registry as vp_reg
         from core.voiceprint import VoiceprintRecord
@@ -252,6 +271,7 @@ class TestVoiceprintSampleAccumulation:
 
     def test_accumulate_weighted_mean(self, tmp_path, monkeypatch):
         import numpy as np
+
         from core import voiceprint
         from core import voiceprint_registry as vp_reg
 

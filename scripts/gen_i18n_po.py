@@ -11,7 +11,6 @@ scripts/gen_i18n_po.py — 从 messages.pot 生成 zh_CN / en 的 .po 文件
 用法：python3 scripts/gen_i18n_po.py
 """
 import os
-import re
 
 BASE = os.path.join(os.path.dirname(__file__), "..", "core", "i18n", "locales")
 POT = os.path.join(BASE, "messages.pot")

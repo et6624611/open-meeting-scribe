@@ -38,6 +38,7 @@
     "close": "Close",
     "click_to_bind": "Click to select or create identity",
     "click_to_rebind": "Click to modify linking",
+    "edit_bindings": "Edit speaker linking",
     "search_placeholder": "Search speakers...",
     "no_bind": "No link",
     "no_match": "No matching results",
@@ -51,6 +52,8 @@
     "pause": "Pause",
     "play_title": "Play recording",
     "pause_title": "Pause playback",
+    "skip_back": "Rewind 15s",
+    "skip_forward": "Forward 15s",
     "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
     "loading": "Organizing transcript...",
     "pending": "Recording completed. Click start processing to generate transcript."
@@ -90,19 +93,30 @@
     "action_items": "Action Items",
     "todos_stat": "This meeting produced {total} to-do(s), {done} completed",
     "view_todos": "View To-dos",
-    "pending": "Minutes not yet generated"
+    "pending": "Minutes not yet generated",
+    "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate"
   },
-  "md_toolbar": {
-    "bold": "Bold",
-    "italic": "Italic",
-    "code": "Code",
-    "heading": "Heading",
-    "list": "List",
-    "quote": "Quote",
-    "hint": "Double-click a text block to edit · Select text to bring up the action bar"
+  "block_editor": {
+    "shortcut": {
+      "dblclick": "Dbl-click",
+      "edit": "Edit block",
+      "new_block": "New block",
+      "line_break": "Line break",
+      "navigate": "Navigate blocks",
+      "confirm": "Confirm edit",
+      "cancel": "Cancel edit",
+      "delete": "Delete block (empty or select-all)"
+    }
+  },
+  "block_menu": {
+    "edit": "Edit",
+    "to_heading": "Turn into heading",
+    "to_list": "Turn into list",
+    "to_paragraph": "Turn into paragraph",
+    "delete": "Delete"
   },
   "notes": {
-    "placeholder": "Take notes here…",
+    "placeholder": "Take notes here… Enter for new block · ↑↓ to navigate",
     "saved": "Saved"
   },
   "todos": {

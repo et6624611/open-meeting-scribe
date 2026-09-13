@@ -15,7 +15,9 @@ core/summarize.py — 纪要提示词与解析
 """
 
 import logging
+
 from core.i18n import _
+
 from .llm import chat_completion
 
 logger = logging.getLogger(__name__)
@@ -202,7 +204,7 @@ def generate_summary(
 
     # 构造用户消息
     user_content = "请根据以下会议对话内容生成会议纪要：\n\n"
-    user_content += f"---\n"
+    user_content += "---\n"
     user_content += f"**说话人数量**：{len(dialogue)} 位\n"
     user_content += f"**发言人对应关系**：{speaker_info}\n"
     user_content += f"**对话总句数**：{total_sentences} 句\n"
@@ -211,7 +213,7 @@ def generate_summary(
         user_content += f"**音频采集时间**：{meeting_time}\n"
     if user_notes:
         user_content += f"**用户笔记**（录音期间记录，供参考）：\n{user_notes}\n"
-    user_content += f"---\n\n"
+    user_content += "---\n\n"
     user_content += "## 对话内容\n\n"
 
     for item in dialogue:

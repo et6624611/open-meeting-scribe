@@ -17,7 +17,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core import voiceprint, speakers
+from core import speakers, voiceprint
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -95,17 +95,27 @@ def register_voiceprint(req: RegisterRequest):
     从指定音频文件的 [begin_time, end_time] 区间提取声纹嵌入，
     注册到指定说话人名下。
     """
-    from scipy.io import wavfile
+    from core.audio import read_wav_float32
 
     audio_path = Path(req.audio_path)
-    if not audio_path.exists():
+
+    # 安全校验：限制音频文件必须在 data 目录内
+    _ALLOWED_AUDIO_DIRS = [
+        Path("data/recordings").resolve(),
+        Path("data/uploads").resolve(),
+        Path("data/tasks").resolve(),
+    ]
+    resolved_audio = audio_path.resolve()
+    # 使用 is_relative_to 而非 str.startswith，避免同前缀目录绕过
+    if not any(resolved_audio.is_relative_to(d) for d in _ALLOWED_AUDIO_DIRS):
+        raise HTTPException(403, _("Access denied: audio file outside allowed directories"))
+
+    if not resolved_audio.exists():
         raise HTTPException(404, _("Audio file not found: {path}").format(path=req.audio_path))
 
     # 加载音频
     try:
-        sr, audio_data = wavfile.read(str(audio_path))
-        if audio_data.dtype != np.float32:
-            audio_data = audio_data.astype(np.float32) / 32768.0
+        sr, audio_data = read_wav_float32(resolved_audio)
     except Exception as e:
         raise HTTPException(400, _("Failed to read audio: {err}").format(err=e))
 
@@ -278,7 +288,7 @@ def auto_match_task_voiceprint(task_id: str, req: Optional[VoiceprintMatchTask] 
     从归一化音频中提取每位说话人的声纹，与注册表比对，
     返回匹配结果。匹配成功时自动构建 speaker_id → speaker_uuid 映射。
     """
-    from app.store import tasks, save_task_to_disk
+    from app.store import save_task_to_disk, tasks
 
     if task_id not in tasks:
         raise HTTPException(404, _("Task not found"))

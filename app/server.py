@@ -37,23 +37,32 @@ import os
 import re
 import sys
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 load_dotenv()
 
 # 配置日志输出到文件（便于崩溃后诊断）
 LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
+# 日志轮转：单文件上限 5MB，保留 5 个历史备份，防止无限制增长耗尽磁盘
+_LOG_MAX_BYTES = 5 * 1024 * 1024
+_LOG_BACKUP_COUNT = 5
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8"),
+        RotatingFileHandler(
+            LOG_DIR / "server.log",
+            maxBytes=_LOG_MAX_BYTES,
+            backupCount=_LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        ),
         logging.StreamHandler(sys.stdout),
     ],
 )
@@ -61,13 +70,36 @@ logging.basicConfig(
 # ── 安全审计日志（独立文件，仅记录安全相关事件）──
 audit_logger = logging.getLogger("audit")
 audit_logger.setLevel(logging.INFO)
-audit_handler = logging.FileHandler(LOG_DIR / "audit.log", encoding="utf-8")
+audit_handler = RotatingFileHandler(
+    LOG_DIR / "audit.log",
+    maxBytes=_LOG_MAX_BYTES,
+    backupCount=_LOG_BACKUP_COUNT,
+    encoding="utf-8",
+)
 audit_handler.setFormatter(logging.Formatter("%(asctime)s [AUDIT] %(message)s"))
 audit_logger.addHandler(audit_handler)
 audit_logger.propagate = False  # 不重复写入 server.log
 
-from app.store import STATIC_DIR, load_tasks_from_disk, recover_interrupted_tasks, event_loop
-from app.routers import tasks, record, ws_transcript, speakers, projects, chat, user, hotwords, settings, notes, voiceprint, philosophy, auth, usage, config, update, insights
+from app.routers import (
+    auth,
+    chat,
+    config,
+    hotwords,
+    insights,
+    notes,
+    philosophy,
+    projects,
+    record,
+    settings,
+    speakers,
+    tasks,
+    update,
+    usage,
+    user,
+    voiceprint,
+    ws_transcript,
+)
+from app.store import STATIC_DIR, cleanup_orphaned_intermediate_files, load_tasks_from_disk, recover_interrupted_tasks
 from core.auth import verify_jwt
 from core.i18n import I18nMiddleware
 from core.llm import close_async_client
@@ -116,6 +148,47 @@ async def user_identity_middleware(request: Request, call_next):
         # 请求结束后清理，避免连接池复用时状态泄漏
         set_request_user_id(None)
     return response
+
+
+# ============================================================
+# 认证强制中间件（多用户/服务器部署时启用）
+# ============================================================
+
+# REQUIRE_AUTH=true 时强制所有业务 API 校验 JWT 会话；
+# 本地个人使用（默认 false）保持免登录，符合「本地数据·云端智能」定位。
+_REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
+
+# REQUIRE_AUTH=true 时无需用户 JWT 即可访问的路径前缀：
+#   - /auth/       登录流程本身（GitHub OAuth / SMS）
+#   - /api/admin/  管理后台，有独立的 require_admin 认证
+#   - /api/config/ 公告、版本等公开配置
+#   - /api/models  可用模型列表（公开只读）
+_AUTH_EXEMPT_PREFIXES = (
+    "/auth/",
+    "/api/admin/",
+    "/api/config/",
+    "/api/models",
+)
+
+
+@app.middleware("http")
+async def enforce_auth_middleware(request: Request, call_next):
+    """
+    多用户部署认证网关：REQUIRE_AUTH=true 时，除白名单外的所有 /api/*
+    请求必须携带有效的 JWT 会话 cookie，否则返回 401。
+    本地模式（REQUIRE_AUTH=false）直接放行，不做任何拦截。
+    """
+    if _REQUIRE_AUTH:
+        path = request.url.path
+        if path.startswith("/api/") and not path.startswith(_AUTH_EXEMPT_PREFIXES):
+            token = request.cookies.get(_SESSION_COOKIE)
+            payload = verify_jwt(token) if token else None
+            if not payload:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Authentication required"},
+                )
+    return await call_next(request)
 
 
 # ============================================================
@@ -206,6 +279,89 @@ app.include_router(insights.router)
 app.include_router(ws_transcript.router)
 
 # ============================================================
+# 自动归档
+# ============================================================
+
+_AUTO_ARCHIVE_INTERVAL = 24 * 3600  # 24 小时
+
+
+async def _auto_archive_loop():
+    """定时检查并归档已完成任务的音频文件（每 24 小时执行一次）"""
+    while True:
+        try:
+            await asyncio.sleep(_AUTO_ARCHIVE_INTERVAL)
+            _run_auto_archive()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"自动归档任务失败: {e}")
+
+
+def _run_auto_archive():
+    """执行一次自动归档：删除超过阈值的已完成任务的音频文件"""
+    from app.settings_store import get_storage_config
+    from app.task_store import save_task_to_disk, tasks
+
+    config = get_storage_config()
+    archive_days = config.get("auto_archive_days", 0)
+    if archive_days <= 0:
+        return
+
+    now = time.time()
+    archived_count = 0
+
+    for task_id, task in list(tasks.items()):
+        if task.get("status") != "completed":
+            continue
+        if task.get("audio_archived"):
+            continue
+
+        # 检查任务创建时间是否超过阈值
+        created_at = task.get("created_at", "")
+        if not created_at:
+            continue
+        try:
+            from datetime import datetime
+            created_dt = datetime.fromisoformat(created_at)
+            age_days = (now - created_dt.timestamp()) / 86400
+            if age_days < archive_days:
+                continue
+        except (ValueError, TypeError):
+            continue
+
+        # 删除音频文件（原始 + 归一化 + raw）
+        audio_path = task.get("audio_path")
+        if audio_path:
+            ap = Path(audio_path)
+            if ap.exists():
+                ap.unlink()
+            # 归一化文件
+            normalized_path = task.get("normalized_path")
+            if normalized_path:
+                np = Path(normalized_path)
+                if np.exists():
+                    np.unlink(missing_ok=True)
+            # 按命名规则查找归一化文件
+            if ap.exists() or True:  # 即使原始文件已删除也尝试清理
+                for suffix in ["_normalized.wav", "_normalized_normalized.wav"]:
+                    candidate = ap.with_stem(f"{ap.stem}{suffix.replace('.wav', '')}").with_suffix(".wav")
+                    if candidate.exists():
+                        candidate.unlink(missing_ok=True)
+            # raw 文件
+            raw_candidate = ap.with_suffix(".raw")
+            if raw_candidate.exists():
+                raw_candidate.unlink(missing_ok=True)
+
+        # 标记已归档
+        task["audio_archived"] = True
+        save_task_to_disk(task_id)
+        archived_count += 1
+
+    if archived_count:
+        logger.info(f"[自动归档] 已归档 {archived_count} 个超过 {archive_days} 天的已完成任务的音频文件")
+
+
+# ============================================================
 # 生命周期
 # ============================================================
 
@@ -227,6 +383,15 @@ async def startup():
 
     load_tasks_from_disk()
     recover_interrupted_tasks()
+
+    # 启动时清理冗余/孤儿中间文件
+    try:
+        cleanup_orphaned_intermediate_files()
+    except Exception as e:
+        logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
+
+    # 启动自动归档定时任务（每 24 小时检查一次）
+    asyncio.create_task(_auto_archive_loop())
 
 
 @app.on_event("shutdown")

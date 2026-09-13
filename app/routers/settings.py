@@ -22,22 +22,29 @@ ASR 与 LLM 使用独立的 API Key，互不干扰。
 API Key 在 GET 响应中脱敏返回（sk-****xxxx），仅在 POST 保存时接收明文。
 """
 
-import os
-import json
 import logging
+import os
+import time
+from pathlib import Path
 
 import requests
 from fastapi import APIRouter
 
-from app.store import (
-    SETTINGS_FILE, load_settings, save_settings_to_disk,
-    mask_api_key, get_active_api_key, get_llm_config, get_asr_config,
-    get_voiceprint_config, get_feature_flags,
-)
-from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
-from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
 from app.routers.chat import CHAT_SYSTEM_PROMPT
+from app.store import (
+    get_active_api_key,
+    get_asr_config,
+    get_feature_flags,
+    get_llm_config,
+    get_storage_config,
+    get_voiceprint_config,
+    load_settings,
+    mask_api_key,
+    save_settings_to_disk,
+)
 from core.i18n import _
+from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
+from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +123,23 @@ def get_settings():
         local_pref = False
         use_local = True
 
+    asr_mode = asr.get("mode", "proxy")
+    asr_response = {
+        "mode": asr_mode,
+        "provider": asr["provider"],
+        "model": asr["model"],
+    }
+    if asr_mode == "direct":
+        asr_response["base_url"] = asr.get("base_url", "")
+        asr_response["api_key"] = mask_api_key(asr.get("api_key", ""))
+        asr_response["api_key_set"] = bool(asr.get("api_key", ""))
+        asr_response["api_key_managed_by_proxy"] = False
+    else:
+        asr_response["proxy_url"] = asr.get("proxy_url", "")
+        asr_response["api_key_managed_by_proxy"] = True
+
     return {
-        "asr": {
-            "provider": asr["provider"],
-            "proxy_url": asr.get("proxy_url", ""),
-            "model": asr["model"],
-            "source": "platform",  # 代理模式下始终为 platform
-            "api_key_managed_by_proxy": True,  # API Key 由代理服务器持有
-        },
+        "asr": asr_response,
         "llm": {
             "provider": llm["provider"],
             "base_url": llm["base_url"],
@@ -145,6 +161,7 @@ def get_settings():
         },
         "output_dir": settings.get("output_dir", "data/output/"),
         "feature_flags": feature_flags,
+        "storage": get_storage_config(),
         "disabled_commands": settings.get("disabled_commands", []),
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
@@ -186,8 +203,31 @@ def save_settings(data: dict):
     else:
         final_llm_key = incoming_llm_key
 
-    # ── ASR 配置（代理模式：不再保存 API Key，仅保存模型选择）──
+    # ── ASR 配置（双模式：代理 / 直连）──
     new_asr = data.get("asr", {})
+    asr_mode = new_asr.get("mode", existing_asr.get("mode", "proxy"))
+
+    if asr_mode == "direct":
+        # 直连模式：保存 base_url 和 api_key
+        incoming_asr_key = new_asr.get("api_key", "")
+        if not incoming_asr_key or "****" in incoming_asr_key:
+            final_asr_key = existing_asr.get("api_key", "")
+        else:
+            final_asr_key = incoming_asr_key
+        merged_asr = {
+            "mode": "direct",
+            "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
+            "base_url": new_asr.get("base_url", existing_asr.get("base_url", "https://dashscope.aliyuncs.com")),
+            "api_key": final_asr_key,
+            "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
+        }
+    else:
+        # 代理模式：不保存 base_url 和 api_key
+        merged_asr = {
+            "mode": "proxy",
+            "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
+            "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
+        }
 
     # ── 声纹配置 ──
     new_vp = data.get("voiceprint", {})
@@ -200,11 +240,7 @@ def save_settings(data: dict):
 
     merged = {
         **existing,
-        "asr": {
-            "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
-            "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
-            # 代理模式下不再保存 base_url 和 api_key
-        },
+        "asr": merged_asr,
         "llm": {
             "provider": new_llm.get("provider", existing_llm.get("provider", "DashScope")),
             "base_url": new_llm.get("base_url", existing_llm.get("base_url", "")),
@@ -227,6 +263,10 @@ def save_settings(data: dict):
             "voiceprint_auto_match": data.get("feature_flags", {}).get("voiceprint_auto_match", existing_ff.get("voiceprint_auto_match", False)),
         },
         "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
+        "storage": {
+            "auto_clean_intermediate": data.get("storage", {}).get("auto_clean_intermediate", existing.get("storage", {}).get("auto_clean_intermediate", True)),
+            "auto_archive_days": data.get("storage", {}).get("auto_archive_days", existing.get("storage", {}).get("auto_archive_days", 0)),
+        },
     }
 
     save_settings_to_disk(merged)
@@ -249,13 +289,22 @@ def save_settings(data: dict):
         f"voiceprint_provider={merged['voiceprint']['provider']}"
     )
 
+    asr_resp = {
+        "mode": merged["asr"].get("mode", "proxy"),
+        "provider": merged["asr"]["provider"],
+        "model": merged["asr"]["model"],
+    }
+    if merged["asr"].get("mode") == "direct":
+        asr_resp["base_url"] = merged["asr"].get("base_url", "")
+        asr_resp["api_key"] = mask_api_key(merged["asr"].get("api_key", ""))
+        asr_resp["api_key_set"] = bool(merged["asr"].get("api_key", ""))
+        asr_resp["api_key_managed_by_proxy"] = False
+    else:
+        asr_resp["api_key_managed_by_proxy"] = True
+
     return {
         "ok": True,
-        "asr": {
-            "provider": merged["asr"]["provider"],
-            "model": merged["asr"]["model"],
-            "api_key_managed_by_proxy": True,
-        },
+        "asr": asr_resp,
         "llm": {
             "provider": merged["llm"]["provider"],
             "base_url": merged["llm"]["base_url"],
@@ -293,6 +342,21 @@ def test_api_connection(data: dict = None):
 
 
 def _test_asr_connection(asr_data: dict | None) -> dict:
+    """测试 ASR 服务连接（支持代理模式和直连模式）"""
+    cfg = get_asr_config()
+    mode = cfg.get("mode", "proxy")
+
+    # 若前端传入了新配置，使用传入值覆盖
+    if asr_data:
+        mode = asr_data.get("mode", mode)
+
+    if mode == "direct":
+        return _test_asr_direct(asr_data)
+    else:
+        return _test_asr_proxy()
+
+
+def _test_asr_proxy() -> dict:
     """测试 ASR 代理服务连接"""
     cfg = get_asr_config()
     proxy_url = cfg.get("proxy_url", "")
@@ -315,6 +379,47 @@ def _test_asr_connection(asr_data: dict | None) -> dict:
             return {"ok": False, "error": _("Proxy signature verification failed")}
         else:
             return {"ok": False, "error": f"HTTP {resp.status_code}"}
+    except requests.exceptions.Timeout:
+        return {"ok": False, "error": _("Connection timeout (15s), please check network")}
+    except requests.exceptions.ConnectionError:
+        return {"ok": False, "error": _("Cannot connect to proxy service, please check the address")}
+    except Exception as e:
+        return {"ok": False, "error": _("Test failed: {err}").format(err=str(e)[:200])}
+
+
+def _test_asr_direct(asr_data: dict | None) -> dict:
+    """测试直连模式 ASR 连接（向 DashScope 提交一个最小任务验证鉴权）"""
+    if asr_data:
+        base_url = asr_data.get("base_url", "")
+        api_key = asr_data.get("api_key", "")
+    else:
+        cfg = get_asr_config()
+        base_url = cfg.get("base_url", "")
+        api_key = cfg.get("api_key", "")
+
+    if not api_key or "****" in api_key:
+        api_key = os.getenv("DASHSCOPE_API_KEY", "")
+    if not api_key:
+        return {"ok": False, "error": _("ASR API Key not configured")}
+    if not base_url:
+        base_url = "https://dashscope.aliyuncs.com"
+
+    # 通过获取上传凭证来验证 API Key 有效性（轻量请求，不实际上传）
+    url = f"{base_url.rstrip('/')}/api/v1/uploads"
+    params = {"action": "getPolicy", "model": "paraformer-v2"}
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            return {"ok": True, "message": _("ASR direct connection successful")}
+        elif resp.status_code == 401:
+            return {"ok": False, "error": _("Invalid ASR API Key (401 Unauthorized)")}
+        elif resp.status_code == 403:
+            return {"ok": False, "error": _("No permission to access ASR service (403 Forbidden)")}
+        else:
+            error_msg = resp.text[:200]
+            return {"ok": False, "error": f"HTTP {resp.status_code}: {error_msg}"}
     except requests.exceptions.Timeout:
         return {"ok": False, "error": _("Connection timeout (15s), please check network")}
     except requests.exceptions.ConnectionError:
@@ -357,8 +462,6 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
     try:
         resp = requests.post(url, headers=headers, json=body, timeout=15)
         if resp.status_code == 200:
-            data_resp = resp.json()
-            content = data_resp.get("choices", [{}])[0].get("message", {}).get("content", "")
             return {"ok": True, "message": _("Connection successful, model {model} responding").format(model=model)}
         elif resp.status_code == 401:
             return {"ok": False, "error": _("Invalid LLM API Key (401 Unauthorized)")}
@@ -373,7 +476,7 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
             return {"ok": False, "error": f"HTTP {resp.status_code}: {error_msg}"}
     except requests.exceptions.Timeout:
         return {"ok": False, "error": _("Connection timeout (15s), please check network or Base URL")}
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         return {"ok": False, "error": _("Cannot connect to {url}, please check the address").format(url=base_url)}
     except Exception as e:
         return {"ok": False, "error": _("Test failed: {err}").format(err=str(e)[:200])}
@@ -450,3 +553,163 @@ SYSTEM_PROMPTS = {
 async def get_system_prompts():
     """获取系统级提示词列表（只读，供用户查看 AI 行为规则）"""
     return SYSTEM_PROMPTS
+
+
+# ============================================================
+# 存储管理
+# ============================================================
+
+# 存储用量缓存（60 秒过期，避免频繁 I/O）
+_storage_usage_cache: dict = {}
+_storage_usage_cache_time: float = 0
+_STORAGE_CACHE_TTL = 60  # 秒
+
+
+def _scan_dir_usage(dir_path: Path) -> dict:
+    """扫描目录，返回 {size_bytes, file_count}"""
+    size = 0
+    count = 0
+    if dir_path.exists():
+        for f in dir_path.iterdir():
+            if f.is_file():
+                size += f.stat().st_size
+                count += 1
+    return {"size_bytes": size, "file_count": count}
+
+
+def _scan_intermediate_usage() -> dict:
+    """扫描中间产物（归一化文件、.raw 文件、冗余归一化文件）"""
+    normalized_size = 0
+    normalized_count = 0
+    raw_size = 0
+    raw_count = 0
+    dup_size = 0
+    dup_count = 0
+
+    for scan_dir in [Path("data/recordings"), Path("data/uploads")]:
+        if not scan_dir.exists():
+            continue
+        for f in scan_dir.iterdir():
+            if not f.is_file():
+                continue
+            if "_normalized_normalized" in f.name:
+                dup_size += f.stat().st_size
+                dup_count += 1
+            elif f.suffix == ".raw":
+                raw_size += f.stat().st_size
+                raw_count += 1
+            elif "_normalized" in f.name and f.suffix == ".wav":
+                normalized_size += f.stat().st_size
+                normalized_count += 1
+
+    return {
+        "normalized_files": {"size_bytes": normalized_size, "file_count": normalized_count},
+        "raw_files": {"size_bytes": raw_size, "file_count": raw_count},
+        "duplicate_normalized": {"size_bytes": dup_size, "file_count": dup_count},
+    }
+
+
+@router.get("/api/storage/usage")
+def get_storage_usage():
+    """获取存储用量统计（含 60 秒缓存）"""
+    global _storage_usage_cache, _storage_usage_cache_time
+
+    now = time.time()
+    if _storage_usage_cache and (now - _storage_usage_cache_time) < _STORAGE_CACHE_TTL:
+        return _storage_usage_cache
+
+    recordings = _scan_dir_usage(Path("data/recordings"))
+    uploads = _scan_dir_usage(Path("data/uploads"))
+    tasks_usage = _scan_dir_usage(Path("data/tasks"))
+    output = _scan_dir_usage(Path("data/output"))
+    intermediate = _scan_intermediate_usage()
+
+    total = recordings["size_bytes"] + uploads["size_bytes"] + tasks_usage["size_bytes"] + output["size_bytes"]
+    reclaimable = (
+        intermediate["normalized_files"]["size_bytes"]
+        + intermediate["raw_files"]["size_bytes"]
+        + intermediate["duplicate_normalized"]["size_bytes"]
+    )
+
+    result = {
+        "recordings": recordings,
+        "uploads": uploads,
+        "tasks": tasks_usage,
+        "output": output,
+        "intermediate": intermediate,
+        "total_bytes": total,
+        "reclaimable_bytes": reclaimable,
+    }
+
+    _storage_usage_cache = result
+    _storage_usage_cache_time = now
+    return result
+
+
+@router.post("/api/storage/clean")
+def clean_intermediate_files():
+    """清理所有中间产物（归一化文件 + .raw 文件 + 冗余归一化文件）"""
+    from app.store import cleanup_orphaned_intermediate_files
+
+    # 先执行启动清理（冗余 + 孤儿 .raw）
+    result = cleanup_orphaned_intermediate_files()
+
+    # 再清理所有归一化文件（包括单次 _normalized.wav）
+    normalized_freed = 0
+    normalized_count = 0
+    for scan_dir in [Path("data/recordings"), Path("data/uploads")]:
+        if not scan_dir.exists():
+            continue
+        for f in scan_dir.iterdir():
+            if f.is_file() and "_normalized" in f.name and f.suffix == ".wav":
+                size = f.stat().st_size
+                try:
+                    f.unlink()
+                    normalized_count += 1
+                    normalized_freed += size
+                except Exception as e:
+                    logger.warning(f"清理归一化文件失败: {f.name}: {e}")
+
+    # 清除缓存
+    global _storage_usage_cache, _storage_usage_cache_time
+    _storage_usage_cache = {}
+    _storage_usage_cache_time = 0
+
+    total_freed = result["freed_bytes"] + normalized_freed
+    logger.info(
+        f"[存储] 手动清理完成: "
+        f"归一化 {normalized_count} 个 ({normalized_freed / 1024 / 1024:.1f} MB) + "
+        f"冗余 {result['duplicate_normalized']} 个 + "
+        f"孤儿 .raw {result['orphan_raw']} 个 = "
+        f"总计 {total_freed / 1024 / 1024:.1f} MB"
+    )
+
+    return {
+        "cleaned": {
+            "normalized_files": {"count": normalized_count, "freed_bytes": normalized_freed},
+            "duplicate_normalized": {"count": result["duplicate_normalized"], "freed_bytes": result["freed_bytes"] - result.get("_raw_freed", 0)},
+            "orphan_raw": {"count": result["orphan_raw"]},
+        },
+        "total_freed_bytes": total_freed,
+    }
+
+
+@router.post("/api/storage/clean-orphaned")
+def clean_orphaned_files():
+    """仅清理冗余文件（_normalized_normalized* 和孤儿 .raw）"""
+    from app.store import cleanup_orphaned_intermediate_files
+
+    result = cleanup_orphaned_intermediate_files()
+
+    # 清除缓存
+    global _storage_usage_cache, _storage_usage_cache_time
+    _storage_usage_cache = {}
+    _storage_usage_cache_time = 0
+
+    return {
+        "cleaned": {
+            "duplicate_normalized": result["duplicate_normalized"],
+            "orphan_raw": result["orphan_raw"],
+        },
+        "freed_bytes": result["freed_bytes"],
+    }

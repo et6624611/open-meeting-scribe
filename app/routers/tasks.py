@@ -7,21 +7,25 @@ app/routers/tasks.py — 转录提交 + 任务 CRUD + 音频/下载
 """
 
 import json
-import uuid
 import logging
-from pathlib import Path
+import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.store import (
-    tasks, UPLOAD_DIR, TASKS_DIR,
-    save_task_to_disk, run_pipeline_task, run_stage2_task,
+    TASKS_DIR,
+    UPLOAD_DIR,
+    run_pipeline_task,
+    run_stage2_task,
+    save_task_to_disk,
+    tasks,
 )
-from core.audio import is_stream_recording, get_stream_recording_info
+from core.audio import get_stream_recording_info, is_stream_recording
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -63,7 +67,7 @@ async def create_transcribe_task(
 
     # 配额预检：订阅用户额度用尽时阻止上传（自带 Key 用户不受限）
     try:
-        from core.metering import is_metered, check_quota
+        from core.metering import check_quota, is_metered
         from core.users import get_current_user
         current_user = get_current_user()
         if current_user and is_metered():
@@ -87,8 +91,14 @@ async def create_transcribe_task(
     safe_name = f"{task_id[:8]}_{file.filename}"
     audio_path = UPLOAD_DIR / safe_name
 
+    content = await file.read()
+
+    # 大小预检：防止超大文件耗尽磁盘空间
+    MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, _("File too large (max {max} GB)").format(max=2))
+
     with open(audio_path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     # 解析 speaker_mapping
@@ -158,6 +168,7 @@ def get_task(task_id: str):
     # 已完成任务缺少章节时，后台自动补生成（兼容旧任务）
     if task.get("status") == "completed" and not task.get("chapters"):
         import threading
+
         from core.chapters import generate_chapters
         def _backfill_chapters():
             try:
@@ -242,19 +253,39 @@ def delete_task(task_id: str):
 
     task = tasks.pop(task_id)
 
-    # 清理文件
+    # 清理原始音频文件
     audio_path = task.get("audio_path")
     if audio_path and Path(audio_path).exists():
         Path(audio_path).unlink()
 
+    # 清理归一化中间文件
+    normalized_path = task.get("normalized_path")
+    if normalized_path:
+        np = Path(normalized_path)
+        if np.exists() and (not audio_path or str(np) != str(audio_path)):
+            np.unlink(missing_ok=True)
+    # 兜底：按命名规则查找归一化文件（兼容旧任务无 normalized_path 字段）
+    if audio_path:
+        ap = Path(audio_path)
+        for suffix_pattern in ["_normalized.wav", "_normalized_normalized.wav"]:
+            candidate = ap.with_stem(f"{ap.stem}{suffix_pattern.replace('.wav', '')}").with_suffix(".wav")
+            if candidate.exists() and str(candidate) != str(ap):
+                candidate.unlink(missing_ok=True)
+        # 清理 .raw 临时文件（按命名规则）
+        raw_candidate = ap.with_suffix(".raw")
+        if raw_candidate.exists():
+            raw_candidate.unlink(missing_ok=True)
+
+    # 清理纪要输出文件
     output_path = task.get("output_path")
     if output_path and Path(output_path).exists():
         Path(output_path).unlink()
 
-    # 删除持久化文件
-    task_file = TASKS_DIR / f"{task_id}.json"
-    if task_file.exists():
-        task_file.unlink()
+    # 删除持久化文件：任务 JSON、作业日志、AI 洞察消息
+    for suffix in [".json", ".joblog.jsonl", ".insights.json"]:
+        f = TASKS_DIR / f"{task_id}{suffix}"
+        if f.exists():
+            f.unlink()
 
     return {"deleted": True}
 

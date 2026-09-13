@@ -60,6 +60,7 @@
               :data-task-id="item.task.task_id"
               :is-active="item.task.task_id === taskStore.currentTaskId"
               :is-latest="item.isLatest"
+              :search-query="taskStore.sidebarSearchQuery.trim().toLowerCase()"
               @select="onSelect"
               @menu="onMenu"
               @retry="onRetry"
@@ -133,7 +134,7 @@ const virtualItems = computed((): SidebarItem[] => {
         items.push({
           type: 'task',
           key: `t-${task.task_id}`,
-          size: 64,
+          size: 84,
           task,
           isLatest: group === firstGroup && idx === 0,
           groupLabel: group.label,

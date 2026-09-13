@@ -14,12 +14,12 @@ core/project_index.py — 项目索引与检索
   core.projects — 项目 CRUD（get_project）及常量
 """
 
-import os
-import re
 import json
 import logging
-from pathlib import Path
+import os
+import re
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ def _scan_folder(folder_path: str, exclude_dirs: set[str] | None = None) -> list
 def scan_project(project_id: str) -> dict:
     """扫描项目所有文件夹，构建索引"""
     # 延迟导入避免循环依赖
-    from core.projects import get_project, DEFAULT_SYNC_SUBFOLDER_NAME
+    from core.projects import DEFAULT_SYNC_SUBFOLDER_NAME, get_project
 
     project = get_project(project_id)
     if not project:
@@ -233,8 +233,8 @@ def scan_project(project_id: str) -> dict:
         "total_size": sum(f["size"] for f in all_files),
     }
     index_file = INDEX_DIR / f"{project_id}.json"
-    with open(index_file, "w", encoding="utf-8") as f:
-        json.dump(index_data, f, ensure_ascii=False, indent=2)
+    from core.fs_atomic import atomic_write_json
+    atomic_write_json(index_file, index_data)
 
     logger.info("项目索引构建完成: %s, %d 个文件", project["name"], len(all_files))
     return index_data

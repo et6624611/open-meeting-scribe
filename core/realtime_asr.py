@@ -1,19 +1,14 @@
 """
-core/realtime_asr.py — 实时转写引擎（通过 ASR 代理 WebSocket 中继）
+core/realtime_asr.py — 实时转写引擎（代理模式 + 直连模式）
 
 作者：王永亮
 创建：2026-09-03
-版本：2.0.0（代理模式）
+版本：2.1.0（双模式）
 
 职责：
-  封装 ASR 代理的 WebSocket 流式转写，提供：
-  1. 建立 WebSocket 连接到代理
-  2. 接收 PCM 音频流并送入
-  3. 通过回调收集实时句子（临时结果 + 定稿句子）
-
-架构（详见 docs/adr/0012-ASR转写走云端代理.md）：
-  - 客户端通过 WebSocket 连接代理，代理中继到 DashScope
-  - 客户端不再直接连 DashScope WebSocket
+  封装实时流式转写，支持两种接入模式：
+  1. 代理模式：通过 ASR 代理 WebSocket 中继到 DashScope
+  2. 直连模式：使用 DashScope SDK 直连，用户自持 API Key
 
 限制：
   - 实时 API 不支持说话人分离（无 speaker_id）
@@ -25,23 +20,33 @@ core/realtime_asr.py — 实时转写引擎（通过 ASR 代理 WebSocket 中继
   - 每包音频建议 ~100ms（3200 bytes = 3200 帧 × 2 bytes）
 """
 
-import os
-import time
-import hmac
-import hashlib
 import asyncio
-import logging
-import threading
+import hashlib
+import hmac
 import json
+import logging
+import os
+import threading
+import time
 from typing import Callable
 from urllib.parse import urlencode
 
 import websockets
 
-from .hotwords import apply_hotword_mappings
 from core.i18n import _
 
+from .hotwords import apply_hotword_mappings
+
 logger = logging.getLogger(__name__)
+
+def _get_asr_mode() -> str:
+    """获取当前 ASR 接入模式（proxy / direct）"""
+    try:
+        from app.store import get_asr_config
+        return get_asr_config().get("mode", "proxy")
+    except Exception:
+        return "proxy"
+
 
 # ── 代理配置 ──
 ASR_PROXY_URL = os.getenv("ASR_PROXY_URL", "").rstrip("/")
@@ -150,9 +155,95 @@ class RealtimeTranscriber:
         self._connect_error: str | None = None
 
     def start(self) -> None:
-        """启动实时转写（建立 WebSocket 连接到代理）"""
+        """启动实时转写（根据模式选择代理或直连）"""
         if self._started:
             raise RuntimeError("实时转写已在运行中")
+
+        mode = _get_asr_mode()
+
+        if mode == "direct":
+            self._start_direct()
+        else:
+            self._start_proxy()
+
+    def _start_direct(self) -> None:
+        """直连模式：使用 DashScope SDK 直连"""
+        from app.store import get_asr_config
+        cfg = get_asr_config()
+        api_key = cfg.get("api_key", "")
+        base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com")
+
+        if not api_key:
+            raise RuntimeError("未配置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")
+
+        try:
+            import dashscope
+            from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+
+            dashscope.base_websocket_api_url = f"{base_url.replace('https://', 'wss://').replace('http://', 'ws://')}/api-ws/v1/inference"
+            dashscope.api_key = api_key
+
+            # 构建参数
+            kwargs = {
+                "model": REALTIME_MODEL,
+                "format": "pcm",
+                "sample_rate": self._sample_rate,
+                "language_hints": self._language_hints,
+                "semantic_punctuation_enabled": True,
+                "disfluency_removal_enabled": False,
+                "heartbeat": True,
+            }
+            if self._vocabulary_id:
+                kwargs["vocabulary_id"] = self._vocabulary_id
+
+            # 创建回调
+            callback = RecognitionCallback()
+
+            def _on_event(result):
+                sentence = result.get_sentence()
+                if not sentence or "text" not in sentence:
+                    return
+                text = sentence["text"]
+                is_end = RecognitionResult.is_sentence_end(sentence)
+                if is_end:
+                    text = apply_hotword_mappings(text)
+                    self._sentence_count += 1
+                    if self._on_sentence_end:
+                        self._on_sentence_end({
+                            "text": text,
+                            "begin_time": sentence.get("begin_time", 0),
+                            "end_time": sentence.get("end_time", 0),
+                        })
+                else:
+                    text = apply_hotword_mappings(text)
+                    if self._on_partial:
+                        self._on_partial(text)
+
+            callback.on_event = _on_event
+            callback.on_error = lambda result: self._on_error(f"实时转写错误: {result.message}") if self._on_error else None
+            callback.on_complete = lambda: (self._on_complete() if self._on_complete else None)
+            callback.on_open = lambda: None
+            callback.on_close = lambda: None
+
+            # 创建并启动识别器
+            self._recognition = Recognition(callback=callback, **kwargs)
+            self._recognition.start()
+
+            self._started = True
+            self._sentence_count = 0
+            logger.info(f"[实时转写] 已启动（直连模式）{REALTIME_MODEL}")
+
+        except ImportError:
+            raise RuntimeError("直连模式需要 dashscope SDK，请运行: pip install dashscope")
+        except Exception as e:
+            error_msg = f"直连模式启动失败: {e}"
+            logger.error(f"[实时转写] {error_msg}")
+            if self._on_error:
+                self._on_error(error_msg)
+            raise RuntimeError(error_msg)
+
+    def _start_proxy(self) -> None:
+        """代理模式：通过 ASR 代理 WebSocket 中继"""
 
         ws_url = _get_ws_url(
             model=REALTIME_MODEL,
@@ -323,8 +414,20 @@ class RealtimeTranscriber:
 
     def feed_audio(self, pcm_data: bytes) -> None:
         """送入 PCM 音频数据"""
-        if not self._started or not self._audio_queue or not self._loop:
+        if not self._started:
             logger.warning(f"[实时转写] feed_audio 被忽略: started={self._started}")
+            return
+
+        # 直连模式：通过 SDK 送入音频
+        if hasattr(self, '_recognition') and self._recognition:
+            try:
+                self._recognition.send_audio_frame(pcm_data)
+            except Exception as e:
+                logger.error(f"[实时转写] 送入音频失败: {e}")
+            return
+
+        # 代理模式：通过 WebSocket 送入
+        if not self._audio_queue or not self._loop:
             return
         try:
             asyncio.run_coroutine_threadsafe(
@@ -339,6 +442,19 @@ class RealtimeTranscriber:
             return
 
         logger.info(f"[实时转写] 停止中，共 {self._sentence_count} 句定稿")
+
+        # 直连模式：通过 SDK 停止
+        if hasattr(self, '_recognition') and self._recognition:
+            try:
+                self._recognition.stop()
+            except Exception:
+                pass
+            self._recognition = None
+            self._started = False
+            logger.info(f"[实时转写] 已停止（直连模式），共 {self._sentence_count} 句定稿")
+            return
+
+        # 代理模式：通过 WebSocket 停止
 
         # 发送停止信号
         if self._audio_queue and self._loop:
@@ -362,7 +478,13 @@ class RealtimeTranscriber:
         logger.info(f"[实时转写] 已停止，共 {self._sentence_count} 句定稿")
 
     def _cleanup(self) -> None:
-        """清理资源"""
+        """清理资源（代理模式）"""
+        if hasattr(self, '_recognition') and self._recognition:
+            try:
+                self._recognition.stop()
+            except Exception:
+                pass
+            self._recognition = None
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread and self._thread.is_alive():

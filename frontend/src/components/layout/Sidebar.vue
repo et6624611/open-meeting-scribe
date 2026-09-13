@@ -3,7 +3,7 @@
     <!-- 缝隙拉手：点击 = 折叠/展开，水平拖拽 = 调整宽度 -->
     <button
       class="sb-toggle"
-      :title="layout.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')"
+      :title="(layout.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')) + ` (${modKey}B)`"
       :aria-label="layout.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')"
       :aria-expanded="!layout.sidebarCollapsed"
       @mousedown="onToggleDown($event)"
@@ -18,12 +18,13 @@
           <svg class="ico-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 13 4 4-4 4"/><path d="M20 17H4"/></svg>
           <span>{{ layout.timelineAllCollapsed ? t('common.action.expand_all') : t('common.action.collapse_all') }}</span>
         </button>
-        <button class="sb-text-btn" :class="{ 'is-active': showFilter }" :title="t('common.action.filter')" @click="toggleFilter">
+        <button class="sb-text-btn" :class="{ 'is-active': showFilter }" :title="t('common.action.filter') + ` (${modKey}K)`" @click="toggleFilter">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <span>{{ t('common.action.filter') }}</span>
+          <kbd class="sb-filter-kbd">{{ modKey }}K</kbd>
         </button>
       </div>
     </div>
@@ -83,6 +84,7 @@ import IconButton from '@/components/common/IconButton.vue'
 import { beginResize } from '@/composables/useDivider'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus, recoverRecord } from '@/api/record'
+import { modKey } from '@/utils/platform'
 
 const { t } = useI18n()
 const taskStore = useTaskStore()
@@ -105,6 +107,8 @@ function onDocClickOutside(e: MouseEvent) {
   // 侧边栏折叠
   if (layout.sidebarCollapsed) return
   if (document.body.classList.contains('is-divider-dragging')) return
+  // 排除 Activity Rail 的折叠/展开按钮（点击它不应触发「外部点击折叠」）
+  if (target.closest('.ar-toggle-btn')) return
   if (sidebarRef.value && !sidebarRef.value.contains(target)) {
     layout.sidebarCollapsed = true
   }

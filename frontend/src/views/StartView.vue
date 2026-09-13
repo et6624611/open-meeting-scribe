@@ -105,6 +105,7 @@ import { getRecordStatus } from '@/api/record'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
 import { useEscClose } from '@/composables/useEscClose'
+import { modKey } from '@/utils/platform'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -181,7 +182,7 @@ const actionButtons = computed(() => [
     label: hasRecordingTask.value ? t('start.return_record') : t('start.record'),
     icon: hasRecordingTask.value ? LockIcon : MicIcon,
     variant: 'primary' as const,
-    shortcut: hasRecordingTask.value ? undefined : '⌘R',
+    shortcut: hasRecordingTask.value ? undefined : `${modKey}R`,
     onClick: () => hasRecordingTask.value ? jumpToRecording() : onStartRecord(),
   },
   {
@@ -189,7 +190,7 @@ const actionButtons = computed(() => [
     label: t('start.upload'),
     icon: UploadIcon,
     variant: 'secondary' as const,
-    shortcut: '⌘U',
+    shortcut: `${modKey}U`,
     onClick: onUploadClick,
   },
 ])

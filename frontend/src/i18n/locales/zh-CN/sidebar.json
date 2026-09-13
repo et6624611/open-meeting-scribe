@@ -28,5 +28,12 @@
   "rail_hotwords": "热词",
   "rail_settings": "设置",
   "rail_settings_version": "设置 · {version}",
-  "rail_toggle_sidebar": "展开/收起侧边栏"
+  "rail_toggle_sidebar": "展开/收起侧边栏",
+  "date_today": "今天",
+  "date_yesterday": "昨天",
+  "date_this_week": "本周",
+  "date_last_week": "上周",
+  "date_this_month": "本月",
+  "date_last_month": "上个月",
+  "date_earlier": "更早"
 }

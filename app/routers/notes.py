@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.store import tasks, save_task_to_disk
+from app.store import save_task_to_disk, tasks
 from core import users as user_module
 from core.i18n import _
 
@@ -39,6 +39,17 @@ def update_task_notes(task_id: str, req: NotesUpdate):
     if not task:
         raise HTTPException(404, _("Task not found"))
     task["user_notes"] = req.notes
+    save_task_to_disk(task_id)
+    return {"notes": req.notes}
+
+
+@router.put("/api/tasks/{task_id}/summary")
+def update_task_summary(task_id: str, req: NotesUpdate):
+    """保存用户编辑的纪要（写 tasks JSON）"""
+    task = tasks.get(task_id)
+    if not task:
+        raise HTTPException(404, _("Task not found"))
+    task["user_summary"] = req.notes
     save_task_to_disk(task_id)
     return {"notes": req.notes}
 

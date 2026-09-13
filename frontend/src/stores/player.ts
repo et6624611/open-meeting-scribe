@@ -54,6 +54,11 @@ export const usePlayerStore = defineStore('player', () => {
     duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0,
   )
   const timeStr = computed(() => `${fmt(currentTime.value)} / ${fmt(duration.value)}`)
+  const currentTimeStr = computed(() => fmt(currentTime.value))
+  const remainingTimeStr = computed(() => {
+    const rem = duration.value - currentTime.value
+    return rem > 0 ? `-${fmt(rem)}` : fmt(0)
+  })
 
   /** 将当前进度持久化到 sessionStorage（按 taskId 隔离） */
   function persistProgress() {
@@ -134,6 +139,12 @@ export const usePlayerStore = defineStore('player', () => {
     audioEl.currentTime = (pct / 100) * duration.value
   }
 
+  /** 快进/快退指定秒数（负值回退，正值前进） */
+  function skip(seconds: number) {
+    if (!audioEl) return
+    audioEl.currentTime = Math.max(0, Math.min(audioEl.currentTime + seconds, duration.value || Infinity))
+  }
+
   function cycleSpeed() {
     const speeds = [1.0, 1.25, 1.5, 2.0, 0.75]
     speed.value = speeds[(speeds.indexOf(speed.value) + 1) % speeds.length]
@@ -172,7 +183,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   return {
-    taskId, playing, currentTime, duration, speed, progress, timeStr,
-    load, toggle, seekToMs, seekPercent, cycleSpeed, stop, stopForTask,
+    taskId, playing, currentTime, duration, speed, progress, timeStr, currentTimeStr, remainingTimeStr,
+    load, toggle, seekToMs, seekPercent, skip, cycleSpeed, stop, stopForTask,
   }
 })

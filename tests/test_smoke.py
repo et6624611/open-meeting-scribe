@@ -96,8 +96,9 @@ class TestRetrySummaryNoDialogue:
     """POST /api/tasks/{id}/retry-summary 无 dialogue 时返回 400"""
 
     def test_retry_summary_no_dialogue(self, client):
-        from app.store import tasks, save_task_to_disk
         import uuid
+
+        from app.store import tasks
 
         # 创建一个无 dialogue 的任务
         task_id = str(uuid.uuid4())
@@ -127,8 +128,9 @@ class TestRetrySummaryOk:
     """POST /api/tasks/{id}/retry-summary 有 dialogue 时返回 200"""
 
     def test_retry_summary_with_dialogue(self, client, tmp_path):
-        from app.store import tasks
         import uuid
+
+        from app.store import tasks
 
         # 创建一个有 dialogue 的临时音频文件
         audio_file = tmp_path / "test_audio.wav"
@@ -176,8 +178,9 @@ class TestArchiveTask:
     """POST /api/tasks/{id}/archive 归档任务"""
 
     def test_archive_ok(self, client):
-        from app.store import tasks
         import uuid
+
+        from app.store import tasks
 
         task_id = str(uuid.uuid4())
         tasks[task_id] = {
@@ -206,8 +209,9 @@ class TestUnarchiveTask:
     """POST /api/tasks/{id}/unarchive 取消归档"""
 
     def test_unarchive_ok(self, client):
-        from app.store import tasks
         import uuid
+
+        from app.store import tasks
 
         task_id = str(uuid.uuid4())
         tasks[task_id] = {
@@ -232,8 +236,9 @@ class TestBatchArchive:
     """POST /api/tasks/batch-archive 批量归档"""
 
     def test_batch_archive_ok(self, client):
-        from app.store import tasks
         import uuid
+
+        from app.store import tasks
 
         ids = []
         for _ in range(3):
@@ -261,8 +266,9 @@ class TestBatchArchive:
 
     def test_batch_archive_partial(self, client):
         """部分 ID 不存在时，仅归档存在的任务"""
-        from app.store import tasks
         import uuid
+
+        from app.store import tasks
 
         tid = str(uuid.uuid4())
         tasks[tid] = {

@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # ============================================================
@@ -46,20 +47,45 @@ RECORD_DEVICE = os.getenv("RECORD_DEVICE", "MacBook Pro麦克风")
 # ============================================================
 # 兼容 re-export：设置管理
 # ============================================================
+# ============================================================
+# 兼容 re-export：实时状态
+# ============================================================
+from app.realtime_store import (  # noqa: E402, F401
+    REALTIME_BUFFER_MAX,
+    event_loop,
+    push_realtime_msg,
+    realtime_chapter_generators,
+    realtime_diarizers,
+    realtime_full_transcripts,
+    realtime_last_heartbeat,
+    realtime_last_sentence,
+    realtime_presence_scores,
+    realtime_queues,
+    realtime_silence_monitors,
+    realtime_silence_warnings,
+    realtime_speaker_maps,
+    realtime_summarizers,
+    realtime_transcribers,
+    realtime_transcript_buffers,
+    realtime_translations,
+    realtime_translators,
+    resolve_realtime_speaker_name,
+)
 from app.settings_store import (  # noqa: E402, F401
-    HOTWORDS_FILE,
     HOTWORD_MAPPINGS_FILE,
-    SETTINGS_FILE,
+    HOTWORDS_FILE,
     PHILOSOPHIES_FILE,
-    load_settings,
-    save_settings_to_disk,
-    mask_api_key,
+    SETTINGS_FILE,
     get_active_api_key,
-    get_llm_config,
     get_asr_config,
-    get_voiceprint_config,
     get_feature_flags,
+    get_llm_config,
     get_silence_detection_config,
+    get_storage_config,
+    get_voiceprint_config,
+    load_settings,
+    mask_api_key,
+    save_settings_to_disk,
 )
 
 # ============================================================
@@ -67,46 +93,22 @@ from app.settings_store import (  # noqa: E402, F401
 # ============================================================
 from app.task_store import (  # noqa: E402, F401
     TASKS_DIR,
-    tasks,
+    cleanup_orphaned_intermediate_files,
     infer_task_source,
-    save_task_to_disk,
     load_tasks_from_disk,
     recover_interrupted_tasks,
-)
-
-# ============================================================
-# 兼容 re-export：实时状态
-# ============================================================
-from app.realtime_store import (  # noqa: E402, F401
-    realtime_queues,
-    realtime_transcribers,
-    realtime_diarizers,
-    realtime_summarizers,
-    realtime_chapter_generators,
-    realtime_translators,
-    realtime_translations,
-    realtime_transcript_buffers,
-    realtime_full_transcripts,
-    realtime_speaker_maps,
-    event_loop,
-    realtime_last_heartbeat,
-    realtime_last_sentence,
-    realtime_presence_scores,
-    realtime_silence_warnings,
-    realtime_silence_monitors,
-    REALTIME_BUFFER_MAX,
-    push_realtime_msg,
-    resolve_realtime_speaker_name,
+    save_task_to_disk,
+    tasks,
 )
 
 # ============================================================
 # 兼容 re-export：管线编排
 # ============================================================
 from core.pipeline_runner import (  # noqa: E402, F401
-    SPEAKER_COUNT_MIN,
-    SPEAKER_COUNT_MAX,
     PIPELINE_MAX_RETRIES,
     PIPELINE_RETRY_DELAYS,
+    SPEAKER_COUNT_MAX,
+    SPEAKER_COUNT_MIN,
     estimate_speaker_count,
     run_pipeline_task,
     run_stage2_task,

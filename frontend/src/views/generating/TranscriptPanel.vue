@@ -2,7 +2,8 @@
   <!-- 原文面板 -->
   <div class="gen-panel spk-layout-active" :class="{ hidden: !visible }">
     <div class="spk-transcript-layout">
-      <div class="spk-transcript-area" ref="transcriptAreaEl">
+      <div class="spk-transcript-area">
+        <div class="spk-transcript-scroll" ref="transcriptAreaEl">
         <!-- 章节生成中提示 -->
         <div class="chapter-loading" v-if="taskStatus === 'completed' && !chapters.length">
           <div class="chapter-loading-spinner"></div>
@@ -144,6 +145,34 @@
             </div>
           </template>
         </div>
+        </div>
+
+        <!-- 底部音频播放条 -->
+        <div class="gen-panel-audio-footer" v-if="audioUrl">
+          <div class="gen-audio-progress-section">
+            <div class="gen-audio-progress" @click="emit('seek-audio', $event)">
+              <div class="gen-audio-progress-fill" :style="{ width: audioProgress + '%' }"></div>
+            </div>
+            <div class="gen-audio-time-row">
+              <span class="gen-audio-time-current">{{ audioCurrentTimeStr }}</span>
+              <span class="gen-audio-time-remaining">{{ audioRemainingTimeStr }}</span>
+            </div>
+          </div>
+          <div class="gen-audio-controls-group">
+            <div class="gen-audio-waveform" :class="{ 'is-paused': !audioPlaying }"><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div></div>
+            <button class="gen-audio-skip" @click="emit('skip-audio', -15)" :title="t('generating.transcript.skip_back')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11,17 6,12 11,7"/><polyline points="18,17 13,12 18,7"/></svg>
+            </button>
+            <button class="gen-audio-play-btn" @click="emit('toggle-audio')" :title="audioPlaying ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')" :aria-label="audioPlaying ? t('generating.transcript.pause_title') : t('generating.transcript.play_title')">
+              <svg v-if="!audioPlaying" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 20,12 8,19"/></svg>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+            </button>
+            <button class="gen-audio-skip" @click="emit('skip-audio', 15)" :title="t('generating.transcript.skip_forward')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13,17 18,12 13,7"/><polyline points="6,17 11,12 6,7"/></svg>
+            </button>
+            <button class="gen-audio-speed" @click="emit('cycle-speed')">{{ audioSpeed }}×</button>
+          </div>
+        </div>
       </div>
 
       <!-- 播放跟随恢复按钮 -->
@@ -189,6 +218,14 @@
             <div class="spk-item-info">
               <span class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</span>
               <span class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? t('generating.speaker_panel.me_label') : (sp.role || '') }}</span>
+              <button
+                class="spk-item-locate"
+                :class="{ 'is-active': locateSpeakerId === sp.speakerId }"
+                @click.stop="emit('toggle-locate', sp.speakerId)"
+                :title="locateSpeakerId === sp.speakerId ? t('generating.speaker_solo.exit_focus_all') : t('generating.binding.locate')"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
+              </button>
             </div>
             <div class="spk-item-stats">
               <span class="spk-item-dur">{{ sp.durationStr }}</span>
@@ -255,6 +292,14 @@ const props = defineProps<{
   panelTotalTurns: number
   currentBindingMapping: Record<number, string>
   speakers: Speaker[]
+  audioUrl: string
+  audioPlaying: boolean
+  audioProgress: number
+  audioTimeStr: string
+  audioCurrentTimeStr: string
+  audioRemainingTimeStr: string
+  audioSpeed: number
+  audioCurrentTime: number
 }>()
 
 const emit = defineEmits<{
@@ -273,6 +318,10 @@ const emit = defineEmits<{
   (e: 'resume-follow'): void
   (e: 'show-all-chapters'): void
   (e: 'scroll-to-chapter', idx: number): void
+  (e: 'toggle-audio'): void
+  (e: 'seek-audio', event: MouseEvent): void
+  (e: 'skip-audio', seconds: number): void
+  (e: 'cycle-speed'): void
 }>()
 
 // 模板 refs

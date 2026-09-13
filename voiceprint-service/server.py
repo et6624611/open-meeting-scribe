@@ -10,8 +10,6 @@ API 契约见：docs/adr/0009-声纹识别服务云端拆分.md
 import base64
 import io
 import logging
-import struct
-import time
 import wave
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,9 +19,8 @@ import torch
 import torchaudio.compliance.kaldi as K
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-
 from models.cam_plus import CAMPPlus, load_camplus
+from pydantic import BaseModel, Field
 
 # ============================================================
 # 日志

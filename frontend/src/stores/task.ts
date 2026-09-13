@@ -12,8 +12,11 @@ import { ref, computed, watch } from 'vue'
 import { fetchTasks, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
 import client from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
+import { matchTask } from '@/utils/search'
+import { useI18n } from 'vue-i18n'
 
 export const useTaskStore = defineStore('task', () => {
+  const { t } = useI18n()
   // ─── 状态 ───
   const tasks = ref<Task[]>([])
   const currentTaskId = ref<string | null>(null)
@@ -53,11 +56,7 @@ export const useTaskStore = defineStore('task', () => {
   const filteredTasks = computed(() => {
     const q = debouncedSidebarQuery.value.trim().toLowerCase()
     if (!q) return activeTasks.value
-    return activeTasks.value.filter(t => {
-      const title = (t.title || t.audio_name || '').toLowerCase()
-      const summary = (t.summary || '').toLowerCase()
-      return title.includes(q) || summary.includes(q)
-    })
+    return activeTasks.value.filter(t => matchTask(t, q))
   })
 
   /**
@@ -76,8 +75,17 @@ export const useTaskStore = defineStore('task', () => {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
 
-    const groupOrder = ['今天', '昨天', '本周', '上周', '本月', '上个月', '更早']
-    const groups = new Map<string, { label: string; tasks: Task[]; isToday: boolean; sortKey: number }>()
+    const groupOrder = ['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'earlier']
+    const labelKey: Record<string, string> = {
+      today: 'sidebar.date_today',
+      yesterday: 'sidebar.date_yesterday',
+      this_week: 'sidebar.date_this_week',
+      last_week: 'sidebar.date_last_week',
+      this_month: 'sidebar.date_this_month',
+      last_month: 'sidebar.date_last_month',
+      earlier: 'sidebar.date_earlier',
+    }
+    const groups = new Map<string, { key: string; label: string; tasks: Task[]; isToday: boolean; sortKey: number }>()
 
     for (const task of filteredTasks.value) {
       const dateStr = task.meeting_date || task.created_at?.slice(0, 10) || 'unknown'
@@ -85,30 +93,30 @@ export const useTaskStore = defineStore('task', () => {
       const taskDay = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate())
       const ts = taskDay.getTime()
 
-      let label: string
+      let key: string
       let isToday = false
 
       if (ts === today.getTime()) {
-        label = '今天'
+        key = 'today'
         isToday = true
       } else if (ts === yesterday.getTime()) {
-        label = '昨天'
+        key = 'yesterday'
       } else if (ts >= thisWeekStart.getTime()) {
-        label = '本周'
+        key = 'this_week'
       } else if (ts >= lastWeekStart.getTime()) {
-        label = '上周'
+        key = 'last_week'
       } else if (ts >= thisMonthStart.getTime()) {
-        label = '本月'
+        key = 'this_month'
       } else if (ts >= lastMonthStart.getTime()) {
-        label = '上个月'
+        key = 'last_month'
       } else {
-        label = '更早'
+        key = 'earlier'
       }
 
-      if (!groups.has(label)) {
-        groups.set(label, { label, tasks: [], isToday, sortKey: groupOrder.indexOf(label) })
+      if (!groups.has(key)) {
+        groups.set(key, { key, label: t(labelKey[key]), tasks: [], isToday, sortKey: groupOrder.indexOf(key) })
       }
-      groups.get(label)!.tasks.push(task)
+      groups.get(key)!.tasks.push(task)
     }
 
     for (const group of groups.values()) {

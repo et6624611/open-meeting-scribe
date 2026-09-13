@@ -22,6 +22,12 @@ body.is-divider-dragging .divider-line { width: 2px; background: var(--accent); 
 .main-head h1 { font-size: var(--fs-24); font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
 .main-head .sub { color: var(--muted); font-size: var(--fs-14); }
 
+/* ─── 页面返回按钮 ─── */
+.page-back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; margin-bottom: var(--s-2); border: none; background: none; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); transition: background 0.12s, color 0.12s; width: fit-content; }
+.page-back-btn:hover { background: var(--surface-2); color: var(--fg); }
+.page-back-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.page-back-btn kbd { margin-left: 4px; font-size: 10px; color: var(--subtle); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); }
+
 /* ─── 设置页隐私提示条 ─── */
 .settings-privacy-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: oklch(96% 0.03 250); border: 1px solid oklch(90% 0.04 250); border-radius: var(--radius); color: oklch(40% 0.08 250); font-size: var(--fs-12); margin-bottom: var(--s-5); line-height: 1.5; }
 .settings-privacy-bar svg { flex-shrink: 0; opacity: 0.7; }

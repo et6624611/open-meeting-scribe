@@ -10,7 +10,6 @@ import json
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -19,18 +18,18 @@ from scipy.io import wavfile
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.voiceprint import (
+    MATCH_THRESHOLD,
+    MAX_SEC_PER_SPEAKER,
+    MIN_MATCH_MARGIN,
+    MIN_REGISTER_SEC,
     VOICEPRINT_MODEL_VERSION,
+    _cap_segments,
+    _collect_speaker_segments,
+    _l2,
+    cosine_similarity,
     extract_embedding,
     load_registry,
     match_voiceprint_detail,
-    cosine_similarity,
-    _l2,
-    _collect_speaker_segments,
-    _cap_segments,
-    MAX_SEC_PER_SPEAKER,
-    MIN_REGISTER_SEC,
-    MATCH_THRESHOLD,
-    MIN_MATCH_MARGIN,
 )
 
 # ── 配置 ──────────────────────────────────────────────
@@ -90,10 +89,6 @@ def extract_per_speaker_embeddings(wav_path: Path, gt_mapping: dict):
 
 def eval_old_method(embeddings: dict, gt_mapping: dict, registry: dict):
     """旧方法：逐人独立匹配（match_voiceprint_detail）"""
-    valid_uuids = [
-        u for u, r in registry.items()
-        if r.model_version == VOICEPRINT_MODEL_VERSION
-    ]
     results = []
     for sid, emb in embeddings.items():
         true_uuid = gt_mapping[sid]

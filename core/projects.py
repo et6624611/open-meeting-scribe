@@ -11,12 +11,12 @@ core/projects.py — 项目关联管理
 索引与检索已拆分至 core/project_index.py
 """
 
-import re
 import json
-import uuid
 import logging
-from pathlib import Path
+import re
+import uuid
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +46,13 @@ def _load_projects() -> list[dict]:
 
 
 def _save_projects(projects: list[dict]) -> None:
-    """保存项目列表到磁盘"""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(projects, f, ensure_ascii=False, indent=2)
+    """保存项目列表到磁盘（原子写入）"""
+    from core.fs_atomic import atomic_write_json
+    atomic_write_json(PROJECTS_FILE, projects)
 
 
 def list_projects() -> list[dict]:
     """获取所有项目（含索引摘要信息）"""
-    from core.project_index import get_project_index
-
     projects = _load_projects()
     for p in projects:
         index = get_project_index(p["id"])
@@ -224,7 +221,6 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
     task_id = task.get("task_id", "")
     title = task.get("title") or task.get("audio_name") or "未命名会议"
     meeting_date = task.get("meeting_date") or ""
-    created_at = task.get("created_at") or ""
     audio_duration = task.get("audio_duration")
     duration_minutes = round(audio_duration / 60) if audio_duration else None
     project_id = task.get("project_id", "")
@@ -255,8 +251,8 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
     now_iso = datetime.now().isoformat()
     lines = [
         "---",
-        f'source: "Open Meeting Scribe"',
-        f'type: "auto_meeting_note"',
+        'source: "Open Meeting Scribe"',
+        'type: "auto_meeting_note"',
         f'meeting_id: "{task_id}"',
         f'title: "{title}"',
         f'date: "{meeting_date}"',
@@ -270,7 +266,7 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
     if project_name:
         lines.append(f'project: "{project_name}"')
     lines.append(f'generated_at: "{now_iso}"')
-    lines.append(f'generator: "Open Meeting Scribe v1"')
+    lines.append('generator: "Open Meeting Scribe v1"')
 
     # 声明包含的内容区块
     active_types = []
@@ -377,11 +373,11 @@ def sync_meeting_to_folders(task: dict) -> list[str]:
 # Re-export（兼容现有 import 路径）
 # ============================================================
 
-from core.project_index import (  # noqa: E402
-    scan_project,
+from core.project_index import (  # noqa: E402,F401
+    extract_text,
+    get_project_context_for_chat,
     get_project_index,
     is_index_stale,
+    scan_project,
     search_project,
-    get_project_context_for_chat,
-    extract_text,
 )

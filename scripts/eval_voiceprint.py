@@ -194,7 +194,7 @@ def print_report(results: list, summary: dict, speakers: dict):
     print("=" * 70)
 
     # 总体指标
-    print(f"\n【总体指标】")
+    print("\n【总体指标】")
     print(f"  评测片段数: {summary['total_segments']}")
     print(f"  正确识别:   {summary['correct']}")
     print(f"  识别准确率: {summary['accuracy']:.1%}")
@@ -202,7 +202,7 @@ def print_report(results: list, summary: dict, speakers: dict):
     print(f"  拒识（未通过门槛）:   {summary['accepted'] - summary['correct'] + summary['wrong_id']}")
 
     # 按说话人
-    print(f"\n【按说话人】")
+    print("\n【按说话人】")
     print(f"  {'姓名': <6} {'片段':>4} {'正确':>4} {'准确率':>6} {'平均相似度':>10}")
     print(f"  {'-'*40}")
     for uid, stats in sorted(summary["per_speaker"].items()):
@@ -219,7 +219,7 @@ def print_report(results: list, summary: dict, speakers: dict):
     ]
     rejected_sims = [r["similarity"] for r in results if not r["accepted"]]
 
-    print(f"\n【相似度分布】")
+    print("\n【相似度分布】")
     if correct_sims:
         print(f"  正确匹配 (n={len(correct_sims)}): "
               f"mean={np.mean(correct_sims):.4f}  "
@@ -240,7 +240,7 @@ def print_report(results: list, summary: dict, speakers: dict):
     # 错误详情
     errors = [r for r in results if not r["correct"]]
     if errors:
-        print(f"\n【错误详情】（前 10 条）")
+        print("\n【错误详情】（前 10 条）")
         for r in errors[:10]:
             true_name = uuid_to_name.get(r["true_uuid"], r["true_uuid"][:8])
             pred_name = uuid_to_name.get(r["pred_uuid"], r["pred_uuid"][:8] if r["pred_uuid"] else "None")

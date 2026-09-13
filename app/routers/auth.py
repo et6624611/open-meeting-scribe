@@ -17,28 +17,36 @@ app/routers/auth.py — 认证路由
 """
 
 import logging
+import os
 
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from core.auth import (
+    create_jwt,
     create_oauth_state,
-    verify_oauth_state,
-    get_github_authorize_url,
     exchange_github_code,
     fetch_github_user_info,
-    create_jwt,
+    get_github_authorize_url,
     verify_jwt,
+    verify_oauth_state,
 )
-from core.users import (
-    find_or_create_oauth_user, find_or_create_sms_user,
-    get_user_by_id, clear_current_user, get_current_user,
-    record_privacy_consent, get_privacy_consent_at,
-)
-from core.sms import validate_phone, can_send, send_verify_code, check_verify_code
 from core.i18n import _
+from core.sms import can_send, check_verify_code, send_verify_code, validate_phone
+from core.users import (
+    clear_current_user,
+    find_or_create_oauth_user,
+    find_or_create_sms_user,
+    get_current_user,
+    get_privacy_consent_at,
+    get_user_by_id,
+    record_privacy_consent,
+)
 
 logger = logging.getLogger(__name__)
+
+# Cookie Secure 标志：HTTPS 部署时设为 true，本地开发保持 false
+_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -126,6 +134,7 @@ async def oauth_callback(request: Request, code: str = "", state: str = ""):
         key=SESSION_COOKIE,
         value=jwt_token,
         httponly=True,
+        secure=_COOKIE_SECURE,
         samesite="lax",
         max_age=7 * 24 * 3600,  # 7 天
         path="/",
@@ -312,6 +321,7 @@ def sms_verify(req: SmsVerifyRequest):
         key=SESSION_COOKIE,
         value=jwt_token,
         httponly=True,
+        secure=_COOKIE_SECURE,
         samesite="lax",
         max_age=7 * 24 * 3600,
         path="/",

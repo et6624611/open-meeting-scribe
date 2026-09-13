@@ -89,7 +89,7 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# 管理后台服务
+# 管理后台服务（仅绑定本地回环，不对外暴露；运维通过 SSH 隧道访问）
 cat > /etc/systemd/system/meeting-scribe-admin.service << 'EOF'
 [Unit]
 Description=Open Meeting Scribe Admin Service
@@ -100,7 +100,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/meeting-scribe
 Environment=PATH=/opt/meeting-scribe/venv/bin:/usr/bin:/bin
-ExecStart=/opt/meeting-scribe/venv/bin/python cli.py admin --host 0.0.0.0 --port 8001
+ExecStart=/opt/meeting-scribe/venv/bin/python cli.py admin --host 127.0.0.1 --port 8001
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -118,12 +118,11 @@ echo ""
 echo "[7/7] 配置防火墙..."
 if command -v ufw &> /dev/null; then
     ufw allow 8000/tcp
-    ufw allow 8001/tcp
     ufw allow 22/tcp
     ufw --force enable
-    echo "✓ UFW 防火墙已放行 8000/8001 端口"
+    echo "✓ UFW 防火墙已放行 8000/22 端口（管理后台 8001 仅本地回环，不对外放行）"
 else
-    echo "⚠ 未安装 UFW，请确保阿里云安全组已放行 8000/8001 端口"
+    echo "⚠ 未安装 UFW，请确保阿里云安全组仅放行 8000/22 端口（勿放行 8001）"
 fi
 
 echo ""

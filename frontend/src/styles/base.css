@@ -6,6 +6,9 @@ button { font: inherit; cursor: pointer; border: 0; background: transparent; col
 input, textarea { font: inherit; color: inherit; }
 ::selection { background: var(--accent-soft); color: var(--fg); }
 
+/* ─── 搜索结果高亮 ─── */
+mark { background: color-mix(in oklch, var(--accent) 18%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+
 /* ─── 全局键盘焦点环 ─── */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -31,18 +34,18 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
 .ai-feed:hover::-webkit-scrollbar-thumb,
 .rec-transcript-body:hover::-webkit-scrollbar-thumb,
 .gen-content:hover::-webkit-scrollbar-thumb,
-.spk-transcript-area:hover::-webkit-scrollbar-thumb,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb,
 .main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
 .sb-history:hover::-webkit-scrollbar-thumb:hover,
 .ai-feed:hover::-webkit-scrollbar-thumb:hover,
 .rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
 .gen-content:hover::-webkit-scrollbar-thumb:hover,
-.spk-transcript-area:hover::-webkit-scrollbar-thumb:hover,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb:hover,
 .main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
 
 /* Firefox hover 触发 */
 .sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
-.gen-content:hover, .spk-transcript-area:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
+.gen-content:hover, .spk-transcript-scroll:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
 
 /* ─── 减弱动效 ─── */
 @media (prefers-reduced-motion: reduce) {
@@ -126,18 +129,18 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
 .ai-feed:hover::-webkit-scrollbar-thumb,
 .rec-transcript-body:hover::-webkit-scrollbar-thumb,
 .gen-content:hover::-webkit-scrollbar-thumb,
-.spk-transcript-area:hover::-webkit-scrollbar-thumb,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb,
 .main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
 .sb-history:hover::-webkit-scrollbar-thumb:hover,
 .ai-feed:hover::-webkit-scrollbar-thumb:hover,
 .rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
 .gen-content:hover::-webkit-scrollbar-thumb:hover,
-.spk-transcript-area:hover::-webkit-scrollbar-thumb:hover,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb:hover,
 .main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
 
 /* Firefox hover 触发 */
 .sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
-.gen-content:hover, .spk-transcript-area:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
+.gen-content:hover, .spk-transcript-scroll:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
 
 /* ─── Utility ─── */
 .hidden { display: none !important; }

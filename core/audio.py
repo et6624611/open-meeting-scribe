@@ -11,11 +11,14 @@ core/audio.py — 音频归一化（ffmpeg）
 依赖：ffmpeg（系统已装）
 """
 
-import subprocess
-import shutil
 import logging
+import shutil
+import subprocess
 import time
+import wave
 from pathlib import Path
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +54,8 @@ def normalize_audio(
     if not input_path.exists():
         raise FileNotFoundError(f"音频文件不存在: {input_path}")
 
-    # 幂等性检查：如果文件名已含 _normalized 后缀且为 WAV，说明已经归一化过，直接返回
-    if input_path.stem.endswith("_normalized") and input_path.suffix.lower() == ".wav":
+    # 幂等性检查：如果文件名已含 _normalized 且为 WAV，说明已经归一化过，直接返回
+    if "_normalized" in input_path.stem and input_path.suffix.lower() == ".wav":
         logger.info(f"音频已归一化，跳过: {input_path.name}")
         return input_path
 
@@ -132,19 +135,65 @@ def get_audio_duration(input_path: str | Path) -> float:
 
 
 # ============================================================
+# WAV 读取工具（替代 scipy.io.wavfile，零额外依赖）
+# ============================================================
+
+def read_wav_float32(path: str | Path) -> tuple[int, np.ndarray]:
+    """读取 WAV 文件并返回 (采样率, float32 信号数组)。
+
+    支持 16-bit PCM 和 float32 格式的 WAV 文件。
+    多声道音频自动下混为单声道。
+
+    Args:
+        path: WAV 文件路径
+
+    Returns:
+        (sample_rate, audio_data) 元组，audio_data 为 float32 一维数组
+
+    Raises:
+        ValueError: 不支持的音频格式
+        FileNotFoundError: 文件不存在
+    """
+    with wave.open(str(path), 'rb') as wf:
+        n_channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        n_frames = wf.getnframes()
+        framerate = wf.getframerate()
+        raw_data = wf.readframes(n_frames)
+
+    if sampwidth == 2:
+        # 16-bit PCM（项目最常见格式，ffmpeg 归一化输出）
+        audio = np.frombuffer(raw_data, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sampwidth == 4:
+        # 32-bit float
+        audio = np.frombuffer(raw_data, dtype=np.float32)
+    elif sampwidth == 1:
+        # 8-bit unsigned PCM
+        audio = (np.frombuffer(raw_data, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    else:
+        raise ValueError(f"不支持的采样位深: {sampwidth}")
+
+    # 多声道下混为单声道
+    if n_channels > 1:
+        audio = audio.reshape(-1, n_channels).mean(axis=1)
+
+    return framerate, audio
+
+
+# ============================================================
 # Re-export（兼容现有 import 路径）
 # ============================================================
 
-from core.audio_recording import (  # noqa: E402
-    start_recording,
-    stop_recording,
-    is_recording,
+from core.audio_recording import (  # noqa: E402,F401
     get_recording_info,
-    start_recording_with_stream,
-    stop_recording_with_stream,
+    get_stream_recording_info,
+    is_recording,
+    is_stream_recording,
+    list_audio_devices,
     pause_recording_with_stream,
     resume_recording_with_stream,
-    is_stream_recording,
-    get_stream_recording_info,
-    list_audio_devices,
+    start_recording,
+    start_recording_with_stream,
+    stop_recording,
+    stop_recording_with_stream,
 )

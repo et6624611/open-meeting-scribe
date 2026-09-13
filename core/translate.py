@@ -27,7 +27,6 @@ import json
 import logging
 import re
 import threading
-import time
 from typing import Callable
 
 from .llm import async_chat_completion_safe
@@ -373,7 +372,7 @@ class RealtimeTranslator:
         # 兜底：按行拆分（LLM 可能未严格输出 JSON）
         lines = [line.strip() for line in raw.strip().split('\n') if line.strip()]
         # 过滤掉可能的 markdown 标记
-        lines = [l for l in lines if not l.startswith('```') and not l.startswith('[')]
+        lines = [ln for ln in lines if not ln.startswith('```') and not ln.startswith('[')]
 
         if len(lines) >= expected_count:
             return lines[:expected_count]

@@ -7,6 +7,7 @@ core/errors.py — 错误分类与判断
 """
 
 import logging
+
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,6 @@ def classify_error(error: Exception) -> dict:
         }
     """
     error_str = str(error).lower()
-    error_type = type(error).__name__
 
     # ── 瞬时错误 ──
     if is_transient_error(error):

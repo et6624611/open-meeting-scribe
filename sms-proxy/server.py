@@ -13,14 +13,14 @@ SMS 代理服务 — 持有阿里云 AccessKey，为客户端提供短信发送/
   - timestamp 超过 TTL（默认 5 分钟）视为过期拒绝
 """
 
+import hashlib
+import hmac
+import logging
 import os
 import time
-import hmac
-import hashlib
-import logging
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 

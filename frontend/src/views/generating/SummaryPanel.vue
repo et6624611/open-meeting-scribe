@@ -9,10 +9,11 @@
       <div class="gen-empty-hint">{{ t('generating.summary.pending') }}</div>
     </div>
     <MdBlockEditor
-      v-else-if="hasSummary"
+      v-else
       :markdown="summaryMd"
       @change="emit('change', $event)"
       ref="summaryEditor"
+      :empty-text="t('generating.summary.placeholder')"
     />
     <!-- 章节回顾卡片 -->
     <div class="sum-section" v-if="hasSummary && chapters.length > 0">
@@ -51,9 +52,6 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </span>
       </button>
-    </div>
-    <div class="gen-pending" v-else-if="!loading && !pending">
-      <div class="gen-pending-text">{{ t('generating.summary.pending') }}</div>
     </div>
   </div>
 </template>

@@ -76,10 +76,10 @@ def compare_versions(current: str, latest: str) -> int:
      -1  — latest < current（本地更新）
     """
     c = _parse_semver(current)
-    l = _parse_semver(latest)
-    if l > c:
+    lat = _parse_semver(latest)
+    if lat > c:
         return 1
-    elif l < c:
+    elif lat < c:
         return -1
     return 0
 

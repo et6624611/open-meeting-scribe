@@ -90,5 +90,6 @@
     "cloud_connected": "云端 AI 服务已连接"
   },
   "playing": "播放中",
-  "paused": "已暂停"
+  "paused": "已暂停",
+  "reload_recording_confirm": "当前有正在进行的录音，重新加载将中断录音。是否继续？"
 }

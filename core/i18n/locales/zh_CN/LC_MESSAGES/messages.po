@@ -25,6 +25,21 @@ msgstr "管理员密码未配置（ADMIN_PASSWORD）"
 msgid "Incorrect password"
 msgstr "密码错误"
 
+msgid "Too many login attempts, please try again later"
+msgstr "登录尝试过于频繁，请稍后再试"
+
+msgid "Admin password is too weak, please set a strong ADMIN_PASSWORD"
+msgstr "管理员密码过于简单，请设置强密码（ADMIN_PASSWORD）"
+
+msgid "Access denied: path outside allowed directories"
+msgstr "访问被拒绝：路径超出允许的目录范围"
+
+msgid "Access denied: audio file outside allowed directories"
+msgstr "访问被拒绝：音频文件超出允许的目录范围"
+
+msgid "File too large (max {max} GB)"
+msgstr "文件过大（最大 {max} GB）"
+
 msgid "Logged out"
 msgstr "已登出"
 
@@ -90,6 +105,9 @@ msgstr "请输入验证码"
 
 msgid "Message cannot be empty"
 msgstr "消息不能为空"
+
+msgid "Message too long (max {max} characters)"
+msgstr "消息过长（最多 {max} 个字符）"
 
 msgid "AI conversation failed: {err}"
 msgstr "AI 对话失败: {err}"

@@ -76,27 +76,103 @@
   padding-left: 10px; margin-left: -10px;
 }
 
-/* 笔记 Markdown 工具栏 */
-.md-toolbar {
-  display: flex; align-items: center; gap: 2px;
-  margin-bottom: var(--s-3); padding: 4px;
-  background: var(--surface-2); border-radius: var(--radius-sm);
+/* ═══ 空状态占位 ═══ */
+.md-block-empty {
+  min-height: 6em; padding: var(--s-4);
+  display: grid; place-items: center;
+  color: var(--subtle); font-size: var(--fs-13);
+  cursor: pointer; user-select: none;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  transition: color 0.15s, border-color 0.15s;
+}
+.md-block-empty:hover {
+  color: var(--muted); border-color: var(--muted);
+}
+
+/* ═══ 块操作按钮（hover 显示） ═══ */
+.md-block {
+  position: relative;
+}
+.md-block-action-btn {
+  position: absolute; top: 4px; right: -28px;
+  width: 22px; height: 22px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--subtle); background: transparent;
+  border: none; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s, color 0.15s, background 0.15s;
+  pointer-events: auto;
+}
+.md-block:hover > .md-block-action-btn { opacity: 1; }
+.md-block-action-btn:hover { color: var(--fg); background: var(--surface-2); }
+.md-block-action-btn svg { width: 14px; height: 14px; }
+
+/* ═══ 块操作菜单 ═══ */
+.md-block-menu {
+  position: absolute; top: 28px; right: -28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--s-1) 0;
+  box-shadow: var(--shadow-float); z-index: var(--z-popover);
+  min-width: 140px;
+}
+.md-block-menu-item {
+  display: flex; align-items: center; gap: var(--s-2);
+  width: 100%; padding: 6px 12px;
+  font-size: var(--fs-12); color: var(--fg);
+  background: transparent; border: none; cursor: pointer;
+  text-align: left;
+}
+.md-block-menu-item:hover { background: var(--surface-2); }
+.md-block-menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.md-block-menu-item:disabled:hover { background: transparent; }
+.md-block-menu-icon { width: 16px; text-align: center; font-size: var(--fs-13); color: var(--muted); }
+.md-block-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.md-block-menu-danger { color: var(--warn); }
+.md-block-menu-danger .md-block-menu-icon { color: var(--warn); }
+
+/* ═══ 快捷键提示入口 ═══ */
+.md-block-editor {
+  position: relative;
+}
+.md-shortcut-hint {
+  position: absolute; top: 0; right: 0; z-index: 10;
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--muted); background: var(--surface-2);
   border: 1px solid var(--border);
+  cursor: pointer; transition: opacity 0.15s, color 0.15s, background 0.15s;
+  pointer-events: auto;
 }
-.md-toolbar-btn {
-  height: 28px; min-width: 28px; padding: 0 6px;
-  border-radius: 4px; display: inline-flex;
-  align-items: center; justify-content: center;
-  color: var(--muted); transition: all 0.12s;
-  font-size: var(--fs-12); font-family: var(--font-mono);
-  font-weight: 500; cursor: pointer; border: none; background: transparent;
+/* 编辑态隐藏图标：用户已在操作，无需提示常驻 */
+.md-block-editor:has(.md-block.is-editing) .md-shortcut-hint {
+  opacity: 0; pointer-events: none;
 }
-.md-toolbar-btn:hover { background: var(--surface); color: var(--fg); }
-.md-toolbar-btn svg { width: 15px; height: 15px; }
-.md-toolbar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-.md-toolbar-hint {
-  margin-left: auto; font-size: 10px; color: var(--subtle);
-  font-family: var(--font-mono); padding-right: 4px;
+.md-block-editor:has(.md-block.is-editing) .md-shortcut-popover {
+  display: none;
+}
+.md-block-editor {
+  pointer-events: none; /* 让图标下方的内容可点击 */
+}
+.md-block-editor > *:not(.md-shortcut-hint):not(.md-shortcut-popover) {
+  pointer-events: auto; /* 恢复内容块的交互 */
+}
+.md-shortcut-hint:hover { color: var(--fg); background: var(--surface-3); border-color: var(--fg); }
+.md-shortcut-hint svg { width: 16px; height: 16px; }
+.md-shortcut-popover {
+  position: fixed;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--s-2) var(--s-3);
+  box-shadow: var(--shadow-float); z-index: var(--z-popover);
+  min-width: 180px;
+}
+.md-shortcut-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 3px 0; font-size: var(--fs-12); color: var(--fg);
+}
+.md-shortcut-row kbd {
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 1px 6px; border: 1px solid var(--border);
+  border-radius: 3px; background: var(--surface-2); color: var(--muted);
+  min-width: 52px; text-align: center; flex-shrink: 0;
 }
 
 /* ═══ 浮动选中操作条 ═══ */

@@ -17,8 +17,8 @@ core/speakers.py — 说话人档案管理
 
 import json
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -131,8 +131,8 @@ def save_speakers(speakers: list[Speaker]) -> None:
     """保存全局说话人列表"""
     try:
         data = [s.to_dict() for s in speakers]
-        with open(SPEAKERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        from core.fs_atomic import atomic_write_json
+        atomic_write_json(SPEAKERS_FILE, data)
         logger.info(f"说话人档案已保存: {len(speakers)} 人")
     except Exception as e:
         logger.error(f"保存说话人档案失败: {e}")
@@ -260,8 +260,8 @@ def save_mappings(mappings: list[MeetingMapping]) -> None:
     """保存会议映射历史"""
     try:
         data = [m.to_dict() for m in mappings]
-        with open(MAPPINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        from core.fs_atomic import atomic_write_json
+        atomic_write_json(MAPPINGS_FILE, data)
         logger.info(f"会议映射已保存: {len(mappings)} 条")
     except Exception as e:
         logger.error(f"保存会议映射失败: {e}")

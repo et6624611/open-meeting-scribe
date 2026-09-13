@@ -52,5 +52,7 @@
   "stat_created": "Created",
   "stat_source": "Source",
   "source_record": "Recording",
-  "source_upload": "Upload"
+  "source_upload": "Upload",
+  "speakers_more": "{count} more",
+  "speakers_total": "{count} participants"
 }

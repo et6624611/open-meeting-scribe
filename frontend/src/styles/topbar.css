@@ -57,14 +57,10 @@
 .state-pill.is-map .pip { background: var(--warn); }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* ─── 新建按钮 ─── */
-.topbar-new-btn { display: inline-flex; align-items: center; gap: var(--s-2); padding: 5px 12px; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; background: var(--surface); color: var(--fg); border: 1px solid var(--border); transition: all 0.12s; }
-.topbar-new-btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.topbar-new-btn svg { width: 14px; height: 14px; }
-.topbar-new-btn.is-hidden { display: none; }
-.topbar-new-btn.is-disabled { opacity: 0.6; cursor: pointer; background: var(--surface-2); border-color: var(--border); }
-.topbar-new-btn.is-disabled:hover { background: var(--surface-3); border-color: var(--border-strong); }
+/* ─── 新建按钮（基础样式已迁移至 hotwords.css） ── */
+.topbar-new-btn.is-disabled { opacity: 0.6; cursor: pointer; }
 .topbar-new-btn.is-disabled svg { opacity: 0.7; }
+.topbar-shortcut-kbd { font-family: var(--font-mono); font-size: 10px; color: var(--subtle); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1px 5px; line-height: 1.4; }
 
 /* ─── 更新按钮 ─── */
 .update-badge { display: none; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-sm); font-size: var(--fs-11); font-weight: 500; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-mid); cursor: pointer; transition: all 0.12s; }
@@ -166,7 +162,8 @@
   .view-switcher { display: none; }
 }
 @media (max-width: 1100px) {
-  .topbar-new-btn span { display: none; }
+  .topbar-new-btn span,
+  .topbar-shortcut-kbd { display: none; }
   .topbar-new-btn { padding: 5px 8px; }
 }
 
