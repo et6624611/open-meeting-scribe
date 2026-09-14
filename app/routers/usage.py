@@ -26,7 +26,10 @@ router = APIRouter(prefix="/api/usage", tags=["用量"])
 
 @router.get("/summary")
 def usage_summary():
-    """本月用量汇总（底部状态栏 + 设置页用量面板用） / Monthly usage summary (for bottom status bar + settings panel)."""
+    """本月用量汇总（底部状态栏 + 设置页用量面板用） / Monthly usage summary (for bottom status bar + settings panel).
+
+    云端启用时优先使用云端权威数据 / When cloud is enabled, prefer cloud-authoritative data.
+    """
     user = get_current_user()
     if not user:
         return {"metered": False, "message": _("Not logged in")}
@@ -45,6 +48,28 @@ def usage_summary():
         }
 
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    # 云端优先：从云端获取权威用量数据 / Cloud-first: get authoritative usage data from cloud
+    from core.cloud_client import check_quota_from_cloud, is_cloud_enabled
+    if is_cloud_enabled():
+        cloud_result = check_quota_from_cloud(user["id"])
+        if cloud_result:
+            used = cloud_result.get("used", 0)
+            quota = cloud_result.get("quota", TIER_QUOTAS.get(tier, 0))
+            remaining = cloud_result.get("remaining", 0)
+            pct = round(remaining / quota * 100) if quota > 0 else 0
+            return {
+                "metered": True,
+                "tier": tier,
+                "tier_name": TIER_NAMES.get(tier, tier),
+                "month": month_key,
+                "quota": quota,
+                "used": round(used, 1),
+                "remaining": round(remaining, 1),
+                "percentage": pct,
+            }
+        # 云端不可达 → 降级到本地 / Cloud unreachable → fall back to local
+
     used = get_monthly_usage(user["id"], month_key)
 
     quota = TIER_QUOTAS.get(tier, 0)

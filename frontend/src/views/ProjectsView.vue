@@ -1,13 +1,10 @@
 <template>
-  <div>
-    <button class="page-back-btn" @click="goBack">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      <span>{{ t('common.action.back') }}</span>
-      <kbd>ESC</kbd>
-    </button>
+  <div class="proj-page">
     <div class="main-head">
-      <h1>{{ t('projects.title') }}</h1>
-      <p class="sub">{{ t('projects.subtitle') }}</p>
+      <div class="title-row">
+        <h1>{{ t('projects.title') }}</h1>
+        <span class="page-count">{{ t('projects.count', { count: projects.length }) }}</span>
+      </div>
     </div>
 
     <!-- 新建项目 / Create project -->
@@ -47,10 +44,8 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchProjects, createProject, deleteProject, addFolder, removeFolder } from '@/api/projects'
 import type { Project } from '@/api/projects'
-import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
-const { goBack } = usePageBack()
 
 const projects = ref<Project[]>([])
 const newName = ref('')
@@ -89,18 +84,20 @@ onMounted(load)
 </script>
 
 <style scoped>
+.proj-page { padding: var(--s-5) var(--s-5) var(--s-6); }
 .proj-create { display: flex; gap: 8px; margin-bottom: 24px; }
-.proj-create-input { flex: 1; max-width: 300px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
-.proj-create-input:focus { border-color: var(--accent); }
-.proj-list { display: flex; flex-direction: column; gap: 12px; }
-.proj-card { padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.proj-create-input { flex: 1; max-width: 300px; padding: 8px 12px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--fg); font-size: 14px; outline: none; transition: border-color 0.15s; }
+.proj-create-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
+.proj-list { display: flex; flex-direction: column; background: transparent; }
+.proj-card { padding: 16px; border-bottom: 1px solid var(--border); }
+.proj-card:last-child { border-bottom: none; }
 .proj-card-header { display: flex; align-items: center; justify-content: space-between; }
 .proj-card-name { font-size: 16px; font-weight: 600; margin: 0; }
 .proj-card-delete { color: var(--subtle); cursor: pointer; transition: color 0.15s; }
 .proj-card-delete:hover { color: var(--rec); }
 .proj-card-meta { font-size: 12px; color: var(--subtle); margin: 4px 0 12px; }
 .proj-folders { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.proj-folder { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 8px; background: var(--surface-2); border-radius: 6px; }
+.proj-folder { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 8px; background: var(--surface-2); border-radius: 0; }
 .proj-folder span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-folder-rm { color: var(--subtle); cursor: pointer; font-size: 16px; line-height: 1; }
 .proj-folder-rm:hover { color: var(--rec); }

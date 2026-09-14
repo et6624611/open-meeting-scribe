@@ -23,6 +23,7 @@
       v-for="(block, idx) in blocks"
       :key="idx"
       class="md-block"
+      :data-block-index="idx"
       :class="{
         'is-editing': editingIndex === idx,
         'is-ai-generated': block.isAi,
@@ -45,6 +46,23 @@
       <!-- 预览模式 / Preview mode -->
       <template v-else>
         <div class="md-block-render" v-html="renderBlock(block)"></div>
+        <!-- 行间编辑 diff 视图 / Inline edit diff view -->
+        <div v-if="inlineDiffBlockIndex === idx && inlineDiffOriginal" class="md-inline-diff">
+          <div class="md-diff-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>{{ t('common.inline_edit_diff_title') }}</span>
+          </div>
+          <div class="md-diff-body">
+            <p class="md-diff-line"><span class="diff-del">{{ shortDiffText(inlineDiffOriginal) }}</span></p>
+            <p v-if="inlineDiffEdited" class="md-diff-line"><span class="diff-add">{{ shortDiffText(inlineDiffEdited) }}</span></p>
+          </div>
+          <div class="md-diff-actions">
+            <IconButton class="diff-accept-btn" :label="t('common.inline_edit_accept')" show-label @click="$emit('accept-diff')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+            </IconButton>
+            <button class="diff-reject-btn" @click="$emit('reject-diff')">{{ t('common.inline_edit_reject') }}</button>
+          </div>
+        </div>
         <!-- hover 操作按钮 / Hover action buttons -->
         <button class="md-block-action-btn" @click.stop="toggleBlockMenu(idx)">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
@@ -85,6 +103,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useBlockEditor } from '@/composables/useBlockEditor'
+import IconButton from '@/components/common/IconButton.vue'
 
 const { t } = useI18n()
 
@@ -92,18 +111,32 @@ const props = defineProps<{
   markdown: string
   readonly?: boolean
   emptyText?: string
+  /** 行间编辑 diff 目标块索引 / Inline edit diff target block index */
+  inlineDiffBlockIndex?: number
+  /** 行间编辑原文 / Inline edit original text */
+  inlineDiffOriginal?: string
+  /** 行间编辑改写结果 / Inline edit edited text */
+  inlineDiffEdited?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'change', md: string): void
+  (e: 'accept-diff'): void
+  (e: 'reject-diff'): void
 }>()
 
-const { blocks, editingIndex, loadMarkdown, getMarkdown, enterEdit, exitEdit, cancelEdit, updateBlock, insertAfter, removeBlock, convertBlock, renderBlock } = useBlockEditor(
+const { blocks, editingIndex, loadMarkdown, getMarkdown, enterEdit, exitEdit, cancelEdit, updateBlock, replaceTextInBlock, insertAfter, removeBlock, convertBlock, renderBlock } = useBlockEditor(
   (md) => emit('change', md)
 )
 
 const editSource = ref('')
 const textareaRefs = ref<HTMLTextAreaElement[]>([])
+
+/** 截断 diff 文本 / Truncate diff text for display */
+function shortDiffText(text: string | undefined): string {
+  if (!text) return ''
+  return text.length > 200 ? text.slice(0, 200) + '…' : text
+}
 
 // 块间切换时阻止旧 textarea 的 blur 事件干扰 / Block inter-block transitions to prevent old textarea blur interference
 let isTransitioning = false
@@ -381,6 +414,7 @@ defineExpose({
   getMarkdown,
   loadMarkdown,
   updateBlock,
+  replaceTextInBlock,
   isEditing: () => editingIndex.value !== null,
 })
 </script>

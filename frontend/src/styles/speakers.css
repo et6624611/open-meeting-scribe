@@ -47,13 +47,14 @@
 .spk-search-input {
   width: 100%;
   padding: 6px 10px 6px 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
   font-size: var(--fs-12);
-  background: var(--surface);
+  background: transparent;
   transition: border-color 0.12s;
 }
-.spk-search-input:focus { border-color: var(--accent); outline: none; }
+.spk-search-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); outline: none; }
 .spk-search-input::placeholder { color: var(--subtle); }
 
 /* ─── 说话人列表 ─── */
@@ -138,7 +139,7 @@
 
 /* ─── 面板收起时的展开按钮 ─── */
 .spk-panel-toggle {
-  position: absolute; right: var(--s-3); top: var(--s-3);
+  position: absolute; right: var(--s-3); top: 36px;
   display: flex; align-items: center; gap: 6px;
   padding: 6px 12px;
   border-radius: var(--radius);
@@ -306,7 +307,7 @@
 .chapter-overview {
   display: flex; align-items: center; gap: var(--s-3);
   padding: 2px var(--s-4); /* 极小顶部间距，消除视觉缝隙 */
-  background: var(--surface); /* 与 gen-control-zone 同色，视觉无缝衔接 */
+  background: var(--bg); /* 与 gen-control-zone 同色，视觉无缝衔接 */
   margin-top: -1px; /* 覆盖 gen-control-zone 的 border-bottom */
   flex-shrink: 0;
 }
@@ -466,8 +467,8 @@
 
 .speaker-form { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--border); }
 .form-row { display: flex; gap: var(--s-2); }
-.form-row input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-13); outline: none; }
-.form-row input:focus { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.form-row input { flex: 1; padding: 8px 10px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: var(--fs-13); outline: none; background: transparent; }
+.form-row input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 
 /* ─── Speaker Management: List + Detail ─── */
 .spk-toolbar { display: flex; flex-direction: column; gap: var(--s-3); margin-bottom: var(--s-4); }
@@ -475,8 +476,8 @@
 .spk-count { font-size: var(--fs-12); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .spk-add-toggle { white-space: nowrap; }
 .spk-add-form-inline { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-.spk-add-form-inline input { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-13); outline: none; flex: 1; }
-.spk-add-form-inline input:focus { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.spk-add-form-inline input { padding: 8px 10px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: var(--fs-13); outline: none; flex: 1; background: transparent; }
+.spk-add-form-inline input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 .spk-filter-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .spk-filter-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
 .spk-filter-tab { padding: 6px var(--s-3); font-size: var(--fs-12); color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; transition: all 0.12s; font-weight: 400; }
@@ -503,8 +504,8 @@
 .spk-tab-panel { display: none; flex-direction: column; gap: var(--s-3); margin-top: var(--s-4); }
 .spk-tab-panel.is-active { display: flex; }
 
-.spk-meeting-card { padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; transition: all 0.12s; }
-.spk-meeting-card:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.spk-meeting-card { padding: var(--s-3); border-bottom: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: background 0.12s; }
+.spk-meeting-card:hover { background: var(--surface-2); }
 .spk-meeting-card .mc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-2); }
 .spk-meeting-card .mc-title { font-size: var(--fs-13); font-weight: 500; color: var(--fg); }
 .spk-meeting-card .mc-date { font-size: var(--fs-11); color: var(--muted); font-family: var(--font-mono); }
@@ -513,14 +514,14 @@
 .spk-meeting-card .mc-stats { display: flex; gap: var(--s-3); margin-top: var(--s-2); font-size: var(--fs-11); color: var(--muted); }
 .spk-meeting-card .mc-stats span { display: flex; align-items: center; gap: 4px; }
 
-.spk-utterance { padding: var(--s-3); border-left: 3px solid var(--border); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; }
+.spk-utterance { padding: var(--s-3); border-left: 3px solid var(--border); background: var(--surface); }
 .spk-utterance .ut-meta { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-1); }
 .spk-utterance .ut-meeting { font-size: var(--fs-11); color: var(--accent); cursor: pointer; }
 .spk-utterance .ut-meeting:hover { text-decoration: underline; }
 .spk-utterance .ut-time { font-size: var(--fs-11); color: var(--muted); font-family: var(--font-mono); }
 .spk-utterance .ut-text { font-size: var(--fs-13); color: var(--fg); line-height: 1.6; }
 
-.spk-todo-item { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.spk-todo-item { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3); border-bottom: 1px solid var(--border); background: var(--surface); }
 .spk-todo-item .todo-check { margin-top: 2px; cursor: pointer; }
 .spk-todo-item .todo-body { flex: 1; }
 .spk-todo-item .todo-text { font-size: var(--fs-13); color: var(--fg); }
@@ -542,8 +543,8 @@
 .mapping-list { display: flex; flex-direction: column; gap: var(--s-2); }
 .mapping-item { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2); background: var(--surface); border-radius: var(--radius); }
 .mapping-item .sid { font-family: var(--font-mono); font-size: 11px; color: var(--muted); width: 60px; }
-.mapping-item select { flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-12); outline: none; background: var(--surface); }
-.mapping-item select:focus { border-color: var(--accent); }
+.mapping-item select { flex: 1; padding: 6px 8px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: var(--fs-12); outline: none; background: transparent; }
+.mapping-item select:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 
 /* ─── Speaker Binding View（对话稿内联绑定） ─── */
 .binding-view { display: flex; flex-direction: column; gap: var(--s-4); }
@@ -687,8 +688,8 @@
 .spk-search[v-show="false"], .spk-search[style*="display: none"] { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-bottom: none; }
 .spk-search-wrap { position: relative; }
 .spk-search-wrap svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; color: var(--subtle); pointer-events: none; }
-.spk-search-input { width: 100%; padding: 6px 10px 6px 28px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-12); outline: none; background: var(--surface); font-family: var(--font-body); transition: border-color 0.12s; }
-.spk-search-input:focus { border-color: var(--accent); }
+.spk-search-input { width: 100%; padding: 6px 10px 6px 28px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: var(--fs-12); outline: none; background: transparent; font-family: var(--font-body); transition: border-color 0.12s; }
+.spk-search-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 .spk-search-input::placeholder { color: var(--subtle); }
 
 
@@ -887,8 +888,8 @@
 .sync-naming-rule strong { color: var(--fg); font-weight: 500; }
 .sync-subfolder-row { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); padding-bottom: var(--s-3); border-bottom: 1px solid var(--border); }
 .sync-subfolder-label { font-size: var(--fs-12); color: var(--fg); white-space: nowrap; }
-.sync-subfolder-input { font-size: var(--fs-12); font-family: var(--font-mono); padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--fg); width: 180px; outline: none; transition: border-color 0.12s; }
-.sync-subfolder-input:focus { border-color: var(--accent); }
+.sync-subfolder-input { font-size: var(--fs-12); font-family: var(--font-mono); padding: 4px 8px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--fg); width: 180px; outline: none; transition: border-color 0.12s; }
+.sync-subfolder-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 .sync-subfolder-hint { font-size: var(--fs-11); color: var(--muted); }
 
 /* 项目表格 */

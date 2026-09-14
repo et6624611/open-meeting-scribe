@@ -394,3 +394,83 @@ class TestDetectActionFalsePositive:
         # 不再被短词「结论」触发
         if result is not None:
             assert result.name != "summarize_conclusions"
+
+
+# ============================================================
+# 决策链待办 API
+# ============================================================
+
+class TestDecisionFlowTodos:
+    """决策流待办端点:字段透传、create 默认值、status↔done 同步"""
+
+    @pytest.fixture
+    def task_id(self, monkeypatch):
+        import uuid
+        from app.routers import notes as notes_mod
+        # 避免测试写入磁盘 / Prevent disk writes during tests
+        monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda *_a, **_k: None)
+        tid = str(uuid.uuid4())
+        notes_mod.tasks[tid] = {"task_id": tid, "status": "completed", "todos": []}
+        yield tid
+        notes_mod.tasks.pop(tid, None)
+
+    def test_create_todo_defaults(self, client, task_id):
+        """新建决策节点应带默认 status/how/owner_type"""
+        resp = client.post(f"/api/tasks/{task_id}/todos", json={"text": "采用云方案", "assignee": "张三"})
+        assert resp.status_code == 200
+        todo = resp.json()["todo"]
+        assert todo["status"] == "to_start"
+        assert todo["how"] == ["采用云方案"]
+        assert todo["owner_type"] == "self"
+        assert todo["done"] is False
+
+    def test_update_passes_through_decision_fields(self, client, task_id):
+        """update 应透传 why/how/outcome/owner_type 并落库"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "数据迁移"}).json()["todo"]["id"]
+        resp = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={
+            "why": "旧库无法支撑新模型",
+            "how": ["导出", "映射", "校验"],
+            "outcome": "减少 30% 对账工时",
+            "owner_type": "colleague",
+        })
+        assert resp.status_code == 200
+        todo = resp.json()["todo"]
+        assert todo["why"] == "旧库无法支撑新模型"
+        assert todo["how"] == ["导出", "映射", "校验"]
+        assert todo["outcome"] == "减少 30% 对账工时"
+        assert todo["owner_type"] == "colleague"
+
+    def test_update_how_strips_blank_items(self, client, task_id):
+        """how 应剔除空白步骤"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
+        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": ["a", "  ", "b", ""]}).json()["todo"]
+        assert todo["how"] == ["a", "b"]
+
+    def test_status_done_syncs_done_true(self, client, task_id):
+        """status='done' 应同步 done=True"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
+        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "done"}).json()["todo"]
+        assert todo["status"] == "done"
+        assert todo["done"] is True
+
+    def test_status_in_progress_syncs_done_false(self, client, task_id):
+        """从 done 回到 in_progress 应同步 done=False"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
+        client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "done"})
+        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "in_progress"}).json()["todo"]
+        assert todo["status"] == "in_progress"
+        assert todo["done"] is False
+
+    def test_toggle_syncs_status(self, client, task_id):
+        """toggle 完成态应同步 status"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
+        todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": True}).json()["todo"]
+        assert todo["done"] is True and todo["status"] == "done"
+        todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": False}).json()["todo"]
+        assert todo["done"] is False and todo["status"] == "in_progress"
+
+    def test_invalid_status_rejected(self, client, task_id):
+        """非法 status 应被拒绝(422)"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
+        resp = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "not_a_status"})
+        assert resp.status_code == 422

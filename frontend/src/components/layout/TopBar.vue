@@ -122,7 +122,15 @@
             </svg>
           </IconButton>
           <div class="theme-dropdown" :class="{ 'is-open': showThemeMenu }" role="listbox">
-            <button v-for="theme in themeOptions" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @click="selectTheme(theme.id)">
+            <div class="theme-group-label">{{ t('common.theme.group_standard') }}</div>
+            <button v-for="theme in standardThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @click="selectTheme(theme.id)">
+              <span class="theme-swatch" :style="{ background: theme.swatch }"></span>
+              <span class="theme-option-label">{{ theme.label }}</span>
+              <svg v-if="themeStore.current === theme.id" class="theme-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <div class="theme-group-divider"></div>
+            <div class="theme-group-label">{{ t('common.theme.group_nature') }}</div>
+            <button v-for="theme in natureThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @click="selectTheme(theme.id)">
               <span class="theme-swatch" :style="{ background: theme.swatch }"></span>
               <span class="theme-option-label">{{ theme.label }}</span>
               <svg v-if="themeStore.current === theme.id" class="theme-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -415,15 +423,21 @@ async function onAbandonRecording() {
 }
 
 
-const themeOptions = [
-  { id: 'default' as ThemeId, label: t('common.theme.default'), swatch: 'oklch(58% 0.18 255)' },
-  { id: 'dark' as ThemeId, label: t('common.theme.dark'), swatch: 'oklch(17% 0.010 250)' },
-  { id: 'warm' as ThemeId, label: t('common.theme.warm'), swatch: 'oklch(62% 0.20 40)' },
-  { id: 'forest' as ThemeId, label: t('common.theme.forest'), swatch: 'oklch(52% 0.14 150)' },
-  { id: 'ocean' as ThemeId, label: t('common.theme.ocean'), swatch: 'oklch(56% 0.14 210)' },
-  { id: 'lavender' as ThemeId, label: t('common.theme.lavender'), swatch: 'oklch(60% 0.16 285)' },
-  { id: 'rose' as ThemeId, label: t('common.theme.rose'), swatch: 'oklch(60% 0.20 10)' },
-]
+const allThemeOptions = computed(() => [
+  { id: 'standard-light' as ThemeId, label: t('common.theme.standard_light'), swatch: 'oklch(65% 0.16 250)', group: 'standard' },
+  { id: 'standard-dark' as ThemeId, label: t('common.theme.standard_dark'), swatch: 'oklch(21% 0.005 264)', group: 'standard' },
+  { id: 'default' as ThemeId, label: t('common.theme.default'), swatch: 'oklch(72% 0.10 55)', group: 'nature' },
+  { id: 'dark' as ThemeId, label: t('common.theme.dark'), swatch: 'oklch(22% 0.018 260)', group: 'nature' },
+  { id: 'warm' as ThemeId, label: t('common.theme.warm'), swatch: 'oklch(66% 0.14 30)', group: 'nature' },
+  { id: 'forest' as ThemeId, label: t('common.theme.forest'), swatch: 'oklch(26% 0.025 155)', group: 'nature' },
+  { id: 'mist' as ThemeId, label: t('common.theme.mist'), swatch: 'oklch(58% 0.05 210)', group: 'nature' },
+  { id: 'moss' as ThemeId, label: t('common.theme.moss'), swatch: 'oklch(52% 0.10 155)', group: 'nature' },
+  { id: 'wheat' as ThemeId, label: t('common.theme.wheat'), swatch: 'oklch(66% 0.12 78)', group: 'nature' },
+  { id: 'moonlight' as ThemeId, label: t('common.theme.moonlight'), swatch: 'oklch(74% 0.05 220)', group: 'nature' },
+])
+
+const standardThemes = computed(() => allThemeOptions.value.filter(t => t.group === 'standard'))
+const natureThemes = computed(() => allThemeOptions.value.filter(t => t.group === 'nature'))
 
 const isStartRoute = computed(() => route.name === 'start')
 

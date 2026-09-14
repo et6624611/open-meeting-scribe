@@ -77,7 +77,7 @@ export function useAiChat() {
     if (!text || isLoading.value) return
 
     const msgs = aiSessions.activeMessages
-    msgs.push({ role: 'user', content: text })
+    msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() })
     if (msgs.length > AI_MAX_CONTEXT * 2) {
       aiSessions.activeMessages = msgs.slice(-AI_MAX_CONTEXT * 2)
     }
@@ -102,7 +102,19 @@ export function useAiChat() {
         signal: ctrl.signal,
       })
 
-      aiSessions.activeMessages[loadingIdx] = { role: 'assistant', content: res.reply }
+      aiSessions.activeMessages[loadingIdx] = {
+        role: 'assistant',
+        content: res.reply,
+        timestamp: new Date().toISOString(),
+        metadata: res.metadata,
+        sources: res.sources,
+        performance: res.latency_ms != null ? {
+          latency_ms: res.latency_ms,
+          char_count: res.reply.length,
+          context_block_count: res.context_block_count ?? 0,
+          message_count: res.message_count ?? 0,
+        } : undefined,
+      }
       aiSessions.persist()
 
       if (res.verified_changes?.length) {

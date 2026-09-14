@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
@@ -116,7 +116,36 @@ const activeRecordingTaskId = computed(() => {
   return task?.task_id ?? ''
 })
 
+/** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
+const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/settings'])
+
+/** Origin route before entering a secondary page, for toggle-back / 进入二级管理页前的来源路径 */
+const previousRoute = ref('')
+
+/**
+ * Navigate with smart toggle-back.
+ * - Before entering a rail nav page, record the current route as origin.
+ * - Re-clicking an active button toggles back to the origin page
+ *   (recording / meeting / start), falling back to '/' if no valid origin.
+ */
 function navigate(path: string) {
+  if (route.path === path) {
+    // Toggle-back: for all rail navigation pages
+    if (RAIL_NAV_PAGES.has(path)) {
+      const origin = previousRoute.value
+      if (origin && (origin.startsWith('/recording') || origin.startsWith('/meeting') || origin === '/')) {
+        router.push(origin)
+      } else {
+        router.push('/')
+      }
+      previousRoute.value = ''
+    }
+    return
+  }
+  // Record origin before entering a rail nav page
+  if (RAIL_NAV_PAGES.has(path)) {
+    previousRoute.value = route.fullPath
+  }
   router.push(path)
 }
 

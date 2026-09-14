@@ -3,10 +3,36 @@
  */
 import client from './client'
 
+/** 项目引用来源 / Project source reference */
+export interface SourceFile {
+  title: string
+  path: string
+  name: string
+}
+
+/** LLM 响应元数据 / LLM response metadata */
+export interface LlmMetadata {
+  model: string
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  finish_reason: string
+  id: string
+}
+
+/** 消息性能指标 / Message performance metrics */
+export interface MessagePerformance {
+  latency_ms: number
+  char_count: number
+  context_block_count: number
+  message_count: number
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp?: string
+  metadata?: LlmMetadata
+  sources?: SourceFile[]
+  performance?: MessagePerformance
 }
 
 export interface ChatAction {
@@ -21,6 +47,16 @@ export interface ChatExtractedItem {
 
 export interface ChatResponse {
   reply: string
+  /** LLM 响应元数据（tokens、model、finish_reason 等） / LLM response metadata */
+  metadata?: LlmMetadata
+  /** 引用来源文件列表 / Referenced source files */
+  sources?: SourceFile[]
+  /** LLM 调用耗时（毫秒） / LLM call latency in ms */
+  latency_ms?: number
+  /** 注入的上下文块数 / Number of injected context blocks */
+  context_block_count?: number
+  /** 发送给 LLM 的消息数 / Number of messages sent to LLM */
+  message_count?: number
   /** 后端实际返回的动作（单数对象） / Actual action returned by backend (singular object) */
   action?: {
     name: string | null
@@ -73,6 +109,27 @@ export async function sendMessage(
     current_page: options?.current_page,
   }, {
     signal: options?.signal,
+  })
+  return data
+}
+
+/** 行间编辑响应 / Inline edit response */
+export interface InlineEditResponse {
+  ok: boolean
+  original: string
+  edited: string
+}
+
+/** 行间编辑：根据用户指令对选中文本进行 AI 改写 / Inline edit: rewrite selected text based on user instruction */
+export async function inlineEdit(
+  text: string,
+  instruction: string,
+  model?: string,
+): Promise<InlineEditResponse> {
+  const { data } = await client.post<InlineEditResponse>('/api/inline-edit', {
+    text,
+    instruction,
+    model: model || 'qwen-plus',
   })
   return data
 }

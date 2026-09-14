@@ -455,3 +455,152 @@ class TestSilenceDetectionConfig:
         assert isinstance(realtime_presence_scores, dict)
         assert isinstance(realtime_silence_warnings, dict)
         assert isinstance(realtime_silence_monitors, dict)
+
+
+# ============================================================
+# 云端用户服务（cloud_client + cloud_api）
+# ============================================================
+
+
+class TestCloudClientDisabled:
+    """云端客户端未配置时行为"""
+
+    def test_cloud_disabledled_by_default(self, monkeypatch):
+        """未配置环境变量时 is_cloud_enabled() 返回 False"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        assert cloud_client.is_cloud_enabled() is False
+
+    def test_cloud_disabled_with_url_only(self, monkeypatch):
+        """仅配置 URL 无 token 时仍返回 False"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "http://example.com")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        assert cloud_client.is_cloud_enabled() is False
+
+    def test_sync_returns_none_when_disabled(self, monkeypatch):
+        """云端未启用时 sync_user_to_cloud 返回 None"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        assert cloud_client.sync_user_to_cloud("user-123", "13312345678", "test") is None
+
+    def test_report_usage_returns_none_when_disabled(self, monkeypatch):
+        """云端未启用时 report_usage_to_cloud 返回 None"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        assert cloud_client.report_usage_to_cloud("user-123", "asr_batch", 300) is None
+
+    def test_check_quota_returns_none_when_disabled(self, monkeypatch):
+        """云端未启用时 check_quota_from_cloud 返回 None"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        assert cloud_client.check_quota_from_cloud("user-123") is None
+
+
+class TestCloudClientHmacSign:
+    """云端客户端 HMAC 签名生成"""
+
+    def test_sign_is_hex_string(self, monkeypatch):
+        """签名结果应为十六进制字符串"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "test-secret-token")
+        sign = cloud_client._make_sign("1700000000")
+        assert isinstance(sign, str)
+        assert len(sign) == 64  # SHA-256 = 32 bytes = 64 hex chars
+
+    def test_sign_deterministic(self, monkeypatch):
+        """相同输入产生相同签名"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "test-secret-token")
+        sign1 = cloud_client._make_sign("1700000000")
+        sign2 = cloud_client._make_sign("1700000000")
+        assert sign1 == sign2
+
+    def test_sign_differs_for_different_timestamps(self, monkeypatch):
+        """不同时间戳产生不同签名"""
+        from core import cloud_client
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "test-secret-token")
+        sign1 = cloud_client._make_sign("1700000000")
+        sign2 = cloud_client._make_sign("1700000001")
+        assert sign1 != sign2
+
+
+class TestCloudApiAuth:
+    """云端 API 端点认证"""
+
+    def test_sync_requires_auth(self, client, monkeypatch):
+        """用户同步端点需要签名认证"""
+        from app.routers import cloud_api as cloud_api_mod
+
+        monkeypatch.setattr(cloud_api_mod, "CLOUD_API_TOKEN", "test-token")
+        resp = client.post("/api/cloud/users/sync", json={
+            "user_id": "test-id",
+            "phone": "13312345678",
+        })
+        assert resp.status_code == 401
+
+    def test_report_requires_auth(self, client, monkeypatch):
+        """用量上报端点需要签名认证"""
+        from app.routers import cloud_api as cloud_api_mod
+
+        monkeypatch.setattr(cloud_api_mod, "CLOUD_API_TOKEN", "test-token")
+        resp = client.post("/api/cloud/usage/report", json={
+            "user_id": "test-id",
+            "service": "asr_batch",
+            "duration_seconds": 300,
+        })
+        assert resp.status_code == 401
+
+    def test_quota_requires_auth(self, client, monkeypatch):
+        """配额查询端点需要签名认证"""
+        from app.routers import cloud_api as cloud_api_mod
+
+        monkeypatch.setattr(cloud_api_mod, "CLOUD_API_TOKEN", "test-token")
+        resp = client.get("/api/cloud/usage/quota?user_id=test-id")
+        assert resp.status_code == 401
+
+
+class TestRecordUsageLocalFallback:
+    """云端不可达时 record_usage 本地降级"""
+
+    def test_record_usage_writes_local_when_cloud_disabled(self, monkeypatch, tmp_path):
+        """云端未启用时 record_usage 正常写入本地 JSONL"""
+        from core import cloud_client, metering
+
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+        monkeypatch.setattr(metering, "USAGE_DIR", tmp_path)
+
+        # 确保用户存在
+        from core import users
+        test_user = {
+            "id": "test-user-id",
+            "provider": "sms",
+            "provider_id": "13312345678",
+            "name": "133****5678",
+            "subscription": {"tier": "free"},
+        }
+        monkeypatch.setattr(metering, "_get_user_quota", lambda uid: 300)
+
+        result = metering.record_usage(
+            user_id="test-user-id",
+            service="asr_batch",
+            duration_seconds=300.0,
+        )
+
+        assert result["minutes"] == 5.0
+        assert result["quota"] == 300
+        assert "remaining" in result
+        assert "cumulative_monthly" in result

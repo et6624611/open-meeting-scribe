@@ -1,5 +1,6 @@
 {
-  "title": "Hotword Management",
+  "title": "Hotwords",
+  "count": "{count} item(s)",
   "subtitle": "Manage recognition vocabulary and correction mappings, organized by groups",
   "groups": "Groups",
   "search_groups": "Search groups...",

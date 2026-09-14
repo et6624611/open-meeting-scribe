@@ -1,5 +1,6 @@
 {
-  "title": "Document Knowledge Base",
+  "title": "Knowledge Base",
+  "count": "{count} project(s)",
   "subtitle": "Link local folders containing documents (.md / .txt / .docx / .pdf) so AI understands meetings through your materials",
   "input_placeholder": "Enter knowledge base name...",
   "create": "New Knowledge Base",

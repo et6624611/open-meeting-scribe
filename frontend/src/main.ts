@@ -6,13 +6,16 @@ import i18n, { loadLocaleMessages, getLocale } from './i18n'
 
 // 样式引入顺序： / Style import order:
 // 1. 主题变量（CSS 自定义属性，必须最先加载） / 1. Theme variables (CSS custom properties; must load first)
+import './styles/themes/standard-light.css'
+import './styles/themes/standard-dark.css'
 import './styles/themes/default.css'
 import './styles/themes/dark.css'
 import './styles/themes/warm.css'
 import './styles/themes/forest.css'
-import './styles/themes/ocean.css'
-import './styles/themes/lavender.css'
-import './styles/themes/rose.css'
+import './styles/themes/mist.css'
+import './styles/themes/moss.css'
+import './styles/themes/wheat.css'
+import './styles/themes/moonlight.css'
 // 2. 模块化 CSS（按功能域拆分） / 2. Modular CSS (split by functional domain)
 import './styles/base.css'
 import './styles/layout.css'

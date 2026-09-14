@@ -14,6 +14,11 @@
       @change="emit('change', $event)"
       ref="summaryEditor"
       :empty-text="t('generating.summary.placeholder')"
+      :inline-diff-block-index="inlineDiffBlockIndex"
+      :inline-diff-original="inlineDiffOriginal"
+      :inline-diff-edited="inlineDiffEdited"
+      @accept-diff="emit('accept-diff')"
+      @reject-diff="emit('reject-diff')"
     />
     <!-- 章节回顾卡片 / Chapter review card -->
     <div class="sum-section" v-if="hasSummary && chapters.length > 0">
@@ -77,12 +82,20 @@ const props = defineProps<{
   hasSummary: boolean
   todosCount: number
   todosDoneCount: number
+  /** 行间编辑 diff 目标块索引 / Inline edit diff target block index */
+  inlineDiffBlockIndex?: number
+  /** 行间编辑原文 / Inline edit original text */
+  inlineDiffOriginal?: string
+  /** 行间编辑改写结果 / Inline edit edited text */
+  inlineDiffEdited?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'change', md: string): void
   (e: 'toggle-chapter', idx: number): void
   (e: 'switch-tab', tabId: string): void
+  (e: 'accept-diff'): void
+  (e: 'reject-diff'): void
 }>()
 
 function formatTimeMs(ms: number): string {
@@ -97,5 +110,6 @@ const summaryEditor = ref<InstanceType<typeof MdBlockEditor> | null>(null)
 
 defineExpose({
   updateBlock: (blockIndex: number, newSource: string) => summaryEditor.value?.updateBlock(blockIndex, newSource),
+  replaceTextInBlock: (blockIndex: number, oldText: string, newText: string) => summaryEditor.value?.replaceTextInBlock(blockIndex, oldText, newText),
 })
 </script>

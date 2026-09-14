@@ -125,6 +125,16 @@ export function useBlockEditor(onChange?: (md: string) => void) {
     if (onChange) onChange(getMarkdown())
   }
 
+  /** 在指定块内做文本替换 / Replace text within a specific block */
+  function replaceTextInBlock(idx: number, oldText: string, newText: string) {
+    const block = blocks.value[idx]
+    if (!block) return
+    const newSource = block.source.replace(oldText, newText)
+    if (newSource !== block.source) {
+      updateBlock(idx, newSource)
+    }
+  }
+
   function insertAfter(idx: number, source: string = ''): number {
     const newBlock: MdBlock = { source, type: classifyBlockSource(source), isAi: false, index: 0 }
     blocks.value.splice(idx + 1, 0, newBlock)
@@ -177,6 +187,7 @@ export function useBlockEditor(onChange?: (md: string) => void) {
     exitEdit,
     cancelEdit,
     updateBlock,
+    replaceTextInBlock,
     insertAfter,
     removeBlock,
     convertBlock,

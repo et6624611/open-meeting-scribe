@@ -1,10 +1,5 @@
 <template>
   <div class="lib-page" ref="libPageRef" :class="widthClass">
-    <button class="page-back-btn" @click="goBack">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      <span>{{ t('common.action.back') }}</span>
-      <kbd>ESC</kbd>
-    </button>
     <!-- 整合标题区与搜索框 / Integrated title bar and search box -->
     <div class="lib-header-bar">
       <div class="lib-title-group">
@@ -36,13 +31,16 @@
 
     <!-- 筛选工具栏：日期范围 + 说话人 / Filter toolbar: date range + speaker -->
     <div class="lib-filter-bar" :class="{ 'is-active': hasActiveFilter }">
-      <div class="lib-filter-group">
+      <div class="lib-filter-group lib-date-group">
         <label class="lib-filter-label">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         </label>
         <input type="date" v-model="dateFrom" class="lib-date-input" :title="t('library.filter_date_from')" />
         <span class="lib-date-sep">–</span>
         <input type="date" v-model="dateTo" class="lib-date-input" :title="t('library.filter_date_to')" />
+        <span class="lib-filter-divider"></span>
+        <button class="lib-filter-chip" @click="setQuickDateRange(7)">{{ t('library.filter_week') }}</button>
+        <button class="lib-filter-chip" @click="setQuickDateRange(30)">{{ t('library.filter_30days') }}</button>
       </div>
       <div class="lib-filter-group">
         <label class="lib-filter-label">
@@ -54,8 +52,6 @@
         </select>
       </div>
       <div v-if="hasActiveFilter" class="lib-filter-actions">
-        <button class="lib-filter-chip" @click="setQuickDateRange(7)">{{ t('library.filter_week') }}</button>
-        <button class="lib-filter-chip" @click="setQuickDateRange(30)">{{ t('library.filter_30days') }}</button>
         <button class="lib-filter-clear" @click="clearAllFilters">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           {{ t('library.filter_clear') }}
@@ -180,13 +176,11 @@ import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useContainerSize } from '@/composables/useContainerSize'
-import { usePageBack } from '@/composables/usePageBack'
 import { matchTask, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
 const { t } = useI18n()
 const router = useRouter()
-const { goBack } = usePageBack()
 const taskStore = useTaskStore()
 const player = usePlayerStore()
 
@@ -240,6 +234,7 @@ const lastSelectedId = ref<string | null>(null)
 function switchTab(showArchived: boolean) {
   taskStore.showArchived = showArchived
   clearSelection()
+  ;(window as any).__omsUpdatePhilosophy?.(showArchived ? 'archived' : 'active')
 }
 
 /** 会议库专用分组：根据 showArchived 切换数据源，叠加文本搜索 + 日期 + 说话人筛选 / Library grouping: switch source by showArchived, overlay text search + date + speaker filter */
@@ -559,6 +554,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding: var(--s-5) var(--s-5) var(--s-6);
 }
 
 /* ─── 整合标题栏与搜索框 / Integrated title bar and search box ─── */
@@ -572,7 +568,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 
 .lib-title-group {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s-3);
   flex-shrink: 0;
 }
@@ -600,20 +596,21 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .lib-search-input {
   width: 100%; padding: 10px var(--s-4); padding-left: 38px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); font-size: 14px;
+  border: none; border-bottom: 1px solid var(--border);
+  border-radius: 0; background: transparent; font-size: 14px;
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
 .lib-search-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 12%, transparent);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
 }
 
 /* ─── Tab 切换 / Tab switch ─── */
 .lib-tabs {
   display: flex;
-  gap: var(--s-1);
+  gap: 0;
   margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
 }
 
 .lib-tab {
@@ -622,24 +619,27 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   gap: var(--s-2);
   padding: var(--s-2) var(--s-4);
   border: none;
-  border-radius: var(--radius);
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
 }
 
 .lib-tab:hover {
-  background: var(--surface-2);
+  background: transparent;
   color: var(--fg);
 }
 
 .lib-tab.active {
-  background: var(--surface);
-  color: var(--fg);
+  background: transparent;
+  color: var(--accent);
   font-weight: 600;
-  box-shadow: 0 1px 3px color-mix(in oklch, var(--fg) 8%, transparent);
+  border-bottom-color: var(--accent);
+  box-shadow: none;
 }
 
 .lib-tab-count {
@@ -649,6 +649,10 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   background: var(--surface-2);
   color: var(--subtle);
   line-height: 1.4;
+}
+
+.lib-tab:hover .lib-tab-count {
+  background: var(--surface-2);
 }
 
 .lib-tab.active .lib-tab-count {
@@ -663,19 +667,29 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   gap: var(--s-4);
   margin-bottom: var(--s-4);
   padding: var(--s-2) var(--s-3);
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--surface) 70%, transparent);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
   transition: border-color 0.15s;
   flex-wrap: wrap;
 }
 .lib-filter-bar.is-active {
-  border-color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 .lib-filter-group {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+}
+.lib-date-group {
+  flex-wrap: wrap;
+}
+.lib-filter-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 .lib-filter-label {
   color: var(--subtle);
@@ -684,36 +698,29 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   flex-shrink: 0;
 }
 .lib-date-input {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 12px;
-  background: var(--bg);
-  color: var(--fg);
-  outline: none;
-  transition: border-color 0.12s;
+  border: none; border-bottom: 1px solid var(--border);
+  border-radius: 0; padding: 4px 8px;
+  font-size: 12px; background: transparent;
+  color: var(--fg); outline: none; transition: border-color 0.12s;
 }
 .lib-date-input:focus {
-  border-color: var(--accent);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
 }
 .lib-date-sep {
   color: var(--subtle);
   font-size: 12px;
 }
 .lib-speaker-select {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 12px;
-  background: var(--bg);
-  color: var(--fg);
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.12s;
-  min-width: 120px;
+  border: none; border-bottom: 1px solid var(--border);
+  border-radius: 0; padding: 4px 8px;
+  font-size: 12px; background: transparent;
+  color: var(--fg); outline: none; cursor: pointer;
+  transition: border-color 0.12s; min-width: 120px;
 }
 .lib-speaker-select:focus {
-  border-color: var(--accent);
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
 }
 .lib-filter-actions {
   display: flex;
@@ -722,19 +729,13 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   margin-left: auto;
 }
 .lib-filter-chip {
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  transition: all 0.12s;
+  padding: 3px 10px; border-radius: 4px;
+  font-size: 11px; border: none;
+  background: transparent; color: var(--muted);
+  cursor: pointer; transition: all 0.12s;
 }
 .lib-filter-chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--surface-2); color: var(--fg);
 }
 .lib-filter-clear {
   display: flex;
@@ -756,9 +757,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 /* ─── 表格容器 / Table container ─── */
 .table-container {
   flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  background: transparent;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -772,7 +771,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   align-items: center;
   padding: 0 var(--s-4);
   height: 40px;
-  background: var(--surface-2);
+  background: transparent;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   font-weight: 600;
@@ -821,7 +820,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 
 .table-group-header {
   padding: var(--s-2) var(--s-4);
-  background: var(--surface-2);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   font-size: 12px; font-weight: 600; color: var(--subtle);
   text-transform: uppercase; letter-spacing: 0.05em;
@@ -834,7 +833,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   align-items: center;
   padding: 0 var(--s-4);
   height: 52px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -898,9 +897,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .cell-actions {
   display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity 0.15s;
 }
-.table-row:hover .cell-actions { opacity: 1; }
 .cell-actions-btn {
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;

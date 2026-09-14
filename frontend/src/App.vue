@@ -121,10 +121,10 @@ import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
+import { usePhilosophy } from '@/composables/usePhilosophy'
 import { escapeHtml } from '@/utils/sanitize'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
-import { getLocale } from '@/i18n'
 import TopBar from '@/components/layout/TopBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import ActivityRail from '@/components/layout/ActivityRail.vue'
@@ -142,12 +142,14 @@ const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
 const { widthClass: mainWidthClass, tier: mainTier } = useContainerSize(mainEl)
-const philosophyVariants = ref<Record<string, string>>({})
-const philosophyText = computed(() => {
-  const lang = getLocale().startsWith('zh') ? 'zh' : 'en'
-  return philosophyVariants.value[lang] || philosophyVariants.value.zh || ''
-})
-const philosophyChars = computed(() => philosophyText.value.split('').map(ch => ch === ' ' ? '\u00A0' : ch))
+const { philosophyVariants, philosophyText, philosophyChars, loadPhilosophy, updatePhilosophy } = usePhilosophy()
+// 暴露给子视图：Tab 切换时调用 window.__omsUpdatePhilosophy(tab) / Expose to child views: call window.__omsUpdatePhilosophy(tab) on tab switch
+if (typeof window !== 'undefined') {
+  (window as any).__omsUpdatePhilosophy = (tab?: string) => {
+    const route = router.currentRoute.value
+    updatePhilosophy(route.name as string | undefined, tab)
+  }
+}
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
 // 公告横幅 / Announcement banner
@@ -186,6 +188,11 @@ onMounted(async () => {
   checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
+
+  // ─── 路由变化时刷新理念 / Refresh philosophy on route change ───
+  router.afterEach((to) => {
+    updatePhilosophy(to.name as string | undefined)
+  })
 
   // ─── 主内容区宽度档位（统一 composable 驱动） ─── / ─── Main content width tier (unified composable-driven) ───
   // 断点与 CSS 类名由 useContainerSize 统一管理，触发 legacy-views.css 等响应式规则 / Breakpoints and CSS classes managed by useContainerSize; triggers legacy-views.css responsive rules
@@ -248,40 +255,7 @@ async function checkActiveRecording() {
   }
 }
 
-async function loadPhilosophy() {
-  const CACHE_KEY = 'philosophy_cache'
-  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
-  try {
-    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
-    const now = Date.now()
-    let variants = cached.variants as Record<string, string> | undefined
-    // 校验缓存格式：值必须为字符串（旧版本可能写入嵌套对象） / Validate cache format: values must be strings (old versions may have written nested objects)
-    if (variants && typeof variants === 'object') {
-      const hasStringValue = Object.values(variants).some(v => typeof v === 'string')
-      if (!hasStringValue) variants = undefined
-    }
-    if (!variants || !cached.ts || now - cached.ts > WEEK_MS) {
-      const res = await fetch('/api/philosophy/random')
-      if (!res.ok) return
-      const data = await res.json()
-      variants = data.variants
-        || (typeof data.text === 'object' && data.text !== null ? data.text : { zh: String(data.text || '') })
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ variants, ts: now }))
-    }
-    philosophyVariants.value = variants || {}
-    const text = philosophyText.value
-    if (!text) return
-    setTimeout(() => {
-      const el = document.getElementById('philosophyText')
-      if (el) el.classList.add('is-visible')
-    }, 500)
-    // 逐字显现完成后启动微光扫过效果 / Start shimmer sweep effect after character-by-character reveal completes
-    setTimeout(() => {
-      const el = document.getElementById('philosophyText')
-      if (el) el.classList.add('is-shimmer')
-    }, 500 + text.length * 80 + 800)
-  } catch { /* 静默 */ }
-}
+
 
 // Performance monitoring
 onMounted(() => {

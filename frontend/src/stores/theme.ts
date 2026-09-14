@@ -3,13 +3,16 @@ import { ref, computed } from 'vue'
 
 /** 可用主题列表 / Available themes */
 export const THEMES = [
-  { id: 'default', label: '默认' },
-  { id: 'dark', label: '夜色' },
-  { id: 'warm', label: '暖阳' },
-  { id: 'forest', label: '森林' },
-  { id: 'ocean', label: '海洋' },
-  { id: 'lavender', label: '薰衣草' },
-  { id: 'rose', label: '玫瑰' },
+  { id: 'standard-light', label: '标准浅色', group: 'standard' },
+  { id: 'standard-dark', label: '标准深色', group: 'standard' },
+  { id: 'default', label: '晨曦', group: 'nature' },
+  { id: 'dark', label: '夜色', group: 'nature' },
+  { id: 'warm', label: '晚霞', group: 'nature' },
+  { id: 'forest', label: '森林', group: 'nature' },
+  { id: 'mist', label: '薄雾', group: 'nature' },
+  { id: 'moss', label: '苔藓', group: 'nature' },
+  { id: 'wheat', label: '麦浪', group: 'nature' },
+  { id: 'moonlight', label: '月白', group: 'nature' },
 ] as const
 
 export type ThemeId = (typeof THEMES)[number]['id']
@@ -21,13 +24,13 @@ export const useThemeStore = defineStore('theme', () => {
   const isStartMode = ref(false)
 
   const currentLabel = computed(() =>
-    THEMES.find(t => t.id === current.value)?.label ?? '默认',
+    THEMES.find(t => t.id === current.value)?.label ?? '标准浅色',
   )
 
   /** 切换主题 / Switch theme */
   function setTheme(id: ThemeId) {
     current.value = id
-    document.documentElement.setAttribute('data-theme', id === 'default' ? 'default' : id)
+    document.documentElement.setAttribute('data-theme', id)
     localStorage.setItem(STORAGE_KEY, id)
   }
 
@@ -38,7 +41,7 @@ export const useThemeStore = defineStore('theme', () => {
       document.documentElement.setAttribute('data-theme', saved)
       return saved
     }
-    return 'default'
+    return 'standard-light'
   }
 
   return { current, currentLabel, isStartMode, setTheme }

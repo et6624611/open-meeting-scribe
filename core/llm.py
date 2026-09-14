@@ -24,6 +24,7 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass
 from typing import Generator
 
 import httpx
@@ -107,6 +108,33 @@ def _get_headers() -> dict:
 def _extract_content(data: dict) -> str:
     """从响应中提取生成内容"""
     return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+
+@dataclass
+class LlmResult:
+    """LLM 调用完整结果（含元数据） / Full LLM call result with metadata."""
+    content: str
+    model: str
+    usage: dict          # {prompt_tokens, completion_tokens, total_tokens}
+    finish_reason: str   # "stop" | "length" | "content_filter"
+    id: str              # 请求唯一标识 / Request unique ID
+
+
+def _extract_full_result(data: dict) -> LlmResult:
+    """从 API 响应中提取完整结果（含元数据） / Extract full result from API response."""
+    choice = data.get("choices", [{}])[0]
+    usage = data.get("usage", {})
+    return LlmResult(
+        content=choice.get("message", {}).get("content", ""),
+        model=data.get("model", ""),
+        usage={
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        },
+        finish_reason=choice.get("finish_reason", ""),
+        id=data.get("id", ""),
+    )
 
 
 # ============================================================
@@ -250,6 +278,60 @@ async def async_chat_completion(
         elapsed = time.perf_counter() - start
         logger.info(f"[PERF] LLM 异步调用: {elapsed:.3f}s, {len(content)} 字符")
         return content
+
+    except httpx.TimeoutException:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用超时: {elapsed:.3f}s")
+        raise RuntimeError("LLM 调用超时")
+    except httpx.HTTPStatusError as e:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用失败: HTTP {e.response.status_code}, {elapsed:.3f}s")
+        raise RuntimeError(f"LLM 调用失败: HTTP {e.response.status_code}")
+    except Exception as e:
+        elapsed = time.perf_counter() - start
+        logger.warning(f"[PERF] LLM 异步调用异常: {elapsed:.3f}s")
+        raise RuntimeError(f"LLM 调用失败: {e}")
+
+
+# ============================================================
+# 异步完整版（含元数据，供 chat 端点使用）
+# ============================================================
+
+
+async def async_chat_completion_full(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> LlmResult:
+    """
+    异步调用 LLM 并返回完整结果（含元数据）。
+
+    供 /api/chat 端点使用，返回 usage、finish_reason 等信息供前端展示。
+    使用 httpx.AsyncClient，不阻塞 asyncio 事件循环。
+    """
+    base_url = _get_base_url()
+    client = _get_async_client()
+    headers = _get_headers()
+    body = _build_request_body(messages, model, temperature, max_tokens)
+
+    logger.info(f"调用 LLM（异步-完整）: url={base_url}, model={body['model']}, messages={len(messages)}")
+
+    start = time.perf_counter()
+    try:
+        resp = await client.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json=body,
+        )
+        resp.raise_for_status()
+        result = _extract_full_result(resp.json())
+        elapsed = time.perf_counter() - start
+        logger.info(
+            f"[PERF] LLM 异步调用(完整): {elapsed:.3f}s, {len(result.content)} 字符, "
+            f"tokens={result.usage.get('total_tokens', 0)}"
+        )
+        return result
 
     except httpx.TimeoutException:
         elapsed = time.perf_counter() - start

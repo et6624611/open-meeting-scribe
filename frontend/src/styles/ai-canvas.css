@@ -55,9 +55,28 @@
 }
 .theme-option.is-active .theme-check { opacity: 1; }
 
-/* ─── 夜色模式特殊调整 ─── */
-html[data-theme="dark"] .topbar { border-bottom-color: var(--border); }
-html[data-theme="dark"] ::selection { background: var(--accent-soft); }
+.theme-group-label {
+  padding: 6px 10px 4px;
+  font-size: var(--fs-11);
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+.theme-group-label:first-child { padding-top: 4px; }
+
+.theme-group-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+
+/* ─── 暗色模式特殊调整 ─── */
+html[data-theme="dark"] .topbar,
+html[data-theme="standard-dark"] .topbar { border-bottom-color: var(--border); }
+html[data-theme="dark"] ::selection,
+html[data-theme="standard-dark"] ::selection { background: var(--accent-soft); }
 
 /* ═══════════════════════════════════════════════════════════
    开放对话布局覆盖 (Open Conversation Layout Override)

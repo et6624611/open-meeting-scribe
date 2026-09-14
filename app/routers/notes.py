@@ -4,6 +4,7 @@ app/routers/notes.py — 笔记 + AI 注入 + 待办 / Notes + AI injection + to
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -13,6 +14,11 @@ from core import users as user_module
 from core.i18n import _
 
 router = APIRouter(tags=["notes"])
+
+# 决策流状态与推进方类型 / Decision-flow status and owner types
+DecisionStatus = Literal["to_decide", "to_start", "in_progress", "to_confirm", "done"]
+OwnerType = Literal["self", "agent", "colleague", "enterprise"]
+_HOW_MAX_ITEMS = 50
 
 
 # ============================================================
@@ -105,6 +111,9 @@ def inject_content(task_id: str, req: InjectRequest):
             "assignee": assignee,
             "done": False,
             "source": "injection",
+            "status": "to_start",
+            "how": [req.content],
+            "owner_type": "self",
             "created_at": item["injected_at"],
             "injection_id": item["id"],
         }
@@ -165,6 +174,8 @@ def toggle_todo(task_id: str, todo_id: str, req: TodoToggleRequest):
     for todo in task.get("todos", []):
         if todo["id"] == todo_id:
             todo["done"] = req.done
+            # 同步决策流状态:done 与 status 保持一致 / Keep done and status in sync
+            todo["status"] = "done" if req.done else "in_progress"
             save_task_to_disk(task_id)
             return {"todo": todo}
     raise HTTPException(404, _("To-do not found"))
@@ -190,11 +201,17 @@ class TodoCreateRequest(BaseModel):
 class TodoUpdateRequest(BaseModel):
     text: str | None = Field(default=None, max_length=500)
     assignee: str | None = Field(default=None, max_length=100)
+    # 决策链字段透传 / Decision-chain pass-through fields
+    why: str | None = Field(default=None, max_length=2000)
+    outcome: str | None = Field(default=None, max_length=2000)
+    how: list[str] | None = Field(default=None, max_length=_HOW_MAX_ITEMS)
+    status: DecisionStatus | None = None
+    owner_type: OwnerType | None = None
 
 
 @router.post("/api/tasks/{task_id}/todos")
 def create_todo(task_id: str, req: TodoCreateRequest):
-    """手工添加一条待办 / Manually add a todo."""
+    """手工添加一条决策节点 / Manually add a decision node."""
     task = tasks.get(task_id)
     if not task:
         raise HTTPException(404, _("Task not found"))
@@ -205,6 +222,9 @@ def create_todo(task_id: str, req: TodoCreateRequest):
         "assignee": req.assignee,
         "done": False,
         "source": "manual",
+        "status": "to_start",
+        "how": [req.text],
+        "owner_type": "self",
         "created_at": datetime.now().isoformat(),
     }
     todos.append(todo_item)
@@ -214,7 +234,7 @@ def create_todo(task_id: str, req: TodoCreateRequest):
 
 @router.put("/api/tasks/{task_id}/todos/{todo_id}")
 def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
-    """编辑待办内容或执行人 / Edit todo text or assignee."""
+    """编辑决策节点内容/执行人/决策链字段 / Edit decision node fields."""
     task = tasks.get(task_id)
     if not task:
         raise HTTPException(404, _("Task not found"))
@@ -224,6 +244,18 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
                 todo["text"] = req.text
             if req.assignee is not None:
                 todo["assignee"] = req.assignee
+            if req.why is not None:
+                todo["why"] = req.why
+            if req.outcome is not None:
+                todo["outcome"] = req.outcome
+            if req.how is not None:
+                todo["how"] = [s.strip() for s in req.how if s and s.strip()][:_HOW_MAX_ITEMS]
+            if req.owner_type is not None:
+                todo["owner_type"] = req.owner_type
+            if req.status is not None:
+                todo["status"] = req.status
+                # status 与 done 保持同步 / Keep status and done in sync
+                todo["done"] = req.status == "done"
             save_task_to_disk(task_id)
             return {"todo": todo}
     raise HTTPException(404, _("To-do not found"))

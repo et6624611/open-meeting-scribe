@@ -3,8 +3,8 @@ title: "Vue 组件页面映射清单"
 description: "列出所有 Vue 组件与页面/区域的对应关系，方便快速定位需要修改的文件。"
 tags: ["vue", "frontend", "component_map", "ui"]
 created_at: "2026-09-12"
-updated_at: "2026-09-13"
-version: "1.4.1"
+updated_at: "2026-09-15"
+version: "1.5.0"
 author: "wangyongliang"
 status: "published"
 category: "technical"
@@ -35,7 +35,7 @@ category: "technical"
 |------|------|----------|------|
 | `/` | `views/StartView.vue` | 快速启动 | 首页，录音按钮 + 上传入口 |
 | `/recording/:taskId?` | `views/RecordingView.vue` | 录音中 | 实时录音页：波形、实时转写、AI 洞察、底部控制栏 |
-| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/纪要/随记/待办四 Tab + 说话人绑定 |
+| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/决策四 Tab + 说话人绑定 |
 | `/library` | `views/LibraryView.vue` | 会议库 | 全部会议列表，表格 + 搜索 + 筛选 + 分页 |
 | `/projects` | `views/ProjectsView.vue` | 项目管理 | 项目列表与详情 |
 | `/speakers` | `views/SpeakersView.vue` | 说话人管理 | 说话人列表 → 详情两态切换 |
@@ -49,7 +49,7 @@ category: "technical"
 | `components/layout/ActivityRail.vue` | 最左侧（52px） | 常驻全局导航轨：Sidebar 折叠按钮、4 个导航图标（会议库/项目/说话人/热词）、AI 洞察呼吸指示器、设置按钮（含版本号） |
 | `components/layout/TopBar.vue` | 顶部 | 面包屑、全局搜索、主题切换、全屏、用户头像 |
 | `components/layout/Sidebar.vue` | 左侧 | 导航菜单、最近任务列表、项目快捷入口 |
-| `components/layout/AIPanel.vue` | 右侧 | AI 对话/分析/上下文三 Tab + 洞察呼吸灯指示 |
+| `components/layout/AIPanel.vue` | 右侧 | AI 对话/上下文双 Tab + 多会话切换 + 洞察呼吸灯指示 |
 | `App.vue` | 根 | 布局框架、路由出口、全局 Toast、划词工具栏、底部状态栏 |
 
 ## 三、录音页子组件（views/recording/）
@@ -77,9 +77,10 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | 顶部工具栏（gen-toolbar） | 面包屑导航 + 复制/导出/全屏按钮 + 「更多」下拉菜单（编辑纪要/重新生成/重新转写/归档/删除） |
 | 元信息行（gen-meta） | 时长、说话人数、日期（可点击改日期）、项目绑定芯片（下拉切换项目） |
 | 说话人名单区（speaker-zone） | 各说话人名称 + 发言占比横条，按颜色区分 |
-| Tab 切换栏（gen-tabs） | 原文/纪要/随记/待办四 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
+| Tab 切换栏（gen-tabs） | 原文/随记/纪要/决策四 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
 | 章节导航条（chapter-overview） | 仅原文 Tab 可见：章节圆点导航 + 当前章节索引 + 原文显隐切换按钮 |
 | 划词工具栏（SelectionToolbar） | 浮动选中条：引用到 AI / 改写 / 总结 / 提取待办 |
+| 行间改写输入（InlineEditInput） | 划词改写后弹出的指令输入框（快捷指令 chips + 自定义指令） |
 
 ### 4.2 子组件（views/generating/）
 
@@ -88,14 +89,17 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | `generating/TranscriptPanel.vue` | 原文 Tab | 转写全文 + 章节分隔卡片 + 说话人侧面板 + 聚焦模式 + 播放跟随高亮 |
 | `generating/SummaryPanel.vue` | 纪要 Tab | Markdown 纪要 + 章节回顾卡片 + 行动项入口 + 生成中状态展示 |
 | `generating/NotesPanel.vue` | 随记 Tab | Markdown 编辑器 + 工具栏（加粗/斜体/代码/标题/列表/引用） |
-| `generating/TodosPanel.vue` | 待办 Tab | 待办列表 + 勾选/删除/新增表单 + 定位原文来源 |
+| `generating/DecisionFlowPanel.vue` | 决策 Tab | 决策流面板：点阵图进度可视化 + 文字摘要 + 添加决策按钮 + 已完成沉底分组 |
+| `generating/DecisionNode.vue` | 决策节点 | 单个决策卡片：两行布局（标题 + 元信息）+ 左侧 40px rail 状态圆点 + 展开详情（why/how/outcome）+ 状态菜单 + 负责人轮转 |
 | `generating/GeneratingSpeakerZone.vue` | 说话人区（三态合并） | 只读名单 / 绑定提示 / 绑定完成三态一体，名字+占比条+身份关联横幅 + Teleport 下拉框（搜索/新建/键盘导航） |
 | `generating/OnboardingDialog.vue` | 引导弹窗 | 首次进入时的说话人绑定功能演示动画 |
 | `generating/ArchiveDialog.vue` | 归档弹窗 | 归档确认对话框 |
 | `generating/DeleteDialog.vue` | 删除弹窗 | 删除会议确认对话框（含 ESC 快捷键标识） |
 | `generating/ProjectOnboardingDialog.vue` | 知识库引导弹窗 | 知识库关联功能引导动画弹窗（空知识库 → 文档 + 纪要回写演示） |
 
-## 五、会议纪要页 Composable（composables/）
+## 五、Composable（composables/）
+
+### 5.1 会议纪要页 Composable
 
 GeneratingView 的业务逻辑拆分为以下 composable：
 
@@ -105,8 +109,41 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useSpeakerBinding.ts` | 说话人身份绑定：映射、下拉框、增量保存、确认/跳过 |
 | `composables/useSpeakerPanel.ts` | 右侧面板：搜索、筛选、聚焦模式、上下条导航 |
 | `composables/usePlaybackFollow.ts` | 播放跟随：播放进度 → 原文自动滚动定位 |
-| `composables/useNotesAndTodos.ts` | 随记/待办 CRUD：自动保存、新增/删除/勾选 |
+| `composables/useNotesAndTodos.ts` | 随记/决策 CRUD：自动保存、新增/删除/勾选、决策流状态同步 |
 | `composables/useOnboarding.ts` | 引导弹窗：动画循环、localStorage 持久化 |
+
+### 5.2 全局/跨页 Composable
+
+| 文件 | 职责 |
+|------|------|
+| `composables/useAiChat.ts` | AI 对话逻辑：消息发送、流式响应、历史管理 |
+| `composables/useAiCommandActions.ts` | AI 指令动作执行（引用/改写/总结等） |
+| `composables/useAiCommands.ts` | AI 指令系统：指令定义、按状态过滤、面板状态 |
+| `composables/useAiContext.ts` | AI 上下文数据源（对话/转写/纪要聚合，含原 useAiAnalysis 逻辑） |
+| `composables/useAiGuidance.ts` | AI 引导面板：根据会议状态动态生成上下文引导建议 |
+| `composables/useAiInsights.ts` | AI 洞察引擎：消息管理、未读计数、三类洞察（关联/盲点/共识） |
+| `composables/useAnnouncements.ts` | 公告横幅：拉取/显示/关闭策略、登录状态联动 |
+| `composables/useBlockEditor.ts` | Markdown 块级编辑逻辑（解析/AI 标记/diff） |
+| `composables/useContainerSize.ts` | 容器宽度档位检测（ResizeObserver → 标准化 tier） |
+| `composables/useDivider.ts` | 缝隙拉手拖拽：侧边栏/AI 面板宽度调整 |
+| `composables/useEscClose.ts` | ESC 键关闭弹窗（比模板 @keydown.esc 更可靠） |
+| `composables/useHotwordGroups.ts` | 热词分组管理：分组/词条 CRUD、AI 自动分组、搜索筛选 |
+| `composables/useInlineEdit.ts` | 行间编辑：划词改写 → AI 改写 → diff 展示 → 采纳/拒绝 |
+| `composables/useKeyboardShortcuts.ts` | 全局键盘快捷键（ESC/Cmd+B/Cmd+J/Cmd+K 等） |
+| `composables/usePageBack.ts` | 页面返回：router.back() + ESC 键触发 + 兑底首页 |
+| `composables/usePhilosophy.ts` | 价值主张管理：按页面/Tab 获取理念语录、状态栏文字 |
+| `composables/usePolling.ts` | 轮询封装：定时拉取任务状态 |
+| `composables/usePopMenu.ts` | 弹出菜单统一封装：智能定位/点击外部关闭/滚动跟随 |
+| `composables/usePresenceDetection.ts` | 存在性检测：交互事件 + 页面可见性 → 存在性评分 → 心跳 |
+| `composables/usePrivacyDisclaimer.ts` | 隐私免责声明确认状态（双层留痕：localStorage + 服务端） |
+| `composables/useProjectOnboarding.ts` | 知识库关联引导弹窗：动画与展示控制 |
+| `composables/useQuoteRef.ts` | 划词引用/改写状态管理 |
+| `composables/useRecorder.ts` | 录音控制：API 调用封装（开始/暂停/停止） |
+| `composables/useRecordingNotes.ts` | 录音随记持久化：localStorage + 笔记-转写行自动关联 |
+| `composables/useSpeakerStats.ts` | 说话人统计：从任务列表聚合会议/发言/决策数据 |
+| `composables/useToast.ts` | Toast 通知：全局轻量反馈（warn/success/error/info） |
+| `composables/useTranslation.ts` | 实时翻译：启用/关闭、语言选择、译文映射、WebSocket 通信 |
+| `composables/useWebSocket.ts` | 实时转写 WebSocket：连接/消息接收/说话人信息 |
 
 ## 六、AI 面板子组件（components/layout/ai/）
 
@@ -114,7 +151,7 @@ AIPanel 内部按职责拆分为以下子组件：
 
 | 文件 | 对应区域 | 说明 |
 |------|----------|------|
-| `ai/AiSessionTabs.vue` | Tab 栏 | AI 对话/分析/上下文三 Tab 切换 |
+| `ai/AiSessionTabs.vue` | 会话切换栏 | 多 AI 对话会话切换（分段按钮 + 溢出菜单 + 重命名/删除） |
 | `ai/AiChatPanel.vue` | 对话 Tab | AI 对话交互面板 |
 | `ai/AiContextPanel.vue` | 上下文 Tab | 上下文信息展示与注入 |
 
@@ -123,8 +160,10 @@ AIPanel 内部按职责拆分为以下子组件：
 | 文件 | 使用场景 | 说明 |
 |------|----------|------|
 | `components/task/TaskCard.vue` | 侧边栏、会议库 | 单个任务卡片（状态、标题、时间、操作） |
+| `components/task/TaskContextMenu.vue` | 侧边栏 | 任务右键上下文菜单（复制标题/归档/删除） |
 | `components/task/TaskList.vue` | 侧边栏 | 任务列表（按时间分组） |
 | `components/SelectionToolbar.vue` | 全局浮动 | 划词选中后弹出的操作条（引用到 AI / 改写 / 总结 / 提取待办） |
+| `components/InlineEditInput.vue` | 纪要/随记 Tab | 行间改写指令输入框（快捷指令 chips + 自定义指令输入 + ESC 取消） |
 | `components/MdBlockEditor.vue` | 纪要 Tab、随记 Tab | Markdown 块级编辑器（双击编辑、实时预览） |
 | `components/modals/LoginModal.vue` | 全局弹窗 | 登录/注册弹窗 |
 | `components/common/IconButton.vue` | 全局 | 带 label 的图标按钮（自动处理 title/aria-label/tooltip） |
@@ -145,6 +184,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | `stores/theme.ts` | 主题切换（亮/暗/跟随系统） |
 | `stores/user.ts` | 当前登录用户信息 |
 | `stores/aiSessions.ts` | AI 对话会话列表与活跃会话 |
+| `stores/watermark.ts` | 水印氛围层开关与透明度偏好 |
 
 ## 九、API 层（api/）
 
@@ -159,7 +199,8 @@ AIPanel 内部按职责拆分为以下子组件：
 | `api/projects.ts` | 项目管理 |
 | `api/speakers.ts` | 说话人管理 |
 | `api/hotwords.ts` | 热词管理 |
-| `api/notes.ts` | 随记/待办 |
+| `api/notes.ts` | 随记/决策 |
+| `api/storage.ts` | 存储管理（用量查询/磁盘清理） |
 | `api/settings.ts` | 设置读写 |
 | `api/chat.ts` | AI 对话 |
 | `api/announcements.ts` | 公告/通知 |
@@ -200,14 +241,14 @@ AIPanel 内部按职责拆分为以下子组件：
 |------|--------------|------|
 | `topbar.css` | 顶栏 | 面包屑、全局搜索、主题切换、全屏、用户头像 |
 | `sidebar.css` | 侧边栏 | 导航菜单、时间轴、折叠态、窄屏适配、主动 AI 指示器 |
-| `ai-panel.css` | AI 面板 | AI 对话/分析/上下文三 Tab 整体样式 |
+| `ai-panel.css` | AI 面板 | AI 对话/上下文双 Tab + 多会话切换整体样式 |
 | `ai-canvas.css` | AI 对话画布 | 消息气泡、Markdown 渲染、代码块、内联确认 |
 | `recording-view.css` | 录音视图 | 转写流、实时总结面板、波形动画、确认弹窗、内嵌笔记 |
 | `activity-rail.css` | 导航轨 | 常驻全局导航轨布局、Slack 风格按钮高亮、AI 洞察呼吸光晕与心跳脉冲动画 |
 | `recording.css` | 录音页随记栏 | 全宽随记输入栏 |
 | `speakers.css` | 说话人管理 | 右侧面板、聚焦模式、说话人列表 |
 | `meeting-view.css` | 会议纪要页 | 面包屑、章节导航、说话人名单、Tab 切换、音频播放控制条 |
-| `notes-editor.css` | 随记/纪要编辑 | 逐块 Markdown 编辑、浮动操作条、AI 引用/Diff |
+| `notes-editor.css` | 随记/纪要编辑 + 决策流 | 逐块 Markdown 编辑、浮动操作条、AI 引用/Diff；决策流方案 B 样式（`.db-*`：rail 轨道、点阵图、两行卡片、焦点光晕） |
 | `summary-panel.css` | 纪要面板增强 | 章节回顾卡片、行动项入口 |
 | `hotwords.css` | 热词管理 | 热词组 CRUD、词条编辑、窄屏适配 |
 | `start-page.css` | 首页 | 录音按钮、上传入口、快速启动布局 |
@@ -253,7 +294,8 @@ AIPanel 内部按职责拆分为以下子组件：
 | 会议纪要 — 原文区域 | [TranscriptPanel.vue](../frontend/src/views/generating/TranscriptPanel.vue) |
 | 会议纪要 — 纪要区域 | [SummaryPanel.vue](../frontend/src/views/generating/SummaryPanel.vue) |
 | 会议纪要 — 随记区域 | [NotesPanel.vue](../frontend/src/views/generating/NotesPanel.vue) |
-| 会议纪要 — 待办区域 | [TodosPanel.vue](../frontend/src/views/generating/TodosPanel.vue) |
+| 会议纪要 — 决策流区域 | [DecisionFlowPanel.vue](../frontend/src/views/generating/DecisionFlowPanel.vue) |
+| 会议纪要 — 决策节点卡片 | [DecisionNode.vue](../frontend/src/views/generating/DecisionNode.vue) |
 | 会议纪要 — 说话人区（名单/绑定） | [GeneratingSpeakerZone.vue](../frontend/src/views/generating/GeneratingSpeakerZone.vue) |
 | 会议纪要 — 工具栏/面包屑/Tab 切换 | [GeneratingView.vue](../frontend/src/views/GeneratingView.vue) |
 | 会议纪要 — 业务逻辑（数据/轮询） | [useGeneratingData.ts](../frontend/src/composables/useGeneratingData.ts) |
@@ -262,13 +304,13 @@ AIPanel 内部按职责拆分为以下子组件：
 | **AI 面板** |
 | AI 面板整体 | [AIPanel.vue](../frontend/src/components/layout/AIPanel.vue) |
 | AI 面板 — 对话 Tab | [AiChatPanel.vue](../frontend/src/components/layout/ai/AiChatPanel.vue) |
-| AI 面板 — 分析 Tab | [AiAnalysisPanel.vue](../frontend/src/components/layout/ai/AiAnalysisPanel.vue) |
 | AI 面板 — 上下文 Tab | [AiContextPanel.vue](../frontend/src/components/layout/ai/AiContextPanel.vue) |
 | AI 面板 — Tab 切换 | [AiSessionTabs.vue](../frontend/src/components/layout/ai/AiSessionTabs.vue) |
 | AI 对话逻辑 | [useAiChat.ts](../frontend/src/composables/useAiChat.ts) |
-| AI 分析逻辑 | [useAiAnalysis.ts](../frontend/src/composables/useAiAnalysis.ts) |
-| AI 上下文逻辑 | [useAiContext.ts](../frontend/src/composables/useAiContext.ts) |
-| AI 命令动作 | [useAiCommandActions.ts](../frontend/src/composables/useAiCommandActions.ts) |
+| AI 上下文逻辑（含原分析逻辑） | [useAiContext.ts](../frontend/src/composables/useAiContext.ts) |
+| AI 指令系统 | [useAiCommands.ts](../frontend/src/composables/useAiCommands.ts) |
+| AI 洞察引擎 | [useAiInsights.ts](../frontend/src/composables/useAiInsights.ts) |
+| AI 引导建议 | [useAiGuidance.ts](../frontend/src/composables/useAiGuidance.ts) |
 | **其他页面** |
 | 会议列表页 | [LibraryView.vue](../frontend/src/views/LibraryView.vue) |
 | 项目管理页 | [ProjectsView.vue](../frontend/src/views/ProjectsView.vue) |
@@ -281,6 +323,8 @@ AIPanel 内部按职责拆分为以下子组件：
 | 侧边栏 | [Sidebar.vue](../frontend/src/components/layout/Sidebar.vue) |
 | 登录弹窗 | [LoginModal.vue](../frontend/src/components/modals/LoginModal.vue) |
 | 划词工具栏 | [SelectionToolbar.vue](../frontend/src/components/SelectionToolbar.vue) |
+| 行间改写输入 | [InlineEditInput.vue](../frontend/src/components/InlineEditInput.vue) |
+| 任务右键菜单 | [TaskContextMenu.vue](../frontend/src/components/task/TaskContextMenu.vue) |
 | **样式文件** |
 | 样式入口与导入顺序 | [main.ts](../frontend/src/main.ts) |
 | 主题变量文件 | [styles/themes/](../frontend/src/styles/themes/) |
@@ -292,3 +336,4 @@ AIPanel 内部按职责拆分为以下子组件：
 | 状态管理（Pinia stores） | [stores/](../frontend/src/stores/) |
 | API 请求层 | [api/](../frontend/src/api/) |
 | 国际化配置 | [i18n/index.ts](../frontend/src/i18n/index.ts) |
+| 工具函数 | [utils/](../frontend/src/utils/)（platform / sanitize / search / speakerColors） |

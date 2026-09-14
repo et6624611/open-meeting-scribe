@@ -1,5 +1,6 @@
 {
-  "title": "Speaker Management",
+  "title": "Speakers",
+  "count": "{count} speaker(s)",
   "subtitle": "Manage speaker profiles, track meeting participation and speech records",
   "input_placeholder": "Enter speaker name...",
   "add": "Add",

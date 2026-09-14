@@ -122,6 +122,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
+import { useTaskStore } from '@/stores/task'
 import { useAiChat } from '@/composables/useAiChat'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useAiSessionsStore } from '@/stores/aiSessions'
@@ -143,6 +144,7 @@ import AiContextPanel from './ai/AiContextPanel.vue'
 const { t } = useI18n()
 const route = useRoute()
 const layout = useLayoutStore()
+const taskStore = useTaskStore()
 
 function onToggleDown(e: MouseEvent) {
   beginResize(e, 'right', { onClick: () => layout.toggleAi(), resizable: !layout.aiCollapsed })
@@ -179,15 +181,13 @@ const MEETING_ROUTE_NAMES = ['recording', 'generating']
 const contextLabel = computed(() => {
   const routeName = route.name as string
   if (MEETING_ROUTE_NAMES.includes(routeName) && chat.messages.value) {
-    const taskStore = (window as any).__taskStore
-    if (taskStore?.currentTask) return taskStore.currentTask.title || taskStore.currentTask.audio_name || t('ai-panel.current_meeting')
+    if (taskStore.currentTask) return taskStore.currentTask.title || taskStore.currentTask.audio_name || t('ai-panel.current_meeting')
   }
   return t(`ai-panel.page.${routeName || 'start'}`)
 })
 
 const currentStatus = computed(() => {
-  const taskStore = (window as any).__taskStore
-  return taskStore?.currentTask?.status ?? null
+  return taskStore.currentTask?.status ?? null
 })
 
 const filteredCmds = computed(() => {

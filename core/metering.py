@@ -109,6 +109,14 @@ def record_usage(
     quota = _get_user_quota(user_id)
     remaining = max(0, quota - cumulative)
 
+    # 云端同步：上报用量，以云端返回的剩余配额为准 / Cloud sync: report usage; use cloud's remaining quota if available
+    from core.cloud_client import is_cloud_enabled, report_usage_to_cloud
+    if is_cloud_enabled():
+        cloud_result = report_usage_to_cloud(user_id, service, duration_seconds, task_id)
+        if cloud_result:
+            remaining = cloud_result.get("remaining", remaining)
+            cumulative = cloud_result.get("cumulative", cumulative)
+
     logger.info(
         f"用量记录: user={user_id[:8]}, service={service}, "
         f"+{audio_minutes}min, 月累计={cumulative}min, 剩余={remaining}min"
@@ -202,6 +210,8 @@ def check_quota(user_id: str, estimated_minutes: float = 0) -> dict:
     """
     配额预检 / Quota pre-check. 在任务开始前调用，判断是否有足够配额 / Called before task starts to check if quota is sufficient.
 
+    云端启用时优先查询云端配额，云端不可达则降级到本地 / When cloud is enabled, prefer cloud quota; fall back to local if unreachable.
+
     Args:
         user_id: 用户 ID / User ID
         estimated_minutes: 预估消耗（可选，用于提前预警） / Estimated consumption (optional, for early warning)
@@ -227,6 +237,30 @@ def check_quota(user_id: str, estimated_minutes: float = 0) -> dict:
     if tier not in TIER_QUOTAS:
         return {"allowed": True, "remaining": -1, "quota": -1, "used": 0, "warning": None}
 
+    # 云端优先：从云端查询配额 / Cloud-first: query quota from cloud
+    from core.cloud_client import check_quota_from_cloud, is_cloud_enabled
+    if is_cloud_enabled():
+        cloud_result = check_quota_from_cloud(user_id, estimated_minutes)
+        if cloud_result:
+            used = cloud_result.get("used", 0)
+            quota = cloud_result.get("quota", 0)
+            remaining = cloud_result.get("remaining", 0)
+            pct = remaining / quota if quota > 0 else 0
+            warning = None
+            if pct < 0.1:
+                warning = "critical"
+            elif pct < 0.2:
+                warning = "low"
+            return {
+                "allowed": cloud_result.get("allowed", remaining > estimated_minutes),
+                "remaining": round(remaining, 1),
+                "quota": quota,
+                "used": round(used, 1),
+                "warning": warning,
+            }
+        # 云端不可达 → 降级到本地逻辑 / Cloud unreachable → fall back to local logic
+
+    # 本地计量 / Local metering
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
     used = get_monthly_usage(user_id, month_key)
     quota = TIER_QUOTAS.get(tier, 0)

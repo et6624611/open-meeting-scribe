@@ -3,6 +3,10 @@
   <div class="ai-feed" ref="feedRef">
     <div v-for="(msg, i) in messages" :key="i" class="ai-msg" :class="{ 'is-user': msg.role === 'user' }">
       <div class="ai-bubble" v-html="fmt(msg.content)"></div>
+      <!-- 消息时间戳 / Message timestamp -->
+      <div v-if="msg.timestamp" class="ai-msg-ts">{{ fmtTime(msg.timestamp) }}</div>
+      <!-- 截断警告 / Truncation warning -->
+      <div v-if="msg.role === 'assistant' && msg.metadata?.finish_reason === 'length'" class="ai-trunc-warn">⚠️ 回复因 token 上限被截断，内容可能不完整</div>
       <!-- 插入纪要/随记按钮（仅 assistant 消息） / Insert summary/notes button (assistant messages only) -->
       <div v-if="msg.role === 'assistant' && msg.content" class="ai-msg-actions">
         <IconButton class="ai-insert-btn" :label="t('ai-panel.insert_summary')" show-label @click="$emit('insertToSummary', msg.content)">
@@ -11,6 +15,31 @@
         <IconButton class="ai-insert-btn" :label="t('ai-panel.insert_notes')" show-label @click="$emit('insertToNotes', msg.content)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         </IconButton>
+      </div>
+      <!-- 元数据图标行 / Metadata icon row -->
+      <div v-if="msg.role === 'assistant' && msg.metadata" class="ai-msg-meta">
+        <div class="ai-meta-icons">
+          <button class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'metadata' }" title="模型与 Token" @click="toggleDetail(i, 'metadata')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1h5l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z"/><path d="M9 1v4h4"/></svg></button>
+          <button v-if="msg.sources?.length" class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'sources' }" title="引用来源" @click="toggleDetail(i, 'sources')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2V5a2 2 0 00-2-2H6z"/><path d="M6 8a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2v-1a2 2 0 00-2-2H6z"/></svg></button>
+          <button v-if="msg.performance" class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'perf' }" title="性能指标" @click="toggleDetail(i, 'perf')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 1L4 9h4l-1 6 5-8H9l1-6z"/></svg></button>
+        </div>
+        <!-- 元数据详情面板 / Metadata detail panel -->
+        <div v-if="detailOpen[i] === 'metadata'" class="ai-meta-detail">
+          <div class="ai-meta-row"><span class="ai-meta-label">Model</span><span>{{ msg.metadata.model }}</span></div>
+          <div class="ai-meta-row"><span class="ai-meta-label">Tokens</span><span>{{ msg.metadata.usage.prompt_tokens }} + {{ msg.metadata.usage.completion_tokens }} = {{ msg.metadata.usage.total_tokens }}</span></div>
+          <div class="ai-meta-row"><span class="ai-meta-label">Finish</span><span>{{ msg.metadata.finish_reason }}</span></div>
+          <div class="ai-meta-row"><span class="ai-meta-label">ID</span><span class="ai-meta-id">{{ msg.metadata.id }}</span></div>
+        </div>
+        <!-- 引用来源面板 / Sources panel -->
+        <div v-if="detailOpen[i] === 'sources'" class="ai-meta-detail">
+          <div v-for="(src, si) in msg.sources" :key="si" class="ai-meta-row">📎 {{ src.title || src.name }}</div>
+        </div>
+        <!-- 性能面板 / Performance panel -->
+        <div v-if="detailOpen[i] === 'perf' && msg.performance" class="ai-meta-detail">
+          <div class="ai-meta-row"><span class="ai-meta-label">Latency</span><span>{{ msg.performance.latency_ms }}ms</span></div>
+          <div class="ai-meta-row"><span class="ai-meta-label">Output</span><span>{{ msg.performance.char_count }} chars</span></div>
+          <div class="ai-meta-row"><span class="ai-meta-label">Context</span><span>{{ msg.performance.context_block_count }} blocks, {{ msg.performance.message_count }} messages</span></div>
+        </div>
       </div>
       <!-- 改写 Diff 视图 / Rewrite diff view -->
       <div v-if="rewritePending && i === messages.length - 1 && msg.role === 'assistant'" class="diff-view">
@@ -82,6 +111,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { LlmMetadata, MessagePerformance, SourceFile } from '@/api/chat'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
@@ -91,7 +121,7 @@ import type { AiCommand } from '@/composables/useAiCommands'
 const { t } = useI18n()
 
 defineProps<{
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance }>
   isLoading: boolean
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
@@ -126,7 +156,23 @@ defineEmits<{
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const feedRef = ref<HTMLElement | null>(null)
 
+/** 每条消息展开的详情面板类型 / Expanded detail panel type per message index */
+const detailOpen = ref<Record<number, string | null>>({})
+
 defineExpose({ inputRef, feedRef })
+
+/** 格式化 ISO 时间戳为 HH:MM:SS / Format ISO timestamp to HH:MM:SS */
+function fmtTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch { return '' }
+}
+
+/** 切换消息的详情面板（互斥） / Toggle message detail panel (mutually exclusive) */
+function toggleDetail(idx: number, panel: string) {
+  detailOpen.value[idx] = detailOpen.value[idx] === panel ? null : panel
+}
 
 function fmt(c: string): string {
   const safe = escapeHtml(c)
@@ -139,3 +185,83 @@ function shortText(text: string): string {
 
 
 </script>
+
+<style scoped>
+/* ── 消息时间戳 / Message timestamp ── */
+.ai-msg-ts {
+  font-size: 10px;
+  color: var(--muted, #999);
+  margin: 2px 0 0;
+  opacity: 0.7;
+}
+/* ── 截断警告 / Truncation warning ── */
+.ai-trunc-warn {
+  font-size: 11px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin: 4px 0 0;
+}
+/* ── 元数据图标行 / Metadata icon row ── */
+.ai-msg-meta {
+  margin-top: 4px;
+}
+.ai-meta-icons {
+  display: flex;
+  gap: 4px;
+}
+.ai-meta-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted, #999);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-meta-icon-btn:hover {
+  background: var(--hover-bg, rgba(0,0,0,0.06));
+  color: var(--fg, #333);
+}
+.ai-meta-icon-btn.is-active {
+  background: var(--accent-bg, rgba(59,130,246,0.1));
+  color: var(--accent, #3b82f6);
+}
+.ai-meta-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+/* ── 详情面板 / Detail panel ── */
+.ai-meta-detail {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-secondary, #f8f9fa);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted, #666);
+}
+.ai-meta-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.ai-meta-row + .ai-meta-row {
+  margin-top: 2px;
+}
+.ai-meta-label {
+  color: var(--muted, #999);
+  min-width: 50px;
+  flex-shrink: 0;
+}
+.ai-meta-id {
+  font-family: monospace;
+  font-size: 10px;
+  word-break: break-all;
+}
+</style>

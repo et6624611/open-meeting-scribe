@@ -3,6 +3,23 @@
   <div class="gen-panel spk-layout-active" :class="{ hidden: !visible }">
     <div class="spk-transcript-layout">
       <div class="spk-transcript-area">
+        <!-- 章节导航条（放在 transcript-area 内部，宽度跟随说话人面板展开/折叠） / Chapter overview bar (inside transcript-area, width adapts to speaker panel) -->
+        <div class="chapter-overview" v-if="chapterOverviewVisible" id="chapterOverview">
+          <span class="chapter-overview-label">{{ t('generating.chapter.overview_label') }}</span>
+          <div class="chapter-nav-dots" id="chapterNavDots">
+            <div v-for="(ch, i) in chapters" :key="i" class="chapter-nav-dot" :class="{ 'is-active': activeChapterIdx === i, 'is-done': i < activeChapterIdx }" :data-tip="ch.title" @click="emit('scroll-to-chapter', i)">
+            </div>
+          </div>
+          <div class="chapter-current-info">
+            <span>{{ t('generating.chapter.index_prefix') }}</span>
+            <span class="ch-name">{{ activeChapterIdx + 1 }}</span>
+            <span>{{ t('generating.chapter.index_suffix', { count: chapters.length }) }}</span>
+          </div>
+          <button class="chapter-transcript-toggle" :class="{ 'is-active': allChaptersVisible }" @click="emit('toggle-all-transcript')">
+            <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
         <div class="spk-transcript-scroll" ref="transcriptAreaEl">
         <!-- 章节生成中提示 / Chapter generation in progress hint -->
         <div class="chapter-loading" v-if="taskStatus === 'completed' && !chapters.length">
@@ -300,6 +317,8 @@ const props = defineProps<{
   audioRemainingTimeStr: string
   audioSpeed: number
   audioCurrentTime: number
+  chapterOverviewVisible: boolean
+  allChaptersVisible: boolean
 }>()
 
 const emit = defineEmits<{
@@ -318,6 +337,7 @@ const emit = defineEmits<{
   (e: 'resume-follow'): void
   (e: 'show-all-chapters'): void
   (e: 'scroll-to-chapter', idx: number): void
+  (e: 'toggle-all-transcript'): void
   (e: 'toggle-audio'): void
   (e: 'seek-audio', event: MouseEvent): void
   (e: 'skip-audio', seconds: number): void

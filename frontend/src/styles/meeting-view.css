@@ -33,7 +33,7 @@
 .gen-breadcrumb-current { color: var(--fg); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; cursor: default; padding: 2px 4px; border-radius: 4px; }
 
 /* 控制区：Tab */
-.gen-control-zone { background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; height: 44px; padding: 0 var(--s-5); }
+.gen-control-zone { background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; height: 44px; padding: 0 var(--s-5); }
 
 /* Tab 组（仅占内容宽度） */
 .gen-tabs-group { display: flex; align-items: center; flex-shrink: 0; min-width: 0; }
@@ -160,7 +160,7 @@
 .gs-zone { flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .gs-zone.hidden { display: none; }
 .gs-zone.is-readonly { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); }
-.gs-zone.is-binding { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-4) var(--s-5); background: var(--surface); font-size: var(--fs-13); }
+.gs-zone.is-binding { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-4) var(--s-5); background: var(--bg); font-size: var(--fs-13); }
 .gs-body { flex: 1; min-width: 0; }
 .gs-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 .gs-zone.is-binding .gs-chips { margin-top: var(--s-2); }

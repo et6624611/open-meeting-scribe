@@ -13,6 +13,7 @@ v2.0 重构：业务逻辑已拆分至 core 层子模块，本文件仅保留端
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +37,7 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.llm import async_chat_completion
+from core.llm import async_chat_completion, async_chat_completion_full
 
 # 向后兼容别名（测试与外部引用） / Backward-compatible aliases (for tests and external references)
 _detect_action = detect_action
@@ -52,6 +53,18 @@ router = APIRouter(tags=["chat"])
 
 # 单条用户消息最大长度（字符），防止超长输入耗尽 LLM token / 内存 / Max single user message length (chars); prevent exhausting LLM token/memory
 MAX_CHAT_MESSAGE_LEN = 8000
+
+
+def _format_time_ms(ms: int | float) -> str:
+    """将毫秒时间戳格式化为 HH:MM:SS 或 MM:SS（不足 1 小时省略小时位）。"""
+    if not ms or ms < 0:
+        return ""
+    total_sec = int(ms / 1000)
+    h, rem = divmod(total_sec, 3600)
+    m, s = divmod(rem, 60)
+    if h > 0:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
 
 
 # ============================================================
@@ -71,6 +84,12 @@ class ChatRequest(BaseModel):
 
 class OptimizeRequest(BaseModel):
     text: str
+    model: Optional[str] = None
+
+
+class InlineEditRequest(BaseModel):
+    text: str           # 选中的原文 / Selected original text
+    instruction: str    # 用户指令（如"润色"、"补充预算相关内容"） / User instruction
     model: Optional[str] = None
 
 
@@ -107,6 +126,10 @@ CHAT_SYSTEM_PROMPT = """<role>
 - 主题配色：创建/删除自定义主题
 
 当用户描述命中上述操作时，必须视为操作触发，绝不能回答"暂不支持"。
+
+## 时间戳感知
+- 当对话上下文包含 `[MM:SS]` 或 `[HH:MM:SS]` 格式的时间戳前缀时，表示该句发言发生在录音的对应时刻
+- 用户询问"什么时候说了什么""多少秒时打的电话"等时间定位问题时，必须引用时间戳回答，而非说"未记录时间点"
 </constraints>
 
 <output_format>
@@ -207,6 +230,16 @@ OPTIMIZE_SYSTEM_PROMPT = """你是一位专业的中文文稿润色助手。请�
 - 保留原文的段落结构
 - 如果原文包含代码、公式等专业内容，保持原样"""
 
+INLINE_EDIT_SYSTEM_PROMPT = """你是一位专业的文稿编辑助手。用户会给你一段原文和一条改写指令，你需要按照指令对原文进行改写。
+
+规则：
+- 严格按照用户的指令执行改写，不要超出指令范围
+- 保持原文的语言（中文或英文），除非用户明确要求翻译
+- 保持 Markdown 格式（如标题、列表、加粗等）
+- 只输出改写后的文本，不要添加任何解释、说明或前缀
+- 如果指令不明确，尽量保持原文不变
+- 改写后的文本应当可以直接替换原文，无需额外处理"""
+
 
 # ============================================================
 # AI 对话端点 / AI Chat Endpoints
@@ -291,10 +324,12 @@ async def chat(data: ChatRequest):
             sid = entry.get("speaker_id")
             name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
             text = entry.get("text", "").strip()
+            ts = _format_time_ms(entry.get("begin_time", 0))
             if text:
-                lines.append(f"{name}：{text}")
+                prefix = f"[{ts}] " if ts else ""
+                lines.append(f"{prefix}{name}：{text}")
         if lines:
-            context_blocks.append("## 实时会议对话（最近发言）\n" + "\n".join(lines))
+            context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
 
     # ── 维度 2: 当前会议上下文 ── / ── Dimension 2: Current meeting context ──
     if data.task_id and data.task_id in tasks:
@@ -321,22 +356,59 @@ async def chat(data: ChatRequest):
         is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
         if summary and not is_summary_error:
             context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
-        elif task.get("dialogue") and not realtime_entries:
-            dialogue_lines = []
+        # 带时间戳的对话稿智能采样注入（确保每位说话人至少出现一次）
+        if task.get("dialogue") and not realtime_entries:
+            all_lines = []  # [(begin_time_ms, formatted_line, speaker_name, index)]
+            idx = 0
             for item in task["dialogue"]:
-                name = item.get("speaker_name", f"Speaker {item.get('speaker_id', 0) + 1}")
+                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
                 sents = item.get("sentences") or []
                 for s in sents:
                     text = s.get("text", "").strip()
                     if text:
-                        dialogue_lines.append(f"{name}：{text}")
+                        ts = _format_time_ms(s.get("begin_time", 0))
+                        prefix = f"[{ts}] " if ts else ""
+                        all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
+                        idx += 1
                 if not sents:
                     text = item.get("text", "").strip()
                     if text:
-                        dialogue_lines.append(f"{name}：{text}")
-            dialogue_text = "\n".join(dialogue_lines)
-            if dialogue_text:
-                context_blocks.append(f"## 当前会议对话\n{dialogue_text[:3000]}")
+                        all_lines.append((0, f"{name}：{text}", name, idx))
+                        idx += 1
+
+            if all_lines:
+                all_lines.sort(key=lambda x: x[0])  # 按时间排序
+                # 每位说话人的首条发言（保证全员可见）
+                seen_speakers = set()
+                first_per_speaker = []
+                for ts_ms, line, spk, li in all_lines:
+                    if spk not in seen_speakers:
+                        seen_speakers.add(spk)
+                        first_per_speaker.append((ts_ms, line, li))
+
+                limit = 3000 if (summary and not is_summary_error) else 5000
+                included = set()
+                output_parts = []  # [(begin_time_ms, line)]
+                char_count = 0
+                # 先加入每位说话人的首条
+                for ts_ms, line, li in first_per_speaker:
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                # 再按时间顺序填充剩余空间
+                for ts_ms, line, _spk, li in all_lines:
+                    if li in included:
+                        continue
+                    if char_count + len(line) + 1 > limit:
+                        break
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                # 按时间重新排序
+                output_parts.sort(key=lambda x: x[0])
+                dialogue_text = "\n".join(line for _, line in output_parts)
+                if dialogue_text:
+                    context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
 
         todos = task.get("todos") or []
         if todos:
@@ -362,6 +434,15 @@ async def chat(data: ChatRequest):
         context_text, source_files = projects.get_project_context_for_chat(resolved_project_id, user_message)
         if context_text:
             context_blocks.append(context_text)
+        # 兜底：搜索未命中时 source_files 为空，从索引获取文件清单供前端展示引用来源
+        if not source_files and context_text:
+            from core.project_index import get_project_index
+            index = get_project_index(resolved_project_id)
+            if index:
+                source_files = [
+                    {"title": f.get("title", f.get("name", "")), "path": f.get("relative_path", ""), "name": f.get("name", "")}
+                    for f in index.get("files", [])
+                ]
 
     # ── 维度 5: 页面上下文 ── / ── Dimension 5: Page context ──
     if data.current_page:
@@ -387,12 +468,23 @@ async def chat(data: ChatRequest):
     messages.append({"role": "user", "content": user_message})
 
     try:
-        reply = await async_chat_completion(messages, model=chat_model, max_tokens=2048)
-        reply = audit_reply_claims(reply, edit_changes)
+        llm_start = time.perf_counter()
+        llm_result = await async_chat_completion_full(messages, model=chat_model, max_tokens=2048)
+        llm_latency_ms = round((time.perf_counter() - llm_start) * 1000)
+        reply = audit_reply_claims(llm_result.content, edit_changes)
         existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
         extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_todos)
         return {
             "reply": reply,
+            "metadata": {
+                "model": llm_result.model,
+                "usage": llm_result.usage,
+                "finish_reason": llm_result.finish_reason,
+                "id": llm_result.id,
+            },
+            "latency_ms": llm_latency_ms,
+            "context_block_count": len(context_blocks),
+            "message_count": len(messages),
             "sources": source_files,
             "extracted_items": extracted_items,
             "verified_changes": edit_changes,
@@ -428,6 +520,32 @@ async def optimize_text(data: OptimizeRequest):
     except Exception as e:
         logger.error("文稿优化失败: %s", e)
         raise HTTPException(500, _("Text refinement failed: {err}").format(err=e))
+
+
+# ============================================================
+# 行间编辑端点 / Inline Edit Endpoint
+# ============================================================
+
+@router.post("/api/inline-edit")
+async def inline_edit(data: InlineEditRequest):
+    """行间编辑端点。根据用户指令对选中文本进行 AI 改写。 / Inline edit endpoint. Rewrite selected text based on user instruction."""
+    text = data.text.strip()
+    instruction = data.instruction.strip()
+    if not text:
+        raise HTTPException(400, _("Text cannot be empty"))
+    if not instruction:
+        raise HTTPException(400, _("Instruction cannot be empty"))
+    model = data.model or "qwen-plus"
+    messages = [
+        {"role": "system", "content": INLINE_EDIT_SYSTEM_PROMPT},
+        {"role": "user", "content": f"改写指令：{instruction}\n\n原文：\n{text}"},
+    ]
+    try:
+        edited = await async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
+        return {"ok": True, "original": text, "edited": edited.strip()}
+    except Exception as e:
+        logger.error("行间编辑失败: %s", e)
+        raise HTTPException(500, _("Inline edit failed: {err}").format(err=e))
 
 
 # ============================================================

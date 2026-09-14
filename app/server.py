@@ -87,6 +87,7 @@ audit_logger.propagate = False  # 不重复写入 server.log / Don't duplicate t
 from app.routers import (
     auth,
     chat,
+    cloud_api,
     config,
     hotwords,
     insights,
@@ -171,6 +172,7 @@ _REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
 _AUTH_EXEMPT_PREFIXES = (
     "/auth/",
     "/api/admin/",
+    "/api/cloud/",
     "/api/config/",
     "/api/models",
 )
@@ -281,6 +283,7 @@ app.include_router(usage.router)
 app.include_router(config.router)
 app.include_router(update.router)
 app.include_router(insights.router)
+app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
 
 # ============================================================

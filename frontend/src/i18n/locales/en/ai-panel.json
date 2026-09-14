@@ -10,8 +10,8 @@
     "start": "Home",
     "recording": "Recording",
     "generating": "Meeting Notes",
-    "speakers": "Speaker Management",
-    "hotwords": "Hotwords Management",
+    "speakers": "Speakers",
+    "hotwords": "Hotwords",
     "settings": "Settings",
     "projects": "Knowledge Base",
     "library": "Meeting Library"

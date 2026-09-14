@@ -1,1 +1,0 @@
-import{o as r,c as u,D as c}from"./index-CIHDYhUw.js";function a(){const n=c();function o(){var e,s;(s=(e=document.activeElement)==null?void 0:e.blur)==null||s.call(e),window.history.length>1?n.back():n.push("/")}const t=e=>{e.key==="Escape"&&o()};return r(()=>window.addEventListener("keydown",t)),u(()=>window.removeEventListener("keydown",t)),{goBack:o}}export{a as u};

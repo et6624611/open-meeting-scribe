@@ -2,7 +2,18 @@
  * 笔记 + 待办 API 封装 / Notes + todos API wrapper
  */
 import client from './client'
-import type { TodoItem } from './types'
+import type { TodoItem, DecisionStatus, OwnerType } from './types'
+
+/** 待办/决策节点可更新字段 / Patchable fields for a todo / decision node */
+export interface TodoPatch {
+  text?: string
+  assignee?: string
+  why?: string
+  how?: string[]
+  outcome?: string
+  status?: DecisionStatus
+  owner_type?: OwnerType
+}
 
 /** 获取笔记 / Fetch notes */
 export async function fetchNotes(taskId: string): Promise<string> {
@@ -46,11 +57,11 @@ export async function deleteTodo(taskId: string, todoId: string): Promise<void> 
   await client.delete(`/api/tasks/${taskId}/todos/${todoId}`)
 }
 
-/** 编辑待办 / Update todo */
+/** 编辑待办/决策节点 / Update todo / decision node */
 export async function updateTodo(
   taskId: string,
   todoId: string,
-  patch: { text?: string; assignee?: string },
+  patch: TodoPatch,
 ): Promise<void> {
   await client.put(`/api/tasks/${taskId}/todos/${todoId}`, patch)
 }

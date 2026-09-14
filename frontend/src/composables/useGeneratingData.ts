@@ -134,6 +134,7 @@ export function useGeneratingData(
   function switchTab(tabId: string) {
     activeTab.value = tabId
     localStorage.setItem('oms_gen_active_tab', tabId)
+    ;(window as any).__omsUpdatePhilosophy?.(tabId)
   }
 
   function dotClass(tabId: string): string {

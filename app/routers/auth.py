@@ -306,6 +306,12 @@ def sms_verify(req: SmsVerifyRequest):
     # 创建/查找用户 / Create/find user
     user = find_or_create_sms_user(phone)
 
+    # 云端同步：将用户同步到云端服务器 / Cloud sync: sync user to cloud server
+    from core.cloud_client import sync_user_to_cloud
+    cloud_info = sync_user_to_cloud(user["id"], phone, user["name"])
+    if cloud_info:
+        logger.info(f"用户已同步到云端: {phone[:3]}****{phone[-4:]}")
+
     # 签发 JWT / Issue JWT
     jwt_token = create_jwt(
         user_id=user["id"],

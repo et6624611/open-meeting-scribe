@@ -461,7 +461,10 @@ watch(() => wsLines.value.length, () => {
 watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n })
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
-watch(recTab, (tab) => localStorage.setItem('oms_rec_active_tab', tab))
+watch(recTab, (tab) => {
+  localStorage.setItem('oms_rec_active_tab', tab)
+  ;(window as any).__omsUpdatePhilosophy?.(tab)
+})
 watch(noteText, () => { nextTick(() => { const el = notesBarRef.value?.textareaRef; if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' }) })
 
 // ── 生命周期 / Lifecycle ──

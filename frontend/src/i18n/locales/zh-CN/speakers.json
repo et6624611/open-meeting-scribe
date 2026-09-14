@@ -1,5 +1,6 @@
 {
-  "title": "说话人管理",
+  "title": "说话人",
+  "count": "{count} 位说话人",
   "subtitle": "管理说话人身份档案，追溯会议参与与发言记录",
   "input_placeholder": "输入说话人名称…",
   "add": "添加",

@@ -47,12 +47,24 @@ export interface FlatTranscriptLine {
   sentence_id: number
 }
 
+// 决策流状态:待决策 → 待启动 → 进行中 → 待确认 → 已完成 / Decision flow status
+export type DecisionStatus = 'to_decide' | 'to_start' | 'in_progress' | 'to_confirm' | 'done'
+// 等待谁推进(展示用标签) / Who is driving (display-only label)
+export type OwnerType = 'self' | 'agent' | 'colleague' | 'enterprise'
+
 export interface TodoItem {
   id: string
-  text: string
-  done: boolean
+  text: string          // 决策/事项标题(沿用旧字段) / Decision title (legacy field)
+  done: boolean         // 兼容字段:等价于 status === 'done' / Compat: equals status === 'done'
   assignee?: string
   source?: 'ai' | 'manual'
+  deadline?: string
+  // ── 决策链新增(全部可选,人工编辑) / Decision-chain fields (optional, human-edited) ──
+  why?: string          // 为什么做这个决定 / Why this decision
+  how?: string[]        // 如何完成:执行步骤,缺省视为 [text] / How: steps, defaults to [text]
+  outcome?: string      // 完成后带来什么 / What it brings
+  status?: DecisionStatus  // 缺省时由 done 推导 / Derived from done when absent
+  owner_type?: OwnerType   // 等待谁推进(展示用) / Who drives (display-only)
 }
 
 export interface Task {

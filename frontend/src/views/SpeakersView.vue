@@ -1,16 +1,13 @@
 <template>
-  <div>
-    <button class="page-back-btn" @click="goBack">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-      <span>{{ t('common.action.back') }}</span>
-      <kbd>ESC</kbd>
-    </button>
+  <div class="spk-page">
     <!-- 列表视图 / List view -->
     <Transition name="fade" mode="out-in">
     <div v-if="!selectedSpeaker" key="list">
       <div class="main-head">
-        <h1>{{ t('speakers.title') }}</h1>
-        <p class="sub">{{ t('speakers.subtitle') }}</p>
+        <div class="title-row">
+          <h1>{{ t('speakers.title') }}</h1>
+          <span class="page-count">{{ t('speakers.count', { count: speakers.length }) }}</span>
+        </div>
       </div>
       <div class="spk-create">
         <input ref="createInputRef" v-model="newName" class="spk-create-input" :placeholder="t('speakers.input_placeholder')" @keyup.enter="onCreate" />
@@ -225,11 +222,9 @@ import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
 import { useUserStore } from '@/stores/user'
 import { useEscClose } from '@/composables/useEscClose'
-import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
 const router = useRouter()
-const { goBack } = usePageBack()
 const userStore = useUserStore()
 const speakers = ref<Speaker[]>([])
 const newName = ref('')
@@ -280,6 +275,11 @@ watch(
     }
   },
 )
+
+// Tab 切换时刷新底部理念 / Refresh footer philosophy on tab switch
+watch(activeTab, (tab) => {
+  ;(window as any).__omsUpdatePhilosophy?.(tab)
+})
 
 async function load() {
   loading.value = true
@@ -497,12 +497,13 @@ onMounted(load)
 </script>
 
 <style scoped>
+.spk-page { padding: var(--s-5) var(--s-5) var(--s-6); }
 .spk-create { display: flex; gap: var(--s-2); margin-bottom: var(--s-4); }
-.spk-create-input { flex: 1; max-width: 400px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
-.spk-create-input:focus { border-color: var(--accent); }
-.spk-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.spk-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); background: var(--surface); cursor: pointer; transition: background 0.12s; }
-.spk-item:hover { background: var(--surface-2); }
+.spk-create-input { flex: 1; max-width: 400px; padding: var(--s-2) var(--s-3); border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--fg); font-size: 14px; outline: none; transition: border-color 0.15s; }
+.spk-create-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
+.spk-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); overflow: hidden; }
+.spk-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); background: transparent; cursor: pointer; transition: background 0.12s; }
+.spk-item:hover { background: color-mix(in oklch, var(--surface) 50%, transparent); }
 .spk-item:hover .spk-actions { opacity: 1; }
 .spk-item.is-new { animation: spk-highlight 1.5s ease-out; }
 @keyframes spk-highlight {
@@ -519,16 +520,16 @@ onMounted(load)
 .spk-meta-row { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; }
 .spk-meta { font-size: 12px; color: var(--muted); }
 .spk-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 0.12s; }
-.spk-action-btn { padding: 4px 10px; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.12s; }
-.spk-action-btn:hover { color: var(--fg); border-color: var(--fg); }
-.spk-action-btn.danger:hover { color: var(--rec); border-color: var(--rec); }
+.spk-action-btn { padding: 4px 10px; font-size: 12px; color: var(--muted); background: transparent; border: none; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
+.spk-action-btn:hover { color: var(--fg); background: var(--surface-2); }
+.spk-action-btn.danger:hover { color: var(--rec); background: oklch(95% 0.04 25); }
 .empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .empty-hint { font-size: 12px; color: var(--subtle); }
 .spk-set-me-hint { font-size: 12px; color: var(--subtle); margin-top: var(--s-3); text-align: center; }
 .spk-search { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-4); position: relative; }
 .spk-search svg { position: absolute; left: 10px; color: var(--subtle); pointer-events: none; }
-.spk-search-input { width: 100%; max-width: 400px; padding: 6px 10px 6px 30px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; outline: none; background: var(--surface); color: var(--fg); }
-.spk-search-input:focus { border-color: var(--accent); }
+.spk-search-input { width: 100%; max-width: 400px; padding: 6px 10px 6px 30px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: 13px; outline: none; background: transparent; color: var(--fg); transition: border-color 0.15s; }
+.spk-search-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
 .spk-search-input::placeholder { color: var(--subtle); }
 .spk-loading { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-6); color: var(--muted); font-size: 13px; justify-content: center; }
 .spk-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spk-spin 0.8s linear infinite; }
@@ -551,18 +552,16 @@ onMounted(load)
 
 /* 统计卡片 / Stat cards */
 .spk-stat-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); margin-bottom: var(--s-6); }
-.spk-stat-card { padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); text-align: center; }
+.spk-stat-card { padding: var(--s-4); background: color-mix(in oklch, var(--surface) 70%, transparent); backdrop-filter: var(--glass-blur-lg); -webkit-backdrop-filter: var(--glass-blur-lg); text-align: center; }
 .spk-stat-card .label { font-size: 12px; color: var(--muted); margin-bottom: var(--s-1); }
 .spk-stat-card .value { font-size: 24px; font-weight: 600; font-family: var(--font-mono); }
 .spk-stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 /* 声纹管理样式 / Voiceprint management styles */
-.spk-voiceprint-section { 
-  margin-bottom: var(--s-6); 
-  padding: var(--s-4); 
-  border: 1px solid var(--border); 
-  border-radius: var(--radius); 
-  background: var(--surface); 
+.spk-voiceprint-section {
+  margin-bottom: var(--s-6);
+  padding: var(--s-4);
+  background: transparent;
 }
 .vp-header { 
   display: flex; 

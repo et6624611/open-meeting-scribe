@@ -1,5 +1,6 @@
 {
-  "title": "文档知识库",
+  "title": "知识库",
+  "count": "{count} 个知识库",
   "subtitle": "关联包含文档（.md / .txt / .docx / .pdf）的本地文件夹，让 AI 基于你的资料理解会议",
   "input_placeholder": "输入知识库名称…",
   "create": "新建知识库",

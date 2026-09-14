@@ -1,5 +1,6 @@
 {
-  "title": "热词管理",
+  "title": "热词",
+  "count": "{count} 个词条",
   "subtitle": "管理识别词汇与纠错映射，按区块分组组织",
   "groups": "区块",
   "search_groups": "搜索区块…",

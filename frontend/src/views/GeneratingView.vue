@@ -153,24 +153,6 @@
       </div>
     </div>
 
-    <!-- 章节导航条（提升到 gen-content 外层，紧贴 control-zone 下方，消除缝隙） / Chapter overview bar (lifted outside gen-content, flush below control-zone) -->
-    <div class="chapter-overview" v-if="chapters.length > 0 && activeTab === 'transcript'" id="chapterOverview">
-      <span class="chapter-overview-label">{{ t('generating.chapter.overview_label') }}</span>
-      <div class="chapter-nav-dots" id="chapterNavDots">
-        <div v-for="(ch, i) in chapters" :key="i" class="chapter-nav-dot" :class="{ 'is-active': activeChapterIdx === i, 'is-done': i < activeChapterIdx }" :data-tip="ch.title" @click="scrollToChapter(i)">
-        </div>
-      </div>
-      <div class="chapter-current-info">
-        <span>{{ t('generating.chapter.index_prefix') }}</span>
-        <span class="ch-name">{{ activeChapterIdx + 1 }}</span>
-        <span>{{ t('generating.chapter.index_suffix', { count: chapters.length }) }}</span>
-      </div>
-      <button class="chapter-transcript-toggle" :class="{ 'is-active': allChaptersVisible }" @click="toggleAllTranscript">
-        <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-      </button>
-    </div>
-
     <!-- 内容区（子组件） / Content area (sub-components) -->
     <div class="gen-content">
       <TranscriptPanel
@@ -208,6 +190,8 @@
         :audio-remaining-time-str="player.remainingTimeStr"
         :audio-speed="player.speed"
         :audio-current-time="player.currentTime"
+        :chapter-overview-visible="chapters.length > 0 && activeTab === 'transcript'"
+        :all-chapters-visible="allChaptersVisible"
         @toggle-audio="toggleAudio"
         @seek-audio="seekAudio"
         @skip-audio="(s) => player.skip(s)"
@@ -225,6 +209,8 @@
         @search-blur="onSearchBlur"
         @resume-follow="resumeFollowPlayback"
         @show-all-chapters="showAllChapters"
+        @scroll-to-chapter="scrollToChapter"
+        @toggle-all-transcript="toggleAllTranscript"
       />
 
       <SummaryPanel
@@ -238,9 +224,14 @@
         :has-summary="!!task?.summary"
         :todos-count="todos.length"
         :todos-done-count="todos.filter(x => x.done).length"
+        :inline-diff-block-index="inlineEdit.diffBlockIndex.value"
+        :inline-diff-original="inlineEdit.originalText.value"
+        :inline-diff-edited="inlineEdit.editedText.value"
         @change="onSummaryChange"
         @toggle-chapter="toggleSummaryChapter"
         @switch-tab="switchTab"
+        @accept-diff="inlineEdit.acceptEdit"
+        @reject-diff="inlineEdit.rejectEdit"
       />
 
       <NotesPanel
@@ -248,10 +239,15 @@
         :visible="activeTab === 'notes'"
         :markdown="notesContent"
         :notes-saved="notesSaved"
+        :inline-diff-block-index="inlineEdit.diffBlockIndex.value"
+        :inline-diff-original="inlineEdit.originalText.value"
+        :inline-diff-edited="inlineEdit.editedText.value"
         @change="onNotesChange"
+        @accept-diff="inlineEdit.acceptEdit"
+        @reject-diff="inlineEdit.rejectEdit"
       />
 
-      <TodosPanel
+      <DecisionFlowPanel
         :visible="activeTab === 'todos'"
         :todos="todos"
         :show-add-form="showAddForm"
@@ -260,6 +256,8 @@
         @toggle="onToggleTodo"
         @delete="onDeleteTodo"
         @locate="locateTodoSource"
+        @update="onEditTodo"
+        @status-change="onStatusChange"
         @toggle-form="showAddForm = !showAddForm"
         @add="onAddTodo"
       />
@@ -268,6 +266,15 @@
     <SelectionToolbar
       container-selector=".gen-content"
       @action="onSelectionAction"
+      @inline-edit="onInlineEditRequest"
+    />
+    <!-- 行间编辑浮动输入框 / Inline edit floating input -->
+    <InlineEditInput
+      :visible="inlineEdit.showInput.value"
+      :loading="inlineEdit.isLoading.value"
+      :anchor-rect="inlineEdit.anchorRect.value"
+      @submit="onInlineEditSubmit"
+      @cancel="inlineEdit.cancelEdit"
     />
 
     <!-- 说话人绑定引导弹窗（子组件） / Speaker binding onboarding dialog (sub-component) -->
@@ -306,10 +313,11 @@ import { useTaskStore } from '@/stores/task'
 import { deleteTask, retranscribe, retrySummary } from '@/api/tasks'
 import { usePopMenu } from '@/composables/usePopMenu'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
+import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
 import SummaryPanel from './generating/SummaryPanel.vue'
 import NotesPanel from './generating/NotesPanel.vue'
-import TodosPanel from './generating/TodosPanel.vue'
+import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
 import OnboardingDialog from './generating/OnboardingDialog.vue'
 import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
@@ -322,6 +330,7 @@ import { usePlaybackFollow } from '@/composables/usePlaybackFollow'
 import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useProjectOnboarding } from '@/composables/useProjectOnboarding'
+import { useInlineEdit } from '@/composables/useInlineEdit'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -358,6 +367,7 @@ const notes = useNotesAndTodos(
 
 const onboarding = useOnboarding()
 const projOnboarding = useProjectOnboarding()
+const inlineEdit = useInlineEdit()
 
 // ─── 解构到模板作用域 / Destructure to template scope ───
 const {
@@ -384,7 +394,7 @@ const {
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
   showAddForm, newTodoText, newTodoAssignee,
-  onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo,
+  onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange,
 } = notes
 const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
 const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
@@ -442,8 +452,23 @@ function onLocateSpeaker(speakerId: number) {
   })
 }
 
-function onSelectionAction(action: string, text: string, source: string, blockIndex: number) {
+/** 转写原文面板 DOM 文本替换 / DOM text replacement in transcript panel */
+function replaceInTranscriptDom(oldText: string, newText: string) {
+  const listEl = transcriptPanelRef.value?.transcriptListEl
+  if (!listEl) return
+  const txtEls = listEl.querySelectorAll('.ts-line-body .txt')
+  for (const el of txtEls) {
+    const node = el.childNodes[0] as Text | undefined
+    if (node && node.nodeType === 3 && node.textContent?.includes(oldText)) {
+      node.textContent = node.textContent.replace(oldText, newText)
+      return
+    }
+  }
+}
+
+function onSelectionAction(action: string, text: string, source: string, blockIndex: number, replacement?: string) {
   if (action === 'rewrite') {
+    // 旧改写流程保留作为 fallback / Old rewrite flow kept as fallback
     data.startRewrite(text, source, blockIndex); data.setQuote(text, source, blockIndex)
     window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.rewrite') } }))
   } else if (action === 'summarize') {
@@ -452,7 +477,36 @@ function onSelectionAction(action: string, text: string, source: string, blockIn
   } else if (action === 'extract-todo') {
     data.setQuote(text, source, blockIndex)
     window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.extract_todo') } }))
+  } else if (action === 'correct' && replacement) {
+    if (blockIndex >= 0) {
+      // 纪要/随记面板：通过 MdBlockEditor 替换 / Summary/Notes: replace via MdBlockEditor
+      if (summaryPanelRef.value) {
+        summaryPanelRef.value.replaceTextInBlock(blockIndex, text, replacement)
+      }
+      if (notesPanelRef.value) {
+        notesPanelRef.value.replaceTextInBlock(blockIndex, text, replacement)
+      }
+    } else {
+      // 转写原文面板：直接 DOM 替换 / Transcript panel: direct DOM replacement
+      replaceInTranscriptDom(text, replacement)
+    }
   }
+}
+
+// ─── 行间编辑 / Inline edit ───
+function onInlineEditRequest(text: string, source: string, blockIndex: number) {
+  // 获取选区位置用于定位浮动输入框 / Get selection rect for positioning floating input
+  const sel = window.getSelection()
+  let rect: { top: number; left: number } | undefined
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0).getBoundingClientRect()
+    rect = { top: r.top, left: r.left + r.width / 2 }
+  }
+  inlineEdit.startInlineEdit(text, source, blockIndex, rect)
+}
+
+async function onInlineEditSubmit(instruction: string) {
+  await inlineEdit.submitInstruction(instruction)
 }
 
 function locateTodoSource(_todo: any) { switchTab('transcript') }
@@ -485,6 +539,16 @@ const speakerNames = computed(() => {
 
 // ─── 生命周期 / Lifecycle ───
 onMounted(async () => {
+  // 行间编辑块更新回调 / Inline edit block updater
+  inlineEdit.registerBlockUpdater((blockIndex: number, newSource: string) => {
+    const src = inlineEdit.source.value || '纪要'
+    if (src === '随记' && notesPanelRef.value) {
+      notesPanelRef.value.updateBlock(blockIndex, newSource)
+    } else if (summaryPanelRef.value) {
+      summaryPanelRef.value.updateBlock(blockIndex, newSource)
+    }
+  })
+
   // 任务数据可能尚未加载（刷新页面时 store 为空），用 watch 等待任务就绪后初始化绑定映射 / Task data may not be loaded yet (store empty on page refresh), use watch to init binding mapping when ready
   const stopWatch = watch(() => data.task.value, (t) => {
     if (t) { binding.initBindingMapping(); stopWatch() }
