@@ -1,0 +1,76 @@
+# 密钥（严禁入库）
+.env
+
+# 运行时数据
+data/output/
+data/uploads/
+data/recordings/
+data/tasks/
+data/projects.json
+data/project_index/
+data/speakers.json
+data/users.json
+data/meeting_mappings.json
+data/hotword_mappings.txt
+data/voiceprint_registry.json
+data/settings.json
+data/philosophies.json
+data/hotwords.txt
+data/usage/
+data/remote_config.json
+data/*.wav
+data/*.mp3
+data/*.m4a
+data/*.raw
+
+# 测试音频（大文件，不入库；需要共享请走 LFS 或外部存储）
+samples/*.mp3
+samples/*.wav
+samples/*.m4a
+samples/*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地模型缓存（v1 纯云，理论上不产生）
+*.onnx
+models/
+
+# 日志
+logs/
+
+# macOS
+.DS_Store
+
+# 截图（调试/测试用，不入库）
+/*.png
+/docs/screenshots/
+.cu_shots/
+browser/
+
+# 前端构建产物（npm run build 生成，由 FastAPI 托管）
+frontend/node_modules/
+frontend/dist/
+
+# PyInstaller 打包产物（build/ 存放 spec 与 launcher 源文件，不忽略）
+dist/
+build_venv/
+*.zip
+
+# AI 生成的文档索引（可随时重建，不入库）
+.qoder/
+
+# SSH 自动化脚本（私人运维工具）
+scripts/_ssh_*.exp
+
+# AI 协作文档（内部使用，不对外）
+AGENTS.md
+CODEX.md

@@ -1,0 +1,195 @@
+/**
+ * AI 多会话管理 store / AI multi-session management store
+ *
+ * 按 taskId 分桶存储会话，每个桶内支持多会话 CRUD。 / Bucket storage by taskId; each bucket supports multi-session CRUD.
+ * localStorage 持久化，兼容旧版单数组格式迁移。 / localStorage persistence; compatible with legacy single-array format migration.
+ */
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import type { ChatMessage } from '@/api/chat'
+
+const STORAGE_KEY = 'oms_ai_chat'
+const DEFAULT_KEY = '__default__'
+const MAX_PERSIST_MESSAGES = 20
+
+export interface AiSession {
+  id: string
+  name: string
+  createdAt: number
+  messages: ChatMessage[]
+}
+
+interface SessionBucket {
+  sessions: AiSession[]
+  activeSessionId: string
+}
+
+interface PersistedData {
+  historyMap: Record<string, SessionBucket>
+  activeKey: string
+  projectId: string | null
+  ts: number
+}
+
+function createSession(index: number): AiSession {
+  return {
+    id: `sess_${Date.now()}_${index}`,
+    name: `对话 ${index}`,
+    createdAt: Date.now(),
+    messages: [],
+  }
+}
+
+function migrateLegacy(data: Record<string, unknown>): Record<string, SessionBucket> {
+  const result: Record<string, SessionBucket> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object' && 'sessions' in value) {
+      result[key] = value as SessionBucket
+    } else if (Array.isArray(value)) {
+      const session = createSession(1)
+      session.messages = value as ChatMessage[]
+      result[key] = { sessions: [session], activeSessionId: session.id }
+    }
+  }
+  return result
+}
+
+export const useAiSessionsStore = defineStore('aiSessions', () => {
+  const historyMap = ref<Record<string, SessionBucket>>({})
+  const activeKey = ref(DEFAULT_KEY)
+
+  const currentBucket = computed(() => {
+    const key = activeKey.value
+    if (!historyMap.value[key]) {
+      const session = createSession(1)
+      historyMap.value[key] = { sessions: [session], activeSessionId: session.id }
+    }
+    return historyMap.value[key]
+  })
+
+  const activeSession = computed(() => {
+    const bucket = currentBucket.value
+    return bucket.sessions.find(s => s.id === bucket.activeSessionId) || bucket.sessions[0]
+  })
+
+  const activeMessages = computed({
+    get: () => activeSession.value?.messages ?? [],
+    set: (val: ChatMessage[]) => {
+      const session = activeSession.value
+      if (session) session.messages = val
+    },
+  })
+
+  const sessions = computed(() => currentBucket.value.sessions)
+
+  function setChatKey(taskId: string | null) {
+    activeKey.value = taskId || DEFAULT_KEY
+    if (!historyMap.value[activeKey.value]) {
+      const session = createSession(1)
+      historyMap.value[activeKey.value] = { sessions: [session], activeSessionId: session.id }
+    }
+  }
+
+  function createNewSession(): AiSession {
+    const bucket = currentBucket.value
+    const idx = bucket.sessions.length + 1
+    const session = createSession(idx)
+    bucket.sessions.push(session)
+    bucket.activeSessionId = session.id
+    persist()
+    return session
+  }
+
+  function switchTo(sessionId: string) {
+    const bucket = currentBucket.value
+    if (!bucket.sessions.find(s => s.id === sessionId)) return
+    bucket.activeSessionId = sessionId
+    persist()
+  }
+
+  function deleteSession(sessionId: string) {
+    const bucket = currentBucket.value
+    if (bucket.sessions.length <= 1) {
+      bucket.sessions[0].messages = []
+      persist()
+      return
+    }
+    const idx = bucket.sessions.findIndex(s => s.id === sessionId)
+    if (idx < 0) return
+    bucket.sessions.splice(idx, 1)
+    if (bucket.activeSessionId === sessionId) {
+      bucket.activeSessionId = bucket.sessions[Math.max(0, idx - 1)].id
+    }
+    persist()
+  }
+
+  function renameSession(sessionId: string, name: string) {
+    const bucket = currentBucket.value
+    const session = bucket.sessions.find(s => s.id === sessionId)
+    if (!session) return
+    const trimmed = name.trim()
+    if (trimmed) {
+      session.name = trimmed
+      persist()
+    }
+  }
+
+  function persist() {
+    try {
+      const trimmed: Record<string, SessionBucket> = {}
+      for (const [key, data] of Object.entries(historyMap.value)) {
+        if (data?.sessions) {
+          trimmed[key] = {
+            sessions: data.sessions.map(s => ({
+              ...s,
+              messages: s.messages.slice(-MAX_PERSIST_MESSAGES),
+            })),
+            activeSessionId: data.activeSessionId,
+          }
+        }
+      }
+      const payload: PersistedData = {
+        historyMap: trimmed,
+        activeKey: activeKey.value,
+        projectId: null,
+        ts: Date.now(),
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      // quota exceeded → 静默 / quota exceeded → silent
+    }
+  }
+
+  function restore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return
+      const data: PersistedData = JSON.parse(raw)
+      if (data.historyMap) {
+        historyMap.value = migrateLegacy(data.historyMap)
+      }
+      if (data.activeKey) {
+        activeKey.value = data.activeKey
+      }
+    } catch {
+      // corrupt data → 忽略 / corrupt data → ignore
+    }
+  }
+
+  function clearCurrentSession() {
+    const session = activeSession.value
+    if (session) {
+      session.messages = []
+      persist()
+    }
+  }
+
+  restore()
+
+  return {
+    activeKey, historyMap,
+    sessions, activeSession, activeMessages, currentBucket,
+    setChatKey, createNewSession, switchTo, deleteSession, renameSession,
+    persist, restore, clearCurrentSession,
+  }
+})

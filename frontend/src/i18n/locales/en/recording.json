@@ -1,0 +1,118 @@
+{
+  "title": "Recording & Minutes",
+  "status": {
+    "identifying": "Identifying...",
+    "paused": "Paused"
+  },
+  "speaker": {
+    "count": "{count} speaker(s)",
+    "count_title": "Currently identified speakers",
+    "bind_title": "Bind Speaker Identity",
+    "search_placeholder": "Search speakers...",
+    "no_match": "No matching results",
+    "create_and_bind": "Create \"{name}\" and bind",
+    "locate": "Locate this speaker",
+    "me_suffix": " (Me)",
+    "default_name": "Speaker {id}"
+  },
+  "tab": {
+    "transcript": "Transcript",
+    "insights": "AI Insights"
+  },
+  "transcript": {
+    "show": "Show Transcript",
+    "hide": "Hide Transcript",
+    "show_title": "Show transcript",
+    "hide_title": "Hide transcript, keep only chapters and key points",
+    "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
+    "empty": "Waiting for recognition results...",
+    "empty_hint": "Start speaking and the recognized content will appear here in real time",
+    "connect_failed": "Transcription connection lost",
+    "reconnecting": "Reconnecting... (attempt {attempt})",
+    "retry": "Reconnect"
+  },
+  "chapter": {
+    "discussing": "In Discussion",
+    "key_points": "Key Points",
+    "key_points_count": "{count} key point(s)"
+  },
+  "marker": {
+    "label": "Mark",
+    "title": "Marker mode — collapse unmarked conversations",
+    "compressed": "{count} unmarked conversation(s) compressed",
+    "expand_all": "Expand All"
+  },
+  "notes": {
+    "placeholder": "Take notes... Enter to send, Shift+Enter for new line",
+    "send": "Send note",
+    "delete": "Delete note"
+  },
+  "insights": {
+    "title": "AI Insights",
+    "empty": "AI will analyze the conversation in real time and provide insights during the meeting",
+    "empty_hint": "Including context association, blind spot revelation, consensus extraction, and more",
+    "enabled": "Insights enabled",
+    "disabled": "Insights disabled",
+    "settings": "Insights Settings",
+    "unread_count": "{count} unread insight(s)"
+  },
+  "control": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "pause_title": "Pause recording",
+    "resume_title": "Resume recording",
+    "end": "End",
+    "abandon": "Abandon Recording"
+  },
+  "focus": {
+    "enter_title": "Focus mode — collapse sidebars",
+    "exit": "Exit Focus Esc",
+    "exit_title": "Exit focus mode (Esc)"
+  },
+  "ending": {
+    "text": "Recording ended",
+    "sub": "Organizing recording content..."
+  },
+  "stop_failed": {
+    "text": "Unable to end recording",
+    "force_quit": "Force Quit"
+  },
+  "abandon_dialog": {
+    "title": "Abandon this recording?",
+    "desc": "The recording will be terminated and all data will be permanently deleted. This cannot be undone.",
+    "recorded_duration": "Recorded duration: {duration}",
+    "confirm": "Confirm Abandon"
+  },
+  "jump_latest": "Jump to Latest",
+  "timeline": {
+    "jump_title": "Jump to specific time",
+    "jump_placeholder": "MM:SS or HH:MM:SS",
+    "jump_go": "Go"
+  },
+  "volume_warning": "Very low volume detected. Please check your microphone or audio input device.",
+  "presence_warning": {
+    "gentle_text": "No speech detected for {minutes} minutes and the page is inactive. Continue recording?",
+    "urgent_title": "Recording Inactivity Alert",
+    "urgent_text": "Recording has been inactive for {minutes} minutes and will stop automatically soon.",
+    "continue_recording": "Continue Recording",
+    "stop_recording": "Stop Recording",
+    "stop_and_save": "Stop & Save",
+    "auto_stopped_text": "Recording automatically stopped due to prolonged inactivity"
+  },
+  "errors": {
+    "bind_speaker_failed": "Failed to bind speaker",
+    "create_bind_speaker_failed": "Failed to create and bind speaker"
+  },
+  "translate": {
+    "title": "Translate",
+    "enable": "Enable Translation",
+    "disable": "Disable Translation",
+    "toggle_off": "Translate",
+    "target_lang": "Target Language",
+    "status_active": "Translating",
+    "status_stopped": "Translation Stopped",
+    "display_original": "Original Only",
+    "display_translation": "Translation Only",
+    "display_bilingual": "Bilingual"
+  }
+}

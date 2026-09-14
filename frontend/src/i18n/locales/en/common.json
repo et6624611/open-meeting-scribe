@@ -1,0 +1,95 @@
+{
+  "action": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "more": "More",
+    "translate": "Translate",
+    "delete": "Delete",
+    "search": "Search",
+    "add": "Add",
+    "edit": "Edit",
+    "save": "Save",
+    "close": "Close",
+    "open": "Open",
+    "retry": "Retry",
+    "export": "Export",
+    "archive": "Archive",
+    "copy": "Copy",
+    "fullscreen": "Fullscreen",
+    "back": "Back",
+    "reset": "Reset",
+    "filter": "Filter",
+    "expand_all": "Expand All",
+    "collapse_all": "Collapse All",
+    "logout": "Log Out",
+    "login": "Log In",
+    "rename": "Rename",
+    "remove": "Remove"
+  },
+  "status": {
+    "loading": "Loading...",
+    "unknown_error": "Unknown error",
+    "ready": "Ready",
+    "recording": "Recording",
+    "paused": "Paused",
+    "pending": "Pending",
+    "transcribing": "Transcribing",
+    "summarizing": "Summarizing",
+    "awaiting_mapping": "Awaiting confirmation",
+    "completed": "Completed",
+    "failed": "Failed",
+    "idle": "Idle",
+    "processing": "Processing"
+  },
+  "duration": {
+    "unknown": "Unknown duration",
+    "minutes": "{m} min",
+    "hours_minutes": "{h}h {m}m",
+    "zero": "0 minutes",
+    "hours": "{h}h",
+    "aria_label": "Duration {text}"
+  },
+  "untitled": "Untitled",
+  "skip_to_content": "Skip to main content",
+  "theme": {
+    "switch": "Switch Theme",
+    "default": "Default",
+    "dark": "Dark",
+    "warm": "Warm",
+    "forest": "Forest",
+    "ocean": "Ocean",
+    "lavender": "Lavender",
+    "rose": "Rose"
+  },
+  "view_mode": {
+    "full": "Full View",
+    "left": "Resource View",
+    "right": "Chat View"
+  },
+  "selection_toolbar": {
+    "quote_to_ai": "Quote to AI",
+    "quote_title": "Quote to meeting assistant",
+    "rewrite": "Rewrite",
+    "rewrite_title": "AI Rewrite",
+    "summarize": "Summarize",
+    "summarize_title": "AI Summary",
+    "extract_todo": "Extract To-dos",
+    "extract_todo_title": "Extract to-dos",
+    "source_ai": "AI Generated",
+    "source_minutes": "Minutes"
+  },
+  "update": {
+    "available": "Update Available",
+    "title": "New version available"
+  },
+  "announcement": {
+    "dismiss": "Dismiss"
+  },
+  "usage": {
+    "title": "Monthly recognition quota",
+    "cloud_connected": "Cloud AI Connected"
+  },
+  "playing": "Playing",
+  "paused": "Paused",
+  "reload_recording_confirm": "There is an active recording. Reloading will interrupt it. Continue?"
+}

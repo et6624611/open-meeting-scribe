@@ -1,0 +1,23 @@
+{
+  "title": "Start a New Meeting",
+  "record": "Record with Mic",
+  "return_record": "Return to Recording",
+  "upload": "Upload Audio File",
+  "recent": "Recent Meetings",
+  "view_all": "View all {count} meetings →",
+  "errors": {
+    "start_failed": "Failed to start recording",
+    "upload_failed": "Upload failed"
+  },
+  "privacy": {
+    "disclaimer_title": "Data Privacy Notice",
+    "disclaimer_local": "Recordings, meeting notes and other data are stored on your device",
+    "disclaimer_cloud": "Speech recognition and summary generation require cloud AI services",
+    "disclaimer_warn": "This means your meeting audio and transcripts will be sent to the cloud.",
+    "disclaimer_region": "Trial service (shared proxy) is only available to users in mainland China. Overseas users please configure your own API Key.",
+    "disclaimer_prohibit": "Do not use for classified information, core trade secrets, or highly sensitive personal privacy.",
+    "disclaimer_acknowledge": "I Understand, Continue",
+    "disclaimer_detail": "See SECURITY.md for detailed data flow description.",
+    "check_participants": "I confirm that all participants have been informed that this recording will undergo cloud AI processing"
+  }
+}

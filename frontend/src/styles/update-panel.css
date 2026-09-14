@@ -1,0 +1,411 @@
+/* ═══ 版本更新面板（从 legacy-views.css 提取） ═══ */
+
+/* ═══════════════════════════════════════════════════════════
+   VERSION UPDATE FLOW — L3 更新流程
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── 侧边栏底部版本号 ─── */
+.sb-version-bar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--s-3);
+  cursor: pointer;
+  transition: background 0.12s;
+  min-height: 32px;
+}
+.sb-version-bar:hover { background: var(--surface); }
+.sb-version-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sb-version-label {
+  font-size: var(--fs-11);
+  color: var(--muted);
+}
+.sb-version-number {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.sb-version-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: update-pulse 2s infinite;
+  flex-shrink: 0;
+  display: none;
+}
+.sb-version-dot.is-visible { display: block; }
+@keyframes update-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+/* 折叠状态下隐藏版本号文字，只保留圆点 */
+.body.sidebar-collapsed .sidebar .sb-version-bar { justify-content: center; padding: 6px 4px; }
+.body.sidebar-collapsed .sidebar .sb-version-bar_left,
+.body.sidebar-collapsed .sidebar .sb-version-label,
+.body.sidebar-collapsed .sidebar .sb-version-number { display: none; }
+
+/* ─── 顶部更新徽标 ─── */
+.update-badge {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  font-size: var(--fs-12);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.update-badge.is-visible { display: inline-flex; }
+.update-badge:hover { background: var(--accent-mid); }
+.update-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.update-badge .ub-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: update-pulse 2s infinite;
+  flex-shrink: 0;
+}
+
+/* ─── 更新面板遮罩 ─── */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+  z-index: var(--z-modal);
+}
+.update-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ─── 更新面板 ─── */
+.update-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 24px oklch(0% 0 0 / 0.08);
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+}
+.update-panel.is-open {
+  transform: translateX(0);
+}
+.up-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.up-title {
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+.up-close {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  transition: all 0.12s;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.up-close:hover { background: var(--surface-2); color: var(--fg); }
+.up-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.up-close svg { width: 16px; height: 16px; }
+.up-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-5);
+}
+
+/* ── 版本信息卡片 ── */
+.up-version-card {
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  padding: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.up-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.up-version-tag {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.up-version-num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+.up-version-num.is-current { color: var(--muted); }
+.up-version-num.is-new { color: var(--accent); }
+.up-version-arrow {
+  text-align: center;
+  margin: var(--s-2) 0;
+  color: var(--muted);
+}
+.up-version-arrow svg { width: 18px; height: 18px; }
+
+/* ── 更新日志 ── */
+.up-changelog-group {
+  margin-bottom: var(--s-4);
+}
+.up-changelog-label {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  margin-bottom: var(--s-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.up-changelog-label .cl-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.cl-icon-feature { background: var(--ok-soft); color: var(--ok); }
+.cl-icon-fix { background: var(--accent-soft); color: var(--accent); }
+.cl-icon-improve { background: oklch(72% 0.16 55 / 0.12); color: var(--warn); }
+.up-changelog-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.up-changelog-item {
+  font-size: var(--fs-13);
+  color: var(--muted);
+  padding: 4px 0 4px 22px;
+  line-height: 1.5;
+  position: relative;
+}
+.up-changelog-item::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+/* ── 下载进度 ── */
+.up-download-section {
+  display: none;
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.up-download-section.is-visible { display: block; }
+.up-download-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  margin-bottom: var(--s-3);
+}
+.up-progress-bar {
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: var(--s-2);
+}
+.up-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+.up-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-11);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.up-download-status {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  margin-top: var(--s-2);
+}
+
+/* ── 面板底部操作区 ── */
+.up-footer {
+  padding: var(--s-4) var(--s-5);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.up-footer-btn {
+  width: 100%;
+  padding: 10px var(--s-4);
+  border-radius: var(--radius);
+  font-size: var(--fs-14);
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: inherit;
+}
+.up-footer-btn:hover { filter: brightness(0.92); }
+.up-footer-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.up-footer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.up-footer-skip {
+  display: block;
+  text-align: center;
+  margin-top: var(--s-2);
+  font-size: var(--fs-12);
+  color: var(--muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  transition: color 0.12s;
+  width: 100%;
+  padding: 4px;
+}
+.up-footer-skip:hover { color: var(--fg); }
+
+/* ─── 重启模态框 ─── */
+.restart-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: var(--z-modal);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.restart-modal.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.restart-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--overlay-bg);
+}
+.restart-dialog {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: var(--s-6);
+  max-width: 360px;
+  width: 90%;
+  box-shadow: 0 20px 60px oklch(0% 0 0 / 0.15);
+  transform: translateY(8px);
+  opacity: 0;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.restart-modal.is-open .restart-dialog {
+  transform: translateY(0);
+  opacity: 1;
+}
+.restart-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--ok-soft);
+  border-radius: var(--radius-lg);
+  display: grid;
+  place-items: center;
+  margin: 0 auto var(--s-4);
+  color: var(--ok);
+}
+.restart-icon svg { width: 24px; height: 24px; }
+.restart-title {
+  font-size: var(--fs-15);
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: var(--s-2);
+}
+.restart-desc {
+  font-size: var(--fs-13);
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: var(--s-5);
+  line-height: 1.5;
+}
+.restart-actions {
+  display: flex;
+  gap: var(--s-3);
+}
+.restart-btn {
+  flex: 1;
+  padding: 10px var(--s-4);
+  border-radius: var(--radius);
+  font-size: var(--fs-14);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  text-align: center;
+}
+.restart-btn-secondary {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+.restart-btn-secondary:hover { border-color: var(--fg); }
+.restart-btn-primary {
+  background: var(--fg);
+  color: var(--bg);
+  border: 1px solid transparent;
+}
+.restart-btn-primary:hover { filter: brightness(0.88); }
+.restart-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ─── 图标系统（Lucide / Feather 风格） ─── */
+.ic { flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 14px; height: 14px; }
+.ic-md { width: 16px; height: 16px; }
+.ic-lg { width: 20px; height: 20px; }
+.ic-xl { width: 24px; height: 24px; }
+

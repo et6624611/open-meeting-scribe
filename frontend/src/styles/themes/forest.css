@@ -1,0 +1,46 @@
+/* ─── 森林 (Forest — deep green) ─── */
+html[data-theme="forest"] {
+  --bg: oklch(98% 0.008 150);
+  --surface: oklch(99.5% 0.004 150);
+  --surface-2: oklch(97% 0.010 150);
+  --surface-3: oklch(95% 0.012 150);
+  --fg: oklch(18% 0.020 155);
+  --muted: oklch(50% 0.025 150);
+  --subtle: oklch(52% 0.015 150);
+  --border: oklch(91% 0.010 150);
+  --border-strong: oklch(84% 0.012 150);
+  --accent: oklch(52% 0.14 150);
+  --accent-soft: oklch(52% 0.14 150 / 0.10);
+  --accent-mid: oklch(52% 0.14 150 / 0.25);
+  --accent-fg: oklch(100% 0 0);
+  --rec: oklch(62% 0.22 25);
+  --rec-soft: oklch(62% 0.22 25 / 0.10);
+  --note-bg: oklch(97.5% 0.008 255);
+  --note-border: oklch(91% 0.014 255);
+  --note-fg: oklch(28% 0.01 255);
+  --mine: oklch(62% 0.14 155);
+  --mine-soft: oklch(62% 0.14 155 / 0.10);
+  --mine-bg: oklch(97.5% 0.012 155);
+  --mine-border: oklch(91% 0.02 155);
+  --ok: oklch(64% 0.16 155);
+  --ok-soft: oklch(64% 0.16 155 / 0.10);
+  --warn: oklch(75% 0.16 80);
+  --warn-soft: oklch(75% 0.16 80 / 0.10);
+  --info: oklch(52% 0.12 170);
+  --info-soft: oklch(52% 0.12 170 / 0.10);
+  --purple: oklch(52% 0.10 300);
+  --purple-soft: oklch(52% 0.10 300 / 0.10);
+  --proactive: oklch(62% 0.20 270);
+  --proactive-soft: oklch(62% 0.20 270 / 0.08);
+  --proactive-mid: oklch(62% 0.20 270 / 0.18);
+  --timeline-line: oklch(82% 0.010 150);
+  --timeline-node: oklch(50% 0.12 150);
+  --timeline-today: oklch(52% 0.14 150);
+  --timeline-today-glow: oklch(52% 0.14 150 / 0.15);
+  --dropdown-bg: oklch(99.5% 0.004 150);
+  --dropdown-shadow: 0 8px 32px oklch(18% 0.020 155 / 0.10), 0 2px 8px oklch(18% 0.020 155 / 0.06);
+  --glass-bg: oklch(98% 0.008 150 / 0.72);
+  --shadow-focus: 0 0 0 3px oklch(52% 0.14 150 / 0.18);
+  --wm-opacity: 0.16;
+  --wm-glow: oklch(52% 0.14 150 / 0.10);
+}

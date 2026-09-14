@@ -1,0 +1,66 @@
+<template>
+  <!-- 顶栏 / Top bar -->
+  <div class="rec-header">
+    <div class="rec-header-left">
+      <span class="rec-title" id="recTitle">{{ t('recording.title') }}</span>
+      <span class="rec-status" id="recStatus">{{ paused ? t('recording.status.paused') : t('recording.status.identifying') }}</span>
+      <span class="rec-speaker-count" :class="{ 'has-update': speakerCountUpdated }" v-if="displaySpeakerCount > 0" :title="t('recording.speaker.count_title')">
+        <span class="sc-dot"></span>
+        <span>{{ t('recording.speaker.count', { count: displaySpeakerCount }) }}</span>
+      </span>
+      <span class="rec-project-chip-wrap">
+        <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" :title="projectId ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="$emit('toggleProjectDropdown')">
+          <svg v-if="projectId" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span>{{ projectName }}</span>
+          <svg v-if="!projectId" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </span>
+        <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
+          <template v-if="projects.length > 0">
+            <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': projectId === p.id }" @click="$emit('selectProject', p.id)">{{ p.name }}</button>
+            <div class="gen-meta-proj-divider"></div>
+            <button class="gen-meta-proj-item" :class="{ 'is-selected': !projectId }" @click="$emit('selectProject', '')">{{ t('generating.meta.no_project') }}</button>
+          </template>
+          <button v-else class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            {{ t('generating.meta.create_kb') }}
+          </button>
+        </div>
+      </span>
+    </div>
+    <div class="rec-header-right">
+      <button v-if="isFocusMode" class="btn-exit-focus" @click="$emit('toggleFocus')" :title="t('recording.focus.exit_title')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        {{ t('recording.focus.exit') }}
+      </button>
+      <button v-else class="rec-summary-btn" @click="$emit('toggleFocus')" :title="t('recording.focus.enter_title')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+import type { Project } from '@/api/projects'
+
+const { t } = useI18n()
+
+defineProps<{
+  paused: boolean
+  displaySpeakerCount: number
+  speakerCountUpdated: boolean
+  projects: Project[]
+  projectId: string | null | undefined
+  projectName: string
+  showProjectDropdown: boolean
+  isFocusMode: boolean
+}>()
+
+defineEmits<{
+  (e: 'toggleProjectDropdown'): void
+  (e: 'selectProject', id: string): void
+  (e: 'toggleFocus'): void
+}>()
+</script>

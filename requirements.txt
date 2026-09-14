@@ -1,0 +1,48 @@
+# Open Meeting Scribe — 运行依赖
+# Python 3.11+（独立 venv）
+
+# HTTP 请求（DashScope RESTful API 直调）
+requests>=2.31.0
+httpx>=0.27.0  # 异步 HTTP 客户端（避免阻塞事件循环）
+
+# 环境变量管理
+python-dotenv>=1.0.0
+
+# Web 服务（P2 本地 UI）
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.32
+
+# 认证（OAuth + JWT）
+PyJWT>=2.8.0
+
+# 阿里云短信认证服务 (PNVS)
+alibabacloud-dypnsapi20170525>=1.0.0
+alibabacloud-tea-openapi>=0.3.0
+
+# 实时语音识别（paraformer-realtime-v2，WebSocket 流式）
+dashscope>=1.23.0
+
+# WebSocket（FastAPI 实时推送转写结果）
+websockets>=12.0
+
+# 声纹特征提取（实时说话人分离：MFCC + 余弦相似度聚类）
+numpy>=2.0.0
+# scipy 已移除：wavfile→wave 标准库、eigh→numpy.linalg.eigvalsh、linear_sum_assignment→贪心分配
+
+# 声纹姓名化（云端 CAM++ 服务 + MFCC 降级）
+# 批处理声纹提取走云端 API，不再依赖本地 torch
+# 实时说话人分离使用纯本地 MFCC 聚类（numpy + scipy）
+
+# 项目关联：文档文本提取
+python-docx>=1.1.0
+PyPDF2>=3.0.0
+
+# 国际化（i18n）
+Babel>=2.14.0
+
+# 桌面应用（原生窗口模式）
+pywebview>=5.0.0
+
+# 可选：OpenAI SDK（纪要生成可用 OpenAI 兼容端点）
+# openai>=1.12.0

@@ -1,0 +1,192 @@
+{
+  "breadcrumb": {
+    "nav": "Breadcrumb navigation",
+    "project": "Knowledge Base",
+    "library": "Meeting Library",
+    "default_title": "Meeting Minutes"
+  },
+  "toolbar": {
+    "copy": "Copy",
+    "export": "Export",
+    "export_title": "Export & Share",
+    "fullscreen": "Fullscreen",
+    "more": "More",
+    "edit": "Edit",
+    "regenerate": "Regenerate Minutes",
+    "retranscribe": "Re-transcribe",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "delete": "Delete"
+  },
+  "meta": {
+    "person": "people",
+    "edit_date": "Click to change meeting date",
+    "no_project": "No knowledge base linked",
+    "link_project": "Link knowledge base",
+    "link_kb_tip": "Link a knowledge base so AI understands meetings through your documents",
+    "linked_kb_tip": "Knowledge base linked, click to switch",
+    "create_kb": "Create knowledge base"
+  },
+  "binding": {
+    "title": "Link speakers to real identities",
+    "title_all_bound": "Speaker linking complete",
+    "detected": "Detected {count} speaker(s)",
+    "unbound_hint": ", {count} unlinked",
+    "locate": "Locate this speaker's utterances",
+    "skip": "Skip for now",
+    "confirm": "Confirm Linking",
+    "close": "Close",
+    "click_to_bind": "Click to select or create identity",
+    "click_to_rebind": "Click to modify linking",
+    "edit_bindings": "Edit speaker linking",
+    "search_placeholder": "Search speakers...",
+    "no_bind": "No link",
+    "no_match": "No matching results",
+    "create_named": "Create",
+    "create": "+ New Speaker"
+  },
+  "transcript": {
+    "show": "Show Transcript",
+    "hide": "Hide Transcript",
+    "play": "Play",
+    "pause": "Pause",
+    "play_title": "Play recording",
+    "pause_title": "Pause playback",
+    "skip_back": "Rewind 15s",
+    "skip_forward": "Forward 15s",
+    "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
+    "loading": "Organizing transcript...",
+    "pending": "Recording completed. Click start processing to generate transcript."
+  },
+  "chapter": {
+    "overview_label": "Chapters",
+    "index_prefix": "Ch.",
+    "index_suffix": "of {count}",
+    "dividing": "Dividing chapters...",
+    "key_points": "Key Points",
+    "key_points_count": "{count} key point(s)",
+    "review": "Chapter Review",
+    "view_transcript": "View Chapter Transcript",
+    "hide_transcript": "Hide Chapter Transcript"
+  },
+  "speaker_solo": {
+    "turns": "· {count} turn(s)",
+    "prev": "Previous",
+    "next": "Next",
+    "exit_focus": "Exit focus",
+    "back_to_playback": "Back to playback",
+    "back_to_playback_title": "Back to current playback position",
+    "focus_speaker": "Focus on this speaker",
+    "exit_focus_all": "Exit focus, show all"
+  },
+  "speaker_panel": {
+    "title": "Speakers",
+    "collapse": "Collapse panel",
+    "expand": "Expand speaker panel",
+    "search_placeholder": "Search speakers...",
+    "me_label": "● Me",
+    "total": "Total {duration} · {turns} utterance(s)"
+  },
+  "speaker_default": "Speaker {id}",
+  "summary": {
+    "loading": "Generating minutes...",
+    "action_items": "Action Items",
+    "todos_stat": "This meeting produced {total} to-do(s), {done} completed",
+    "view_todos": "View To-dos",
+    "pending": "Minutes not yet generated",
+    "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate"
+  },
+  "block_editor": {
+    "shortcut": {
+      "dblclick": "Dbl-click",
+      "edit": "Edit block",
+      "new_block": "New block",
+      "line_break": "Line break",
+      "navigate": "Navigate blocks",
+      "confirm": "Confirm edit",
+      "cancel": "Cancel edit",
+      "delete": "Delete block (empty or select-all)"
+    }
+  },
+  "block_menu": {
+    "edit": "Edit",
+    "to_heading": "Turn into heading",
+    "to_list": "Turn into list",
+    "to_paragraph": "Turn into paragraph",
+    "delete": "Delete"
+  },
+  "notes": {
+    "placeholder": "Take notes here… Enter for new block · ↑↓ to navigate",
+    "saved": "Saved"
+  },
+  "todos": {
+    "stat": "{total} total, {done} completed",
+    "source_ai": "AI",
+    "source_manual": "Manual",
+    "locate": "Locate in transcript",
+    "empty": "No to-dos",
+    "add": "Add To-do",
+    "content_placeholder": "To-do content…",
+    "assignee_placeholder": "Assignee (optional)",
+    "cancel": "Cancel",
+    "submit": "Add"
+  },
+  "onboarding": {
+    "title": "Link Speaker Identities",
+    "got_it": "Got it",
+    "info_icon_tip": "What is speaker linking?",
+    "demo_label_1": "Speaker 1",
+    "demo_label_2": "Speaker 2",
+    "demo_name_1": "Alex",
+    "demo_name_2": "Jamie"
+  },
+  "project_onboarding": {
+    "title": "Link Knowledge Base",
+    "got_it": "Got it",
+    "info_icon_tip": "What is knowledge base linking?",
+    "knowledge_base": "Knowledge Base",
+    "ai_context": "AI Context",
+    "ai_citation": "AI cites docs",
+    "notes_sync": "Notes sync to folder",
+    "user_eco": "User · Other tools"
+  },
+  "archive_dialog": {
+    "title": "Confirm Archive",
+    "close": "Close",
+    "desc": "Archive this meeting? It will be available in the Archived tab.",
+    "cancel": "Cancel",
+    "confirm": "Confirm Archive",
+    "unarchive_title": "Unarchive",
+    "unarchive_desc": "Unarchive this meeting? It will reappear in the meeting list.",
+    "unarchive_confirm": "Confirm"
+  },
+  "delete_dialog": {
+    "title": "Confirm Delete",
+    "close": "Close",
+    "desc": "Delete this meeting? This cannot be undone.",
+    "cancel": "Cancel",
+    "confirm": "Confirm Delete"
+  },
+  "tabs": {
+    "transcript": "Transcript",
+    "notes": "Notes",
+    "summary": "Minutes",
+    "todos": "To-dos"
+  },
+  "ai_actions": {
+    "rewrite": "Please rewrite the following, keeping the original meaning but more concise",
+    "summarize": "Please summarize the following",
+    "extract_todo": "Please extract to-do items from the following"
+  },
+  "errors": {
+    "create_speaker_failed": "Failed to create speaker",
+    "save_mapping_failed": "Failed to save mapping incrementally",
+    "submit_mapping_failed": "Failed to submit mapping",
+    "update_project_failed": "Failed to update knowledge base link",
+    "save_date_failed": "Failed to save date"
+  },
+  "source": {
+    "minutes": "Minutes",
+    "notes": "Notes"
+  }
+}

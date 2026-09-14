@@ -1,0 +1,13 @@
+# 声纹嵌入提取服务 — 运行依赖
+# Python 3.11+（CPU-only，无需 GPU）
+
+# Web 服务
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# 声纹模型推理（CPU-only 版，体积 ~200MB）
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# 数值计算
+numpy>=2.0.0

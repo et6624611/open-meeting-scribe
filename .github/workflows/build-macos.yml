@@ -1,0 +1,123 @@
+# macOS 打包工作流
+# 触发方式：手动运行（workflow_dispatch）或推送 tag
+name: Build macOS Package
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    tags:
+      - 'v*'  # 推送版本标签时自动构建
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write  # 允许创建 Release
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: 转换图标
+      run: |
+        python build/convert_icon.py
+
+    - name: PyInstaller 打包
+      run: |
+        pyinstaller --clean --noconfirm build/pyinstaller_macos.spec
+
+    - name: 诊断 dist 目录
+      run: |
+        echo "=== dist 目录内容 ==="
+        find dist -maxdepth 3 -type f | head -50
+        echo "=== .app 大小 ==="
+        du -sh dist/OpenMeetingScribe.app 2>/dev/null || echo ".app 不存在"
+
+    - name: 组装分发物
+      run: |
+        DIST_DIR="dist/OpenMeetingScribe-macOS"
+        mkdir -p "$DIST_DIR"
+
+        # 移动 .app
+        if [ ! -d "dist/OpenMeetingScribe.app" ]; then
+          echo "错误：OpenMeetingScribe.app 不存在！"
+          exit 1
+        fi
+        mv dist/OpenMeetingScribe.app "$DIST_DIR/"
+        echo "OpenMeetingScribe.app 就位 ✓"
+
+        # 复制启动器
+        cp build/launcher_macos.sh "$DIST_DIR/启动会议助手.command"
+        chmod +x "$DIST_DIR/启动会议助手.command"
+        echo "启动器就位 ✓"
+
+        # 复制 .env 模板
+        cp .env.example "$DIST_DIR/.env"
+
+        # 创建数据目录
+        mkdir -p "$DIST_DIR/data/output"
+        mkdir -p "$DIST_DIR/data/recordings"
+        mkdir -p "$DIST_DIR/data/tasks"
+        mkdir -p "$DIST_DIR/data/uploads"
+
+        echo "分发物组装完成 ✓"
+
+    - name: 下载 ffmpeg
+      run: |
+        FFMPEG_DIR="dist/OpenMeetingScribe-macOS/ffmpeg"
+        mkdir -p "$FFMPEG_DIR"
+
+        # 从 evermeet.cx 下载 macOS ffmpeg
+        curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o "build/ffmpeg-macos.zip" || true
+
+        if [ -f "build/ffmpeg-macos.zip" ]; then
+          unzip -o "build/ffmpeg-macos.zip" -d "$FFMPEG_DIR/" 2>/dev/null || {
+            # 如果不是 zip，可能是直接二进制
+            cp "build/ffmpeg-macos.zip" "$FFMPEG_DIR/ffmpeg"
+          }
+          chmod +x "$FFMPEG_DIR/ffmpeg" 2>/dev/null || true
+          rm -f "build/ffmpeg-macos.zip"
+          echo "ffmpeg 下载完成 ✓"
+        else
+          echo "警告：ffmpeg 下载失败，录音功能不可用"
+        fi
+
+        # 验证
+        if [ -x "$FFMPEG_DIR/ffmpeg" ]; then
+          "$FFMPEG_DIR/ffmpeg" -version | head -1
+        fi
+
+    - name: 创建 ZIP 包
+      run: |
+        cd dist/OpenMeetingScribe-macOS
+        zip -r ../../OpenMeetingScribe-macOS.zip .
+        cd ../..
+        SIZE=$(du -sh OpenMeetingScribe-macOS.zip | cut -f1)
+        echo "分发包大小: $SIZE"
+
+    - name: 上传产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenMeetingScribe-macOS
+        path: OpenMeetingScribe-macOS.zip
+        retention-days: 30
+
+    - name: 发布 Release（仅 tag 触发）
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: OpenMeetingScribe-macOS.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
