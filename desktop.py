@@ -51,9 +51,9 @@ def _setup_desktop_env():
 
     桌面客户端（exe）首次启动时自动完成：
       1. 从 .env.example 模板创建 .env（若不存在）
-      2. 注入桌面端默认值：ASR_MODE=direct（直连 DashScope，无需代理服务器）
+      2. 注入桌面端默认值：ASR_MODE=cloud + 云端服务地址
       3. 从 exe 同级目录显式加载 .env（CWD 可能不是 exe 目录）
-      4. 注入 SMS 代理默认地址（桌面端连接云端短信服务）
+      4. 注入 SMS / Cloud 代理默认地址（桌面端连接云端服务）
 
     非 frozen 模式（开发环境）不做任何处理，直接返回。
     """
@@ -70,25 +70,28 @@ def _setup_desktop_env():
     # 1. 从模板创建 .env（首次启动）
     if not env_file.exists() and env_example.exists():
         shutil.copy2(str(env_example), str(env_file))
-        # 桌面客户端默认使用 ASR 直连模式（无需代理服务器）
-        # Desktop client defaults to ASR direct mode (no proxy server needed)
+        # 桌面客户端默认使用云端代理模式（用户零配置）
+        # Desktop client defaults to cloud proxy mode (zero config for users)
         with open(env_file, "a", encoding="utf-8") as f:
             f.write("\n# ── 桌面客户端自动配置（首次启动生成）──\n")
-            f.write("# ASR 直连模式：桌面客户端直接调用 DashScope API，无需代理服务器\n")
-            f.write("ASR_MODE=direct\n")
+            f.write("# 云端代理模式：ASR/LLM 通过云端服务器中转，用户无需配置 API Key\n")
+            f.write("ASR_MODE=cloud\n")
 
-    # 2. 从 exe 同级目录显式加载 .env（python-dotenv 默认从 CWD 查找，
-    #    但 frozen 模式下 CWD 可能不是 exe 目录）
+    # 2. 从 exe 同级目录显式加载 .env
     from dotenv import load_dotenv
     load_dotenv(str(env_file))
 
     # 3. 桌面端默认值注入（仅在环境变量未设置时生效）
-    #    load_dotenv 不会覆盖已有值，os.environ.setdefault 同理
     # SMS 代理：桌面端连接官方云端短信服务
     if not os.getenv("SMS_PROXY_URL"):
         os.environ["SMS_PROXY_URL"] = "http://47.116.10.194:8080"
     if not os.getenv("SMS_PROXY_TOKEN"):
         os.environ["SMS_PROXY_TOKEN"] = "oms-sms-proxy-secret-2026"
+    # 云端用户服务：桌面端连接官方云端服务器（ASR/LLM 代理 + 用户同步 + 配额管理）
+    if not os.getenv("CLOUD_API_URL"):
+        os.environ["CLOUD_API_URL"] = "http://47.116.10.194:8000"
+    if not os.getenv("CLOUD_API_TOKEN"):
+        os.environ["CLOUD_API_TOKEN"] = "oms-sms-proxy-secret-2026"
 
 
 # 必须在 load_dotenv / 导入项目模块之前执行 / Must run before load_dotenv / importing project modules
@@ -220,48 +223,6 @@ def _create_and_run_window(url: str) -> None:
     webview.start()
 
 
-def _check_api_key_config() -> None:
-    """检查 DASHSCOPE_API_KEY 是否已配置，未配置时弹窗提醒用户。 / Check if DASHSCOPE_API_KEY is configured; show dialog if not.
-
-    仅在 PyInstaller frozen 模式下执行（开发环境不需要）。 / Only runs in frozen mode (dev env doesn't need this).
-    """
-    if not getattr(sys, "frozen", False):
-        return
-
-    api_key = os.getenv("DASHSCOPE_API_KEY", "")
-    # 检查是否为占位符或未配置 / Check if placeholder or unconfigured
-    is_placeholder = (
-        not api_key
-        or api_key.startswith("sk-xxxx")
-        or "your" in api_key.lower()
-        or len(api_key) < 20
-    )
-
-    if is_placeholder:
-        from pathlib import Path
-        env_path = Path(sys.executable).parent / ".env"
-        msg = (
-            "Open Meeting Scribe 需要配置 DashScope API Key 才能使用\n"
-            "语音转写和 AI 纪要生成功能。\n\n"
-            f"请编辑配置文件：\n{env_path}\n\n"
-            "找到 DASHSCOPE_API_KEY= 一行，填入您的真实 API Key。\n"
-            "获取地址：https://bailian.console.aliyun.com/ → API-KEY\n\n"
-            "（本提示仅在首次未配置时显示，配置后不再出现）"
-        )
-        logger.warning("DASHSCOPE_API_KEY 未配置，AI 功能不可用")
-
-        try:
-            import tkinter as tk
-            from tkinter import messagebox
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
-            messagebox.showwarning("Open Meeting Scribe — 配置提示", msg)
-            root.destroy()
-        except Exception:
-            pass  # tkinter 不可用时静默跳过
-
-
 def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     """桌面应用主入口。 / Desktop app main entry.
 
@@ -280,9 +241,6 @@ def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     """
     logger.info(f"启动桌面应用: {WINDOW_TITLE}")
     logger.info(f"服务地址: http://{host}:{port}")
-
-    # 0. 检查 API Key 配置（首次未配置时弹窗提醒）
-    _check_api_key_config()
 
     # 1. 启动后台服务 / 1. Start background server
     server = _start_server(host, port)

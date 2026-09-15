@@ -102,12 +102,13 @@
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.asr_mode') }}</label>
           <select v-model="settings.asr!.mode" class="settings-input">
+            <option value="cloud">{{ t('settings.asr_mode_cloud') }}</option>
             <option value="proxy">{{ t('settings.asr_mode_proxy') }}</option>
             <option value="direct">{{ t('settings.asr_mode_direct') }}</option>
           </select>
         </div>
 
-        <!-- 代理模式：只读展示 / Proxy mode: read-only display -->
+        <!-- 云端/代理模式：只读展示 / Cloud/Proxy mode: read-only display -->
         <template v-if="settings.asr?.mode !== 'direct'">
           <div class="settings-field">
             <label class="settings-label">{{ t('settings.asr_provider') }}</label>

@@ -57,10 +57,25 @@ COMMON_BIGRAMS = {
 
 
 def _get_asr_mode() -> str:
-    """获取当前 ASR 接入模式（proxy / direct）"""
+    """获取当前 ASR 接入模式（proxy / direct / cloud）。
+
+    cloud 模式：桌面端无本地代理配置时，通过云端服务器中转。
+    """
     try:
         from app.store import get_asr_config
-        return get_asr_config().get("mode", "proxy")
+        mode = get_asr_config().get("mode", "proxy")
+        # 自动回退：proxy 模式无 URL 且云端可用 → 自动切换 cloud
+        if mode == "proxy":
+            proxy_url = get_asr_config().get("proxy_url", "")
+            if not proxy_url:
+                try:
+                    from core.cloud_client import is_cloud_enabled
+                    if is_cloud_enabled():
+                        logger.info("ASR proxy URL 为空且云端可用，自动切换到 cloud 模式")
+                        return "cloud"
+                except Exception:
+                    pass
+        return mode
     except Exception:
         return "proxy"
 
@@ -159,10 +174,69 @@ def transcribe_audio(
     mode = _get_asr_mode()
     logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}, mode={mode}")
 
-    if mode == "direct":
+    if mode == "cloud":
+        return _transcribe_cloud(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+    elif mode == "direct":
         return _transcribe_direct(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
     else:
         return _transcribe_proxy(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+
+
+def _transcribe_cloud(
+    file_path: Path,
+    model: str,
+    diarization_enabled: bool,
+    language_hints: list[str] | None,
+    vocabulary_id: str | None,
+    speaker_count: int | None,
+) -> tuple[list[dict], dict]:
+    """云端模式：通过云端服务器代理提交转写（桌面端无需本地 API Key）。
+    Cloud mode: submit transcription via cloud server proxy (desktop client needs no local API key).
+    """
+    from core.cloud_client import cloud_transcribe, is_cloud_enabled
+
+    if not is_cloud_enabled():
+        raise RuntimeError("云端服务未启用，无法提交转写。请在设置中配置 API Key 或连接云端服务器。")
+
+    # 获取当前用户 ID / Get current user ID
+    user_id = ""
+    try:
+        from core.users import get_current_user
+        user = get_current_user()
+        if user:
+            user_id = user.get("id", "")
+    except Exception:
+        pass
+
+    start = time.perf_counter()
+    logger.info(f"云端 ASR 转写开始: {file_path.name}, user={user_id[:8] if user_id else 'anon'}")
+
+    result = cloud_transcribe(str(file_path), user_id=user_id, model=model)
+
+    if result is None:
+        raise RuntimeError(
+            "云端 ASR 转写失败。请检查：\n"
+            "1. 网络连接是否正常\n"
+            "2. 云端服务是否可用\n"
+            "3. 或在设置中配置自己的 ASR API Key"
+        )
+
+    elapsed = time.perf_counter() - start
+    logger.info(f"[PERF] 云端 ASR 转写完成: {elapsed:.1f}s")
+
+    # 提取对话稿和原始转写结果 / Extract dialogue and raw transcription
+    dialogue = result.get("dialogue", [])
+    raw_transcription = result.get("transcription", result)
+
+    # 应用热词替换 / Apply hotword mappings
+    try:
+        from core.hotwords import apply_hotword_mappings
+        for block in dialogue:
+            block["text"] = apply_hotword_mappings(block.get("text", ""))
+    except Exception:
+        pass
+
+    return dialogue, raw_transcription
 
 
 def _transcribe_direct(

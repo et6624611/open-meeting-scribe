@@ -16,6 +16,7 @@
   "asr_mode": "接入模式",
   "asr_mode_proxy": "代理模式（共享服务）",
   "asr_mode_direct": "直连模式（自持 Key）",
+  "asr_mode_cloud": "云端代理（登录即用）",
   "asr_base_url": "API 端点地址",
   "asr_api_key_placeholder": "留空则保留当前密钥",
   "asr_provider": "服务提供商",

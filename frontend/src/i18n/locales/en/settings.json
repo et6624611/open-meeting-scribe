@@ -16,6 +16,7 @@
   "asr_mode": "Connection Mode",
   "asr_mode_proxy": "Proxy (shared service)",
   "asr_mode_direct": "Direct (self-hosted Key)",
+  "asr_mode_cloud": "Cloud Proxy (login to use)",
   "asr_base_url": "API Base URL",
   "asr_api_key_placeholder": "Leave empty to keep current key",
   "asr_provider": "Provider",

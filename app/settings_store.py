@@ -144,29 +144,24 @@ def get_asr_config() -> dict:
     """
     获取 ASR（语音转写）配置（从 settings.json） / Get ASR (speech transcription) config (from settings.json).
 
-    支持两种接入模式 / Supports two access modes:
-      - proxy（默认） / (default)：通过 ASR 代理服务器中转，客户端不持有 API Key / Via ASR proxy; client doesn't hold API Key
-      - direct：用户自持 DashScope API Key，主服务直连 DashScope API / User's own DashScope API Key; direct connection
+    支持三种接入模式 / Supports three access modes:
+      - proxy（默认） / (default)：通过 ASR 代理服务器中转 / Via ASR proxy
+      - direct：用户自持 API Key，直连 DashScope / User's own API Key; direct connection
+      - cloud：通过云端服务器代理（桌面客户端默认） / Via cloud server proxy (desktop client default)
 
     返回格式 / Returns:
       {
-        "mode": "proxy",               # "proxy" / "direct"
+        "mode": "proxy" | "direct" | "cloud",
         "provider": "DashScope",
-        "base_url": "https://...",      # 直连模式下的 API 地址 / API URL for direct mode
-        "api_key": "sk-...",            # 直连模式下的 API Key（明文，仅内部使用） / API Key for direct mode (plaintext, internal only)
-        "proxy_url": "http://...",      # 代理模式下的代理地址 / Proxy URL for proxy mode
+        "base_url": "https://...",
+        "api_key": "sk-...",
+        "proxy_url": "http://...",
         "model": "paraformer-v2",
       }
-
-    优先级 / Priority:
-      - mode 从 settings.json 的 asr.mode 读取，缺省为 "proxy" / Read from asr.mode in settings.json; default "proxy"
-      - 直连模式 api_key 兆底 / Direct mode api_key fallback: settings.json → DASHSCOPE_API_KEY env var
-      - 直连模式 base_url 兆底 / Direct mode base_url fallback: settings.json → "https://dashscope.aliyuncs.com"
     """
     settings = load_settings()
     asr_config = settings.get("asr", {})
     # 环境变量 ASR_MODE 优先于 settings.json（桌面端通过 .env 设置）
-    # Env var ASR_MODE takes priority over settings.json (desktop sets it via .env)
     mode = os.getenv("ASR_MODE", "") or asr_config.get("mode", "proxy")
 
     if mode == "direct":
@@ -179,21 +174,41 @@ def get_asr_config() -> dict:
             "proxy_url": "",
         }
 
+    if mode == "cloud":
+        return {
+            "mode": "cloud",
+            "provider": "DashScope（云端代理）",
+            "base_url": "",
+            "api_key": "",
+            "proxy_url": os.getenv("CLOUD_API_URL", ""),
+            "model": asr_config.get("model", "paraformer-v2"),
+        }
+
     # 代理模式（默认） / Proxy mode (default)
     proxy_url = os.getenv("ASR_PROXY_URL", "")
 
-    # ── 桌面客户端自动降级 ──
-    # 代理模式需要 ASR_PROXY_URL，若为空且 DASHSCOPE_API_KEY 可用，
-    # 自动降级为直连模式（桌面客户端场景：单用户本地运行，无需代理）。
-    # Auto-fallback: if proxy URL is empty but DASHSCOPE_API_KEY is available,
-    # switch to direct mode (desktop client scenario: single-user, no proxy needed).
+    # ── 自动降级 ──
+    # proxy 无 URL 时：先尝试 cloud，再尝试 direct
     if not proxy_url:
+        # 尝试 cloud 模式
+        try:
+            from core.cloud_client import is_cloud_enabled
+            if is_cloud_enabled():
+                logger.info("ASR proxy URL empty, cloud enabled; auto-switching to cloud mode")
+                return {
+                    "mode": "cloud",
+                    "provider": "DashScope（云端代理）",
+                    "base_url": "",
+                    "api_key": "",
+                    "proxy_url": os.getenv("CLOUD_API_URL", ""),
+                    "model": asr_config.get("model", "paraformer-v2"),
+                }
+        except Exception:
+            pass
+        # 尝试 direct 模式
         dashscope_key = os.getenv("DASHSCOPE_API_KEY", "")
         if dashscope_key:
-            logger.info(
-                "ASR proxy URL not set but DASHSCOPE_API_KEY available; "
-                "auto-switching to direct mode"
-            )
+            logger.info("ASR proxy URL empty, DASHSCOPE_API_KEY available; auto-switching to direct mode")
             return {
                 "mode": "direct",
                 "provider": asr_config.get("provider", "DashScope"),

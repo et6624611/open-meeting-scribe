@@ -267,3 +267,184 @@ def check_quota_from_cloud(user_id: str, estimated_minutes: float = 0) -> dict |
             f"allowed={result.get('allowed')}"
         )
     return result
+
+
+# ============================================================
+# LLM 代理 / LLM Proxy
+# ============================================================
+
+
+def cloud_llm_chat(
+    messages: list[dict],
+    model: str = "qwen-plus",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    user_id: str = "",
+) -> dict | None:
+    """通过云端代理调用 LLM / Call LLM via cloud proxy.
+
+    桌面端无本地 API Key 时，通过云端服务器转发到 DashScope。
+    When desktop client has no local API key, forward to DashScope via cloud server.
+
+    Args:
+        messages: 对话消息列表 / Chat messages
+        model: 模型名 / Model name
+        temperature: 温度 / Temperature
+        max_tokens: 最大 token 数 / Max tokens
+        user_id: 用户 ID（用于配额检查） / User ID for quota check
+
+    Returns:
+        DashScope 格式的响应 dict，失败返回 None / DashScope-format response dict; None on failure
+    """
+    if not is_cloud_enabled():
+        return None
+
+    result = _cloud_request("/api/cloud/llm/chat/completions", {
+        "messages": messages,
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+        "user_id": user_id,
+    })
+
+    if result:
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = result.get("usage", {})
+        logger.info(
+            f"云端 LLM 调用成功: user={user_id[:8] if user_id else 'anon'}, "
+            f"model={model}, tokens={usage.get('total_tokens', 0)}, "
+            f"content_len={len(content)}"
+        )
+    return result
+
+
+# ============================================================
+# ASR 代理 / ASR Proxy
+# ============================================================
+
+
+def _cloud_upload_file(path: str, file_path: str, params: dict | None = None) -> dict | None:
+    """向云端 API 上传文件 / Upload file to cloud API.
+
+    使用 multipart/form-data 格式上传，带 HMAC 签名认证。
+    Upload using multipart/form-data format with HMAC signature auth.
+
+    Args:
+        path: API 路径 / API path
+        file_path: 本地文件路径 / Local file path
+        params: 额外查询参数 / Additional query parameters
+
+    Returns:
+        响应 JSON dict，失败返回 None / Response JSON dict; None on failure
+    """
+    if not is_cloud_enabled():
+        return None
+
+    from pathlib import Path
+    import urllib.parse
+
+    # 拼接查询参数 / Build query string
+    if params:
+        query = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
+        full_path = f"{path}?{query}"
+    else:
+        full_path = path
+
+    timestamp = str(int(time.time()))
+    sign = _make_sign(timestamp)
+
+    url = f"{CLOUD_API_URL}{full_path}"
+    headers = {
+        "X-Cloud-Timestamp": timestamp,
+        "X-Cloud-Sign": sign,
+    }
+
+    file_name = Path(file_path).name
+    content_type = "audio/wav"
+
+    try:
+        # 使用 urllib 构建 multipart/form-data 请求
+        # Build multipart/form-data request using urllib
+        boundary = f"----CloudBoundary{int(time.time() * 1000)}"
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+
+        body_parts = []
+        # 文件字段 / File field
+        body_parts.append(f"--{boundary}".encode())
+        body_parts.append(
+            f'Content-Disposition: form-data; name="file"; filename="{file_name}"'.encode()
+        )
+        body_parts.append(f"Content-Type: {content_type}".encode())
+        body_parts.append(b"")
+        body_parts.append(file_data)
+        body_parts.append(f"--{boundary}--".encode())
+
+        body = b"\r\n".join(body_parts)
+
+        req_headers = {
+            **headers,
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+
+        req = urllib.request.Request(url, data=body, headers=req_headers, method="POST")
+
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            return json.loads(resp.read().decode())
+
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = json.loads(e.read().decode())
+            msg = err_body.get("detail", str(e))
+        except Exception:
+            msg = f"HTTP {e.code}"
+        logger.warning(f"云端文件上传失败: {path} → {msg}")
+        return None
+
+    except urllib.error.URLError as e:
+        logger.warning(f"云端文件连接失败: {path} → {e.reason}")
+        return None
+
+    except Exception as e:
+        logger.warning(f"云端文件上传异常: {path} → {e}")
+        return None
+
+
+def cloud_transcribe(audio_file_path: str, user_id: str = "", model: str = "paraformer-v2") -> dict | None:
+    """通过云端代理提交音频转写 / Submit audio for transcription via cloud proxy.
+
+    Args:
+        audio_file_path: 本地音频文件路径 / Local audio file path
+        user_id: 用户 ID / User ID
+        model: ASR 模型名 / ASR model name
+
+    Returns:
+        转写结果 dict，失败返回 None / Transcription result dict; None on failure
+    """
+    if not is_cloud_enabled():
+        return None
+
+    from pathlib import Path
+
+    logger.info(
+        f"云端 ASR 转写: user={user_id[:8] if user_id else 'anon'}, "
+        f"file={Path(audio_file_path).name}, model={model}"
+    )
+
+    params = {
+        "user_id": user_id,
+        "model": model,
+        "diarization_enabled": "true",
+    }
+
+    result = _cloud_upload_file("/api/cloud/asr/transcribe", audio_file_path, params)
+
+    if result:
+        dialogue = result.get("dialogue", [])
+        logger.info(
+            f"云端 ASR 转写成功: user={user_id[:8] if user_id else 'anon'}, "
+            f"dialogue_blocks={len(dialogue)}"
+        )
+    return result

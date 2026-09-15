@@ -70,6 +70,54 @@ def _get_api_key() -> str:
     return key
 
 
+def _should_use_cloud() -> bool:
+    """判断是否应走云端代理（无本地 API Key 且云端可用）。
+    Check if cloud proxy should be used (no local API key and cloud is enabled).
+    """
+    try:
+        from app.store import get_active_api_key
+        if get_active_api_key():
+            return False  # 有本地 Key，用本地 / Have local key, use local
+    except Exception:
+        pass
+    try:
+        from core.cloud_client import is_cloud_enabled
+        return is_cloud_enabled()
+    except Exception:
+        return False
+
+
+def _get_cloud_user_id() -> str:
+    """获取当前用户 ID（供云端配额检查） / Get current user ID for cloud quota check."""
+    try:
+        from core.users import get_current_user
+        user = get_current_user()
+        if user:
+            return user.get("id", "")
+    except Exception:
+        pass
+    return ""
+
+
+def _try_cloud_llm(messages, model, temperature, max_tokens) -> str:
+    """尝试通过云端代理调用 LLM，返回生成的文本。失败抛出 RuntimeError。
+    Try cloud LLM proxy; returns generated text. Raises RuntimeError on failure.
+    """
+    from core.cloud_client import cloud_llm_chat
+    user_id = _get_cloud_user_id()
+    logger.info(f"LLM 无本地 Key，尝试云端代理: user={user_id[:8] if user_id else 'anon'}")
+    result = cloud_llm_chat(messages, model, temperature, max_tokens, user_id)
+    if result is None:
+        raise RuntimeError(
+            "云端 LLM 调用失败。请检查：\n"
+            "1. 网络连接是否正常\n"
+            "2. 云端服务是否可用\n"
+            "3. 或在设置中配置自己的 API Key"
+        )
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    return content
+
+
 def _get_base_url() -> str:
     """获取当前 LLM 的 Base URL"""
     cfg = _get_config()
@@ -208,6 +256,10 @@ def _chat_completion_raw(
     max_tokens: int = 4096,
 ) -> str:
     """同步 LLM 调用的实际执行体（无事件循环守卫，供线程池委托使用）"""
+    # 云端代理回退 / Cloud proxy fallback
+    if _should_use_cloud():
+        return _try_cloud_llm(messages, model, temperature, max_tokens)
+
     base_url = _get_base_url()
     headers = _get_headers()
     body = _build_request_body(messages, model, temperature, max_tokens)
@@ -258,7 +310,14 @@ async def async_chat_completion(
     异步调用 LLM（供 FastAPI async 端点使用）。
 
     使用 httpx.AsyncClient，不阻塞 asyncio 事件循环。
+    无本地 Key 时自动走云端代理。 / Auto-fallback to cloud proxy when no local key.
     """
+    # 云端代理回退 / Cloud proxy fallback
+    if _should_use_cloud():
+        return await asyncio.to_thread(
+            _try_cloud_llm, messages, model, temperature, max_tokens
+        )
+
     base_url = _get_base_url()
     client = _get_async_client()
     headers = _get_headers()
@@ -309,7 +368,21 @@ async def async_chat_completion_full(
 
     供 /api/chat 端点使用，返回 usage、finish_reason 等信息供前端展示。
     使用 httpx.AsyncClient，不阻塞 asyncio 事件循环。
+    无本地 Key 时自动走云端代理。 / Auto-fallback to cloud proxy when no local key.
     """
+    # 云端代理回退 / Cloud proxy fallback
+    if _should_use_cloud():
+        content = await asyncio.to_thread(
+            _try_cloud_llm, messages, model, temperature, max_tokens
+        )
+        return LlmResult(
+            content=content,
+            model=model or "qwen-plus",
+            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            finish_reason="stop",
+            id="cloud-proxy",
+        )
+
     base_url = _get_base_url()
     client = _get_async_client()
     headers = _get_headers()
