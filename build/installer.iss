@@ -5,7 +5,7 @@
 ;   或：iscc build\installer.iss（自动从 VERSION 文件读取）
 ; ============================================================
 
-#define MyAppName "会议助手"
+#define MyAppName "Open Meeting Scribe"
 #define MyAppNameEn "Open Meeting Scribe"
 #define MyAppExeName "OpenMeetingScribe.exe"
 #define MyAppPublisher "Open Meeting Scribe"
@@ -36,8 +36,8 @@ DefaultGroupName={#MyAppName}
 ; 允许用户选择安装目录
 DisableDirPage=no
 
-; 安装向导语言（简体中文优先，英文兜底）
-ShowLanguageDialog=auto
+; 安装向导语言：强制显示语言选择对话框，让用户在安装前选择语言
+ShowLanguageDialog=yes
 
 ; 使用安装向导的推荐设置
 UsePreviousAppDir=yes

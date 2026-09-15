@@ -17,6 +17,8 @@ export interface AiSession {
   name: string
   createdAt: number
   messages: ChatMessage[]
+  /** Agent 角色标识 / Agent role identifier */
+  role?: string
 }
 
 interface SessionBucket {

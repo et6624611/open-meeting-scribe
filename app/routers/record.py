@@ -327,6 +327,20 @@ def start_record():
 
         def _start_transcriber_bg():
             """后台启动实时转写（含重试逻辑） / Background start realtime transcription (with retry logic)"""
+            # ── 前置检查：proxy 模式下 token 缺失时直接跳过（优雅降级）──
+            # Pre-check: skip realtime transcription when proxy token is missing (graceful degradation)
+            try:
+                _asr_mode = realtime_asr._get_asr_mode()
+                if _asr_mode == "proxy" and not realtime_asr.ASR_PROXY_TOKEN:
+                    logger.warning(f"[录制] ASR_PROXY_TOKEN 未配置，跳过实时转写（仅录音模式）: task={task_id[:8]}")
+                    push_realtime_msg(task_id, {
+                        "type": "warning",
+                        "message": _("ASR proxy token not configured. Realtime transcription disabled. Recording will continue normally.")
+                    })
+                    return
+            except Exception:
+                pass
+
             try:
                 transcriber.start()
                 transcriber_ref["ref"] = transcriber

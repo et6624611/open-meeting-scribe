@@ -140,6 +140,10 @@
 .reg-guidance-dismiss:hover { background: var(--ann-dismiss-hover, var(--surface-3)); color: var(--fg); }
 .reg-guidance-dismiss svg { width: 16px; height: 16px; }
 
+/* ─── 版本更新横幅（复用公告横幅样式，微调配色） ─── */
+.update-banner .reg-guidance-icon { color: var(--ann-icon, var(--accent)); }
+.update-content .reg-guidance-cta { text-decoration: none; display: inline-flex; align-items: center; }
+
 /* ─── 语言切换器 ─── */
 .lang-switcher { position: relative; }
 .lang-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; color: var(--muted); background: var(--surface); border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; }
@@ -172,7 +176,7 @@
 
 /* ─── Status bar + Usage ─── */
 /* ─── Status bar ─── */
-.status { border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.status { border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); font-family: var(--font-mono); font-size: 11px; color: var(--muted); height: 28px; flex-shrink: 0; }
 .status .left, .status .right { display: flex; align-items: center; gap: var(--s-4); }
 .status .item { display: flex; align-items: center; gap: 6px; }
 .status .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }

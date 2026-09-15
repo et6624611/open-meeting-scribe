@@ -111,6 +111,8 @@
     "available": "Update Available",
     "title": "New version available"
   },
+  "update_available": "A new version v{version} is available. Update for the latest features and fixes.",
+  "view_update": "View Details",
   "announcement": {
     "dismiss": "Dismiss"
   },

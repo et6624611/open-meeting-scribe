@@ -31,6 +31,7 @@
 
         <!-- 手机号登录面板 / Phone number login panel -->
         <div class="login-tab-panel" :class="{ active: activeTab === 'sms' }">
+          <div class="sms-beta-notice">{{ t('login.sms_beta_notice') }}</div>
           <div class="sms-input-group">
             <input
               class="sms-input" ref="phoneRef" type="tel" maxlength="11"

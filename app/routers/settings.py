@@ -118,10 +118,12 @@ def get_settings():
         tier = subscription.get("tier", "free")
         local_pref = prefs.get("local_diarization", False)
         use_local = should_use_local_diarization()
+        prefer_subscription = prefs.get("prefer_subscription", False)
     else:
         tier = "free"
         local_pref = False
         use_local = True
+        prefer_subscription = False
 
     asr_mode = asr.get("mode", "proxy")
     asr_response = {
@@ -159,10 +161,12 @@ def get_settings():
             "effective": "local" if use_local else "cloud",
             "can_toggle": tier != "free",
         },
+        "prefer_subscription": prefer_subscription,
         "output_dir": settings.get("output_dir", "data/output/"),
         "feature_flags": feature_flags,
         "storage": get_storage_config(),
         "disabled_commands": settings.get("disabled_commands", []),
+        "active_agent": settings.get("active_agent", "meeting-minutes"),
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
     }
@@ -263,6 +267,7 @@ def save_settings(data: dict):
             "voiceprint_auto_match": data.get("feature_flags", {}).get("voiceprint_auto_match", existing_ff.get("voiceprint_auto_match", False)),
         },
         "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
+        "active_agent": data.get("active_agent", existing.get("active_agent", "meeting-minutes")),
         "storage": {
             "auto_clean_intermediate": data.get("storage", {}).get("auto_clean_intermediate", existing.get("storage", {}).get("auto_clean_intermediate", True)),
             "auto_archive_days": data.get("storage", {}).get("auto_archive_days", existing.get("storage", {}).get("auto_archive_days", 0)),

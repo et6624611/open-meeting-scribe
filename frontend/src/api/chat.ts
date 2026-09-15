@@ -91,6 +91,8 @@ export interface ChatOptions {
   model?: string
   /** 前端当前页面路由名，用于注入差异化上下文 / Current frontend route name, injected for differentiated context */
   current_page?: string
+  /** Agent 角色标识，用于加载不同角色定义 / Agent role identifier for loading different role definitions */
+  role?: string
   signal?: AbortSignal
 }
 
@@ -107,6 +109,7 @@ export async function sendMessage(
     mode: options?.mode || 'agent',
     model: options?.model || 'qwen-plus',
     current_page: options?.current_page,
+    role: options?.role,
   }, {
     signal: options?.signal,
   })

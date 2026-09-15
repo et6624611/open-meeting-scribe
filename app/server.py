@@ -92,6 +92,7 @@ audit_logger.addHandler(audit_handler)
 audit_logger.propagate = False  # 不重复写入 server.log / Don't duplicate to server.log
 
 from app.routers import (
+    agent,
     auth,
     chat,
     cloud_api,
@@ -330,6 +331,7 @@ app.include_router(usage.router)
 app.include_router(config.router)
 app.include_router(update.router)
 app.include_router(insights.router)
+app.include_router(agent.router)
 app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
 

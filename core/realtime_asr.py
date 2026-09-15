@@ -40,7 +40,7 @@ from .hotwords import apply_hotword_mappings
 logger = logging.getLogger(__name__)
 
 def _get_asr_mode() -> str:
-    """获取当前 ASR 接入模式（proxy / direct）"""
+    """获取当前 ASR 接入模式（proxy / direct / cloud）"""
     try:
         from app.store import get_asr_config
         return get_asr_config().get("mode", "proxy")
@@ -60,11 +60,23 @@ REALTIME_MODEL = "qwen-audio-3.0-asr-flash-streaming"
 
 
 def _make_sign(timestamp: str) -> str:
-    """生成请求签名"""
+    """生成请求签名（代理模式）"""
     if not ASR_PROXY_TOKEN:
         raise RuntimeError("未配置 ASR_PROXY_TOKEN，无法调用 ASR 代理")
     return hmac.new(
         ASR_PROXY_TOKEN.encode(),
+        timestamp.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _make_cloud_sign(timestamp: str) -> str:
+    """生成云端请求签名（cloud 模式）"""
+    cloud_token = os.getenv("CLOUD_API_TOKEN", "").strip()
+    if not cloud_token:
+        raise RuntimeError("未配置 CLOUD_API_TOKEN，无法调用云端 ASR 服务")
+    return hmac.new(
+        cloud_token.encode(),
         timestamp.encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -93,6 +105,40 @@ def _get_ws_url(
     }
     if vocabulary_id:
         params["vocabulary_id"] = vocabulary_id
+
+    return f"{ws_url}?{urlencode(params)}"
+
+
+def _get_cloud_ws_url(
+    model: str = REALTIME_MODEL,
+    sample_rate: int = 16000,
+    language_hints: list[str] | None = None,
+    vocabulary_id: str | None = None,
+    user_id: str = "",
+) -> str:
+    """构造云端 WebSocket URL（cloud 模式通过云端服务器中继到同机 ASR 代理）"""
+    cloud_url = os.getenv("CLOUD_API_URL", "").rstrip("/")
+    if not cloud_url:
+        raise RuntimeError("未配置 CLOUD_API_URL，无法调用云端 ASR 服务")
+
+    # http:// → ws://
+    cloud_ws = cloud_url.replace("http://", "ws://").replace("https://", "wss://")
+    ws_url = f"{cloud_ws}/api/cloud/asr/ws"
+
+    timestamp = str(int(time.time()))
+    sign = _make_cloud_sign(timestamp)
+
+    params = {
+        "timestamp": timestamp,
+        "sign": sign,
+        "model": model,
+        "sample_rate": sample_rate,
+        "language_hints": ",".join(language_hints or ["zh", "en"]),
+    }
+    if vocabulary_id:
+        params["vocabulary_id"] = vocabulary_id
+    if user_id:
+        params["user_id"] = user_id
 
     return f"{ws_url}?{urlencode(params)}"
 
@@ -155,7 +201,7 @@ class RealtimeTranscriber:
         self._connect_error: str | None = None
 
     def start(self) -> None:
-        """启动实时转写（根据模式选择代理或直连）"""
+        """启动实时转写（根据模式选择代理、云端或直连）"""
         if self._started:
             raise RuntimeError("实时转写已在运行中")
 
@@ -163,6 +209,8 @@ class RealtimeTranscriber:
 
         if mode == "direct":
             self._start_direct()
+        elif mode == "cloud":
+            self._start_cloud()
         else:
             self._start_proxy()
 
@@ -310,6 +358,80 @@ class RealtimeTranscriber:
 
         self._cleanup()
         raise RuntimeError(f"实时转写启动失败（已重试{self.MAX_RETRIES}次）: {last_error_msg}")
+
+    def _start_cloud(self) -> None:
+        """云端模式：通过云端服务器 WebSocket 代理中继到 ASR 代理"""
+        # 获取当前用户 ID（供云端配额检查）
+        user_id = ""
+        try:
+            from core.users import _load_user_data
+            user_id = _load_user_data().get("current_user_id", "") or ""
+        except Exception:
+            pass
+
+        ws_url = _get_cloud_ws_url(
+            model=REALTIME_MODEL,
+            sample_rate=self._sample_rate,
+            language_hints=self._language_hints,
+            vocabulary_id=self._vocabulary_id,
+            user_id=user_id,
+        )
+
+        last_error_msg = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            self._connect_event.clear()
+            self._connect_error = None
+
+            self._loop = asyncio.new_event_loop()
+            self._audio_queue = asyncio.Queue()
+            self._stop_event = asyncio.Event()
+
+            self._thread = threading.Thread(
+                target=self._run_ws_loop,
+                args=(ws_url,),
+                daemon=True,
+            )
+            self._thread.start()
+
+            connected = self._connect_event.wait(timeout=5.0)
+
+            if self._connect_error is not None:
+                last_error_msg = self._connect_error
+                is_rate_limit = (
+                    "too many requests" in last_error_msg.lower()
+                    or "throttl" in last_error_msg.lower()
+                )
+                if is_rate_limit and attempt < self.MAX_RETRIES:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(f"[实时转写] 云端限流，{delay}s 后重试 ({attempt + 1}/{self.MAX_RETRIES})...")
+                    if self._on_error:
+                        self._on_error(f"云端实时转写服务繁忙，{delay}秒后自动重试（{attempt + 1}/{self.MAX_RETRIES}）...")
+                    time.sleep(delay)
+                    self._cleanup()
+                    continue
+                else:
+                    self._cleanup()
+                    raise RuntimeError(last_error_msg)
+
+            if not connected:
+                last_error_msg = "连接超时"
+                if attempt < self.MAX_RETRIES:
+                    delay = self.RETRY_DELAYS[min(attempt, len(self.RETRY_DELAYS) - 1)]
+                    logger.warning(f"[实时转写] 云端连接超时，{delay}s 后重试...")
+                    time.sleep(delay)
+                    self._cleanup()
+                    continue
+                else:
+                    self._cleanup()
+                    raise RuntimeError(f"云端实时转写启动失败（已重试{self.MAX_RETRIES}次）: {last_error_msg}")
+
+            self._started = True
+            self._sentence_count = 0
+            logger.info(f"[实时转写] 已启动（云端模式）{REALTIME_MODEL}")
+            return
+
+        self._cleanup()
+        raise RuntimeError(f"云端实时转写启动失败（已重试{self.MAX_RETRIES}次）: {last_error_msg}")
 
     def _run_ws_loop(self, ws_url: str) -> None:
         """在独立线程中运行 WebSocket 事件循环"""

@@ -224,14 +224,9 @@
         :has-summary="!!task?.summary"
         :todos-count="todos.length"
         :todos-done-count="todos.filter(x => x.done).length"
-        :inline-diff-block-index="inlineEdit.diffBlockIndex.value"
-        :inline-diff-original="inlineEdit.originalText.value"
-        :inline-diff-edited="inlineEdit.editedText.value"
         @change="onSummaryChange"
         @toggle-chapter="toggleSummaryChapter"
         @switch-tab="switchTab"
-        @accept-diff="inlineEdit.acceptEdit"
-        @reject-diff="inlineEdit.rejectEdit"
       />
 
       <NotesPanel
@@ -239,12 +234,7 @@
         :visible="activeTab === 'notes'"
         :markdown="notesContent"
         :notes-saved="notesSaved"
-        :inline-diff-block-index="inlineEdit.diffBlockIndex.value"
-        :inline-diff-original="inlineEdit.originalText.value"
-        :inline-diff-edited="inlineEdit.editedText.value"
         @change="onNotesChange"
-        @accept-diff="inlineEdit.acceptEdit"
-        @reject-diff="inlineEdit.rejectEdit"
       />
 
       <DecisionFlowPanel
@@ -253,9 +243,7 @@
         :show-add-form="showAddForm"
         v-model:new-todo-text="newTodoText"
         v-model:new-todo-assignee="newTodoAssignee"
-        @toggle="onToggleTodo"
         @delete="onDeleteTodo"
-        @locate="locateTodoSource"
         @update="onEditTodo"
         @status-change="onStatusChange"
         @toggle-form="showAddForm = !showAddForm"
@@ -394,7 +382,7 @@ const {
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
   showAddForm, newTodoText, newTodoAssignee,
-  onNotesChange, onSummaryChange, onToggleTodo, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange,
+  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange,
 } = notes
 const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
 const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
@@ -478,38 +466,33 @@ function onSelectionAction(action: string, text: string, source: string, blockIn
     data.setQuote(text, source, blockIndex)
     window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.extract_todo') } }))
   } else if (action === 'correct' && replacement) {
-    if (blockIndex >= 0) {
-      // 纪要/随记面板：通过 MdBlockEditor 替换 / Summary/Notes: replace via MdBlockEditor
-      if (summaryPanelRef.value) {
-        summaryPanelRef.value.replaceTextInBlock(blockIndex, text, replacement)
-      }
-      if (notesPanelRef.value) {
-        notesPanelRef.value.replaceTextInBlock(blockIndex, text, replacement)
-      }
-    } else {
-      // 转写原文面板：直接 DOM 替换 / Transcript panel: direct DOM replacement
-      replaceInTranscriptDom(text, replacement)
-    }
+    // 转写原文面板：直接 DOM 替换 / Transcript panel: direct DOM replacement
+    replaceInTranscriptDom(text, replacement)
   }
 }
 
 // ─── 行间编辑 / Inline edit ───
-function onInlineEditRequest(text: string, source: string, blockIndex: number) {
-  // 获取选区位置用于定位浮动输入框 / Get selection rect for positioning floating input
-  const sel = window.getSelection()
-  let rect: { top: number; left: number } | undefined
-  if (sel && sel.rangeCount > 0) {
-    const r = sel.getRangeAt(0).getBoundingClientRect()
-    rect = { top: r.top, left: r.left + r.width / 2 }
+function onInlineEditRequest(text: string, source: string, _blockIndex: number, range?: { start: number; end: number }) {
+  if (range) {
+    // textarea 面板：使用 range 模式 / textarea panels: use range mode
+    inlineEdit.startInlineEdit(text, source, range)
+  } else {
+    // 转写原文面板：使用 DOM 选区 / Transcript panel: use DOM selection
+    const sel = window.getSelection()
+    let rect: { top: number; left: number } | undefined
+    if (sel && sel.rangeCount > 0) {
+      const r = sel.getRangeAt(0).getBoundingClientRect()
+      rect = { top: r.top, left: r.left + r.width / 2 }
+    }
+    // 无 range 时用 0,0 占位（转写原文面板不走 replaceRange） / No range: use 0,0 placeholder
+    inlineEdit.startInlineEdit(text, source, { start: 0, end: text.length }, rect)
   }
-  inlineEdit.startInlineEdit(text, source, blockIndex, rect)
 }
 
 async function onInlineEditSubmit(instruction: string) {
   await inlineEdit.submitInstruction(instruction)
 }
 
-function locateTodoSource(_todo: any) { switchTab('transcript') }
 
 /** 切换所有章节原文显隐（导航栏眼睛按钮） / Toggle all chapters transcript visibility (navbar eye button) */
 function toggleAllTranscript() {
@@ -539,13 +522,13 @@ const speakerNames = computed(() => {
 
 // ─── 生命周期 / Lifecycle ───
 onMounted(async () => {
-  // 行间编辑块更新回调 / Inline edit block updater
-  inlineEdit.registerBlockUpdater((blockIndex: number, newSource: string) => {
+  // 行间编辑范围替换回调 / Inline edit range replacer
+  inlineEdit.registerRangeReplacer((start: number, end: number, newText: string) => {
     const src = inlineEdit.source.value || '纪要'
     if (src === '随记' && notesPanelRef.value) {
-      notesPanelRef.value.updateBlock(blockIndex, newSource)
+      notesPanelRef.value.replaceRange(start, end, newText)
     } else if (summaryPanelRef.value) {
-      summaryPanelRef.value.updateBlock(blockIndex, newSource)
+      summaryPanelRef.value.replaceRange(start, end, newText)
     }
   })
 

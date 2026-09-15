@@ -26,6 +26,7 @@
   "rail_projects": "知识库",
   "rail_speakers": "说话人",
   "rail_hotwords": "热词",
+    "rail_agents": "AI 助手",
   "rail_settings": "设置",
   "rail_settings_version": "设置 · {version}",
   "rail_toggle_sidebar": "展开/收起侧边栏",

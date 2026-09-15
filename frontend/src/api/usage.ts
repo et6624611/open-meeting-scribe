@@ -34,3 +34,9 @@ export async function fetchUsageHistory(days = 30): Promise<UsageHistory> {
   const { data } = await client.get<UsageHistory>('/api/usage/history', { params: { days } })
   return data
 }
+
+/** 更新用户偏好（如优先使用订阅流量） / Update user prefs (e.g. prefer subscription) */
+export async function updateUserPrefs(prefs: { prefer_subscription?: boolean; local_diarization?: boolean }): Promise<{ prefs: Record<string, boolean> }> {
+  const { data } = await client.post('/api/user/prefs', prefs)
+  return data
+}

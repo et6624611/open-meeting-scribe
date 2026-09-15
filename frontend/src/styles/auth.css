@@ -142,6 +142,12 @@
 .login-tab-panel.active { display: block; }
 
 /* ─── 手机号表单 ─── */
+.sms-beta-notice {
+  font-size: 12px; color: var(--subtle); text-align: left;
+  margin-bottom: 12px; padding: 8px 12px;
+  background: oklch(from var(--warn) l c h / 0.08);
+  border-radius: 8px; line-height: 1.5;
+}
 .sms-input-group { margin-bottom: 12px; }
 .sms-input {
   width: 100%; height: 44px; padding: 0 14px;

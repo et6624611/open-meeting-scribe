@@ -75,7 +75,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'action', action: string, text: string, source: string, blockIndex: number, replacement?: string): void
-  (e: 'inline-edit', text: string, source: string, blockIndex: number): void
+  (e: 'inline-edit', text: string, source: string, blockIndex: number, range?: { start: number; end: number }): void
 }>()
 
 const { setQuote } = useQuoteRef()
@@ -90,6 +90,7 @@ const showMappingInput = ref(false)
 const mappingTarget = ref('')
 let sourceLabel = ''
 let blockIndex = -1
+let textareaRange: { start: number; end: number } | null = null
 
 // ── 热词匹配计算 / Hotword matching computed ──
 const isAlreadyHotword = computed(() =>
@@ -121,6 +122,29 @@ function onMouseUp(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (toolbarEl.value?.contains(target)) return
 
+  // ── textarea 选区检测 / textarea selection detection ──
+  const textareaEl = target.closest('textarea.gen-textarea-editor') as HTMLTextAreaElement | null
+  if (textareaEl) {
+    const start = textareaEl.selectionStart
+    const end = textareaEl.selectionEnd
+    if (start === null || start === end) { visible.value = false; return }
+    const text = textareaEl.value.slice(start, end).trim()
+    if (!text) { visible.value = false; return }
+    selectedTextRef.value = text
+    showMappingInput.value = false
+    mappingTarget.value = ''
+    sourceLabel = t('common.selection_toolbar.source_minutes')
+    blockIndex = -1
+    textareaRange = { start, end }
+    // 定位工具栏到 textarea 上方 / Position toolbar above textarea
+    const rect = textareaEl.getBoundingClientRect()
+    toolbarStyle.value = { top: (rect.top - 48) + 'px', left: '8px' }
+    visible.value = true
+    return
+  }
+
+  // ── DOM Selection 检测（转写原文面板） / DOM Selection detection (transcript panel) ──
+  textareaRange = null
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || !sel.toString().trim()) {
     visible.value = false
@@ -178,6 +202,7 @@ function onScrollCollapse() {
 function onQuoteToAi() {
   setQuote(selectedTextRef.value, sourceLabel, blockIndex)
   visible.value = false
+  textareaRange = null
   window.getSelection()?.removeAllRanges()
   window.dispatchEvent(new CustomEvent('quote-to-ai'))
 }
@@ -185,13 +210,15 @@ function onQuoteToAi() {
 function onAction(action: string) {
   emit('action', action, selectedTextRef.value, sourceLabel, blockIndex)
   visible.value = false
+  textareaRange = null
   window.getSelection()?.removeAllRanges()
 }
 
 /** 行间编辑：emit inline-edit 事件，由父组件处理 / Inline edit: emit inline-edit event, handled by parent */
 function onInlineEdit() {
-  emit('inline-edit', selectedTextRef.value, sourceLabel, blockIndex)
+  emit('inline-edit', selectedTextRef.value, sourceLabel, blockIndex, textareaRange || undefined)
   visible.value = false
+  textareaRange = null
   window.getSelection()?.removeAllRanges()
 }
 

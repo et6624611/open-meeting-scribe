@@ -23,6 +23,7 @@ import enGenerating from './locales/en/generating.json'
 import enTask from './locales/en/task.json'
 import enLogin from './locales/en/login.json'
 import enAiPanel from './locales/en/ai-panel.json'
+import enAgents from './locales/en/agents.json'
 
 /** 合并所有模块的翻译结构（按模块名命名空间包裹，与组件 t('common.xxx') 调用一致） / Merge all module translation structures (namespaced by module name, matching component t('common.xxx') calls) */
 type MessageSchema = {
@@ -41,6 +42,7 @@ type MessageSchema = {
   task: typeof enTask
   login: typeof enLogin
   'ai-panel': typeof enAiPanel
+  agents: typeof enAgents
 }
 
 /** 支持的语言列表 / Supported languages */
@@ -51,7 +53,7 @@ export type SupportedLocale = typeof SUPPORT_LOCALES[number]
 const LOCALE_MODULES = [
   'common', 'recording', 'start', 'processing', 'library',
   'speakers', 'hotwords', 'settings', 'projects', 'sidebar', 'topbar',
-  'generating', 'task', 'login', 'ai-panel',
+  'generating', 'task', 'login', 'ai-panel', 'agents',
 ] as const
 
 /** 默认语言的全量消息（按模块名命名空间包裹，各 JSON 内部不含模块名前缀） / Full messages for default language (namespaced by module name; each JSON contains no module name prefix) */
@@ -71,6 +73,7 @@ const defaultMessages: MessageSchema = {
   task: enTask,
   login: enLogin,
   'ai-panel': enAiPanel,
+  agents: enAgents,
 }
 
 // ─── 创建 i18n 实例 ─── / ─── Create i18n instance ───

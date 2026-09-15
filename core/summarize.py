@@ -223,8 +223,12 @@ def generate_summary(
         if text:
             user_content += f"**{speaker_name}**：{text}\n\n"
 
+    # Agent 角色工作区：优先从 summary-template.md 加载，回退到硬编码常量 / Agent workspace: prefer role template, fallback to hardcoded
+    from core.agent_workspace import get_role_summary_prompt
+    summary_prompt = get_role_summary_prompt() or SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": summary_prompt},
         {"role": "user", "content": user_content},
     ]
 

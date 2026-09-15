@@ -92,7 +92,27 @@ def _is_placeholder_key(key: str) -> bool:
 def _should_use_cloud() -> bool:
     """判断是否应走云端代理（无本地 API Key 或 Key 为占位符，且云端可用）。
     Check if cloud proxy should be used (no local API key or key is placeholder, and cloud is enabled).
+
+    用户偏好 prefer_subscription 开启时，即使有本地 Key 也优先走云端代理消耗订阅配额。
+    When prefer_subscription is enabled, prefer cloud proxy to consume subscription quota.
     """
+    # 用户偏好覆盖：优先使用订阅流量 / User preference override: prefer subscription quota
+    try:
+        from core.users import get_current_user
+        from core.metering import TIER_QUOTAS
+        user = get_current_user()
+        if user and user.get("prefs", {}).get("prefer_subscription", False):
+            subscription = user.get("subscription", {})
+            if subscription.get("tier") in TIER_QUOTAS:
+                try:
+                    from core.cloud_client import is_cloud_enabled
+                    if is_cloud_enabled():
+                        return True
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     try:
         from app.store import get_active_api_key
         key = get_active_api_key()
@@ -123,16 +143,21 @@ def _try_cloud_llm(messages, model, temperature, max_tokens) -> str:
     """尝试通过云端代理调用 LLM，返回生成的文本。失败抛出 RuntimeError。
     Try cloud LLM proxy; returns generated text. Raises RuntimeError on failure.
     """
-    from core.cloud_client import cloud_llm_chat
+    from core.cloud_client import cloud_llm_chat, is_cloud_enabled
     user_id = _get_cloud_user_id()
     logger.info(f"LLM 无本地 Key，尝试云端代理: user={user_id[:8] if user_id else 'anon'}")
     result = cloud_llm_chat(messages, model, temperature, max_tokens, user_id)
     if result is None:
+        # 区分：云端未启用 vs 云端调用失败 / Distinguish: cloud not enabled vs cloud call failed
+        if not is_cloud_enabled():
+            raise RuntimeError(
+                "AI 功能未配置。请在设置中配置 API Key，或连接云端服务器。"
+            )
         raise RuntimeError(
-            "云端 LLM 调用失败。请检查：\n"
-            "1. 网络连接是否正常\n"
-            "2. 云端服务是否可用\n"
-            "3. 或在设置中配置自己的 API Key"
+            "云端 AI 服务调用失败。可能原因：\n"
+            "1. 云端 AI 端点未部署（/api/cloud/llm/chat/completions 不存在）\n"
+            "2. 网络连接异常\n"
+            "3. 请在设置中配置自己的 API Key"
         )
     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
     return content

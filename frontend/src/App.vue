@@ -49,6 +49,27 @@
       </div>
     </div>
 
+    <!-- 版本更新提示横幅 / Version update notification banner -->
+    <div class="reg-guidance-banner update-banner" :class="{ 'is-hidden': !showUpdateBanner }">
+      <div class="reg-guidance-content update-content" v-if="showUpdateBanner">
+        <svg class="reg-guidance-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span class="reg-guidance-text">
+          {{ t('common.update_available', { version: updateLatestVersion }) }}
+        </span>
+        <a v-if="updateReleaseUrl" class="reg-guidance-cta" :href="updateReleaseUrl" target="_blank" rel="noopener">{{ t('common.view_update') }}</a>
+        <button class="reg-guidance-dismiss" @click="onDismissUpdate" :title="t('common.announcement.dismiss')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <!-- 水印氛围层 / Watermark atmosphere layer -->
     <div class="wm-layer" id="wmLayer" :class="{ 'is-hidden': !watermark.enabled }" :style="watermark.enabled ? { '--wm-opacity': watermark.opacity } : undefined">
       <div class="wm-glow wm-glow-1"></div>
@@ -117,11 +138,13 @@ import { useTaskStore } from '@/stores/task'
 import { useUserStore } from '@/stores/user'
 import { useLayoutStore } from '@/stores/layout'
 import { useWatermarkStore } from '@/stores/watermark'
+import { useAgentStore } from '@/stores/agent'
 import { useDivider } from '@/composables/useDivider'
 import { useToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
 import { usePhilosophy } from '@/composables/usePhilosophy'
+import { useUpdateCheck } from '@/composables/useUpdateCheck'
 import { escapeHtml } from '@/utils/sanitize'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
@@ -138,6 +161,7 @@ const taskStore = useTaskStore()
 const userStore = useUserStore()
 const layout = useLayoutStore()
 const watermark = useWatermarkStore()
+const agentStore = useAgentStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
@@ -153,7 +177,7 @@ if (typeof window !== 'undefined') {
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 const statusModels = ref('paraformer-v2 + qwen-plus')  // 默认值，加载设置后更新
 
-// 加载设置以获取实际模型名 / Load settings to get actual model names
+// 加载设置以获取实际模型名与功能开关 / Load settings to get actual model names and feature flags
 async function loadStatusModels() {
   try {
     const client = (await import('@/api/client')).default
@@ -161,6 +185,9 @@ async function loadStatusModels() {
     const asrModel = data?.asr?.model || 'paraformer-v2'
     const llmModel = data?.llm?.model || 'qwen-plus'
     statusModels.value = `${asrModel} + ${llmModel}`
+    // 启动时版本检查（受 update_check 开关控制） / Startup version check (controlled by update_check flag)
+    const updateCheckEnabled = data?.feature_flags?.update_check !== false
+    updateStartupCheck(updateCheckEnabled)
   } catch {
     // 静默失败，使用默认值 / Silent failure, use defaults
   }
@@ -169,6 +196,14 @@ async function loadStatusModels() {
 // 公告横幅 / Announcement banner
 const { visible: annVisible, currentMessage: annMessage, load: loadAnnouncements, dismiss: annDismiss, getCtaUrl: annCtaUrl } = useAnnouncements()
 const safeAnnContent = computed(() => annMessage.value ? escapeHtml(annMessage.value.content) : '')
+
+// 版本更新检查 / Version update check
+const { hasUpdate: updateHasUpdate, latestVersion: updateLatestVersion, releaseUrl: updateReleaseUrl, dismissed: updateDismissed, startupCheck: updateStartupCheck, dismiss: updateDismiss } = useUpdateCheck()
+const showUpdateBanner = computed(() => updateHasUpdate.value && !updateDismissed.value)
+
+function onDismissUpdate() {
+  updateDismiss()
+}
 
 function onCtaClick() {
   const url = annCtaUrl()
@@ -203,6 +238,7 @@ onMounted(async () => {
   loadAnnouncements()
   loadPhilosophy()
   loadStatusModels()  // 加载状态栏模型名
+  agentStore.load()  // 加载全局 AI 助手状态
 
   // ─── 路由变化时刷新理念 / Refresh philosophy on route change ───
   router.afterEach((to) => {

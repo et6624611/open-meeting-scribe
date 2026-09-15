@@ -3,8 +3,8 @@ title: docs 目录导航
 description: Open Meeting Scribe 文档中心索引，说明 docs/ 下各文件的定位、存储内容与「单一事实源」归属，帮助新人与 AI 快速定位该改哪份文档。
 tags: ["docs", "index", "navigation", "single-source-of-truth"]
 created_at: "2026-09-09"
-updated_at: "2026-09-11"
-version: "1.0.0"
+updated_at: "2026-09-15"
+version: "1.1.0"
 author: "wangyongliang"
 status: "published"
 category: "documentation"
@@ -28,6 +28,7 @@ category: "documentation"
 | 认证与订阅系统实现方案 | [`AUTH_DESIGN.md`](AUTH_DESIGN.md) | 配套 [ADR-0006](adr/0006-认证与订阅架构.md) 的技术设计 |
 | 用量计量 / 计费技术方案 | [`USAGE_METERING_DESIGN.md`](USAGE_METERING_DESIGN.md) | 计量计费设计草案，依赖 AUTH_DESIGN + API_CONTRACTS |
 | 界面设计决策与原则 | [`design/DESIGN_DECISIONS.md`](design/DESIGN_DECISIONS.md) | 布局原则、状态机、交互策略、产品蓝图（组件实现以 Vue 源码为准） |
+| Agent 角色系统设计与实施计划 | [`design/AGENT_ROLE_SYSTEM.md`](design/AGENT_ROLE_SYSTEM.md) | 从硬编码提示词迁移到 .md 工作区，预定义角色 + fork 自定义 + 场景切换 |
 | 图标库选型与使用规范 | [`ICON_SPEC.md`](ICON_SPEC.md) | Lucide（Feather 风格）+ 尺寸体系 + Emoji 替换映射 |
 | 重大决策的背景 / 选项 / 后果 | [`adr/`](adr/) | 一个决策一篇，旧的标 Superseded 不删不改 |
 | 术语口径统一 | [`GLOSSARY.md`](GLOSSARY.md) | 避免文档 / 代码 / AI 对话各说各话 |
@@ -51,7 +52,8 @@ docs/
 │   ├── README.md                # ADR 索引 + 新建模板
 │   └── 000X-*.md                # 各篇决策
 ├── design/                      # 界面设计
-│   └── DESIGN_DECISIONS.md      # 界面设计决策与原则
+│   ├── DESIGN_DECISIONS.md      # 界面设计决策与原则
+│   └── AGENT_ROLE_SYSTEM.md     # Agent 角色系统设计与实施计划
 ```
 
 ## 三、子目录说明

@@ -23,17 +23,18 @@ logger = logging.getLogger(__name__)
 
 USAGE_DIR = Path("data/usage")
 
-# ── 体验期配额（分钟/月）── / Trial quota (minutes/month) ──
+# ── 订阅档位配额（分钟/月）── / Subscription tier quotas (minutes/month) ──
 # 本项目为个人开发者维护的开源软件，不提供商业订阅服务 / This is an open-source project maintained by an individual developer; no commercial subscription.
-# 仅设一个体验期档位，由开发者根据 API 费用承担能力调整 / Single trial tier, adjusted by developer based on API cost tolerance.
-# 自持 Key 用户不在此表，不计量 / Self-hosted key users not in this table; not metered.
+# 设体验期与个人订阅两个档位，由开发者根据 API 费用承担能力调整 / Trial + personal tiers, adjusted by developer based on API cost tolerance.
+# 自持 Key 用户不在此表（除非开启「优先使用订阅流量」偏好），不计量 / Self-hosted key users not in this table (unless "prefer subscription" is enabled); not metered.
 #
 # 体验期共享 proxy 仅限通过国内手机号（SMS）注册的用户 / Trial shared proxy limited to users registered via domestic phone (SMS).
 # 原因：开发者 API Key 部署在国内阿里云服务器，境外用户访问 / Reason: developer API Key deployed on domestic Alibaba Cloud server; overseas access
 # 可能涉及 DashScope 服务区域限制与数据跨境合规问题 / may involve DashScope service region restrictions and cross-border data compliance.
 # GitHub OAuth / 本地账户用户需自行配置 API Key / GitHub OAuth / local account users must configure their own API Key.
 TIER_QUOTAS = {
-    "free": 300,    # 体验期（默认，仅 SMS 注册用户） / Trial (default, SMS-registered users only)
+    "free": 300,      # 体验期（默认，仅 SMS 注册用户） / Trial (default, SMS-registered users only)
+    "personal": 3000, # 个人订阅（SMS 注册，已授权个人档位） / Personal subscription (SMS-registered, authorized personal tier)
 }
 
 

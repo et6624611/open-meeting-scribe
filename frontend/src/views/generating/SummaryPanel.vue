@@ -8,18 +8,34 @@
     <div class="gen-empty" v-else-if="pending">
       <div class="gen-empty-hint">{{ t('generating.summary.pending') }}</div>
     </div>
-    <MdBlockEditor
-      v-else
-      :markdown="summaryMd"
-      @change="emit('change', $event)"
-      ref="summaryEditor"
-      :empty-text="t('generating.summary.placeholder')"
-      :inline-diff-block-index="inlineDiffBlockIndex"
-      :inline-diff-original="inlineDiffOriginal"
-      :inline-diff-edited="inlineDiffEdited"
-      @accept-diff="emit('accept-diff')"
-      @reject-diff="emit('reject-diff')"
-    />
+    <template v-else>
+      <!-- 编辑器工具栏 / Editor toolbar -->
+      <div class="gen-ta-toolbar" v-if="hasSummary">
+        <button v-if="!isEditing" class="gen-ta-edit-btn" @click="startEdit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          {{ t('generating.toolbar.edit') }}
+        </button>
+        <template v-else>
+          <button class="gen-ta-save-btn" @click="finishEdit">{{ t('common.save') }}</button>
+          <button class="gen-ta-cancel-btn" @click="cancelEdit">{{ t('common.cancel') }}</button>
+        </template>
+      </div>
+      <!-- Markdown textarea 编辑器 / Markdown textarea editor -->
+      <div class="gen-textarea-wrap">
+        <textarea
+          ref="textareaEl"
+          class="gen-textarea-editor"
+          :class="{ 'is-readonly': !isEditing }"
+          :value="displayContent"
+          :readonly="!isEditing"
+          :placeholder="t('generating.summary.placeholder')"
+          spellcheck="false"
+          @input="onInput"
+          @mouseup="onSelectionChange"
+          @keyup="onSelectionChange"
+        ></textarea>
+      </div>
+    </template>
     <!-- 章节回顾卡片 / Chapter review card -->
     <div class="sum-section" v-if="hasSummary && chapters.length > 0">
       <div class="sum-section-label">{{ t('generating.chapter.review') }}</div>
@@ -62,9 +78,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import MdBlockEditor from '@/components/MdBlockEditor.vue'
 import type { Chapter } from '@/api/types'
 
 const { t } = useI18n()
@@ -82,20 +97,12 @@ const props = defineProps<{
   hasSummary: boolean
   todosCount: number
   todosDoneCount: number
-  /** 行间编辑 diff 目标块索引 / Inline edit diff target block index */
-  inlineDiffBlockIndex?: number
-  /** 行间编辑原文 / Inline edit original text */
-  inlineDiffOriginal?: string
-  /** 行间编辑改写结果 / Inline edit edited text */
-  inlineDiffEdited?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'change', md: string): void
   (e: 'toggle-chapter', idx: number): void
   (e: 'switch-tab', tabId: string): void
-  (e: 'accept-diff'): void
-  (e: 'reject-diff'): void
 }>()
 
 function formatTimeMs(ms: number): string {
@@ -106,10 +113,73 @@ function formatTimeMs(ms: number): string {
 
 const loading = computed(() => props.processing)
 
-const summaryEditor = ref<InstanceType<typeof MdBlockEditor> | null>(null)
+// ── textarea 编辑状态 / textarea editing state ──
+const textareaEl = ref<HTMLTextAreaElement | null>(null)
+const isEditing = ref(false)
+const editBuffer = ref('')
+const displayContent = computed(() => isEditing.value ? editBuffer.value : props.summaryMd)
+
+function startEdit() {
+  editBuffer.value = props.summaryMd
+  isEditing.value = true
+  nextTick(() => {
+    textareaEl.value?.focus()
+    autoGrow()
+  })
+}
+
+function finishEdit() {
+  isEditing.value = false
+  if (editBuffer.value !== props.summaryMd) {
+    emit('change', editBuffer.value)
+  }
+}
+
+function cancelEdit() {
+  isEditing.value = false
+  editBuffer.value = props.summaryMd
+}
+
+function onInput(e: Event) {
+  const val = (e.target as HTMLTextAreaElement).value
+  editBuffer.value = val
+  autoGrow()
+}
+
+function autoGrow() {
+  const el = textareaEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = el.scrollHeight + 'px'
+}
+
+// 外部 summaryMd 变化时同步编辑缓冲 / Sync edit buffer when external summaryMd changes
+watch(() => props.summaryMd, (val) => {
+  if (isEditing.value) editBuffer.value = val
+  nextTick(autoGrow)
+})
+
+// 面板可见时自适应高度 / Auto-grow when panel becomes visible
+watch(() => props.visible, (v) => { if (v) nextTick(autoGrow) })
+
+// ── 选区追踪（行间编辑用） / Selection tracking (for inline edit) ──
+function onSelectionChange() {
+  const el = textareaEl.value
+  if (!el || el.selectionStart === el.selectionEnd) return
+  // 选区信息可由外部通过 textareaEl 读取 / Selection info readable externally via textareaEl
+}
+
+// ── 行间编辑接口 / Inline edit interface ──
+function replaceRange(start: number, end: number, newText: string) {
+  const content = isEditing.value ? editBuffer.value : props.summaryMd
+  const updated = content.slice(0, start) + newText + content.slice(end)
+  editBuffer.value = updated
+  emit('change', updated)
+}
 
 defineExpose({
-  updateBlock: (blockIndex: number, newSource: string) => summaryEditor.value?.updateBlock(blockIndex, newSource),
-  replaceTextInBlock: (blockIndex: number, oldText: string, newText: string) => summaryEditor.value?.replaceTextInBlock(blockIndex, oldText, newText),
+  replaceRange,
+  /** textarea 元素引用，供 SelectionToolbar 定位 / textarea element ref for SelectionToolbar positioning */
+  textareaEl,
 })
 </script>

@@ -53,11 +53,15 @@ export interface Settings {
   output_dir?: string
   disabled_commands?: string[]
   feature_flags?: Partial<FeatureFlags>
+  /** 优先使用订阅流量 / Prefer subscription quota */
+  prefer_subscription?: boolean
   /** 存储管理配置 / Storage management config */
   storage?: {
     auto_clean_intermediate?: boolean
     auto_archive_days?: number
   }
+  /** 当前激活的 AI 助手角色名 / Currently active AI assistant role name */
+  active_agent?: string
   /** 后端返回的 LLM Provider 预设列表 / LLM provider presets returned by backend */
   llm_provider_presets?: ProviderPreset[]
   [key: string]: unknown

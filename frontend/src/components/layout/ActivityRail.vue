@@ -54,6 +54,15 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
       </IconButton>
+      <IconButton
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'agents' }"
+        :label="t('sidebar.rail_agents')"
+        tip-position="right"
+        @click="navigate('/agents')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </IconButton>
     </div>
 
     <!-- 底部：AI 洞察指示器 + 设置 / Bottom: AI insights indicator + settings -->
@@ -117,7 +126,7 @@ const activeRecordingTaskId = computed(() => {
 })
 
 /** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
-const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/settings'])
+const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/settings'])
 
 /** Origin route before entering a secondary page, for toggle-back / 进入二级管理页前的来源路径 */
 const previousRoute = ref('')

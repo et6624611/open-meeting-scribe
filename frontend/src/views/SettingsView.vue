@@ -28,10 +28,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         {{ t('settings.cat_features') }}
       </button>
-      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'prompts' }" @click="activeCategory = 'prompts'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        {{ t('settings.cat_prompts') }}
-      </button>
       <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'system' }" @click="activeCategory = 'system'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1.1a1.7 1.7 0 0 0-1.8.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1.1a2 2 0 1 1 2.8 2.8l.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         {{ t('settings.cat_system') }}
@@ -55,14 +51,112 @@
       <h2 class="settings-title">{{ t('settings.account') }}</h2>
       <div v-if="userStore.isLoggedIn" class="settings-account">
         <span class="settings-avatar">{{ userStore.avatarLetter }}</span>
-        <div>
+        <div class="settings-account-info">
           <div class="settings-name">{{ userStore.displayName }}</div>
-          <div class="settings-role">{{ userStore.user?.provider || 'local' }}</div>
+          <div class="settings-account-meta">
+            <span class="settings-role">{{ userStore.user?.provider || 'local' }}</span>
+            <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
+          </div>
         </div>
       </div>
       <div v-else class="settings-login-prompt">
         <p>{{ t('settings.not_logged_in') }}</p>
         <button class="btn btn-primary" @click="showLogin">{{ t('settings.login') }}</button>
+      </div>
+    </div>
+
+    <!-- 优先使用订阅流量 / Prefer subscription quota -->
+    <div v-if="userStore.isLoggedIn" class="settings-section">
+      <h2 class="settings-title">{{ t('settings.subscription_preference') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.subscription_preference_desc') }}</p>
+      <div class="wm-setting-row">
+        <label>
+          {{ t('settings.prefer_subscription') }}
+          <span class="toggle-desc">{{ t('settings.prefer_subscription_desc') }}</span>
+        </label>
+        <div class="wm-toggle-wrap">
+          <div
+            class="wm-toggle"
+            :class="{ 'is-on': preferSubscription }"
+            role="switch"
+            :aria-checked="preferSubscription"
+            tabindex="0"
+            @click="onTogglePreferSubscription"
+            @keydown.enter.prevent="onTogglePreferSubscription"
+            @keydown.space.prevent="onTogglePreferSubscription"
+          ></div>
+          <span class="wm-setting-val">{{ preferSubscription ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 用量与配额 / Usage and quota -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.usage') }}</h2>
+
+      <!-- 未登录 / Not logged in -->
+      <div v-if="!userStore.isLoggedIn" class="usage-not-metered">
+        <p>{{ t('settings.usage_login_hint') }}</p>
+        <button class="btn btn-primary" style="margin-top:12px;padding:0 16px;height:32px;font-size:12px" @click="showLogin">{{ t('settings.login') }}</button>
+      </div>
+
+      <!-- 计量模式 / Metered mode -->
+      <div v-else-if="usageSummary.metered" class="usage-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
+          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">{{ usageSummary.month }}</span>
+        </div>
+        <div class="usage-summary-row">
+          <div class="usage-stat">
+            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
+            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
+          </div>
+          <div class="usage-stat">
+            <div class="stat-value">{{ formatMinutes(usageSummary.used || 0) }}</div>
+            <div class="stat-label">{{ t('settings.used') }}</div>
+          </div>
+          <div class="usage-stat">
+            <div class="stat-value">{{ formatMinutes(usageSummary.remaining || 0) }}</div>
+            <div class="stat-label">{{ t('settings.remaining') }}</div>
+          </div>
+        </div>
+        <div class="usage-progress">
+          <div class="usage-progress-fill" :style="progressStyle"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ t('settings.recent_30_days') }}</div>
+        <div class="usage-chart">
+          <div
+            v-for="d in usageHistory"
+            :key="d.date"
+            class="usage-chart-bar"
+            :style="{ height: barHeight(d.minutes) + 'px' }"
+            :data-tip="t('settings.usage_tooltip', { date: d.date.slice(5), minutes: formatMinutes(d.minutes), tasks: d.tasks })"
+          ></div>
+          <div v-if="!usageHistory.length" style="font-size:12px;color:var(--muted);padding:8px">{{ t('settings.no_usage') }}</div>
+        </div>
+      </div>
+
+      <!-- 非计量模式 / Non-metered mode -->
+      <div v-else class="usage-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
+          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">{{ t('settings.self_key') }}</span>
+        </div>
+        <div class="usage-summary-row">
+          <div class="usage-stat">
+            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
+            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
+          </div>
+          <div class="usage-stat">
+            <div class="stat-value" style="color:var(--muted)">∞</div>
+            <div class="stat-label">{{ t('settings.used_self') }}</div>
+          </div>
+          <div class="usage-stat">
+            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
+            <div class="stat-label">{{ t('settings.platform_remaining') }}</div>
+          </div>
+        </div>
+        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">{{ t('settings.cloud_mode_hint') }}</p>
       </div>
     </div>
     </div>
@@ -225,7 +319,7 @@
           class="theme-chip"
           :class="{ 'is-active': themeStore.current === theme.id }"
           @click="themeStore.setTheme(theme.id)"
-        >{{ t(`common.theme.${theme.id}`) }}</button>
+        >{{ t(`common.theme.${theme.id.replace(/-/g, '_')}`) }}</button>
       </div>
     </div>
 
@@ -365,31 +459,32 @@
     </div>
     </div>
 
-    <!-- ═══ 提示词 / Prompts ═══ -->
-    <div v-show="activeCategory === 'prompts'">
-    <!-- 系统提示词 / System prompts -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.prompts_title') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.prompts_desc') }}</p>
-      <div class="prompt-list">
-        <div v-for="(item, name) in systemPrompts" :key="name" class="prompt-item">
-          <div class="prompt-item-header">
-            <span class="prompt-item-name">{{ name }}</span>
-            <span class="prompt-item-source">{{ t('settings.system_prompts_source') }}: {{ item.module }}</span>
-            <button class="btn btn-sm btn-secondary" @click="togglePromptExpand(name)">
-              {{ expandedPrompts.has(name) ? '▲' : t('settings.system_prompts_view') }}
-            </button>
-          </div>
-          <p class="prompt-item-desc">{{ item.description }}</p>
-          <pre v-if="expandedPrompts.has(name)" class="prompt-item-content">{{ item.prompt }}</pre>
-        </div>
-        <p v-if="!Object.keys(systemPrompts).length" class="settings-empty">—</p>
-      </div>
-    </div>
-    </div>
-
     <!-- ═══ 系统 / System ═══ -->
     <div v-show="activeCategory === 'system'">
+    <!-- 版本信息 / Version info -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.version_info') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.version_info_desc') }}</p>
+      <div class="version-panel">
+        <div class="version-row">
+          <span class="version-label">{{ t('settings.current_version') }}</span>
+          <span class="version-value">{{ settingsCurrentVersion || '—' }}</span>
+        </div>
+        <div v-if="settingsLatestVersion" class="version-row">
+          <span class="version-label">{{ t('settings.latest_version') }}</span>
+          <span class="version-value" :class="{ 'is-newer': settingsHasUpdate }">{{ settingsLatestVersion }}</span>
+        </div>
+        <div class="version-actions">
+          <button class="btn btn-secondary btn-sm" @click="onManualCheck" :disabled="settingsChecking">
+            <svg v-if="settingsChecking" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            {{ settingsChecking ? t('settings.checking_update') : t('settings.check_update_btn') }}
+          </button>
+          <a v-if="settingsHasUpdate && settingsReleaseUrl" class="btn btn-primary btn-sm" :href="settingsReleaseUrl" target="_blank" rel="noopener" style="margin-left:8px">{{ t('settings.go_to_download') }}</a>
+          <span v-if="settingsCheckMessage" class="version-msg" :class="{ 'is-error': settingsCheckError }">{{ settingsCheckMessage }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- CLI 命令参考 / CLI command reference -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.cli_reference') }}</h2>
@@ -443,77 +538,6 @@
           <code>{{ cmd }}</code>
           <button class="btn btn-sm btn-secondary" @click="onEnableCommand(cmd)">{{ t('settings.command_enable') }}</button>
         </div>
-      </div>
-    </div>
-
-    <!-- 用量与配额 / Usage and quota -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.usage') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.usage') }}</p>
-
-      <!-- 未登录 / Not logged in -->
-      <div v-if="!userStore.isLoggedIn" class="usage-not-metered">
-        <p>{{ t('settings.usage_login_hint') }}</p>
-        <button class="btn btn-primary" style="margin-top:12px;padding:0 16px;height:32px;font-size:12px" @click="showLogin">{{ t('settings.login') }}</button>
-      </div>
-
-      <!-- 计量模式 / Metered mode -->
-      <div v-else-if="usageSummary.metered" class="usage-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
-          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">{{ usageSummary.month }}</span>
-        </div>
-        <div class="usage-summary-row">
-          <div class="usage-stat">
-            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
-          </div>
-          <div class="usage-stat">
-            <div class="stat-value">{{ formatMinutes(usageSummary.used || 0) }}</div>
-            <div class="stat-label">{{ t('settings.used') }}</div>
-          </div>
-          <div class="usage-stat">
-            <div class="stat-value">{{ formatMinutes(usageSummary.remaining || 0) }}</div>
-            <div class="stat-label">{{ t('settings.remaining') }}</div>
-          </div>
-        </div>
-        <div class="usage-progress">
-          <div class="usage-progress-fill" :style="progressStyle"></div>
-        </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ t('settings.recent_30_days') }}</div>
-        <div class="usage-chart">
-          <div
-            v-for="d in usageHistory"
-            :key="d.date"
-            class="usage-chart-bar"
-            :style="{ height: barHeight(d.minutes) + 'px' }"
-            :data-tip="t('settings.usage_tooltip', { date: d.date.slice(5), minutes: formatMinutes(d.minutes), tasks: d.tasks })"
-          ></div>
-          <div v-if="!usageHistory.length" style="font-size:12px;color:var(--muted);padding:8px">{{ t('settings.no_usage') }}</div>
-        </div>
-      </div>
-
-      <!-- 非计量模式 / Non-metered mode -->
-      <div v-else class="usage-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
-          <span style="font-size:12px;color:var(--muted);font-family:var(--font-mono)">{{ t('settings.self_key') }}</span>
-        </div>
-        <div class="usage-summary-row">
-          <div class="usage-stat">
-            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">{{ t('settings.monthly_quota') }}</div>
-          </div>
-          <div class="usage-stat">
-            <div class="stat-value" style="color:var(--muted)">∞</div>
-            <div class="stat-label">{{ t('settings.used_self') }}</div>
-          </div>
-          <div class="usage-stat">
-            <div class="stat-value">{{ formatMinutes(usageSummary.quota || 0) }}</div>
-            <div class="stat-label">{{ t('settings.platform_remaining') }}</div>
-          </div>
-        </div>
-        <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">{{ t('settings.cloud_mode_hint') }}</p>
       </div>
     </div>
 
@@ -637,15 +661,16 @@ import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
 import { useWatermarkStore } from '@/stores/watermark'
 import { useTaskStore } from '@/stores/task'
-import { fetchSettings, saveSettings, testApiConnection, fetchSystemPrompts, fetchCliReference } from '@/api/settings'
-import type { Settings, FeatureFlags, ProviderPreset, SystemPromptItem } from '@/api/settings'
-import { fetchUsageSummary, fetchUsageHistory } from '@/api/usage'
+import { fetchSettings, saveSettings, testApiConnection, fetchCliReference } from '@/api/settings'
+import type { Settings, FeatureFlags, ProviderPreset } from '@/api/settings'
+import { fetchUsageSummary, fetchUsageHistory, updateUserPrefs } from '@/api/usage'
 import type { UsageSummary, UsageHistoryItem } from '@/api/usage'
 import { fetchStorageUsage, cleanIntermediateFiles, cleanOrphanedFiles } from '@/api/storage'
 import type { StorageUsage } from '@/api/storage'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 import { usePageBack } from '@/composables/usePageBack'
 import { modKey } from '@/utils/platform'
+import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
 const { t } = useI18n()
 const { goBack } = usePageBack()
@@ -653,6 +678,38 @@ const userStore = useUserStore()
 const themeStore = useThemeStore()
 const watermarkStore = useWatermarkStore()
 const taskStore = useTaskStore()
+
+// 版本检查 / Version check
+const {
+  checking: updateChecking,
+  hasUpdate: updateHasUpdate,
+  latestVersion: updateLatestVersion,
+  currentVersion: updateCurrentVersion,
+  releaseUrl: updateReleaseUrl,
+  checkError: updateCheckError,
+  manualCheck: updateManualCheck,
+  loadCurrentVersion: updateLoadCurrentVersion,
+  resetDismiss: updateResetDismiss,
+} = useUpdateCheck()
+
+const settingsChecking = computed(() => updateChecking.value)
+const settingsHasUpdate = computed(() => updateHasUpdate.value)
+const settingsCurrentVersion = computed(() => updateCurrentVersion.value)
+const settingsLatestVersion = computed(() => updateLatestVersion.value)
+const settingsReleaseUrl = computed(() => updateReleaseUrl.value)
+const settingsCheckError = computed(() => !!updateCheckError.value)
+const settingsCheckMessage = computed(() => {
+  if (updateCheckError.value) return t('settings.check_update_error')
+  if (updateChecking.value) return ''
+  if (updateHasUpdate.value) return t('settings.update_available_settings', { version: updateLatestVersion.value })
+  if (updateLatestVersion.value) return t('settings.is_latest')
+  return ''
+})
+
+async function onManualCheck() {
+  updateResetDismiss()
+  await updateManualCheck()
+}
 
 /** 当前选中的设置类别 / Currently selected settings category */
 const activeCategory = ref<string>('account')
@@ -701,6 +758,20 @@ const featureFlags = reactive<FeatureFlags>({
 const usageSummary = reactive<UsageSummary>({ metered: false })
 const usageHistory = ref<UsageHistoryItem[]>([])
 
+// ─── 优先使用订阅流量 / Prefer subscription quota ───
+const preferSubscription = ref(false)
+
+async function onTogglePreferSubscription() {
+  preferSubscription.value = !preferSubscription.value
+  try {
+    await updateUserPrefs({ prefer_subscription: preferSubscription.value })
+  } catch (e) {
+    // 回滚 / Rollback on failure
+    preferSubscription.value = !preferSubscription.value
+    console.error('Failed to update prefer_subscription:', e)
+  }
+}
+
 // ─── 声纹 / 分离 / 输出目录 / Voiceprint / Diarization / Output dir ───
 const diarizationInfo = reactive({
   subscription_tier: 'free',
@@ -713,15 +784,6 @@ function onToggleDiarization() {
   if (!diarizationInfo.can_toggle) return
   diarizationInfo.local_diarization = !diarizationInfo.local_diarization
   saveSettings({ diarization: { local_diarization: diarizationInfo.local_diarization } } as any)
-}
-
-// ─── 系统提示词 / System prompts ───
-const systemPrompts = reactive<Record<string, SystemPromptItem>>({})
-const expandedPrompts = reactive(new Set<string>())
-
-function togglePromptExpand(name: string) {
-  if (expandedPrompts.has(name)) expandedPrompts.delete(name)
-  else expandedPrompts.add(name)
 }
 
 // ─── CLI 参考 / CLI reference ───
@@ -999,6 +1061,8 @@ onMounted(async () => {
   if (s.output_dir) {
     settings.output_dir = s.output_dir
   }
+  // 优先使用订阅流量 / Prefer subscription
+  preferSubscription.value = !!s.prefer_subscription
   // 存储配置 / Storage config
   if (s.storage) {
     Object.assign(storageConfig, {
@@ -1007,9 +1071,9 @@ onMounted(async () => {
     })
   }
   loadUsage()
-  loadSystemPrompts()
   loadCliReference()
   loadStorageUsage()
+  updateLoadCurrentVersion()
 })
 
 async function loadUsage() {
@@ -1023,15 +1087,6 @@ async function loadUsage() {
     usageHistory.value = history.history || []
   } catch (e) {
     console.error('load usage failed:', e)
-  }
-}
-
-async function loadSystemPrompts() {
-  try {
-    const data = await fetchSystemPrompts()
-    Object.assign(systemPrompts, data)
-  } catch (e) {
-    console.error('load system prompts failed:', e)
   }
 }
 
@@ -1059,7 +1114,9 @@ async function loadCliReference() {
 .settings-section { margin-bottom: var(--s-7); }
 .settings-title { font-size: 16px; font-weight: 600; margin-bottom: var(--s-3); padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
 .settings-account { display: flex; align-items: center; gap: var(--s-3); }
-.settings-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--border); color: var(--muted); display: grid; place-items: center; font-size: 16px; font-weight: 600; }
+.settings-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--border); color: var(--muted); display: grid; place-items: center; font-size: 16px; font-weight: 600; flex-shrink: 0; }
+.settings-account-info { display: flex; flex-direction: column; gap: 2px; }
+.settings-account-meta { display: flex; align-items: center; gap: var(--s-2); }
 .settings-name { font-size: 15px; font-weight: 500; }
 .settings-role { font-size: 12px; color: var(--subtle); }
 .settings-login-prompt { display: flex; align-items: center; gap: var(--s-3); }
@@ -1131,4 +1188,16 @@ async function loadCliReference() {
 .storage-intermediate-title { font-size: 12px; font-weight: 600; color: var(--muted); padding: var(--s-2) var(--s-3); background: var(--surface-2); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.04em; }
 .storage-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .storage-clean-result { font-size: 12px; color: var(--accent); margin: 0; font-weight: 500; }
+/* 版本信息 / Version info */
+.version-panel { display: flex; flex-direction: column; gap: var(--s-2); }
+.version-row { display: flex; align-items: center; gap: var(--s-3); font-size: 13px; }
+.version-label { color: var(--muted); min-width: 80px; }
+.version-value { font-family: var(--font-mono); font-weight: 600; color: var(--fg); }
+.version-value.is-newer { color: var(--accent); }
+.version-actions { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); flex-wrap: wrap; }
+.version-msg { font-size: 12px; color: var(--accent); font-weight: 500; }
+.version-msg.is-error { color: var(--danger, #e53e3e); }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+
 </style>

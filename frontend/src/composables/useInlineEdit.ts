@@ -2,11 +2,13 @@
  * useInlineEdit.ts — 行间编辑状态管理 / Inline edit state management
  *
  * 管理划词改写功能的完整生命周期：
- * 划词 → 弹出指令输入 → AI 改写 → 原地 diff 展示 → 采纳/拒绝
+ * 划词 → 弹出指令输入 → AI 改写 → 原地替换 → 采纳/拒绝
+ *
+ * v2.0: 从块索引模式切换到 textarea 选区范围模式 / v2.0: from block index to textarea range mode
  *
  * 作者 / Author: Yongliang Wang
  * 创建 / Created: 2026-09-14
- * 版本 / Version: 1.0.0
+ * 版本 / Version: 2.0.0
  */
 
 import { ref, computed } from 'vue'
@@ -17,29 +19,25 @@ import { useI18n } from 'vue-i18n'
 /** 行间编辑状态类型 / Inline edit status type */
 export type InlineEditStatus = 'idle' | 'input' | 'loading' | 'result'
 
-/** 行间编辑状态 / Inline edit state */
-export interface InlineEditState {
-  blockIndex: number
-  originalText: string
-  source: string
-  instruction: string
-  editedText: string
-  status: InlineEditStatus
+/** 选区范围 / Selection range */
+export interface TextRange {
+  start: number
+  end: number
 }
-
-/** 块更新回调类型 / Block updater callback type */
-type BlockUpdater = (blockIndex: number, newSource: string) => void
 
 // ── 模块级单例状态 / Module-level singleton state ──
 const status = ref<InlineEditStatus>('idle')
-const blockIndex = ref(-1)
+const rangeStart = ref(0)
+const rangeEnd = ref(0)
 const originalText = ref('')
 const source = ref('')
 const instruction = ref('')
 const editedText = ref('')
 const anchorRect = ref<{ top: number; left: number } | null>(null)
 
-let blockUpdateFn: BlockUpdater | null = null
+/** 范围替换回调 / Range replacer callback */
+type RangeReplacer = (start: number, end: number, newText: string) => void
+let rangeReplaceFn: RangeReplacer | null = null
 
 export function useInlineEdit() {
   const { t } = useI18n()
@@ -53,24 +51,17 @@ export function useInlineEdit() {
   /** 是否正在展示 diff / Whether showing diff result */
   const showDiff = computed(() => status.value === 'result')
 
-  /** 当前 diff 的目标块索引 / Current diff target block index */
-  const diffBlockIndex = computed(() => blockIndex.value)
-
-  /** 注册块更新回调 / Register block updater callback */
-  function registerBlockUpdater(fn: BlockUpdater | null) {
-    blockUpdateFn = fn
-  }
-
-  /** 启动行间编辑（由 SelectionToolbar 触发） / Start inline edit (triggered by SelectionToolbar) */
+  /** 启动行间编辑（由 SelectionToolbar 或 textarea 面板触发） / Start inline edit */
   function startInlineEdit(
     text: string,
     src: string,
-    blkIdx: number,
+    range: TextRange,
     rect?: { top: number; left: number },
   ) {
     originalText.value = text
     source.value = src
-    blockIndex.value = blkIdx
+    rangeStart.value = range.start
+    rangeEnd.value = range.end
     instruction.value = ''
     editedText.value = ''
     anchorRect.value = rect || null
@@ -96,8 +87,8 @@ export function useInlineEdit() {
   /** 采纳改写结果 / Accept edit result */
   function acceptEdit() {
     if (status.value !== 'result' || !editedText.value) return
-    if (blockIndex.value >= 0 && blockUpdateFn) {
-      blockUpdateFn(blockIndex.value, editedText.value + ' <!--ai-->')
+    if (rangeReplaceFn) {
+      rangeReplaceFn(rangeStart.value, rangeEnd.value, editedText.value)
       showToast(t('common.inline_edit_accepted'), 'success')
     } else {
       showToast(t('common.inline_edit_locate_failed'), 'warn')
@@ -116,10 +107,16 @@ export function useInlineEdit() {
     clearState()
   }
 
+  /** 注册范围替换回调 / Register range replacer callback */
+  function registerRangeReplacer(fn: RangeReplacer | null) {
+    rangeReplaceFn = fn
+  }
+
   /** 清除状态 / Clear state */
   function clearState() {
     status.value = 'idle'
-    blockIndex.value = -1
+    rangeStart.value = 0
+    rangeEnd.value = 0
     originalText.value = ''
     source.value = ''
     instruction.value = ''
@@ -130,7 +127,8 @@ export function useInlineEdit() {
   return {
     // 状态 / State
     status,
-    blockIndex,
+    rangeStart,
+    rangeEnd,
     originalText,
     source,
     instruction,
@@ -140,9 +138,8 @@ export function useInlineEdit() {
     showInput,
     isLoading,
     showDiff,
-    diffBlockIndex,
     // 方法 / Methods
-    registerBlockUpdater,
+    registerRangeReplacer,
     startInlineEdit,
     submitInstruction,
     acceptEdit,

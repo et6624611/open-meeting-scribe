@@ -51,6 +51,7 @@ def user_bind_speaker(req: UserBindSpeakerRequest):
 
 class UserPrefsUpdateRequest(BaseModel):
     local_diarization: bool | None = None
+    prefer_subscription: bool | None = None
 
 
 @router.get("/api/user/prefs")
@@ -77,6 +78,7 @@ def get_user_prefs():
     return {
         "prefs": {
             "local_diarization": prefs.get("local_diarization", False),
+            "prefer_subscription": prefs.get("prefer_subscription", False),
         },
         "subscription": {
             "tier": subscription.get("tier", "free"),
@@ -107,6 +109,9 @@ def update_user_prefs(req: UserPrefsUpdateRequest):
         else:
             updates["local_diarization"] = req.local_diarization
 
+    if req.prefer_subscription is not None:
+        updates["prefer_subscription"] = req.prefer_subscription
+
     if updates:
         user_module.update_user_prefs(user["id"], updates)
 
@@ -118,6 +123,7 @@ def update_user_prefs(req: UserPrefsUpdateRequest):
     return {
         "prefs": {
             "local_diarization": prefs.get("local_diarization", False),
+            "prefer_subscription": prefs.get("prefer_subscription", False),
         },
         "effective_diarization": "local" if use_local else "cloud",
     }

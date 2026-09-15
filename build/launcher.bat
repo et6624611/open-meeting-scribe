@@ -2,10 +2,10 @@
 :: 切换到脚本所在目录（安装目录），确保相对路径正确
 cd /d "%~dp0"
 chcp 65001 >nul 2>&1
-title 会议助手
+title Open Meeting Scribe
 
 echo ════════════════════════════════════════
-echo   会议助手 — 启动中...
+echo   Open Meeting Scribe — Starting...
 echo ════════════════════════════════════════
 echo.
 

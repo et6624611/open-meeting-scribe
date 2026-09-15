@@ -26,6 +26,7 @@
   "rail_projects": "Knowledge Base",
   "rail_speakers": "Speakers",
   "rail_hotwords": "Hotwords",
+    "rail_agents": "AI Assistants",
   "rail_settings": "Settings",
   "rail_settings_version": "Settings · {version}",
   "rail_toggle_sidebar": "Toggle Sidebar",

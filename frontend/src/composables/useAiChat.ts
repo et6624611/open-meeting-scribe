@@ -11,6 +11,7 @@ import type { ChatAction, ChatExtractedItem, ChatResponse } from '@/api/chat'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
+import { useAgentStore } from '@/stores/agent'
 import { showToast } from '@/composables/useToast'
 import { tt } from '@/i18n'
 
@@ -48,6 +49,7 @@ export function useAiChat() {
   const taskStore = useTaskStore()
   const realtimeStore = useRealtimeStore()
   const aiSessions = useAiSessionsStore()
+  const agentStore = useAgentStore()
 
   const isLoading = ref(false)
   const abortController = ref<AbortController | null>(null)
@@ -99,6 +101,7 @@ export function useAiChat() {
         history: histSlice,
         realtime_transcripts: realtimeStore.getSnapshot(),
         current_page: (route.name as string) || undefined,
+        role: agentStore.activeAgent || undefined,
         signal: ctrl.signal,
       })
 

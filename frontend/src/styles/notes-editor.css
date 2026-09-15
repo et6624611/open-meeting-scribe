@@ -546,92 +546,94 @@
 .db-pdot.pd-in_progress { background: var(--st-progress); }
 .db-pdot.pd-to_confirm { background: var(--st-confirm); }
 .db-pdot.pd-done { background: var(--border); }
-.db-summary { font-size: var(--fs-12); color: var(--muted); white-space: nowrap; }
+.db-summary { font-size: var(--fs-12); color: var(--muted); }
 .db-summary strong { color: var(--fg); font-weight: 600; }
 .db-add-btn { padding: 5px 12px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); white-space: nowrap; transition: all 0.12s; }
 .db-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-/* ─── 决策流容器 + 竖向连接线 ─── */
-.db-flow { display: flex; flex-direction: column; gap: 2px; position: relative; }
-.db-flow::before { content: ''; position: absolute; left: 19px; top: 20px; bottom: 20px; width: 2px; background: var(--border); z-index: 0; }
+/* ═══ Markdown textarea 编辑器（纪要/随记） ═══ */
+.gen-ta-toolbar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; flex-shrink: 0; }
+.gen-ta-edit-btn { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: all 0.12s; }
+.gen-ta-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+.gen-ta-edit-btn svg { width: 13px; height: 13px; }
+.gen-ta-save-btn { padding: 4px 10px; border: none; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-fg); font-size: var(--fs-12); font-weight: 500; cursor: pointer; }
+.gen-ta-cancel-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
+.gen-ta-cancel-btn:hover { background: var(--surface-2); }
+.gen-textarea-wrap { flex: 1; min-height: 0; display: flex; }
+.gen-textarea-editor {
+  width: 100%; height: 100%; min-height: 120px;
+  font-family: var(--font-mono); font-size: var(--fs-13); line-height: 1.8;
+  padding: var(--s-3) var(--s-4); border: 1px solid transparent;
+  border-radius: var(--radius-sm); background: transparent;
+  color: var(--fg); resize: none; outline: none; tab-size: 2;
+  transition: border-color 0.12s, background 0.12s;
+}
+.gen-textarea-editor.is-readonly {
+  border-color: transparent; background: transparent;
+  cursor: default; color: var(--fg);
+}
+.gen-textarea-editor:not(.is-readonly) {
+  border-color: var(--accent); background: var(--surface);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.gen-textarea-editor::placeholder { color: var(--subtle); }
 
-/* ─── 节点:左侧轨道 + 右侧两行卡片 ─── */
-.db-node { display: flex; align-items: flex-start; position: relative; z-index: 1; }
-.db-rail { width: 40px; flex-shrink: 0; display: flex; justify-content: center; padding-top: 14px; }
-.db-dot { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid var(--border); background: var(--bg); z-index: 2; position: relative; transition: box-shadow 0.2s; }
-.db-node.st-to_decide .db-dot { border-color: var(--st-decide); }
-.db-node.st-to_start .db-dot { border-color: var(--st-start); }
-.db-node.st-in_progress .db-dot { border-color: var(--st-progress); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.db-node.st-to_confirm .db-dot { border-color: var(--st-confirm); background: var(--st-confirm); box-shadow: 0 0 0 3px oklch(0.94 0.06 70 / 0.4); }
-.db-node.st-done .db-dot { border-color: var(--st-done); background: var(--st-done); }
+/* ═══ 决策卡片内嵌 textarea ═══ */
+.db-card-textarea {
+  width: 100%; min-height: 48px; padding: var(--s-2);
+  font-family: var(--font-mono); font-size: var(--fs-12); line-height: 1.7;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg);
+  resize: vertical; outline: none; tab-size: 2;
+  transition: border-color 0.12s;
+}
+.db-card-textarea:focus { border-color: var(--accent); }
+.db-card-textarea::placeholder { color: var(--subtle); }
 
-.db-card { flex: 1; min-width: 0; padding: 10px 14px; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.12s; margin-bottom: 4px; }
-.db-card:hover { background: var(--surface-2); }
-.db-node.is-focus .db-card { background: var(--surface); box-shadow: 0 1px 4px oklch(0 0 0 / 0.06), 0 0 0 1px var(--accent); }
-.db-node.is-done .db-card { opacity: 0.5; }
+/* ═══ 决策卡片状态/负责人按钮 ═══ */
+.db-status-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border: none; border-radius: 10px;
+  font-size: var(--fs-11); cursor: pointer; white-space: nowrap;
+  transition: opacity 0.12s;
+}
+.db-status-btn:hover { opacity: 0.8; }
+.db-status-btn.pill-to_decide { background: oklch(0.92 0.02 250); color: var(--st-decide); }
+.db-status-btn.pill-to_start { background: oklch(0.92 0.03 250); color: var(--st-start); }
+.db-status-btn.pill-in_progress { background: var(--accent-soft); color: var(--accent); }
+.db-status-btn.pill-to_confirm { background: oklch(0.94 0.04 70); color: var(--st-confirm); }
+.db-status-btn.pill-done { background: oklch(0.92 0.03 150); color: var(--st-done); }
+.db-owner-btn { font-size: var(--fs-11); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.db-owner-btn:hover { color: var(--fg); }
+.db-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: var(--s-1); }
+.db-footer-spacer { flex: 1; }
+.db-delete-btn {
+  width: 22px; height: 22px; border-radius: var(--radius-sm);
+  display: grid; place-items: center;
+  color: var(--subtle); opacity: 0; border: none; background: transparent;
+  cursor: pointer; transition: all 0.12s;
+}
+.db-node:hover .db-delete-btn { opacity: 1; }
+.db-delete-btn:hover { color: oklch(0.50 0.15 25); background: oklch(0.92 0.06 25); }
+.db-delete-btn svg { width: 13px; height: 13px; }
+.db-content { margin-top: var(--s-2); }
+.db-dot.dot-to_decide { background: var(--st-decide); }
+.db-dot.dot-to_start { background: var(--st-start); }
+.db-dot.dot-in_progress { background: var(--st-progress); }
+.db-dot.dot-to_confirm { background: var(--st-confirm); }
+.db-dot.dot-done { background: var(--st-done); }
 
-/* 第一行:标题 */
-.db-row1 { display: flex; align-items: baseline; gap: var(--s-2); }
+/* ─── 决策流容器 ─── */
+.db-flow { display: flex; flex-direction: column; gap: var(--s-3); width: 100%; }
+
+/* ─── 决策卡片基础布局 ─── */
+.db-node { width: 100%; box-sizing: border-box; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-sm); transition: opacity 0.12s; }
+.db-node:hover { border-color: var(--border-strong); }
+.db-node.is-done { opacity: 0.5; }
+.db-row1 { display: flex; align-items: center; gap: var(--s-2); }
+.db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .db-node.is-done .db-title { text-decoration: line-through; color: var(--subtle); }
-.db-title-edit { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; font-family: inherit; resize: none; }
-
-/* 第二行:元信息(muted 弱化) */
-.db-row2 { display: flex; align-items: center; gap: var(--s-2); margin-top: 4px; flex-wrap: wrap; }
-.db-meta-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; padding: 0; font-size: var(--fs-11); color: var(--muted); cursor: pointer; white-space: nowrap; }
-.db-meta-dot { width: 6px; height: 6px; border-radius: 50%; }
-.db-meta-dot.dot-to_decide { background: var(--st-decide); }
-.db-meta-dot.dot-to_start { background: var(--st-start); }
-.db-meta-dot.dot-in_progress { background: var(--st-progress); }
-.db-meta-dot.dot-to_confirm { background: var(--st-confirm); }
-.db-meta-dot.dot-done { background: var(--st-done); }
-.db-sep { color: var(--border); margin: 0 2px; font-size: var(--fs-11); }
-.db-meta-text { font-size: var(--fs-11); color: var(--muted); cursor: pointer; white-space: nowrap; }
-.db-meta-text:hover { color: var(--fg); }
-.db-meta-ai { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: oklch(0.92 0.04 300); color: oklch(0.48 0.10 300); }
-.db-meta-hint { font-size: var(--fs-11); color: var(--subtle); white-space: nowrap; }
-
-/* ─── 展开详情:标签-值对行布局 ─── */
-.db-detail { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-.db-detail-actions { display: flex; align-items: center; margin-bottom: 4px; }
-.db-detail-spacer { flex: 1; }
-.db-detail-btns { display: flex; gap: 2px; }
-.db-act-btn { width: 24px; height: 24px; border: none; background: transparent; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: all 0.12s; padding: 0; }
-.db-act-btn:hover { background: var(--surface-2); color: var(--accent); }
-.db-act-btn.db-act-delete:hover { background: oklch(0.92 0.06 25); color: oklch(0.50 0.15 25); }
-.db-act-btn svg { width: 14px; height: 14px; }
-
-/* 状态菜单 */
-.db-status-backdrop { position: fixed; inset: 0; z-index: 20; }
-.db-status-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 21; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: 0 8px 24px oklch(0 0 0 / 0.12); min-width: 108px; }
-.db-status-menu-item { padding: 4px 10px; border: none; background: transparent; border-radius: 4px; font-size: var(--fs-12); text-align: left; cursor: pointer; color: var(--fg); transition: background 0.12s; }
-.db-status-menu-item:hover { background: var(--surface-2); }
-.db-status-menu-item.current { font-weight: 600; }
-
-/* 标签-值对字段行 */
-.db-field { display: flex; gap: var(--s-2); padding: 8px 0; }
-.db-field + .db-field { border-top: 1px solid var(--border); }
-.db-field-label { flex-shrink: 0; width: 48px; font-size: var(--fs-11); font-weight: 600; color: var(--muted); padding-top: 2px; }
-.db-field-value { flex: 1; min-width: 0; }
-.db-field-input { width: 100%; font-size: var(--fs-13); line-height: 1.5; padding: var(--s-1) var(--s-2); border: 1px solid transparent; border-radius: 4px; background: var(--surface-2); color: var(--fg); outline: none; font-family: inherit; resize: vertical; min-height: 34px; transition: border-color 0.12s, background 0.12s; }
-.db-field-input:hover { border-color: var(--border); }
-.db-field-input:focus { border-color: var(--accent); background: var(--bg); }
-.db-field-input::placeholder { color: var(--subtle); }
-
-/* 如何完成:步骤列表 */
-.db-how-steps { display: flex; flex-direction: column; gap: 4px; }
-.db-how-step { display: flex; align-items: center; gap: var(--s-2); }
-.db-step-idx { flex-shrink: 0; font-size: var(--fs-11); color: var(--muted); font-weight: 600; min-width: 16px; font-variant-numeric: tabular-nums; }
-.db-step-input { flex: 1; min-width: 0; font-size: var(--fs-13); padding: 4px var(--s-2); border: 1px solid transparent; border-radius: 4px; background: var(--surface-2); color: var(--fg); outline: none; font-family: inherit; transition: border-color 0.12s, background 0.12s; }
-.db-step-input:hover { border-color: var(--border); }
-.db-step-input:focus { border-color: var(--accent); background: var(--bg); }
-.db-step-remove { flex-shrink: 0; width: 20px; height: 20px; border: none; background: transparent; border-radius: 4px; color: var(--subtle); cursor: pointer; display: grid; place-items: center; font-size: 14px; opacity: 0; transition: all 0.12s; }
-.db-how-step:hover .db-step-remove { opacity: 1; }
-.db-step-remove:hover { background: oklch(0.92 0.06 25); color: oklch(0.50 0.15 25); }
-.db-how-add { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 3px 8px; border: 1px dashed var(--border); border-radius: 4px; background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; transition: all 0.12s; margin-top: 4px; }
-.db-how-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-
-/* ─── 已完成分组(折叠沉底) ─── */
 .db-completed { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
 .flow-completed-toggle { display: flex; align-items: center; gap: 6px; padding: var(--s-2) var(--s-3); border: none; background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; width: 100%; }
 .flow-completed-toggle:hover { background: var(--surface-2); color: var(--fg); }

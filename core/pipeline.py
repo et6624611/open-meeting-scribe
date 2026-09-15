@@ -128,9 +128,15 @@ def run_pipeline_stage1(
         )
 
     # 2. 热词表（可选） / Hotword vocabulary (optional)
+    # cloud 模式下无本地 API Key，跳过热词表创建（热词映射后处理仍生效）
+    # In cloud mode, no local API key available; skip vocabulary creation (hotword mappings post-processing still works)
     progress("hotwords", "检查热词表...", 35)
     with perf_timer("热词表检查"):
-        vocabulary_id = get_or_create_vocabulary(target_model=cfg["asr_model"])
+        try:
+            vocabulary_id = get_or_create_vocabulary(target_model=cfg["asr_model"])
+        except RuntimeError as e:
+            logger.warning(f"热词表创建跳过（无本地 API Key 或配置缺失）: {e}")
+            vocabulary_id = None
     if vocabulary_id:
         progress("hotwords", f"使用热词表: {vocabulary_id}", 40)
     else:

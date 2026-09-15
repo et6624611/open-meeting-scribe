@@ -20,8 +20,10 @@ app/routers/cloud_api.py — 云端用户服务 API / Cloud user service API
   GET  /api/cloud/usage/quota          — 查询用户配额 / Query user quota
   POST /api/cloud/llm/chat/completions — LLM 代理转发 / LLM proxy to DashScope
   POST /api/cloud/asr/transcribe       — ASR 代理转发 / ASR proxy to local ASR service
+  WS   /api/cloud/asr/ws               — ASR 实时转写 WebSocket 代理 / ASR realtime WebSocket proxy
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -31,14 +33,87 @@ import time
 
 import httpx
 import requests
+import websockets
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.i18n import _
 from core.metering import TIER_QUOTAS, get_daily_history, get_monthly_usage, record_usage
-from core.users import find_or_create_sms_user, get_user_by_id, set_user_subscription
+from core.users import get_user_by_id, set_user_subscription
+
+
+# ============================================================
+# 辅助函数 / Helper Functions
+# ============================================================
+
+
+def _find_or_create_sms_user_with_id(
+    phone: str,
+    desktop_user_id: str,
+    name: str = "",
+) -> dict:
+    """查找或创建 SMS 用户，使用桌面端提供的 user_id 保持一致。
+    Find or create SMS user, using desktop-provided user_id for consistency.
+
+    优先级 / Priority:
+      1. 按桌面 user_id 查找已有用户 / Find existing user by desktop user_id
+      2. 按手机号查找已有用户，更新 ID 为桌面 user_id / Find by phone, update ID to desktop user_id
+      3. 创建新用户，使用桌面 user_id / Create new user with desktop user_id
+    """
+    from core.users import _load_user_data, _save_user_data, _mask_phone
+    from datetime import datetime, timezone
+
+    data = _load_user_data()
+    now = datetime.now(timezone.utc).isoformat()
+    users = data.get("users", [])
+
+    # 1. 按桌面 user_id 查找 / Find by desktop user_id
+    for user in users:
+        if user.get("id") == desktop_user_id:
+            user["last_login"] = now
+            if name and user.get("name") != name:
+                user["name"] = name
+            data["current_user_id"] = user["id"]
+            _save_user_data(data)
+            return user
+
+    # 2. 按手机号查找 / Find by phone
+    for user in users:
+        if user.get("provider") == "sms" and user.get("provider_id") == phone:
+            # 更新 ID 为桌面端 user_id，保持后续 API 调用一致
+            # Update ID to desktop user_id for subsequent API call consistency
+            old_id = user["id"]
+            user["id"] = desktop_user_id
+            user["last_login"] = now
+            if name and user.get("name") != name:
+                user["name"] = name
+            data["current_user_id"] = desktop_user_id
+            _save_user_data(data)
+            logger.info(f"用户 ID 已同步: {old_id[:8]} → {desktop_user_id[:8]} (phone={phone[:3]}****)")
+            return user
+
+    # 3. 创建新用户 / Create new user
+    masked = _mask_phone(phone)
+    new_user = {
+        "id": desktop_user_id,
+        "provider": "sms",
+        "provider_id": phone,
+        "name": name or masked,
+        "avatar_url": "",
+        "email": "",
+        "role": "personal",
+        "prefs": {"avatar_color": "#4A90D9"},
+        "subscription": {"tier": "free"},
+        "created_at": now,
+        "last_login": now,
+    }
+    users.append(new_user)
+    data["current_user_id"] = desktop_user_id
+    _save_user_data(data)
+    logger.info(f"云端新用户: phone={phone[:3]}****, user_id={desktop_user_id[:8]}")
+    return new_user
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +222,10 @@ def cloud_sync_user(req: SyncUserRequest, request: Request):
 
     在服务器 data/users.json 中创建或更新用户记录，使管理后台可见。
     Create or update user record in server's data/users.json; makes user visible to admin panel.
+
+    桌面端提供自己的 user_id，服务器端保持一致，确保后续 API 调用（配额查询、LLM 等）
+    能通过该 ID 找到用户。 / Desktop provides its own user_id; server keeps it consistent
+    so subsequent API calls (quota, LLM, etc.) can find the user by that ID.
     """
     _check_cloud_auth(request)
 
@@ -154,12 +233,13 @@ def cloud_sync_user(req: SyncUserRequest, request: Request):
     if not phone:
         raise HTTPException(400, "phone is required")
 
-    # 在服务器创建/查找 SMS 用户 / Create/find SMS user on server
-    user = find_or_create_sms_user(phone)
-
-    # 确保用户数据完整 / Ensure user data is complete
-    if req.name and user.get("name") != req.name:
-        user["name"] = req.name
+    # 使用桌面端提供的 user_id 创建/查找用户
+    # Use desktop-provided user_id to create/find user
+    user = _find_or_create_sms_user_with_id(
+        phone=phone,
+        desktop_user_id=req.user_id,
+        name=req.name,
+    )
 
     # 返回配额信息 / Return quota info
     subscription = user.get("subscription", {"tier": "free"})
@@ -417,6 +497,124 @@ def cloud_llm_proxy(req: CloudLLMRequest, request: Request):
             logger.warning(f"LLM 代理用量上报失败（不影响响应）: {e}")
 
     return result
+
+
+# ============================================================
+# ASR 实时转写 WebSocket 代理 / ASR Realtime WebSocket Proxy
+# ============================================================
+
+
+@router.websocket("/asr/ws")
+async def cloud_asr_ws_proxy(
+    websocket: WebSocket,
+    timestamp: str = "",
+    sign: str = "",
+    model: str = "qwen-audio-3.0-asr-flash-streaming",
+    sample_rate: int = 16000,
+    language_hints: str = "zh,en",
+    vocabulary_id: str = "",
+    user_id: str = "",
+):
+    """
+    实时转写 WebSocket 代理：桌面端通过云端转发到同机 ASR 代理。
+    Realtime transcription WebSocket proxy: forward to co-located ASR proxy.
+
+    认证通过查询参数 timestamp + sign（云 HMAC）。
+    Auth via query params timestamp + sign (cloud HMAC).
+    """
+    # 校验云端签名 / Verify cloud signature
+    if not CLOUD_API_TOKEN:
+        await websocket.close(code=1011, reason="Cloud API not configured")
+        return
+
+    if not _verify_signature(timestamp, sign):
+        await websocket.close(code=1008, reason="Cloud signature verification failed")
+        return
+
+    await websocket.accept()
+    logger.info(f"[ASR WS Cloud] 客户端已连接: model={model}, user={user_id[:8] if user_id else 'anon'}")
+
+    # 构建到本地 ASR 代理的 WebSocket URL / Build upstream WebSocket URL to local ASR proxy
+    if not ASR_PROXY_LOCAL_TOKEN:
+        await websocket.send_json({"type": "error", "message": "ASR proxy not configured on server"})
+        await websocket.close(code=1011, reason="ASR proxy not configured")
+        return
+
+    upstream_ts = str(int(time.time()))
+    upstream_sign = _make_asr_local_sign(upstream_ts)
+
+    from urllib.parse import urlencode
+    upstream_params = {
+        "timestamp": upstream_ts,
+        "sign": upstream_sign,
+        "model": model,
+        "sample_rate": sample_rate,
+        "language_hints": language_hints,
+    }
+    if vocabulary_id:
+        upstream_params["vocabulary_id"] = vocabulary_id
+
+    upstream_ws = f"{ASR_PROXY_LOCAL_URL}/asr/ws?{urlencode(upstream_params)}"
+    # http → ws
+    upstream_ws = upstream_ws.replace("http://", "ws://").replace("https://", "wss://")
+
+    upstream_ws_conn = None
+    try:
+        upstream_ws_conn = await websockets.connect(upstream_ws, open_timeout=10)
+        logger.info(f"[ASR WS Cloud] 已连接本地 ASR 代理: {ASR_PROXY_LOCAL_URL}")
+
+        # 双向中继 / Bidirectional relay
+        async def relay_client_to_upstream():
+            """客户端 → 上游 ASR 代理（支持文本+二进制）"""
+            try:
+                while True:
+                    msg = await websocket.receive()
+                    if msg["type"] == "websocket.disconnect":
+                        break
+                    if msg["type"] == "websocket.receive":
+                        data = msg.get("bytes") or msg.get("text")
+                        if data is not None:
+                            await upstream_ws_conn.send(data)
+            except Exception as e:
+                logger.debug(f"[ASR WS Cloud] client→upstream 结束: {e}")
+
+        async def relay_upstream_to_client():
+            """上游 ASR 代理 → 客户端"""
+            try:
+                async for message in upstream_ws_conn:
+                    if isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_text(message)
+            except websockets.exceptions.ConnectionClosed:
+                pass
+            except Exception as e:
+                logger.debug(f"[ASR WS Cloud] upstream→client 结束: {e}")
+
+        # 同时运行两个中继方向 / Run both relay directions concurrently
+        done, pending = await asyncio.wait(
+            [
+                asyncio.create_task(relay_client_to_upstream()),
+                asyncio.create_task(relay_upstream_to_client()),
+            ],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+
+    except Exception as e:
+        logger.error(f"[ASR WS Cloud] 代理失败: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": f"ASR proxy connection failed: {e}"})
+        except Exception:
+            pass
+    finally:
+        if upstream_ws_conn:
+            try:
+                await upstream_ws_conn.close()
+            except Exception:
+                pass
+        logger.info(f"[ASR WS Cloud] 连接已关闭: user={user_id[:8] if user_id else 'anon'}")
 
 
 # ============================================================

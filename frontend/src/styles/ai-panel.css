@@ -9,12 +9,6 @@
 .ai-toggle svg { width: 14px; height: 14px; transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1); }
 .ai.is-collapsed .ai-toggle svg { transform: rotate(180deg); }
 .ai.is-collapsed { flex-basis: 44px !important; min-width: 44px !important; max-width: 44px !important; }
-.ai.is-collapsed .ai-panel-header,
-.ai.is-collapsed .ai-panel-context,
-.ai.is-collapsed .ai-panel-tabs,
-.ai.is-collapsed .ai-session-tabs,
-.ai.is-collapsed .ai-feed,
-.ai.is-collapsed .ai-input-zone { display: none !important; }
 .ai.is-collapsed .ai-collapsed-strip { display: flex; }
 .ai-collapsed-strip { display: none; flex-direction: column; align-items: center; padding: var(--s-4) 0; gap: var(--s-3); flex: 1; }
 .ai-collapsed-strip .ai-collapsed-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--fg); color: var(--bg); display: grid; place-items: center; cursor: pointer; }
@@ -43,6 +37,14 @@
 .ai-panel-tab { flex: 1; justify-content: center; padding: 0 var(--s-3); font-size: var(--fs-13); color: var(--muted); height: 100%; display: flex; align-items: center; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.12s; }
 .ai-panel-tab:hover { color: var(--fg); }
 .ai-panel-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ─── 折叠态隐藏（置于 conv-layout 覆盖之后，确保层叠胜出） ─── */
+.ai.is-collapsed .ai-panel-header,
+.ai.is-collapsed .ai-panel-context,
+.ai.is-collapsed .ai-panel-tabs,
+.ai.is-collapsed .ai-session-tabs,
+.ai.is-collapsed .ai-feed,
+.ai.is-collapsed .ai-input-zone { display: none !important; }
 
 /* ─── 会话子标签（分段控件） ─── */
 .ai-session-tabs { display: flex; align-items: center; height: 53px; padding: 0 var(--s-2) 0 var(--s-3); border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; gap: var(--s-1); position: relative; }

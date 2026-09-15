@@ -1,8 +1,8 @@
 /* ═══ 三栏布局 + 分隔条 ═══ */
 
-/* ─── 主框架 ─── */
-.frame { height: 100vh; display: grid; grid-template-rows: auto auto 1fr 28px; }
-.body { display: flex; min-height: 0; overflow: hidden; position: relative; }
+/* ─── 主框架（Flexbox 纵向布局：横幅 → 顶栏 → 主体 → 状态栏） ─── */
+.frame { height: 100vh; display: flex; flex-direction: column; }
+.body { flex: 1; display: flex; min-height: 0; overflow: hidden; position: relative; }
 
 /* ─── 视图模式 ─── */
 .body.view-full .sidebar { display: flex; }

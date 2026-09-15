@@ -318,4 +318,5 @@ watch(() => chat.messages.value.length, () => scrollFeed())
 .vc-status { font-size: 11px; color: var(--muted); white-space: nowrap; padding: 2px 6px; border-radius: 3px; background: var(--bg-subtle, #f0f0f0); }
 .vc-item.is-verified .vc-status { color: #059669; background: rgba(16, 185, 129, 0.1); }
 .vc-item:not(.is-verified) .vc-status { color: #d97706; background: rgba(245, 158, 11, 0.1); }
+
 </style>

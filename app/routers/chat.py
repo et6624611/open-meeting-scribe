@@ -27,6 +27,7 @@ from app.store import (  # noqa: F401
     tasks,
 )
 from core import joblog
+from core.agent_workspace import resolve_agent_role
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import build_page_context, build_speaker_name_map, extract_injectable_items, is_joblog_intent
 from core.chat_edits import (  # noqa: F401
@@ -80,6 +81,7 @@ class ChatRequest(BaseModel):
     mode: Optional[str] = None
     model: Optional[str] = None
     current_page: Optional[str] = None
+    role: Optional[str] = None  # Agent 角色标识 / Agent role identifier
 
 
 class OptimizeRequest(BaseModel):
@@ -258,7 +260,12 @@ async def chat(data: ChatRequest):
         )
 
     is_qa_mode = data.mode == "qa"
-    system_prompt = CHAT_QA_SYSTEM_PROMPT if is_qa_mode else CHAT_SYSTEM_PROMPT
+    if is_qa_mode:
+        system_prompt = CHAT_QA_SYSTEM_PROMPT
+    else:
+        # Agent 角色工作区：优先从 .md 文件加载，回退到硬编码常量 / Agent workspace: prefer .md files, fallback to hardcoded constant
+        role = resolve_agent_role(data.role)
+        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
     context_blocks = []
     action_result: dict | None = None
     chat_model = data.model or "qwen-plus"
@@ -494,6 +501,18 @@ async def chat(data: ChatRequest):
                 "data": action_result.get("data") if action_result else None,
             } if detected_action else None,
         }
+    except RuntimeError as e:
+        # LLM 配置错误、云端降级失败等 — 返回用户可理解的错误信息
+        # LLM config errors, cloud fallback failures — return user-friendly error
+        logger.error("AI 对话失败（配置/降级错误）: %s", e)
+        raise HTTPException(
+            503,
+            {
+                "error": "llm_unavailable",
+                "message": str(e),
+                "hint": _("Please configure API Key in Settings, or check cloud service availability."),
+            },
+        )
     except Exception as e:
         logger.error("AI 对话失败: %s", e)
         raise HTTPException(500, _("AI conversation failed: {err}").format(err=e))

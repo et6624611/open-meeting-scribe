@@ -74,7 +74,7 @@
 .conv-bottom-bar.is-minimal .conv-model-selector .model-label { display: none; }
 .conv-bottom-bar.is-minimal .conv-model-selector .model-icon { display: block; }
 
-.gen-panel { padding: var(--s-6) var(--s-7); max-width: 760px; margin: 0 auto; }
+.gen-panel { padding: var(--s-6) var(--s-7); width: 80%; min-width: 600px; max-width: 960px; margin: 0 auto; box-sizing: border-box; }
 .gen-panel.hidden { display: none; }
 
 /* 加载态 */

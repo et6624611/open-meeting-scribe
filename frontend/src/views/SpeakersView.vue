@@ -285,12 +285,15 @@ async function load() {
   loading.value = true
   try {
     speakers.value = await fetchSpeakers()
-    if (speakers.value.length > 0) {
-      await loadSpeakerStats(speakers.value.map(s => s.id))
-      voiceprintIds.value = await fetchVoiceprintRegistry()
-    }
   } finally {
     loading.value = false
+  }
+  // 列表已显示，后台并行加载统计数据与声纹注册表
+  if (speakers.value.length > 0) {
+    Promise.all([
+      loadSpeakerStats(speakers.value.map(s => s.id)),
+      fetchVoiceprintRegistry().then(ids => { voiceprintIds.value = ids }),
+    ]).catch(() => { /* 静默处理，不影响列表展示 */ })
   }
 }
 

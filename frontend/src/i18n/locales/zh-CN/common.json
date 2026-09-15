@@ -111,6 +111,8 @@
     "available": "更新可用",
     "title": "有新版本可用"
   },
+  "update_available": "发现新版本 v{version}，建议尽快更新以获得最新功能和修复",
+  "view_update": "查看详情",
   "announcement": {
     "dismiss": "关闭提示"
   },

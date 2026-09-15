@@ -60,10 +60,31 @@ def _get_asr_mode() -> str:
     """获取当前 ASR 接入模式（proxy / direct / cloud）。
 
     cloud 模式：桌面端无本地代理配置时，通过云端服务器中转。
+    用户偏好 prefer_subscription：已登录且开启时，直连模式自动切换为云端代理以消耗订阅配额。
     """
     try:
         from app.store import get_asr_config
         mode = get_asr_config().get("mode", "proxy")
+
+        # 用户偏好覆盖：prefer_subscription 开启且直连模式 → 切换为云端代理
+        if mode == "direct":
+            try:
+                from core.users import get_current_user
+                from core.metering import TIER_QUOTAS
+                user = get_current_user()
+                if user and user.get("prefs", {}).get("prefer_subscription", False):
+                    subscription = user.get("subscription", {})
+                    if subscription.get("tier") in TIER_QUOTAS:
+                        try:
+                            from core.cloud_client import is_cloud_enabled
+                            if is_cloud_enabled():
+                                logger.info("用户开启优先使用订阅流量，ASR 从 direct 切换为 cloud 模式")
+                                return "cloud"
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
         # 自动回退：proxy 模式无 URL 且云端可用 → 自动切换 cloud
         if mode == "proxy":
             proxy_url = get_asr_config().get("proxy_url", "")
