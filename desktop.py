@@ -28,6 +28,10 @@ import os
 import sys
 import threading
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import uvicorn
 
 # ─── PyInstaller no-console 模式兼容 / PyInstaller no-console mode compatibility ───
 # console=False 打包时 sys.stderr/stdout 为 None，

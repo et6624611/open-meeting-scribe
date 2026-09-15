@@ -142,7 +142,7 @@ const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
 const { widthClass: mainWidthClass, tier: mainTier } = useContainerSize(mainEl)
-const { philosophyVariants, philosophyText, philosophyChars, loadPhilosophy, updatePhilosophy } = usePhilosophy()
+const { philosophyChars, loadPhilosophy, updatePhilosophy } = usePhilosophy()
 // 暴露给子视图：Tab 切换时调用 window.__omsUpdatePhilosophy(tab) / Expose to child views: call window.__omsUpdatePhilosophy(tab) on tab switch
 if (typeof window !== 'undefined') {
   (window as any).__omsUpdatePhilosophy = (tab?: string) => {
