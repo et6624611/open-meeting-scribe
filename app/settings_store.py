@@ -165,7 +165,9 @@ def get_asr_config() -> dict:
     """
     settings = load_settings()
     asr_config = settings.get("asr", {})
-    mode = asr_config.get("mode", "proxy")
+    # 环境变量 ASR_MODE 优先于 settings.json（桌面端通过 .env 设置）
+    # Env var ASR_MODE takes priority over settings.json (desktop sets it via .env)
+    mode = os.getenv("ASR_MODE", "") or asr_config.get("mode", "proxy")
 
     if mode == "direct":
         return {
@@ -178,10 +180,33 @@ def get_asr_config() -> dict:
         }
 
     # 代理模式（默认） / Proxy mode (default)
+    proxy_url = os.getenv("ASR_PROXY_URL", "")
+
+    # ── 桌面客户端自动降级 ──
+    # 代理模式需要 ASR_PROXY_URL，若为空且 DASHSCOPE_API_KEY 可用，
+    # 自动降级为直连模式（桌面客户端场景：单用户本地运行，无需代理）。
+    # Auto-fallback: if proxy URL is empty but DASHSCOPE_API_KEY is available,
+    # switch to direct mode (desktop client scenario: single-user, no proxy needed).
+    if not proxy_url:
+        dashscope_key = os.getenv("DASHSCOPE_API_KEY", "")
+        if dashscope_key:
+            logger.info(
+                "ASR proxy URL not set but DASHSCOPE_API_KEY available; "
+                "auto-switching to direct mode"
+            )
+            return {
+                "mode": "direct",
+                "provider": asr_config.get("provider", "DashScope"),
+                "base_url": asr_config.get("base_url", "https://dashscope.aliyuncs.com"),
+                "api_key": dashscope_key,
+                "model": asr_config.get("model", "paraformer-v2"),
+                "proxy_url": "",
+            }
+
     return {
         "mode": "proxy",
         "provider": "DashScope",
-        "proxy_url": os.getenv("ASR_PROXY_URL", ""),
+        "proxy_url": proxy_url,
         "model": asr_config.get("model", "paraformer-v2"),
         "base_url": "",
         "api_key": "",
