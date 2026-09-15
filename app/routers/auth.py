@@ -178,6 +178,7 @@ def get_me(request: Request):
         "role": user.get("role", "personal"),
         "provider": user.get("provider", ""),
         "prefs": user.get("prefs", {}),
+        "subscription": user.get("subscription", {"tier": "free"}),
         "privacy_consent_at": user.get("privacy_consent_at"),
     }
 

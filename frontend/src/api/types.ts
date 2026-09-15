@@ -109,6 +109,7 @@ export interface User {
   role: string
   provider: string
   prefs: Record<string, unknown>
+  subscription?: { tier: string; started_at?: string; expires_at?: string | null }
   privacy_consent_at?: string | null
 }
 
