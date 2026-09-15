@@ -23,8 +23,8 @@ if _root_str not in sys.path:
 # 预先收集 app/core 全部子模块（显式列举 + collect_submodules 双重保险）
 _app_submodules = collect_submodules("app")
 _core_submodules = collect_submodules("core")
-print(f"[spec] app 子模块: {len(_app_submodules)} 个: {_app_submodules}")
-print(f"[spec] core 子模块: {len(_core_submodules)} 个: {_core_submodules}")
+print(f"[spec] app submodules: {len(_app_submodules)}: {_app_submodules}")
+print(f"[spec] core submodules: {len(_core_submodules)}: {_core_submodules}")
 
 block_cipher = None
 
