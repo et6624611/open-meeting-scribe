@@ -225,7 +225,7 @@ function switchFile(fname: string) {
   editorContent.value = roleFiles.value[fname] || ''
 }
 
-function onEditRole(name: string) {
+function onEditRole(_name: string) {
   isEditing.value = true
 }
 

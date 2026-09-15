@@ -52,9 +52,6 @@ const emit = defineEmits<{
   (e: 'delete'): void
 }>()
 
-const statusOrder: DecisionStatus[] = ['to_decide', 'to_start', 'in_progress', 'to_confirm', 'done']
-const ownerOrder: OwnerType[] = ['self', 'agent', 'colleague', 'enterprise']
-
 const status = computed<DecisionStatus>(() => props.todo.status ?? (props.todo.done ? 'done' : 'in_progress'))
 const ownerType = computed<OwnerType>(() => props.todo.owner_type || 'self')
 
@@ -74,9 +71,4 @@ function onContentInput(e: Event) {
   content.value = (e.target as HTMLTextAreaElement).value
 }
 
-// 自动调整高度 / Auto-grow
-function autoGrow(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  el.style.height = el.scrollHeight + 'px'
-}
 </script>
