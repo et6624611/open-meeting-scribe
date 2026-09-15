@@ -115,6 +115,20 @@ jobs:
         iscc /? 2>&1 | Select-Object -First 1
         Write-Host "Inno Setup 安装完成"
 
+    - name: 准备 Inno Setup 中文语言包
+      shell: pwsh
+      run: |
+        # ChineseSimplified.isl 来自第三方翻译项目，不在 Inno Setup 默认安装中
+        # 尝试下载到 build/ 目录，installer.iss 会通过 FileExists 条件引用
+        $islUrl = "https://raw.githubusercontent.com/jrsoftware/innosetup-chinese-simplified-translation/main/ChineseSimplified.isl"
+        $islPath = "build/ChineseSimplified.isl"
+        try {
+            Invoke-WebRequest -Uri $islUrl -OutFile $islPath -TimeoutSec 15 -ErrorAction Stop
+            Write-Host "中文语言包下载成功"
+        } catch {
+            Write-Host "警告: 无法下载中文语言包 ($($_.Exception.Message))，安装器将仅包含英文"
+        }
+
     - name: 编译 Inno Setup 安装器
       shell: pwsh
       run: |

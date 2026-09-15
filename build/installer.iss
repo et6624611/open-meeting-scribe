@@ -66,7 +66,13 @@ PrivilegesRequired=admin
 ; （这是默认行为，显式声明以增强可读性）
 
 [Languages]
+; 简体中文语言文件来自第三方翻译项目，不一定随 Inno Setup 安装
+; 优先使用 build/ 目录下的本地副本，其次查找 Inno Setup 自带 Languages 目录
+#if FileExists(SourcePath + "\ChineseSimplified.isl")
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+#elif FileExists("C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl")
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
