@@ -89,7 +89,7 @@ Source: "..\dist\OpenMeetingScribe\ffmpeg\*"; DestDir: "{app}\ffmpeg"; Flags: ig
 ; ── 数据目录（升级/卸载时保留） ──
 ; uninsneveruninstall: 卸载时不删除，升级时旧版卸载后数据仍在
 ; skipifsourcedoesntexist: CI 环境中 data 目录可能为空，源不存在时不报错
-Source: "..\dist\OpenMeetingScribe\data\*"; DestDir: "{app}\data"; Flags: createallsubdirs skipifsourcedoesntexist uninsneveruninstall
+Source: "..\dist\OpenMeetingScribe\data\*"; DestDir: "{app}\data"; Flags: recursesubdirs createallsubdirs skipifsourcedoesntexist uninsneveruninstall
 
 [Icons]
 ; 开始菜单快捷方式
