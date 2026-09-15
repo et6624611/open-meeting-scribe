@@ -83,7 +83,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; Source 路径相对于 .iss 文件位置（build/），需要向上一级到项目根目录
 Source: "..\dist\OpenMeetingScribe\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\OpenMeetingScribe\启动.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\OpenMeetingScribe\.env.example"; DestDir: "{app}"; Flags: skipifexists uninsneveruninstall
+Source: "..\dist\OpenMeetingScribe\.env.example"; DestDir: "{app}"; Flags: uninsneveruninstall
 Source: "..\dist\OpenMeetingScribe\ffmpeg\*"; DestDir: "{app}\ffmpeg"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; ── 数据目录（升级/卸载时保留） ──
