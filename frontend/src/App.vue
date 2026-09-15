@@ -90,7 +90,7 @@
     <footer class="status">
       <div class="left">
         <div class="item"><span class="pip"></span> {{ t('common.usage.cloud_connected') }}</div>
-        <div class="item status-models">paraformer-v2 + qwen-plus</div>
+        <div class="item status-models">{{ statusModels }}</div>
         <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
@@ -151,6 +151,20 @@ if (typeof window !== 'undefined') {
   }
 }
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
+const statusModels = ref('paraformer-v2 + qwen-plus')  // 默认值，加载设置后更新
+
+// 加载设置以获取实际模型名 / Load settings to get actual model names
+async function loadStatusModels() {
+  try {
+    const client = (await import('@/api/client')).default
+    const { data } = await client.get('/api/settings')
+    const asrModel = data?.asr?.model || 'paraformer-v2'
+    const llmModel = data?.llm?.model || 'qwen-plus'
+    statusModels.value = `${asrModel} + ${llmModel}`
+  } catch {
+    // 静默失败，使用默认值 / Silent failure, use defaults
+  }
+}
 
 // 公告横幅 / Announcement banner
 const { visible: annVisible, currentMessage: annMessage, load: loadAnnouncements, dismiss: annDismiss, getCtaUrl: annCtaUrl } = useAnnouncements()
@@ -188,6 +202,7 @@ onMounted(async () => {
   checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
+  loadStatusModels()  // 加载状态栏模型名
 
   // ─── 路由变化时刷新理念 / Refresh philosophy on route change ───
   router.afterEach((to) => {

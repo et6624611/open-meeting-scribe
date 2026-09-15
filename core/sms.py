@@ -33,10 +33,12 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 # 云端 SMS 代理地址（代理持有阿里云 AccessKey，密钥不落地）
-SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "").rstrip("/")
+# 默认值指向官方云服务，用户可在 .env 中覆盖（如自建服务器）
+SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "http://47.116.10.194:8080").rstrip("/")
 
 # 代理共享密钥（用于请求签名，防止未授权调用）
-SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "")
+# 默认值为官方云服务密钥，用户可在 .env 中覆盖
+SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "oms-sms-proxy-secret-2026")
 
 # 签名有效期（秒），防重放
 SMS_SIGN_TTL = 300
@@ -110,7 +112,13 @@ def _make_sign(timestamp: str) -> str:
     代理端用相同 token + timestamp 校验，timestamp 超过 TTL 视为过期。
     """
     if not SMS_PROXY_TOKEN:
-        raise RuntimeError("未配置 SMS_PROXY_TOKEN，无法调用短信代理")
+        raise RuntimeError(
+            "未配置 SMS_PROXY_TOKEN，无法调用短信代理。\n"
+            "请在 .env 文件中配置以下两项：\n"
+            "  1. SMS_PROXY_URL — 短信代理服务地址（如 https://sms.yourdomain.com）\n"
+            "  2. SMS_PROXY_TOKEN — 共享密钥（与 sms-proxy 服务端配置相同）\n"
+            "详见：sms-proxy/README.md"
+        )
     return hmac.new(
         SMS_PROXY_TOKEN.encode(),
         timestamp.encode(),

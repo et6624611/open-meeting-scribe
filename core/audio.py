@@ -12,8 +12,10 @@ core/audio.py — 音频归一化（ffmpeg） / Audio normalization (ffmpeg)
 """
 
 import logging
+import os
 import shutil
 import subprocess
+import sys
 import time
 import wave
 from pathlib import Path
@@ -21,6 +23,50 @@ from pathlib import Path
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+# ── PyInstaller frozen 环境下 ffmpeg 路径解析 ──
+# 打包后 ffmpeg 位于 exe 同级的 ffmpeg/ 子目录中，不在系统 PATH 里。
+# 需要在启动时将 ffmpeg 所在目录加入 PATH，使 shutil.which("ffmpeg") 和
+# subprocess 调用都能找到它。
+def _ensure_ffmpeg_in_path() -> None:
+    """
+    确保 ffmpeg 在 PATH 中。
+
+    优先级：
+      1. 系统 PATH 中已有的 ffmpeg（用户自行安装）
+      2. PyInstaller frozen 环境下 exe 同级 ffmpeg/ 目录
+      3. 项目根目录下的 ffmpeg/ 目录（开发环境）
+    """
+    if shutil.which("ffmpeg"):
+        return  # 系统 PATH 中已有，无需处理
+
+    # PyInstaller frozen 环境：ffmpeg 在 exe 同级 ffmpeg/ 目录
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).parent
+        ffmpeg_dir = exe_dir / "ffmpeg"
+        if ffmpeg_dir.is_dir():
+            _add_to_path(ffmpeg_dir)
+            return
+
+    # 开发环境：项目根目录下的 ffmpeg/ 目录
+    project_root = Path(__file__).parent.parent
+    ffmpeg_dir = project_root / "ffmpeg"
+    if ffmpeg_dir.is_dir():
+        _add_to_path(ffmpeg_dir)
+
+
+def _add_to_path(directory: Path) -> None:
+    """将目录加入 PATH 环境变量（去重）"""
+    dir_str = str(directory)
+    current_path = os.environ.get("PATH", "")
+    if dir_str not in current_path.split(os.pathsep):
+        os.environ["PATH"] = f"{dir_str}{os.pathsep}{current_path}"
+        logger.info(f"已将 ffmpeg 目录加入 PATH: {dir_str}")
+
+
+# 模块加载时立即执行，确保后续所有调用都能找到 ffmpeg
+_ensure_ffmpeg_in_path()
 
 
 def check_ffmpeg() -> bool:
