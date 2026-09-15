@@ -65,6 +65,7 @@ from core.audio import (
 )
 from core.diarization import create_realtime_diarizer
 from core.i18n import _
+from core import realtime_asr
 from core.realtime_asr import RealtimeTranscriber
 from core.realtime_chapters import RealtimeChapterGenerator
 from core.realtime_summary import RealtimeSummarizer
