@@ -81,17 +81,33 @@ def _setup_desktop_env():
     from dotenv import load_dotenv
     load_dotenv(str(env_file))
 
-    # 3. 桌面端默认值注入（仅在环境变量未设置时生效）
+    # 3. 桌面端默认值注入
+    # .env.example 模板中的占位符（如 http://your-server:8000）是非空字符串，
+    # 简单的 if not os.getenv() 无法检测到。需要识别并替换占位符值。
+    def _is_placeholder(value: str) -> bool:
+        """检测环境变量是否为模板占位符值。"""
+        if not value:
+            return True
+        v = value.lower()
+        return (
+            "your-" in v
+            or "xxxx" in v
+            or "sk-xxx" in v
+            or value == "http://your-server:8000"
+        )
+
+    def _set_default(key: str, default: str):
+        """若环境变量未设置或为占位符，则注入默认值。"""
+        current = os.getenv(key, "")
+        if _is_placeholder(current):
+            os.environ[key] = default
+
     # SMS 代理：桌面端连接官方云端短信服务
-    if not os.getenv("SMS_PROXY_URL"):
-        os.environ["SMS_PROXY_URL"] = "http://47.116.10.194:8080"
-    if not os.getenv("SMS_PROXY_TOKEN"):
-        os.environ["SMS_PROXY_TOKEN"] = "oms-sms-proxy-secret-2026"
+    _set_default("SMS_PROXY_URL", "http://47.116.10.194:8080")
+    _set_default("SMS_PROXY_TOKEN", "oms-sms-proxy-secret-2026")
     # 云端用户服务：桌面端连接官方云端服务器（ASR/LLM 代理 + 用户同步 + 配额管理）
-    if not os.getenv("CLOUD_API_URL"):
-        os.environ["CLOUD_API_URL"] = "http://47.116.10.194:8000"
-    if not os.getenv("CLOUD_API_TOKEN"):
-        os.environ["CLOUD_API_TOKEN"] = "oms-sms-proxy-secret-2026"
+    _set_default("CLOUD_API_URL", "http://47.116.10.194:8000")
+    _set_default("CLOUD_API_TOKEN", "oms-sms-proxy-secret-2026")
 
 
 # 必须在 load_dotenv / 导入项目模块之前执行 / Must run before load_dotenv / importing project modules
