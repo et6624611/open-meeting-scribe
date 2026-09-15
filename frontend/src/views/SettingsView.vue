@@ -957,6 +957,25 @@ onMounted(async () => {
   // 确保嵌套对象存在，避免模板中 settings.llm!.xxx 报错 / Ensure nested objects exist, avoid template errors
   if (!s.llm) s.llm = {}
   if (!s.asr) s.asr = {}
+
+  // BUG-008 修复：后端返回的 provider 可能是短名称（如 "DashScope"），
+  // 但下拉选项使用全名（如 "DashScope（通义千问）"）。需要映射匹配。
+  // Fix: Backend may return short provider name (e.g. "DashScope"),
+  // but dropdown options use full names (e.g. "DashScope（通义千问）"). Map to match.
+  const defaultPresets = [
+    { name: 'DashScope（通义千问）', shortName: 'DashScope' },
+    { name: 'OpenAI', shortName: 'OpenAI' },
+    { name: 'DeepSeek', shortName: 'DeepSeek' },
+    { name: 'Moonshot（月之暗面）', shortName: 'Moonshot' },
+    { name: '自定义', shortName: '自定义' },
+  ]
+  if (s.llm?.provider) {
+    const matched = defaultPresets.find(
+      p => p.name === s.llm!.provider || p.shortName === s.llm!.provider
+    )
+    if (matched) s.llm.provider = matched.name
+  }
+
   Object.assign(settings, s)
   if (s.feature_flags) {
     Object.assign(featureFlags, {

@@ -57,18 +57,25 @@ LOG_DIR.mkdir(exist_ok=True)
 # 日志轮转：单文件上限 5MB，保留 5 个历史备份，防止无限制增长耗尽磁盘 / Log rotation: 5MB per file, 5 backups, prevents disk exhaustion
 _LOG_MAX_BYTES = 5 * 1024 * 1024
 _LOG_BACKUP_COUNT = 5
+
+# BUG-006 修复：在 frozen 模式下 sys.stdout 可能被重定向到 devnull，
+# 且 root logger 可能已被其他模块配置，导致 basicConfig() 无效。
+# 使用 force=True 强制重新配置，确保 server.log 能正常写入。
+# Fix: In frozen mode sys.stdout may be redirected to devnull,
+# and root logger may already be configured, making basicConfig() no-op.
+# Use force=True to ensure server.log is properly written.
+_file_handler = RotatingFileHandler(
+    LOG_DIR / "server.log",
+    maxBytes=_LOG_MAX_BYTES,
+    backupCount=_LOG_BACKUP_COUNT,
+    encoding="utf-8",
+)
+_stream_handler = logging.StreamHandler(sys.stdout)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        RotatingFileHandler(
-            LOG_DIR / "server.log",
-            maxBytes=_LOG_MAX_BYTES,
-            backupCount=_LOG_BACKUP_COUNT,
-            encoding="utf-8",
-        ),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=[_file_handler, _stream_handler],
+    force=True,
 )
 
 # ── 安全审计日志（独立文件，仅记录安全相关事件）── / Security audit log (separate file; security events only) ──
@@ -121,6 +128,46 @@ app = FastAPI(
     description="会议纪要生成工具",
     version="0.1.0",
 )
+
+
+# ============================================================
+# BUG-003 修复：自定义 HTTPException 处理器，确保错误响应体始终非空
+# BUG-003 fix: Custom HTTPException handler to ensure error response body is never empty
+# ============================================================
+
+@app.exception_handler(Exception)
+async def http_exception_handler(request: Request, exc: Exception):
+    """全局 HTTPException 处理器：始终返回结构化 JSON 响应体。
+    Global HTTPException handler: always return structured JSON response body.
+    """
+    from fastapi import HTTPException as FastAPIHTTPException
+    if isinstance(exc, FastAPIHTTPException):
+        # 确保 detail 始终存在 / Ensure detail is always present
+        detail = exc.detail if exc.detail else f"HTTP {exc.status_code}"
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": detail},
+            headers=exc.headers,
+        )
+    # 非 HTTPException 的未处理异常 / Unhandled non-HTTP exceptions
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+# ============================================================
+# BUG-005: /api/health 健康检查端点 / Health check endpoint
+# ============================================================
+
+@app.get("/api/health")
+async def health_check():
+    """健康检查端点，供前端和监控探测服务存活状态。
+    Health check endpoint for frontend and monitoring liveness probe.
+    """
+    return {"status": "ok"}
+
 
 # ============================================================
 # 国际化中间件（解析语言偏好，注入 request.state.locale） / I18n middleware (parse language preference, inject request.state.locale)

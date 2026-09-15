@@ -62,22 +62,42 @@ def _get_config() -> dict:
 
 
 def _get_api_key() -> str:
-    """获取当前生效的 API Key"""
+    """获取当前生效的 API Key（排除占位符）。
+    Get currently active API Key (excluding placeholders).
+    """
     from app.store import get_active_api_key
     key = get_active_api_key()
-    if not key:
+    if not key or _is_placeholder_key(key):
         raise RuntimeError("未设置 API Key，请在设置页面配置或通过 .env 配置 DASHSCOPE_API_KEY")
     return key
 
 
+def _is_placeholder_key(key: str) -> bool:
+    """检测 API Key 是否为模板占位符值。
+    Detect whether an API key is a template placeholder value.
+    """
+    if not key:
+        return True
+    k = key.lower()
+    return (
+        "xxxx" in k
+        or "sk-xxx" in k
+        or k.startswith("your-")
+        or "your_api_key" in k
+        or "your-api-key" in k
+        or len(k) < 20  # 真实 Key 通常较长 / Real keys are usually longer
+    )
+
+
 def _should_use_cloud() -> bool:
-    """判断是否应走云端代理（无本地 API Key 且云端可用）。
-    Check if cloud proxy should be used (no local API key and cloud is enabled).
+    """判断是否应走云端代理（无本地 API Key 或 Key 为占位符，且云端可用）。
+    Check if cloud proxy should be used (no local API key or key is placeholder, and cloud is enabled).
     """
     try:
         from app.store import get_active_api_key
-        if get_active_api_key():
-            return False  # 有本地 Key，用本地 / Have local key, use local
+        key = get_active_api_key()
+        if key and not _is_placeholder_key(key):
+            return False  # 有有效本地 Key，用本地 / Have valid local key, use local
     except Exception:
         pass
     try:

@@ -13,6 +13,8 @@ core/audio_recording.py — macOS 系统内录与流式录音控制
 """
 
 import logging
+import os
+import platform
 import re
 import struct
 import subprocess
@@ -25,6 +27,105 @@ from pathlib import Path
 from core.audio import check_ffmpeg
 
 logger = logging.getLogger(__name__)
+
+
+def _is_windows() -> bool:
+    """是否运行在 Windows 平台 / Whether running on Windows"""
+    return platform.system() == "Windows"
+
+
+def _find_windows_audio_device() -> str:
+    """在 Windows 上自动查找可用的音频输入设备。
+    Auto-detect an available audio input device on Windows.
+
+    优先选择包含 'stereo mix'/'立体声混音' 的设备（系统内录最佳），
+    其次选择第一个可用的音频输入设备。
+    Prefer 'Stereo Mix' (system loopback); fall back to first available input.
+    """
+    cmd = ["ffmpeg", "-hide_banner", "-f", "dshow", "-list_devices", "true", "-i", "dummy"]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=10,
+            stdin=subprocess.DEVNULL,
+        )
+        output = result.stderr  # dshow 设备列表输出在 stderr
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return ""
+
+    devices = []
+    in_audio = False
+    for line in output.split("\n"):
+        if "DirectShow audio devices" in line:
+            in_audio = True
+            continue
+        if "DirectShow video devices" in line:
+            in_audio = False
+            continue
+        if in_audio:
+            match = re.search(r'\[.*?\]\s+"(.+?)"', line)
+            if match:
+                devices.append(match.group(1))
+
+    if not devices:
+        return ""
+
+    # 优先选择立体声混音（系统内录） / Prefer Stereo Mix (system loopback)
+    for d in devices:
+        if "stereo mix" in d.lower() or "立体声混音" in d:
+            return d
+
+    # 回退到第一个可用设备 / Fall back to first available
+    return devices[0]
+
+
+def _build_ffmpeg_record_cmd(device: str, wav_path: Path) -> list[str]:
+    """根据平台构建 ffmpeg 录音命令（单输出写 WAV）。
+    Build platform-specific ffmpeg recording command (single output WAV).
+
+    macOS: avfoundation（BlackHole 等虚拟声卡）
+    Windows: dshow（DirectShow 音频输入）
+    """
+    if _is_windows():
+        return [
+            "ffmpeg", "-y",
+            "-f", "dshow",
+            "-i", f"audio={device}",
+            "-ar", "16000",
+            "-ac", "1",
+            "-f", "wav",
+            str(wav_path),
+        ]
+    else:  # macOS
+        return [
+            "ffmpeg", "-y",
+            "-f", "avfoundation",
+            "-i", f":{device}",
+            "-ar", "16000",
+            "-ac", "1",
+            "-f", "wav",
+            str(wav_path),
+        ]
+
+
+def _build_ffmpeg_stream_cmd(device: str, wav_path: Path) -> list[str]:
+    """根据平台构建 ffmpeg 流式录音命令（双输出：WAV + PCM pipe）。
+    Build platform-specific ffmpeg streaming command (dual output: WAV + PCM pipe).
+
+    macOS: avfoundation
+    Windows: dshow
+    """
+    if _is_windows():
+        input_args = ["-f", "dshow", "-i", f"audio={device}"]
+    else:  # macOS
+        input_args = ["-f", "avfoundation", "-i", f":{device}"]
+
+    return [
+        "ffmpeg", "-y",
+        *input_args,
+        "-filter_complex", "[0]aresample=16000,asplit=2[a1][a2]",
+        "-map", "[a1]", "-ac", "1", "-f", "wav", str(wav_path),
+        "-map", "[a2]", "-ac", "1", "-f", "s16le", "pipe:1",
+    ]
 
 
 # ============================================================
@@ -81,21 +182,10 @@ def start_recording(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = output_dir / f"{task_id[:8]}_{timestamp}.wav"
 
-    # ffmpeg avfoundation 采集系统音频
-    # -f avfoundation    macOS 音视频采集框架
-    # -i :device_name    仅音频输入（冒号前为空 = 不采集视频）
-    # -ar 16000 -ac 1    直接录成 16kHz 单声道（转写最优格式）
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "avfoundation",
-        "-i", f":{device}",
-        "-ar", "16000",
-        "-ac", "1",
-        "-f", "wav",
-        str(output_path),
-    ]
+    # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command
+    cmd = _build_ffmpeg_record_cmd(device, output_path)
 
-    logger.info(f"开始录制: 设备={device}, 输出={output_path.name}")
+    logger.info(f"开始录制: 设备={device}, 输出={output_path.name}, 平台={'Windows' if _is_windows() else 'macOS'}")
 
     try:
         proc = subprocess.Popen(
@@ -255,21 +345,19 @@ def start_recording_with_stream(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     wav_path = output_dir / f"{task_id[:8]}_{timestamp}.wav"
 
-    # ffmpeg 双输出：filter_complex 将音频分叉，一路写 WAV、一路送 pipe
-    # [0] aresample=16000 → 降采样到转写最优格式
-    # asplit=2 → 一分为二
-    # [a1] → WAV 文件（ffmpeg 原生管理，实时落盘）
-    # [a2] → pipe:1 stdout（raw PCM，供后台线程读取送实时 ASR）
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "avfoundation",
-        "-i", f":{device}",
-        "-filter_complex", "[0]aresample=16000,asplit=2[a1][a2]",
-        "-map", "[a1]", "-ac", "1", "-f", "wav", str(wav_path),
-        "-map", "[a2]", "-ac", "1", "-f", "s16le", "pipe:1",
-    ]
+    # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command
+    # Windows 上若未指定设备或设备不可用，自动检测 / Auto-detect on Windows if device unavailable
+    if _is_windows() and (not device or device == "BlackHole 2ch"):
+        detected = _find_windows_audio_device()
+        if detected:
+            device = detected
+            logger.info(f"Windows 自动检测音频输入设备: {device}")
+        else:
+            logger.warning("Windows 未检测到音频输入设备，使用默认值")
 
-    logger.info(f"开始流式录制（双输出）: 设备={device}, WAV={wav_path.name}")
+    cmd = _build_ffmpeg_stream_cmd(device, wav_path)
+
+    logger.info(f"开始流式录制（双输出）: 设备={device}, WAV={wav_path.name}, 平台={'Windows' if _is_windows() else 'macOS'}")
 
     try:
         proc = subprocess.Popen(
