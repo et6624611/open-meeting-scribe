@@ -243,6 +243,7 @@ def cloud_sync_user(req: SyncUserRequest, request: Request):
 
     # 返回配额信息 / Return quota info
     quota = user.get("quota", DEFAULT_QUOTA)
+    tier = user.get("subscription", {}).get("tier", "free")
 
     month_key = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
