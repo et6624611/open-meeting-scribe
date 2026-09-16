@@ -1,5 +1,5 @@
 /**
- * AI 洞察 API 封装 / AI insights API wrapper
+ * 洞察台 API 封装 / Insight Deck API wrapper
  *
  * 提供洞察分析引擎 + 消息持久化的后端调用。 / Provides insight analysis engine + message persistence backend calls.
  * 洞察消息按会议（task）隔离存储。 / Insight messages stored isolated by meeting (task).
@@ -12,6 +12,8 @@ export interface InsightAnalysisResult {
   body: string
   solution: string
   has_finding: boolean
+  /** Mermaid 图语法（可选） / Mermaid diagram syntax (optional) */
+  diagram?: string
 }
 
 /** 转写行（用于分析请求） / Transcript line (for analysis request) */
@@ -21,20 +23,15 @@ export interface InsightTranscriptLine {
   begin_time: number
 }
 
-/** 分析类型 / Analysis type */
-export type InsightAnalysisType = 'context' | 'blindspot' | 'consensus'
-
 /**
- * 洞察分析：调用 LLM 对当前讨论执行深度分析 / Insight analysis: invoke LLM for deep analysis of current discussion
+ * 洞察分析：调用 LLM 对当前讨论执行综合洞察分析 / Insight analysis: invoke LLM for unified insight analysis of current discussion
  *
  * @param params.recent_lines 最近 N 条转写内容 / Recent N transcript lines
  * @param params.chapter_titles 章节标题列表 / Chapter title list
- * @param params.analysis_type 分析类型 / Analysis type: context | blindspot | consensus
  */
 export async function runInsightAnalysis(params: {
   recent_lines: InsightTranscriptLine[]
   chapter_titles: string[]
-  analysis_type: InsightAnalysisType
 }): Promise<InsightAnalysisResult> {
   const { data } = await client.post<InsightAnalysisResult>('/api/insights/analyze', params)
   return data

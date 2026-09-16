@@ -25,7 +25,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
-from typing import Generator
+from typing import AsyncGenerator, Generator
 
 import httpx
 import requests
@@ -99,11 +99,10 @@ def _should_use_cloud() -> bool:
     # 用户偏好覆盖：优先使用订阅流量 / User preference override: prefer subscription quota
     try:
         from core.users import get_current_user
-        from core.metering import TIER_QUOTAS
+        from core.metering import DEFAULT_QUOTA
         user = get_current_user()
         if user and user.get("prefs", {}).get("prefer_subscription", False):
-            subscription = user.get("subscription", {})
-            if subscription.get("tier") in TIER_QUOTAS:
+            if user.get("quota", DEFAULT_QUOTA) > 0:
                 try:
                     from core.cloud_client import is_cloud_enabled
                     if is_cloud_enabled():
@@ -146,7 +145,9 @@ def _try_cloud_llm(messages, model, temperature, max_tokens) -> str:
     from core.cloud_client import cloud_llm_chat, is_cloud_enabled
     user_id = _get_cloud_user_id()
     logger.info(f"LLM 无本地 Key，尝试云端代理: user={user_id[:8] if user_id else 'anon'}")
-    result = cloud_llm_chat(messages, model, temperature, max_tokens, user_id)
+    # model=None 时回退到默认模型，防止云端接口拒绝 / Fallback to default model when None to prevent cloud API rejection
+    effective_model = model or "qwen-plus"
+    result = cloud_llm_chat(messages, effective_model, temperature, max_tokens, user_id)
     if result is None:
         # 区分：云端未启用 vs 云端调用失败 / Distinguish: cloud not enabled vs cloud call failed
         if not is_cloud_enabled():
@@ -510,3 +511,63 @@ def chat_completion_stream(
             content = delta.get("content", "")
             if content:
                 yield content
+
+
+# ============================================================
+# 异步流式版（供 SSE 端点使用）
+# ============================================================
+
+
+async def async_chat_completion_stream(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> AsyncGenerator[str, None]:
+    """
+    异步流式调用 LLM（供 SSE 端点使用）。
+
+    Yields:
+        逐块生成的文本
+    无本地 Key 时自动走云端代理（流式）。 / Auto-fallback to cloud proxy (streaming) when no local key.
+    """
+    # 云端代理回退（流式） / Cloud proxy fallback (streaming)
+    if _should_use_cloud():
+        from core.cloud_client import cloud_llm_chat_stream
+        user_id = _get_cloud_user_id()
+        logger.info(f"LLM 流式调用走云端代理: user={user_id[:8] if user_id else 'anon'}")
+        for token in cloud_llm_chat_stream(messages, model, temperature, max_tokens, user_id):
+            yield token
+        return
+
+    base_url = _get_base_url()
+    client = _get_async_client()
+    headers = _get_headers()
+    body = _build_request_body(messages, model, temperature, max_tokens)
+    body["stream"] = True
+
+    logger.info(f"调用 LLM（异步流式）: url={base_url}, model={body.get('model')}, messages={len(messages)}")
+
+    async with client.stream(
+        "POST",
+        f"{base_url}/chat/completions",
+        headers=headers,
+        json=body,
+    ) as resp:
+        resp.raise_for_status()
+        async for line in resp.aiter_lines():
+            if not line:
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    import json as _json
+                    data = _json.loads(data_str)
+                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except Exception:
+                    continue

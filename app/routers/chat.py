@@ -12,12 +12,14 @@ v2.0 重构：业务逻辑已拆分至 core 层子模块，本文件仅保留端
 """
 
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.store import (  # noqa: F401
@@ -38,7 +40,8 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.llm import async_chat_completion, async_chat_completion_full
+from core.agent_loop import run_agent_loop
+from core.llm import async_chat_completion, async_chat_completion_full, async_chat_completion_stream
 
 # 向后兼容别名（测试与外部引用） / Backward-compatible aliases (for tests and external references)
 _detect_action = detect_action
@@ -69,6 +72,121 @@ def _format_time_ms(ms: int | float) -> str:
 
 
 # ============================================================
+# 图形化意图检测与 Mermaid 生成 / Diagram intent detection & Mermaid generation
+# ============================================================
+
+_DIAGRAM_KEYWORDS = [
+    "流程图", "流程", "图表", "画图", "绘制", "画一个", "画个",
+    "diagram", "flowchart", "mermaid", "图形", "可视化", "关系图",
+    "思维导图", "结构图", "拓扑", "网络图",
+    # 图修改关键词 / Diagram modification keywords
+    "修改图", "改一下", "调整图", "换个方向", "改成", "把图", "这张图",
+    "这个图", "重新画", "重画", "再生成一个", "换一种", "加一个节点",
+    "去掉", "改成从左到右", "改成从上到下",
+]
+
+# 图修改意图关键词 / Diagram modification intent keywords
+_MODIFY_DIAGRAM_KEYWORDS = [
+    "修改图", "改一下", "调整图", "换个方向", "改成", "把图",
+    "这张图", "这个图", "重新画", "重画", "再生成一个", "换一种",
+    "加一个节点", "去掉", "调整一下", "帮我改", "帮我调",
+]
+
+
+def _detect_diagram_intent(message: str) -> bool:
+    """检测用户是否要求生成图形化内容。"""
+    lower = message.lower()
+    return any(kw in lower for kw in _DIAGRAM_KEYWORDS)
+
+
+def _detect_diagram_modify_intent(message: str) -> bool:
+    """检测用户是否要求修改已有的图。"""
+    lower = message.lower()
+    return any(kw in lower for kw in _MODIFY_DIAGRAM_KEYWORDS)
+
+
+_MERMAID_GEN_PROMPT = """你是 Mermaid 图表生成器。根据用户请求，选择最合适的 Mermaid 图类型并生成代码。
+
+规则：
+1. 只返回 Mermaid 代码，不要 markdown 代码块标记
+2. 根据内容选择图类型：
+   - flowchart + subgraph 泳道图：跨角色/跨部门的职责分工与协作流程（用 subgraph 划分不同角色或部门）
+   - flowchart（graph TD/LR）：决策路径、任务依赖、因果关系（最通用）
+   - mindmap：围绕核心主题的多维度发散
+   - sequenceDiagram：多方交互的时间顺序
+   - gantt：时间安排和并行关系
+3. 节点用中文标签
+4. 保持简洁，5-15 个节点（根据内容复杂度调整）
+5. 在连线上标注关系类型
+6. 如果无法生成有意义的图，返回空字符串
+
+用户请求：{user_message}
+
+仅返回 Mermaid 代码："""
+
+_MODIFY_DIAGRAM_PROMPT = """你是 Mermaid 图表修改器。用户希望基于现有的图进行修改。
+
+规则：
+1. 只返回修改后的完整 Mermaid 代码，不要 markdown 代码块标记
+2. 保持原图的整体结构和风格，只按用户要求做局部调整
+3. 节点标签用中文
+4. 如果用户要求不明确，尽量保持原图不变
+5. 如果无法按要求修改，返回空字符串
+
+当前图的 Mermaid 代码：
+{current_diagram}
+
+用户的修改要求：{user_message}
+
+仅返回修改后的 Mermaid 代码："""
+
+
+async def _modify_mermaid_diagram(user_message: str, current_diagram: str, model: str) -> str:
+    """调用 LLM 基于当前图和用户指令生成修改后的 Mermaid 代码。"""
+    try:
+        messages = [
+            {"role": "system", "content": "你是 Mermaid 图表修改器。只输出修改后的 Mermaid 代码，不要其他内容。"},
+            {"role": "user", "content": _MODIFY_DIAGRAM_PROMPT.format(
+                current_diagram=current_diagram, user_message=user_message
+            )},
+        ]
+        logger.info("[Mermaid] 开始修改图，model=%s, message_len=%d, diagram_len=%d", model, len(user_message), len(current_diagram))
+        reply = await async_chat_completion(messages, model=model, temperature=0.3, max_tokens=800)
+        cleaned = reply.strip() if reply else ""
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            lines = [ln for ln in lines if not ln.strip().startswith("```")]
+            cleaned = "\n".join(lines).strip()
+        logger.info("[Mermaid] 修改完成 len=%d", len(cleaned))
+        return cleaned
+    except Exception as e:
+        logger.warning("[AI对话] Mermaid 修改失败: %s", e)
+        return ""
+
+
+async def _generate_mermaid_diagram(user_message: str, model: str) -> str:
+    """调用 LLM 生成 Mermaid 图语法。"""
+    try:
+        messages = [
+            {"role": "system", "content": "你是 Mermaid 图表生成器。只输出 Mermaid 代码，不要其他内容。"},
+            {"role": "user", "content": _MERMAID_GEN_PROMPT.format(user_message=user_message)},
+        ]
+        logger.info("[Mermaid] 开始生成，model=%s, message_len=%d", model, len(user_message))
+        reply = await async_chat_completion(messages, model=model, temperature=0.3, max_tokens=800)
+        # 清理可能的 markdown 代码块标记
+        cleaned = reply.strip() if reply else ""
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            lines = [ln for ln in lines if not ln.strip().startswith("```")]
+            cleaned = "\n".join(lines).strip()
+        logger.info("[Mermaid] 生成完成 len=%d", len(cleaned))
+        return cleaned
+    except Exception as e:
+        logger.warning("[AI对话] Mermaid 生成失败: %s", e)
+        return ""
+
+
+# ============================================================
 # 请求模型 / Request Models
 # ============================================================
 
@@ -82,6 +200,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     current_page: Optional[str] = None
     role: Optional[str] = None  # Agent 角色标识 / Agent role identifier
+    current_diagram: Optional[str] = None  # 当前可见的 Mermaid 图源码（用于图修改） / Current visible Mermaid diagram source (for diagram modification)
 
 
 class OptimizeRequest(BaseModel):
@@ -481,8 +600,19 @@ async def chat(data: ChatRequest):
         reply = audit_reply_claims(llm_result.content, edit_changes)
         existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
         extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_todos)
+
+        # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
+        diagram = ""
+        if data.current_diagram and _detect_diagram_modify_intent(user_message):
+            logger.info("[AI对话] 检测到图修改意图，基于当前图生成修改")
+            diagram = await _modify_mermaid_diagram(user_message, data.current_diagram, chat_model)
+        elif _detect_diagram_intent(user_message):
+            logger.info("[AI对话] 检测到画图意图，生成 Mermaid 图")
+            diagram = await _generate_mermaid_diagram(user_message, chat_model)
+
         return {
             "reply": reply,
+            "diagram": diagram,
             "metadata": {
                 "model": llm_result.model,
                 "usage": llm_result.usage,
@@ -516,6 +646,263 @@ async def chat(data: ChatRequest):
     except Exception as e:
         logger.error("AI 对话失败: %s", e)
         raise HTTPException(500, _("AI conversation failed: {err}").format(err=e))
+
+
+# ============================================================
+# AI 对话流式端点 / AI Chat Streaming Endpoint
+# ============================================================
+
+def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
+    """从请求数据构建 LLM 消息列表（供 /api/chat 和 /api/chat/stream 共用）。
+    Build LLM messages from request data (shared by /api/chat and /api/chat/stream).
+
+    Returns:
+        (messages, chat_model, source_files)
+    """
+    user_message = data.message.strip()
+    is_qa_mode = data.mode == "qa"
+    if is_qa_mode:
+        system_prompt = CHAT_QA_SYSTEM_PROMPT
+    else:
+        role = resolve_agent_role(data.role)
+        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
+    context_blocks: list[str] = []
+    chat_model = data.model or "qwen-plus"
+
+    # ── 实时转写流 / Realtime transcript stream ──
+    realtime_entries = []
+    if data.realtime_transcripts:
+        realtime_entries = data.realtime_transcripts[-REALTIME_BUFFER_MAX:]
+    elif data.task_id and data.task_id in realtime_transcript_buffers:
+        realtime_entries = realtime_transcript_buffers[data.task_id]
+
+    if realtime_entries:
+        speaker_name_map = build_speaker_name_map(data.task_id) if data.task_id else {}
+        lines = []
+        for entry in realtime_entries[-10:]:
+            sid = entry.get("speaker_id")
+            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
+            text = entry.get("text", "").strip()
+            ts = _format_time_ms(entry.get("begin_time", 0))
+            if text:
+                prefix = f"[{ts}] " if ts else ""
+                lines.append(f"{prefix}{name}：{text}")
+        if lines:
+            context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
+
+    # ── 当前会议上下文 / Current meeting context ──
+    if data.task_id and data.task_id in tasks:
+        task = tasks[data.task_id]
+        meta_lines = [
+            f"- 会议标题：{task.get('title') or task.get('audio_name') or '未命名'}",
+            f"- 会议状态：{task.get('status', '未知')}",
+        ]
+        if task.get("audio_duration"):
+            dur = task["audio_duration"]
+            meta_lines.append(f"- 音频时长：{int(dur // 60)} 分 {int(dur % 60)} 秒")
+        if task.get("speaker_count"):
+            meta_lines.append(f"- 说话人数量：{task['speaker_count']}")
+        audio_path = task.get("audio_path", "")
+        if audio_path and Path(audio_path).exists():
+            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（已存在）")
+        elif audio_path:
+            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（路径记录但文件不存在）")
+        if task.get("error"):
+            meta_lines.append(f"- 错误信息：{task['error']}")
+        context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
+
+        summary = task.get("summary") or ""
+        is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
+        if summary and not is_summary_error:
+            context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
+        if task.get("dialogue") and not realtime_entries:
+            all_lines = []
+            idx = 0
+            for item in task["dialogue"]:
+                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
+                sents = item.get("sentences") or []
+                for s in sents:
+                    text = s.get("text", "").strip()
+                    if text:
+                        ts = _format_time_ms(s.get("begin_time", 0))
+                        prefix = f"[{ts}] " if ts else ""
+                        all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
+                        idx += 1
+                if not sents:
+                    text = item.get("text", "").strip()
+                    if text:
+                        all_lines.append((0, f"{name}：{text}", name, idx))
+                        idx += 1
+            if all_lines:
+                all_lines.sort(key=lambda x: x[0])
+                seen_speakers = set()
+                first_per_speaker = []
+                for ts_ms, line, spk, li in all_lines:
+                    if spk not in seen_speakers:
+                        seen_speakers.add(spk)
+                        first_per_speaker.append((ts_ms, line, li))
+                limit = 3000 if (summary and not is_summary_error) else 5000
+                included = set()
+                output_parts = []
+                char_count = 0
+                for ts_ms, line, li in first_per_speaker:
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                for ts_ms, line, _spk, li in all_lines:
+                    if li in included:
+                        continue
+                    if char_count + len(line) + 1 > limit:
+                        break
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                output_parts.sort(key=lambda x: x[0])
+                dialogue_text = "\n".join(line for _, line in output_parts)
+                if dialogue_text:
+                    context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
+
+        todos = task.get("todos") or []
+        if todos:
+            todo_lines = []
+            for t in todos:
+                status = "✅" if t.get("done") else "⬜"
+                assignee = t.get("assignee", "未分配")
+                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
+            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
+
+    # ── 关联项目资料 / Linked project materials ──
+    source_files: list[dict] = []
+    resolved_project_id = data.project_id
+    if not resolved_project_id and data.task_id and data.task_id in tasks:
+        resolved_project_id = tasks[data.task_id].get("project_id")
+    if resolved_project_id:
+        from core import projects
+        context_text, source_files = projects.get_project_context_for_chat(resolved_project_id, user_message)
+        if context_text:
+            context_blocks.append(context_text)
+        if not source_files and context_text:
+            from core.project_index import get_project_index
+            index = get_project_index(resolved_project_id)
+            if index:
+                source_files = [
+                    {"title": f.get("title", f.get("name", "")), "path": f.get("relative_path", ""), "name": f.get("name", "")}
+                    for f in index.get("files", [])
+                ]
+
+    # ── 页面上下文 / Page context ──
+    if data.current_page:
+        page_ctx = build_page_context(data.current_page)
+        if page_ctx:
+            context_blocks.append(page_ctx)
+
+    if context_blocks:
+        system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
+
+    # ── 对话历史 / Conversation history ──
+    messages = [{"role": "system", "content": system_prompt}]
+    if data.history:
+        for msg in data.history[-10:]:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content = msg.get("content", "")
+            if content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_message})
+
+    return messages, chat_model, source_files
+
+
+@router.post("/api/chat/stream")
+async def chat_stream(data: ChatRequest):
+    """AI 对话流式端点（SSE + Agent 循环）。 / AI chat streaming endpoint (SSE + Agent loop).
+
+    使用 ReAct Agent 循环：LLM 自主决策调用工具 → 执行 → 结果回传 → 最终流式回复。
+    Uses ReAct agent loop: LLM decides tool calls → execute → feed back → final streaming answer.
+    """
+    user_message = data.message.strip()
+    if not user_message:
+        raise HTTPException(400, _("Message cannot be empty"))
+    if len(user_message) > MAX_CHAT_MESSAGE_LEN:
+        raise HTTPException(
+            400,
+            _("Message too long (max {max} characters)").format(max=MAX_CHAT_MESSAGE_LEN),
+        )
+
+    # 解析系统提示词（Agent 角色） / Resolve system prompt (agent role)
+    is_qa_mode = data.mode == "qa"
+    if is_qa_mode:
+        system_prompt = CHAT_QA_SYSTEM_PROMPT
+    else:
+        role = resolve_agent_role(data.role)
+        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
+
+    # 注入页面上下文（无对应工具，仍需预构建） / Inject page context (no tool for this, still pre-built)
+    if data.current_page:
+        page_ctx = build_page_context(data.current_page)
+        if page_ctx:
+            system_prompt += f"\n\n{page_ctx}"
+
+    chat_model = data.model or "qwen-plus"
+
+    # 解析项目 ID / Resolve project ID
+    resolved_project_id = data.project_id
+    if not resolved_project_id and data.task_id and data.task_id in tasks:
+        resolved_project_id = tasks[data.task_id].get("project_id")
+
+    async def event_generator():
+        full_content = ""
+        try:
+            async for event in run_agent_loop(
+                user_message=user_message,
+                system_prompt=system_prompt,
+                history=data.history or [],
+                task_id=data.task_id,
+                project_id=resolved_project_id,
+                model=chat_model,
+            ):
+                evt_type = event.get("type")
+
+                if evt_type == "token":
+                    full_content += event.get("content", "")
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                elif evt_type == "done":
+                    # 后处理：提取可注入项 / Post-processing: extract injectable items
+                    existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
+                    extracted_items = extract_injectable_items(full_content, existing_todos)
+                    event["extracted_items"] = extracted_items
+
+                    # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
+                    diagram = ""
+                    if data.current_diagram and _detect_diagram_modify_intent(user_message):
+                        logger.info("[AI对话] 检测到图修改意图，基于当前图生成修改")
+                        diagram = await _modify_mermaid_diagram(user_message, data.current_diagram, chat_model)
+                    elif _detect_diagram_intent(user_message):
+                        logger.info("[AI对话] 检测到画图意图，生成 Mermaid 图")
+                        diagram = await _generate_mermaid_diagram(user_message, chat_model)
+                    if diagram:
+                        event["diagram"] = diagram
+                        logger.info("[AI对话] diagram 长度=%d, 随 done 事件发送", len(diagram))
+
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                else:
+                    # stage / tool_call / tool_result / error — 直接转发
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.error("AI Agent 对话流式失败: %s", e)
+            err_msg = str(e)
+            if not full_content:
+                yield f"data: {json.dumps({'type': 'error', 'content': err_msg}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'done', 'metadata': {'model': chat_model}, 'error': err_msg}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ============================================================

@@ -1,5 +1,5 @@
 <template>
-  <div class="sb-history-inner">
+  <div class="sb-history-inner" :class="{ 'is-stagger-revealing': isStaggerRevealing }">
     <DynamicScroller
       v-if="virtualItems.length > 0 || taskStore.loading"
       ref="scrollerRef"
@@ -17,6 +17,7 @@
         >
           <div
             class="sb-vs-item"
+            :style="{ '--stagger-i': Math.min(index, 15) }"
             :class="{
               'is-header': item.type === 'header',
               'is-task': item.type === 'task',
@@ -106,6 +107,23 @@ const player = usePlayerStore()
 const router = useRouter()
 
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
+
+const isStaggerRevealing = ref(false)
+let staggerTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(() => layout.sidebarCollapsed, (collapsed, wasCollapsed) => {
+  if (!collapsed && wasCollapsed) {
+    isStaggerRevealing.value = true
+    if (staggerTimer) clearTimeout(staggerTimer)
+    const visibleCount = Math.min(virtualItems.value.length, 16)
+    staggerTimer = setTimeout(() => {
+      isStaggerRevealing.value = false
+    }, visibleCount * 30 + 300)
+  } else if (collapsed) {
+    isStaggerRevealing.value = false
+    if (staggerTimer) { clearTimeout(staggerTimer); staggerTimer = null }
+  }
+})
 
 /** 虚拟滚动一维数据源：日期组头 + 任务卡片混合 / Virtual scroll 1D data source: date group headers + task cards mixed */
 type SidebarItem =

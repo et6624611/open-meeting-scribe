@@ -6,12 +6,13 @@
  */
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { sendMessage, injectItems } from '@/api/chat'
-import type { ChatAction, ChatExtractedItem, ChatResponse } from '@/api/chat'
+import { sendMessageStream, injectItems } from '@/api/chat'
+import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAgentStore } from '@/stores/agent'
+import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
 import { tt } from '@/i18n'
 
@@ -50,10 +51,20 @@ export function useAiChat() {
   const realtimeStore = useRealtimeStore()
   const aiSessions = useAiSessionsStore()
   const agentStore = useAgentStore()
+  const insights = useAiInsights()
 
   const isLoading = ref(false)
+  const isStreaming = ref(false)
   const abortController = ref<AbortController | null>(null)
   const followUps = ref<FollowUpSuggestion[]>([])
+  const thinkingStartTime = ref(0)
+  const stages = ref<AgentStage[]>([])
+
+  /** 思考耗时（秒），流式期间实时更新，完成后归零 / Thinking elapsed seconds; live during streaming, resets after done */
+  const thinkingElapsed = computed(() => {
+    if (!thinkingStartTime.value) return 0
+    return Math.floor((Date.now() - thinkingStartTime.value) / 1000)
+  })
 
   /** 统一建议：对话为空或 AI 正在回复时隐藏；有推断建议时用推断，否则用默认 / Unified suggestions: hidden when chat is empty or AI is replying; use inferred suggestions when available, otherwise defaults */
   const displaySuggestions = computed(() => {
@@ -74,7 +85,7 @@ export function useAiChat() {
 
   const canSend = computed(() => !isLoading.value)
 
-  /** 发送原始文本消息 / Send raw text message */
+  /** 发送原始文本消息（流式输出） / Send raw text message (streaming output) */
   async function sendRaw(text: string) {
     if (!text || isLoading.value) return
 
@@ -85,73 +96,157 @@ export function useAiChat() {
     }
 
     isLoading.value = true
+    isStreaming.value = false
+    thinkingStartTime.value = Date.now()
     followUps.value = []
     injectPrompt.value = null
+    stages.value = []
 
     const ctrl = new AbortController()
     abortController.value = ctrl
 
     const loadingIdx = aiSessions.activeMessages.length
-    aiSessions.activeMessages.push({ role: 'assistant', content: '思考中…' })
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString() }
+    aiSessions.activeMessages.push(assistantMsg)
 
     try {
       const histSlice = aiSessions.activeMessages.slice(-AI_MAX_CONTEXT)
-      const res: ChatResponse = await sendMessage(text, {
+
+      await sendMessageStream(text, {
         task_id: taskStore.currentTaskId || undefined,
         history: histSlice,
         realtime_transcripts: realtimeStore.getSnapshot(),
         current_page: (route.name as string) || undefined,
         role: agentStore.activeAgent || undefined,
+        current_diagram: insights.lastViewedDiagram.value || undefined,
         signal: ctrl.signal,
+      }, {
+        onToken(token: string) {
+          assistantMsg.content += token
+          isStreaming.value = true
+          // 不在首个 token 时清空 stages，保留到完成后折叠 / Keep stages visible during streaming, collapse after done
+        },
+        onStage(stageData) {
+          // 更新或添加思考阶段 / Update or add thinking stage
+          const existing = stages.value.find(s => s.type === stageData.stage)
+          if (existing) {
+            existing.label = stageData.label
+          } else if (stageData.stage === 'thinking' || stageData.stage === 'generating') {
+            // 将之前的 running 阶段标记为 done / Mark previous running stages as done
+            stages.value.forEach(s => {
+              if (s.status === 'running') s.status = 'done'
+            })
+            stages.value.push({
+              type: stageData.stage as 'thinking' | 'generating',
+              label: stageData.label,
+              status: 'running',
+            })
+          }
+        },
+        onToolCall(tool) {
+          // 将之前的 running 阶段标记为 done / Mark previous running stages as done
+          stages.value.forEach(s => {
+            if (s.status === 'running') s.status = 'done'
+          })
+          stages.value.push({
+            type: 'tool_call',
+            label: tool.label,
+            icon: tool.icon,
+            status: 'running',
+            detail: Object.values(tool.args || {}).join(', '),
+          })
+        },
+        onToolResult(result) {
+          // 找到对应的 tool_call 并更新状态 / Find matching tool_call and update status
+          const toolStage = [...stages.value].reverse().find(
+            s => s.type === 'tool_call' && s.label === stages.value.find(st => st.type === 'tool_call')?.label
+          )
+          if (toolStage) {
+            toolStage.status = result.success ? 'done' : 'error'
+            toolStage.detail = result.summary
+          }
+        },
+        onDone(data) {
+          assistantMsg.timestamp = new Date().toISOString()
+          if (data.metadata) assistantMsg.metadata = data.metadata
+          if (data.sources) assistantMsg.sources = data.sources
+          if (data.latency_ms != null) {
+            assistantMsg.performance = {
+              latency_ms: data.latency_ms,
+              char_count: assistantMsg.content.length,
+              context_block_count: data.context_block_count ?? 0,
+              message_count: data.message_count ?? 0,
+            }
+          }
+          // 保存思考阶段到消息（完成后折叠显示） / Save stages to message (collapsed after done)
+          if (stages.value.length > 0) {
+            assistantMsg.stages = [...stages.value]
+            stages.value.forEach(s => { s.status = 'done' })
+          }
+          aiSessions.persist()
+
+          if (data.extracted_items?.length) {
+            showInjectPrompt(data.extracted_items)
+          }
+          // 图形化内容转发到洞察面板 / Forward diagram to insights panel
+          if (data.diagram) {
+            insights.setChatDiagram(data.diagram)
+          }
+          followUps.value = generateFollowUps(assistantMsg.content)
+        },
+        onError(error: string) {
+          if (!assistantMsg.content) {
+            aiSessions.activeMessages.splice(loadingIdx, 1)
+            aiSessions.activeMessages.push({ role: 'assistant', content: `抱歉，出了点问题：${error}` })
+          }
+          aiSessions.persist()
+        },
       })
-
-      aiSessions.activeMessages[loadingIdx] = {
-        role: 'assistant',
-        content: res.reply,
-        timestamp: new Date().toISOString(),
-        metadata: res.metadata,
-        sources: res.sources,
-        performance: res.latency_ms != null ? {
-          latency_ms: res.latency_ms,
-          char_count: res.reply.length,
-          context_block_count: res.context_block_count ?? 0,
-          message_count: res.message_count ?? 0,
-        } : undefined,
-      }
-      aiSessions.persist()
-
-      if (res.verified_changes?.length) {
-        verifiedChanges.value = res.verified_changes
-      } else {
-        verifiedChanges.value = []
-      }
-
-      // 后端返回 action（单数对象）或 actions（数组）均兼容处理 / Handle both action (singular) and actions (array) from backend
-      if (res.action?.name && res.action.success) {
-        await executeAction({ name: res.action.name, data: res.action.data || {} })
-      } else if (res.actions?.length) {
-        for (const action of res.actions) {
-          await executeAction(action)
-        }
-      }
-
-      if (res.extracted_items?.length) {
-        showInjectPrompt(res.extracted_items)
-      }
-
-      followUps.value = generateFollowUps(res.reply)
     } catch (e: unknown) {
-      aiSessions.activeMessages.splice(loadingIdx, 1)
-      if (e instanceof Error && e.name === 'AbortError') {
-        aiSessions.activeMessages.push({ role: 'assistant', content: '已停止生成。' })
+      if (assistantMsg.content) {
+        // 已有部分内容，保留已生成的文本 / Already have partial content, keep it
+        aiSessions.persist()
       } else {
-        const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || '请求失败'
-        aiSessions.activeMessages.push({ role: 'assistant', content: `抱歉，出了点问题：${detail}` })
+        aiSessions.activeMessages.splice(loadingIdx, 1)
       }
-      aiSessions.persist()
+      if (e instanceof Error && e.name === 'AbortError') {
+        if (assistantMsg.content) {
+          aiSessions.persist()
+        } else {
+          aiSessions.activeMessages.push({ role: 'assistant', content: '已停止生成。' })
+          aiSessions.persist()
+        }
+      } else if (!assistantMsg.content) {
+        const err = e as { response?: { data?: unknown }; message?: string }
+        const data = err.response?.data
+        let detail = '请求失败'
+        if (data && typeof data === 'object') {
+          const d = data as Record<string, unknown>
+          if (typeof d.detail === 'string') {
+            detail = d.detail
+          } else if (d.detail && typeof d.detail === 'object') {
+            const dd = d.detail as Record<string, unknown>
+            if (typeof dd.message === 'string') detail = dd.message
+            else if (typeof dd.error === 'string') detail = dd.error
+            else if (typeof dd.hint === 'string') detail = dd.hint
+          } else if (typeof d.message === 'string') {
+            detail = d.message
+          } else if (typeof d.error === 'string') {
+            detail = d.error
+          }
+        } else if (err.message) {
+          detail = err.message
+        }
+        aiSessions.activeMessages.push({ role: 'assistant', content: `抱歉，出了点问题：${detail}` })
+        aiSessions.persist()
+      }
     } finally {
       isLoading.value = false
+      isStreaming.value = false
+      thinkingStartTime.value = 0
       abortController.value = null
+      // 延迟清空 stages，让 UI 有时间看到最终状态 / Delay clearing stages for UI
+      setTimeout(() => { stages.value = [] }, 300)
     }
   }
 
@@ -314,7 +409,7 @@ export function useAiChat() {
   }
 
   return {
-    messages, isLoading, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
+    messages, isLoading, isStreaming, thinkingElapsed, stages, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast,
   }

@@ -3,8 +3,8 @@ title: "界面设计决策"
 description: "Open Meeting Scribe 的 UI 设计原则、交互策略与产品蓝图。具体组件实现以 Vue 源码为准，本文记录「为什么这样设计」。"
 tags: ["design", "ui", "architecture", "frontend"]
 created_at: "2026-09-03"
-updated_at: "2026-09-13"
-version: "2.12.0"
+updated_at: "2026-09-17"
+version: "2.12.1"
 author: "wangyongliang"
 status: "published"
 category: "design"
@@ -644,7 +644,7 @@ npm run lint:fix    # 自动修复可修复的问题
 - 禁止把扇形精度伪装成 15 分钟刻度——扇形按实际分钟连续绘制，精度由右侧数字承担。
 - 禁止在表盘内使用颜色编码时长——时长是中性信息，用 `--fg` 单色 + 透明度即可，彩色留给状态语义。
 
-## 10. AI 主动发起会话
+## 14. AI 主动发起会话
 
 **核心原则**：AI 从被动应答转向主动洞察，但必须尊重用户控制权——所有主动消息均可一键停用。
 

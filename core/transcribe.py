@@ -69,12 +69,11 @@ def _get_asr_mode() -> str:
         # 用户偏好覆盖：prefer_subscription 开启且直连模式 → 切换为云端代理
         if mode == "direct":
             try:
+                from core.metering import DEFAULT_QUOTA
                 from core.users import get_current_user
-                from core.metering import TIER_QUOTAS
                 user = get_current_user()
                 if user and user.get("prefs", {}).get("prefer_subscription", False):
-                    subscription = user.get("subscription", {})
-                    if subscription.get("tier") in TIER_QUOTAS:
+                    if user.get("quota", DEFAULT_QUOTA) > 0:
                         try:
                             from core.cloud_client import is_cloud_enabled
                             if is_cloud_enabled():
@@ -245,11 +244,18 @@ def _transcribe_cloud(
     elapsed = time.perf_counter() - start
     logger.info(f"[PERF] 云端 ASR 转写完成: {elapsed:.1f}s")
 
-    # 提取对话稿和原始转写结果 / Extract dialogue and raw transcription
-    dialogue = result.get("dialogue", [])
+    # 提取原始转写结果 / Extract raw transcription
     raw_transcription = result.get("transcription", result)
 
-    # 应用热词替换 / Apply hotword mappings
+    # 组装对话稿：云端 ASR 代理返回的是 DashScope 原始 transcription（transcripts[].sentences[]），
+    # 与 proxy/direct 模式一致，需在本地调用 assemble_dialogue 解析为 dialogue；
+    # 兼容：若云端将来直接返回 dialogue 字段则优先使用。
+    # Assemble dialogue locally from raw transcription (consistent with proxy/direct modes);
+    # prefer a cloud-provided dialogue field if present in the future.
+    dialogue = result.get("dialogue") or assemble_dialogue(raw_transcription)
+
+    # 应用热词替换（兜底：assemble_dialogue 内部已替换，此处覆盖云端直返 dialogue 的情况）
+    # Apply hotword mappings (fallback: assemble_dialogue already applies; covers cloud-provided dialogue)
     try:
         from core.hotwords import apply_hotword_mappings
         for block in dialogue:

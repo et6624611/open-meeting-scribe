@@ -366,8 +366,8 @@ def start_recording_with_stream(
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
         )
-        # 短暂等待，确认进程没有立即退出
-        time.sleep(0.5)
+        # 短暂等待，确认进程没有立即退出（200ms 足以捕获 ffmpeg 启动失败，同时减少阻塞） / Brief wait to confirm process didn't exit immediately (200ms enough to catch ffmpeg startup failure while reducing block)
+        time.sleep(0.2)
         if proc.poll() is not None:
             raise RuntimeError("ffmpeg 启动失败（设备可能不可用）")
     except FileNotFoundError:

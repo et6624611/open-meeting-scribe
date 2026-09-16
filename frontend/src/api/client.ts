@@ -38,3 +38,24 @@ client.interceptors.response.use(
 )
 
 export default client
+
+/**
+ * 从 API 错误中提取可读消息 / Extract readable message from API error
+ *
+ * 后端某些端点（如配额不足 402）的 detail 是对象而非字符串，
+ * 直接 alert/toast 会显示 [object Object]。此函数统一处理两种格式。
+ * Some backend endpoints (e.g. quota exhausted 402) return detail as an object
+ * instead of a string; direct alert/toast would show [object Object].
+ */
+export function extractErrorMessage(err: unknown, fallback = '操作失败'): string {
+  const e = err as { response?: { data?: { detail?: unknown; message?: string }; status?: number }; message?: string }
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (typeof detail === 'object' && detail !== null) {
+    // 配额错误格式：{ error, message, remaining } / Quota error format
+    if ('message' in detail && typeof (detail as Record<string, unknown>).message === 'string') {
+      return (detail as Record<string, string>).message
+    }
+  }
+  return e?.response?.data?.message || e?.message || fallback
+}

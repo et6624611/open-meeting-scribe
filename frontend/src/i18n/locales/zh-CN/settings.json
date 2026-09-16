@@ -4,6 +4,7 @@
   "account": "账户",
   "not_logged_in": "未登录",
   "login": "登录",
+  "logout": "退出登录",
   "api_config": "API 配置",
   "api_key": "API 密钥",
   "api_key_placeholder": "留空则使用环境变量中的 Key",

@@ -63,6 +63,7 @@
     "index_prefix": "第",
     "index_suffix": "章 / 共 {count} 章",
     "dividing": "章节划分中...",
+    "empty_transcript": "未识别到有效语音内容",
     "key_points": "关键要点",
     "key_points_count": "{count} 个要点",
     "review": "章节回顾",

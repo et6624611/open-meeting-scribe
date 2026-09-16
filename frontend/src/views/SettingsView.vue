@@ -58,6 +58,10 @@
             <span class="usage-tier-badge" :class="'tier-' + (usageSummary.tier || 'free')">{{ tierName(usageSummary.tier) }}</span>
           </div>
         </div>
+        <button class="settings-logout-btn" @click="onLogout" :title="t('settings.logout')">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          {{ t('settings.logout') }}
+        </button>
       </div>
       <div v-else class="settings-login-prompt">
         <p>{{ t('settings.not_logged_in') }}</p>
@@ -873,6 +877,10 @@ function showLogin() {
   window.dispatchEvent(new CustomEvent('oms:show-login'))
 }
 
+async function onLogout() {
+  await userStore.logout()
+}
+
 async function onSave() {
   await saveSettings({
     asr: { ...settings.asr },
@@ -1114,6 +1122,9 @@ async function loadCliReference() {
 .settings-section { margin-bottom: var(--s-7); }
 .settings-title { font-size: 16px; font-weight: 600; margin-bottom: var(--s-3); padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
 .settings-account { display: flex; align-items: center; gap: var(--s-3); }
+.settings-logout-btn { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s ease; }
+.settings-logout-btn:hover { color: var(--danger, #e53e3e); border-color: var(--danger, #e53e3e); background: rgba(229, 62, 62, 0.06); }
+.settings-logout-btn svg { flex-shrink: 0; }
 .settings-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--border); color: var(--muted); display: grid; place-items: center; font-size: 16px; font-weight: 600; flex-shrink: 0; }
 .settings-account-info { display: flex; flex-direction: column; gap: 2px; }
 .settings-account-meta { display: flex; align-items: center; gap: var(--s-2); }

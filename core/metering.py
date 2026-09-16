@@ -23,19 +23,15 @@ logger = logging.getLogger(__name__)
 
 USAGE_DIR = Path("data/usage")
 
-# ── 订阅档位配额（分钟/月）── / Subscription tier quotas (minutes/month) ──
+# ─ 默认配额（分钟/月）── / Default quota (minutes/month) ──
 # 本项目为个人开发者维护的开源软件，不提供商业订阅服务 / This is an open-source project maintained by an individual developer; no commercial subscription.
-# 设体验期与个人订阅两个档位，由开发者根据 API 费用承担能力调整 / Trial + personal tiers, adjusted by developer based on API cost tolerance.
-# 自持 Key 用户不在此表（除非开启「优先使用订阅流量」偏好），不计量 / Self-hosted key users not in this table (unless "prefer subscription" is enabled); not metered.
+# 每位用户的配额可在管理后台独立调整，此表仅作为未设置配额时的默认值 / Per-user quota is adjustable in admin panel; this table is only the default fallback.
 #
 # 体验期共享 proxy 仅限通过国内手机号（SMS）注册的用户 / Trial shared proxy limited to users registered via domestic phone (SMS).
 # 原因：开发者 API Key 部署在国内阿里云服务器，境外用户访问 / Reason: developer API Key deployed on domestic Alibaba Cloud server; overseas access
 # 可能涉及 DashScope 服务区域限制与数据跨境合规问题 / may involve DashScope service region restrictions and cross-border data compliance.
 # GitHub OAuth / 本地账户用户需自行配置 API Key / GitHub OAuth / local account users must configure their own API Key.
-TIER_QUOTAS = {
-    "free": 300,      # 体验期（默认，仅 SMS 注册用户） / Trial (default, SMS-registered users only)
-    "personal": 3000, # 个人订阅（SMS 注册，已授权个人档位） / Personal subscription (SMS-registered, authorized personal tier)
-}
+DEFAULT_QUOTA = 300  # 默认体验期配额（分钟/月） / Default trial quota (minutes/month)
 
 
 def is_metered() -> bool:
@@ -60,9 +56,11 @@ def is_metered() -> bool:
     if user.get("provider") != "sms":
         return False  # GitHub OAuth / 本地账户 → 需自持 Key / GitHub OAuth / local account → must use own key
 
-    # 有授权信息且档位为有效档位 → 需要计量 / Has auth info with valid tier → needs metering
-    subscription = user.get("subscription", {})
-    return subscription.get("tier") in TIER_QUOTAS
+    # 有配额（显式或默认）→ 需要计量 / Has quota (explicit or default) → needs metering
+    if user.get("quota") is not None:
+        return user["quota"] > 0
+    # 无显式配额时，SMS 用户使用默认配额 / No explicit quota: SMS users get default quota
+    return DEFAULT_QUOTA > 0
 
 
 def record_usage(
@@ -233,9 +231,11 @@ def check_quota(user_id: str, estimated_minutes: float = 0) -> dict:
         return {"allowed": True, "remaining": -1, "quota": -1, "used": 0, "warning": None}
 
     # 不需要计量的用户直接放行 / Non-metered users pass through
-    subscription = user.get("subscription", {})
-    tier = subscription.get("tier")
-    if tier not in TIER_QUOTAS:
+    user_quota = user.get("quota")
+    if user_quota is not None and user_quota <= 0:
+        return {"allowed": False, "remaining": 0, "quota": 0, "used": 0, "warning": "critical"}
+    # 无显式配额时，非 SMS 用户不计量 / No explicit quota: non-SMS users not metered
+    if user_quota is None and user.get("provider") != "sms":
         return {"allowed": True, "remaining": -1, "quota": -1, "used": 0, "warning": None}
 
     # 云端优先：从云端查询配额 / Cloud-first: query quota from cloud
@@ -264,7 +264,7 @@ def check_quota(user_id: str, estimated_minutes: float = 0) -> dict:
     # 本地计量 / Local metering
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
     used = get_monthly_usage(user_id, month_key)
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
     remaining = max(0, quota - used)
     pct = remaining / quota if quota > 0 else 0
 
@@ -286,10 +286,14 @@ def check_quota(user_id: str, estimated_minutes: float = 0) -> dict:
 
 
 def _get_user_quota(user_id: str) -> int:
-    """获取用户的月度配额 / Get user's monthly quota."""
+    """获取用户的月度配额 / Get user's monthly quota.
+
+    优先读取用户显式 quota 字段，未设置时使用默认值 / Prefer user's explicit quota field; fall back to default.
+    """
     from core.users import get_user_by_id
     user = get_user_by_id(user_id)
     if not user:
         return 0
-    tier = user.get("subscription", {}).get("tier", "free")
-    return TIER_QUOTAS.get(tier, 0)
+    if user.get("quota") is not None:
+        return user["quota"]
+    return DEFAULT_QUOTA

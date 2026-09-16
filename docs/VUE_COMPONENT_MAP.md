@@ -34,7 +34,7 @@ category: "technical"
 | 路由 | 文件 | 页面名称 | 说明 |
 |------|------|----------|------|
 | `/` | `views/StartView.vue` | 快速启动 | 首页，录音按钮 + 上传入口 |
-| `/recording/:taskId?` | `views/RecordingView.vue` | 录音中 | 实时录音页：波形、实时转写、AI 洞察、底部控制栏 |
+| `/recording/:taskId?` | `views/RecordingView.vue` | 录音中 | 实时录音页：波形、实时转写、洞察台、底部控制栏 |
 | `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/决策四 Tab + 说话人绑定 |
 | `/library` | `views/LibraryView.vue` | 会议库 | 全部会议列表，表格 + 搜索 + 筛选 + 分页 |
 | `/projects` | `views/ProjectsView.vue` | 项目管理 | 项目列表与详情 |
@@ -46,10 +46,10 @@ category: "technical"
 
 | 文件 | 位置 | 说明 |
 |------|------|------|
-| `components/layout/ActivityRail.vue` | 最左侧（52px） | 常驻全局导航轨：Sidebar 折叠按钮、4 个导航图标（会议库/项目/说话人/热词）、AI 洞察呼吸指示器、设置按钮（含版本号） |
+| `components/layout/ActivityRail.vue` | 最左侧（52px） | 常驻全局导航轨：Sidebar 折叠按钮、4 个导航图标（会议库/项目/说话人/热词）、洞察台呼吸指示器、设置按钮（含版本号） |
 | `components/layout/TopBar.vue` | 顶部 | 面包屑、全局搜索、主题切换、全屏、用户头像 |
 | `components/layout/Sidebar.vue` | 左侧 | 导航菜单、最近任务列表、项目快捷入口 |
-| `components/layout/AIPanel.vue` | 右侧 | AI 对话/上下文双 Tab + 多会话切换 + 洞察呼吸灯指示 |
+| `components/layout/AIPanel.vue` | 右侧 | AI 对话/上下文双 Tab + 多会话切换 + 洞察台呼吸灯指示 |
 | `App.vue` | 根 | 布局框架、路由出口、全局 Toast、划词工具栏、底部状态栏 |
 
 ## 三、录音页子组件（views/recording/）
@@ -60,11 +60,11 @@ RecordingView 内部按职责拆分为以下子组件：
 |------|----------|------|
 | `recording/RecControlBar.vue` | 底部控制栏 | 录音控制按钮（暂停/继续/停止、标记） |
 | `recording/RecTranscriptPanel.vue` | 实时转写区 | 实时转写文本流 + 说话人标签 |
-| `recording/RecInsightsPanel.vue` | AI 洞察区 | AI 实时洞察面板（上下文关联/盲点揭示/共识提炼） |
+| `recording/RecInsightsPanel.vue` | 洞察台区 | 洞察台面板（上下文关联/盲点揭示/共识提炼） |
 | `recording/RecNotesBar.vue` | 随记栏 | 录音中的快捷随记输入 |
 | `recording/RecSpeakerBind.vue` | 说话人绑定 | 录音中说话人身份关联 |
 | `recording/RecTimeline.vue` | 时间轴导航 | Canvas 说话人色带可视化 + 滑块拖拽定位 + 章节刻度线 + hover 时间标签 |
-| `ai/AiInsightsSettings.vue` | AI 洞察设置 | AI 洞察功能开关与配置（文件位于 `components/layout/ai/`，由 RecInsightsPanel 引用） |
+| `ai/AiInsightsSettings.vue` | 洞察台设置 | 洞察台功能开关与配置（文件位于 `components/layout/ai/`，由 RecInsightsPanel 引用） |
 
 ## 四、会议纪要页（GeneratingView.vue）
 
@@ -121,7 +121,7 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useAiCommands.ts` | AI 指令系统：指令定义、按状态过滤、面板状态 |
 | `composables/useAiContext.ts` | AI 上下文数据源（对话/转写/纪要聚合，含原 useAiAnalysis 逻辑） |
 | `composables/useAiGuidance.ts` | AI 引导面板：根据会议状态动态生成上下文引导建议 |
-| `composables/useAiInsights.ts` | AI 洞察引擎：消息管理、未读计数、三类洞察（关联/盲点/共识） |
+| `composables/useAiInsights.ts` | 洞察台引擎：消息管理、未读计数、三类洞察（关联/盲点/共识） |
 | `composables/useAnnouncements.ts` | 公告横幅：拉取/显示/关闭策略、登录状态联动 |
 | `composables/useBlockEditor.ts` | Markdown 块级编辑逻辑（解析/AI 标记/diff） |
 | `composables/useContainerSize.ts` | 容器宽度档位检测（ResizeObserver → 标准化 tier） |
@@ -205,7 +205,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | `api/chat.ts` | AI 对话 |
 | `api/announcements.ts` | 公告/通知 |
 | `api/usage.ts` | 用量查询 |
-| `api/insights.ts` | AI 洞察分析与消息持久化 |
+| `api/insights.ts` | 洞察台分析与消息持久化 |
 | `api/voiceprint.ts` | 声纹相关 |
 | `api/types.ts` | 共享 TypeScript 类型定义 |
 
@@ -244,7 +244,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | `ai-panel.css` | AI 面板 | AI 对话/上下文双 Tab + 多会话切换整体样式 |
 | `ai-canvas.css` | AI 对话画布 | 消息气泡、Markdown 渲染、代码块、内联确认 |
 | `recording-view.css` | 录音视图 | 转写流、实时总结面板、波形动画、确认弹窗、内嵌笔记 |
-| `activity-rail.css` | 导航轨 | 常驻全局导航轨布局、Slack 风格按钮高亮、AI 洞察呼吸光晕与心跳脉冲动画 |
+| `activity-rail.css` | 导航轨 | 常驻全局导航轨布局、Slack 风格按钮高亮、洞察台呼吸光晕与心跳脉冲动画 |
 | `recording.css` | 录音页随记栏 | 全宽随记输入栏 |
 | `speakers.css` | 说话人管理 | 右侧面板、聚焦模式、说话人列表 |
 | `meeting-view.css` | 会议纪要页 | 面包屑、章节导航、说话人名单、Tab 切换、音频播放控制条 |
@@ -285,10 +285,10 @@ AIPanel 内部按职责拆分为以下子组件：
 | 录音页整体布局 | [RecordingView.vue](../frontend/src/views/RecordingView.vue) |
 | 录音页 — 底部控制栏 | [RecControlBar.vue](../frontend/src/views/recording/RecControlBar.vue) |
 | 录音页 — 实时转写区 | [RecTranscriptPanel.vue](../frontend/src/views/recording/RecTranscriptPanel.vue) |
-| 录音页 — AI 洞察区 | [RecInsightsPanel.vue](../frontend/src/views/recording/RecInsightsPanel.vue) |
+| 录音页 — 洞察台区 | [RecInsightsPanel.vue](../frontend/src/views/recording/RecInsightsPanel.vue) |
 | 录音页 — 随记栏 | [RecNotesBar.vue](../frontend/src/views/recording/RecNotesBar.vue) |
 | 录音页 — 说话人绑定 | [RecSpeakerBind.vue](../frontend/src/views/recording/RecSpeakerBind.vue) |
-| 录音页 — AI 洞察设置 | [AiInsightsSettings.vue](../frontend/src/components/layout/ai/AiInsightsSettings.vue) |
+| 录音页 — 洞察台设置 | [AiInsightsSettings.vue](../frontend/src/components/layout/ai/AiInsightsSettings.vue) |
 | 录音采集逻辑 | [useRecorder.ts](../frontend/src/composables/useRecorder.ts) |
 | **会议纪要页** |
 | 会议纪要 — 原文区域 | [TranscriptPanel.vue](../frontend/src/views/generating/TranscriptPanel.vue) |
@@ -309,7 +309,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | AI 对话逻辑 | [useAiChat.ts](../frontend/src/composables/useAiChat.ts) |
 | AI 上下文逻辑（含原分析逻辑） | [useAiContext.ts](../frontend/src/composables/useAiContext.ts) |
 | AI 指令系统 | [useAiCommands.ts](../frontend/src/composables/useAiCommands.ts) |
-| AI 洞察引擎 | [useAiInsights.ts](../frontend/src/composables/useAiInsights.ts) |
+| 洞察台引擎 | [useAiInsights.ts](../frontend/src/composables/useAiInsights.ts) |
 | AI 引导建议 | [useAiGuidance.ts](../frontend/src/composables/useAiGuidance.ts) |
 | **其他页面** |
 | 会议列表页 | [LibraryView.vue](../frontend/src/views/LibraryView.vue) |

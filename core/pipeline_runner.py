@@ -347,6 +347,26 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
         try:
             dialogue = tasks[task_id].get("dialogue", [])
 
+            # 空转写检测：ASR 未识别到有效内容时，不应继续生成纪要并标记 completed，
+            # 否则前端会因 chapters 为空而陷入"章节划分中..."无限加载态。
+            # Empty transcription guard: when ASR yields no content, mark failed instead of completed.
+            if not dialogue:
+                tasks[task_id]["status"] = "failed"
+                tasks[task_id]["progress"] = 100
+                tasks[task_id]["error"] = "empty_transcription"
+                tasks[task_id]["failed_stage"] = "transcribe"
+                tasks[task_id]["error_category"] = "audio"
+                tasks[task_id]["error_suggestion"] = _("No valid speech detected in the audio. Please check the recording quality and try again.")
+                tasks[task_id]["message"] = _("No valid speech detected")
+                joblog.append_event(
+                    task_id, joblog.STAGE_ERROR,
+                    "转写结果为空，未识别到有效语音内容，标记为 failed", level="error",
+                    detail={"category": "audio", "reason": "empty_dialogue"},
+                )
+                save_task_to_disk(task_id)
+                logger.warning(f"[{task_id[:8]}] 转写结果为空（dialogue=0），标记为 failed")
+                return
+
             # 优先使用用户指定的 meeting_date，否则从 created_at 提取
             meeting_time = None
             if tasks[task_id].get("meeting_date"):

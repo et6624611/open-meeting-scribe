@@ -17,7 +17,7 @@
   },
   "tab": {
     "transcript": "原文",
-    "insights": "AI 洞察"
+    "insights": "洞察台"
   },
   "transcript": {
     "show": "显示原文",
@@ -48,13 +48,14 @@
     "delete": "删除随记"
   },
   "insights": {
-    "title": "AI 洞察",
+    "title": "洞察台",
     "empty": "AI 将在会议过程中实时分析对话并提供洞察",
-    "empty_hint": "包括上下文关联、盲点揭示、共识提炼等分析",
-    "enabled": "洞察已开启",
-    "disabled": "洞察已关闭",
-    "settings": "洞察设置",
-    "unread_count": "{count} 条未读洞察"
+    "empty_hint": "点击立即分析按钮，AI 将从多个维度深度分析当前讨论",
+    "enabled": "洞察台已开启",
+    "disabled": "洞察台已关闭",
+    "unread_count": "{count} 条未读洞察",
+    "expand": "扩展洞察台",
+    "collapse": "收起洞察台"
   },
   "control": {
     "pause": "暂停",

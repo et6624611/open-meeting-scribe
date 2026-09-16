@@ -109,6 +109,8 @@ function onDocClickOutside(e: MouseEvent) {
   if (document.body.classList.contains('is-divider-dragging')) return
   // 排除 Activity Rail 的折叠/展开按钮（点击它不应触发「外部点击折叠」） / Exclude Activity Rail toggle button (clicking it should not trigger 'outside click collapse')
   if (target.closest('.ar-toggle-btn')) return
+  // 排除视图切换按钮（点击 full/left/right 展开侧边栏后不应被立即折叠） / Exclude view switcher buttons (clicking full/left/right to expand sidebar should not be immediately collapsed)
+  if (target.closest('.view-switcher')) return
   if (sidebarRef.value && !sidebarRef.value.contains(target)) {
     layout.sidebarCollapsed = true
   }

@@ -40,8 +40,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.i18n import _
-from core.metering import TIER_QUOTAS, get_daily_history, get_monthly_usage, record_usage
-from core.users import get_user_by_id, set_user_subscription
+from core.metering import DEFAULT_QUOTA, get_daily_history, get_monthly_usage, record_usage
+from core.users import get_user_by_id
 
 
 # ============================================================
@@ -242,9 +242,7 @@ def cloud_sync_user(req: SyncUserRequest, request: Request):
     )
 
     # 返回配额信息 / Return quota info
-    subscription = user.get("subscription", {"tier": "free"})
-    tier = subscription.get("tier", "free")
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
 
     month_key = __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
@@ -254,7 +252,7 @@ def cloud_sync_user(req: SyncUserRequest, request: Request):
 
     logger.info(
         f"云端用户同步: phone={phone[:3]}****{phone[-4:]}, "
-        f"user_id={user['id'][:8]}, tier={tier}, used={used}min, remaining={remaining}min"
+        f"user_id={user['id'][:8]}, used={used}min, remaining={remaining}min"
     )
 
     return {
@@ -320,18 +318,15 @@ def cloud_check_quota(
     if not user:
         raise HTTPException(404, _("User not found"))
 
-    subscription = user.get("subscription", {"tier": "free"})
-    tier = subscription.get("tier", "free")
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
 
-    # 非计量用户直接放行 / Non-metered users pass through
-    if tier not in TIER_QUOTAS:
+    # 配额为 0 的用户直接拒绝 / Users with zero quota are rejected
+    if quota <= 0:
         return {
-            "allowed": True,
+            "allowed": False,
             "used": 0,
-            "remaining": -1,
-            "quota": -1,
-            "tier": tier,
+            "remaining": 0,
+            "quota": 0,
             "daily_history": [],
         }
 
@@ -350,7 +345,6 @@ def cloud_check_quota(
         "used": round(used, 1),
         "remaining": round(remaining, 1),
         "quota": quota,
-        "tier": tier,
         "daily_history": daily,
     }
 
@@ -368,6 +362,8 @@ class CloudLLMRequest(BaseModel):
     max_tokens: int = Field(default=4096, description="最大 token 数 / Max tokens")
     stream: bool = Field(default=False, description="是否流式 / Whether to stream")
     user_id: str = Field(default="", description="用户 ID（用于配额检查） / User ID for quota check")
+    tools: list[dict] | None = Field(default=None, description="工具定义（Agent function calling） / Tool definitions for agent function calling")
+    tool_choice: str | None = Field(default=None, description="工具选择策略 / Tool choice strategy")
 
 
 def _check_user_quota(user_id: str, estimated_minutes: float = 0.1) -> dict:
@@ -383,13 +379,11 @@ def _check_user_quota(user_id: str, estimated_minutes: float = 0.1) -> dict:
     if not user:
         raise HTTPException(404, _("User not found"))
 
-    subscription = user.get("subscription", {"tier": "free"})
-    tier = subscription.get("tier", "free")
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
 
-    # 非计量用户直接放行 / Non-metered users pass through
-    if tier not in TIER_QUOTAS:
-        return {"allowed": True, "remaining": -1}
+    # 配额为 0 的用户直接拒绝 / Users with zero quota are rejected
+    if quota <= 0:
+        raise HTTPException(402, _("Quota exhausted"))
 
     from datetime import datetime, timezone
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -443,6 +437,11 @@ def cloud_llm_proxy(req: CloudLLMRequest, request: Request):
         "max_tokens": req.max_tokens,
         "stream": req.stream,
     }
+    # Agent function calling: 透传 tools 和 tool_choice / Pass through tools and tool_choice for agent
+    if req.tools:
+        body["tools"] = req.tools
+    if req.tool_choice:
+        body["tool_choice"] = req.tool_choice
 
     logger.info(
         f"LLM 代理: user={req.user_id[:8] if req.user_id else 'anon'}, "

@@ -21,10 +21,14 @@
           </button>
         </div>
         <div class="spk-transcript-scroll" ref="transcriptAreaEl">
-        <!-- 章节生成中提示 / Chapter generation in progress hint -->
-        <div class="chapter-loading" v-if="taskStatus === 'completed' && !chapters.length">
+        <!-- 章节生成中提示（有转写内容但章节未生成） / Chapter generation hint (transcript exists, chapters pending) -->
+        <div class="chapter-loading" v-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length > 0">
           <div class="chapter-loading-spinner"></div>
           <span>{{ t('generating.chapter.dividing') }}</span>
+        </div>
+        <!-- 空转写提示（completed 但无任何转写内容） / Empty transcript hint (completed but no transcript) -->
+        <div class="chapter-loading is-empty" v-else-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length === 0">
+          <span>{{ t('generating.chapter.empty_transcript') }}</span>
         </div>
 
         <!-- 聚焦模式横幅 / Focus mode banner -->

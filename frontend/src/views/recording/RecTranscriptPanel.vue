@@ -16,43 +16,42 @@
           @seek-to-time="onSeekToTime"
         />
         <div class="rec-transcript-actions">
-        <!-- 统一按钮组：翻译 + 显示/隐藏 / Unified button group: translation + show/hide -->
-        <div class="transcript-action-group">
-          <div class="translate-wrap">
-            <div
-              class="toggle-switch"
-              :class="{ 'is-on': translateEnabled }"
-              :title="translateEnabled ? t('recording.translate.disable') : t('recording.translate.enable')"
-              @click="$emit('toggleTranslate')"
-            >
-              <div class="toggle-switch-track">
-                <div class="toggle-switch-knob"></div>
-              </div>
-            </div>
-            <span class="action-label">{{ t('recording.translate.title') }}</span>
-            <button
-              v-if="translateEnabled"
-              class="action-lang-btn"
-              :title="t('recording.translate.target_lang')"
-              @click="showTranslateMenu = !showTranslateMenu"
-            >
-              {{ targetLangLabel }}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div v-if="showTranslateMenu" class="translate-dropdown">
-              <div class="translate-dropdown-title">{{ t('recording.translate.target_lang') }}</div>
-              <button v-for="lang in supportedLanguages" :key="lang.code" class="translate-dropdown-item" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); showTranslateMenu = false">
-                {{ lang.label }}
-                <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="action-divider"></div>
-          <button class="action-btn" :class="{ 'is-active': showTranscript }" @click="$emit('update:showTranscript', !showTranscript)" :title="showTranscript ? t('recording.transcript.hide_title') : t('recording.transcript.show_title')">
-            <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-            <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>{{ showTranscript ? t('recording.transcript.hide') : t('recording.transcript.show') }}</span>
+        <!-- 显示/隐藏原文 / Show/hide transcript -->
+        <button class="action-btn" :class="{ 'is-active': showTranscript }" @click="$emit('update:showTranscript', !showTranscript)" :title="showTranscript ? t('recording.transcript.hide_title') : t('recording.transcript.show_title')">
+          <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>{{ showTranscript ? t('recording.transcript.hide') : t('recording.transcript.show') }}</span>
+        </button>
+        <!-- 翻译更多菜单 / Translation more menu -->
+        <div class="transcript-more-wrap" ref="moreBtn">
+          <button class="transcript-more-btn" @click="toggleMore" :title="t('common.action.more')" aria-haspopup="menu" :aria-label="t('common.action.more')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
           </button>
+          <Teleport to="body">
+            <div ref="moreDropdown" class="transcript-more-dropdown" :class="{ 'is-open': showMore }" role="menu">
+              <!-- 翻译开关 / Translation toggle -->
+              <div class="transcript-more-item transcript-more-toggle">
+                <div
+                  class="toggle-switch"
+                  :class="{ 'is-on': translateEnabled }"
+                  @click="$emit('toggleTranslate')"
+                >
+                  <div class="toggle-switch-track">
+                    <div class="toggle-switch-knob"></div>
+                  </div>
+                  <span class="toggle-switch-label">{{ t('recording.translate.title') }}</span>
+                </div>
+                <span v-if="translateEnabled" class="transcript-more-lang">{{ targetLangLabel }}</span>
+              </div>
+              <!-- 语言选择 / Language selection -->
+              <template v-if="translateEnabled">
+                <button v-for="lang in supportedLanguages" :key="lang.code" class="transcript-more-item transcript-more-lang-item" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); closeMore()">
+                  {{ lang.label }}
+                  <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+              </template>
+            </div>
+          </Teleport>
         </div>
         </div>
       </div>
@@ -150,12 +149,16 @@ import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import RecTimeline from './RecTimeline.vue'
+import { usePopMenu } from '@/composables/usePopMenu'
 import type { TranscriptLine } from '@/composables/useWebSocket'
 import type { SupportedLanguage } from '@/composables/useTranslation'
 
 const { t } = useI18n()
 
-const showTranslateMenu = ref(false)
+// ── 更多菜单 / More menu ──
+const moreBtn = ref<HTMLElement | null>(null)
+const moreDropdown = ref<HTMLElement | null>(null)
+const { visible: showMore, toggle: toggleMore, close: closeMore } = usePopMenu(moreDropdown, moreBtn)
 
 const props = defineProps<{
   lines: TranscriptLine[]

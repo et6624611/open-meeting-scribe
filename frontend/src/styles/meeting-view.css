@@ -814,6 +814,8 @@
   .rec-content-area.tab-insights .rec-insights-panel { display: flex; }
   /* Tab 模式下折叠状态不生效（由 Tab 切换控制可见性） */
   .rec-content-area.tab-insights .rec-insights-panel.is-collapsed { display: flex; }
+  /* 窄屏下洞察台扩展按钮隐藏（Tab 切换已实现全宽） */
+  .rec-insights-expand-btn { display: none; }
   .topbar-title { display: none; }
 }
 /* ── 快速启动卡片（空闲态） ─── */

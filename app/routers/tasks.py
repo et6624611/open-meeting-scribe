@@ -30,6 +30,13 @@ from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
+# 章节补生成去重锁：避免前端轮询每次 get_task 都启动新线程
+# Chapters backfill in-flight guard: prevent spawning a new thread on every poll.
+_chapters_backfill_inflight: set[str] = set()
+# 已确认空转写的任务（dialogue 为空，无法补生成章节）
+# Tasks confirmed to have empty transcription (cannot backfill chapters).
+_chapters_empty_confirmed: set[str] = set()
+
 router = APIRouter(tags=["tasks"])
 
 
@@ -167,23 +174,32 @@ def get_task(task_id: str):
             task = {**task, "elapsed": info["elapsed"]}
     # 已完成任务缺少章节时，后台自动补生成（兼容旧任务） / Auto-backfill chapters for completed tasks missing them (backward compat)
     if task.get("status") == "completed" and not task.get("chapters"):
-        import threading
+        dialogue = task.get("dialogue", [])
+        if not dialogue:
+            # 空转写任务无法补生成章节；记录一次日志即可，前端靠 flatTranscript 判空显示空态
+            # Empty transcription cannot backfill chapters; log once, frontend shows empty state.
+            if task_id not in _chapters_empty_confirmed:
+                _chapters_empty_confirmed.add(task_id)
+                logger.info(f"[{task_id[:8]}] 转写为空，跳过章节补生成")
+        elif task_id not in _chapters_backfill_inflight:
+            import threading
 
-        from core.chapters import generate_chapters
-        def _backfill_chapters():
-            try:
-                dialogue = task.get("dialogue", [])
-                if not dialogue:
-                    return
-                from app.store import get_llm_config
-                model = get_llm_config().get("model", "qwen-plus")
-                chapters = generate_chapters(dialogue, model=model)
-                tasks[task_id]["chapters"] = chapters
-                save_task_to_disk(task_id)
-                logger.info(f"[{task_id[:8]}] 补生成 {len(chapters)} 个章节")
-            except Exception as e:
-                logger.warning(f"[{task_id[:8]}] 补生成章节失败: {e}")
-        threading.Thread(target=_backfill_chapters, daemon=True).start()
+            from core.chapters import generate_chapters
+            _chapters_backfill_inflight.add(task_id)
+
+            def _backfill_chapters():
+                try:
+                    from app.store import get_llm_config
+                    model = get_llm_config().get("model", "qwen-plus")
+                    chapters = generate_chapters(dialogue, model=model)
+                    tasks[task_id]["chapters"] = chapters
+                    save_task_to_disk(task_id)
+                    logger.info(f"[{task_id[:8]}] 补生成 {len(chapters)} 个章节")
+                except Exception as e:
+                    logger.warning(f"[{task_id[:8]}] 补生成章节失败: {e}")
+                finally:
+                    _chapters_backfill_inflight.discard(task_id)
+            threading.Thread(target=_backfill_chapters, daemon=True).start()
     return task
 
 

@@ -464,6 +464,27 @@ def set_user_subscription(
     return None
 
 
+def set_user_quota(user_id: str, quota: int) -> dict | None:
+    """
+    设置用户月度配额 / Set user monthly quota.
+
+    Args:
+        user_id: 用户 ID / User ID
+        quota: 月度配额（分钟），0 表示不计量 / Monthly quota (minutes); 0 = not metered
+
+    Returns:
+        更新后的用户对象，用户不存在返回 None / Updated user object; None if user not found
+    """
+    data = _load_user_data()
+    for user in data.get("users", []):
+        if user["id"] == user_id:
+            user["quota"] = quota
+            _save_user_data(data)
+            logger.info(f"用户配额已更新: user={user_id[:8]}, quota={quota}min")
+            return user
+    return None
+
+
 # ── 隐私同意留痕 / Privacy Consent Record ──
 
 

@@ -1,3 +1,14 @@
+---
+title: 术语表
+description: Open Meeting Scribe 统一术语定义，避免文档/代码/AI 对话各说各话
+tags: ["glossary", "terminology"]
+author: Yongliang Wang
+created_at: 2026-09-03
+updated_at: 2026-09-17
+version: "1.2.0"
+status: published
+---
+
 # GLOSSARY — 术语表
 
 > 统一口径，避免文档/代码/AI 对话各说各话。
@@ -5,12 +16,16 @@
 | 术语 | 含义 |
 |------|------|
 | ASR | 自动语音识别，声音 → 文字 |
+| ASR 代理 | ASR Proxy 服务（`asr-proxy/`），通过 HMAC-SHA256 签名中继转写请求，保护 API Key 不落地 |
 | 说话人分离 / diarization | 区分「哪句是谁说的」，输出匿名 `speaker_id`（0/1/2…） |
 | 声纹 / voiceprint | 从声音提取的身份向量（CAM++ 192维嵌入），用于把 `speaker_id` 映射成真实姓名（v4 ✅） |
 | 热词 / hotword | 企业人名、术语等专有名词，转写时加权纠偏（`vocabulary_id`） |
 | 逐字稿 / 口水稿 | ASR 原始输出，含语气词、重复、口语化 |
-| 纪要 | LLM 加工后的结构化产物：结论 + 待办 + 议题 |
-| 待办 | 行动项，含「谁 / 做什么 / 截止」 |
+| 纪要 | LLM 加工后的结构化产物：结论 + 决策 + 议题 |
+| 决策 | 行动项（原称「待办」），含「谁 / 做什么 / 截止」，由决策流面板展示 |
+| 决策流面板 | 纪要页的决策展示组件（方案 A 极简扫读设计），替代旧版待办列表 |
+| Agent 角色 | 基于 `.md` 文件定义的 AI 行为配置，支持预定义角色 + 用户 fork 自定义（v9 ✅） |
+| Agent 工作区 | `data/agent/_roles/` 目录结构，存放角色定义文件（AGENT.md + 附带 .md） |
 | DashScope | 阿里云百炼模型服务平台，本项目 ASR 与纪要的统一入口 |
 | paraformer-v2 | DashScope 录音文件识别模型，支持分离与热词 |
 | 通义千问 / qwen | DashScope 的 LLM，本项目用于纪要生成 |

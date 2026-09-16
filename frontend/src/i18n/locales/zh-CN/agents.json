@@ -22,5 +22,15 @@
   "file_saved": "已保存",
   "readonly_hint": "预定义角色为只读，可复制为自定义角色后编辑",
   "create_role": "新建角色",
-  "current_active": "当前启用"
+  "current_active": "当前启用",
+  "role": {
+    "meeting-minutes": {
+      "title": "会议纪要员",
+      "description": "专注于结构化纪要输出，忠实记录会议结论与待办。Open Meeting Scribe 默认角色。"
+    },
+    "learning-tutor": {
+      "title": "学习辅导员",
+      "description": "将会议和讲座内容转化为结构化学习笔记和复习材料"
+    }
+  }
 }

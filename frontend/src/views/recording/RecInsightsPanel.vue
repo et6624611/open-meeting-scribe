@@ -23,52 +23,29 @@
         </div>
         <button
           v-if="enabled"
-          class="rec-insights-btn"
-          :class="{ 'is-active': showSettings }"
-          :title="t('recording.insights.settings')"
-          :aria-label="t('recording.insights.settings')"
-          @click="$emit('toggleSettings')"
+          class="rec-insights-btn rec-insights-analyze-btn"
+          :class="{ 'is-loading': analyzing }"
+          :disabled="analyzing"
+          :title="t('ai-panel.insights.manual_analysis')"
+          :aria-label="t('ai-panel.insights.manual_analysis')"
+          @click="$emit('manualCheck')"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <svg v-if="!analyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          <svg v-else class="rec-insights-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
         </button>
-        <div v-if="enabled" class="rec-insights-dropdown-wrap">
-          <button
-            class="rec-insights-btn rec-insights-analyze-btn"
-            :class="{ 'is-loading': analyzing, 'is-active': showAnalysisMenu }"
-            :disabled="analyzing"
-            :title="t('ai-panel.insights.manual_analysis')"
-            :aria-label="t('ai-panel.insights.manual_analysis')"
-            @click="showAnalysisMenu = !showAnalysisMenu"
-          >
-            <svg v-if="!analyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-            <svg v-else class="rec-insights-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-          </button>
-          <div v-if="showAnalysisMenu" class="rec-insights-dropdown">
-            <button
-              v-for="item in analysisMenuItems" :key="item.key"
-              class="rec-insights-dropdown-item"
-              @click="onSelectAnalysis(item.key); showAnalysisMenu = false"
-            >
-              {{ item.label }}
-            </button>
-          </div>
-        </div>
+        <!-- 扩展/收起按钮：扩展后洞察台占满内容区域 / Expand button: insight deck takes over content area -->
+        <button
+          class="rec-insights-btn rec-insights-expand-btn"
+          :class="{ 'is-expanded': expanded }"
+          :title="expanded ? t('recording.insights.collapse') : t('recording.insights.expand')"
+          :aria-label="expanded ? t('recording.insights.collapse') : t('recording.insights.expand')"
+          @click="$emit('toggleExpand')"
+        >
+          <svg v-if="!expanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        </button>
       </div>
     </div>
-    <!-- 洞察设置面板 / Insights settings panel -->
-    <AiInsightsSettings
-      v-if="enabled"
-      class="rec-insights-settings-wrap"
-      @click.stop
-      :config="config"
-      :is-open="showSettings"
-      @category-toggle="(k: string, v: boolean) => $emit('categoryToggle', k, v)"
-      @scan-interval-change="(k: string, v: number) => $emit('scanIntervalChange', k, v)"
-      @sensitivity-change="(f: string, v: number) => $emit('sensitivityChange', f, v)"
-      @notif-toggle="(f: string, v: boolean) => $emit('notifToggle', f, v)"
-      @dnd-toggle="(v: boolean) => $emit('dndToggle', v)"
-      @dnd-time-change="(f: 'startHour' | 'endHour', v: number) => $emit('dndTimeChange', f, v)"
-    />
     <!-- 消息流 / Message stream -->
     <div class="rec-insights-body" v-if="enabled">
       <div v-if="messages.length === 0" class="rec-insights-empty">
@@ -89,10 +66,33 @@
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
           </div>
           <div v-if="msg.expanded" class="rec-insight-card-body">
-            <div class="rec-insight-body-text" v-html="escapeHtml(msg.body)"></div>
+            <!-- 图形化主输出（如有） / Visual diagram as primary output (if available) -->
+            <div v-if="msg.diagram" class="rec-insight-diagram-wrap">
+              <MermaidDiagram
+                :code="msg.diagram"
+                class="rec-insight-diagram rec-insight-diagram-primary"
+              />
+              <!-- 图操作工具栏 / Diagram action toolbar -->
+              <div class="rec-insight-diagram-toolbar">
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
+                </button>
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
+                </button>
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
+                </button>
+              </div>
+            </div>
+            <!-- 图的注释 / Diagram annotations -->
+            <div class="rec-insight-body-text" v-html="renderInsightMarkdown(msg.body)"></div>
             <div v-if="msg.solution" class="rec-insight-solution">
               <span class="rec-insight-solution-label">{{ t('ai-panel.insights.expand_detail') }}</span>
-              <div class="rec-insight-solution-text" v-html="msg.solution ? escapeHtml(msg.solution) : ''"></div>
+              <div class="rec-insight-solution-text" v-html="renderInsightMarkdown(msg.solution)"></div>
             </div>
             <div class="rec-insight-actions" v-if="msg.actions.length > 0">
               <button
@@ -121,65 +121,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
-import type { InsightMessage, InsightAction, InsightConfig } from '@/composables/useAiInsights'
-import AiInsightsSettings from '@/components/layout/ai/AiInsightsSettings.vue'
+import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
+import { useAiInsights } from '@/composables/useAiInsights'
+import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
 
 const { t } = useI18n()
+const insights = useAiInsights()
 
-const showAnalysisMenu = ref(false)
+/**
+ * 将洞察台的 Markdown 文本渲染为 HTML。
+ * 先 escapeHtml 防 XSS，再还原基础 Markdown 格式（标题/列表/粗体/斜体/换行）。
+ * AI 生成内容可信，无需处理链接/图片等复杂语法。
+ */
+function renderInsightMarkdown(md: string): string {
+  if (!md) return ''
+  let html = escapeHtml(md)
+  // 标题（### → h3, ## → h2, # → h1）
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+  // 粗体 / 斜体
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  // 无序列表
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>')
+  // 有序列表
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+  // 换行
+  html = html.replace(/\n/g, '<br>')
+  return html
+}
+
 const panelRef = ref<HTMLElement | null>(null)
 
-/** 点击面板外部时关闭设置面板和分析菜单 / Close settings panel and analysis menu on outside click */
-function onDocumentClick(e: MouseEvent) {
-  if (!panelRef.value || panelRef.value.contains(e.target as Node)) return
-  if (props.showSettings) emit('requestCloseSettings')
-  if (showAnalysisMenu.value) showAnalysisMenu.value = false
-}
-
-onMounted(() => document.addEventListener('click', onDocumentClick))
-onUnmounted(() => document.removeEventListener('click', onDocumentClick))
-
-/** 分析类型菜单项 / Analysis type menu items */
-const analysisMenuItems = computed(() => [
-  { key: 'context', label: t('ai-panel.insights.analysis_context') },
-  { key: 'blindspot', label: t('ai-panel.insights.analysis_blindspot') },
-  { key: 'consensus', label: t('ai-panel.insights.analysis_consensus') },
-  { key: 'all', label: t('ai-panel.insights.analysis_all') },
-])
-
-function onSelectAnalysis(key: string) {
-  showAnalysisMenu.value = false
-  // emit 选择结果 / Emit selection result
-  emit('manualCheck', key)
-}
-
-const props = defineProps<{
+defineProps<{
   messages: InsightMessage[]
   enabled: boolean
   unreadCount: number
-  config: InsightConfig
   actedActions: Record<string, boolean>
-  showSettings: boolean
   analyzing: boolean
+  expanded: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   (e: 'toggleEnabled'): void
-  (e: 'toggleSettings'): void
-  (e: 'requestCloseSettings'): void
   (e: 'toggleMessage', id: string): void
   (e: 'action', message: InsightMessage, action: InsightAction): void
-  (e: 'categoryToggle', key: string, val: boolean): void
-  (e: 'scanIntervalChange', key: string, val: number): void
-  (e: 'sensitivityChange', field: string, val: number): void
-  (e: 'notifToggle', field: string, val: boolean): void
-  (e: 'dndToggle', val: boolean): void
-  (e: 'dndTimeChange', field: 'startHour' | 'endHour', val: number): void
-  (e: 'manualCheck', category: string): void
+  (e: 'manualCheck'): void
+  (e: 'toggleExpand'): void
 }>()
+
+/** 复制图源码到剪贴板 / Copy diagram source to clipboard */
+async function onCopyDiagram(code: string) {
+  if (!code) return
+  try {
+    await navigator.clipboard.writeText(code)
+    // 简单反馈：短暂显示“已复制”（通过 title 变化） / Simple feedback
+  } catch {
+    // 剪贴板 API 不可用时降级 / Fallback when clipboard API unavailable
+    console.warn('[RecInsightsPanel] Clipboard copy failed')
+  }
+}
+
+/** 在 AI 对话中编辑图 / Edit diagram in AI chat */
+function onEditInChat(code: string) {
+  if (!code) return
+  // 设置图编辑请求，AIPanel 监听后会预填输入框 / Set diagram edit request, AIPanel watches and pre-fills input
+  insights.diagramEditPending.value = code
+}
 
 function formatTime(ts: number): string {
   const d = new Date(ts)

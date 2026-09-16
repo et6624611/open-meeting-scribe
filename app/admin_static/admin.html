@@ -495,16 +495,15 @@ tr:last-child td { border-bottom: none; }
           <!-- 动态填充 -->
         </div>
         <div class="subscription-form">
-          <span style="font-size:14px;color:var(--muted);">授权档位：</span>
-          <select id="detailTierSelect">
-            <option value="free">体验期</option>
-          </select>
+          <span style="font-size:14px;color:var(--muted);">月度配额（分钟）：</span>
+          <input type="number" id="detailQuotaInput" min="0" step="100" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
           <span style="margin-left:12px;font-size:14px;color:var(--muted);">账号状态：</span>
           <select id="detailStatusSelect">
             <option value="active">正常</option>
             <option value="disabled">禁用</option>
           </select>
-          <button onclick="updateStatus()">保存</button>
+          <button onclick="updateQuota()">保存配额</button>
+          <button onclick="updateStatus()" style="margin-left:8px;">保存状态</button>
         </div>
       </div>
 
@@ -512,15 +511,12 @@ tr:last-child td { border-bottom: none; }
       <div class="table-container">
         <div class="table-toolbar">
           <input type="text" id="searchInput" placeholder="搜索名称、手机号、邮箱..." oninput="debounceSearch()">
-          <select id="tierFilter" onchange="loadUsers()">
-            <option value="">全部</option>
-            <option value="free">体验期</option>
-          </select>
+        </div>
+        <table>
           <thead>
             <tr>
               <th>用户</th>
               <th>登录方式</th>
-              <th>授权</th>
               <th>本月用量</th>
               <th>状态</th>
               <th>注册时间</th>
@@ -750,7 +746,8 @@ async function api(method, path, body) {
     }
     throw new Error(msg);
   }
-  return resp.json();
+  const json = await resp.json();
+  return json || {};
 }
 
 // ============================================================
@@ -815,18 +812,12 @@ async function loadOverview() {
     const data = await api('GET', '/api/admin/overview');
 
     // 统计卡片
-    const tierCounts = data.tier_counts || {};
     const totalUsers = data.total_users;
-    const freeCount = tierCounts.free || 0;
 
     document.getElementById('statsGrid').innerHTML = `
       <div class="stat-card">
         <div class="label">总用户数</div>
         <div class="value">${totalUsers}</div>
-      </div>
-      <div class="stat-card">
-        <div class="label">体验期用户</div>
-        <div class="value">${freeCount}</div>
       </div>
       <div class="stat-card">
         <div class="label">本月总用量</div>
@@ -846,7 +837,7 @@ async function loadOverview() {
             <span class="badge badge-${u.provider}" style="margin-left:8px;">${u.provider === 'github' ? 'GitHub' : '短信'}</span>
           </div>
           <div class="meta">
-            <span class="badge badge-${u.tier}">${tierLabel(u.tier)}</span>
+            <span style="font-size:13px;color:var(--muted);">配额 ${u.quota} 分钟</span>
             <span style="margin-left:12px;">${time}</span>
           </div>
         </div>
@@ -864,12 +855,10 @@ async function loadOverview() {
 // ============================================================
 async function loadUsers() {
   const search = document.getElementById('searchInput').value;
-  const tier = document.getElementById('tierFilter').value;
 
   try {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
-    if (tier) params.set('tier', tier);
 
     const data = await api('GET', '/api/admin/users?' + params.toString());
     const users = data.users || [];
@@ -899,7 +888,6 @@ async function loadUsers() {
             ${u.email ? '<br><span style="font-size:12px;color:var(--muted);">' + esc(u.email) + '</span>' : ''}
           </td>
           <td><span class="badge badge-${u.provider}">${providerLabel}</span></td>
-          <td><span class="badge badge-${u.tier}">${tierLabel(u.tier)}</span></td>
           <td>
             <div class="usage-bar"><div class="usage-bar-fill ${usageClass}" style="width:${usagePct}%"></div></div>
             <span style="font-size:13px;">${u.monthly_minutes}/${u.quota} 分钟</span>
@@ -961,7 +949,7 @@ async function showUserDetail(userId) {
       </div>
     `;
 
-    document.getElementById('detailTierSelect').value = user.subscription?.tier || 'free';
+    document.getElementById('detailQuotaInput').value = user.quota ?? 300;
     document.getElementById('detailStatusSelect').value = user.status || 'active';
 
     document.getElementById('detailPanel').classList.add('active');
@@ -976,14 +964,18 @@ function closeDetail() {
 }
 
 // ============================================================
-// 订阅/状态修改
+// 配额/状态修改
 // ============================================================
-async function updateSubscription() {
+async function updateQuota() {
   if (!currentUser) return;
-  const tier = document.getElementById('detailTierSelect').value;
+  const quota = parseInt(document.getElementById('detailQuotaInput').value);
+  if (isNaN(quota) || quota < 0) {
+    showToast('请输入有效的配额数值');
+    return;
+  }
   try {
-    await api('PUT', `/api/admin/users/${currentUser.id}/subscription`, { tier });
-    showToast('授权已更新为 ' + tierLabel(tier));
+    await api('PUT', `/api/admin/users/${currentUser.id}/quota`, { quota });
+    showToast('配额已更新为 ' + quota + ' 分钟');
     loadUsers();
   } catch (err) {
     showToast('更新失败: ' + err.message);

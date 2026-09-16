@@ -10,9 +10,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
     <div class="ai-collapsed-strip">
-      <div class="ai-collapsed-icon" :class="{ 'is-insight': showInsightBreathing }" @click="layout.toggleAi()" style="position:relative">
+      <div class="ai-collapsed-icon" :class="{ 'is-insight': insights.unreadCount.value > 0 }" @click="layout.toggleAi()" style="position:relative">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <span v-if="showInsightBreathing" class="breathing-dot"></span>
+        <span v-if="insights.unreadCount.value > 0" class="breathing-dot"></span>
       </div>
       <span class="ai-collapsed-label">{{ t('ai-panel.collapsed_label') }}</span>
     </div>
@@ -59,6 +59,9 @@
       ref="chatPanelRef"
       :messages="chat.messages.value"
       :is-loading="chat.isLoading.value"
+      :is-streaming="chat.isStreaming.value"
+      :thinking-elapsed="chat.thinkingElapsed.value"
+      :stages="chat.stages.value"
       :rewrite-pending="quoteRef.rewritePending.value"
       :verified-changes="chat.verifiedChanges.value"
       :inject-prompt="chat.injectPrompt.value"
@@ -156,11 +159,6 @@ const aiSessions = useAiSessionsStore()
 const cmds = useAiCommands()
 const insights = useAiInsights()
 
-/** 是否显示洞察呼吸灯（由通知配置控制） / Whether to show insight breathing light (controlled by notification config) */
-const showInsightBreathing = computed(() =>
-  insights.insightsEnabled.value && insights.insightsConfig.value.notifications.breathing && insights.unreadCount.value > 0
-)
-
 // 上下文 Tab 数据 / Context Tab data
 const ctx = useAiContext()
 
@@ -175,6 +173,26 @@ const renamingId = ref<string | null>(null)
 const renameInput = ref('')
 const sessionTabsRef = ref<InstanceType<typeof AiSessionTabs> | null>(null)
 const chatPanelRef = ref<InstanceType<typeof AiChatPanel> | null>(null)
+
+// ── 图编辑请求监听（从洞察台“在对话中编辑”按钮触发） / Diagram edit request watcher (triggered from Insight Deck "Edit in Chat" button) ──
+watch(() => insights.diagramEditPending.value, (code) => {
+  if (!code) return
+  // 切换到对话 Tab / Switch to chat tab
+  aiTab.value = 'chat'
+  // 预填输入框 / Pre-fill input
+  inputText.value = `请帮我修改这张图：\n${code}\n\n我想做的调整是：`
+  // 清空请求 / Clear request
+  insights.diagramEditPending.value = ''
+  // 聚焦输入框 / Focus input
+  nextTick(() => {
+    const ta = chatPanelRef.value?.inputRef
+    if (ta) {
+      ta.focus()
+      // 光标移到末尾（“我想做的调整是：”之后） / Move cursor to end
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    }
+  })
+})
 
 // ── 计算属性 / Computed properties ──
 const MEETING_ROUTE_NAMES = ['recording', 'generating']
@@ -299,6 +317,15 @@ function onQuoteToAiEvent(e: Event) {
   })
 }
 watch(() => chat.messages.value.length, () => scrollFeed())
+// 流式输出时自动滚动 / Auto-scroll during streaming
+watch(() => chat.isStreaming.value, (streaming) => {
+  if (streaming) {
+    const interval = setInterval(() => scrollFeed(), 200)
+    const stop = watch(() => chat.isStreaming.value, (v) => {
+      if (!v) { clearInterval(interval); stop() }
+    })
+  }
+})
 </script>
 
 <style scoped>

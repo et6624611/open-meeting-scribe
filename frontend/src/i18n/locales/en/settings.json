@@ -4,6 +4,7 @@
   "account": "Account",
   "not_logged_in": "Not logged in",
   "login": "Log In",
+  "logout": "Log Out",
   "api_config": "API Configuration",
   "api_key": "API Key",
   "api_key_placeholder": "Leave empty to use environment variable Key",

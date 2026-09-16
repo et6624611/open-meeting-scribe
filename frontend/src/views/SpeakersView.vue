@@ -9,14 +9,26 @@
           <span class="page-count">{{ t('speakers.count', { count: speakers.length }) }}</span>
         </div>
       </div>
-      <div class="spk-create">
-        <input ref="createInputRef" v-model="newName" class="spk-create-input" :placeholder="t('speakers.input_placeholder')" @keyup.enter="onCreate" />
-        <button class="btn btn-primary" @click="onCreate" :disabled="!newName.trim()">{{ t('speakers.add') }}</button>
-      </div>
-      <!-- 搜索框 / Search box -->
-      <div v-if="speakers.length > 3" class="spk-search">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input v-model="searchQuery" class="spk-search-input" type="text" :placeholder="t('speakers.search_placeholder')" />
+      <!-- 统一输入框：搜索 + 新建 / Unified input: search + create -->
+      <div class="spk-unified">
+        <div class="spk-unified-field">
+          <svg class="spk-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <template v-if="showCreateHint">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </template>
+            <template v-else>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </template>
+          </svg>
+          <input
+            ref="unifiedInputRef"
+            v-model="inputText"
+            class="spk-unified-input"
+            type="text"
+            :placeholder="t('speakers.unified_placeholder')"
+            @keyup.enter="onUnifiedEnter"
+          />
+        </div>
       </div>
       <!-- 加载态 / Loading state -->
       <div v-if="loading" class="spk-loading">
@@ -24,12 +36,12 @@
         <span>{{ t('speakers.voiceprint_loading') }}</span>
       </div>
       <!-- 说话人列表 / Speaker list -->
-      <div v-else-if="filteredSpeakers.length > 0" class="spk-list">
+      <div v-else-if="filteredSpeakers.length > 0 || showCreateHint" class="spk-list">
         <div v-for="spk in filteredSpeakers" :key="spk.id" :class="['spk-item', { 'is-new': createdSpeakerId === spk.id }]" @click="openDetail(spk)">
           <div class="spk-info">
             <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
             <div class="spk-text">
-              <span class="spk-name" :style="{ color: getColor(spk.id) }">{{ spk.name }}</span>
+              <span class="spk-name" :style="{ color: getTextColor(spk.id) }">{{ spk.name }}</span>
               <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
             </div>
           </div>
@@ -40,6 +52,11 @@
               <button class="spk-action-btn danger" @click="confirmDelete(spk)">{{ t('common.action.delete') }}</button>
             </div>
           </div>
+        </div>
+        <!-- 新建提示 / Create new hint -->
+        <div v-if="showCreateHint" class="spk-create-hint" @click="onCreate">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>{{ t('speakers.create_hint', { name: inputText.trim() }) }}</span>
         </div>
       </div>
       <!-- 空状态 / Empty state -->
@@ -63,7 +80,7 @@
         <div class="spk-detail-left">
           <div class="spk-detail-info">
             <div class="spk-detail-name" @click="startRename">
-              <span v-if="!isRenaming" class="spk-name-clickable" :style="{ color: getColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
+              <span v-if="!isRenaming" class="spk-name-clickable" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
               <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keyup.escape="cancelRename" @blur="saveRename" />
               <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
             </div>
@@ -216,7 +233,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchSpeakers, createSpeaker, deleteSpeaker, setSpeakerAsMe, updateSpeaker } from '@/api/speakers'
 import type { Speaker } from '@/api/speakers'
 import { loadSpeakerStats, useSpeakerStat } from '@/composables/useSpeakerStats'
-import { getSpeakerColor } from '@/utils/speakerColors'
+import { getSpeakerColor, getSpeakerTextColor } from '@/utils/speakerColors'
 import { useRouter } from 'vue-router'
 import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
@@ -227,15 +244,14 @@ const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
 const speakers = ref<Speaker[]>([])
-const newName = ref('')
-const createInputRef = ref<HTMLInputElement | null>(null)
+const inputText = ref('')
+const unifiedInputRef = ref<HTMLInputElement | null>(null)
 const createdSpeakerId = ref<string | null>(null)
 const selectedSpeaker = ref<Speaker | null>(null)
 const activeTab = ref<'meetings' | 'utterances' | 'todos'>('meetings')
 const voiceprintStatus = ref<VoiceprintStatus | null>(null)
 const voiceprintLoading = ref(false)
 const loading = ref(false)
-const searchQuery = ref('')
 const voiceprintIds = ref<Set<string>>(new Set())
 // 内联重命名 / Inline rename
 const isRenaming = ref(false)
@@ -297,15 +313,29 @@ async function load() {
   }
 }
 
-/** 按搜索词过滤说话人 / Filter speakers by search term */
+/** 按输入文本过滤说话人 / Filter speakers by input text */
 const filteredSpeakers = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
+  const q = inputText.value.trim().toLowerCase()
   if (!q) return speakers.value
   return speakers.value.filter(s => s.name.toLowerCase().includes(q))
 })
 
+/** 是否存在精确名称匹配 / Whether an exact name match exists */
+const hasExactMatch = computed(() => {
+  const q = inputText.value.trim().toLowerCase()
+  if (!q) return true
+  return speakers.value.some(s => s.name.toLowerCase() === q)
+})
+
+/** 是否显示「新建」提示 / Whether to show the create-new hint */
+const showCreateHint = computed(() => inputText.value.trim().length > 0 && !hasExactMatch.value)
+
 function getColor(id: string) {
   return getSpeakerColor(id)
+}
+
+function getTextColor(id: string) {
+  return getSpeakerTextColor(id)
 }
 
 function openDetail(spk: Speaker) {
@@ -318,7 +348,7 @@ function backToList() {
 }
 
 async function onCreate() {
-  const name = newName.value.trim()
+  const name = inputText.value.trim()
   if (!name) return
   // 重名检测 / Duplicate name check
   if (speakers.value.some(s => s.name === name)) {
@@ -327,7 +357,7 @@ async function onCreate() {
   }
   try {
     await createSpeaker(name)
-    newName.value = ''
+    inputText.value = ''
     showToast(t('speakers.create_success', { name }), 'success')
     await load()
     // 找到新创建的说话人并滚动+高亮 / Find newly created speaker and scroll+highlight
@@ -341,10 +371,19 @@ async function onCreate() {
       }
       setTimeout(() => { createdSpeakerId.value = null }, 1500)
     }
-    createInputRef.value?.focus()
+    unifiedInputRef.value?.focus()
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || t('speakers.create_failed')
     showToast(msg, 'error')
+  }
+}
+
+/** 统一输入框 Enter 处理 / Unified input Enter handler */
+function onUnifiedEnter() {
+  if (showCreateHint.value) {
+    onCreate()
+  } else if (filteredSpeakers.value.length === 1) {
+    openDetail(filteredSpeakers.value[0])
   }
 }
 
@@ -501,12 +540,23 @@ onMounted(load)
 
 <style scoped>
 .spk-page { padding: var(--s-5) var(--s-5) var(--s-6); }
-.spk-create { display: flex; gap: var(--s-2); margin-bottom: var(--s-4); }
-.spk-create-input { flex: 1; max-width: 400px; padding: var(--s-2) var(--s-3); border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--fg); font-size: 14px; outline: none; transition: border-color 0.15s; }
-.spk-create-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
-.spk-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); overflow: hidden; }
-.spk-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); background: transparent; cursor: pointer; transition: background 0.12s; }
-.spk-item:hover { background: color-mix(in oklch, var(--surface) 50%, transparent); }
+/* 统一输入框 / Unified input */
+.spk-unified { margin-bottom: var(--s-4); }
+.spk-unified-field { display: flex; align-items: center; gap: var(--s-2); position: relative; }
+.spk-unified-icon { position: absolute; left: 10px; color: var(--subtle); pointer-events: none; transition: color 0.15s; }
+.spk-unified-input { width: 100%; max-width: 400px; padding: 8px 10px 8px 32px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: 14px; outline: none; background: transparent; color: var(--fg); transition: border-color 0.15s; }
+.spk-unified-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
+.spk-unified-input:focus ~ .spk-unified-icon,
+.spk-unified-field:focus-within .spk-unified-icon { color: var(--accent); }
+.spk-unified-input::placeholder { color: var(--subtle); }
+/* 新建提示行 / Create-new hint row */
+.spk-create-hint { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-3) var(--s-4); cursor: pointer; transition: background 0.12s; color: var(--accent); font-size: 13px; border-top: 1px dashed var(--border); }
+.spk-create-hint:hover { background: var(--accent-soft); }
+.spk-create-hint svg { flex-shrink: 0; }
+.spk-list { display: flex; flex-direction: column; }
+.spk-item { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); background: transparent; cursor: pointer; transition: background 0.12s; border-bottom: 1px solid var(--border); }
+.spk-item:last-child { border-bottom: none; }
+.spk-item:hover { background: var(--surface); }
 .spk-item:hover .spk-actions { opacity: 1; }
 .spk-item.is-new { animation: spk-highlight 1.5s ease-out; }
 @keyframes spk-highlight {
@@ -529,11 +579,7 @@ onMounted(load)
 .empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .empty-hint { font-size: 12px; color: var(--subtle); }
 .spk-set-me-hint { font-size: 12px; color: var(--subtle); margin-top: var(--s-3); text-align: center; }
-.spk-search { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-4); position: relative; }
-.spk-search svg { position: absolute; left: 10px; color: var(--subtle); pointer-events: none; }
-.spk-search-input { width: 100%; max-width: 400px; padding: 6px 10px 6px 30px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: 13px; outline: none; background: transparent; color: var(--fg); transition: border-color 0.15s; }
-.spk-search-input:focus { border-bottom-color: var(--accent); box-shadow: 0 1px 0 0 var(--accent); }
-.spk-search-input::placeholder { color: var(--subtle); }
+
 .spk-loading { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-6); color: var(--muted); font-size: 13px; justify-content: center; }
 .spk-spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spk-spin 0.8s linear infinite; }
 @keyframes spk-spin { to { transform: rotate(360deg); } }
@@ -555,7 +601,7 @@ onMounted(load)
 
 /* 统计卡片 / Stat cards */
 .spk-stat-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); margin-bottom: var(--s-6); }
-.spk-stat-card { padding: var(--s-4); background: color-mix(in oklch, var(--surface) 70%, transparent); backdrop-filter: var(--glass-blur-lg); -webkit-backdrop-filter: var(--glass-blur-lg); text-align: center; }
+.spk-stat-card { padding: var(--s-4); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); backdrop-filter: var(--glass-blur-lg); -webkit-backdrop-filter: var(--glass-blur-lg); text-align: center; }
 .spk-stat-card .label { font-size: 12px; color: var(--muted); margin-bottom: var(--s-1); }
 .spk-stat-card .value { font-size: 24px; font-weight: 600; font-family: var(--font-mono); }
 .spk-stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
@@ -564,7 +610,9 @@ onMounted(load)
 .spk-voiceprint-section {
   margin-bottom: var(--s-6);
   padding: var(--s-4);
-  background: transparent;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .vp-header { 
   display: flex; 
@@ -658,7 +706,7 @@ onMounted(load)
 
 @media (max-width: 920px) {
   .empty-state { padding: var(--s-7) var(--s-4); }
-  .spk-create-input { max-width: 100%; }
+  .spk-unified-input { max-width: 100%; }
   .spk-detail-head { flex-direction: column; align-items: flex-start; gap: var(--s-3); }
   .spk-detail-actions { width: 100%; }
   .spk-stat-cards { grid-template-columns: 1fr; }

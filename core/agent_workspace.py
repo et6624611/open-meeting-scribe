@@ -130,7 +130,7 @@ def _find_role_dir(role_name: str) -> tuple[Path, str] | None:
 
 def load_role_files(role_dir: Path) -> dict:
     """
-    加载指定角色目录下的所有 .md 文件。
+    加载指定角色目录下的所有 .md 文件（含 insights/ 子目录）。
 
     Returns:
         {
@@ -138,6 +138,7 @@ def load_role_files(role_dir: Path) -> dict:
             "agent_meta": dict,        # AGENT.md 的 front matter 元数据
             "extra_files": {           # 其他 .md 文件 {文件名: 正文}
                 "summary-template.md": "...",
+                "insights/context.md": "...",
             },
         }
     """
@@ -161,6 +162,16 @@ def load_role_files(role_dir: Path) -> dict:
             result["agent_meta"] = meta
         else:
             result["extra_files"][md_file.name] = body.strip()
+
+    # 扫描 insights/ 子目录 / Scan insights/ subdirectory
+    insights_dir = role_dir / "insights"
+    if insights_dir.is_dir():
+        for md_file in sorted(insights_dir.glob("*.md")):
+            parsed = _read_md_file(md_file)
+            if parsed is None:
+                continue
+            _meta, body = parsed
+            result["extra_files"][f"insights/{md_file.name}"] = body.strip()
 
     return result
 
@@ -281,6 +292,35 @@ def get_role_summary_prompt(role_name: str | None = None) -> str | None:
     return body.strip() or None
 
 
+def get_role_insight_prompt(role_name: str | None = None) -> str | None:
+    """
+    获取角色的综合洞察分析提示词（insights.md 正文）。
+
+    查找优先级 / Lookup priority:
+      1. 角色目录 insights.md / Role dir insights.md
+      2. None（调用方回退到内置默认 prompt） / None (caller falls back to built-in default)
+
+    Args:
+        role_name: 角色标识，None 时使用默认角色。
+
+    Returns:
+        提示词正文（去除 front matter），或 None。
+    """
+    name = role_name or DEFAULT_ROLE
+    found = _find_role_dir(name)
+    if found is None:
+        return None
+
+    role_dir, _source = found
+    prompt_path = role_dir / "insights.md"
+    parsed = _read_md_file(prompt_path)
+    if parsed is None:
+        return None
+
+    _meta, body = parsed
+    return body.strip() or None
+
+
 def fork_role(source_name: str, target_name: str) -> dict:
     """
     从预定义角色 fork 为用户自定义角色。
@@ -349,7 +389,12 @@ def save_role_file(role_name: str, filename: str, content: str) -> dict:
         raise ValueError(f"角色名包含非法字符: {role_name}")
     if not filename.endswith(".md"):
         raise ValueError(f"仅支持 .md 文件: {filename}")
-    if ".." in filename or "/" in filename:
+    # 允许 insights/ 子目录前缀 / Allow insights/ subdirectory prefix
+    if filename.startswith("insights/"):
+        inner = filename[len("insights/"):]
+        if ".." in inner or "/" in inner or not inner:
+            raise ValueError(f"文件名不合法: {filename}")
+    elif ".." in filename or "/" in filename:
         raise ValueError(f"文件名不合法: {filename}")
 
     # 必须是用户自定义角色（不可修改预定义） / Must be custom role
@@ -363,6 +408,7 @@ def save_role_file(role_name: str, filename: str, content: str) -> dict:
         raise ValueError(f"角色不存在: {role_name}")
 
     file_path = custom_dir / filename
+    file_path.parent.mkdir(parents=True, exist_ok=True)  # 确保 insights/ 子目录存在
     file_path.write_text(content, encoding="utf-8")
     logger.info("角色文件已保存: %s/%s (%d 字符)", role_name, filename, len(content))
 
@@ -416,7 +462,7 @@ def delete_role(role_name: str) -> dict:
 
 def get_role_files(role_name: str) -> dict | None:
     """
-    获取角色的所有文件内容（用于编辑器加载）。
+    获取角色的所有文件内容（用于编辑器加载，含 insights/ 子目录）。
 
     Returns:
         {"role_name": str, "source": str, "files": {filename: content}}
@@ -433,6 +479,15 @@ def get_role_files(role_name: str) -> dict | None:
             files[md_file.name] = md_file.read_text(encoding="utf-8")
         except Exception as e:
             logger.warning("读取角色文件失败 %s: %s", md_file, e)
+
+    # 扫描 insights/ 子目录 / Scan insights/ subdirectory
+    insights_dir = role_dir / "insights"
+    if insights_dir.is_dir():
+        for md_file in sorted(insights_dir.glob("*.md")):
+            try:
+                files[f"insights/{md_file.name}"] = md_file.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.warning("读取角色文件失败 %s: %s", md_file, e)
 
     # 读取 fork 标记 / Read fork marker
     fork_marker = role_dir / "_forked-from"

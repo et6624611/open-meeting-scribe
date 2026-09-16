@@ -28,7 +28,7 @@
       </div>
     </div>
     <!-- 最近会议 / Recent meetings -->
-    <div class="start-recent-section" v-if="recentTasks.length > 0">
+    <div class="start-recent-section" v-show="recentTasks.length > 0">
       <div class="start-divider">{{ t('start.recent') }}</div>
       <div class="start-recent" id="startRecentList">
         <div class="start-recent-list">
@@ -102,6 +102,7 @@ import { useRecorder } from '@/composables/useRecorder'
 import { usePrivacyDisclaimer } from '@/composables/usePrivacyDisclaimer'
 import { submitTranscribe } from '@/api/tasks'
 import { getRecordStatus } from '@/api/record'
+import { extractErrorMessage } from '@/api/client'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
 import { useEscClose } from '@/composables/useEscClose'
@@ -284,23 +285,32 @@ function onStartRecord() {
 function doStartRecord() {
   recorder.startRecording().then(async (data) => {
     if (data?.task_id) {
-      await taskStore.loadTasks()
+      // 乐观更新：立即将新任务加入本地列表，不阻塞导航 / Optimistic update: add new task to local list immediately, don't block navigation
+      taskStore.patchTaskLocal(data.task_id, {
+        status: 'recording',
+        source: 'record',
+        created_at: new Date().toISOString(),
+        meeting_date: new Date().toISOString().slice(0, 10),
+      } as any)
       router.push({ name: 'recording', params: { taskId: data.task_id } })
+      // 后台静默刷新任务列表（不等待） / Silently refresh task list in background (don't await)
+      taskStore.loadTasks()
     }
   }).catch(async (e: unknown) => {
-    const err = e as { response?: { data?: { detail?: string }; status?: number } }
+    const err = e as { response?: { data?: { detail?: unknown }; status?: number } }
     if (err.response?.status === 400) {
       try {
         const status = await getRecordStatus()
         if (status.recording && status.task_id) {
-          await taskStore.loadTasks()
           taskStore.selectTask(status.task_id)
           router.push({ name: 'recording', params: { taskId: status.task_id } })
+          // [状态同步] 后台静默刷新任务列表 / Silently refresh task list in background
+          taskStore.loadTasks()
           return
         }
       } catch { /* 静默 */ }
     }
-    alert(err.response?.data?.detail || t('start.errors.start_failed'))
+    alert(extractErrorMessage(e, t('start.errors.start_failed')))
   })
 }
 
@@ -324,8 +334,7 @@ async function onFileSelected(e: Event) {
     await taskStore.loadTasks()
     router.push({ name: 'generating', params: { taskId: task.task_id } })
   } catch (e: unknown) {
-    const err = e as { response?: { data?: { detail?: string } } }
-    alert(err.response?.data?.detail || t('start.errors.upload_failed'))
+    alert(extractErrorMessage(e, t('start.errors.upload_failed')))
   } finally {
     input.value = ''
   }

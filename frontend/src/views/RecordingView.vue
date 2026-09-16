@@ -16,7 +16,7 @@
     />
 
     <!-- 内容区 / Content area -->
-    <div class="rec-content-area" :class="{ 'tab-insights': recTab === 'insights' }">
+    <div class="rec-content-area" :class="{ 'tab-insights': recTab === 'insights', 'insights-expanded': insightsExpanded }">
       <!-- Tab 切换 / Tab switcher -->
       <div class="rec-tab-bar">
         <button class="rec-tab" :class="{ active: recTab === 'transcript' }" @click="recTab = 'transcript'">
@@ -108,46 +108,20 @@
         @delete-note="notes.deleteNote"
       />
 
-      <!-- 右栏：AI 洞察（宽屏并排，窄屏由 CSS tab-insights 切换） / Right: AI insights (side-by-side on wide, CSS tab on narrow) -->
+      <!-- 右栏：洞察台（宽屏并排，窄屏由 CSS tab-insights 切换） / Right: Insight Deck (side-by-side on wide, CSS tab on narrow) -->
       <RecInsightsPanel
         :messages="insights.insightMessages.value"
         :enabled="insights.insightsEnabled.value"
         :unread-count="insights.unreadCount.value"
-        :config="insights.insightsConfig.value"
         :acted-actions="actedActions"
-        :show-settings="showInsightsSettings"
         :analyzing="insights.manualAnalyzing.value"
+        :expanded="insightsExpanded"
         @toggle-enabled="insights.toggleEnabled()"
-        @toggle-settings="showInsightsSettings = !showInsightsSettings"
-        @request-close-settings="showInsightsSettings = false"
         @toggle-message="insights.toggleExpanded($event)"
         @action="onInsightAction"
-        @category-toggle="onInsightCategoryToggle"
-        @scan-interval-change="onInsightScanIntervalChange"
-        @sensitivity-change="onInsightSensitivityChange"
-        @notif-toggle="onInsightNotifToggle"
-        @dnd-toggle="onInsightDndToggle"
-        @dnd-time-change="onInsightDndTimeChange"
         @manual-check="onInsightManualCheck"
+        @toggle-expand="insightsExpanded = !insightsExpanded"
       />
-    </div>
-
-    <!-- 洞察通知横幅 / Insight notification banner -->
-    <div v-if="insightBannerMsg" class="insight-banner-wrap">
-      <div class="insight-banner" @click="onBannerClick">
-        <div class="insight-banner-inner">
-          <div class="insight-banner-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-          </div>
-          <div class="insight-banner-text">
-            <div class="insight-banner-label">{{ t('ai-panel.insights.banner_label') }}</div>
-            <div class="insight-banner-title">{{ insightBannerMsg.title }}</div>
-          </div>
-          <button class="insight-banner-close" :aria-label="t('ai-panel.insights.banner_close')" @click.stop="insightBannerMsg = null">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
     </div>
 
     <!-- 随记输入栏 / Quick note input bar -->
@@ -298,11 +272,10 @@ let speakerCountFlashTimer: ReturnType<typeof setTimeout> | null = null
 const recExpandedChapters = reactive(new Set<number>())
 const recAutoExpandedCount = ref(0)
 
-// AI 洞察 / AI insights
+// 洞察台 / Insight Deck
 const insights = useAiInsights()
 const actedActions = reactive<Record<string, boolean>>({})
-const showInsightsSettings = ref(false)
-const insightBannerMsg = ref<InsightMessage | null>(null)
+const insightsExpanded = ref(false)
 
 // 结束/放弃 / End/Abandon
 const ending = ref(false)
@@ -377,7 +350,7 @@ async function onCreateAndBind() {
 
 function onSendNote() { const text = noteText.value.trim(); if (!text) return; notes.addNote(text); noteText.value = '' }
 
-// AI 洞察回调 / AI insight callbacks
+// 洞察台回调 / Insight Deck callbacks
 function onInsightAction(msg: InsightMessage, act: InsightAction) {
   const key = msg.id + ':' + act.key
   if (actedActions[key]) return
@@ -400,26 +373,10 @@ function onInsightAction(msg: InsightMessage, act: InsightAction) {
   }
 }
 
-function onShowBanner(e: Event) {
-  const msg = (e as CustomEvent).detail as InsightMessage
-  insightBannerMsg.value = msg
-}
-function onBannerClick() {
-  recTab.value = 'insights'
-  insightBannerMsg.value = null
-}
-function onInsightCategoryToggle(key: string, val: boolean) { insights.insightsConfig.value.categories[key] = val; insights.saveConfig() }
-function onInsightScanIntervalChange(key: string, val: number) { insights.insightsConfig.value.scanIntervals[key] = val; insights.saveConfig() }
-function onInsightSensitivityChange(field: string, val: number) { (insights.insightsConfig.value.sensitivity as Record<string, number>)[field] = val; insights.saveConfig() }
-function onInsightNotifToggle(field: string, val: boolean) { (insights.insightsConfig.value.notifications as Record<string, boolean>)[field] = val; insights.saveConfig() }
-function onInsightDndToggle(val: boolean) { insights.insightsConfig.value.dnd.enabled = val; insights.saveConfig() }
-function onInsightDndTimeChange(field: 'startHour' | 'endHour', val: number) { insights.insightsConfig.value.dnd[field] = val; insights.saveConfig() }
-
-function onInsightManualCheck(category: string) {
+function onInsightManualCheck() {
   insights.runManualAnalysis(
     wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
-    wsChapters.value.map(c => c.title),
-    category
+    wsChapters.value.map(c => c.title)
   )
 }
 
@@ -438,7 +395,6 @@ async function onTogglePause() {
 // 结束录音 / End recording
 async function onStop() {
   ending.value = true; stopFailed.value = false; ws.disconnect()
-  insights.stopEngine()  // 停止洞察引擎 / Stop insight engine
   translation.reset()    // 重置翻译状态 / Reset translation state
   try {
     const result = await recorder.stopRecording(notes.getNotesText())
@@ -447,7 +403,11 @@ async function onStop() {
     await taskStore.loadTasks()
     const tid = result?.task_id || recorder.taskId.value
     if (tid) router.push({ name: 'generating', params: { taskId: tid } })
-  } catch (e: unknown) { stopFailed.value = true; stopErrorMsg.value = e instanceof Error ? e.message : t('common.status.unknown_error') }
+  } catch (e: unknown) {
+    stopFailed.value = true
+    const err = e as { response?: { data?: { detail?: string } }; message?: string }
+    stopErrorMsg.value = err.response?.data?.detail || err.message || t('common.status.unknown_error')
+  }
 }
 
 function onForceQuit() { ending.value = false; stopFailed.value = false; notes.clearStorage(); const tid = recorder.taskId.value; taskStore.loadTasks().then(() => { if (tid) router.push({ name: 'generating', params: { taskId: tid } }); else router.push('/') }) }
@@ -455,9 +415,6 @@ function onForceQuit() { ending.value = false; stopFailed.value = false; notes.c
 async function onAbandon() { showAbandon.value = false; ws.disconnect(); notes.clearStorage(); await recorder.abandonRecording(); await taskStore.loadTasks(); router.push('/') }
 
 // ── Watchers ── / ── Watchers ──
-watch(() => wsLines.value.length, () => {
-  insights.feedTranscriptActivity()  // 新行到达 → 重置 idle 计时器 / New line arrived → reset idle timer
-})
 watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n })
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
@@ -484,17 +441,8 @@ onMounted(async () => {
   if (tid) { recorder.taskId.value = tid; await recorder.checkStatus(); ws.connect(tid); try { speakers.value = await fetchSpeakers() } catch {}; notes.restoreFromStorage() }
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKeydown)
-  // 启动洞察引擎（先绑定当前会议，加载已有洞察消息） / Start insight engine (bind current task, load existing insights)
+  // 绑定当前会议，加载已有洞察消息 / Bind current task, load existing insights
   await insights.setCurrentTask(taskId.value)
-  insights.startEngine()
-  insights.onInsightCheck(() => {
-    insights.runAutoInsightCheck(
-      wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
-      wsChapters.value.map(c => c.title)
-    )
-  })
-  window.addEventListener('insights:show-banner', onShowBanner)
-  window.addEventListener('insights:auto-expand', onAutoExpand)
   // 处理从侧边栏跳转过来时自动切换到洞察 tab / Auto-switch to insights tab when navigating from sidebar
   if (route.query.tab === 'insights') {
     recTab.value = 'insights'
@@ -506,23 +454,13 @@ onMounted(async () => {
 
 onUnmounted(() => {
   presence.stop(); ws.disconnect()
-  insights.stopEngine()  // 停止洞察引擎 / Stop insight engine
   if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer)
   document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('insights:show-banner', onShowBanner)
-  window.removeEventListener('insights:auto-expand', onAutoExpand)
 })
 
 function onDocClick(e: Event) { if (bindPopover.value.visible && !(e.target as HTMLElement).closest('.rec-bind-popover')) closeBindPopover() }
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && isFocusMode.value) onFocusMode() }
 
-/** 侧边栏洞察按钮点击 → 切换到洞察 tab + 标记已读 + 展开首条未读 / Sidebar insight button → switch to insights tab + mark read + expand first unread */
-function onAutoExpand() {
-  recTab.value = 'insights'
-  insights.markAllRead()
-  const firstUnread = insights.getFirstUnread()
-  if (firstUnread && !firstUnread.expanded) insights.toggleExpanded(firstUnread.id)
-}
 </script>
 
 <style scoped>

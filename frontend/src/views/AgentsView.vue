@@ -22,10 +22,10 @@
             :class="{ 'is-active': selectedRole === r.name, 'is-current': agentStore.activeAgent === r.name }"
             @click="selectRole(r.name)"
           >
-            <span class="as-item-emoji">{{ roleEmoji(r.name) }}</span>
+            <span class="as-item-icon" v-html="roleIcon(r.name)"></span>
             <div class="as-item-info">
-              <span class="as-item-name">{{ r.title }}</span>
-              <span class="as-item-desc">{{ r.description }}</span>
+              <span class="as-item-name">{{ roleTitle(r.name, r.title) }}</span>
+              <span class="as-item-desc">{{ roleDesc(r.name, r.description) }}</span>
             </div>
             <svg v-if="agentStore.activeAgent === r.name" class="as-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
@@ -47,9 +47,9 @@
               :class="{ 'is-active': selectedRole === r.name, 'is-current': agentStore.activeAgent === r.name }"
               @click="selectRole(r.name)"
             >
-              <span class="as-item-emoji">🤖</span>
+              <span class="as-item-icon" v-html="roleIcon(r.name)"></span>
               <div class="as-item-info">
-                <span class="as-item-name">{{ r.title }}</span>
+                <span class="as-item-name">{{ roleTitle(r.name, r.title) }}</span>
                 <span v-if="r.forked_from" class="as-item-source">{{ t('agents.fork_from') }}: {{ r.forked_from }}</span>
               </div>
               <svg v-if="agentStore.activeAgent === r.name" class="as-item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
@@ -68,8 +68,8 @@
           <!-- 角色头部 / Role header -->
           <div class="ac-header">
             <div class="ac-header-info">
-              <span class="ac-header-emoji">{{ roleEmoji(selectedRole) }}</span>
-              <h2 class="ac-header-title">{{ selectedRoleData?.title || selectedRole }}</h2>
+              <span class="ac-header-icon" v-html="roleIcon(selectedRole)"></span>
+              <h2 class="ac-header-title">{{ roleTitle(selectedRole, selectedRoleData?.title) }}</h2>
               <span class="ac-header-badge">{{ selectedRoleData?.category }}</span>
               <span v-if="selectedRoleData?.source === 'builtin'" class="ac-header-readonly">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:12px;height:12px;vertical-align:-1px;margin-right:3px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -139,7 +139,7 @@
         <div class="agents-dialog-field">
           <label>{{ t('agents.fork_source') }}</label>
           <select v-model="forkSource" class="agents-dialog-input">
-            <option v-for="r in builtinRoles" :key="r.name" :value="r.name">{{ r.title }}</option>
+            <option v-for="r in builtinRoles" :key="r.name" :value="r.name">{{ roleTitle(r.name, r.title) }}</option>
           </select>
         </div>
         <div class="agents-dialog-actions">
@@ -161,11 +161,13 @@ import { useAgentStore } from '@/stores/agent'
 const { t } = useI18n()
 const agentStore = useAgentStore()
 
-// ─── 角色数据 / Role data ───
-const ROLE_EMOJI: Record<string, string> = {
-  'meeting-minutes': '📋', 'meeting-analyst': '📊', 'meeting-coach': '🎯',
-  'learning-tutor': '📚', 'deep-reader': '📖',
+// ─── 角色图标 / Role icons (Lucide-style inline SVG) ───
+const SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+const ROLE_ICONS: Record<string, string> = {
+  'meeting-minutes': `<svg ${SVG_ATTRS}><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
+  'learning-tutor':  `<svg ${SVG_ATTRS}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
 }
+const DEFAULT_ICON = `<svg ${SVG_ATTRS}><path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/></svg>`
 const allRoles = ref<AgentRole[]>([])
 const roleFilesMap = reactive<Record<string, { forked_from: string | null }>>({})
 const selectedRole = ref<string | null>(null)
@@ -180,7 +182,19 @@ const showForkDialog = ref(false)
 const forkName = ref('')
 const forkSource = ref('')
 
-function roleEmoji(name: string) { return ROLE_EMOJI[name] || '🤖' }
+function roleIcon(name: string) { return ROLE_ICONS[name] || DEFAULT_ICON }
+
+/** 优先使用 i18n 翻译，回退到后端返回的原始值 / Prefer i18n translation, fallback to backend value */
+function roleTitle(name: string, fallback?: string) {
+  const key = `agents.role.${name}.title`
+  const translated = t(key)
+  return translated === key ? (fallback || name) : translated
+}
+function roleDesc(name: string, fallback?: string) {
+  const key = `agents.role.${name}.description`
+  const translated = t(key)
+  return translated === key ? (fallback || '') : translated
+}
 
 const builtinRoles = computed(() => allRoles.value.filter(r => r.source === 'builtin'))
 const customRoles = computed(() => allRoles.value.filter(r => r.source === 'custom').map(r => ({
@@ -305,7 +319,8 @@ onMounted(async () => {
 .as-item:hover { background: var(--surface); border-color: var(--border); }
 .as-item.is-active { background: var(--surface-2); border-color: var(--border-strong); }
 .as-item.is-current { border-left-color: var(--accent); }
-.as-item-emoji { font-size: 18px; flex-shrink: 0; }
+.as-item-icon { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); display: grid; place-items: center; }
+.as-item-icon svg { width: 18px; height: 18px; }
 .as-item-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .as-item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as-item-desc { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -322,7 +337,8 @@ onMounted(async () => {
 /* ─── 角色头部 / Role header ─── */
 .ac-header { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--border); flex-shrink: 0; gap: var(--s-3); flex-wrap: wrap; }
 .ac-header-info { display: flex; align-items: center; gap: var(--s-2); flex: 1; min-width: 0; }
-.ac-header-emoji { font-size: 20px; }
+.ac-header-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); display: grid; place-items: center; }
+.ac-header-icon svg { width: 20px; height: 20px; }
 .ac-header-title { font-size: 15px; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-header-badge { font-size: 11px; color: var(--muted); background: var(--surface-2); padding: 1px 8px; border-radius: 10px; flex-shrink: 0; }
 .ac-header-readonly { font-size: 11px; color: var(--subtle); margin-left: auto; white-space: nowrap; }
@@ -339,7 +355,7 @@ onMounted(async () => {
 /* ─── 编辑器 / Editor ─── */
 .ac-editor-wrap { flex: 1; min-height: 0; overflow: hidden; display: flex; }
 .ac-editor { width: 100%; height: 100%; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 13px; line-height: 1.7; padding: var(--s-4) var(--s-5); border: none; background: var(--bg); color: var(--fg); resize: none; outline: none; tab-size: 2; }
-.ac-editor.is-readonly { background: var(--surface); color: var(--muted); cursor: default; }
+.ac-editor.is-readonly { background: var(--bg); color: var(--muted); cursor: default; }
 
 /* ─── Fork 对话框 / Fork dialog ─── */
 .agents-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: grid; place-items: center; z-index: 100; }

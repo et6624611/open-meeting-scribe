@@ -179,11 +179,26 @@ def cmd_server(args):
     print(f"启动服务: http://{host}:{port}")
     print("按 Ctrl+C 停止")
 
+    # ── 热重载包含/排除规则 / Reload include/exclude patterns ──
+    # 录音期间 ffmpeg 子进程依赖主进程存活，watchfiles 触发的热重载
+    # 会杀死 ffmpeg 导致录音丢失（400 错误）。
+    # During recording, the ffmpeg child process depends on the parent;
+    # watchfiles-triggered reloads kill ffmpeg, causing recording loss (400 error).
+    #
+    # 使用白名单模式：仅监控 app/ 和 core/ 下的 .py 文件变化。
+    # Use whitelist mode: only watch .py files under app/ and core/.
+    # 这样 IDE 操作（写 .json/.md/.png 等）不会触发热重载。
+    # This prevents IDE operations (.json/.md/.png writes) from triggering reloads.
+    reload_includes = ["app/**/*.py", "core/**/*.py"] if reload else None
+    reload_excludes = ["*"] if reload else None  # 排除一切，仅靠 includes 白名单触发 / Exclude everything, rely on includes whitelist only
+
     uvicorn.run(
         "app.server:app",
         host=host,
         port=port,
         reload=reload,
+        reload_includes=reload_includes,
+        reload_excludes=reload_excludes,
     )
     return 0
 

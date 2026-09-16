@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 import { useTaskStore } from '@/stores/task'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { showToast } from '@/composables/useToast'
+import { extractErrorMessage } from '@/api/client'
 import type { AiCommand } from '@/composables/useAiCommands'
 import type { Ref } from 'vue'
 
@@ -30,22 +31,31 @@ export function useAiCommandActions(
       const { startRecord } = await import('@/api/record')
       const res = await startRecord()
       showToast('录音已开始', 'success')
-      await taskStore.loadTasks()
+      // 乐观更新：立即将新任务加入本地列表，不阻塞导航 / Optimistic update: add task locally, don't block navigation
+      taskStore.patchTaskLocal(res.task_id, {
+        status: 'recording',
+        source: 'record',
+        created_at: new Date().toISOString(),
+        meeting_date: new Date().toISOString().slice(0, 10),
+      } as any)
       router.push(`/recording/${res.task_id}`)
+      // [状态同步] 后台静默刷新任务列表 / Silently refresh task list in background
+      taskStore.loadTasks()
     } catch (e: any) {
       if (e?.response?.status === 400) {
         try {
           const { getRecordStatus } = await import('@/api/record')
           const status = await getRecordStatus()
           if (status.recording && status.task_id) {
-            await taskStore.loadTasks()
             taskStore.selectTask(status.task_id)
             router.push(`/recording/${status.task_id}`)
+            // [状态同步] 后台静默刷新任务列表 / Silently refresh task list in background
+            taskStore.loadTasks()
             return
           }
         } catch { /* 静默 / silent */ }
       }
-      showToast(e?.response?.data?.detail || '操作失败', 'error')
+      showToast(extractErrorMessage(e), 'error')
     }
   }
 
@@ -55,7 +65,7 @@ export function useAiCommandActions(
       await stopRecord()
       showToast('录音已停止', 'success')
       taskStore.loadTasks()
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   async function onRecordPause() {
@@ -63,7 +73,7 @@ export function useAiCommandActions(
       const { pauseRecord } = await import('@/api/record')
       await pauseRecord()
       showToast('录音已暂停', 'success')
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   async function onRecordResume() {
@@ -71,7 +81,7 @@ export function useAiCommandActions(
       const { resumeRecord } = await import('@/api/record')
       await resumeRecord()
       showToast('录音已恢复', 'success')
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   async function onRecordStatus() {
@@ -83,7 +93,7 @@ export function useAiCommandActions(
         : '录制状态：未录制'
       chat.messages.value.push({ role: 'assistant', content: text })
       aiSessions.persist()
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   function onTasksShow() {
@@ -101,7 +111,7 @@ export function useAiCommandActions(
       await deleteTask(id)
       showToast('任务已删除', 'success')
       taskStore.loadTasks()
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   async function onSpeakersAdd() {
@@ -111,7 +121,7 @@ export function useAiCommandActions(
       const { createSpeaker } = await import('@/api/speakers')
       await createSpeaker(name.trim())
       showToast(`已添加说话人：${name.trim()}`, 'success')
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   async function onHotwordsAdd() {
@@ -128,7 +138,7 @@ export function useAiCommandActions(
       if (!added.length) { showToast('这些热词已存在', 'warn'); return }
       await saveHotwords(words.join('\n'))
       showToast(`已添加 ${added.length} 个热词`, 'success')
-    } catch (e: any) { showToast(e?.response?.data?.detail || '操作失败', 'error') }
+    } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
   /** 构建指令列表 / Build command list */

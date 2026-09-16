@@ -3,7 +3,8 @@ title: 产品需求文档
 description: Open Meeting Scribe 产品需求与功能规划
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-09
+updated_at: 2026-09-17
+version: "1.2.0"
 status: draft
 ---
 
@@ -22,16 +23,24 @@ status: draft
 | AI 对话驱动 | 通过自然语言对话完成录音、转写、查询、设置等操作 | v1 (P2) |
 | 发言人姓名化 | 「说话人1」自动变「张三」 | v3/v4 ✅ |
 
-## 3. 功能清单（v1）
+## 3. 功能清单
 - [x] 音频输入：文件拖拽 + BlackHole 实时内录 + 麦克风录音
-- [x] 转写 + 说话人分离（云端 paraformer-v2）
+- [x] 转写 + 说话人分离（云端 paraformer-v2，通过 ASR 代理中继保护 API Key）
+- [x] 实时转写预览（qwen-audio-3.0-asr-flash-streaming 流式 WebSocket）
 - [x] 热词增强（企业人名/术语）
-- [x] 结构化纪要：结论 + 待办（谁/做什么/截止）
-- [x] 本地 Web UI：左中右三栏布局（导航 / 主工作区 / AI 对话框）
+- [x] 结构化纪要：结论 + 决策（谁/做什么/截止）
+- [x] 决策流面板（方案 A 极简扫读设计，替代旧版待办列表）
+- [x] Vue 3 SPA 前端：左中右三栏布局（导航 / 主工作区 / AI 对话框）+ 10 主题
 - [x] AI 助手：对话驱动操作（录音、转写、查询、设置、热词管理）
+- [x] Agent 角色系统（5 个预定义角色 + 用户 fork 自定义 + 全局激活持久化）
 - [x] CLI：`python cli.py transcribe <音频>`
-- [x] 声纹姓名化（CAM++ 192维嵌入，注册后自动匹配）
-- [x] GitHub OAuth 登录（JWT 会话管理）
+- [x] 桌面客户端：macOS（pywebview 原生窗口）+ Windows（PyInstaller + Inno Setup 安装器）
+- [x] 声纹姓名化（CAM++ 192维嵌入，声纹云端拆分，注册后自动匹配）
+- [x] GitHub OAuth 登录（JWT 会话管理）+ 认证与订阅体系
+- [x] 用量计量与配额管理
+- [x] 版本检查与更新提示
+- [x] 项目文件索引 + 会议纪要归档
+- [x] 国际化（vue-i18n + Babel/gettext 后端，中英双语）
 
 ## 4. 产品定位 · AI 对话是标配
 

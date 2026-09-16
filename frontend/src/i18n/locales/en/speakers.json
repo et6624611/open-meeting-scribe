@@ -3,6 +3,8 @@
   "count": "{count} speaker(s)",
   "subtitle": "Manage speaker profiles, track meeting participation and speech records",
   "input_placeholder": "Enter speaker name...",
+  "unified_placeholder": "Search or enter new name...",
+  "create_hint": "Create \"{name}\"",
   "add": "Add",
   "badge_me": "Me",
   "meetings_count": "{count} meeting(s)",

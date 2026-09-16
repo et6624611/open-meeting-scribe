@@ -9,7 +9,7 @@ interface WatermarkPrefs {
 }
 
 const DEFAULTS: WatermarkPrefs = {
-  enabled: true,
+  enabled: false,
   opacity: 1.0,
 }
 

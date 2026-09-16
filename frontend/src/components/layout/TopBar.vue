@@ -90,7 +90,7 @@
         </div>
         <button
           class="topbar-new-btn"
-          :class="{ 'is-hidden': isStartRoute || showRecPill, 'is-disabled': hasRecordingTask }"
+          :class="{ 'is-hidden': isStartRoute || showRecPill || isOnRecTaskPage, 'is-disabled': hasRecordingTask && !isOnRecTaskPage }"
           :title="hasRecordingTask ? t('topbar.recording_in_progress', { elapsed: recElapsed }) : t('topbar.new_meeting') + ` (${modKey}N)`"
           @click="hasRecordingTask ? jumpBackToRecording() : router.push('/')"
         >
@@ -102,8 +102,6 @@
         <div class="lang-switcher">
           <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" @click="showLangMenu = !showLangMenu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            <span>{{ currentLangLabel }}</span>
-            <svg class="lang-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="lang-dropdown" :class="{ 'is-open': showLangMenu }" role="listbox">
             <button v-for="lang in langOptions" :key="lang.code" class="lang-option" :class="{ 'is-active': currentLocale === lang.code }" role="option" :aria-selected="currentLocale === lang.code" @click="onSwitchLang(lang.code); showLangMenu = false">
@@ -134,24 +132,6 @@
               <span class="theme-swatch" :style="{ background: theme.swatch }"></span>
               <span class="theme-option-label">{{ theme.label }}</span>
               <svg v-if="themeStore.current === theme.id" class="theme-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- 用户头像 / User avatar -->
-        <div class="user-avatar-wrapper" style="position:relative">
-          <button v-if="userStore.isLoggedIn" class="user-avatar-btn" @click="showUserMenu = !showUserMenu" :title="t('topbar.user_menu')">
-            <span v-if="!userStore.user?.avatar_url">{{ userStore.avatarLetter }}</span>
-            <img v-else :src="userStore.user.avatar_url" :alt="userStore.user.name" style="width:100%;height:100%;border-radius:50%;object-fit:cover">
-          </button>
-          <div class="user-menu" :class="{ 'is-open': showUserMenu }" role="menu">
-            <div class="user-menu-header">
-              <div class="user-menu-name">{{ userStore.displayName }}</div>
-              <div class="user-menu-email">{{ userStore.user?.email || '' }}</div>
-            </div>
-            <button class="user-menu-item danger" @click="onLogout">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              {{ t('topbar.logout') }}
             </button>
           </div>
         </div>
@@ -187,7 +167,6 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore, type ThemeId } from '@/stores/theme'
 import { useTaskStore } from '@/stores/task'
-import { useUserStore } from '@/stores/user'
 import { useLayoutStore } from '@/stores/layout'
 import { usePlayerStore } from '@/stores/player'
 import IconButton from '@/components/common/IconButton.vue'
@@ -203,7 +182,6 @@ const router = useRouter()
 const route = useRoute()
 const themeStore = useThemeStore()
 const taskStore = useTaskStore()
-const userStore = useUserStore()
 const layout = useLayoutStore()
 const player = usePlayerStore()
 
@@ -224,7 +202,6 @@ function onSeekPlayer(e: MouseEvent) {
 }
 
 const showThemeMenu = ref(false)
-const showUserMenu = ref(false)
 const showLangMenu = ref(false)
 
 // ─── 语言切换 / Language switching ───
@@ -233,7 +210,6 @@ const langOptions: { code: SupportedLocale; label: string }[] = [
   { code: 'zh-CN', label: '中文' },
   { code: 'en', label: 'English' },
 ]
-const currentLangLabel = computed(() => langOptions.find(l => l.code === currentLocale.value)?.label ?? '中文')
 async function onSwitchLang(locale: SupportedLocale) {
   await setI18nLocale(locale)
 }
@@ -260,6 +236,13 @@ const hasRecordingTask = computed(() => {
     if (createdAt && createdAt < oneDayAgo) return false
     return true
   })
+})
+
+/** 当前是否已在录音任务自身的页面（页面已承载完整录音 UI，无需「返回录音」入口） / Whether currently on the recording task's own page (page already has full recording UI, no need for "return to recording" entry) */
+const isOnRecTaskPage = computed(() => {
+  if (!recTask.value) return false
+  const currentTaskId = route.params.taskId as string | undefined
+  return route.name === 'recording' && currentTaskId === recTask.value.task_id
 })
 
 const showRecPill = computed(() => {
@@ -471,12 +454,6 @@ function selectTheme(id: ThemeId) {
   showThemeMenu.value = false
 }
 
-async function onLogout() {
-  showUserMenu.value = false
-  await userStore.logout()
-  router.push('/')
-}
-
 
 onUnmounted(() => {
   stopRecTimer()
@@ -485,7 +462,6 @@ onUnmounted(() => {
 document.addEventListener('click', (e) => {
   const target = e.target as HTMLElement
   if (!target.closest('.theme-switcher')) showThemeMenu.value = false
-  if (!target.closest('.user-avatar-wrapper')) showUserMenu.value = false
   if (!target.closest('.lang-switcher')) showLangMenu.value = false
 })
 </script>

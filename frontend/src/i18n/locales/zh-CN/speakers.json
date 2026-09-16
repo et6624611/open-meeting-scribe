@@ -3,6 +3,8 @@
   "count": "{count} 位说话人",
   "subtitle": "管理说话人身份档案，追溯会议参与与发言记录",
   "input_placeholder": "输入说话人名称…",
+  "unified_placeholder": "搜索或输入新名称…",
+  "create_hint": "新建「{name}」",
   "add": "添加",
   "badge_me": "我",
   "meetings_count": "{count} 次会议",

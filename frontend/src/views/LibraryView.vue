@@ -797,6 +797,13 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: all 0.15s;
   background: var(--surface); flex-shrink: 0;
+  /* 视觉大小不变，通过伪元素扩展点击热区 / Keep visual size, expand hit area via pseudo-element */
+  position: relative;
+}
+.row-checkbox::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
 }
 .row-checkbox:hover { border-color: var(--accent); }
 .row-checkbox.checked {
@@ -842,7 +849,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 .table-row:last-child { border-bottom: none; }
 
 /* 单元格 / Cell */
-.cell-checkbox { display: flex; align-items: center; justify-content: center; }
+.cell-checkbox { display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .cell-title {
   display: flex; align-items: center; gap: var(--s-2);
   font-size: 14px; font-weight: 500; color: var(--fg);
@@ -907,16 +914,15 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 
 /* ─── 批量操作栏 / Batch action bar ─── */
 .batch-bar {
+  display: none;
   height: 48px;
   background: var(--fg);
   color: #fff;
-  display: flex; align-items: center;
+  align-items: center;
   padding: 0 var(--s-4); gap: var(--s-3);
   flex-shrink: 0;
-  transform: translateY(100%);
-  transition: transform 0.2s ease;
 }
-.batch-bar.visible { transform: translateY(0); }
+.batch-bar.visible { display: flex; }
 .batch-count { font-size: 13px; font-weight: 500; opacity: 0.8; }
 .batch-spacer { flex: 1; }
 .batch-btn {

@@ -63,6 +63,7 @@
     "index_prefix": "Ch.",
     "index_suffix": "of {count}",
     "dividing": "Dividing chapters...",
+    "empty_transcript": "No valid speech detected",
     "key_points": "Key Points",
     "key_points_count": "{count} key point(s)",
     "review": "Chapter Review",

@@ -13,7 +13,7 @@ from fastapi import APIRouter
 
 from core.i18n import _
 from core.metering import (
-    TIER_QUOTAS,
+    DEFAULT_QUOTA,
     check_quota,
     get_daily_history,
     get_monthly_usage,
@@ -34,17 +34,11 @@ def usage_summary():
     if not user:
         return {"metered": False, "message": _("Not logged in")}
 
-    subscription = user.get("subscription", {})
-    tier = subscription.get("tier", "free")
-    TIER_NAMES = {"free": "体验期", "personal": "个人订阅"}
-
     if not is_metered():
         return {
             "metered": False,
             "message": _("Self-hosted Key, not metered"),
-            "tier": tier,
-            "tier_name": TIER_NAMES.get(tier, tier),
-            "quota": TIER_QUOTAS.get(tier, 0),
+            "quota": user.get("quota", DEFAULT_QUOTA),
         }
 
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -55,13 +49,11 @@ def usage_summary():
         cloud_result = check_quota_from_cloud(user["id"])
         if cloud_result:
             used = cloud_result.get("used", 0)
-            quota = cloud_result.get("quota", TIER_QUOTAS.get(tier, 0))
+            quota = cloud_result.get("quota", user.get("quota", DEFAULT_QUOTA))
             remaining = cloud_result.get("remaining", 0)
             pct = round(remaining / quota * 100) if quota > 0 else 0
             return {
                 "metered": True,
-                "tier": tier,
-                "tier_name": TIER_NAMES.get(tier, tier),
                 "month": month_key,
                 "quota": quota,
                 "used": round(used, 1),
@@ -72,14 +64,12 @@ def usage_summary():
 
     used = get_monthly_usage(user["id"], month_key)
 
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
     remaining = max(0, quota - used)
     pct = round(remaining / quota * 100) if quota > 0 else 0
 
     return {
         "metered": True,
-        "tier": tier,
-        "tier_name": TIER_NAMES.get(tier, tier),
         "month": month_key,
         "quota": quota,
         "used": round(used, 1),

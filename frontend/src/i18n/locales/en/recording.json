@@ -17,7 +17,7 @@
   },
   "tab": {
     "transcript": "Transcript",
-    "insights": "AI Insights"
+    "insights": "Insight Deck"
   },
   "transcript": {
     "show": "Show Transcript",
@@ -48,13 +48,14 @@
     "delete": "Delete note"
   },
   "insights": {
-    "title": "AI Insights",
+    "title": "Insight Deck",
     "empty": "AI will analyze the conversation in real time and provide insights during the meeting",
-    "empty_hint": "Including context association, blind spot revelation, consensus extraction, and more",
-    "enabled": "Insights enabled",
-    "disabled": "Insights disabled",
-    "settings": "Insights Settings",
-    "unread_count": "{count} unread insight(s)"
+    "empty_hint": "Click the analyze button for AI to deeply analyze the current discussion from multiple dimensions",
+    "enabled": "Insight Deck enabled",
+    "disabled": "Insight Deck disabled",
+    "unread_count": "{count} unread insight(s)",
+    "expand": "Expand Insight Deck",
+    "collapse": "Collapse Insight Deck"
   },
   "control": {
     "pause": "Pause",

@@ -163,6 +163,9 @@ msgstr "索引构建已启动"
 msgid "Already recording"
 msgstr "已在录制中"
 
+msgid "Monthly transcription quota exhausted ({remaining} min remaining). Configure your own API Key to continue."
+msgstr "本月转录配额已用完（剩余 {remaining} 分钟）。配置您自己的 API Key 以继续使用。"
+
 msgid "Failed to start recording: {err}"
 msgstr "录制启动失败: {err}"
 

@@ -1,15 +1,12 @@
 """
-core/insights.py — AI 洞察引擎核心 / AI insights engine core
+core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-更新 / Updated: 2026-09-12
-版本 / Version: 2.0.0
+更新 / Updated: 2026-09-16
+版本 / Version: 3.0.0
 
-提供三类洞察分析 / Three types of insight analysis:
-  - 上下文关联 / Context (context)：引入讨论之外的相关背景，帮助参会者看到更大图景 / Bring in relevant context beyond discussion, help participants see the bigger picture
-  - 盲点揭示 / Blindspot (blindspot)：指出参与者局部认知之外的因素 / Point out factors beyond participants' local awareness
-  - 共识提炼 / Consensus (consensus)：从散乱讨论中萃取真正的共识点与分歧根源 / Extract true consensus points and root of disagreements from scattered discussion
+综合洞察分析：一次分析覆盖上下文关联、盲点揭示、共识提炼三个维度。 / Unified insight analysis: single analysis covering context, blindspot, and consensus dimensions.
 
 设计理念 / Design philosophy：LLM 的核心优势在于对更大上下文的感知 / LLM's core advantage lies in perceiving larger context. 会议中探讨的共识 / Consensus explored in meetings
 应基于更大的上下文环境，而非局限于某人的局部认知 / Should be based on larger context, not limited to someone's local awareness.
@@ -23,85 +20,44 @@ from core.llm import async_chat_completion
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# 分析类型系统提示词
+# 统一洞察分析提示词（覆盖上下文、盲点、共识三维度）
 # ============================================================
 
-CONTEXT_ANALYSIS_PROMPT = """你是一位资深会议顾问。你的任务是分析当前讨论，引入参会者可能未意识到的相关上下文，帮助他们基于更完整的信息达成共识。
+INSIGHT_ANALYSIS_PROMPT = """你是一位资深会议顾问。你的独特价值是：参会者沉浸在讨论细节中，而你能站在更高处看到他们看不到的关系网络。
 
-你可以引入的上下文类型：
-- 相关的历史决策或先例
-- 行业趋势或市场动态
-- 跨部门/跨项目的关联影响
-- 利益相关者的视角
-- 技术或业务的约束条件
+请用图形思维来分析这场讨论——像画一张思维导图那样去理解：谁和谁有关联？哪些决策互相依赖？哪里有关键的缺失环节？
 
-分析要求：
-1. 基于当前讨论内容，识别可以扩展认知的上下文信息
-2. 确保引入的上下文对当前决策有实际价值
-3. 避免泛泛而谈，要具体且可操作
+## 三个观察角度
 
-返回 JSON 格式（不要包含 markdown 代码块标记）：
-{"title": "简要标题", "body": "上下文分析内容", "solution": "基于上下文的建议", "has_finding": true}
+### 上下文关联
+这场讨论放在更大的组织背景中，会暴露出什么关联？
+（历史先例、跨部门影响、未到场但受影响的利益相关者、外部约束）
 
-如果没有有价值的上下文可补充（讨论已足够全面），返回：
-{"title": "", "body": "", "solution": "", "has_finding": false}
+### 盲点揭示
+讨论中系统性缺失了什么？不是评判谁没想到，而是指出"这张关系图里缺了哪块"。
+（未提及的关键依赖、被当作事实的隐含假设、决策链的断裂处、风险传导路径）
 
-仅返回 JSON，不要其他内容。"""
+### 共识与待办
+从讨论的混沌中提炼结构：谁该做什么？行动项之间有什么依赖关系？分歧的根源是什么？
 
-BLINDSPOT_ANALYSIS_PROMPT = """你是一位资深会议顾问。你的任务是识别当前讨论中参与者可能忽略的盲点，揭示局部认知之外的关键因素。
+## 输出方式
 
-你应关注的盲点类型：
-- 被忽视的利益相关者或受影响方
-- 未考虑的外部约束或依赖
-- 隐含的假设（未经验证的前提）
-- 短期决策的长期影响
-- 缺失的关键数据或证据
-- 未被讨论的风险或机会
+当你发现值得可视化的关系结构时，请选择最合适的 Mermaid 图类型来呈现。根据内容特征自动选型：
 
-分析要求：
-1. 仔细审视讨论内容，找出被遗漏但重要的因素
-2. 只指出真正重要的盲点，不要为了显示而硬找
-3. 解释为什么这个盲点重要，以及不处理的潜在后果
+- **flowchart + subgraph 泳道图**：适合展示跨角色/跨部门的职责分工与协作流程。用 subgraph 划分不同角色或部门，节点为各自的任务，连线展示协作关系。这是会议场景中最实用的图类型。
+- **flowchart**（graph TD/LR）：适合展示决策路径、任务依赖、因果关系。最通用的选择。
+- **mindmap**：适合展示围绕一个核心主题的多维度发散（如影响因素、利益相关者地图）。
+- **sequenceDiagram**：适合展示多方之间的交互时序（如审批流转、信息传递链）。
+- **gantt**：适合展示行动项的时间安排和并行关系。
 
-返回 JSON 格式（不要包含 markdown 代码块标记）：
-{"title": "简要标题", "body": "盲点分析内容", "solution": "建议的应对措施", "has_finding": true}
+选型原则：如果讨论涉及不同人/部门各自的任务和协作关系，用泳道图（flowchart + subgraph）；如果涉及明确的先后步骤或依赖关系，用 flowchart；如果是围绕核心概念的多方向发散，用 mindmap；如果强调多方交互的时间顺序，用 sequenceDiagram；如果涉及时间安排，用 gantt。不确定时默认用 flowchart。
 
-如果没有发现重要盲点（讨论已充分覆盖关键因素），返回：
-{"title": "", "body": "", "solution": "", "has_finding": false}
+如果没有明显的关系结构可画，纯文字分析也可以——不要为了画图而画图。
 
-仅返回 JSON，不要其他内容。"""
+返回 JSON：
+{"title": "一句话概括这个洞察", "body": "你的分析（Markdown 格式，自由组织）", "solution": "建议（如果有）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
 
-CONSENSUS_ANALYSIS_PROMPT = """你是一位资深会议引导师。你的任务是从讨论中提炼真正的共识点，识别分歧的根源，帮助团队达成有意义的共识。
-
-你的分析维度：
-- 各方已达成的一致（显性和隐性共识）
-- 分歧的核心根源（不是表面分歧，而是底层原因）
-- 共识的基础和前提条件
-- 推进共识所需的下一步
-
-分析要求：
-1. 识别讨论中真正的共识点，而非表面的附和
-2. 定位分歧的根源——是信息不对称、价值观差异、还是利益冲突？
-3. 提供推进共识的可操作建议
-
-返回 JSON 格式（不要包含 markdown 代码块标记）：
-{"title": "简要标题", "body": "共识与分歧分析", "solution": "推进共识的建议", "has_finding": true}
-
-如果讨论尚未形成明确的共识或分歧（讨论太浅或太分散），返回：
-{"title": "", "body": "", "solution": "", "has_finding": false}
-
-仅返回 JSON，不要其他内容。"""
-
-
-# ============================================================
-# 分析类型注册
-# ============================================================
-
-ANALYSIS_PROMPTS = {
-    "context": CONTEXT_ANALYSIS_PROMPT,
-    "blindspot": BLINDSPOT_ANALYSIS_PROMPT,
-    "consensus": CONSENSUS_ANALYSIS_PROMPT,
-}
+仅返回 JSON。"""
 
 
 # ============================================================
@@ -113,7 +69,7 @@ def _build_user_message(
     recent_lines: list[dict],
     chapter_titles: list[str],
 ) -> str:
-    """构建用户消息（所有分析类型共用）"""
+    """构建用户消息"""
     transcript_text = "\n".join(
         f"[说话人{line.get('speaker_id', 0) + 1}] {line.get('text', '')}"
         for line in recent_lines
@@ -123,7 +79,7 @@ def _build_user_message(
     return (
         f"## 会议章节主题\n{titles_text}\n\n"
         f"## 最近讨论内容（{len(recent_lines)} 条）\n{transcript_text}\n\n"
-        "请基于以上讨论内容进行分析。"
+        "请基于以上讨论内容进行综合洞察分析。"
     )
 
 
@@ -141,6 +97,7 @@ def _parse_analysis_result(reply: str) -> dict:
         "body": str(result.get("body", "")),
         "solution": str(result.get("solution", "")),
         "has_finding": bool(result.get("has_finding", False)),
+        "diagram": str(result.get("diagram", "")),
     }
 
 
@@ -152,28 +109,34 @@ def _parse_analysis_result(reply: str) -> dict:
 async def run_analysis(
     recent_lines: list[dict],
     chapter_titles: list[str],
-    analysis_type: str = "context",
+    role_name: str | None = None,
 ) -> dict:
     """
-    执行指定类型的洞察分析。
+    执行综合洞察分析。
 
     参数：
       recent_lines: 最近的转写行 [{text, speaker_id, begin_time}]
       chapter_titles: 章节标题列表
-      analysis_type: 分析类型 ('context' | 'blindspot' | 'consensus')
+      role_name: 当前角色名（可选），优先使用角色专属 prompt；
+                 无角色或角色未定义 insight prompt 时回退到内置默认。
 
     返回：
-      {"title": str, "body": str, "solution": str, "has_finding": bool}
+      {"title": str, "body": str, "solution": str, "has_finding": bool, "diagram": str}
       失败时返回 has_finding=False
     """
-    if analysis_type not in ANALYSIS_PROMPTS:
-        logger.warning("[AI洞察] 未知分析类型: %s", analysis_type)
-        return {"title": "", "body": "", "solution": "", "has_finding": False}
-
     if not recent_lines or not chapter_titles:
-        return {"title": "", "body": "", "solution": "", "has_finding": False}
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}
 
-    system_prompt = ANALYSIS_PROMPTS[analysis_type]
+    # 角色感知：优先使用角色专属 prompt，回退到内置默认 / Role-aware: prefer role-specific prompt, fallback to built-in default
+    system_prompt = None
+    if role_name:
+        from core.agent_workspace import get_role_insight_prompt
+        system_prompt = get_role_insight_prompt(role_name)
+        if system_prompt:
+            logger.info("[洞察台] 使用角色 %s 的洞察 prompt", role_name)
+    if not system_prompt:
+        system_prompt = INSIGHT_ANALYSIS_PROMPT
+
     user_message = _build_user_message(recent_lines, chapter_titles)
 
     messages = [
@@ -186,19 +149,19 @@ async def run_analysis(
             messages,
             model=None,
             temperature=0.3,
-            max_tokens=500,
+            max_tokens=1500,
         )
         parsed = _parse_analysis_result(reply)
 
         logger.info(
-            "[AI洞察] %s 分析完成: has_finding=%s title=%s",
-            analysis_type, parsed["has_finding"], parsed["title"][:60],
+            "[洞察台] 分析完成: has_finding=%s title=%s",
+            parsed["has_finding"], parsed["title"][:60],
         )
         return parsed
 
     except json.JSONDecodeError:
-        logger.warning("[AI洞察] %s 分析返回非 JSON: %s", analysis_type, reply[:200])
-        return {"title": "", "body": "", "solution": "", "has_finding": False}
+        logger.warning("[洞察台] 分析返回非 JSON: %s", reply[:200])
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}
     except Exception as e:
-        logger.warning("[AI洞察] %s 分析失败: %s", analysis_type, e)
-        return {"title": "", "body": "", "solution": "", "has_finding": False}
+        logger.warning("[洞察台] 分析失败: %s", e)
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}

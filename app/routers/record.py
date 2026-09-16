@@ -120,7 +120,7 @@ def _cleanup_zombie_recording() -> None:
 # ============================================================
 
 @router.post("/api/record/start")
-def start_record():
+def start_record(background_tasks: BackgroundTasks):
     """开始流式录音，同时启动实时转写 / Start streaming recording and launch realtime transcription"""
     if is_stream_recording():
         raise HTTPException(400, _("Already recording"))
@@ -162,38 +162,75 @@ def start_record():
     # 初始化全量实时转写记录（供文本桥接匹配，突破 REALTIME_BUFFER_MAX 限制） / Initialize full realtime transcript (for text bridge matching, bypassing REALTIME_BUFFER_MAX limit)
     realtime_full_transcripts[task_id] = []
 
-    # 读取功能开关 / Read feature flags
+    # 读取功能开关（仅用于后台延迟初始化，不阻塞关键路径） / Read feature flags (for deferred init, not blocking critical path)
     feature_flags = get_feature_flags()
 
-    # 创建实时总结器（增量摘要，可通过设置页关闭） / Create realtime summarizer (incremental summary; can be disabled via settings)
-    summarizer = None
-    if feature_flags["realtime_summary"]:
-        summary_interval = feature_flags.get("realtime_summary_interval", 60)
-        summarizer = RealtimeSummarizer(
-            on_summary=lambda content: push_realtime_msg(task_id, {
-                "type": "summary_update", "content": content
-            }),
-            on_status=lambda status: push_realtime_msg(task_id, {
-                "type": "summary_status", "status": status
-            }),
-            on_countdown=lambda remaining: push_realtime_msg(task_id, {
-                "type": "summary_countdown", "remaining": remaining
-            }),
-            interval=summary_interval,
-        )
-        realtime_summarizers[task_id] = summarizer
-        summarizer.start()
+    # ── 延迟初始化：实时总结器 + 章节生成器 ── / ── Deferred init: realtime summarizer + chapter generator ──
+    # 这些组件在 ASR 首句到达前初始化完成即可（通常需数秒），放到后台线程避免阻塞 HTTP 响应 / These components only need to be ready before the first ASR sentence arrives (typically seconds); defer to background to avoid blocking HTTP response
+    summarizer_ref: dict[RealtimeSummarizer | None, None] = {None: None}
+    chapter_gen_ref: dict[RealtimeChapterGenerator | None, None] = {None: None}
 
-    # 创建实时章节生成器（增量章节分析，可通过设置页关闭） / Create realtime chapter generator (incremental chapter analysis; can be disabled via settings)
-    chapter_gen = None
-    if feature_flags["realtime_chapters"]:
-        chapter_gen = RealtimeChapterGenerator(
-            on_chapters=lambda chapters: push_realtime_msg(task_id, {
-                "type": "chapters_update", "chapters": chapters
-            }),
-        )
-        realtime_chapter_generators[task_id] = chapter_gen
-        chapter_gen.start()
+    def _init_auxiliary_components():
+        """后台初始化辅助组件：实时总结 + 章节生成 + 磁盘持久化 + 静默检测 / Background init auxiliary components: realtime summary + chapters + disk persistence + silence detection"""
+        try:
+            # 实时总结器 / Realtime summarizer
+            _summarizer = None
+            if feature_flags["realtime_summary"]:
+                summary_interval = feature_flags.get("realtime_summary_interval", 60)
+                _summarizer = RealtimeSummarizer(
+                    on_summary=lambda content: push_realtime_msg(task_id, {
+                        "type": "summary_update", "content": content
+                    }),
+                    on_status=lambda status: push_realtime_msg(task_id, {
+                        "type": "summary_status", "status": status
+                    }),
+                    on_countdown=lambda remaining: push_realtime_msg(task_id, {
+                        "type": "summary_countdown", "remaining": remaining
+                    }),
+                    interval=summary_interval,
+                )
+                realtime_summarizers[task_id] = _summarizer
+                _summarizer.start()
+            summarizer_ref[None] = _summarizer
+
+            # 实时章节生成器 / Realtime chapter generator
+            _chapter_gen = None
+            if feature_flags["realtime_chapters"]:
+                _chapter_gen = RealtimeChapterGenerator(
+                    on_chapters=lambda chapters: push_realtime_msg(task_id, {
+                        "type": "chapters_update", "chapters": chapters
+                    }),
+                )
+                realtime_chapter_generators[task_id] = _chapter_gen
+                _chapter_gen.start()
+            chapter_gen_ref[None] = _chapter_gen
+
+            # 任务持久化到磁盘（内存中已存在，磁盘写入可延迟） / Persist task to disk (already in memory, disk write can defer)
+            save_task_to_disk(task_id)
+
+            # 静默检测 / Silence detection
+            silence_config = get_silence_detection_config()
+            if silence_config["enabled"]:
+                now_ts = time.time()
+                realtime_last_heartbeat[task_id] = now_ts
+                realtime_last_sentence[task_id] = now_ts
+                realtime_presence_scores[task_id] = float(silence_config["presence"]["score_max"])
+                realtime_silence_warnings[task_id] = 0
+                loop = rt_store.event_loop
+                if loop and not loop.is_closed():
+                    monitor_future = asyncio.run_coroutine_threadsafe(
+                        silence_monitor_loop(task_id), loop
+                    )
+                    realtime_silence_monitors[task_id] = monitor_future
+                    logger.info(f"[录制] 静默检测已启动: task={task_id[:8]}")
+                else:
+                    logger.warning(f"[录制] 主事件循环不可用，静默检测未启动: task={task_id[:8]}")
+
+            logger.info(f"[录制] 辅助组件初始化完成: task={task_id[:8]}, summary={_summarizer is not None}, chapters={_chapter_gen is not None}")
+        except Exception as e:
+            logger.warning(f"[录制] 辅助组件初始化失败（不影响录音）: {e}")
+
+    background_tasks.add_task(_init_auxiliary_components)
 
     # PCM 回调：将音频数据送入实时 ASR + 声纹聚类 / PCM callback: feed audio data to realtime ASR + diarizer
     # 注意：此回调在 stream_reader 线程执行 / Note: this callback runs in stream_reader thread
@@ -287,14 +324,16 @@ def start_record():
             # 更新最后定稿句子时间戳（供静默检测使用） / Update last finalized sentence timestamp (for silence detection)
             realtime_last_sentence[task_id] = time.time()
             # 送入实时总结器（含说话人姓名） / Feed realtime summarizer (with speaker name)
-            if summarizer:
-                summarizer.feed_sentence({
+            _summarizer = summarizer_ref.get(None)
+            if _summarizer:
+                _summarizer.feed_sentence({
                     **s,
                     "speaker_name": speaker_name,
                 })
             # 送入实时章节生成器 / Feed realtime chapter generator
-            if chapter_gen:
-                chapter_gen.feed_sentence({
+            _chapter_gen = chapter_gen_ref.get(None)
+            if _chapter_gen:
+                _chapter_gen.feed_sentence({
                     **s,
                     "speaker_name": speaker_name,
                 })
@@ -377,29 +416,7 @@ def start_record():
             "meeting_date": now.strftime("%Y-%m-%d"),
             "error": None,
         }
-        save_task_to_disk(task_id)
-
-        # ── 初始化静默检测状态 ── / ── Initialize silence detection state ──
-        silence_config = get_silence_detection_config()
-        if silence_config["enabled"]:
-            now_ts = time.time()
-            realtime_last_heartbeat[task_id] = now_ts
-            realtime_last_sentence[task_id] = now_ts
-            realtime_presence_scores[task_id] = float(silence_config["presence"]["score_max"])
-            realtime_silence_warnings[task_id] = 0
-            # 启动静默监测协程（跨线程调度到主事件循环） / Start silence monitoring coroutine (cross-thread dispatch to main event loop)
-            # 注意：start_record 是同步端点，运行在 AnyIO worker 线程，该线程无事件循环， / Note: start_record is a sync endpoint running in AnyIO worker thread with no event loop;
-            # 不能用 asyncio.get_event_loop()（会抛 "no current event loop"）， / cannot use asyncio.get_event_loop() (raises "no current event loop");
-            # 必须用 startup 时捕获的 rt_store.event_loop + run_coroutine_threadsafe。 / must use rt_store.event_loop captured at startup + run_coroutine_threadsafe.
-            loop = rt_store.event_loop
-            if loop and not loop.is_closed():
-                monitor_future = asyncio.run_coroutine_threadsafe(
-                    silence_monitor_loop(task_id), loop
-                )
-                realtime_silence_monitors[task_id] = monitor_future
-                logger.info(f"[录制] 静默检测已启动: task={task_id[:8]}")
-            else:
-                logger.warning(f"[录制] 主事件循环不可用，静默检测未启动: task={task_id[:8]}")
+        # 磁盘持久化已委托给后台任务 _init_auxiliary_components() / Disk persistence deferred to background task
 
         logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={RECORD_DEVICE}")
         return {"task_id": task_id, "status": "recording"}

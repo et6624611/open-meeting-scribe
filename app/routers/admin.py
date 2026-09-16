@@ -4,7 +4,7 @@ app/routers/admin.py — 管理后台 API 路由 / Admin backend API routes
 职责 / Responsibilities:
   1. 管理员登录/登出（独立密码认证，与用户 JWT 互不干扰） / Admin login/logout (independent password auth; isolated from user JWT)
   2. 用户管理（列表、详情、禁用/启用） / User management (list, details, disable/enable)
-  3. 授权管理（修改用户配额档位） / Authorization management (modify user quota tier)
+  3. 配额管理（修改用户月度配额） / Quota management (modify user monthly quota)
   4. 系统概览（统计摘要） / System overview (statistics summary)
 
 远程配置（消息/功能开关）已拆分至 admin_config.py / Remote config (messages/feature flags) split to admin_config.py
@@ -27,12 +27,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from core.i18n import _
-from core.metering import TIER_QUOTAS, get_monthly_usage
+from core.metering import DEFAULT_QUOTA, get_monthly_usage
 from core.users import (
     _load_user_data,
     _save_user_data,
     get_user_by_id,
-    set_user_subscription,
+    set_user_quota,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,13 +200,8 @@ def admin_overview(_: dict = Depends(require_admin)):
     data = _load_user_data()
     users = data.get("users", [])
 
-    # 体验期用户统计 / Trial-period user statistics
-    tier_counts = {"free": 0}
-    for user in users:
-        tier = user.get("subscription", {}).get("tier", "free")
-        if tier in tier_counts:
-            tier_counts[tier] += 1
-        # 非 free 档位视为自持 Key 用户（不计入配额统计） / Non-free tiers treated as BYOK users (excluded from quota stats)
+    # 用户总数 / Total users
+    total_users = len(users)
 
     # 本月总用量 / Total usage this month
     month_key = __import__("datetime").datetime.now(
@@ -231,14 +226,13 @@ def admin_overview(_: dict = Depends(require_admin)):
             "name": u.get("name", ""),
             "provider": u.get("provider", ""),
             "phone_masked": f"{phone[:3]}****{phone[-4:]}" if len(phone) == 11 else "",
-            "tier": u.get("subscription", {}).get("tier", "free"),
+            "quota": u.get("quota", DEFAULT_QUOTA),
             "created_at": u.get("created_at", ""),
             "last_login": u.get("last_login", ""),
         })
 
     return {
-        "total_users": len(users),
-        "tier_counts": tier_counts,
+        "total_users": total_users,
         "total_monthly_minutes": round(total_monthly_minutes, 1),
         "month_key": month_key,
         "recent_users": recent_list,
@@ -252,12 +246,11 @@ def admin_overview(_: dict = Depends(require_admin)):
 @router.get("/users")
 def admin_list_users(
     search: str = "",
-    tier: str = "",
     _: dict = Depends(require_admin),
 ):
     """用户列表。 / User list.
 
-    支持按名称/手机号搜索，按授权档位筛选。 / Supports search by name/phone; filter by tier.
+    支持按名称/手机号搜索。 / Supports search by name/phone.
     """
     data = _load_user_data()
     users = data.get("users", [])
@@ -274,17 +267,12 @@ def admin_list_users(
                     and search.lower() not in email):
                 continue
 
-        # 授权档位过滤 / Tier filter
-        user_tier = u.get("subscription", {}).get("tier", "free")
-        if tier and user_tier != tier:
-            continue
-
         # 本月用量 / Monthly usage
         month_key = __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc
         ).strftime("%Y-%m")
         monthly_minutes = get_monthly_usage(u["id"], month_key)
-        quota = TIER_QUOTAS.get(user_tier, 0)
+        quota = u.get("quota", DEFAULT_QUOTA)
 
         phone = u.get("provider_id", "") if u.get("provider") == "sms" else ""
 
@@ -296,7 +284,6 @@ def admin_list_users(
             "phone_masked": f"{phone[:3]}****{phone[-4:]}" if len(phone) == 11 else "",
             "email": u.get("email", ""),
             "role": u.get("role", "personal"),
-            "tier": user_tier,
             "monthly_minutes": round(monthly_minutes, 1),
             "quota": quota,
             "status": u.get("status", "active"),
@@ -320,8 +307,7 @@ def admin_get_user(user_id: str, _: dict = Depends(require_admin)):
         __import__("datetime").timezone.utc
     ).strftime("%Y-%m")
     monthly_minutes = get_monthly_usage(user_id, month_key)
-    tier = user.get("subscription", {}).get("tier", "free")
-    quota = TIER_QUOTAS.get(tier, 0)
+    quota = user.get("quota", DEFAULT_QUOTA)
 
     # 最近 7 天用量 / Last 7 days usage
     from core.metering import get_daily_history
@@ -336,7 +322,6 @@ def admin_get_user(user_id: str, _: dict = Depends(require_admin)):
         "avatar_url": user.get("avatar_url", ""),
         "role": user.get("role", "personal"),
         "status": user.get("status", "active"),
-        "subscription": user.get("subscription", {"tier": "free"}),
         "prefs": user.get("prefs", {}),
         "monthly_minutes": round(monthly_minutes, 1),
         "quota": quota,
@@ -347,43 +332,34 @@ def admin_get_user(user_id: str, _: dict = Depends(require_admin)):
 
 
 # ============================================================
-# 授权管理 / Authorization Management
+# 配额管理 / Quota Management
 # ============================================================
 
-class UpdateSubscriptionRequest(BaseModel):
-    tier: str = Field(..., description="授权档位: free")
-    expires_at: str = Field(default=None, description="到期时间（ISO 8601）")
+class UpdateQuotaRequest(BaseModel):
+    quota: int = Field(..., description="月度配额（分钟），0 表示不计量 / Monthly quota (minutes); 0 = not metered", ge=0)
 
 
-@router.put("/users/{user_id}/subscription")
-def admin_update_subscription(
+@router.put("/users/{user_id}/quota")
+def admin_update_quota(
     user_id: str,
-    req: UpdateSubscriptionRequest,
+    req: UpdateQuotaRequest,
     _: dict = Depends(require_admin),
 ):
-    """修改用户授权档位 / Modify user authorization tier"""
-    valid_tiers = list(TIER_QUOTAS.keys())
-    if req.tier not in valid_tiers:
-        raise HTTPException(400, _("Invalid tier, options: {opts}").format(opts=', '.join(valid_tiers)))
-
+    """修改用户月度配额 / Modify user monthly quota"""
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(404, _("User not found"))
 
-    updated = set_user_subscription(
-        user_id=user_id,
-        tier=req.tier,
-        expires_at=req.expires_at,
-    )
+    updated = set_user_quota(user_id=user_id, quota=req.quota)
 
     if not updated:
         raise HTTPException(500, _("Update failed"))
 
-    logger.info(f"管理员修改授权: user={user_id[:8]}, tier={req.tier}")
+    logger.info(f"管理员修改配额: user={user_id[:8]}, quota={req.quota}min")
     return {
         "success": True,
         "user_id": user_id,
-        "new_tier": req.tier,
+        "new_quota": req.quota,
     }
 
 

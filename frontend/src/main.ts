@@ -38,7 +38,7 @@ import './styles/summary-panel.css'
 
 // ─── 启动：先确保「初始语言」的语言包已加载，再挂载应用 ─── / ─── Startup: ensure initial locale messages loaded before mounting app ───
 // en 已在 i18n 模块静态内置（零延迟）；但 detectLocale() 可能返回 zh-CN / en is statically built-in in i18n module (zero delay); but detectLocale() may return zh-CN
-// （浏览器语言为中文，或上次切换后 localStorage 持久化了 zh-CN）。此时若不先 / (browser language is Chinese, or localStorage persisted zh-CN from last switch). Without
+// （上次切换后 localStorage 持久化了 zh-CN）。此时若不先 / (localStorage persisted zh-CN from last switch). Without
 // 动态加载 zh-CN 语言包，首屏会因缺少消息而回退到 en，造成「语言选择器 / dynamically loading zh-CN messages first, the first screen falls back to en due to missing messages,
 // 高亮 中文、界面却是英文」的不一致（刷新后必现）。故挂载前先 await 加载。 / causing "selector highlights Chinese but UI shows English" inconsistency (always after refresh). So await load before mount.
 async function bootstrap() {

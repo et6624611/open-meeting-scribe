@@ -73,7 +73,23 @@
         <button class="btn-dismiss" @click="$emit('dismissInject')">{{ t('ai-panel.inject_dismiss') }}</button>
       </div>
     </div>
-    <div v-if="isLoading" class="ai-msg"><div class="ai-bubble" style="opacity:0.6">{{ t('ai-panel.thinking') }}</div></div>
+    <!-- Agent 思考阶段指示器 / Agent thinking stages indicator -->
+    <Transition name="thinking">
+      <div v-if="isLoading && stages.length > 0" class="ai-stages">
+        <div v-for="(stage, si) in stages" :key="si" class="ai-stage-item" :class="{ 'is-done': stage.status === 'done', 'is-error': stage.status === 'error' }">
+          <span v-if="stage.icon" class="ai-stage-icon">{{ stage.icon }}</span>
+          <svg v-else-if="stage.status === 'running'" class="ai-stage-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
+          <span v-else class="ai-stage-check">✓</span>
+          <span class="ai-stage-label">{{ stage.label }}</span>
+          <span v-if="stage.detail && stage.status !== 'running'" class="ai-stage-detail">{{ stage.detail }}</span>
+        </div>
+      </div>
+      <!-- 回退：无阶段时显示简单思考指示器 / Fallback: simple thinking indicator when no stages -->
+      <div v-else-if="isLoading && stages.length === 0 && !isStreaming" class="ai-thinking">
+        <svg class="ai-thinking-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
+        <span class="ai-thinking-text">思考中 · {{ thinkingElapsed }}s</span>
+      </div>
+    </Transition>
   </div>
 
   <!-- 输入区 / Input zone -->
@@ -111,7 +127,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { LlmMetadata, MessagePerformance, SourceFile } from '@/api/chat'
+import type { LlmMetadata, MessagePerformance, SourceFile, AgentStage } from '@/api/chat'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
@@ -121,8 +137,11 @@ import type { AiCommand } from '@/composables/useAiCommands'
 const { t } = useI18n()
 
 defineProps<{
-  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance }>
+  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance; stages?: AgentStage[] }>
   isLoading: boolean
+  isStreaming: boolean
+  thinkingElapsed: number
+  stages: AgentStage[]
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
   injectPrompt: { desc: string } | null
@@ -263,5 +282,106 @@ function shortText(text: string): string {
   font-family: monospace;
   font-size: 10px;
   word-break: break-all;
+}
+/* ─ 思考中指示器 / Thinking indicator ─ */
+.ai-thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--muted, #999);
+  opacity: 0.7;
+}
+.ai-thinking-spinner {
+  width: 14px;
+  height: 14px;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.ai-thinking-text {
+  font-variant-numeric: tabular-nums;
+}
+/* ── Agent 思考阶段 / Agent thinking stages ── */
+.ai-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  background: var(--bg-secondary, #f8f9fa);
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+}
+.ai-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  line-height: 1.5;
+}
+.ai-stage-item.is-done {
+  color: var(--muted, #999);
+}
+.ai-stage-item.is-error {
+  color: #b45309;
+}
+.ai-stage-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+}
+.ai-stage-spinner {
+  width: 14px;
+  height: 14px;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+  color: var(--accent, #3b82f6);
+}
+.ai-stage-check {
+  font-size: 12px;
+  color: #10b981;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-weight: 600;
+}
+.ai-stage-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ai-stage-detail {
+  font-size: 11px;
+  color: var(--muted, #999);
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ── 折叠过渡 / Collapse transition ── */
+.thinking-enter-active,
+.thinking-leave-active {
+  transition: all 0.25s ease;
+}
+.thinking-enter-from,
+.thinking-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.thinking-enter-to,
+.thinking-leave-from {
+  opacity: 0.7;
+  max-height: 40px;
 }
 </style>

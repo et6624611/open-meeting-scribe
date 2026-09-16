@@ -64,7 +64,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQuoteRef } from '@/composables/useQuoteRef'
-import { useHotwordGroups } from '@/composables/useHotwordGroups'
+import { useHotwords } from '@/composables/useHotwords'
 import { showToast } from '@/composables/useToast'
 
 const { t } = useI18n()
@@ -79,7 +79,7 @@ const emit = defineEmits<{
 }>()
 
 const { setQuote } = useQuoteRef()
-const hw = useHotwordGroups()
+const hw = useHotwords()
 
 const visible = ref(false)
 const toolbarStyle = ref({ top: '0px', left: '0px' })

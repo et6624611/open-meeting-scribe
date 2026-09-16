@@ -69,13 +69,14 @@ def _make_sign(timestamp: str) -> str:
     ).hexdigest()
 
 
-def _cloud_request(path: str, payload: dict | None = None, method: str = "POST") -> dict | None:
+def _cloud_request(path: str, payload: dict | None = None, method: str = "POST", timeout: int = _REQUEST_TIMEOUT) -> dict | None:
     """向云端 API 发送请求 / Send request to cloud API.
 
     Args:
         path: API 路径（如 /api/cloud/users/sync） / API path
         payload: 请求体（POST 时） / Request body (for POST)
         method: HTTP 方法 / HTTP method
+        timeout: 超时秒数，默认 5 秒 / Timeout in seconds, default 5
 
     Returns:
         响应 JSON 字典，失败返回 None / Response JSON dict; None on failure
@@ -97,7 +98,7 @@ def _cloud_request(path: str, payload: dict | None = None, method: str = "POST")
         data = json.dumps(payload).encode() if payload else None
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
-        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode())
 
     except urllib.error.HTTPError as e:
@@ -306,7 +307,7 @@ def cloud_llm_chat(
         "max_tokens": max_tokens,
         "stream": False,
         "user_id": user_id,
-    })
+    }, timeout=120)
 
     if result:
         content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -317,6 +318,109 @@ def cloud_llm_chat(
             f"content_len={len(content)}"
         )
     return result
+
+
+def cloud_llm_chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    model: str = "qwen-plus",
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+    user_id: str = "",
+) -> dict | None:
+    """通过云端代理调用 LLM（带工具定义） / Call LLM via cloud proxy with tool definitions.
+
+    用于 Agent 循环的 function calling。
+    Used for function calling in the agent loop.
+
+    Returns:
+        DashScope 格式的响应 dict（可能包含 tool_calls），失败返回 None
+    """
+    if not is_cloud_enabled():
+        return None
+
+    result = _cloud_request("/api/cloud/llm/chat/completions", {
+        "messages": messages,
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+        "user_id": user_id,
+        "tools": tools,
+        "tool_choice": "auto",
+    }, timeout=120)
+
+    if result:
+        usage = result.get("usage", {})
+        choice = result.get("choices", [{}])[0]
+        has_tool_calls = bool(choice.get("message", {}).get("tool_calls"))
+        logger.info(
+            f"云端 LLM(工具) 调用: user={user_id[:8] if user_id else 'anon'}, "
+            f"model={model}, tokens={usage.get('total_tokens', 0)}, "
+            f"has_tool_calls={has_tool_calls}"
+        )
+    return result
+
+
+def cloud_llm_chat_stream(
+    messages: list[dict],
+    model: str = "qwen-plus",
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    user_id: str = "",
+):
+    """通过云端代理流式调用 LLM / Stream LLM via cloud proxy.
+
+    与 cloud_llm_chat 相同，但使用 stream=True 逐 token 返回。
+    Same as cloud_llm_chat but uses stream=True to yield tokens one by one.
+
+    Yields:
+        逐块生成的文本 / Generated text chunks
+    """
+    if not is_cloud_enabled():
+        return
+
+    timestamp = str(int(time.time()))
+    sign = _make_sign(timestamp)
+    url = f"{CLOUD_API_URL}/api/cloud/llm/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Cloud-Timestamp": timestamp,
+        "X-Cloud-Sign": sign,
+    }
+    payload = {
+        "messages": messages,
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "user_id": user_id,
+    }
+
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            for raw_line in resp:
+                line = raw_line.decode("utf-8").strip()
+                if not line:
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
+    except Exception as e:
+        logger.warning(f"云端 LLM 流式调用失败: {e}")
 
 
 # ============================================================

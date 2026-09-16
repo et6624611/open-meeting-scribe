@@ -91,15 +91,11 @@ const composer = i18n.global as Composer
 
 /**
  * 检测当前语言 / Detect current language
- * 优先级：localStorage > 浏览器语言 > 默认 en / Priority: localStorage > browser language > default en
+ * 优先级：localStorage > 默认 en / Priority: localStorage > default en
  */
 function detectLocale(): SupportedLocale {
   const saved = localStorage.getItem('locale') as SupportedLocale | null
   if (saved && SUPPORT_LOCALES.includes(saved)) return saved
-
-  const browserLang = navigator.language
-  if (browserLang.startsWith('zh')) return 'zh-CN'
-  if (browserLang.startsWith('en')) return 'en'
 
   return 'en'
 }

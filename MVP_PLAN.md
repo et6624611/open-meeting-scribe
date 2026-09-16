@@ -3,7 +3,8 @@ title: MVP 建设方案
 description: Mac 端 v1 云方案施工蓝图
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-07
+updated_at: 2026-09-17
+version: "1.2.0"
 status: published
 ---
 
@@ -88,81 +89,78 @@ status: published
 
 ---
 
-## 四、目录结构（云）
+## 四、目录结构（当前 v7.3.0）
 
 ```
 open-meeting-scribe/
 ├── MISSION.md
-├── MVP_PLAN.md          # 本文件
-├── CODEX.md             # AI 渐进式上下文索引
+├── MVP_PLAN.md          # 本文件（v1 施工蓝图，历史参考）
 ├── CHANGELOG.md         # 迭代日志
-├── AGENTS.md            # AI 协作约定
-├── cli.py               # 命令行入口
-├── .env                 # DASHSCOPE_API_KEY（不入库）
-├── core/
-│   ├── audio.py         # ffmpeg 归一化(16k/单声道) + BlackHole 采集 + 流式录音
-│   ├── upload.py        # 本地文件 → DashScope 临时存储 → oss:// 临时URL
-│   ├── transcribe.py    # 提交 paraformer-v2 任务 + 轮询 + 下载结果 + 组装对话稿
-│   ├── realtime_asr.py  # 实时 ASR WebSocket 客户端（qwen-audio-3.0-asr-flash-streaming）
-│   ├── realtime_summary.py # 实时增量摘要（qwen-turbo）
-│   ├── diarization.py   # 实时说话人分离（CAM++ 192维 + VAD + 余弦相似度聚类）
-│   ├── hotwords.py      # data/hotwords.txt → DashScope 热词表 vocabulary_id + 热词映射
-│   ├── llm.py           # 通义千问 provider（同步/异步/流式）
-│   ├── summarize.py     # 纪要提示词与解析（结论/待办）+ 标题生成
-│   ├── pipeline.py      # 串联全流程（stage1: 转写, stage2: 纪要）
-│   ├── speakers.py      # 说话人档案 CRUD + 会议级映射
-│   ├── voiceprint.py    # CAM++ 声纹嵌入(192维) + 注册表 + per-meeting 中心化 + 匈牙利算法
-│   ├── projects.py      # 项目管理 + 文件索引扫描 + 纪要归档
-│   ├── users.py         # 用户管理（本地 + OAuth）+ 说话人绑定
-│   ├── auth.py          # GitHub OAuth 2.0 + JWT 签发/验证
-│   ├── errors.py        # 错误分类与瞬时错误判断
-│   ├── joblog.py        # per-task 作业日志 + 会议助手渐进式上下文
+├── cli.py               # 命令行入口（server/build/transcribe）
+├── desktop.py           # 桌面客户端入口（pywebview 原生窗口，Mac/Windows 共用）
+├── .env                 # 环境变量（不入库，.env.example 为模板）
+├── core/                # 业务能力层（详见 ARCHITECTURE.md）
+│   ├── audio.py         # ffmpeg 归一化 + BlackHole 采集 + 流式录音
+│   ├── audio_recording.py # 录音会话管理
+│   ├── transcribe.py    # ASR 代理提交转写 + 碎片合并/说话人修正
+│   ├── realtime_asr.py  # 实时 ASR WebSocket 流式客户端
+│   ├── realtime_summary.py # 实时增量摘要
+│   ├── realtime_chapters.py # 实时章节生成
+│   ├── diarization.py   # 实时说话人分离（CAM++ 192维 + VAD + 聚类）
+│   ├── llm.py           # 通义千问 provider（含事件循环防护三层架构）
+│   ├── summarize.py     # 纪要提示词与解析（结论/决策）+ 标题生成
+│   ├── pipeline.py      # 串联全流程
+│   ├── pipeline_runner.py # 后台管线执行器（重试 + 错误分类）
+│   ├── agent_workspace.py # Agent 角色工作区管理
+│   ├── agent_loop.py    # Agent 对话循环
+│   ├── voiceprint.py    # CAM++ 声纹匹配 + 注册表
+│   ├── embedding_provider.py # 声纹嵌入抽象层（云端 + MFCC 降级）
+│   ├── cloud_client.py  # 云端 API 客户端（HMAC-SHA256 签名）
+│   ├── ...              # 其他 20+ 模块（详见 ARCHITECTURE.md 分层表）
 │   └── models/          # 声纹模型（CAM++ 权重 + 编码器实现）
 ├── app/
-│   ├── server.py        # FastAPI app 创建 + router 注册 + 安全审计中间件（~210 行）
-│   ├── store.py         # 共享状态层（tasks 字典、实时状态、持久化辅助、后台管线）
-│   ├── routers/         # 12 个功能域路由模块
-│   │   ├── tasks.py     # 转写任务 CRUD + 下载
-│   │   ├── record.py    # 录音控制 + 实时转写 WS + 实时总结/绑定
-│   │   ├── chat.py      # AI 对话 + 动作检测/执行
-│   │   ├── speakers.py  # 说话人管理 + 映射
-│   │   ├── voiceprint.py # 声纹注册/匹配/查询
-│   │   ├── hotwords.py  # 热词管理
-│   │   ├── notes.py     # 笔记/注入/待办
-│   │   ├── projects.py  # 项目管理 + 文件浏览
-│   │   ├── settings.py  # 系统设置
-│   │   ├── user.py      # 用户信息 + 绑定
-│   │   ├── philosophy.py # 理念传播
-│   │   └── auth.py      # GitHub OAuth 登录 + JWT 会话 + 登出
-│   └── static/          # 前端页面（~14700 行巨型单页）
+│   ├── server.py        # FastAPI app + 中间件 + 全局异常处理
+│   ├── settings_store.py # 三层配置加载 + 原子持久化
+│   ├── store.py         # 共享状态层
+│   └── routers/         # 21 个功能域路由模块
+├── frontend/            # Vue 3 + TypeScript + Vite + Pinia SPA
+│   ├── src/
+│   │   ├── api/         # 18 个 API 模块
+│   │   ├── stores/      # 9 个 Pinia store
+│   │   ├── composables/ # 35 个可复用逻辑
+│   │   ├── views/       # 9 个页面视图 + 子视图
+│   │   ├── components/  # 通用组件 + 子域组件
+│   │   ├── styles/      # 10 主题 + 19 个模块化 CSS
+│   │   └── i18n/        # vue-i18n 国际化（中英双语）
+│   └── package.json
+├── asr-proxy/           # ASR 代理服务（独立进程，HMAC 签名中继）
+├── sms-proxy/           # 短信代理服务（独立进程）
+├── voiceprint-service/  # 声纹推理服务（CAM++ 192维，CPU-only torch）
 ├── data/
+│   ├── agent/_roles/    # Agent 角色工作区（预定义 + 用户自定义）
 │   ├── recordings/      # 归一化后的录音文件
-│   ├── uploads/         # 用户上传的原始音频
 │   ├── tasks/           # 任务元数据 JSON + 作业日志 JSONL
 │   ├── output/          # 生成的纪要 Markdown
-│   ├── hotwords.txt     # 热词表
-│   ├── hotword_mappings.txt # 热词映射
-│   ├── speakers.json    # 说话人档案
-│   ├── voiceprint_registry.json # 声纹注册表
-│   ├── users.json       # 用户数据
-│   ├── projects.json    # 项目索引
-│   └── settings.json    # 系统设置
+│   ├── settings.json    # 用户配置
+│   ├── remote_config.json # 远程配置/公告/版本信息
+│   └── ...              # 其他数据文件
+├── build/               # Windows 打包（PyInstaller spec + Inno Setup）
 ├── tests/               # 冒烟测试
-├── scripts/             # 工具脚本（声纹回填、安全审计、watchdog 等）
+├── scripts/             # 工具脚本
 ├── docs/                # 权威文档
 │   ├── ARCHITECTURE.md  # 系统架构（唯一事实源）
 │   ├── API_CONTRACTS.md # DashScope API 契约
 │   ├── PRD.md           # 产品需求
 │   ├── ROADMAP.md       # 版本路线
-│   ├── AUTH_DESIGN.md   # 认证与订阅设计
+│   ├── BACKLOG.md       # 零散需求与缺陷修复
 │   ├── GLOSSARY.md      # 术语表
-│   ├── adr/             # 架构决策记录
-│   └── design/          # UI 规范 + 原型
+│   ├── adr/             # 架构决策记录（17 篇）
+│   └── design/          # UI 规范 + 设计文档
 ├── samples/             # 测试音频
 └── requirements.txt     # 运行依赖
 ```
 
-> 相比原方案：删 `asr.py`/`diarize.py`/`align.py`（分离已由云 API 返回 `speaker_id`），新增 `upload.py`/`transcribe.py`/`hotwords.py`。
+> 完整模块清单与分层职责见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ---
 

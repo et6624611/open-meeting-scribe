@@ -248,10 +248,19 @@ export function useGeneratingData(
     else if (updated.status === 'failed') { stopPolling() }
   }, 3000)
 
+  // 章节补生成轮询：最多 MAX_CHAPTER_POLLS 次，避免空转写任务无限轮询
+  // Chapter backfill polling: capped at MAX_CHAPTER_POLLS to avoid infinite polling for empty transcripts.
+  let chapterPollCount = 0
+  const MAX_CHAPTER_POLLS = 20
   const { start: startChapterPolling, stop: stopChapterPolling } = usePolling(async () => {
     const updated = await fetchTask(taskId)
     taskStore.patchTaskLocal(taskId, updated)
-    if (updated.chapters?.length) stopChapterPolling()
+    if (updated.chapters?.length) { stopChapterPolling(); return }
+    chapterPollCount++
+    if (chapterPollCount >= MAX_CHAPTER_POLLS) {
+      stopChapterPolling()
+      console.warn('[chapters] 补生成轮询达到上限，停止')
+    }
   }, 3000)
 
   // ─── AI 引用 / AI quote ───
@@ -288,7 +297,10 @@ export function useGeneratingData(
     try { const t = await fetchTask(taskId); taskStore.patchTaskLocal(taskId, t) } catch { /* */ }
     taskStore.selectTask(taskId)
     if (task.value && !['completed', 'failed'].includes(task.value.status)) startPolling()
-    if (task.value?.status === 'completed' && !task.value?.chapters?.length) startChapterPolling()
+    // 仅当 completed 且 chapters 为空、但 dialogue 非空时才轮询补生成；
+    // dialogue 为空（空转写）时补生成永远不会成功，直接跳过轮询，由空态 UI 接管。
+    // Only poll when completed with empty chapters but non-empty dialogue; skip for empty transcripts.
+    if (task.value?.status === 'completed' && !task.value?.chapters?.length && (task.value?.dialogue?.length ?? 0) > 0) startChapterPolling()
     try { speakers.value = await fetchSpeakers() } catch { /* */ }
     try { projects.value = await fetchProjects() } catch { /* */ }
 

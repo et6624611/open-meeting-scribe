@@ -3,15 +3,17 @@ core/version_check.py — 版本检查与比对 / Version checking and compariso
 
 职责 / Responsibilities:
   1. 读取本地 VERSION 文件获取当前版本 / Read local VERSION file for current version
-  2. 从远端（GitHub Releases 或自定义 API）获取最新版本 / Fetch latest version from remote (GitHub Releases or custom API)
+  2. 从 remote_config.json 获取最新版本 / Fetch latest version from remote_config.json
   3. 语义化版本比对（semver） / Semantic version comparison (semver)
   4. 返回结构化的版本检查结果 / Return structured version check result
 
 设计说明 / Design notes:
-  - 远端来源可配置：优先使用 settings.json 中的 update_url / Remote source configurable: prefer update_url in settings.json,
-    默认回退到 GitHub Releases API / fallback to GitHub Releases API by default
-  - 结果缓存 30 分钟，避免频繁请求 / Results cached for 30 minutes to avoid frequent requests
-  - 网络失败时静默降级，不影响应用正常使用 / Silent degradation on network failure; does not affect normal app usage
+  - 版本信息来源为 data/remote_config.json 的 latest_release 字段 /
+    Version info source is the latest_release field in data/remote_config.json
+  - 发布新版本时，手动更新 remote_config.json 中的 latest_release 即可 /
+    When releasing a new version, simply update latest_release in remote_config.json
+  - 结果缓存 30 分钟，避免频繁读取 / Results cached for 30 minutes to avoid frequent reads
+  - 无网络依赖，纯本地文件读取 / No network dependency; pure local file read
 """
 
 import json
@@ -19,21 +21,16 @@ import logging
 import time
 from pathlib import Path
 
-import requests
-
 logger = logging.getLogger(__name__)
 
 # 本地 VERSION 文件路径 / Local VERSION file path
 VERSION_FILE = Path(__file__).parent.parent / "VERSION"
 
-# 默认 GitHub Releases API（项目发布后替换为实际地址） / Default GitHub Releases API (replace after project release)
-DEFAULT_RELEASES_URL = "https://api.github.com/repos/open-meeting-scribe/open-meeting-scribe/releases/latest"
+# 远程配置文件路径 / Remote config file path
+REMOTE_CONFIG_FILE = Path("data/remote_config.json")
 
 # 缓存有效期（秒） / Cache TTL (seconds)
 CACHE_TTL = 1800  # 30 分钟 / 30 minutes
-
-# 请求超时（秒） / Request timeout (seconds)
-REQUEST_TIMEOUT = 8
 
 # 缓存 / Cache
 _cache: dict | None = None
@@ -84,54 +81,37 @@ def compare_versions(current: str, latest: str) -> int:
     return 0
 
 
-def _get_release_url(settings: dict | None = None) -> str:
-    """从设置中获取远端版本检查 URL / Get remote version check URL from settings."""
-    if settings:
-        update_cfg = settings.get("update", {})
-        url = update_cfg.get("releases_url", "").strip()
-        if url:
-            return url
-    return DEFAULT_RELEASES_URL
-
-
-def _fetch_latest_from_github(url: str) -> dict | None:
+def _read_latest_release() -> dict | None:
     """
-    从 GitHub Releases API 获取最新版本信息 / Fetch latest version info from GitHub Releases API.
+    从 remote_config.json 读取最新版本信息 / Read latest version info from remote_config.json.
+
     返回格式 / Returns:
       {
-        "version": "2.1.0",
-        "release_url": "https://github.com/.../releases/tag/v2.1.0",
+        "version": "7.3.0",
+        "release_url": "https://github.com/.../releases/tag/v7.3.0",
         "changelog": "...",
-        "published_at": "2026-09-07T..."
+        "published_at": "2026-09-17T..."
       }
     """
     try:
-        resp = requests.get(
-            url,
-            headers={"Accept": "application/vnd.github.v3+json"},
-            timeout=REQUEST_TIMEOUT,
-        )
-        if resp.status_code != 200:
-            logger.warning("GitHub Releases API 返回 %d", resp.status_code)
+        if not REMOTE_CONFIG_FILE.exists():
+            logger.warning("remote_config.json 不存在: %s", REMOTE_CONFIG_FILE)
             return None
 
-        data = resp.json()
-        tag = data.get("tag_name", "")
-        version = tag.lstrip("v").strip()
+        data = json.loads(REMOTE_CONFIG_FILE.read_text(encoding="utf-8"))
+        release = data.get("latest_release", {})
+        version = release.get("version", "").strip()
         if not version:
             return None
 
         return {
-            "version": version,
-            "release_url": data.get("html_url", ""),
-            "changelog": data.get("body", ""),
-            "published_at": data.get("published_at", ""),
+            "version": version.lstrip("v").strip(),
+            "release_url": release.get("release_url", ""),
+            "changelog": release.get("changelog", ""),
+            "published_at": release.get("published_at", ""),
         }
-    except requests.RequestException as e:
-        logger.warning("获取最新版本信息失败: %s", e)
-        return None
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.warning("解析版本信息失败: %s", e)
+    except Exception as e:
+        logger.warning("读取 remote_config.json 版本信息失败: %s", e)
         return None
 
 
@@ -140,7 +120,7 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
     检查是否有新版本可用 / Check if a new version is available.
 
     Args:
-        settings: 应用设置（可选），用于获取自定义 releases_url / App settings (optional); for custom releases_url
+        settings: 应用设置（可选，保留兼容） / App settings (optional, kept for compatibility)
         force: 是否强制刷新（忽略缓存） / Force refresh (ignore cache)
 
     Returns:
@@ -170,9 +150,8 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
             result["update_available"] = compare_versions(current, result["latest_version"]) > 0
         return result
 
-    # 从远端获取最新版本 / Fetch latest version from remote
-    release_url = _get_release_url(settings)
-    latest_info = _fetch_latest_from_github(release_url)
+    # 从 remote_config.json 读取最新版本 / Read latest version from remote_config.json
+    latest_info = _read_latest_release()
 
     if not latest_info:
         result = {
@@ -183,7 +162,7 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
             "changelog": "",
             "published_at": "",
             "checked_at": now,
-            "error": "无法获取最新版本信息",
+            "error": None,
         }
     else:
         latest_ver = latest_info["version"]

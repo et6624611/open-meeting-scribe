@@ -61,15 +61,15 @@
         tip-position="right"
         @click="navigate('/agents')"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/></svg>
       </IconButton>
     </div>
 
-    <!-- 底部：AI 洞察指示器 + 设置 / Bottom: AI insights indicator + settings -->
+    <!-- 底部：洞察台指示器 + 设置 / Bottom: Insight Deck indicator + settings -->
     <div class="ar-bottom">
-      <!-- AI 洞察指示器 / AI insights indicator -->
+      <!-- 洞察台指示器 / Insight Deck indicator -->
       <button
-        v-if="insights.insightsEnabled.value && insights.insightsConfig.value.notifications.sidebarIndicator && activeRecordingTaskId"
+        v-if="insights.insightsEnabled.value && activeRecordingTaskId"
         class="ar-insights"
         :class="{
           'is-enabled': insights.unreadCount.value === 0,
@@ -163,15 +163,11 @@ function onInsightsClick() {
   const recTaskId = activeRecordingTaskId.value
   if (!recTaskId) return
 
-  if (route.name === 'recording' && route.params.taskId === recTaskId) {
-    window.dispatchEvent(new CustomEvent('insights:auto-expand'))
-  } else {
-    taskStore.selectTask(recTaskId)
-    router.push({
-      name: 'recording',
-      params: { taskId: recTaskId },
-      query: { tab: 'insights' },
-    })
-  }
+  taskStore.selectTask(recTaskId)
+  router.push({
+    name: 'recording',
+    params: { taskId: recTaskId },
+    query: { tab: 'insights' },
+  })
 }
 </script>

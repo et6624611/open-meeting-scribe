@@ -22,5 +22,15 @@
   "file_saved": "Saved",
   "readonly_hint": "Built-in roles are read-only. Fork to create an editable copy.",
   "create_role": "New Role",
-  "current_active": "Currently Active"
+  "current_active": "Currently Active",
+  "role": {
+    "meeting-minutes": {
+      "title": "Meeting Minutes",
+      "description": "Focused on structured minutes output, faithfully recording meeting conclusions and action items. Default role of Open Meeting Scribe."
+    },
+    "learning-tutor": {
+      "title": "Learning Tutor",
+      "description": "Transform meeting and lecture content into structured study notes and review materials"
+    }
+  }
 }

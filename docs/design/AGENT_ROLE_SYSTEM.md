@@ -3,10 +3,10 @@ title: "Agent 角色系统设计与实施计划"
 description: "从硬编码提示词迁移到基于 .md 文件的 Agent 角色工作区，支持预定义角色开箱即用、用户 fork 自定义、场景间自由切换。分三阶段渐进实施。"
 tags: ["agent", "role", "prompt", "workspace", "design", "implementation-plan"]
 created_at: "2026-09-15"
-updated_at: "2026-09-15"
-version: "1.0.0"
+updated_at: "2026-09-17"
+version: "1.1.0"
 author: "wangyongliang"
-status: "proposed"
+status: "implemented"
 category: "design"
 related_docs: ["ADR-0017", "ARCHITECTURE.md", "design/DESIGN_DECISIONS.md"]
 ---

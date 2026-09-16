@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-13"
+updated_at: "2026-09-17"
 status: published
 ---
 
@@ -12,6 +12,148 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [v7.3.0] - 2026-09-16
+
+### 新增
+- **Agent 角色系统**：
+  - 新增 `core/agent_workspace.py` 实现角色目录扫描、YAML front matter 解析、角色加载与 fork 管理
+  - 新增 `app/routers/agent.py` 暴露 REST API（`/api/agent/roles`、`/api/agent/active`、fork/save/delete）
+  - 新增前端 `AgentsView.vue` 角色管理视图、`stores/agent.ts` Pinia store、`api/agent.ts` API 客户端
+  - 预定义 5 个内置角色：meeting-minutes（会议纪要师）、meeting-analyst（会议分析师）、meeting-coach（会议教练）、deep-reader（深度阅读者）、learning-tutor（学习导师）
+  - 支持用户 fork 自定义角色、编辑 `.md` 文件、删除自定义角色
+  - 全局激活模式：`settings.json` 持久化 `active_agent`，所有会话共享同一角色
+- **Agent 渐进式循环架构**：
+  - `core/agent_loop.py` 实现工具调用循环（get_meeting_info/transcript/todos/search_project_files/get_hotwords/get_system_settings）
+  - SSE 协议扩展：新增 `stage`/`tool_call`/`tool_result` 事件类型
+  - 云端代理兼容：`cloud_api.py` 新增 `tools`/`tool_choice` 字段支持 function calling
+  - 双模式支持：原生 function calling（本地 Key）+ 文本回退（云端代理）
+- **设计文档**：新增 `docs/design/AGENT_ROLE_SYSTEM.md`（525 行）、ADR-0017 Agent 角色系统
+
+### 变更
+- **前端 UI 优化**：
+  - `GeneratingView.vue`、`SettingsView.vue`、`SpeakersView.vue` 等核心视图组件改进
+  - `DecisionFlowPanel.vue`、`DecisionNode.vue` 简化重构
+  - `NotesPanel.vue`、`SummaryPanel.vue` 增强
+  - `SelectionToolbar.vue`、`AIPanel.vue`、`ActivityRail.vue` 交互优化
+  - `InlineEditInput.vue` 组件增强、`useInlineEdit.ts` composable 扩展
+- **样式系统**：`notes-editor.css` 重构（162 行变更）、`ai-panel.css`/`layout.css`/`topbar.css` 微调
+- **i18n**：新增 `agents.json`（zh-CN/en）、更新 `generating.json`/`settings.json`/`login.json`/`sidebar.json`/`start.json`/`common.json`
+- **后端改进**：`core/llm.py`、`core/metering.py`、`core/pipeline.py`、`core/realtime_asr.py`、`core/summarize.py`、`core/transcribe.py` 多项优化
+- **Windows 安装器**：`installer.iss`、`launcher.bat` 更新
+
+### 修复
+- `app/routers/record.py` 补充 `from core import realtime_asr` 导入（F821 错误）
+- `AgentsView.vue`、`DecisionNode.vue` 移除未使用变量（TS6133 错误）
+- CI 工作流：ffmpeg 安装从第三方 Action 改为 `apt-get install ffmpeg`（Node.js 20→24 兼容性问题）
+
+## [v7.2.2] - 2026-09-15
+
+### 修复
+- **BUG-001 (P0)**：录音启动后立即崩溃（僵尸状态）
+  - 根因：ffmpeg 命令硬编码 `-f avfoundation`（仅 macOS），Windows 不支持
+  - 修复：跨平台适配 — Windows 使用 `-f dshow` + 自动检测音频设备；新增僵尸录音清理机制
+- **BUG-002 (P0)**：LLM 占位符 Key 被当作有效 Key，未触发云端降级
+  - 根因：`_should_use_cloud()` 将 `sk-xxxx...` 占位符视为有效 Key
+  - 修复：新增 `_is_placeholder_key()` 检测 `xxxx`/`your-`/长度不足等模式
+- **BUG-003 (P1)**：400/500 错误响应体为空 → 添加自定义 Exception 处理器，始终返回 `{"detail": ...}` JSON
+- **BUG-005 (P2)**：`/api/health` 端点缺失 → 添加 `GET /api/health` 返回 `{"status": "ok"}`
+- **BUG-006 (P2)**：`server.log` 始终为空（frozen 模式）→ `logging.basicConfig()` 使用 `force=True` 强制重新配置
+- **BUG-008 (P3)**：设置页 ServiceProvider 下拉框空白 → 前端加载设置时将短名映射匹配到预设全名
+- 涉及文件：`app/routers/record.py`、`app/server.py`、`core/audio_recording.py`、`core/llm.py`、`frontend/src/views/SettingsView.vue`
+
+## [v7.2.1] - 2026-09-15
+
+### 修复
+- **桌面端占位符检测**：`.env.example` 模板值（如 `http://your-server:8000`）不再阻止真实默认值注入
+  - 根因：占位符是非空字符串，`if not os.getenv()` 检查时认为值已存在，真实云端地址永远不会被注入
+  - 修复：新增 `_is_placeholder()` 检测函数，识别包含 `your-`/`xxxx`/`sk-xxx` 的占位符值，自动替换为真实默认地址
+- 涉及文件：`desktop.py`
+
+## [v7.2.0] - 2026-09-15
+
+### 决策
+- **云端代理 ASR/LLM 混合架构**：桌面客户端默认通过云端服务器中转 ASR/LLM 请求，用户只需手机号登录即可零配置使用全部功能（录音/转写/AI 问答），无需手动配置任何 API Key；同时保留本地直连模式供高级用户切换
+
+### 新增
+- **服务端代理端点**（`app/routers/cloud_api.py`）：
+  - `POST /api/cloud/llm/chat/completions` — LLM 代理转发到 DashScope，带 HMAC 认证 + 配额检查 + 用量自动上报
+  - `POST /api/cloud/asr/transcribe` — ASR 代理转发到同机 ASR 代理，支持 multipart 文件上传
+- **客户端云端调用**（`core/cloud_client.py`）：
+  - `cloud_llm_chat()` — 通过云端调用 LLM，自动携带用户 token
+  - `cloud_transcribe()` — 上传音频到云端进行转写
+  - `_cloud_upload_file()` — multipart 文件上传辅助函数
+
+### 变更
+- **核心模块集成**：
+  - `core/llm.py`：新增 `_should_use_cloud()` 检测，无本地 Key 时自动走云端代理
+  - `core/transcribe.py`：新增 `mode=cloud` 分支 + 自动降级逻辑
+  - `app/settings_store.py`：ASR 支持 `proxy`/`direct`/`cloud` 三种模式
+  - `desktop.py`：默认设置 `CLOUD_API_URL` + `ASR_MODE=cloud`；移除 API Key 未配置弹窗
+- **前端**：`SettingsView.vue` ASR 模式下拉增加「云端代理」选项；i18n 新增 `asr_mode_cloud`
+- **配置**：`.env.example` 增加 `ASR_MODE` 说明文档
+
+### 影响
+- 桌面端默认注入 `CLOUD_API_URL=http://47.116.10.194:8000` 与 `CLOUD_API_TOKEN`，用户安装后手机号登录即可直接使用
+- 服务端承担 HMAC 鉴权与配额扣减职责；ASR 代理通过同机 `localhost:8000` 调用，避免跨网络延迟
+- 涉及文件：`app/routers/cloud_api.py`、`core/cloud_client.py`、`core/llm.py`、`core/transcribe.py`、`app/settings_store.py`、`desktop.py`、`frontend/src/views/SettingsView.vue`
+
+## [v7.1.8] - 2026-09-15
+
+### 修复
+- **Windows 桌面客户端 ASR/LLM 不可用** — 配置自动初始化
+  - 根因：桌面客户端（exe）被当作 Web 服务器配置，无 `.env` 文件 → `DASHSCOPE_API_KEY` 为空 → LLM 500 错误；ASR 默认 proxy 模式需 `ASR_PROXY_URL` → 转写失败
+  - 修复（三层防御）：
+    1. `desktop.py` `_setup_desktop_env()`：frozen 模式首次启动自动从 `.env.example` 创建 `.env`，注入 `ASR_MODE=direct` + SMS 代理默认地址
+    2. `settings_store.py` `get_asr_config()`：环境变量 `ASR_MODE` 优先于 `settings.json`；proxy 模式无 URL 时自动降级为 direct 模式
+    3. `desktop.py` `_check_api_key_config()`：frozen 模式启动时检测 API Key 是否为占位符，未配置时弹窗提醒
+- 涉及文件：`.env.example`、`app/settings_store.py`、`desktop.py`
+
+## [v7.1.4] - 2026-09-15
+
+### 修复
+- **Windows PyInstaller 打包遗漏 app/core 模块**
+  - 根因：Windows spec 缺少 `sys.path.insert(0, ROOT)`，导致 `collect_submodules` 在 CI 环境中无法找到 `app/core` 包
+  - 修复：添加 `sys.path` 修复（与 macOS spec 对齐）；显式列举全部 72 个 `app/core` 子模块（双重保险）；补充 `VERSION` 和 `core/i18n/locales` 到 `datas`
+- **诊断打印改为英文**：避免 Windows CI `cp1252` 编码错误
+- **Windows 桌面客户端三个用户反馈问题**：
+  1. ffmpeg 不可用：添加 PyInstaller frozen 环境下 ffmpeg 路径自动解析（优先系统 PATH → exe 同级 `ffmpeg/` → 项目根目录）
+  2. 手机号登录失败：内置 SMS 代理默认配置（`SMS_PROXY_URL` 默认指向官方云服务）
+  3. 状态栏硬编码模型名：改为从后端设置动态读取，默认值 `paraformer-v2` + `qwen-plus`
+- **`/auth/me` 返回增加 `subscription` 字段**：修复手机用户看不到配额的问题
+- 涉及文件：`build/pyinstaller.spec`、`core/audio.py`、`core/sms.py`、`frontend/src/App.vue`、`app/routers/auth.py`、`frontend/src/api/types.ts`
+
+## [v7.1.1] - 2026-09-15
+
+### 修复
+- **Windows 安装器编译失败** — `ChineseSimplified.isl` 不存在
+  - Inno Setup 6 通过 Chocolatey 安装时不包含第三方中文语言包
+  - 修复：`installer.iss` 使用 `#if FileExists()` 条件引用中文语言包；`build-windows.yml` 新增下载 `.isl` 步骤，失败时优雅降级为英文
+- **installer.iss 无效的 Flags 参数**：移除 `.env.example` 的 `skipifexists` flag（Inno Setup 不支持），仅保留 `uninsneveruninstall`
+- **data 目录 flag 修复**：移除 `skipifexists` 无效 flag，添加 `recursesubdirs` 配合 `createallsubdirs`
+- **CI 失败修复**：`desktop.py` uvicorn F821 未定义名称 + `App.vue` TS6133 未使用变量
+- 涉及文件：`build/installer.iss`、`.github/workflows/build-windows.yml`、`desktop.py`、`frontend/src/App.vue`
+
+## [v7.1.0] - 2026-09-15
+
+### 变更
+- **会议纪要待办改决策**：
+  - 新增 `DecisionFlowPanel.vue`、`DecisionNode.vue` 决策流面板组件
+  - 删除 `TodosPanel.vue`，待办功能合并到 `NotesPanel.vue`
+  - `NotesPanel.vue`、`SummaryPanel.vue` 简化重构
+  - 新增 `usePhilosophy.ts` composable、`InlineEditInput.vue` 组件
+- **主题系统更新**：
+  - 删除 `lavender.css`、`ocean.css`、`rose.css` 三个主题
+  - 新增 `mist.css`、`wheat.css`、`standard-light.css`、`standard-dark.css` 四个主题
+  - 现有主题（`default.css`、`dark.css`、`forest.css`、`warm.css`）变量更新
+- **前端 i18n**：更新 `common.json`、`generating.json`、`hotwords.json`、`projects.json`、`speakers.json`、`ai-panel.json`（zh-CN/en）
+- **视图组件优化**：`GeneratingView.vue`、`HotwordsView.vue`、`LibraryView.vue`、`ProjectsView.vue`、`RecordingView.vue`、`SpeakersView.vue` 交互改进
+- **样式重构**：`notes-editor.css`（285 行变更）、`ai-canvas.css`、`hotwords.css`、`layout.css`、`meeting-view.css`、`speakers.css` 调整
+- **后端改进**：`app/routers/chat.py`、`app/routers/notes.py`、`app/routers/philosophy.py`、`app/routers/usage.py` 优化
+- **新增云端代理基础**：`app/routers/cloud_api.py`、`core/cloud_client.py`（为 v7.2.0 铺垫）
+- **文档**：新增 `docs/GIT_COLLABORATION_GUIDE.md`、更新 `docs/VUE_COMPONENT_MAP.md`
+- **测试**：新增 `tests/test_chat.py`、`tests/test_misc.py`
+- **CI/CD**：新增 `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md`、`.github/workflows/build-macos.yml`、`build-windows.yml`、`ci.yml`、`dco.yml`
 
 ## [v2.x-overlay-standardization] - 2026-09-13
 

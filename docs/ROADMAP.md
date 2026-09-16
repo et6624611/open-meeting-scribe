@@ -3,7 +3,8 @@ title: 版本路线
 description: 渐进构建路线图（版本主线），从 v1 云方案到本地数据·云端智能。零散需求与缺陷修复见 BACKLOG.md
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-09
+updated_at: 2026-09-17
+version: "1.6.0"
 status: published
 ---
 
@@ -12,7 +13,7 @@ status: published
 > 渐进构建：先跑通最小链路，再叠加能力。呼应 MISSION「本地数据·云端智能」长期方向。
 > 零散缺陷修复与体验优化条目见 [BACKLOG.md](BACKLOG.md)。
 
-## v1 · 云方案（当前）
+## v1 · 云方案 ✅
 **目标**：最快跑通「音频 → 纪要」，验证产品价值。
 - ASR + 分离：DashScope `paraformer-v2`（云）
 - 纪要：通义千问 `qwen-plus`（云）
@@ -85,19 +86,19 @@ status: published
 - **兼容性**：云端 `cam++-v1-cloud` 与本地 `cam++-v1` 声纹注册表互相兼容
 - 依据：[ADR-0009](adr/0009-声纹识别服务云端拆分.md)
 
-## v6 · Windows 打包分发
+## v6 · Windows 打包分发 ✅
 **目标**：将 open-meeting-scribe 打包为 Windows 可执行程序，让同事无需安装 Python 即可使用。
 
-### P0（基础打包）
-- **PyInstaller 打包**：主项目 + 前端静态文件打包为单文件 .exe
-- **ffmpeg 内置**：将 ffmpeg 二进制打包进分发物或提供自动下载脚本
-- **启动器**：双击启动本地 Web 服务 + 自动打开浏览器
-- **配置文件**：首次运行生成 `.env`，引导用户填入 DashScope API Key
+### P0（基础打包）✅
+- **PyInstaller 打包**：✅ 主项目 + 前端静态文件打包为单文件 .exe
+- **ffmpeg 内置**：✅ 通过 CI 自动下载 ffmpeg 二进制
+- **启动器**：✅ 双击启动本地 Web 服务 + pywebview 原生窗口（`desktop.py`）
+- **配置文件**：✅ 首次运行生成 `.env`，引导用户填入 DashScope API Key
 
 ### P1（体验优化）
 - **系统托盘**：最小化到托盘，不占任务栏
-- **自动更新**：检查云端版本，提示升级
-- **安装向导**：NSIS / Inno Setup 安装包，自动创建桌面快捷方式
+- **自动更新**：✅ 已完成。版本检查 + 更新提示（`core/version_check.py`）
+- **安装向导**：✅ 已完成。Inno Setup 安装包（`build/installer.iss`），自动创建桌面快捷方式，升级时保留用户数据
 - **短信代理改造**：✅ 已完成。`core/sms.py` 改为 HTTP 调用云端代理，阿里云 AccessKey 从 .env 移除，密钥不落地
 
 ### 约束
@@ -121,6 +122,16 @@ status: published
 - 推荐通道：Telegram Bot（天然双向、免费、无需公网）
 - 详细设计见 [MOBILE_DESIGN.md](design/MOBILE_DESIGN.md)
 - 依据：[ADR-0014](adr/0014-移动端走Webhook消息流.md)
+
+## v9 · Agent 角色系统 ✅
+**目标**：将 AI 行为从硬编码提示词迁移到基于 .md 文件的角色工作区，支持预定义角色开箱即用、用户 fork 自定义、全局激活切换。
+- **角色文件化**：4 个硬编码 Python 常量 → `data/agent/_roles/_builtin/{name}/AGENT.md` + 附带 `.md` 文件
+- **5 个预定义角色**：会议纪要员、会议分析师、会议引导师、学习辅导员、深度阅读者
+- **用户自定义**：从预定义角色 fork → 编辑 `.md` 文件 → 实时生效
+- **全局持久化**：激活角色写入 `settings.json` 的 `active_agent`，刷新/重启保持
+- **核心模块**：`core/agent_workspace.py`（角色加载/fork/save/delete）+ `app/routers/agent.py`（REST API）
+- **前端**：`AgentsView.vue`（角色管理 UI）+ `stores/agent.ts`（Pinia store）
+- 依据：[ADR-0017](adr/0017-agent角色系统从硬编码提示词到md工作区.md)，设计详情见 [AGENT_ROLE_SYSTEM.md](design/AGENT_ROLE_SYSTEM.md)
 
 ## 待定 / 想法池
 - **产品战略：跨平台中立枢纽闭环**：会议软件与转录工具分属两个生态，接缝在会前上下文 / 会中采集 / 会后回流三处。闭环方向**不是**接入平台开放 API 做深度集成（违背「反生态锁定」使命、自降为附庸），而是做中立枢纽——上游靠「项目」机制补上下文、会中靠主动型 AI 基于音频流越界、下游多路回流协作生态。让会议软件始终是「可替换音频源之一」、协作工具是「可分发下游之一」。详见 [PRD.md](PRD.md)「生态闭环：做跨平台的中立枢纽」章节
