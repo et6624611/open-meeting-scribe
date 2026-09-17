@@ -12,6 +12,7 @@ core/audio_recording.py — macOS 系统内录与流式录音控制
   ffmpeg（系统已装）、BlackHole 2ch（虚拟声卡）
 """
 
+import json
 import logging
 import os
 import platform
@@ -37,6 +38,107 @@ def _is_windows() -> bool:
 # 已知的 macOS 专属设备名（在 Windows 上不可用，应触发自动检测）
 # Known macOS-only device names (unavailable on Windows, should trigger auto-detection)
 _MACOS_DEVICE_NAMES = {"BlackHole 2ch", "MacBook Pro麦克风", "MacBook Pro Microphone"}
+
+# Windows 设备检测结果缓存（避免每次录音都重新枚举）
+# Cache for Windows device detection results (avoid re-enumerating on every recording)
+_WINDOWS_DEVICE_CACHE: str | None = None
+
+
+def _find_windows_audio_device_ps() -> str:
+    """通过 PowerShell 枚举 Windows 音频捕获设备（不依赖 ffmpeg）。
+    Enumerate Windows audio capture devices via PowerShell (ffmpeg-independent).
+
+    使用 WMI 查询 FriendName 包含 'Microphone' 或 '麦克风' 的已启用设备。
+    Queries WMI for enabled devices whose FriendName contains 'Microphone' or '麦克风'.
+
+    Returns:
+        设备友好名称，未找到返回空字符串 / Device friendly name, or empty string if not found
+    """
+    ps_script = (
+        "Get-CimInstance Win32_PnPEntity | "
+        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' -and $_.Status -eq 'OK' -and "
+        "($_.FriendlyName -match 'Microphone|麦克风|microphone') } | "
+        "Select-Object FriendlyName, Status | "
+        "ConvertTo-Json"
+    )
+    cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, timeout=15,
+            stdin=subprocess.DEVNULL,
+            encoding="utf-8", errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if _is_windows() else 0,
+        )
+        if result.returncode != 0:
+            logger.warning(f"PowerShell 设备枚举失败 (exit={result.returncode}): {result.stderr[:200]}")
+            return ""
+        output = result.stdout.strip()
+        if not output:
+            return ""
+
+        data = json.loads(output)
+        if isinstance(data, dict):
+            data = [data]
+
+        for item in data:
+            name = item.get("FriendlyName", "")
+            status = item.get("Status", "")
+            if name and status == "OK":
+                logger.info(f"PowerShell 检测到音频设备: {name} (Status={status})")
+                return name
+
+        # 如果没有 Status=OK 的麦克风设备，返回第一个有名称的设备
+        for item in data:
+            name = item.get("FriendlyName", "")
+            if name:
+                logger.info(f"PowerShell 检测到音频设备（非 OK 状态）: {name}")
+                return name
+
+        return ""
+    except FileNotFoundError:
+        logger.warning("PowerShell 不可用")
+        return ""
+    except subprocess.TimeoutExpired:
+        logger.warning("PowerShell 设备枚举超时（15s）")
+        return ""
+    except (json.JSONDecodeError, OSError, KeyError) as e:
+        logger.warning(f"PowerShell 设备枚举异常: {e}")
+        return ""
+
+
+def _detect_windows_audio_device() -> str:
+    """检测 Windows 音频输入设备（带缓存 + 多策略）。
+    Detect Windows audio input device (cached + multi-strategy).
+
+    策略顺序 / Strategy order:
+      1. 缓存命中（同一进程生命周期内只检测一次）
+      2. ffmpeg dshow（DirectShow 枚举，与录音使用同一后端）
+      3. PowerShell WMI 查询（不依赖 ffmpeg，PyInstaller 打包环境的可靠后备）
+    """
+    global _WINDOWS_DEVICE_CACHE
+    if _WINDOWS_DEVICE_CACHE is not None:
+        logger.debug(f"使用缓存的 Windows 音频设备: {_WINDOWS_DEVICE_CACHE}")
+        return _WINDOWS_DEVICE_CACHE
+
+    # 策略 1: ffmpeg dshow
+    device = _find_windows_audio_device()
+    if device:
+        logger.info(f"[设备检测] ffmpeg dshow 成功: {device}")
+        _WINDOWS_DEVICE_CACHE = device
+        return device
+
+    logger.warning("[设备检测] ffmpeg dshow 未检测到设备，尝试 PowerShell 后备方案...")
+
+    # 策略 2: PowerShell WMI
+    device = _find_windows_audio_device_ps()
+    if device:
+        logger.info(f"[设备检测] PowerShell 后备成功: {device}")
+        _WINDOWS_DEVICE_CACHE = device
+        return device
+
+    logger.error("[设备检测] 所有策略均失败（ffmpeg dshow + PowerShell），无法自动检测音频设备")
+    _WINDOWS_DEVICE_CACHE = ""
+    return ""
 
 
 def _should_auto_detect_on_windows(device: str) -> bool:
@@ -203,15 +305,23 @@ def start_recording(
     # Windows 上若设备名为空或为 macOS 专属名称，自动检测可用设备
     # On Windows, auto-detect if device is empty or a macOS-only name
     if _is_windows() and _should_auto_detect_on_windows(device):
-        detected = _find_windows_audio_device()
+        detected = _detect_windows_audio_device()
         if detected:
             device = detected
             logger.info(f"Windows 自动检测音频输入设备: {device}")
         else:
             logger.warning("Windows 未检测到音频输入设备，使用原始值")
+            logger.error(
+                "自动检测失败。请设置环境变量指定录音设备: "
+                "set RECORD_DEVICE=你的设备名 或 "
+                "在 Windows 设置 > 声音 > 输入 中确认默认设备"
+            )
 
     if not device:
-        raise RuntimeError("录制设备未配置（需要 BlackHole 2ch）")
+        raise RuntimeError(
+            "录制设备未配置。请在 Windows 设置中确认有已启用的麦克风，"
+            "或设置环境变量 RECORD_DEVICE=设备名称"
+        )
 
     # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command
     cmd = _build_ffmpeg_record_cmd(device, output_path)
@@ -376,15 +486,23 @@ def start_recording_with_stream(
     # Windows 上若设备名为空或为 macOS 专属名称，自动检测可用设备
     # On Windows, auto-detect if device is empty or a macOS-only name
     if _is_windows() and _should_auto_detect_on_windows(device):
-        detected = _find_windows_audio_device()
+        detected = _detect_windows_audio_device()
         if detected:
             device = detected
             logger.info(f"Windows 自动检测音频输入设备: {device}")
         else:
             logger.warning("Windows 未检测到音频输入设备，使用默认值")
+            logger.error(
+                "自动检测失败。请设置环境变量指定录音设备: "
+                "set RECORD_DEVICE=你的设备名 或 "
+                "在 Windows 设置 > 声音 > 输入 中确认默认设备"
+            )
 
     if not device:
-        raise RuntimeError("录制设备未配置")
+        raise RuntimeError(
+            "录制设备未配置。请在 Windows 设置中确认有已启用的麦克风，"
+            "或设置环境变量 RECORD_DEVICE=设备名称"
+        )
 
     cmd = _build_ffmpeg_stream_cmd(device, wav_path)
 
@@ -672,7 +790,60 @@ def list_audio_devices() -> list[dict]:
 
 
 def _list_windows_audio_devices() -> list[dict]:
-    """列出 Windows DirectShow 音频输入设备。"""
+    """列出 Windows 音频输入设备（PowerShell 优先，ffmpeg 后备）。
+    List Windows audio input devices (PowerShell first, ffmpeg fallback).
+    """
+    # 优先使用 PowerShell（不依赖 ffmpeg，PyInstaller 环境更可靠）
+    # Prefer PowerShell (ffmpeg-independent, more reliable in PyInstaller environments)
+    devices = _list_windows_audio_devices_ps()
+    if devices:
+        return devices
+
+    # 后备：ffmpeg dshow
+    logger.info("PowerShell 设备列表为空，回退到 ffmpeg dshow")
+    return _list_windows_audio_devices_ffmpeg()
+
+
+def _list_windows_audio_devices_ps() -> list[dict]:
+    """通过 PowerShell 列出 Windows 音频输入设备。"""
+    ps_script = (
+        "Get-CimInstance Win32_PnPEntity | "
+        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' -and $_.Status -eq 'OK' -and "
+        "($_.FriendlyName -match 'Microphone|麦克风|microphone') } | "
+        "Select-Object FriendlyName, Status | "
+        "ConvertTo-Json"
+    )
+    cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, timeout=15,
+            stdin=subprocess.DEVNULL,
+            encoding="utf-8", errors="replace",
+            creationflags=subprocess.CREATE_NO_WINDOW if _is_windows() else 0,
+        )
+        if result.returncode != 0:
+            return []
+        output = result.stdout.strip()
+        if not output:
+            return []
+
+        data = json.loads(output)
+        if isinstance(data, dict):
+            data = [data]
+
+        devices = []
+        for idx, item in enumerate(data):
+            name = item.get("FriendlyName", "")
+            if name:
+                devices.append({"index": idx, "name": name, "type": "audio"})
+        return devices
+    except Exception as e:
+        logger.warning(f"PowerShell 设备列表异常: {e}")
+        return []
+
+
+def _list_windows_audio_devices_ffmpeg() -> list[dict]:
+    """通过 ffmpeg dshow 列出 Windows DirectShow 音频输入设备。"""
     cmd = ["ffmpeg", "-hide_banner", "-f", "dshow", "-list_devices", "true", "-i", "dummy"]
     try:
         result = subprocess.run(
