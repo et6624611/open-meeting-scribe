@@ -17,6 +17,7 @@ v2.0 重构：实际逻辑已拆分至以下子模块，本文件作为兼容层
 """
 
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -50,7 +51,9 @@ RECORDINGS_DIR = Path("data/recordings")
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 录制设备名（默认麦克风，可通过环境变量覆盖；线上会议戴耳机场景可改为 "BlackHole 2ch"） / Recording device name (default mic; override via env var; for online meetings with earphones, try "BlackHole 2ch")
-RECORD_DEVICE = os.getenv("RECORD_DEVICE", "MacBook Pro麦克风")
+# Windows 上默认留空，由 audio_recording.py 自动检测可用设备 / On Windows, default to empty; audio_recording.py auto-detects available device
+_default_device = "" if platform.system() == "Windows" else "MacBook Pro麦克风"
+RECORD_DEVICE = os.getenv("RECORD_DEVICE", _default_device)
 
 # ============================================================
 # 兼容 re-export：设置管理 / Compat re-export: Settings management

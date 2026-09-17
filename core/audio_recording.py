@@ -34,6 +34,24 @@ def _is_windows() -> bool:
     return platform.system() == "Windows"
 
 
+# 已知的 macOS 专属设备名（在 Windows 上不可用，应触发自动检测）
+# Known macOS-only device names (unavailable on Windows, should trigger auto-detection)
+_MACOS_DEVICE_NAMES = {"BlackHole 2ch", "MacBook Pro麦克风", "MacBook Pro Microphone"}
+
+
+def _should_auto_detect_on_windows(device: str) -> bool:
+    """在 Windows 上判断是否需要自动检测设备。
+    On Windows, determine whether the device should be auto-detected.
+
+    当设备名为空、为 macOS 专属设备名、或不存在于 Windows DirectShow 设备列表时，返回 True。
+    """
+    if not device:
+        return True
+    if device in _MACOS_DEVICE_NAMES:
+        return True
+    return False
+
+
 def _find_windows_audio_device() -> str:
     """在 Windows 上自动查找可用的音频输入设备。
     Auto-detect an available audio input device on Windows.
@@ -170,9 +188,6 @@ def start_recording(
     if not check_ffmpeg():
         raise RuntimeError("ffmpeg 不可用")
 
-    if not device:
-        raise RuntimeError("录制设备未配置（需要 BlackHole 2ch）")
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -181,6 +196,19 @@ def start_recording(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = output_dir / f"{task_id[:8]}_{timestamp}.wav"
+
+    # Windows 上若设备名为空或为 macOS 专属名称，自动检测可用设备
+    # On Windows, auto-detect if device is empty or a macOS-only name
+    if _is_windows() and _should_auto_detect_on_windows(device):
+        detected = _find_windows_audio_device()
+        if detected:
+            device = detected
+            logger.info(f"Windows 自动检测音频输入设备: {device}")
+        else:
+            logger.warning("Windows 未检测到音频输入设备，使用原始值")
+
+    if not device:
+        raise RuntimeError("录制设备未配置（需要 BlackHole 2ch）")
 
     # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command
     cmd = _build_ffmpeg_record_cmd(device, output_path)
@@ -333,9 +361,6 @@ def start_recording_with_stream(
     if not check_ffmpeg():
         raise RuntimeError("ffmpeg 不可用")
 
-    if not device:
-        raise RuntimeError("录制设备未配置")
-
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -345,15 +370,18 @@ def start_recording_with_stream(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     wav_path = output_dir / f"{task_id[:8]}_{timestamp}.wav"
 
-    # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command
-    # Windows 上若未指定设备或设备不可用，自动检测 / Auto-detect on Windows if device unavailable
-    if _is_windows() and (not device or device == "BlackHole 2ch"):
+    # Windows 上若设备名为空或为 macOS 专属名称，自动检测可用设备
+    # On Windows, auto-detect if device is empty or a macOS-only name
+    if _is_windows() and _should_auto_detect_on_windows(device):
         detected = _find_windows_audio_device()
         if detected:
             device = detected
             logger.info(f"Windows 自动检测音频输入设备: {device}")
         else:
             logger.warning("Windows 未检测到音频输入设备，使用默认值")
+
+    if not device:
+        raise RuntimeError("录制设备未配置")
 
     cmd = _build_ffmpeg_stream_cmd(device, wav_path)
 
@@ -626,19 +654,62 @@ def get_stream_recording_info() -> dict | None:
 
 def list_audio_devices() -> list[dict]:
     """
-    列出系统可用的音频输入设备（macOS avfoundation）。
+    列出系统可用的音频输入设备。
+    List available audio input devices.
+
+    macOS: avfoundation
+    Windows: dshow (DirectShow)
 
     Returns:
         [{"index": 0, "name": "设备名", "type": "audio"}, ...]
     """
-    cmd = ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""]
+    if _is_windows():
+        return _list_windows_audio_devices()
+    return _list_macos_audio_devices()
 
+
+def _list_windows_audio_devices() -> list[dict]:
+    """列出 Windows DirectShow 音频输入设备。"""
+    cmd = ["ffmpeg", "-hide_banner", "-f", "dshow", "-list_devices", "true", "-i", "dummy"]
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=10,
             stdin=subprocess.DEVNULL,
         )
-        # avfoundation 设备列表输出在 stderr
+        output = result.stderr
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return []
+
+    devices = []
+    in_audio = False
+    idx = 0
+    for line in output.split("\n"):
+        if "DirectShow audio devices" in line:
+            in_audio = True
+            continue
+        if "DirectShow video devices" in line:
+            in_audio = False
+            continue
+        if in_audio:
+            match = re.search(r'\[.*?\]\s+"(.+?)"', line)
+            if match:
+                devices.append({
+                    "index": idx,
+                    "name": match.group(1),
+                    "type": "audio",
+                })
+                idx += 1
+    return devices
+
+
+def _list_macos_audio_devices() -> list[dict]:
+    """列出 macOS avfoundation 音频输入设备。"""
+    cmd = ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=10,
+            stdin=subprocess.DEVNULL,
+        )
         output = result.stderr
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
