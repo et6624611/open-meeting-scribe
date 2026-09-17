@@ -225,5 +225,10 @@
   "source": {
     "minutes": "Minutes",
     "notes": "Notes"
+  },
+  "failure": {
+    "title": "Meeting processing failed",
+    "show_raw": "Show raw error",
+    "back_to_library": "Back to library"
   }
 }

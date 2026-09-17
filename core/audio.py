@@ -74,20 +74,73 @@ def check_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def _measure_max_volume_db(input_path: str | Path) -> float | None:
+    """测量音频峰值音量（dB） / Measure audio peak volume (dB).
+
+    使用 ffmpeg volumedetect 滤镜探测 max_volume，供条件式响度归一化判断。
+    Uses ffmpeg volumedetect filter to probe max_volume for conditional loudness normalization.
+
+    Returns:
+        峰值音量（dB，通常为负值）；解析失败或 ffmpeg 不可用时返回 None /
+        Peak volume (dB, usually negative); None if parsing fails or ffmpeg unavailable.
+    """
+    try:
+        cmd = [
+            "ffmpeg", "-i", str(input_path),
+            "-af", "volumedetect",
+            "-f", "null", "-",
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            stdin=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.warning(f"volumedetect 探测失败: {e}，跳过响度归一化")
+        return None
+
+    # volumedetect 结果输出在 stderr 中，格式: [Parsed_volumedetect_...] max_volume: -XX.X dB
+    import re as _re
+    match = _re.search(r"max_volume:\s*(-?[\d.]+)\s*dB", result.stderr)
+    if not match:
+        logger.debug("未能从 volumedetect 输出解析 max_volume，跳过响度归一化")
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
 def normalize_audio(
     input_path: str | Path,
     output_path: str | Path | None = None,
     sample_rate: int = 16000,
     channels: int = 1,
+    loudness_normalize: bool = True,
+    quiet_threshold_db: float = -20.0,
+    target_peak_db: float = -3.0,
+    max_gain_db: float = 40.0,
 ) -> Path:
     """
     将音频归一化为指定格式（默认 16kHz/单声道/WAV） / Normalize audio to specified format (default 16kHz/mono/WAV).
+
+    对音量过低的音频做条件式增益（响度归一化），避免离线 ASR（paraformer-v2）服务端 VAD
+    将整段判为静音而返回 SUCCESS_WITH_NO_VALID_FRAGMENT；正常音量音频保持不变，避免回归与底噪放大。
+    Conditionally boosts low-volume audio (loudness normalization) to prevent offline ASR (paraformer-v2)
+    server-side VAD from rejecting the whole clip as silence (SUCCESS_WITH_NO_VALID_FRAGMENT);
+    normal-volume audio is left untouched to avoid regressions and noise-floor amplification.
 
     Args:
         input_path: 输入音频文件路径 / Input audio file path
         output_path: 输出路径；若为 None，则在输入文件同目录生成 _normalized.wav / Output path; if None, generates _normalized.wav in input directory
         sample_rate: 采样率（默认 16000） / Sample rate (default 16000)
         channels: 声道数（默认 1，说话人分离必须单声道） / Channels (default 1, mono required for diarization)
+        loudness_normalize: 是否对过低音量做条件式增益（默认 True） / Whether to conditionally boost low volume (default True)
+        quiet_threshold_db: 峰值低于此阈值才视为音量过低（默认 -20.0 dB） / Peak below this is considered too quiet (default -20.0 dB)
+        target_peak_db: 增益后的目标峰值（默认 -3.0 dB） / Target peak after gain (default -3.0 dB)
+        max_gain_db: 最大增益上限，防止过度放大底噪（默认 40.0 dB） / Max gain cap to avoid over-amplifying noise floor (default 40.0 dB)
 
     Returns:
         归一化后的文件路径 / Normalized file path
@@ -112,17 +165,33 @@ def normalize_audio(
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # ── 条件式响度归一化：仅对音量过低的音频计算增益 ── / Conditional loudness normalization: compute gain only for too-quiet audio
+    audio_filter = None
+    if loudness_normalize:
+        max_volume = _measure_max_volume_db(input_path)
+        if max_volume is not None and max_volume < quiet_threshold_db:
+            gain = min(target_peak_db - max_volume, max_gain_db)
+            if gain > 0:
+                # 先增益后限幅防削波 / Boost first, then limit to prevent clipping
+                audio_filter = f"volume={gain:.1f}dB,alimiter=limit=0.95"
+                logger.info(f"[归一化] 检测到音量过低 max={max_volume:.1f}dB，应用增益 +{gain:.1f}dB")
+
     # ffmpeg 参数 / ffmpeg arguments:
     # -y           覆盖输出 / overwrite output
     # -i           输入文件 / input file
     # -ar          采样率 / sample rate
     # -ac          声道数（下混单声道） / channels (downmix to mono)
+    # -af          音频滤镜（仅音量过低时加入增益+限幅） / audio filter (gain+limiter only when too quiet)
     # -f wav       输出格式 / output format
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_path),
         "-ar", str(sample_rate),
         "-ac", str(channels),
+    ]
+    if audio_filter:
+        cmd += ["-af", audio_filter]
+    cmd += [
         "-f", "wav",
         str(output_path),
     ]

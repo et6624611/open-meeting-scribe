@@ -440,7 +440,11 @@ def _cloud_upload_file(path: str, file_path: str, params: dict | None = None) ->
         params: 额外查询参数 / Additional query parameters
 
     Returns:
-        响应 JSON dict，失败返回 None / Response JSON dict; None on failure
+        响应 JSON dict；连接级失败（URLError 等）返回 None / Response JSON dict; None on connection-level failure (URLError etc.)
+
+    Raises:
+        RuntimeError: 服务端返回业务错误（HTTPError），携带真实 detail（如 转写任务失败: SUCCESS_WITH_NO_VALID_FRAGMENT），
+        供上层 classify_error 生成可读提示 / Server returned business error (HTTPError) with real detail, for readable classification upstream.
     """
     if not is_cloud_enabled():
         return None
@@ -504,8 +508,12 @@ def _cloud_upload_file(path: str, file_path: str, params: dict | None = None) ->
             msg = err_body.get("detail", str(e))
         except Exception:
             msg = f"HTTP {e.code}"
+        # 服务端业务错误（如 SUCCESS_WITH_NO_VALID_FRAGMENT）必须向上透传真实 detail，
+        # 否则上层会用通用文案覆盖，导致 classify_error 无法命中可读提示。
+        # Server business errors must propagate the real detail; otherwise upstream replaces it
+        # with a generic message and classify_error can't produce a readable suggestion.
         logger.warning(f"云端文件上传失败: {path} → {msg}")
-        return None
+        raise RuntimeError(msg)
 
     except urllib.error.URLError as e:
         logger.warning(f"云端文件连接失败: {path} → {e.reason}")

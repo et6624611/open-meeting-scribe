@@ -69,6 +69,89 @@ def _cleanup_normalized_intermediate(task_id: str) -> None:
 
 
 # ============================================================
+# 实时转写降级兜底 / Realtime transcription fallback
+# ============================================================
+
+
+def _build_dialogue_from_realtime(full_transcript: list[dict]) -> list[dict]:
+    """将实时全量转写记录组装为与 assemble_dialogue 一致的对话稿结构。
+    Assemble realtime full transcript into the same dialogue structure as assemble_dialogue.
+
+    输入条目形如 {text, speaker_id, speaker_name, begin_time, end_time}。
+    按相邻同 speaker_id 归并；空文本条目跳过。
+    Entries look like {text, speaker_id, speaker_name, begin_time, end_time};
+    consecutive sentences with the same speaker_id are merged; empty-text entries skipped.
+    """
+    dialogue: list[dict] = []
+    for entry in full_transcript or []:
+        text = (entry.get("text") or "").strip()
+        if not text:
+            continue
+        sid = entry.get("speaker_id")
+        if sid is None:
+            sid = 0
+        sentence = {
+            "text": text,
+            "begin_time": entry.get("begin_time", 0),
+            "end_time": entry.get("end_time", 0),
+            "speaker_id": sid,
+        }
+        if dialogue and dialogue[-1]["speaker_id"] == sid:
+            dialogue[-1]["sentences"].append(sentence)
+            dialogue[-1]["text"] += text
+        else:
+            block = {"speaker_id": sid, "text": text, "sentences": [sentence]}
+            # 保留实时阶段已绑定的说话人姓名（若有） / Keep realtime-bound speaker name if present
+            if entry.get("speaker_name"):
+                block["speaker_name"] = entry["speaker_name"]
+            dialogue.append(block)
+    return dialogue
+
+
+def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
+    """批转写失败/为空时，降级使用实时转写结果生成纪要。
+    When batch transcription fails/yields empty, fall back to realtime transcript to generate the summary.
+
+    Returns:
+        True: 已成功降级并触发 stage2；False: 无可用实时数据，需走原失败流程。
+        True: fallback succeeded and stage2 triggered; False: no realtime data, proceed with original failure path.
+    """
+    full_transcript = tasks[task_id].get("realtime_full_transcript")
+    if not full_transcript:
+        return False
+
+    dialogue = _build_dialogue_from_realtime(full_transcript)
+    if not dialogue:
+        return False
+
+    tasks[task_id]["dialogue"] = dialogue
+    tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+    tasks[task_id]["transcript_source"] = "realtime_fallback"
+    logger.warning(
+        f"[{task_id[:8]}] 批转写无有效语音，降级使用实时转写结果（{len(full_transcript)} 句 → {len(dialogue)} 条对话）"
+    )
+    joblog.append_event(
+        task_id, joblog.STAGE_TRANSCRIBE,
+        f"批转写无有效语音，降级使用实时转写结果（{len(full_transcript)} 句）", level="warn",
+    )
+
+    # 复用实时阶段的说话人绑定作为姓名映射（键转 int） / Reuse realtime speaker binding as name mapping (keys to int)
+    speaker_mapping = None
+    binding = tasks[task_id].get("realtime_speaker_binding")
+    if binding:
+        try:
+            speaker_mapping = {int(k): v for k, v in binding.items()}
+        except (ValueError, TypeError):
+            speaker_mapping = None
+
+    save_task_to_disk(task_id)
+    # 降级不依赖归一化音频，按设置清理中间产物 / Fallback doesn't need normalized audio; clean intermediate per settings
+    _cleanup_normalized_intermediate(task_id)
+    _run_stage2_for_task(task_id, audio_path, speaker_mapping)
+    return True
+
+
+# ============================================================
 # 后台管线函数
 # ============================================================
 
@@ -150,6 +233,16 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                         )
             except Exception as e:
                 logger.warning(f"[{task_id[:8]}] 用量记录失败（不影响主流程）: {e}")
+
+            # 空转写降级兜底：批转写成功但无有效对话稿（如 VAD 判静音）时，
+            # 若存在实时转写内容则降级用其生成纪要，而非整单失败。
+            # Empty-transcription fallback: when batch ASR succeeds but yields no dialogue
+            # (e.g. VAD judged silence), fall back to realtime transcript if available.
+            if not dialogue:
+                # 先持久化归一化路径，供降级兜底内部清理中间文件 / Persist normalized path so fallback can clean the intermediate file
+                tasks[task_id]["normalized_path"] = result.get("normalized_path")
+                if _try_realtime_fallback(task_id, audio_path):
+                    return
 
             # 检查是否有预设的说话人映射（向后兼容）
             if speaker_mapping:
@@ -310,6 +403,12 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 continue
             else:
                 # 永久错误或重试耗尽
+                # 非瞬时错误（如 SUCCESS_WITH_NO_VALID_FRAGMENT 静音判定）且存在实时转写内容时，
+                # 降级用实时结果生成纪要，避免整单失败；瞬时错误保留给用户手动重试（批转写质量更高）。
+                # For non-transient errors (e.g. SUCCESS_WITH_NO_VALID_FRAGMENT) with realtime content available,
+                # fall back to realtime results; transient errors are left for manual retry (higher batch quality).
+                if not is_transient_error(e) and _try_realtime_fallback(task_id, audio_path):
+                    return
                 on_failure(e)
                 return
 

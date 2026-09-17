@@ -533,16 +533,9 @@ if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
             return HTMLResponse(index.read_text(encoding="utf-8"))
         return HTMLResponse("<h1>前端构建产物损坏</h1><p>请重新运行 npm run build</p>")
 else:
-    # ── 旧版：单文件 index.html（兼容模式）── / Legacy: single-file index.html (compatibility mode) ──
-    logger.info("前端使用旧版 app/static/index.html")
-
-    @app.get("/", response_class=HTMLResponse)
-    async def index():
-        """返回前端页面 / Return frontend page."""
-        index_path = STATIC_DIR / "index.html"
-        if not index_path.exists():
-            return "<h1>前端页面未找到</h1><p>请创建 app/static/index.html 或构建前端 (cd frontend && npm run build)</p>"
-        return index_path.read_text(encoding="utf-8")
+    # ── 旧版：app/static/index.html（Vue 构建产物同步或历史单文件模式）── /
+    # Legacy: app/static/index.html (synced Vue build output or historical single-file mode)
+    logger.info("前端使用 app/static/index.html")
 
     # 挂载 Vite 构建的 /assets 路径（index.html 中引用的 JS/CSS 资源） /
     # Mount Vite build /assets path (JS/CSS resources referenced in index.html)
@@ -552,6 +545,32 @@ else:
 
     # 挂载静态文件（CSS/JS/图片等） / Mount static files (CSS/JS/images etc.)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    # SPA catch-all：Vue Router history 模式下，任何非 API/WS/静态资源路径都返回 index.html，
+    # 保证在 /settings、/library 等子页面按 F5 刷新时不会命中 404 JSON。
+    # SPA catch-all: under Vue Router history mode, all non-API/WS/static paths return index.html,
+    # ensuring F5 refresh on subpages like /settings, /library does not hit the 404 JSON.
+    _LEGACY_INDEX = STATIC_DIR / "index.html"
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def legacy_frontend_catch_all(full_path: str):
+        """旧版 SPA catch-all：非 API 路径返回 app/static/index.html。
+        Legacy SPA catch-all: non-API paths return app/static/index.html.
+        """
+        # 跳过 API、WebSocket、认证回调路径 / Skip API, WebSocket, auth callback paths
+        if full_path.startswith(("api/", "ws/", "auth/")):
+            from fastapi import HTTPException
+            raise HTTPException(404, "Not Found")
+        # 已挂载的静态资源前缀由 StaticFiles 处理，此处不应到达；
+        # 若到达则视为 SPA 路由，返回 index.html 让前端 router 接管。
+        # Mounted static prefixes are handled by StaticFiles and should not reach here;
+        # if reached, treat as SPA route and return index.html for frontend router.
+        if not _LEGACY_INDEX.exists():
+            return HTMLResponse(
+                "<h1>前端页面未找到 / Frontend not found</h1>"
+                "<p>请构建前端 (cd frontend && npm run build) 并同步到 app/static/。</p>"
+            )
+        return HTMLResponse(_LEGACY_INDEX.read_text(encoding="utf-8"))
 
 
 # ============================================================

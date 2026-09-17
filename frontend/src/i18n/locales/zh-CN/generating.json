@@ -226,5 +226,10 @@
   "source": {
     "minutes": "纪要",
     "notes": "随记"
+  },
+  "failure": {
+    "title": "会议处理失败",
+    "show_raw": "查看原始错误信息",
+    "back_to_library": "返回会议库"
   }
 }

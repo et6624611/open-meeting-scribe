@@ -1,5 +1,34 @@
 <template>
   <div class="gen-view">
+    <!-- 失败态：整页替换为居中大卡片 / Failed state: full-page replacement with centered card -->
+    <!-- 背景：录音管线失败后 output_path/audio_path 均为空，若仍渲染工具栏，用户点击导出会触发 /api/download 404，
+         新标签页展示原始 JSON {"detail":"Not Found"}。此处统一拦截，按 error_category 展示友好失败页。
+         Context: after pipeline failure output_path/audio_path are null; rendering the toolbar would let users
+         hit /api/download 404 and see raw JSON in a new tab. Intercept here with a category-aware failure page. -->
+    <div v-if="isFailed" class="gen-failure-page">
+      <div class="gen-failure-card">
+        <div class="gen-failure-icon" :class="failureInfo.iconClass">
+          <svg v-if="failureInfo.icon === 'refresh'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <svg v-else-if="failureInfo.icon === 'settings'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          <svg v-else-if="failureInfo.icon === 'audio'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <h2 class="gen-failure-title">{{ t('generating.failure.title') }}</h2>
+        <p class="gen-failure-message">{{ failureInfo.message }}</p>
+        <p v-if="failureInfo.suggestion" class="gen-failure-suggestion">{{ failureInfo.suggestion }}</p>
+        <details v-if="failureInfo.rawError" class="gen-failure-raw">
+          <summary>{{ t('generating.failure.show_raw') }}</summary>
+          <code>{{ failureInfo.rawError }}</code>
+        </details>
+        <div class="gen-failure-actions">
+          <button class="btn btn-primary" @click="onRetryFromFailure">{{ t('task.failure.transient_action') }}</button>
+          <button class="btn btn-secondary" @click="router.push('/library')">{{ t('generating.failure.back_to_library') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 正常态：原有工具栏 + 元信息 + 说话人区 + Tab + 内容区 / Normal state: original toolbar + meta + speaker zone + tabs + content -->
+    <template v-else>
     <!-- 紧凑图标工具栏 / Compact icon toolbar -->
     <div class="gen-toolbar">
       <div class="gen-toolbar-left">
@@ -290,6 +319,7 @@
       v-model="showDeleteDialog"
       @confirm="onDeleteConfirm"
     />
+    </template>
   </div>
 </template>
 
@@ -367,6 +397,7 @@ const {
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
   player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
+  isFailed, failureInfo,
 } = data
 const {
   showBindingBar, bindingLegend, unboundCount, currentBindingMapping,
@@ -401,6 +432,19 @@ const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore } = us
 function onEditSummary() { closeGenMore(); data.switchTab('summary') }
 async function onRetrySummary() { closeGenMore(); await retrySummary(data.taskId); await taskStore.loadTasks() }
 async function onRetranscribe() { closeGenMore(); await retranscribe(data.taskId); router.push({ name: 'generating', params: { taskId: data.taskId } }) }
+
+/** 失败态卡片「重试转写」：复用 retranscribe API，乐观更新状态并恢复轮询，与 TaskList.vue 重试行为一致
+ * Failure card "retry transcription": reuse retranscribe API, optimistically update status and resume polling,
+ * consistent with TaskList.vue retry behavior. */
+async function onRetryFromFailure() {
+  try {
+    await retranscribe(data.taskId)
+    taskStore.patchTaskLocal(data.taskId, { status: 'transcribing', error: undefined, error_category: undefined, error_suggestion: undefined })
+    data.startPolling()
+  } catch (e) {
+    console.error('retry from failure page failed:', e)
+  }
+}
 async function onDelete() {
   closeGenMore()
   data.showDeleteDialog.value = true

@@ -852,3 +852,27 @@
   color: var(--accent) !important;
   font-weight: 500;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FAILURE PAGE — 任务失败态整页卡片
+   背景：录音管线失败后 output_path/audio_path 为空，若仍渲染工具栏，
+   用户点击导出会触发 /api/download 404，新标签页展示原始 JSON。
+   此处用居中大卡片替换整个内容区，按 error_category 差异化着色。
+   色相与 sidebar.css .sb-failure-icon.is-* 保持一致。
+   ═══════════════════════════════════════════════════════════ */
+.gen-failure-page { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--s-5); overflow-y: auto; }
+.gen-failure-card { width: 100%; max-width: 520px; padding: 40px 32px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); text-align: center; box-shadow: 0 2px 12px oklch(0% 0 0 / 0.04); }
+.gen-failure-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 20px; }
+.gen-failure-icon svg { width: 32px; height: 32px; }
+.gen-failure-icon.is-transient { background: oklch(90% 0.03 120); color: oklch(45% 0.12 120); }
+.gen-failure-icon.is-api-config { background: oklch(90% 0.03 280); color: oklch(45% 0.12 280); }
+.gen-failure-icon.is-audio { background: oklch(90% 0.03 30); color: oklch(45% 0.12 30); }
+.gen-failure-icon.is-unknown { background: oklch(90% 0.03 25); color: oklch(45% 0.12 25); }
+.gen-failure-title { font-size: var(--fs-18, 18px); font-weight: 600; color: var(--fg); margin: 0 0 12px; }
+.gen-failure-message { font-size: var(--fs-14, 14px); color: var(--fg); line-height: 1.5; margin: 0 0 8px; font-weight: 500; }
+.gen-failure-suggestion { font-size: var(--fs-13, 13px); color: var(--muted); line-height: 1.5; margin: 0; }
+.gen-failure-raw { margin-top: 16px; text-align: left; font-size: var(--fs-12, 12px); }
+.gen-failure-raw summary { cursor: pointer; color: var(--subtle); user-select: none; padding: 4px 0; }
+.gen-failure-raw summary:hover { color: var(--muted); }
+.gen-failure-raw code { display: block; margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; word-break: break-all; white-space: pre-wrap; max-height: 160px; overflow-y: auto; }
+.gen-failure-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; }

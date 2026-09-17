@@ -30,8 +30,68 @@ export function useGeneratingData(
   // ─── 任务核心 / Task core ───
   const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId) ?? null)
   const dialogue = computed<DialogueLine[]>(() => task.value?.dialogue ?? [])
-  const audioUrl = computed(() => task.value ? `/api/audio/${task.value.task_id}` : '')
+  // 失败态守卫：避免 <audio> 加载 /api/audio/{id} 触发 404 / Failed-state guard: prevent <audio> from hitting /api/audio/{id} 404
+  const isFailed = computed(() => task.value?.status === 'failed')
+  const audioUrl = computed(() => (task.value && !isFailed.value) ? `/api/audio/${task.value.task_id}` : '')
   const chapters = computed<Chapter[]>(() => task.value?.chapters ?? [])
+
+  // ─── 失败信息分类（与 TaskCard.vue 保持一致） / Failure info categorization (consistent with TaskCard.vue) ───
+  // 注：纪要页失败态仅提供「重试转写 + 返回会议库」两个通用操作，不按 source 区分「重新录制/重新上传」，
+  // 与侧边栏 TaskCard 的差异化操作按钮保持语义分工（侧边栏快捷操作 vs 纪要页详细展示）。
+  // Note: the generating-view failure card only exposes universal "retry + back to library" actions,
+  // differing from TaskCard's source-aware shortcuts (sidebar quick actions vs detail view).
+  const failureInfo = computed(() => {
+    const category = task.value?.error_category
+    const errorText = task.value?.error || t('task.failure.unknown')
+    const suggestion = task.value?.error_suggestion || ''
+
+    switch (category) {
+      case 'transient':
+        return {
+          icon: 'refresh' as const,
+          iconClass: 'is-transient',
+          message: t('task.failure.transient'),
+          suggestion,
+          rawError: errorText,
+        }
+      case 'api_config':
+        return {
+          icon: 'settings' as const,
+          iconClass: 'is-api-config',
+          message: t('task.failure.api_config'),
+          suggestion,
+          rawError: errorText,
+        }
+      case 'audio': {
+        // 细分：无有效语音 vs 其他音频问题 / Subcategory: no valid speech vs other audio issues
+        const lower = errorText.toLowerCase()
+        if (lower.includes('no_valid_fragment') || lower.includes('no valid fragment')) {
+          return {
+            icon: 'audio' as const,
+            iconClass: 'is-audio',
+            message: t('task.failure.no_speech'),
+            suggestion: suggestion || t('task.failure.no_speech_hint'),
+            rawError: errorText,
+          }
+        }
+        return {
+          icon: 'audio' as const,
+          iconClass: 'is-audio',
+          message: t('task.failure.audio'),
+          suggestion,
+          rawError: errorText,
+        }
+      }
+      default:
+        return {
+          icon: 'alert' as const,
+          iconClass: 'is-unknown',
+          message: errorText,
+          suggestion,
+          rawError: errorText,
+        }
+    }
+  })
 
   // ─── 转写原文 / Transcript ───
   const flatTranscript = computed<FlatTranscriptLine[]>(() => {
@@ -176,11 +236,17 @@ export function useGeneratingData(
   }
 
   // ─── 工具栏操作 / Toolbar actions ───
+  // 失败态守卫：output_path/summary 均为空，调用后端会返回 404，直接拦截避免用户看到原始 JSON
+  // Failed-state guard: output_path/summary are null; backend would return 404, intercept to avoid raw JSON
   function onCopy() {
+    if (isFailed.value) return
     const md = summaryMd.value || task.value?.summary
     if (md) navigator.clipboard.writeText(md)
   }
-  function onExport() { window.open(`/api/download/${taskId}`, '_blank') }
+  function onExport() {
+    if (isFailed.value) return
+    window.open(`/api/download/${taskId}`, '_blank')
+  }
   function onFullscreen() {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen()
     else document.exitFullscreen()
@@ -326,6 +392,8 @@ export function useGeneratingData(
     // 任务核心 / Task core
     taskId, task, dialogue, audioUrl, chapters, flatTranscript, transcriptItems,
     getChapterIdxAtTime,
+    // 失败态 / Failed state
+    isFailed, failureInfo,
     // 章节 / Chapters
     visibleChapterIndices, activeChapterIdx, expandedChapters, summaryExpandedChapters,
     toggleChapterExpand, toggleSummaryChapter, scrollToChapter, toggleChapterTranscript,

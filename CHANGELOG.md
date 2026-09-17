@@ -13,6 +13,28 @@ status: published
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
 
+## [v7.4.5] - 2026-09-17
+
+### 修复
+- **云端离线转写 `SUCCESS_WITH_NO_VALID_FRAGMENT`（Windows 用户反馈）**：低音量录音（如 mean=-81.9 dB）实时流式转写正常，但离线 `paraformer-v2` 服务端 VAD 判整段为静音导致任务失败。三处联合修复：
+  - **响度归一化（治本）**：`core/audio.py` 新增 `_measure_max_volume_db()`（ffmpeg volumedetect 探测峰值），`normalize_audio()` 增加条件式增益——仅当峰值低于 `quiet_threshold_db`（默认 -20 dB）时应用 `volume` 增益（目标峰值 -3 dB，上限 40 dB）+ `alimiter` 限幅防削波；正常音量音频命令不变，避免回归与底噪放大。
+  - **真实错误透传**：`core/cloud_client.py` 的 `_cloud_upload_file()` 对服务端业务错误（HTTPError）改为 `raise RuntimeError(detail)`，使 `转写任务失败: SUCCESS_WITH_NO_VALID_FRAGMENT` 冒泡到 `classify_error()`，命中 `errors.py` 已有的可读建议「音频中未检测到有效语音」（此前被通用文案覆盖，落到 unknown 分类）。连接级失败仍返回 None。
+  - **实时转写降级兜底**：`core/pipeline_runner.py` 新增 `_build_dialogue_from_realtime()` / `_try_realtime_fallback()`，当批转写抛非瞬时错误或返回空 dialogue 且存在 `realtime_full_transcript` 时，用实时结果构建对话稿并继续生成纪要（复用实时说话人绑定姓名），任务标记 `transcript_source=realtime_fallback` 而非整单失败。
+- **纪要页失败态 404 原始 JSON**：任务失败后 `output_path`/`audio_path` 为空，此前 `GeneratingView` 仍渲染工具栏与 `<audio>`，点击导出会在浏览器新标签页展示 `{"detail":"Not Found"}` 原始 JSON；音频元素后台也会打 `/api/audio/{id}` 404。改造：`useGeneratingData.ts` 增加 `isFailed` 守卫（audioUrl 空串、onCopy/onExport 拦截）与 `failureInfo` 分类（transient/api_config/audio/no_speech/unknown，复用 `error_category` + `error_suggestion`）；`GeneratingView.vue` 在 `isFailed` 时用居中大卡片整页替换，含彩色图标、可读文案、原始错误折叠展开、「重试转写 + 返回会议库」两个操作（重试复用 `retranscribe` API 并乐观更新状态）；色相与侧边栏 `TaskCard.vue` 保持一致。新增 i18n `generating.failure.{title,show_raw,back_to_library}` zh-CN/en。
+- **旧版单文件模式 SPA 刷新 404**：`app/server.py` 在 `frontend/dist` 缺失回退到 `app/static/index.html` 的旧版分支下，未挂载 SPA catch-all，导致 Vue Router history 模式在 `/settings`、`/library` 等子页面 F5 刷新命中 FastAPI 默认 404 JSON。新增 `legacy_frontend_catch_all` 路由：非 `api/`、`ws/`、`auth/` 前缀的路径统一返回 `app/static/index.html`，交由前端 router 接管。
+
+### 涉及文件
+- `core/audio.py`：响度归一化 + 音量测量
+- `core/cloud_client.py`：HTTPError 透传真实 detail
+- `core/pipeline_runner.py`：实时转写降级兜底
+- `app/server.py`：旧版分支 SPA catch-all 路由
+- `frontend/src/composables/useGeneratingData.ts`：isFailed 守卫 + failureInfo 分类
+- `frontend/src/views/GeneratingView.vue`：失败态整页卡片 UI + 重试逻辑
+- `frontend/src/styles/meeting-view.css`：`.gen-failure-*` 样式（含四色图标底）
+- `frontend/src/i18n/locales/{zh-CN,en}/generating.json`：失败态文案
+- `VERSION`：7.4.4 → 7.4.5
+- `CHANGELOG.md`：本条目
+
 ## [v7.3.0] - 2026-09-16
 
 ### 新增
