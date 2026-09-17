@@ -122,5 +122,10 @@
   },
   "playing": "播放中",
   "paused": "已暂停",
+  "confirm_dialog": {
+    "default_title": "确认操作",
+    "confirm": "确认",
+    "cancel": "取消"
+  },
   "reload_recording_confirm": "当前有正在进行的录音，重新加载将中断录音。是否继续？"
 }

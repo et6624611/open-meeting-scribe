@@ -76,3 +76,33 @@ export async function batchArchiveTasks(taskIds: string[]): Promise<{ archived: 
   const { data } = await client.post<{ archived: number }>('/api/tasks/batch-archive', { task_ids: taskIds })
   return data
 }
+
+// ─── 知识库同步 / Knowledge base sync ───
+
+export interface SyncStatus {
+  can_sync: boolean
+  reason?: string
+  project_name?: string
+  folders?: Array<{ path: string; subfolder: string; content_types: string[] }>
+  is_dirty?: boolean
+  last_synced_at?: string | null
+  last_modified_at?: string | null
+}
+
+export interface SyncResult {
+  synced: boolean
+  files?: string[]
+  message?: string
+}
+
+/** 查询任务同步状态 / Query task sync status */
+export async function fetchSyncStatus(taskId: string): Promise<SyncStatus> {
+  const { data } = await client.get<SyncStatus>(`/api/tasks/${taskId}/sync-status`)
+  return data
+}
+
+/** 手动触发同步到知识库 / Manually trigger sync to knowledge base */
+export async function syncTaskToProject(taskId: string): Promise<SyncResult> {
+  const { data } = await client.post<SyncResult>(`/api/tasks/${taskId}/sync-to-project`)
+  return data
+}

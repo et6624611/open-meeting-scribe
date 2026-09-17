@@ -163,6 +163,14 @@
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+
+    <!-- 批量删除确认弹窗 / Batch delete confirm dialog -->
+    <ConfirmDialog
+      v-model="showBatchDeleteConfirm"
+      :title="t('library.confirm_delete_title')"
+      :message="t('library.confirm_delete', { count: selectedIds.size })"
+      @confirm="onConfirmBatchDelete"
+    />
   </div>
 </template>
 
@@ -174,6 +182,7 @@ import { useTaskStore } from '@/stores/task'
 import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { matchTask, highlightText } from '@/utils/search'
@@ -230,6 +239,7 @@ function setQuickDateRange(days: number) {
 // ─── 选择状态 / Selection state ───
 const selectedIds = ref<Set<string>>(new Set())
 const lastSelectedId = ref<string | null>(null)
+const showBatchDeleteConfirm = ref(false)
 
 function switchTab(showArchived: boolean) {
   taskStore.showArchived = showArchived
@@ -434,10 +444,12 @@ async function batchUnarchive() {
   clearSelection()
 }
 
-async function batchDelete() {
-  const count = selectedIds.value.size
-  if (!confirm(t('library.confirm_delete', { count }))) return
+function batchDelete() {
+  if (!selectedIds.value.size) return
+  showBatchDeleteConfirm.value = true
+}
 
+async function onConfirmBatchDelete() {
   for (const id of selectedIds.value) {
     try {
       await taskStore.removeTask(id)

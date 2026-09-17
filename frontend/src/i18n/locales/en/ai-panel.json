@@ -161,5 +161,7 @@
     "manual_check_need_transcript": "Not enough transcript data yet (need at least 5 lines). Please wait for more speech and try again.",
     "manual_check_need_chapters": "No chapter titles generated yet. Please wait for the agenda structure to be established."
   },
-  "ai_suggestion": "AI Suggestion"
+  "ai_suggestion": "AI Suggestion",
+  "delete_task_title": "Delete Task",
+  "delete_task_confirm": "Delete task {id}…? This cannot be undone."
 }

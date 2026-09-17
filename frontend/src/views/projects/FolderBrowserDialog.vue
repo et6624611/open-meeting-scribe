@@ -88,11 +88,33 @@ const listRef = ref<HTMLElement | null>(null)
 
 useEscClose(ref(props.modelValue), () => close())
 
-watch(() => props.modelValue, (visible) => {
-  if (visible) {
-    selectedPath.value = ''
-    loadDir(props.initialPath || undefined)
+watch(() => props.modelValue, async (visible) => {
+  if (!visible) return
+  selectedPath.value = ''
+
+  // ─── 桌面端优先：调用 OS 原生文件夹选择器 / Desktop first: use OS native folder picker ───
+  // pywebview expose 机制会在 window.pywebview.api 上挂载 Python 函数，
+  // 检测到即说明运行在桌面客户端，直接弹原生对话框（macOS NSOpenPanel / Windows 资源管理器）。
+  // pywebview expose mounts Python functions on window.pywebview.api,
+  // its presence indicates desktop mode — open native dialog directly.
+  if (typeof window.pywebview?.api?.select_native_folder === 'function') {
+    try {
+      const folder = await window.pywebview.api.select_native_folder()
+      if (folder) {
+        emit('select', folder)
+        close()
+        return
+      }
+      // 用户取消了原生对话框 → 同时关闭自定义浏览器 / User cancelled native dialog → close custom browser too
+      close()
+      return
+    } catch {
+      // 原生对话框调用失败 → 回退到自定义浏览器 / Native dialog failed → fallback to custom browser
+    }
   }
+
+  // ─── Web 端回退：使用自定义目录浏览器 / Web fallback: use custom directory browser ───
+  loadDir(props.initialPath || undefined)
 })
 
 async function loadDir(path?: string) {

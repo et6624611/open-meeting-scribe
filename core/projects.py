@@ -285,8 +285,9 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
     lines.append("")
 
     # 会议纪要区块 / Summary section
+    # 优先使用用户编辑版本，回退到 LLM 原始输出 / Prefer user-edited version, fallback to LLM original
     if "summary" in content_types:
-        summary = task.get("summary", "")
+        summary = task.get("user_summary") or task.get("summary", "")
         if summary:
             lines.append("## 会议纪要")
             lines.append("")
@@ -365,6 +366,15 @@ def sync_meeting_to_folders(task: dict) -> list[str]:
             logger.info("会议纪要已同步: %s", target_file)
         except Exception as e:
             logger.error("写入同步文件失败 %s: %s", target_file, e)
+
+    # 同步成功后更新 last_synced_at 并持久化 / Update last_synced_at after successful sync and persist
+    if written:
+        task["last_synced_at"] = datetime.now().isoformat()
+        try:
+            from app.task_store import save_task_to_disk
+            save_task_to_disk(task.get("task_id", ""))
+        except Exception as e:
+            logger.warning("保存 last_synced_at 失败: %s", e)
 
     return written
 

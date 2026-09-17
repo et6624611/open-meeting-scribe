@@ -3,8 +3,8 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-更新 / Updated: 2026-09-16
-版本 / Version: 3.0.0
+更新 / Updated: 2026-09-17
+版本 / Version: 3.1.0
 
 综合洞察分析：一次分析覆盖上下文关联、盲点揭示、共识提炼三个维度。 / Unified insight analysis: single analysis covering context, blindspot, and consensus dimensions.
 
@@ -54,8 +54,17 @@ INSIGHT_ANALYSIS_PROMPT = """你是一位资深会议顾问。你的独特价值
 
 如果没有明显的关系结构可画，纯文字分析也可以——不要为了画图而画图。
 
+## 结构化知识图谱（graph 字段）
+
+当你发现讨论中存在清晰的概念/决策/行动项之间的关系网络时，额外输出一个结构化的知识图谱。
+图谱节点应携带 begin_time（毫秒），指向讨论该节点的转写行，使用户可以点击节点跳转到原文对应位置。
+
+节点 begin_time 提取规则：查看下方「最近讨论内容」中每条转写的 [说话人N] 行前面的时间戳（如果有的话），选择与该节点内容最相关的那条转写的时间戳。如果没有时间戳信息，begin_time 设为 0。
+
 返回 JSON：
-{"title": "一句话概括这个洞察", "body": "你的分析（Markdown 格式，自由组织）", "solution": "建议（如果有）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
+{"title": "一句话概括这个洞察", "body": "你的分析（Markdown 格式，自由组织）", "solution": "建议（如果有）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串", "graph": {"nodes": [{"id": "n1", "label": "概念名", "begin_time": 123000}], "edges": [{"from": "n1", "to": "n2", "label": "关系"}]}}
+
+graph 字段：如果没有明显的关系网络可提取，设为 null。节点数控制在 3-12 个，边数控制在 3-15 条。
 
 仅返回 JSON。"""
 
@@ -92,12 +101,38 @@ def _parse_analysis_result(reply: str) -> dict:
         cleaned = "\n".join(lines).strip()
 
     result = json.loads(cleaned)
+    # 解析 graph 字段（可选） / Parse graph field (optional)
+    raw_graph = result.get("graph")
+    graph = None
+    if isinstance(raw_graph, dict):
+        nodes = raw_graph.get("nodes", [])
+        edges = raw_graph.get("edges", [])
+        if nodes:  # 至少有节点才视为有效 / At least nodes required to be valid
+            graph = {
+                "nodes": [
+                    {
+                        "id": str(n.get("id", "")),
+                        "label": str(n.get("label", n.get("id", ""))),
+                        "begin_time": int(n.get("begin_time", 0)),
+                    }
+                    for n in nodes if n.get("id")
+                ],
+                "edges": [
+                    {
+                        "from": str(e.get("from", "")),
+                        "to": str(e.get("to", "")),
+                        "label": str(e.get("label", "")),
+                    }
+                    for e in edges if e.get("from") and e.get("to")
+                ],
+            }
     return {
         "title": str(result.get("title", "")),
         "body": str(result.get("body", "")),
         "solution": str(result.get("solution", "")),
         "has_finding": bool(result.get("has_finding", False)),
         "diagram": str(result.get("diagram", "")),
+        "graph": graph,
     }
 
 
@@ -121,11 +156,11 @@ async def run_analysis(
                  无角色或角色未定义 insight prompt 时回退到内置默认。
 
     返回：
-      {"title": str, "body": str, "solution": str, "has_finding": bool, "diagram": str}
+      {"title": str, "body": str, "solution": str, "has_finding": bool, "diagram": str, "graph": dict|None}
       失败时返回 has_finding=False
     """
     if not recent_lines or not chapter_titles:
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
 
     # 角色感知：优先使用角色专属 prompt，回退到内置默认 / Role-aware: prefer role-specific prompt, fallback to built-in default
     system_prompt = None
@@ -161,7 +196,7 @@ async def run_analysis(
 
     except json.JSONDecodeError:
         logger.warning("[洞察台] 分析返回非 JSON: %s", reply[:200])
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
     except Exception as e:
         logger.warning("[洞察台] 分析失败: %s", e)
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": ""}
+        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}

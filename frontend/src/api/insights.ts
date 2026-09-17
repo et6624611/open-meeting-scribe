@@ -14,6 +14,29 @@ export interface InsightAnalysisResult {
   has_finding: boolean
   /** Mermaid 图语法（可选） / Mermaid diagram syntax (optional) */
   diagram?: string
+  /** 结构化知识图谱（可选） / Structured knowledge graph (optional) */
+  graph?: InsightGraphData | null
+}
+
+/** 结构化知识图谱数据 / Structured knowledge graph data */
+export interface InsightGraphData {
+  nodes: InsightGraphNode[]
+  edges: InsightGraphEdge[]
+}
+
+/** 图谱节点 / Graph node */
+export interface InsightGraphNode {
+  id: string
+  label: string
+  /** 对应转写时间戳（毫秒），0 表示无关联 / Corresponding transcript timestamp (ms), 0 means no association */
+  begin_time: number
+}
+
+/** 图谱边 / Graph edge */
+export interface InsightGraphEdge {
+  from: string
+  to: string
+  label: string
 }
 
 /** 转写行（用于分析请求） / Transcript line (for analysis request) */

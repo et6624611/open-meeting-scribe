@@ -66,8 +66,23 @@
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
           </div>
           <div v-if="msg.expanded" class="rec-insight-card-body">
-            <!-- 图形化主输出（如有） / Visual diagram as primary output (if available) -->
-            <div v-if="msg.diagram" class="rec-insight-diagram-wrap">
+            <!-- 结构化知识图谱（G6 交互式） / Structured knowledge graph (G6 interactive) -->
+            <div v-if="msg.graph" class="rec-insight-diagram-wrap">
+              <InsightGraph
+                :data="msg.graph"
+                class="rec-insight-diagram rec-insight-diagram-primary"
+                @seek-to="$emit('seekTo', $event)"
+              />
+              <!-- 图操作工具栏 / Diagram action toolbar -->
+              <div class="rec-insight-diagram-toolbar">
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
+                </button>
+              </div>
+            </div>
+            <!-- Mermaid 图形化主输出（如有） / Visual diagram as primary output (if available) -->
+            <div v-else-if="msg.diagram" class="rec-insight-diagram-wrap">
               <MermaidDiagram
                 :code="msg.diagram"
                 class="rec-insight-diagram rec-insight-diagram-primary"
@@ -127,6 +142,7 @@ import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
+import InsightGraph from '@/components/common/InsightGraph.vue'
 
 const { t } = useI18n()
 const insights = useAiInsights()
@@ -172,6 +188,7 @@ defineEmits<{
   (e: 'action', message: InsightMessage, action: InsightAction): void
   (e: 'manualCheck'): void
   (e: 'toggleExpand'): void
+  (e: 'seekTo', ms: number): void
 }>()
 
 /** 复制图源码到剪贴板 / Copy diagram source to clipboard */

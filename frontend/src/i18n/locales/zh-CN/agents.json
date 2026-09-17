@@ -15,6 +15,7 @@
   "fork_name": "角色名称（英文，如 my-expert）",
   "fork_source": "复制来源",
   "fork_btn": "创建",
+  "delete_confirm_title": "删除角色",
   "delete_confirm": "确认删除自定义角色「{name}」？此操作不可撤销。",
   "no_custom": "暂无自定义角色",
   "no_custom_hint": "可从预定义角色复制创建",

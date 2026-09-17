@@ -6,7 +6,7 @@
  */
 import { ref, computed, type Ref } from 'vue'
 import { tt } from '@/i18n'
-import { runInsightAnalysis, loadInsightMessages, saveInsightMessages } from '@/api/insights'
+import { runInsightAnalysis, loadInsightMessages, saveInsightMessages, type InsightGraphData } from '@/api/insights'
 import { buildDiagramCaption } from '@/utils/mermaidCaption'
 
 /** 洞察消息结构 / Insight message structure */
@@ -34,6 +34,8 @@ export interface InsightMessage {
   acknowledged: boolean
   /** Mermaid 图语法（可选） / Mermaid diagram syntax (optional) */
   diagram?: string
+  /** 结构化知识图谱（可选，与 diagram 互斥） / Structured knowledge graph (optional, mutually exclusive with diagram) */
+  graph?: InsightGraphData
 }
 
 export interface InsightAction {
@@ -109,7 +111,8 @@ function addInsightMessage(
   source: 'user' | 'system' = 'user',
   category = '',
   solution = '',
-  diagram = ''
+  diagram = '',
+  graph?: InsightGraphData | null
 ): string {
   if (!insightsEnabled.value) return ''
   const id = nextId()
@@ -126,6 +129,7 @@ function addInsightMessage(
     expanded: false,
     acknowledged: false,
     diagram: diagram || undefined,
+    graph: graph || undefined,
   })
   // 实时持久化 / Realtime persist
   if (currentTaskId.value) persistMessages(currentTaskId.value)
@@ -178,7 +182,8 @@ async function runManualAnalysis(
         'user',
         tt('ai-panel.insights.cat_context'),
         result.solution,
-        result.diagram
+        result.diagram,
+        result.graph
       )
     } else {
       // 手动触发且无发现 → 给出正面反馈 / Manual trigger with no finding → positive feedback

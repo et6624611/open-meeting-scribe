@@ -37,6 +37,7 @@
     "default_action": "View Details"
   },
   "rename_prompt": "Enter new title:",
+  "confirm_delete_title": "Delete Meeting",
   "confirm_delete": "Delete this meeting? This cannot be undone.",
   "errors": {
     "delete_failed": "Delete failed, please try again",

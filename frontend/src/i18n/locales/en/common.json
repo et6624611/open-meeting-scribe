@@ -122,5 +122,10 @@
   },
   "playing": "Playing",
   "paused": "Paused",
+  "confirm_dialog": {
+    "default_title": "Confirm",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
   "reload_recording_confirm": "There is an active recording. Reloading will interrupt it. Continue?"
 }

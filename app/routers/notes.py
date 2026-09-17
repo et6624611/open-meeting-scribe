@@ -15,6 +15,11 @@ from core.i18n import _
 
 router = APIRouter(tags=["notes"])
 
+
+def _mark_modified(task_id: str) -> None:
+    """标记任务内容已修改，用于知识库同步脏检测 / Mark task content as modified for KB sync dirty detection."""
+    tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+
 # 决策流状态与推进方类型 / Decision-flow status and owner types
 DecisionStatus = Literal["to_decide", "to_start", "in_progress", "to_confirm", "done"]
 OwnerType = Literal["self", "agent", "colleague", "enterprise"]
@@ -45,6 +50,7 @@ def update_task_notes(task_id: str, req: NotesUpdate):
     if not task:
         raise HTTPException(404, _("Task not found"))
     task["user_notes"] = req.notes
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"notes": req.notes}
 
@@ -56,6 +62,7 @@ def update_task_summary(task_id: str, req: NotesUpdate):
     if not task:
         raise HTTPException(404, _("Task not found"))
     task["user_summary"] = req.notes
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"notes": req.notes}
 
@@ -119,6 +126,7 @@ def inject_content(task_id: str, req: InjectRequest):
         }
         todos.append(todo_item)
 
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"item": item}
 
@@ -148,6 +156,7 @@ def delete_injection(task_id: str, injection_id: str):
     # 同步删除关联的 todo / Also delete associated todo
     todos = task.get("todos", [])
     task["todos"] = [t for t in todos if t.get("injection_id") != injection_id]
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
 
@@ -176,6 +185,7 @@ def toggle_todo(task_id: str, todo_id: str, req: TodoToggleRequest):
             todo["done"] = req.done
             # 同步决策流状态:done 与 status 保持一致 / Keep done and status in sync
             todo["status"] = "done" if req.done else "in_progress"
+            _mark_modified(task_id)
             save_task_to_disk(task_id)
             return {"todo": todo}
     raise HTTPException(404, _("To-do not found"))
@@ -189,6 +199,7 @@ def delete_todo(task_id: str, todo_id: str):
         raise HTTPException(404, _("Task not found"))
     todos = task.get("todos", [])
     task["todos"] = [t for t in todos if t["id"] != todo_id]
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
 
@@ -228,6 +239,7 @@ def create_todo(task_id: str, req: TodoCreateRequest):
         "created_at": datetime.now().isoformat(),
     }
     todos.append(todo_item)
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"todo": todo_item}
 
@@ -256,6 +268,7 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
                 todo["status"] = req.status
                 # status 与 done 保持同步 / Keep status and done in sync
                 todo["done"] = req.status == "done"
+            _mark_modified(task_id)
             save_task_to_disk(task_id)
             return {"todo": todo}
     raise HTTPException(404, _("To-do not found"))

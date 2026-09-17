@@ -7,6 +7,7 @@ app/routers/speakers.py — 说话人 CRUD + 会议级绑定/纪要生成 / Spea
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,11 @@ from core.i18n import _
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["speakers"])
+
+
+def _mark_modified(task_id: str) -> None:
+    """标记任务内容已修改，用于知识库同步脏检测 / Mark task content as modified for KB sync dirty detection."""
+    tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
 
 
 class SpeakerCreate(BaseModel):
@@ -181,6 +187,7 @@ def update_speaker_mapping(
 
     # 仅更新映射并持久化，不改变状态、不触发纪要生成 / Only update mapping and persist; no state change, no summary trigger
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    _mark_modified(task_id)
     save_task_to_disk(task_id)
 
     return {"status": "ok", "mapping": tasks[task_id]["speaker_uuid_mapping"]}

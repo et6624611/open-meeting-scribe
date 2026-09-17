@@ -28,5 +28,6 @@
   "batch_delete": "删除",
   "batch_close": "取消选择",
   "export_todo": "导出 {count} 个会议（功能待实现）",
+  "confirm_delete_title": "批量删除会议",
   "confirm_delete": "确定删除 {count} 个会议？此操作不可撤销。"
 }

@@ -37,6 +37,7 @@
     "default_action": "查看详情"
   },
   "rename_prompt": "输入新标题：",
+  "confirm_delete_title": "删除会议",
   "confirm_delete": "确定删除该会议？此操作不可撤销。",
   "errors": {
     "delete_failed": "删除失败，请重试",

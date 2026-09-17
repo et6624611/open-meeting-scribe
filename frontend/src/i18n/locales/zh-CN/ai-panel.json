@@ -161,5 +161,7 @@
     "manual_check_need_transcript": "当前转写内容不足（需至少 5 条），请等待更多发言后再试。",
     "manual_check_need_chapters": "尚未生成章节标题，请等待议程结构建立后再试。"
   },
-  "ai_suggestion": "AI 建议"
+  "ai_suggestion": "AI 建议",
+  "delete_task_title": "删除任务",
+  "delete_task_confirm": "确认删除任务 {id}…？此操作不可撤销。"
 }

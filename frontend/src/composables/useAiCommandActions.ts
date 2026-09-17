@@ -12,6 +12,7 @@ import { showToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/api/client'
 import type { AiCommand } from '@/composables/useAiCommands'
 import type { Ref } from 'vue'
+import { ref } from 'vue'
 
 interface ChatLike {
   messages: Ref<Array<{ role: string; content: string }>>
@@ -102,10 +103,19 @@ export function useAiCommandActions(
     else { showToast('未选择任务，已打开会议库', 'warn'); router.push('/library') }
   }
 
-  async function onTasksDelete() {
+  const showDeleteConfirm = ref(false)
+  const pendingDeleteTaskId = ref<string | null>(null)
+
+  function onTasksDelete() {
     const id = taskStore.currentTaskId
     if (!id) { showToast('未选择任务', 'warn'); return }
-    if (!confirm(`确认删除任务 ${id.slice(0, 8)}…？`)) return
+    pendingDeleteTaskId.value = id
+    showDeleteConfirm.value = true
+  }
+
+  async function confirmDeleteTask() {
+    const id = pendingDeleteTaskId.value
+    if (!id) return
     try {
       const { deleteTask } = await import('@/api/tasks')
       await deleteTask(id)
@@ -180,5 +190,9 @@ export function useAiCommandActions(
     onTasksDelete,
     onSpeakersAdd,
     onHotwordsAdd,
+    // 删除确认状态 / Delete confirmation state
+    showDeleteConfirm,
+    pendingDeleteTaskId,
+    confirmDeleteTask,
   }
 }

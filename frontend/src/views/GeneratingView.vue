@@ -57,6 +57,23 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
           <span class="tb-tip">{{ t('generating.toolbar.fullscreen') }}</span>
         </button>
+        <!-- 知识库同步状态指示器 / Knowledge base sync status indicator -->
+        <button
+          v-if="syncStatus.can_sync"
+          class="gen-toolbar-icon gen-toolbar-sync"
+          :class="{ 'is-dirty': syncStatus.is_dirty, 'is-syncing': isSyncing, 'is-synced': !syncStatus.is_dirty }"
+          :title="isSyncing ? t('generating.toolbar.syncing') : (syncStatus.is_dirty ? t('generating.toolbar.sync_dirty') : t('generating.toolbar.synced'))"
+          :disabled="isSyncing"
+          @click="onSyncToKb"
+        >
+          <!-- 同步中：旋转图标 / Syncing: spinning icon -->
+          <svg v-if="isSyncing" class="sync-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          <!-- 已同步：check-circle / Synced: check-circle -->
+          <svg v-else-if="!syncStatus.is_dirty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <!-- 有更新：upload-cloud / Dirty: upload-cloud -->
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+          <span class="tb-tip">{{ t('generating.toolbar.sync_kb') }}</span>
+        </button>
         <div class="gen-toolbar-divider"></div>
         <div class="gen-toolbar-more-wrap">
           <button ref="genMoreBtn" class="gen-toolbar-icon" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')" aria-haspopup="menu">
@@ -328,7 +345,8 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
-import { deleteTask, retranscribe, retrySummary } from '@/api/tasks'
+import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject } from '@/api/tasks'
+import type { SyncStatus } from '@/api/tasks'
 import { usePopMenu } from '@/composables/usePopMenu'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
@@ -381,6 +399,7 @@ const playback = usePlaybackFollow(
 const notes = useNotesAndTodos(
   data.taskId, data.notesContent, data.notesSaved, data.summaryMd,
   data.todos, data.activeTab, data.task,
+  loadSyncStatus, // 内容修改后自动刷新同步状态 / Refresh sync status after content modification
 )
 
 const onboarding = useOnboarding()
@@ -418,9 +437,48 @@ const {
 const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
 const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
 
+// ─── 知识库同步状态 / Knowledge base sync status ───
+const syncStatus = ref<SyncStatus>({ can_sync: false })
+const isSyncing = ref(false)
+
+async function loadSyncStatus() {
+  if (!data.task.value?.project_id || data.task.value?.status !== 'completed') {
+    syncStatus.value = { can_sync: false }
+    return
+  }
+  try {
+    syncStatus.value = await fetchSyncStatus(data.taskId)
+  } catch {
+    syncStatus.value = { can_sync: false }
+  }
+}
+
+async function onSyncToKb() {
+  if (isSyncing.value) return
+  isSyncing.value = true
+  try {
+    await syncTaskToProject(data.taskId)
+    // 同步完成后刷新状态 / Refresh status after sync
+    await loadSyncStatus()
+  } catch (e) {
+    console.error('sync to kb failed:', e)
+  } finally {
+    isSyncing.value = false
+  }
+}
+
 // ─── 首次进入时自动弹出说话人关联引导弹窗 / Auto-open speaker binding onboarding on first entry ───
 watch(showBindingBar, (visible) => {
   if (visible && !hasSeenOnboarding.value) openOnboarding()
+}, { immediate: true })
+
+// [状态同步] 任务状态变化时刷新知识库同步状态（完成/关联项目时显示同步按钮）
+watch(() => data.task.value, (t) => {
+  if (t?.status === 'completed' && t?.project_id) {
+    loadSyncStatus()
+  } else {
+    syncStatus.value = { can_sync: false }
+  }
 }, { immediate: true })
 
 // ─── 更多菜单 / More menu ──

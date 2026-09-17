@@ -121,6 +121,7 @@
         @action="onInsightAction"
         @manual-check="onInsightManualCheck"
         @toggle-expand="insightsExpanded = !insightsExpanded"
+        @seek-to="player.seekToMs($event)"
       />
     </div>
 
@@ -200,6 +201,7 @@ import { useWebSocketTranscript, type TranscriptLine } from '@/composables/useWe
 import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
 import { useUserStore } from '@/stores/user'
+import { usePlayerStore } from '@/stores/player'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
@@ -230,6 +232,7 @@ const wsChapters = ws.chapters
 const translation = useTranslation(ws)
 const taskStore = useTaskStore()
 const userStore = useUserStore()
+const player = usePlayerStore()
 const layout = useLayoutStore()
 const { registerNotesAppender, registerSummaryAppender } = useQuoteRef()
 

@@ -16,7 +16,13 @@
     "retranscribe": "Re-transcribe",
     "archive": "Archive",
     "unarchive": "Unarchive",
-    "delete": "Delete"
+    "delete": "Delete",
+    "sync_kb": "Sync to KB",
+    "sync_kb_title": "Sync meeting minutes to knowledge base folder",
+    "syncing": "Syncing…",
+    "synced": "Synced to knowledge base",
+    "sync_dirty": "Content changed, click to sync to knowledge base",
+    "sync_no_kb": "Not linked to a knowledge base or sync not enabled"
   },
   "meta": {
     "person": "people",

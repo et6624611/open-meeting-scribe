@@ -117,6 +117,14 @@
       @go-summary="ctx.goToSummary"
       @go-todos="ctx.goToTodos"
     />
+
+    <!-- AI 命令删除确认弹窗 / AI command delete confirm dialog -->
+    <ConfirmDialog
+      v-model="cmdActions.showDeleteConfirm.value"
+      :title="t('ai-panel.delete_task_title')"
+      :message="t('ai-panel.delete_task_confirm', { id: cmdActions.pendingDeleteTaskId.value?.slice(0, 8) ?? '' })"
+      @confirm="cmdActions.confirmDeleteTask()"
+    />
   </div>
 </template>
 
@@ -138,6 +146,7 @@ import { useAiContext } from '@/composables/useAiContext'
 import { useAiCommandActions } from '@/composables/useAiCommandActions'
 import { useAiInsights } from '@/composables/useAiInsights'
 import IconButton from '@/components/common/IconButton.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { modKey } from '@/utils/platform'
 
 import AiSessionTabs from './ai/AiSessionTabs.vue'

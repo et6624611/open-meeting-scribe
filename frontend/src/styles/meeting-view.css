@@ -12,6 +12,16 @@
 .gen-toolbar-icon .tb-tip { display: none; position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; background: var(--surface-2); padding: 1px 6px; border-radius: 3px; pointer-events: none; z-index: 10; }
 .gen-toolbar-icon:hover .tb-tip { display: block; }
 .gen-toolbar-divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+/* 知识库同步指示器 / Knowledge base sync indicator */
+.gen-toolbar-sync.is-synced { color: var(--ok); }
+.gen-toolbar-sync.is-synced:hover { color: var(--ok); background: oklch(from var(--ok) 95% 0.02 h / 0.12); }
+.gen-toolbar-sync.is-dirty { color: var(--warn); animation: sync-pulse 2s ease-in-out infinite; }
+.gen-toolbar-sync.is-dirty:hover { color: var(--warn); background: oklch(from var(--warn) 95% 0.04 h / 0.12); }
+.gen-toolbar-sync.is-syncing { color: var(--accent); pointer-events: none; }
+.gen-toolbar-sync:disabled { opacity: 0.6; cursor: not-allowed; }
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.sync-spin { animation: sync-rotate 0.8s linear infinite; }
+@keyframes sync-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .gen-toolbar-more-wrap { position: relative; }
 .gen-toolbar-more-menu { display: none; position: fixed; min-width: 160px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.08); padding: var(--s-1); z-index: var(--z-popover); }
 .gen-toolbar-more-menu.is-open { display: block; }

@@ -527,6 +527,20 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
             save_task_to_disk(task_id)
 
+            # [管线] 首次完成后自动同步到知识库文件夹（仅当关联项目且启用同步时） /
+            # Auto-sync to knowledge base folder on first completion (only when project linked and sync enabled)
+            try:
+                from core.projects import sync_meeting_to_folders
+                synced_files = sync_meeting_to_folders(tasks[task_id])
+                if synced_files:
+                    logger.info(f"[{task_id[:8]}] 首次完成自动同步到知识库，写入 {len(synced_files)} 个文件")
+                    joblog.append_event(
+                        task_id, joblog.STAGE_SUMMARY,
+                        f"自动同步到知识库，写入 {len(synced_files)} 个文件",
+                    )
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 首次完成自动同步失败（不影响主流程）: {e}")
+
             stage2_elapsed = time.perf_counter() - stage2_start
             logger.info(f"[PERF] {task_id[:8]} 纪要任务总计: {stage2_elapsed:.3f}s")
 

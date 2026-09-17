@@ -13,6 +13,7 @@ export function useNotesAndTodos(
   todos: Ref<TodoItem[]>,
   activeTab: Ref<string>,
   _task: ComputedRef<Task | null>,
+  onContentModified?: () => void,
 ) {
   const showAddForm = ref(false)
   const newTodoText = ref('')
@@ -24,7 +25,7 @@ export function useNotesAndTodos(
   async function loadTodos() { todos.value = await fetchTodos(taskId) }
 
   async function onSaveNotes() {
-    try { await saveNotes(taskId, notesContent.value); notesSaved.value = true } catch { /* */ }
+    try { await saveNotes(taskId, notesContent.value); notesSaved.value = true; onContentModified?.() } catch { /* */ }
   }
 
   function onNotesChange(md: string) {
@@ -37,7 +38,7 @@ export function useNotesAndTodos(
     summaryMd.value = md
     if (summaryTimer) clearTimeout(summaryTimer)
     summaryTimer = setTimeout(async () => {
-      try { await saveSummary(taskId, md) } catch { /* */ }
+      try { await saveSummary(taskId, md); onContentModified?.() } catch { /* */ }
     }, 1000)
   }
 
@@ -47,6 +48,7 @@ export function useNotesAndTodos(
       todo.done = !todo.done
       // 同步决策流状态 / Keep decision-flow status in sync
       todo.status = todo.done ? 'done' : 'in_progress'
+      onContentModified?.()
     } catch { /* */ }
   }
 
@@ -55,6 +57,7 @@ export function useNotesAndTodos(
       await updateTodo(taskId, todo.id, { status })
       todo.status = status
       todo.done = status === 'done'
+      onContentModified?.()
     } catch { /* */ }
   }
 
@@ -65,15 +68,16 @@ export function useNotesAndTodos(
       const t = await createTodo(taskId, text, newTodoAssignee.value.trim() || undefined)
       todos.value.push(t)
       newTodoText.value = ''; newTodoAssignee.value = ''; showAddForm.value = false
+      onContentModified?.()
     } catch { /* */ }
   }
 
   async function onDeleteTodo(todo: TodoItem) {
-    try { await deleteTodo(taskId, todo.id); todos.value = todos.value.filter(x => x.id !== todo.id) } catch { /* */ }
+    try { await deleteTodo(taskId, todo.id); todos.value = todos.value.filter(x => x.id !== todo.id); onContentModified?.() } catch { /* */ }
   }
 
   async function onEditTodo(todo: TodoItem, patch: TodoPatch) {
-    try { await updateTodo(taskId, todo.id, patch); Object.assign(todo, patch) } catch { /* */ }
+    try { await updateTodo(taskId, todo.id, patch); Object.assign(todo, patch); onContentModified?.() } catch { /* */ }
   }
 
   function locateTodoSource(_todo: TodoItem) { /* 由父组件 switchTab('transcript') 处理 / Handled by parent via switchTab('transcript') */ }

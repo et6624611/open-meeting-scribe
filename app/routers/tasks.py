@@ -414,6 +414,8 @@ def update_task(task_id: str, data: TaskUpdate):
         tasks[task_id]["project_id"] = data.project_id.strip() or None
         changed = True
     if changed:
+        # 标记内容已修改，用于知识库同步脏检测 / Mark content as modified for KB sync dirty detection
+        tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
         save_task_to_disk(task_id)
 
     return tasks[task_id]
@@ -450,6 +452,10 @@ def get_task_sync_status(task_id: str):
             }
             for f in sync_folders
         ],
+        # 脏检测：比较 last_modified_at 与 last_synced_at / Dirty detection: compare last_modified_at vs last_synced_at
+        "is_dirty": (task.get("last_modified_at") or "") > (task.get("last_synced_at") or ""),
+        "last_synced_at": task.get("last_synced_at"),
+        "last_modified_at": task.get("last_modified_at"),
     }
 
 

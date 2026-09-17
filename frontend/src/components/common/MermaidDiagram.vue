@@ -46,6 +46,9 @@ function isDarkTheme(): boolean {
   return DARK_THEMES.has(themeStore.current)
 }
 
+/** Mermaid 渲染超时时间（毫秒） / Mermaid render timeout (ms) */
+const RENDER_TIMEOUT_MS = 15_000
+
 /**
  * 渲染 Mermaid 图 / Render Mermaid diagram
  */
@@ -61,10 +64,11 @@ async function renderDiagram() {
     const mermaid = (await import('mermaid')).default
 
     // 初始化配置（每次渲染前重新初始化以确保主题一致） / Initialize config (re-initialize before each render to ensure theme consistency)
+    // 注意：不使用 'strict'，strict 模式会创建 sandbox iframe 导致跨域访问 contentDocument 报错 / Note: avoid 'strict' — it creates a sandbox iframe whose contentDocument access throws cross-origin error
     mermaid.initialize({
       startOnLoad: false,
       theme: isDarkTheme() ? 'dark' : 'default',
-      securityLevel: 'strict',
+      securityLevel: 'loose',
       flowchart: {
         htmlLabels: true,
         curve: 'basis',
@@ -78,8 +82,15 @@ async function renderDiagram() {
     // 生成唯一 ID 避免多次渲染冲突 / Generate unique ID to avoid conflicts from multiple renders
     const id = `mermaid-${Date.now()}-${++renderCounter}`
 
-    const { svg } = await mermaid.render(id, props.code)
+    // 不传容器元素：mermaid 在 document.body 创建临时 DOM 渲染，返回 SVG 字符串后我们再写入 target / Don't pass container: mermaid renders to document.body temp DOM, returns SVG string which we then write to target
+    // 传入 target 会导致 mermaid 直接渲染到 target 中，与后续 target.innerHTML = svg 冲突 / Passing target causes mermaid to render directly into it, conflicting with the subsequent innerHTML assignment
+    const renderPromise = mermaid.render(id, props.code)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Mermaid render timeout')), RENDER_TIMEOUT_MS)
+    )
+    const { svg, bindFunctions } = await Promise.race([renderPromise, timeoutPromise])
     target.innerHTML = svg
+    bindFunctions?.(target)
   } catch (e) {
     // 渲染失败时显示错误信息 / Show error message on render failure
     error.value = e instanceof Error ? e.message : 'Diagram render failed'

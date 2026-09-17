@@ -92,6 +92,14 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 删除确认弹窗 / Delete confirm dialog -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      :title="t('task.confirm_delete_title')"
+      :message="t('task.confirm_delete')"
+      @confirm="onConfirmDelete"
+    />
   </div>
 </template>
 
@@ -103,6 +111,7 @@ import { STATUS_CONFIG } from '@/api/types'
 import { usePlayerStore } from '@/stores/player'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 import { highlightText } from '@/utils/search'
 import { getSpeakerColor } from '@/utils/speakerColors'
@@ -131,6 +140,7 @@ const emit = defineEmits<{
 
 const showContextMenu = ref(false)
 const showHoverCard = ref(false)
+const showDeleteConfirm = ref(false)
 const sidebarEl = ref<HTMLElement | null>(null)
 const buttonRect = ref<DOMRect | null>(null)
 const hoverStyle = ref<Record<string, string>>({})
@@ -352,9 +362,11 @@ function onRetry() {
 
 function onDelete() {
   closeMenu()
-  if (confirm(t('task.confirm_delete'))) {
-    emit('menu', props.task.task_id, new MouseEvent('delete'))
-  }
+  showDeleteConfirm.value = true
+}
+
+function onConfirmDelete() {
+  emit('menu', props.task.task_id, new MouseEvent('delete'))
 }
 
 // 引用 STATUS_CONFIG 避免 unused 警告 / Reference STATUS_CONFIG to avoid unused warning

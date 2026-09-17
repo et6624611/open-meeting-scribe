@@ -28,5 +28,6 @@
   "batch_delete": "Delete",
   "batch_close": "Clear selection",
   "export_todo": "Export {count} meeting(s) (coming soon)",
+  "confirm_delete_title": "Delete Meetings",
   "confirm_delete": "Delete {count} meeting(s)? This cannot be undone."
 }

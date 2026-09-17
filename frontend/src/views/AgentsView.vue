@@ -148,6 +148,14 @@
         </div>
       </div>
     </div>
+
+    <!-- 删除角色确认弹窗 / Delete role confirm dialog -->
+    <ConfirmDialog
+      v-model="showDeleteRoleConfirm"
+      :title="t('agents.delete_confirm_title')"
+      :message="t('agents.delete_confirm', { name: pendingDeleteRoleName })"
+      @confirm="onConfirmDeleteRole"
+    />
   </div>
 </template>
 
@@ -157,6 +165,7 @@ import { useI18n } from 'vue-i18n'
 import { fetchRoles, fetchRoleFiles, forkRole, saveRoleFile, deleteRole } from '@/api/agent'
 import type { AgentRole } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const { t } = useI18n()
 const agentStore = useAgentStore()
@@ -181,6 +190,10 @@ const roleSaving = ref(false)
 const showForkDialog = ref(false)
 const forkName = ref('')
 const forkSource = ref('')
+
+// Delete role confirm
+const showDeleteRoleConfirm = ref(false)
+const pendingDeleteRoleName = ref('')
 
 function roleIcon(name: string) { return ROLE_ICONS[name] || DEFAULT_ICON }
 
@@ -261,7 +274,13 @@ async function onSaveRole() {
 }
 
 function onDeleteRole(name: string) {
-  if (!confirm(t('agents.delete_confirm', { name }))) return
+  pendingDeleteRoleName.value = name
+  showDeleteRoleConfirm.value = true
+}
+
+function onConfirmDeleteRole() {
+  const name = pendingDeleteRoleName.value
+  if (!name) return
   deleteRole(name).then(() => {
     selectedRole.value = null
     loadRoles()

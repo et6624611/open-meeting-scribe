@@ -217,6 +217,33 @@ def _create_and_run_window(url: str) -> None:
         text_select=True,
     )
 
+    # ─── 桌面端原生对话框 / Native folder dialog for desktop ───
+    # 通过 pywebview expose 机制将 Python 函数暴露给前端 JS，
+    # 前端调用 window.pywebview.api.select_native_folder() 即可弹出 OS 原生文件夹选择器。
+    # macOS → NSOpenPanel（Finder 风格），Windows → IFileOpenDialog（资源管理器风格）。
+    # Expose Python function to frontend JS via pywebview bridge,
+    # frontend calls window.pywebview.api.select_native_folder() to open OS native folder picker.
+    # macOS → NSOpenPanel (Finder-style), Windows → IFileOpenDialog (Explorer-style).
+    def select_native_folder() -> str:
+        """弹出操作系统原生文件夹选择对话框，返回选中路径（空串表示取消）。
+        Pop up OS native folder picker, return selected path (empty string if cancelled).
+        """
+        from pathlib import Path
+        try:
+            result = window.create_file_dialog(
+                dialog_type=webview.FOLDER_DIALOG,
+                directory=str(Path.home()),
+                allow_multiple=False,
+            )
+            if result and len(result) > 0:
+                logger.info(f"原生文件夹选择器返回: {result[0]}")
+                return result[0]
+        except Exception as e:
+            logger.warning(f"原生文件夹选择器调用失败: {e}")
+        return ""
+
+    window.expose(select_native_folder)
+
     # ─── 桌面端刷新快捷键注入 / Desktop refresh hotkey injection ───
     # 页面加载完成后注入 JS，监听 F5 键并派发自定义事件，
     # 由 Vue 应用层判断录音状态后决定是否执行刷新。
@@ -232,6 +259,7 @@ def _create_and_run_window(url: str) -> None:
             });
         """)
         logger.info("桌面端刷新快捷键已注入 (F5)")
+        logger.info("原生文件夹选择器已暴露给前端 (select_native_folder)")
 
     window.events.loaded += _on_loaded
 

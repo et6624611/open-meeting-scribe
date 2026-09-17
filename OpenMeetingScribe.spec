@@ -24,6 +24,8 @@ a = Analysis(
         ('core/i18n/locales', 'core/i18n/locales'),
         # 版本文件
         ('VERSION', '.'),
+        # 第三方许可声明（MIT/BSD/Apache 合规）
+        ('THIRD_PARTY_NOTICES.md', '.'),
     ],
     hiddenimports=[
         # FastAPI 和 uvicorn

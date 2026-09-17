@@ -16,7 +16,13 @@
     "retranscribe": "重新识别",
     "archive": "归档",
     "unarchive": "取消归档",
-    "delete": "删除"
+    "delete": "删除",
+    "sync_kb": "同步到知识库",
+    "sync_kb_title": "将会议纪要同步到知识库文件夹",
+    "syncing": "同步中…",
+    "synced": "已同步到知识库",
+    "sync_dirty": "内容已修改，点击同步到知识库",
+    "sync_no_kb": "未关联知识库或未启用同步"
   },
   "meta": {
     "person": "人",

@@ -15,6 +15,7 @@
   "fork_name": "Role name (English, e.g. my-expert)",
   "fork_source": "Fork from",
   "fork_btn": "Create",
+  "delete_confirm_title": "Delete Role",
   "delete_confirm": "Delete custom role '{name}'? This cannot be undone.",
   "no_custom": "No custom roles yet",
   "no_custom_hint": "Create one by forking a built-in role",
