@@ -17,6 +17,7 @@ data/settings.json
 data/philosophies.json
 data/hotwords.txt
 data/usage/
+data/downloads/
 data/remote_config.json
 data/*.wav
 data/*.mp3

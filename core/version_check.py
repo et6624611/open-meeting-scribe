@@ -89,6 +89,10 @@ def _read_latest_release() -> dict | None:
       {
         "version": "7.3.0",
         "release_url": "https://github.com/.../releases/tag/v7.3.0",
+        "downloads": {
+          "windows": "https://your-server.com/api/download/OpenMeetingScribe-7.3.0.exe",
+          "macos": "https://your-server.com/api/download/OpenMeetingScribe-7.3.0.zip"
+        },
         "changelog": "...",
         "published_at": "2026-09-17T..."
       }
@@ -107,6 +111,7 @@ def _read_latest_release() -> dict | None:
         return {
             "version": version.lstrip("v").strip(),
             "release_url": release.get("release_url", ""),
+            "downloads": release.get("downloads", {}),
             "changelog": release.get("changelog", ""),
             "published_at": release.get("published_at", ""),
         }
@@ -129,6 +134,7 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
             "latest_version": "2.1.0" | null,
             "update_available": true | false,
             "release_url": "https://...",
+            "downloads": {"windows": "...", "macos": "..."},
             "changelog": "...",
             "published_at": "...",
             "checked_at": 1234567890.0,
@@ -159,6 +165,7 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
             "latest_version": None,
             "update_available": False,
             "release_url": "",
+            "downloads": {},
             "changelog": "",
             "published_at": "",
             "checked_at": now,
@@ -171,6 +178,7 @@ def check_for_update(settings: dict | None = None, force: bool = False) -> dict:
             "latest_version": latest_ver,
             "update_available": compare_versions(current, latest_ver) > 0,
             "release_url": latest_info.get("release_url", ""),
+            "downloads": latest_info.get("downloads", {}),
             "changelog": latest_info.get("changelog", ""),
             "published_at": latest_info.get("published_at", ""),
             "checked_at": now,

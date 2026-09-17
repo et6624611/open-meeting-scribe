@@ -42,7 +42,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -222,6 +222,7 @@ _AUTH_EXEMPT_PREFIXES = (
     "/api/admin/",
     "/api/cloud/",
     "/api/config/",
+    "/api/download/",
     "/api/models",
 )
 
@@ -334,6 +335,44 @@ app.include_router(insights.router)
 app.include_router(agent.router)
 app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
+
+# ============================================================
+# 软件下载分发（自建下载中转） / Software download distribution (self-hosted relay)
+# ============================================================
+
+# 下载文件存放目录（PyInstaller 打包后存放在 exe 同级目录） /
+# Directory for download files (PyInstaller: stored next to the executable)
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    DOWNLOADS_DIR = Path(sys.executable).parent / "data" / "downloads"
+else:
+    DOWNLOADS_DIR = Path(__file__).parent.parent / "data" / "downloads"
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/api/download/{filename}")
+async def download_file(filename: str):
+    """
+    下载软件安装包 / Download software installation package.
+
+    从 data/downloads/ 目录提供文件下载，用于私库场景下的自建分发。
+    Serve files from data/downloads/ for self-hosted distribution in private repo scenarios.
+    客户端通过 remote_config.json 的 downloads 字段获取对应平台的下载链接。
+    Clients get platform-specific download URLs from remote_config.json's downloads field.
+    """
+    # 路径遍历防护：确保文件在 DOWNLOADS_DIR 内 /
+    # Path traversal protection: ensure file is within DOWNLOADS_DIR
+    safe_path = (DOWNLOADS_DIR / filename).resolve()
+    if not str(safe_path).startswith(str(DOWNLOADS_DIR.resolve())):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not safe_path.is_file():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(
+        path=str(safe_path),
+        filename=filename,
+        media_type="application/octet-stream",
+    )
 
 # ============================================================
 # 自动归档 / Auto Archive

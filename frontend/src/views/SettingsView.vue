@@ -309,6 +309,26 @@
         <input v-model="settings.output_dir" class="settings-input" :placeholder="t('settings.output_dir_placeholder')" />
       </div>
     </div>
+
+    <!-- 录音设备 / Recording device -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.recording_device') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.recording_device_desc') }}</p>
+      <div class="settings-field">
+        <select v-model="selectedDevice" class="settings-input" :disabled="devicesLoading">
+          <option value="">{{ t('settings.recording_device_auto') }}</option>
+          <option v-for="d in audioDevices" :key="d.index" :value="d.name">{{ d.name }}</option>
+        </select>
+      </div>
+      <div class="version-actions">
+        <button class="btn btn-secondary btn-sm" @click="loadDevices" :disabled="devicesLoading">
+          <svg v-if="devicesLoading" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          {{ devicesLoading ? t('settings.recording_device_loading') : t('settings.recording_device_refresh') }}
+        </button>
+        <span v-if="!devicesLoading && audioDevices.length === 0 && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_none') }}</span>
+        <span v-if="!devicesLoading && !ffmpegAvailable && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_ffmpeg_missing') }}</span>
+      </div>
+    </div>
     </div>
 
     <!-- ═══ 外观 / Appearance ═══ -->
@@ -483,7 +503,10 @@
             <svg v-if="settingsChecking" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
             {{ settingsChecking ? t('settings.checking_update') : t('settings.check_update_btn') }}
           </button>
-          <a v-if="settingsHasUpdate && settingsReleaseUrl" class="btn btn-primary btn-sm" :href="settingsReleaseUrl" target="_blank" rel="noopener" style="margin-left:8px">{{ t('settings.go_to_download') }}</a>
+          <a v-if="settingsHasUpdate && settingsReleaseUrl" class="btn btn-primary btn-sm" :href="settingsReleaseUrl" target="_blank" rel="noopener" style="margin-left:8px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            {{ settingsDownloadLabel ? t('settings.download_for_platform', { platform: settingsDownloadLabel }) : t('settings.go_to_download') }}
+          </a>
           <span v-if="settingsCheckMessage" class="version-msg" :class="{ 'is-error': settingsCheckError }">{{ settingsCheckMessage }}</span>
         </div>
       </div>
@@ -659,7 +682,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
@@ -671,6 +694,8 @@ import { fetchUsageSummary, fetchUsageHistory, updateUserPrefs } from '@/api/usa
 import type { UsageSummary, UsageHistoryItem } from '@/api/usage'
 import { fetchStorageUsage, cleanIntermediateFiles, cleanOrphanedFiles } from '@/api/storage'
 import type { StorageUsage } from '@/api/storage'
+import { fetchAudioDevices, setRecordDevice } from '@/api/record'
+import type { AudioDevice } from '@/api/record'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 import { usePageBack } from '@/composables/usePageBack'
 import { modKey } from '@/utils/platform'
@@ -690,6 +715,8 @@ const {
   latestVersion: updateLatestVersion,
   currentVersion: updateCurrentVersion,
   releaseUrl: updateReleaseUrl,
+  downloadUrl: updateDownloadUrl,
+  downloadPlatformLabel: updateDownloadPlatformLabel,
   checkError: updateCheckError,
   manualCheck: updateManualCheck,
   loadCurrentVersion: updateLoadCurrentVersion,
@@ -700,7 +727,8 @@ const settingsChecking = computed(() => updateChecking.value)
 const settingsHasUpdate = computed(() => updateHasUpdate.value)
 const settingsCurrentVersion = computed(() => updateCurrentVersion.value)
 const settingsLatestVersion = computed(() => updateLatestVersion.value)
-const settingsReleaseUrl = computed(() => updateReleaseUrl.value)
+const settingsReleaseUrl = computed(() => updateDownloadUrl.value || updateReleaseUrl.value)
+const settingsDownloadLabel = computed(() => updateDownloadPlatformLabel.value)
 const settingsCheckError = computed(() => !!updateCheckError.value)
 const settingsCheckMessage = computed(() => {
   if (updateCheckError.value) return t('settings.check_update_error')
@@ -714,6 +742,47 @@ async function onManualCheck() {
   updateResetDismiss()
   await updateManualCheck()
 }
+
+// ─── 录音设备选择 / Recording device selection ───
+const audioDevices = ref<AudioDevice[]>([])
+const selectedDevice = ref('')
+const devicesLoading = ref(false)
+const devicesLoaded = ref(false)
+const ffmpegAvailable = ref(true)
+
+async function loadDevices() {
+  devicesLoading.value = true
+  try {
+    const result = await fetchAudioDevices()
+    audioDevices.value = result.devices
+    ffmpegAvailable.value = result.ffmpeg_available
+    // 如果后端已有配置的设备，回显到下拉框
+    // If backend has a configured device, reflect it in the dropdown
+    if (result.current_device) {
+      selectedDevice.value = result.current_device
+    }
+    devicesLoaded.value = true
+  } catch (e) {
+    console.error('load audio devices failed:', e)
+    devicesLoaded.value = true
+  } finally {
+    devicesLoading.value = false
+  }
+}
+
+// 设备选择变更时立即应用到后端 / Apply device selection to backend immediately on change
+let _deviceInitialized = false
+watch(selectedDevice, async (newVal) => {
+  if (!_deviceInitialized) {
+    _deviceInitialized = true
+    return // 跳过初始化时的回显赋值
+  }
+  try {
+    await setRecordDevice(newVal)
+  } catch (e) {
+    console.error('set record device failed:', e)
+  }
+})
 
 /** 当前选中的设置类别 / Currently selected settings category */
 const activeCategory = ref<string>('account')
@@ -1082,6 +1151,7 @@ onMounted(async () => {
   loadCliReference()
   loadStorageUsage()
   updateLoadCurrentVersion()
+  loadDevices()
 })
 
 async function loadUsage() {

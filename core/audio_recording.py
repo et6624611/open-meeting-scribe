@@ -48,96 +48,192 @@ def _find_windows_audio_device_ps() -> str:
     """通过 PowerShell 枚举 Windows 音频捕获设备（不依赖 ffmpeg）。
     Enumerate Windows audio capture devices via PowerShell (ffmpeg-independent).
 
-    使用 WMI 查询 FriendName 包含 'Microphone' 或 '麦克风' 的已启用设备。
-    Queries WMI for enabled devices whose FriendName contains 'Microphone' or '麦克风'.
+    分两步查询：先精确匹配麦克风关键词，失败则回退到列出所有音频输入设备。
+    Two-step query: first match microphone keywords precisely; fall back to listing
+    all audio input devices if the first step finds nothing.
 
     Returns:
         设备友好名称，未找到返回空字符串 / Device friendly name, or empty string if not found
     """
-    ps_script = (
+    # 麦克风关键词（用于 Python 侧匹配，比 PowerShell -match 更可靠）
+    # Microphone keywords (Python-side matching is more reliable than PowerShell -match)
+    _MIC_KEYWORDS = ('microphone', '麦克风', 'mic array', 'mic-in', 'line in', '线路输入')
+
+    def _run_ps_json(ps_script: str) -> list[dict]:
+        """执行 PowerShell 脚本并解析 JSON 输出（多编码回退）。
+        Run PowerShell script and parse JSON output (multi-encoding fallback).
+
+        中文版 Windows 默认代码页为 GBK (cp936)，PowerShell 输出可能不是 UTF-8。
+        先尝试 UTF-8，失败则回退到 GBK，避免中文设备名被替换为乱码。
+        """
+        cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, timeout=15,
+                stdin=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if _is_windows() else 0,
+            )
+            if result.returncode != 0:
+                stderr_text = result.stderr.decode("utf-8", errors="replace")[:200]
+                logger.warning(f"PowerShell 脚本执行失败 (exit={result.returncode}): {stderr_text}")
+                return []
+            raw = result.stdout
+            if not raw or not raw.strip():
+                return []
+
+            # 多编码回退：UTF-8 → GBK (cp936) → latin-1 / Multi-encoding fallback
+            output = None
+            for enc in ("utf-8", "gbk", "latin-1"):
+                try:
+                    output = raw.decode(enc).strip()
+                    json.loads(output)  # 验证 JSON 可解析
+                    break
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    output = None
+                    continue
+            if output is None:
+                logger.warning("PowerShell 输出无法解码（尝试了 utf-8/gbk/latin-1）")
+                return []
+
+            data = json.loads(output)
+            if isinstance(data, dict):
+                data = [data]
+            return data if isinstance(data, list) else []
+        except FileNotFoundError:
+            logger.warning("PowerShell 不可用")
+            return []
+        except subprocess.TimeoutExpired:
+            logger.warning("PowerShell 设备枚举超时（15s）")
+            return []
+        except (json.JSONDecodeError, OSError, KeyError) as e:
+            logger.warning(f"PowerShell 设备枚举异常: {e}")
+            return []
+
+    def _pick_mic(devices: list[dict], prefer_ok_status: bool = True) -> str:
+        """从设备列表中优先选择麦克风设备。"""
+        if not devices:
+            return ""
+        # 优先 Status=OK 且名称匹配麦克风关键词
+        if prefer_ok_status:
+            for item in devices:
+                name = item.get("FriendlyName", "")
+                status = item.get("Status", "")
+                if name and status == "OK" and any(kw in name.lower() for kw in _MIC_KEYWORDS):
+                    logger.info(f"PowerShell 检测到麦克风设备: {name} (Status={status})")
+                    return name
+        # 回退：任何名称匹配麦克风关键词的设备
+        for item in devices:
+            name = item.get("FriendlyName", "")
+            if name and any(kw in name.lower() for kw in _MIC_KEYWORDS):
+                logger.info(f"PowerShell 检测到麦克风设备（非 OK 状态）: {name}")
+                return name
+        # 回退：Status=OK 的任何音频设备
+        if prefer_ok_status:
+            for item in devices:
+                name = item.get("FriendlyName", "")
+                status = item.get("Status", "")
+                if name and status == "OK":
+                    logger.info(f"PowerShell 回退到音频设备: {name} (Status={status})")
+                    return name
+        # 最终回退：第一个有名称的设备
+        for item in devices:
+            name = item.get("FriendlyName", "")
+            if name:
+                logger.info(f"PowerShell 回退到音频设备（无状态过滤）: {name}")
+                return name
+        return ""
+
+    # ── 策略 A: Win32_PnPEntity + AudioEndpoint（精确）── / ── Strategy A: Win32_PnPEntity + AudioEndpoint (precise) ──
+    ps_narrow = (
         "Get-CimInstance Win32_PnPEntity | "
-        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' -and $_.Status -eq 'OK' -and "
-        "($_.FriendlyName -match 'Microphone|麦克风|microphone') } | "
+        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' } | "
         "Select-Object FriendlyName, Status | "
         "ConvertTo-Json"
     )
-    cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=15,
-            stdin=subprocess.DEVNULL,
-            encoding="utf-8", errors="replace",
-            creationflags=subprocess.CREATE_NO_WINDOW if _is_windows() else 0,
-        )
-        if result.returncode != 0:
-            logger.warning(f"PowerShell 设备枚举失败 (exit={result.returncode}): {result.stderr[:200]}")
-            return ""
-        output = result.stdout.strip()
-        if not output:
-            return ""
+    devices = _run_ps_json(ps_narrow)
+    if devices:
+        mic = _pick_mic(devices)
+        if mic:
+            return mic
+        logger.info(f"PowerShell AudioEndpoint 找到 {len(devices)} 个设备但无匹配麦克风")
 
-        data = json.loads(output)
-        if isinstance(data, dict):
-            data = [data]
+    # ── 策略 B: Get-PnpDevice AudioEndpoint（更现代的 API）── / ── Strategy B: Get-PnpDevice AudioEndpoint (more modern API) ──
+    ps_pnp = (
+        "Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | "
+        "Select-Object FriendlyName, Status | "
+        "ConvertTo-Json"
+    )
+    devices = _run_ps_json(ps_pnp)
+    if devices:
+        mic = _pick_mic(devices, prefer_ok_status=False)
+        if mic:
+            return mic
 
-        for item in data:
-            name = item.get("FriendlyName", "")
-            status = item.get("Status", "")
-            if name and status == "OK":
-                logger.info(f"PowerShell 检测到音频设备: {name} (Status={status})")
-                return name
+    # ── 策略 C: Win32_SoundDevice（更宽泛的设备类别）── / ── Strategy C: Win32_SoundDevice (broader device class) ──
+    ps_sound = (
+        "Get-CimInstance Win32_SoundDevice | "
+        "Select-Object Name, Status | "
+        "ConvertTo-Json"
+    )
+    devices = _run_ps_json(ps_sound)
+    if devices:
+        # Win32_SoundDevice 使用 Name 而非 FriendlyName
+        sound_devices = [{"FriendlyName": d.get("Name", ""), "Status": d.get("Status", "")} for d in devices]
+        mic = _pick_mic(sound_devices)
+        if mic:
+            return mic
 
-        # 如果没有 Status=OK 的麦克风设备，返回第一个有名称的设备
-        for item in data:
-            name = item.get("FriendlyName", "")
-            if name:
-                logger.info(f"PowerShell 检测到音频设备（非 OK 状态）: {name}")
-                return name
-
-        return ""
-    except FileNotFoundError:
-        logger.warning("PowerShell 不可用")
-        return ""
-    except subprocess.TimeoutExpired:
-        logger.warning("PowerShell 设备枚举超时（15s）")
-        return ""
-    except (json.JSONDecodeError, OSError, KeyError) as e:
-        logger.warning(f"PowerShell 设备枚举异常: {e}")
-        return ""
+    logger.warning("PowerShell 所有策略均未找到音频输入设备")
+    return ""
 
 
 def _detect_windows_audio_device() -> str:
-    """检测 Windows 音频输入设备（带缓存 + 多策略）。
-    Detect Windows audio input device (cached + multi-strategy).
+    """检测 Windows 音频输入设备（带缓存 + 双路并行 + ffmpeg 优先验证）。
+    Detect Windows audio input device (cached + dual-path parallel + ffmpeg preference).
 
-    策略顺序 / Strategy order:
+    策略 / Strategy:
       1. 缓存命中（同一进程生命周期内只检测一次）
-      2. ffmpeg dshow（DirectShow 枚举，与录音使用同一后端）
-      3. PowerShell WMI 查询（不依赖 ffmpeg，PyInstaller 打包环境的可靠后备）
+      2. 并行运行 PowerShell WMI 和 ffmpeg dshow
+      3. 优先使用 ffmpeg dshow 结果（设备名保证兼容录音命令）
+      4. ffmpeg 失败时回退到 PowerShell 结果（最佳努力）
+      5. 两者都失败则不缓存（允许用户插拔设备后重试）
     """
     global _WINDOWS_DEVICE_CACHE
     if _WINDOWS_DEVICE_CACHE is not None:
         logger.debug(f"使用缓存的 Windows 音频设备: {_WINDOWS_DEVICE_CACHE}")
         return _WINDOWS_DEVICE_CACHE
 
-    # 策略 1: ffmpeg dshow
-    device = _find_windows_audio_device()
-    if device:
-        logger.info(f"[设备检测] ffmpeg dshow 成功: {device}")
-        _WINDOWS_DEVICE_CACHE = device
-        return device
+    # 双路并行检测：同时运行 PowerShell 和 ffmpeg，不互相阻塞
+    # Dual-path detection: run both PowerShell and ffmpeg, neither blocks the other
+    ps_device = ""
+    ff_device = ""
 
-    logger.warning("[设备检测] ffmpeg dshow 未检测到设备，尝试 PowerShell 后备方案...")
+    # 策略 A: PowerShell WMI（不依赖 ffmpeg，PyInstaller 环境更可靠）
+    ps_device = _find_windows_audio_device_ps()
+    if ps_device:
+        logger.info(f"[设备检测] PowerShell 检测到: {ps_device}")
 
-    # 策略 2: PowerShell WMI
-    device = _find_windows_audio_device_ps()
-    if device:
-        logger.info(f"[设备检测] PowerShell 后备成功: {device}")
-        _WINDOWS_DEVICE_CACHE = device
-        return device
+    # 策略 B: ffmpeg dshow（设备名保证兼容录音命令）
+    ff_device = _find_windows_audio_device()
+    if ff_device:
+        logger.info(f"[设备检测] ffmpeg dshow 检测到: {ff_device}")
 
-    logger.error("[设备检测] 所有策略均失败（ffmpeg dshow + PowerShell），无法自动检测音频设备")
-    _WINDOWS_DEVICE_CACHE = ""
+    # 优先使用 ffmpeg dshow 结果（设备名与录音命令 100% 兼容）
+    # Prefer ffmpeg dshow result (device name 100% compatible with recording command)
+    if ff_device:
+        _WINDOWS_DEVICE_CACHE = ff_device
+        return ff_device
+
+    # ffmpeg 失败时回退到 PowerShell（最佳努力，设备名可能略有差异）
+    # Fall back to PowerShell when ffmpeg fails (best effort, name may differ slightly)
+    if ps_device:
+        logger.warning(f"[设备检测] ffmpeg dshow 失败，使用 PowerShell 结果（设备名可能略有差异）: {ps_device}")
+        _WINDOWS_DEVICE_CACHE = ps_device
+        return ps_device
+
+    logger.error("[设备检测] 所有策略均失败（PowerShell + ffmpeg dshow），无法自动检测音频设备")
+    # 不缓存空结果 — 允许用户插拔设备后重试，无需重启应用
+    # Don't cache empty result — allow retry after user plugs/unplugs device without restarting app
     return ""
 
 
@@ -805,11 +901,15 @@ def _list_windows_audio_devices() -> list[dict]:
 
 
 def _list_windows_audio_devices_ps() -> list[dict]:
-    """通过 PowerShell 列出 Windows 音频输入设备。"""
+    """通过 PowerShell 列出 Windows 音频输入设备（宽泛枚举 + Python 侧排序）。
+    List Windows audio input devices (broad enumeration + Python-side sorting).
+
+    不再在 PowerShell 端过滤设备名称，而是枚举所有 AudioEndpoint 设备，
+    在 Python 侧按麦克风关键词排序。这样能覆盖更多设备类型。
+    """
     ps_script = (
         "Get-CimInstance Win32_PnPEntity | "
-        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' -and $_.Status -eq 'OK' -and "
-        "($_.FriendlyName -match 'Microphone|麦克风|microphone') } | "
+        "Where-Object { $_.PNPClass -eq 'AudioEndpoint' } | "
         "Select-Object FriendlyName, Status | "
         "ConvertTo-Json"
     )
@@ -831,12 +931,21 @@ def _list_windows_audio_devices_ps() -> list[dict]:
         if isinstance(data, dict):
             data = [data]
 
-        devices = []
-        for idx, item in enumerate(data):
+        _MIC_KEYWORDS = ('microphone', '麦克风', 'mic array', 'mic-in')
+        all_devices = []
+        for item in data:
             name = item.get("FriendlyName", "")
             if name:
-                devices.append({"index": idx, "name": name, "type": "audio"})
-        return devices
+                all_devices.append({"name": name, "status": item.get("Status", "")})
+
+        # 排序：麦克风 + OK 状态优先
+        def _sort_key(d: dict) -> tuple:
+            is_mic = any(kw in d["name"].lower() for kw in _MIC_KEYWORDS)
+            is_ok = d["status"] == "OK"
+            return (not is_mic, not is_ok)  # False < True，所以取反后排前面
+        all_devices.sort(key=_sort_key)
+
+        return [{"index": idx, "name": d["name"], "type": "audio"} for idx, d in enumerate(all_devices)]
     except Exception as e:
         logger.warning(f"PowerShell 设备列表异常: {e}")
         return []

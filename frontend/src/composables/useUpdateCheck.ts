@@ -5,10 +5,12 @@
  *  - 启动时静默检查新版本（受 featureFlags.update_check 控制） / Silently check for updates on startup (controlled by featureFlags.update_check)
  *  - 提供手动检查入口 / Provide manual check entry point
  *  - 管理更新提示状态 / Manage update notification state
+ *  - 根据用户 OS 匹配平台下载链接 / Match platform download URL based on user OS
  */
 import { ref, computed } from 'vue'
 import { checkForUpdate, fetchCurrentVersion } from '@/api/update'
 import type { VersionCheckResult } from '@/api/update'
+import { getDownloadPlatform } from '@/utils/platform'
 
 const updateResult = ref<VersionCheckResult | null>(null)
 const checking = ref(false)
@@ -27,6 +29,32 @@ export function useUpdateCheck() {
   const currentVersion = computed(() => updateResult.value?.current_version || '')
   const releaseUrl = computed(() => updateResult.value?.release_url || '')
   const checkError = computed(() => updateResult.value?.error || '')
+
+  /**
+   * 根据当前用户 OS 匹配对应的下载链接，回退到 release_url / Match download URL by current OS; fallback to release_url.
+   */
+  const downloadUrl = computed(() => {
+    const downloads = updateResult.value?.downloads
+    if (downloads) {
+      const platform = getDownloadPlatform()
+      if (platform && downloads[platform]) {
+        return downloads[platform]
+      }
+    }
+    return releaseUrl.value
+  })
+
+  /**
+   * 当前平台下载按钮显示文字：'Windows' | 'macOS' | '' / Platform label for download button.
+   */
+  const downloadPlatformLabel = computed(() => {
+    const downloads = updateResult.value?.downloads
+    if (!downloads) return ''
+    const platform = getDownloadPlatform()
+    if (platform === 'macos') return 'macOS'
+    if (platform === 'windows') return 'Windows'
+    return ''
+  })
 
   /**
    * 启动时静默检查（仅当 update_check 开启且未关闭过提示时） /
@@ -60,6 +88,7 @@ export function useUpdateCheck() {
         latest_version: null,
         update_available: false,
         release_url: '',
+        downloads: {},
         changelog: '',
         published_at: '',
         checked_at: Date.now() / 1000,
@@ -84,6 +113,7 @@ export function useUpdateCheck() {
           latest_version: null,
           update_available: false,
           release_url: '',
+          downloads: {},
           changelog: '',
           published_at: '',
           checked_at: 0,
@@ -117,6 +147,8 @@ export function useUpdateCheck() {
     latestVersion,
     currentVersion,
     releaseUrl,
+    downloadUrl,
+    downloadPlatformLabel,
     checkError,
     dismissed,
     startupCheck,

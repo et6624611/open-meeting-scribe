@@ -55,6 +55,14 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 _default_device = "" if platform.system() == "Windows" else "MacBook Pro麦克风"
 RECORD_DEVICE = os.getenv("RECORD_DEVICE", _default_device)
 
+
+def set_record_device(device: str) -> None:
+    """运行时更新录音设备（不持久化，重启后恢复默认）。
+    Update recording device at runtime (not persisted; resets on restart).
+    """
+    global RECORD_DEVICE
+    RECORD_DEVICE = device
+
 # ============================================================
 # 兼容 re-export：设置管理 / Compat re-export: Settings management
 # ============================================================

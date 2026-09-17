@@ -60,7 +60,7 @@
         <span class="reg-guidance-text">
           {{ t('common.update_available', { version: updateLatestVersion }) }}
         </span>
-        <a v-if="updateReleaseUrl" class="reg-guidance-cta" :href="updateReleaseUrl" target="_blank" rel="noopener">{{ t('common.view_update') }}</a>
+        <a v-if="updateDownloadUrl" class="reg-guidance-cta" :href="updateDownloadUrl" target="_blank" rel="noopener">{{ t('common.view_update') }}</a>
         <button class="reg-guidance-dismiss" @click="onDismissUpdate" :title="t('common.announcement.dismiss')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -198,7 +198,7 @@ const { visible: annVisible, currentMessage: annMessage, load: loadAnnouncements
 const safeAnnContent = computed(() => annMessage.value ? escapeHtml(annMessage.value.content) : '')
 
 // 版本更新检查 / Version update check
-const { hasUpdate: updateHasUpdate, latestVersion: updateLatestVersion, releaseUrl: updateReleaseUrl, dismissed: updateDismissed, startupCheck: updateStartupCheck, dismiss: updateDismiss } = useUpdateCheck()
+const { hasUpdate: updateHasUpdate, latestVersion: updateLatestVersion, downloadUrl: updateDownloadUrl, dismissed: updateDismissed, startupCheck: updateStartupCheck, dismiss: updateDismiss } = useUpdateCheck()
 const showUpdateBanner = computed(() => updateHasUpdate.value && !updateDismissed.value)
 
 function onDismissUpdate() {

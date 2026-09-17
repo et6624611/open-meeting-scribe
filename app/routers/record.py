@@ -27,8 +27,8 @@ from pydantic import BaseModel
 # 以模块方式引用 realtime_store：event_loop 全局在 startup 时才赋值，必须运行时通过 / Reference realtime_store as module: event_loop global is only assigned at startup, must read at runtime via
 # rt_store.event_loop 读取（若按值 import 会像 _stream_task_id 一样恒为初始值 None） / rt_store.event_loop (import by value would always be initial None like _stream_task_id)
 import app.realtime_store as rt_store
+import app.store as store
 from app.store import (
-    RECORD_DEVICE,
     RECORDINGS_DIR,
     SPEAKER_COUNT_MAX,
     SPEAKER_COUNT_MIN,
@@ -58,6 +58,7 @@ from core import speakers
 from core.audio import (
     get_stream_recording_info,
     is_stream_recording,
+    list_audio_devices,
     pause_recording_with_stream,
     resume_recording_with_stream,
     start_recording_with_stream,
@@ -74,6 +75,87 @@ from core.silence_detection import cleanup_silence_detection, silence_monitor_lo
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["record"])
+
+
+# ============================================================
+# 录音设备诊断 / Recording Device Diagnostics
+# ============================================================
+
+@router.get("/api/record/devices")
+def get_audio_devices():
+    """列出系统可用的音频输入设备 + 当前录音设备配置。
+    List available audio input devices + current recording device config.
+    """
+    import platform as _platform
+    from core.audio import check_ffmpeg
+
+    devices = list_audio_devices()
+    is_win = _platform.system() == "Windows"
+
+    return {
+        "devices": devices,
+        "current_device": store.RECORD_DEVICE,
+        "platform": _platform.system(),
+        "auto_detect": not store.RECORD_DEVICE if is_win else False,
+        "ffmpeg_available": check_ffmpeg(),
+    }
+
+
+@router.get("/api/record/diagnostics")
+def get_recording_diagnostics():
+    """录音环境诊断信息，用于排查设备检测失败问题。
+    Recording environment diagnostics for troubleshooting device detection failures.
+    """
+    import platform as _platform
+    import shutil
+    from core.audio import check_ffmpeg
+    from core.audio_recording import (
+        _WINDOWS_DEVICE_CACHE,
+        _find_windows_audio_device,
+        _find_windows_audio_device_ps,
+    )
+
+    is_win = _platform.system() == "Windows"
+    ffmpeg_path = shutil.which("ffmpeg")
+    devices = list_audio_devices()
+
+    diag: dict = {
+        "platform": _platform.system(),
+        "ffmpeg_available": check_ffmpeg(),
+        "ffmpeg_path": ffmpeg_path or "",
+        "current_device": store.RECORD_DEVICE,
+        "device_count": len(devices),
+        "devices": devices,
+    }
+
+    if is_win:
+        diag["windows"] = {
+            "cached_device": _WINDOWS_DEVICE_CACHE,
+            "ps_detection": _find_windows_audio_device_ps(),
+            "ffmpeg_detection": _find_windows_audio_device(),
+        }
+
+    return diag
+
+
+class RecordDeviceRequest(BaseModel):
+    device: str  # 设备名称，空字符串表示自动检测 / Device name; empty string means auto-detect
+
+
+@router.post("/api/record/device")
+def set_record_device(req: RecordDeviceRequest):
+    """设置录音设备（运行时生效，重启后恢复默认）。
+    Set recording device (takes effect at runtime; resets on restart).
+    """
+    from app.store import set_record_device as _set_device
+    # 清除 Windows 设备缓存，使下次录音使用新设备
+    # Clear Windows device cache so next recording uses the new device
+    import core.audio_recording as _ar
+    _ar._WINDOWS_DEVICE_CACHE = None
+
+    _set_device(req.device)
+    logger.info(f"[录制] 设备已更新: '{req.device}' ({'auto-detect' if not req.device else 'manual'})")
+    return {"device": req.device, "auto_detect": not req.device}
 
 
 def _cleanup_zombie_recording() -> None:
@@ -293,7 +375,7 @@ def start_record(background_tasks: BackgroundTasks):
     try:
         # 启动流式录音（ffmpeg 采集 → PCM pipe → 写文件 + pcm_callback） / Start streaming recording (ffmpeg capture -> PCM pipe -> write file + pcm_callback)
         result = start_recording_with_stream(
-            device=RECORD_DEVICE,
+            device=store.RECORD_DEVICE,
             output_dir=RECORDINGS_DIR,
             task_id=task_id,
             pcm_callback=pcm_callback,
@@ -418,12 +500,21 @@ def start_record(background_tasks: BackgroundTasks):
         }
         # 磁盘持久化已委托给后台任务 _init_auxiliary_components() / Disk persistence deferred to background task
 
-        logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={RECORD_DEVICE}")
+        logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={store.RECORD_DEVICE}")
         return {"task_id": task_id, "status": "recording"}
 
     except RuntimeError as e:
         realtime_queues.pop(task_id, None)
-        raise HTTPException(500, _("Failed to start recording: {err}").format(err=e))
+        # 录音失败时附带诊断信息，帮助用户和开发者定位问题
+        # Attach diagnostic info when recording fails to help users and developers troubleshoot
+        import platform as _platform
+        from core.audio import check_ffmpeg
+        diag_hint = ""
+        if not check_ffmpeg():
+            diag_hint = " | ffmpeg not found in PATH"
+        elif _platform.system() == "Windows" and not store.RECORD_DEVICE:
+            diag_hint = " | auto-detection failed; set RECORD_DEVICE env var"
+        raise HTTPException(500, _("Failed to start recording: {err}").format(err=str(e) + diag_hint))
 
 
 class RecordStopRequest(BaseModel):

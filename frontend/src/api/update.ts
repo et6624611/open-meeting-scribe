@@ -10,6 +10,8 @@ export interface VersionCheckResult {
   latest_version: string | null
   update_available: boolean
   release_url: string
+  /** 多平台下载链接（自建中转服务器） / Multi-platform download URLs (self-hosted relay) */
+  downloads: Record<string, string>
   changelog: string
   published_at: string
   checked_at: number

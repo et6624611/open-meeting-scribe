@@ -61,3 +61,31 @@ export async function bindSpeaker(taskId: string, speakerId: number, speakerUuid
     speaker_uuid: speakerUuid,
   })
 }
+
+// ── 录音设备管理 / Recording device management ──
+
+export interface AudioDevice {
+  index: number
+  name: string
+  type: string
+}
+
+export interface AudioDevicesResult {
+  devices: AudioDevice[]
+  current_device: string
+  platform: string
+  auto_detect: boolean
+  ffmpeg_available: boolean
+}
+
+/** 获取可用音频输入设备列表 / Get available audio input devices */
+export async function fetchAudioDevices(): Promise<AudioDevicesResult> {
+  const { data } = await client.get<AudioDevicesResult>('/api/record/devices')
+  return data
+}
+
+/** 设置录音设备 / Set recording device */
+export async function setRecordDevice(device: string): Promise<{ device: string; auto_detect: boolean }> {
+  const { data } = await client.post<{ device: string; auto_detect: boolean }>('/api/record/device', { device })
+  return data
+}
