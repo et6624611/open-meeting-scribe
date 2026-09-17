@@ -62,9 +62,12 @@ def _find_windows_audio_device() -> str:
     """
     cmd = ["ffmpeg", "-hide_banner", "-f", "dshow", "-list_devices", "true", "-i", "dummy"]
     try:
+        # 使用 UTF-8 编码读取，errors="replace" 防止非法字节导致解码失败
+        # Use UTF-8 encoding to read, errors="replace" to prevent decode failures on invalid bytes
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10,
+            cmd, capture_output=True, timeout=10,
             stdin=subprocess.DEVNULL,
+            encoding="utf-8", errors="replace",
         )
         output = result.stderr  # dshow 设备列表输出在 stderr
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -673,8 +676,9 @@ def _list_windows_audio_devices() -> list[dict]:
     cmd = ["ffmpeg", "-hide_banner", "-f", "dshow", "-list_devices", "true", "-i", "dummy"]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10,
+            cmd, capture_output=True, timeout=10,
             stdin=subprocess.DEVNULL,
+            encoding="utf-8", errors="replace",
         )
         output = result.stderr
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):

@@ -74,17 +74,15 @@ jobs:
 
         echo "分发物组装完成 ✓"
 
-    - name: 下载 ffmpeg
+    - name: 下载 ffmpeg + ffprobe
       run: |
         FFMPEG_DIR="dist/OpenMeetingScribe-macOS/ffmpeg"
         mkdir -p "$FFMPEG_DIR"
 
-        # 从 evermeet.cx 下载 macOS ffmpeg
+        # 下载 ffmpeg
         curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o "build/ffmpeg-macos.zip" || true
-
         if [ -f "build/ffmpeg-macos.zip" ]; then
           unzip -o "build/ffmpeg-macos.zip" -d "$FFMPEG_DIR/" 2>/dev/null || {
-            # 如果不是 zip，可能是直接二进制
             cp "build/ffmpeg-macos.zip" "$FFMPEG_DIR/ffmpeg"
           }
           chmod +x "$FFMPEG_DIR/ffmpeg" 2>/dev/null || true
@@ -94,9 +92,25 @@ jobs:
           echo "警告：ffmpeg 下载失败，录音功能不可用"
         fi
 
+        # 下载 ffprobe（用于音频时长检测）
+        curl -L "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "build/ffprobe-macos.zip" || true
+        if [ -f "build/ffprobe-macos.zip" ]; then
+          unzip -o "build/ffprobe-macos.zip" -d "$FFMPEG_DIR/" 2>/dev/null || {
+            cp "build/ffprobe-macos.zip" "$FFMPEG_DIR/ffprobe"
+          }
+          chmod +x "$FFMPEG_DIR/ffprobe" 2>/dev/null || true
+          rm -f "build/ffprobe-macos.zip"
+          echo "ffprobe 下载完成 ✓"
+        else
+          echo "警告：ffprobe 下载失败，音频时长检测将使用降级方案"
+        fi
+
         # 验证
         if [ -x "$FFMPEG_DIR/ffmpeg" ]; then
           "$FFMPEG_DIR/ffmpeg" -version | head -1
+        fi
+        if [ -x "$FFMPEG_DIR/ffprobe" ]; then
+          "$FFMPEG_DIR/ffprobe" -version | head -1
         fi
 
     - name: 创建 ZIP 包

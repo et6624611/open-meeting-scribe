@@ -156,28 +156,93 @@ def get_audio_duration(input_path: str | Path) -> float:
     """
     获取音频时长（秒） / Get audio duration (seconds).
 
-    使用 ffprobe 查询，不依赖额外库 / Uses ffprobe, no extra dependencies.
+    优先使用 ffprobe，不可用时降级为 WAV header 解析或 ffmpeg -i 探测。
+    Prefer ffprobe; fall back to WAV header parsing or ffmpeg -i probing.
     """
     input_path = Path(input_path)
     if not input_path.exists():
         raise FileNotFoundError(f"音频文件不存在: {input_path}")
 
-    cmd = [
-        "ffprobe",
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(input_path),
-    ]
-
+    # 方案 1: ffprobe（最精确，支持所有格式） / Option 1: ffprobe (most accurate, all formats)
     try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(input_path),
+        ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
                                 stdin=subprocess.DEVNULL)
-        if result.returncode != 0:
-            raise RuntimeError(f"ffprobe 失败: {result.stderr}")
-        return float(result.stdout.strip())
+        if result.returncode == 0:
+            return float(result.stdout.strip())
+    except FileNotFoundError:
+        logger.debug("ffprobe 不可用，尝试降级方案")
     except (subprocess.TimeoutExpired, ValueError) as e:
-        raise RuntimeError(f"无法获取音频时长: {e}")
+        logger.warning(f"ffprobe 查询失败: {e}，尝试降级方案")
+
+    # 方案 2: WAV header 解析（零依赖，仅支持 WAV） / Option 2: WAV header parsing (zero deps, WAV only)
+    if input_path.suffix.lower() == ".wav":
+        try:
+            duration = _wav_duration_from_header(input_path)
+            if duration > 0:
+                logger.debug(f"WAV header 解析成功: {duration:.2f}s")
+                return duration
+        except Exception as e:
+            logger.warning(f"WAV header 解析失败: {e}")
+
+    # 方案 3: ffmpeg -i 探测（支持所有格式，从 stderr 解析时长） / Option 3: ffmpeg -i probing (all formats, parse duration from stderr)
+    try:
+        cmd = ["ffmpeg", "-i", str(input_path), "-f", "null", "-"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                                stdin=subprocess.DEVNULL)
+        # ffmpeg 输出时长在 stderr 中，格式: Duration: HH:MM:SS.ss
+        import re as _re
+        match = _re.search(r'Duration:\s*(\d+):(\d+):([\d.]+)', result.stderr)
+        if match:
+            h, m, s = float(match.group(1)), float(match.group(2)), float(match.group(3))
+            return h * 3600 + m * 60 + s
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.warning(f"ffmpeg -i 探测失败: {e}")
+
+    raise RuntimeError(f"无法获取音频时长: ffprobe 不可用且降级方案均失败")
+
+
+def _wav_duration_from_header(wav_path: Path) -> float:
+    """从 WAV 文件头计算时长（不读取全部数据）。"""
+    import struct
+    with open(wav_path, "rb") as f:
+        # 读取 RIFF header (12 bytes) + fmt chunk (至少 24 bytes)
+        header = f.read(36)
+        if len(header) < 36 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+            return 0
+        # 解析 fmt chunk
+        sample_rate = struct.unpack("<I", header[24:28])[0]
+        bits_per_sample = struct.unpack("<H", header[34:36])[0]
+        channels = struct.unpack("<H", header[22:24])[0]
+        if sample_rate == 0 or channels == 0 or bits_per_sample == 0:
+            return 0
+        # 查找 data chunk 获取数据大小
+        # 先检查 header 中是否已有 data chunk
+        if header[36:40] == b"data":
+            data_size = struct.unpack("<I", header[40:44])[0]
+        else:
+            # data chunk 不在前 36 字节内，需要搜索
+            f.seek(36)
+            while True:
+                chunk_header = f.read(8)
+                if len(chunk_header) < 8:
+                    return 0
+                chunk_id = chunk_header[:4]
+                chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
+                if chunk_id == b"data":
+                    data_size = chunk_size
+                    break
+                f.seek(chunk_size, 1)  # 跳过此 chunk
+        byte_rate = sample_rate * channels * bits_per_sample // 8
+        if byte_rate == 0:
+            return 0
+        return data_size / byte_rate
 
 
 # ============================================================
