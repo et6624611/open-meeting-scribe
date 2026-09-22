@@ -281,6 +281,128 @@ def set_speaker_mapping(
     return {"status": "processing", "message": _("Generating minutes...")}
 
 
+@router.post("/api/tasks/{task_id}/apply-speaker-names")
+def apply_speaker_names_endpoint(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    data: TaskSpeakerMapping,
+):
+    """确认关联时按真实姓名原地替换纪要/原文/待办中的通用说话人标签，不重跑 LLM。
+    On confirm-binding, in-place replace generic speaker labels with real names across
+    summary / dialogue / todos, without re-running Stage 2 (no LLM call).
+
+    与 `/speaker-mapping`（触发 Stage 2 全量重生成）解耦：本端点仅做即时文本替换，
+    不覆盖用户对纪要的手工编辑，也不消耗 LLM 配额；若需将姓名改写进纪要叙述，
+    用户可主动点击工具栏「重新生成纪要」。
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+
+    task = tasks[task_id]
+    if task["status"] != "completed":
+        raise HTTPException(400, _("Task not yet completed"))
+
+    mapping = {int(k): v for k, v in data.mapping.items() if v}
+
+    # 无有效绑定：仅持久化 uuid 映射，原样返回当前字段
+    if not mapping:
+        tasks[task_id]["speaker_uuid_mapping"] = {}
+        save_task_to_disk(task_id)
+        return _speaker_names_response(task_id)
+
+    # 保存会议映射（用于历史复用） / Save meeting mapping for history reuse
+    speakers.save_meeting_mapping(
+        meeting_id=task_id,
+        meeting_name=task.get("audio_name", task_id),
+        mapping=mapping,
+    )
+
+    name_by_sid = speakers.resolve_speaker_names(mapping)
+
+    # 1) 对话稿姓名化（驱动原文面板与说话人视图） / Apply names to dialogue
+    dialogue = task.get("dialogue") or []
+    new_dialogue = speakers.apply_speaker_names(dialogue, mapping) if dialogue else []
+    speaker_name_map = {
+        str(it.get("speaker_id", 0)): it.get("speaker_name")
+        for it in new_dialogue if it.get("speaker_name")
+    }
+
+    # 2) 纪要正文原地替换（summary 与 user_summary 分别处理，保留用户编辑） / In-place replace in summary & user_summary
+    new_summary, sum_hits = speakers.replace_speaker_labels(task.get("summary") or "", name_by_sid)
+    user_summary = task.get("user_summary")
+    new_user_summary = None
+    if user_summary is not None:
+        new_user_summary, _uh = speakers.replace_speaker_labels(user_summary, name_by_sid)
+
+    # 3) 待办负责人/描述原地替换 / In-place replace in todos
+    new_todos = []
+    for td in (task.get("todos") or []):
+        t2 = dict(td)
+        if t2.get("assignee"):
+            t2["assignee"], _ah = speakers.replace_speaker_labels(t2["assignee"], name_by_sid)
+        if t2.get("text"):
+            t2["text"], _th = speakers.replace_speaker_labels(t2["text"], name_by_sid)
+        new_todos.append(t2)
+
+    # 4) 落库 / Persist
+    tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    tasks[task_id]["speaker_mapping"] = {**task.get("speaker_mapping", {}), **speaker_name_map}
+    tasks[task_id]["summary"] = new_summary
+    if user_summary is not None:
+        tasks[task_id]["user_summary"] = new_user_summary
+    if dialogue:
+        tasks[task_id]["dialogue"] = new_dialogue
+    if task.get("todos") is not None:
+        tasks[task_id]["todos"] = new_todos
+    _mark_modified(task_id)
+    save_task_to_disk(task_id)
+
+    # 5) 重写输出文件 + 知识库同步（尽力而为，失败不影响主链路） / Rewrite output file + KB sync (best-effort)
+    try:
+        output_path = task.get("output_path")
+        if output_path and Path(output_path).exists():
+            from core.summarize import save_summary
+            display = new_user_summary if new_user_summary is not None else new_summary
+            save_summary(display, output_path, new_dialogue or None)
+    except Exception as e:
+        logger.warning(f"[{task_id[:8]}] 原地替换后重写纪要文件失败（不影响）: {e}")
+    try:
+        from core.projects import sync_meeting_to_folders
+        sync_meeting_to_folders(tasks[task_id])
+    except Exception as e:
+        logger.warning(f"[{task_id[:8]}] 原地替换后知识库同步失败（不影响）: {e}")
+
+    joblog.append_event(
+        task_id, joblog.STAGE_BIND,
+        f"确认关联：原地替换 {len(name_by_sid)} 位说话人姓名（命中 {sum_hits} 处，不重跑纪要）",
+    )
+
+    # 声纹自动注册闭环（与全量重生成路径保持一致，后台执行不阻塞） / Voiceprint auto-register (parity; background, non-blocking)
+    normalized_path = task.get("normalized_path")
+    if not normalized_path:
+        audio_path = Path(task["audio_path"])
+        candidate = audio_path.with_stem(f"{audio_path.stem}_normalized").with_suffix(".wav")
+        normalized_path = str(candidate) if candidate.exists() else None
+    if normalized_path and dialogue:
+        background_tasks.add_task(_register_voiceprints_bg, task_id, normalized_path, new_dialogue, mapping)
+
+    return _speaker_names_response(task_id)
+
+
+def _speaker_names_response(task_id: str) -> dict:
+    """统一返回原地替换后的任务展示字段 / Return display fields after in-place replacement."""
+    t = tasks[task_id]
+    return {
+        "status": t["status"],
+        "summary": t.get("summary"),
+        "user_summary": t.get("user_summary"),
+        "dialogue": t.get("dialogue"),
+        "speaker_mapping": t.get("speaker_mapping", {}),
+        "speaker_uuid_mapping": t.get("speaker_uuid_mapping", {}),
+        "todos": t.get("todos"),
+    }
+
+
 @router.post("/api/tasks/{task_id}/regenerate-summary")
 def regenerate_summary(
     task_id: str,

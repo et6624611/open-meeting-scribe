@@ -6,7 +6,7 @@
 import { ref, computed, reactive, nextTick, type ComputedRef, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
-import { createSpeaker, submitSpeakerMapping, saveSpeakerMapping, type Speaker } from '@/api/speakers'
+import { createSpeaker, submitSpeakerMapping, saveSpeakerMapping, applySpeakerNames, type Speaker } from '@/api/speakers'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import type { FlatTranscriptLine, Task } from '@/api/types'
 
@@ -138,11 +138,29 @@ export function useSpeakerBinding(
     bindingBarHidden.value = true
     switchTab('summary')
     const mapping = Object.fromEntries(Object.entries(currentBindingMapping).map(([k, v]) => [String(k), v]))
+    const status = task.value?.status
+    const hasSummary = !!task.value?.summary
     try {
-      await submitSpeakerMapping(taskId, mapping)
-      taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping }, status: 'summarizing' })
-      startPolling()
-    } catch (e) { console.error('submit mapping failed:', e); bindingBarHidden.value = false }
+      if (status === 'completed' && hasSummary) {
+        // 解耦路径：已有纪要 → 原地替换说话人姓名，不重跑 LLM、不轮询、不覆盖用户编辑
+        const result = await applySpeakerNames(taskId, mapping)
+        const patch: Record<string, unknown> = {
+          speaker_uuid_mapping: { ...currentBindingMapping },
+          speaker_mapping: result.speaker_mapping ?? task.value?.speaker_mapping,
+        }
+        if (result.summary != null) patch.summary = result.summary
+        if (result.user_summary !== undefined) patch.user_summary = result.user_summary
+        if (result.dialogue) patch.dialogue = result.dialogue
+        if (result.todos) patch.todos = result.todos
+        // [状态同步] 原地替换后刷新本地任务，驱动纪要正文/原文/待办响应式更新
+        taskStore.patchTaskLocal(taskId, patch as Partial<Task>)
+      } else {
+        // 兜底：尚无纪要（如历史 awaiting_mapping）→ 沿用触发 Stage 2 生成的老路径
+        await submitSpeakerMapping(taskId, mapping)
+        taskStore.patchTaskLocal(taskId, { speaker_uuid_mapping: { ...currentBindingMapping }, status: 'summarizing' })
+        startPolling()
+      }
+    } catch (e) { console.error('confirm mapping failed:', e); bindingBarHidden.value = false }
   }
 
   function skipMapping() {

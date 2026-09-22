@@ -1,5 +1,5 @@
 <template>
-  <div class="selection-toolbar" :class="{ 'is-visible': visible }" :style="toolbarStyle" ref="toolbarEl">
+  <div class="selection-toolbar" :class="{ 'is-visible': visible, 'is-measuring': measuring }" :style="toolbarStyle" ref="toolbarEl">
     <!-- 热词状态区 / Hotword status area -->
     <template v-if="selectedTextRef">
       <!-- 分支A：已是热词 / Branch A: already a hotword -->
@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useHotwords } from '@/composables/useHotwords'
@@ -82,6 +82,7 @@ const { setQuote } = useQuoteRef()
 const hw = useHotwords()
 
 const visible = ref(false)
+const measuring = ref(false)
 const toolbarStyle = ref({ top: '0px', left: '0px' })
 const toolbarEl = ref<HTMLElement | null>(null)
 const mappingInputEl = ref<HTMLInputElement | null>(null)
@@ -101,22 +102,72 @@ const matchedMapping = computed(() =>
   hw.items.value.find(it => it.type === 'mapping' && it.content === selectedTextRef.value) || null
 )
 
-// 工具栏尺寸动态测量 / Dynamic toolbar size measurement
-watch(visible, async (v) => {
-  if (v) {
-    await nextTick()
-    const w = toolbarEl.value?.offsetWidth || 400
-    const h = toolbarEl.value?.offsetHeight || 40
-    const rect = window.getSelection()?.getRangeAt(0)?.getBoundingClientRect()
-    if (!rect) return
-    let top = rect.top - h - 8
-    let left = rect.left + rect.width / 2 - w / 2
-    if (top < 0) top = rect.bottom + 8
-    if (left < 8) left = 8
-    if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8
-    toolbarStyle.value = { top: top + 'px', left: left + 'px' }
-  }
-})
+// ── Mirror div 计算 textarea 内选区坐标 / Calculate selection rect inside textarea via mirror div ──
+function getTextareaSelectionRect(
+  textarea: HTMLTextAreaElement, start: number, end: number
+): { top: number; left: number; width: number; height: number } | null {
+  const cs = getComputedStyle(textarea)
+  const mirror = document.createElement('div')
+  Object.assign(mirror.style, {
+    position: 'fixed', top: '0', left: '0',
+    visibility: 'hidden', pointerEvents: 'none',
+    overflow: 'hidden', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    width: cs.width, boxSizing: cs.boxSizing,
+    fontFamily: cs.fontFamily, fontSize: cs.fontSize,
+    fontWeight: cs.fontWeight, fontStyle: cs.fontStyle,
+    lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
+    textTransform: cs.textTransform, padding: cs.padding,
+    border: cs.border,
+  })
+  // 构建镜像内容：选区前文本 + 标记 span / Build mirror content: text before selection + marker span
+  mirror.textContent = textarea.value.substring(0, start)
+  const marker = document.createElement('span')
+  marker.textContent = textarea.value.substring(start, end) || '\u200b'
+  mirror.appendChild(marker)
+  document.body.appendChild(mirror)
+
+  const mirrorRect = mirror.getBoundingClientRect()
+  const markerRect = marker.getBoundingClientRect()
+  const relTop = markerRect.top - mirrorRect.top
+  const relLeft = markerRect.left - mirrorRect.left
+  const h = markerRect.height || parseFloat(cs.lineHeight) || 20
+  const w = markerRect.width
+  document.body.removeChild(mirror)
+
+  // 转换为视口坐标（减去 textarea 滚动偏移）/ Convert to viewport coords (subtract textarea scroll)
+  const taRect = textarea.getBoundingClientRect()
+  const top = taRect.top + relTop - textarea.scrollTop
+  const left = taRect.left + relLeft - textarea.scrollLeft
+  return { top, left, width: w, height: h }
+}
+
+// ── 统一定位并显示（消除闪烁）/ Unified position-and-show (flicker-free) ──
+async function positionAndShow(anchor: { top: number; left: number; width: number; height: number }) {
+  // Step 1: 渲染但不可见 / Render but invisible
+  measuring.value = true
+  visible.value = true
+  await nextTick()
+
+  // Step 2: 测量工具栏实际尺寸 / Measure actual toolbar dimensions
+  const w = toolbarEl.value?.offsetWidth || 400
+  const h = toolbarEl.value?.offsetHeight || 40
+  const anchorBottom = anchor.top + anchor.height
+
+  // Step 3: 计算位置——优先选区上方居中 / Calculate position — prefer centered above selection
+  let top = anchor.top - h - 8
+  let left = anchor.left + anchor.width / 2 - w / 2
+
+  // 上方溢出 → 翻到下方 / Top overflow → flip below
+  if (top < 8) top = anchorBottom + 8
+  // 左右边界保护 / Left-right boundary protection
+  if (left < 8) left = 8
+  if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8
+
+  toolbarStyle.value = { top: `${top}px`, left: `${left}px` }
+
+  // Step 4: 定位完成，移除 measuring 触发入场动画 / Positioning done, remove measuring to trigger animation
+  measuring.value = false
+}
 
 function onMouseUp(e: MouseEvent) {
   const target = e.target as HTMLElement
@@ -136,10 +187,15 @@ function onMouseUp(e: MouseEvent) {
     sourceLabel = t('common.selection_toolbar.source_minutes')
     blockIndex = -1
     textareaRange = { start, end }
-    // 定位工具栏到 textarea 上方 / Position toolbar above textarea
-    const rect = textareaEl.getBoundingClientRect()
-    toolbarStyle.value = { top: (rect.top - 48) + 'px', left: '8px' }
-    visible.value = true
+    // 使用 mirror div 精确计算选区坐标 / Use mirror div for precise selection coordinates
+    const selRect = getTextareaSelectionRect(textareaEl, start, end)
+    if (selRect) {
+      positionAndShow(selRect)
+    } else {
+      // Fallback: 定位到 textarea 顶部 / Fallback: position at textarea top
+      const rect = textareaEl.getBoundingClientRect()
+      positionAndShow({ top: rect.top, left: rect.left, width: rect.width, height: 0 })
+    }
     return
   }
 
@@ -176,14 +232,13 @@ function onMouseUp(e: MouseEvent) {
     blockIndex = -1
   }
 
-  // 先用固定位置显示，watch 会在 visible 变化后重新定位
-  toolbarStyle.value = { top: (rect_top(sel) - 48) + 'px', left: '8px' }
-  visible.value = true
-}
-
-/** 辅助：获取选区 top 坐标 / Helper: get selection rect top */
-function rect_top(sel: Selection) {
-  try { return sel.getRangeAt(0).getBoundingClientRect().top } catch { return 0 }
+  // 获取选区矩形并一步定位 / Get selection rect and position in one step
+  try {
+    const selRect = sel.getRangeAt(0).getBoundingClientRect()
+    positionAndShow({ top: selRect.top, left: selRect.left, width: selRect.width, height: selRect.height })
+  } catch {
+    visible.value = false
+  }
 }
 
 function onMouseDown(e: MouseEvent) {
@@ -254,16 +309,17 @@ function toggleMappingInput() {
 
 function confirmMapping() {
   if (!mappingTarget.value.trim()) return
-  hw.addItem('mapping', selectedTextRef.value, mappingTarget.value.trim())
+  const target = mappingTarget.value.trim()
+  hw.addItem('mapping', selectedTextRef.value, target)
   // 引导用户将 target 也加入热词 / Guide user to also add target as hotword
-  const targetIsHotword = hw.items.value.some(it => it.type === 'word' && it.content === mappingTarget.value.trim())
+  const targetIsHotword = hw.items.value.some(it => it.type === 'word' && it.content === target)
   if (!targetIsHotword) {
-    hw.addItem('word', mappingTarget.value.trim())
-    showToast(t('common.selection_toolbar.mapping_created_with_hotword', { text: mappingTarget.value.trim() }), 'success')
-  } else {
-    showToast(t('common.selection_toolbar.mapping_created'), 'success')
+    hw.addItem('word', target)
   }
   hw.scheduleSave()
+  // 同时修正当前选区原文 / Also apply correction to the current selection
+  emit('action', 'correct', selectedTextRef.value, sourceLabel, blockIndex, target)
+  showToast(t('common.selection_toolbar.correction_applied', { text: target }), 'success')
   showMappingInput.value = false
   visible.value = false
   window.getSelection()?.removeAllRanges()

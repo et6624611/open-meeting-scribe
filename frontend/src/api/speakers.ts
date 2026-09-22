@@ -63,6 +63,23 @@ export async function saveSpeakerMapping(taskId: string, mapping: Record<string,
   await client.put(`/api/tasks/${taskId}/speaker-mapping`, { mapping })
 }
 
+export interface ApplySpeakerNamesResult {
+  status: string
+  summary: string | null
+  user_summary?: string | null
+  dialogue?: unknown[]
+  speaker_mapping?: Record<string, string>
+  speaker_uuid_mapping?: Record<string, string>
+  todos?: unknown[]
+}
+
+/** 确认关联时按真实姓名原地替换纪要/原文/待办中的通用说话人标签（不重跑 LLM） /
+ *  On confirm-binding, in-place replace generic speaker labels with real names (no LLM re-run) */
+export async function applySpeakerNames(taskId: string, mapping: Record<string, string>): Promise<ApplySpeakerNamesResult> {
+  const { data } = await client.post<ApplySpeakerNamesResult>(`/api/tasks/${taskId}/apply-speaker-names`, { mapping })
+  return data
+}
+
 /** 更新参会人名单（独立于说话人绑定） / Update meeting roster (independent of speaker binding) */
 export async function updateRoster(taskId: string, roster: string[]): Promise<{ roster: string[] }> {
   const { data } = await client.put<{ roster: string[] }>(`/api/tasks/${taskId}/roster`, { roster })

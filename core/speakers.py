@@ -17,6 +17,7 @@ core/speakers.py — 说话人档案管理 / Speaker profile management
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -348,6 +349,44 @@ def apply_speaker_names(
 
     logger.info(f"应用姓名映射: {len(mapping)} 人")
     return result
+
+
+def resolve_speaker_names(mapping: dict[int, str]) -> dict[int, str]:
+    """将 {speaker_id: uuid} 解析为 {speaker_id: 真实姓名}（仅保留能解析到非空姓名的条目）。
+    Resolve {speaker_id: uuid} to {speaker_id: real_name}, keeping only entries with a non-empty name."""
+    name_map = get_speaker_name_map()
+    out: dict[int, str] = {}
+    for sid, uuid in mapping.items():
+        name = name_map.get(uuid)
+        if name:
+            out[sid] = name
+    return out
+
+
+def replace_speaker_labels(text: str, name_by_sid: dict[int, str]) -> tuple[str, int]:
+    """将文本中的通用说话人标签原地替换为真实姓名（轻量启发式，不调用 LLM）。
+    In-place replace generic speaker labels with real names (lightweight heuristic, no LLM).
+
+    标签编号约定与 core/summarize 提示词一致：`Speaker {sid+1}` / `说话人{sid+1}`。
+    使用 `(?!\\d)` 负向前瞻避免 `说话人1` 命中 `说话人10/11…` 的前缀。
+
+    Args:
+        text: 待处理文本（纪要正文 / 待办描述等）
+        name_by_sid: {speaker_id: 真实姓名}
+
+    Returns:
+        (替换后的文本, 替换命中次数)
+    """
+    if not text or not name_by_sid:
+        return text, 0
+    total = 0
+    for sid, name in name_by_sid.items():
+        n = sid + 1
+        for tpl in ("说话人{n}(?!\\d)", "发言人{n}(?!\\d)", r"Speaker\s*{n}(?!\\d)"):
+            pattern = re.compile(tpl.format(n=n))
+            text, cnt = pattern.subn(name, text)
+            total += cnt
+    return text, total
 
 
 def build_speaker_prompt(dialogue: list[dict]) -> str:

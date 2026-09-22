@@ -184,6 +184,7 @@
   max-width: calc(100vw - 16px);
 }
 .selection-toolbar.is-visible { display: flex; }
+.selection-toolbar.is-measuring { opacity: 0 !important; pointer-events: none; animation: none !important; }
 @keyframes selFloatIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
