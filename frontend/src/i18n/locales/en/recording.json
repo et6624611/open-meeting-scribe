@@ -27,6 +27,7 @@
     "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
     "empty": "Waiting for recognition results...",
     "empty_hint": "Start speaking and the recognized content will appear here in real time",
+    "listening": "Listening…",
     "connect_failed": "Transcription connection lost",
     "reconnecting": "Reconnecting... (attempt {attempt})",
     "retry": "Reconnect"
@@ -49,13 +50,19 @@
   },
   "insights": {
     "title": "Insight Deck",
-    "empty": "AI will analyze the conversation in real time and provide insights during the meeting",
-    "empty_hint": "Click the analyze button for AI to deeply analyze the current discussion from multiple dimensions",
+    "empty": "Once enabled, AI analyzes the discussion at the chosen frequency and draws diagrams; you can also analyze on demand",
+    "empty_hint": "Diagrams aid thinking and surface blind spots; adjust the auto frequency at the top-right",
     "enabled": "Insight Deck enabled",
     "disabled": "Insight Deck disabled",
     "unread_count": "{count} unread insight(s)",
     "expand": "Expand Insight Deck",
-    "collapse": "Collapse Insight Deck"
+    "collapse": "Collapse Insight Deck",
+    "freq_label": "Auto rate",
+    "freq_tip": "Auto-analysis frequency: how often AI draws diagrams to aid your thinking",
+    "freq_off": "Off",
+    "freq_low": "Low",
+    "freq_normal": "Mid",
+    "freq_high": "High"
   },
   "control": {
     "pause": "Pause",
@@ -115,5 +122,13 @@
     "display_original": "Original Only",
     "display_translation": "Translation Only",
     "display_bilingual": "Bilingual"
+  },
+  "roster": {
+    "title": "Attendees",
+    "count": "{count} attending",
+    "add_placeholder": "Search to add…",
+    "remove": "Remove",
+    "create_hint": "Create \"{name}\"",
+    "empty": "No attendees yet"
   }
 }

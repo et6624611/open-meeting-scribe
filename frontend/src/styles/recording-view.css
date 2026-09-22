@@ -24,6 +24,29 @@
 .rec-speaker-count { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; transition: all 0.2s; }
 .rec-speaker-count .sc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .rec-speaker-count.has-update { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
+/* 参会人指示器 + 下拉 / Roster indicator + dropdown */
+.rec-roster-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+.rec-roster-chip { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; cursor: pointer; transition: all 0.15s; }
+.rec-roster-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.rec-roster-chip svg { color: var(--subtle); flex-shrink: 0; }
+.rec-roster-dropdown { position: absolute; top: calc(100% + 6px); left: 0; z-index: var(--z-popover); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 8px 24px oklch(0% 0 0 / 0.1); width: 220px; padding: var(--s-2); display: flex; flex-direction: column; gap: var(--s-2); }
+.rec-roster-search { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.rec-roster-search svg { color: var(--subtle); flex-shrink: 0; }
+.rec-roster-search input { flex: 1; border: none; outline: none; background: transparent; font-size: var(--fs-12); color: var(--fg); min-width: 0; }
+.rec-roster-search input::placeholder { color: var(--subtle); }
+.rec-roster-list { display: flex; flex-direction: column; gap: 2px; max-height: 120px; overflow-y: auto; }
+.rec-roster-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-12); }
+.rec-roster-item:hover { background: var(--surface-2); }
+.rec-roster-name { color: var(--fg); font-weight: 500; }
+.rec-roster-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: none; background: transparent; color: var(--subtle); cursor: pointer; transition: all 0.12s; }
+.rec-roster-remove:hover { background: oklch(from var(--warn) l c h / 0.15); color: var(--warn); }
+.rec-roster-empty { font-size: var(--fs-11); color: var(--subtle); text-align: center; padding: var(--s-2); }
+.rec-roster-results { display: flex; flex-direction: column; gap: 2px; max-height: 140px; overflow-y: auto; border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.rec-roster-result { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-12); color: var(--fg); cursor: pointer; transition: background 0.1s; }
+.rec-roster-result:hover, .rec-roster-result.is-focused { background: var(--accent-soft); }
+.rec-roster-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.rec-roster-create { padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-12); color: var(--accent); cursor: pointer; font-weight: 500; border-top: 1px solid var(--border); padding-top: var(--s-2); }
+.rec-roster-create:hover { background: var(--accent-soft); }
 .rec-header-right { display: flex; align-items: center; gap: var(--s-2); }
 
 /* ─── 操作区（翻译更多 + 显示/隐藏原文） ── */
@@ -134,6 +157,11 @@
 .rec-insights-expand-btn:hover { background: var(--surface); color: var(--fg); }
 .rec-insights-expand-btn.is-expanded { color: var(--proactive); background: var(--proactive-soft); }
 .rec-insights-spin { animation: spin 1s linear infinite; }
+/* ─── 自动频率 segmented 控件（唯一暴露给用户的旋钮） / Auto frequency segmented control (the only user-facing knob) ─── */
+.rec-insights-freq { display: inline-flex; align-items: center; gap: 2px; padding: 2px; background: var(--surface); border-radius: var(--radius-sm); }
+.rec-insights-freq-opt { border: none; background: transparent; cursor: pointer; font-size: var(--fs-10); line-height: 1; color: var(--muted); padding: 3px 6px; border-radius: calc(var(--radius-sm) - 2px); transition: color 0.12s, background 0.12s; white-space: nowrap; }
+.rec-insights-freq-opt:hover { color: var(--fg); }
+.rec-insights-freq-opt.is-active { color: var(--proactive); background: var(--proactive-soft); font-weight: 600; }
 .rec-insights-dropdown-wrap { position: relative; }
 .rec-insights-dropdown { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 120px; margin-top: 4px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
 .rec-insights-dropdown-item { display: block; width: 100%; padding: 6px 10px; border: none; border-radius: var(--radius-xs); background: transparent; color: var(--fg); font-size: 0.8rem; text-align: left; cursor: pointer; white-space: nowrap; }
@@ -499,6 +527,14 @@
 .rec-line.is-me .rec-line-body { display: flex; justify-content: flex-end; width: 100%; }
 .rec-line.is-me .rec-line-text { display: inline-block; background: var(--mine-soft); border: 1px solid var(--mine); padding: var(--s-2) var(--s-3); border-radius: var(--radius); color: var(--fg); text-align: left; max-width: 70%; }
 .rec-line.is-me .rec-line-speaker { color: var(--mine); }
+/* 正在聆听指示器（段落式输出模式） / Listening indicator (paragraph mode) */
+.rec-line-listening { opacity: 0.7; }
+.rec-line-text--listening { font-style: italic; color: var(--muted); border-style: dashed; }
+.listening-dots { display: inline-flex; gap: 3px; align-items: center; }
+.listening-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--muted); animation: listening-pulse 1.2s ease-in-out infinite; }
+.listening-dots span:nth-child(2) { animation-delay: 0.2s; }
+.listening-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes listening-pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
 /* 说话人定位 */
 .rec-line.is-located { opacity: 1 !important; }
 .rec-line.is-dimmed { opacity: 0.2; }

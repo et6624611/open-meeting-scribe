@@ -9,6 +9,21 @@
     "start_failed": "开始录音失败",
     "upload_failed": "上传失败"
   },
+  "import": {
+    "title": "导入",
+    "dropzone_text": "拖拽文件到此处，或点击选择",
+    "dropzone_hint": "音频 · 文档 · 截图 均可",
+    "or_paste": "或粘贴文字",
+    "paste_placeholder": "在此粘贴转写稿或会议纪要…",
+    "btn_submit": "导入",
+    "processing": "正在识别内容…",
+    "duplicate_found": "这个文件之前已经导入过：",
+    "duplicate_open": "打开已有会议",
+    "duplicate_continue": "仍然导入",
+    "errors": {
+      "import_failed": "导入失败"
+    }
+  },
   "privacy": {
     "disclaimer_title": "数据安全须知",
     "disclaimer_local": "录音文件、会议纪要等数据保存在你的设备上",

@@ -42,31 +42,38 @@
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <div class="rec-pill" :class="{ 'is-visible': showRecPill, 'is-paused': isRecPaused }" v-if="showRecPill">
-          <!-- 波形动画 / Waveform animation -->
-          <div class="rec-waveform" @click.stop>
-            <span class="rw-bar"></span>
-            <span class="rw-bar"></span>
-            <span class="rw-bar"></span>
-          </div>
-          <!-- 计时器 / Timer -->
-          <span class="rec-timer">{{ recElapsed }}</span>
-          <!-- 暂停/恢复按钮（药丸形，与底部控制栏一致） / Pause/resume button (pill-shaped, consistent with bottom control bar) -->
-          <button class="rec-pause-btn" @click.stop="onToggleRecPause" :title="isRecPaused ? t('topbar.rec_resume_title') : t('topbar.rec_pause_title')">
-            <svg v-if="!isRecPaused" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
-            <span class="rec-pause-text">{{ isRecPaused ? t('topbar.rec_resume') : t('topbar.rec_pause') }}</span>
+        <!-- 录音状态胶囊（方案 A：极简胶囊 + 展开面板） / Recording status pill (Plan A: minimal pill + expandable panel) -->
+        <div class="rec-pill" :class="{ 'is-visible': showRecPill, 'is-paused': isRecPaused, 'is-expanded': showRecPanel }" v-if="showRecPill">
+          <!-- 触发按钮：脉冲点 + 计时 + 展开箭头 / Trigger: pulse dot + timer + chevron -->
+          <button ref="recPillTrigger" class="rec-pill-trigger" @click="toggleRecPanel" :title="t('topbar.rec_panel_toggle')" :aria-expanded="showRecPanel" aria-haspopup="menu">
+            <span class="rec-pulse-dot"></span>
+            <span class="rec-pill-timer">{{ recElapsed }}</span>
+            <svg class="rec-pill-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <!-- 结束按钮 / End button -->
-          <button class="rec-end-btn" @click.stop="onStopRecording" :title="t('topbar.rec_end_title')">{{ t('topbar.rec_end') }}</button>
-          <!-- 更多操作菜单 / More action menu -->
-          <div class="rec-more-wrap">
-            <button ref="recMoreBtn" class="rec-more-btn" @click="toggleRecMore" :title="t('topbar.rec_more')" aria-haspopup="menu" :aria-label="t('topbar.rec_more_label')">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
-            </button>
-            <div ref="recDropdown" class="rec-more-dropdown" :class="{ 'is-open': showRecMore }" role="menu">
-              <button class="rec-more-item danger" @click="closeRecMore(); showAbandon = true" role="menuitem">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <!-- 展开面板：状态头 + 导航/切换 + 终止类操作 / Expandable panel: status header + nav/toggle + termination actions -->
+          <div ref="recPanelEl" class="rec-pill-panel" :class="{ 'is-open': showRecPanel }" role="menu">
+            <div class="rec-panel-header">
+              <span class="rec-pulse-dot"></span>
+              <span class="rec-panel-label">{{ isRecPaused ? t('topbar.rec_paused_label') : t('topbar.rec_status_label') }}</span>
+              <span class="rec-panel-timer">{{ recElapsed }}</span>
+            </div>
+            <div class="rec-panel-actions">
+              <button class="rec-panel-btn" @click="closeRecPanel(); jumpBackToRecording()" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                {{ t('topbar.rec_return_page') }}
+              </button>
+              <button class="rec-panel-btn" @click="closeRecPanel(); onToggleRecPause()" role="menuitem">
+                <svg v-if="!isRecPaused" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                <svg v-else viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21"/></svg>
+                {{ isRecPaused ? t('topbar.rec_resume_title') : t('topbar.rec_pause_title') }}
+              </button>
+              <div class="rec-panel-separator"></div>
+              <button class="rec-panel-btn" @click="closeRecPanel(); onStopRecording()" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                {{ t('topbar.rec_end_title') }}
+              </button>
+              <button class="rec-panel-btn danger" @click="closeRecPanel(); showAbandon = true" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 {{ t('topbar.rec_abandon') }}
               </button>
             </div>
@@ -90,14 +97,13 @@
         </div>
         <button
           class="topbar-new-btn"
-          :class="{ 'is-hidden': isStartRoute || showRecPill || isOnRecTaskPage, 'is-disabled': hasRecordingTask && !isOnRecTaskPage }"
-          :title="hasRecordingTask ? t('topbar.recording_in_progress', { elapsed: recElapsed }) : t('topbar.new_meeting') + ` (${modKey}N)`"
-          @click="hasRecordingTask ? jumpBackToRecording() : router.push('/')"
+          :class="{ 'is-hidden': isStartRoute || showRecPill || isOnRecTaskPage }"
+          :title="t('topbar.new_meeting') + ` (${modKey}N)`"
+          @click="router.push('/')"
         >
-          <svg v-if="hasRecordingTask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>{{ hasRecordingTask ? t('topbar.return_record') : t('topbar.new_meeting') }}</span>
-          <kbd v-if="!hasRecordingTask" class="topbar-shortcut-kbd">{{ modKey }}N</kbd>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>{{ t('topbar.new_meeting') }}</span>
+          <kbd class="topbar-shortcut-kbd">{{ modKey }}N</kbd>
         </button>
         <div class="lang-switcher">
           <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" @click="showLangMenu = !showLangMenu">
@@ -173,6 +179,8 @@ import IconButton from '@/components/common/IconButton.vue'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
+import { showToast } from '@/composables/useToast'
+import { extractErrorMessage } from '@/api/client'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 import { getRecordStatus } from '@/api/record'
 import { modKey } from '@/utils/platform'
@@ -186,7 +194,7 @@ const layout = useLayoutStore()
 const player = usePlayerStore()
 
 // ─── 全局播放 pill（会议纪要页自带音频条，不叠加） / Global player pill (minutes page has its own audio bar, no overlap) ───
-const showPlayerPill = computed(() => !!player.taskId && route.name !== 'generating')
+const showPlayerPill = computed(() => !!player.taskId && player.playing && route.name !== 'generating')
 const playerTaskTitle = computed(() => {
   const task = taskStore.tasks.find(item => item.task_id === player.taskId)
   return task?.title || task?.audio_name || t('topbar.player_default_title')
@@ -214,10 +222,10 @@ async function onSwitchLang(locale: SupportedLocale) {
   await setI18nLocale(locale)
 }
 
-// ─ 录音中指示 pill（更多菜单） / Recording indicator pill (more menu) ───
-const recMoreBtn = ref<HTMLElement | null>(null)
-const recDropdown = ref<HTMLElement | null>(null)
-const { visible: showRecMore, toggle: toggleRecMore, close: closeRecMore } = usePopMenu(recDropdown, recMoreBtn)
+// ─── 录音状态胶囊面板（方案 A：usePopMenu 统一管理展开/定位/关闭） / Recording pill panel (Plan A: usePopMenu manages expand/position/close) ───
+const recPillTrigger = ref<HTMLElement | null>(null)
+const recPanelEl = ref<HTMLElement | null>(null)
+const { visible: showRecPanel, toggle: toggleRecPanel, close: closeRecPanel } = usePopMenu(recPanelEl, recPillTrigger)
 const showAbandon = ref(false)
 useEscClose(showAbandon, () => { showAbandon.value = false })
 
@@ -225,58 +233,9 @@ useEscClose(showAbandon, () => { showAbandon.value = false })
 // 会议相关路由的状态由页面自身承载（录音页头部/控制栏），顶栏不叠加录音中胶囊 / Meeting route states are handled by pages themselves (recording page header/control bar), top bar doesn't add recording pill
 const MEETING_ROUTES = ['recording', 'generating']
 
-/** 是否存在录音中的任务（24 小时内创建且状态为 recording/paused） / Whether there is a recording task (created within 24h with status recording/paused) */
-const hasRecordingTask = computed(() => {
-  const now = new Date()
-  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  
-  return taskStore.tasks.some(t => {
-    if (t.status !== 'recording' && t.status !== 'paused') return false
-    const createdAt = t.created_at ? new Date(t.created_at) : null
-    if (createdAt && createdAt < oneDayAgo) return false
-    return true
-  })
-})
-
-/** 当前是否已在录音任务自身的页面（页面已承载完整录音 UI，无需「返回录音」入口） / Whether currently on the recording task's own page (page already has full recording UI, no need for "return to recording" entry) */
-const isOnRecTaskPage = computed(() => {
-  if (!recTask.value) return false
-  const currentTaskId = route.params.taskId as string | undefined
-  return route.name === 'recording' && currentTaskId === recTask.value.task_id
-})
-
-const showRecPill = computed(() => {
-  if (!hasRecordingTask.value) return false
-  // 仅在「正在录音的那个任务」自身的页面中隐藏（页面已承载完整 UI） / Only hide on the recording task's own page (page already has full UI)
-  // 查看其他任务的纪要/转写时，rec-pill 仍需显示以提示录音进行中 / When viewing other tasks' minutes/transcript, rec-pill still shows to indicate recording in progress
-  const currentTaskId = route.params.taskId as string | undefined
-  return !currentTaskId || currentTaskId !== recTask.value?.task_id
-})
-
-function jumpBackToRecording() {
-  const recTask = taskStore.tasks.find(t => {
-    if (t.status !== 'recording' && t.status !== 'paused') return false
-    const createdAt = t.created_at ? new Date(t.created_at) : null
-    const now = new Date()
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    if (createdAt && createdAt < oneDayAgo) return false
-    return true
-  })
-  if (recTask) {
-    taskStore.selectTask(recTask.task_id)
-    router.push({ name: 'recording', params: { taskId: recTask.task_id } })
-  }
-}
-
-// ─── 录音计时器（独立于 RecordingView，离开录音页后仍运行）───
-const recElapsed = ref('00:00')
-let recTimer: ReturnType<typeof setInterval> | null = null
-let recElapsedSec = 0
-
+/** 录音中的任务（24 小时内创建且状态为 recording/paused）——全局唯一数据源，其他计算/方法均复用它 / The recording task (created within 24h, status recording/paused) — single source of truth reused by all other computeds/methods */
 const recTask = computed(() => {
-  const now = new Date()
-  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
   return taskStore.tasks.find(t => {
     if (t.status !== 'recording' && t.status !== 'paused') return false
     const createdAt = t.created_at ? new Date(t.created_at) : null
@@ -285,6 +244,35 @@ const recTask = computed(() => {
   }) ?? null
 })
 const isRecPaused = computed(() => recTask.value?.status === 'paused')
+
+/** 当前是否已在录音任务自身的页面（页面已承载完整录音 UI，无需「返回录音」入口） / Whether currently on the recording task's own page (page already has full recording UI, no need for "return to recording" entry) */
+const isOnRecTaskPage = computed(() => {
+  if (!recTask.value) return false
+  const currentTaskId = route.params.taskId as string | undefined
+  return route.name === 'recording' && currentTaskId === recTask.value.task_id
+})
+
+/** 是否显示录音胶囊：仅在「正在录音的那个任务」自身的页面中隐藏 / Whether to show rec pill: only hidden on the recording task's own page */
+// 查看其他任务的纪要/转写时，rec-pill 仍需显示以提示录音进行中 / When viewing other tasks' minutes/transcript, rec-pill still shows to indicate recording in progress
+const showRecPill = computed(() => {
+  if (!recTask.value) return false
+  const currentTaskId = route.params.taskId as string | undefined
+  return !currentTaskId || currentTaskId !== recTask.value.task_id
+})
+
+/** 跳回录音页 / Jump back to recording page */
+function jumpBackToRecording() {
+  const task = recTask.value
+  if (task) {
+    taskStore.selectTask(task.task_id)
+    router.push({ name: 'recording', params: { taskId: task.task_id } })
+  }
+}
+
+// ─── 录音计时器（独立于 RecordingView，离开录音页后仍运行）───
+const recElapsed = ref('00:00')
+let recTimer: ReturnType<typeof setInterval> | null = null
+let recElapsedSec = 0
 
 function formatRecTime(totalSec: number): string {
   const s = Math.floor(totalSec)
@@ -363,45 +351,30 @@ async function onToggleRecPause() {
 }
 
 async function onStopRecording() {
-  const recTask = taskStore.tasks.find(t => {
-    if (t.status !== 'recording' && t.status !== 'paused') return false
-    const createdAt = t.created_at ? new Date(t.created_at) : null
-    const now = new Date()
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    if (createdAt && createdAt < oneDayAgo) return false
-    return true
-  })
-  if (recTask) {
-    try {
-      await taskStore.stopRecording(recTask.task_id)
-      // [状态同步] 停止录音后刷新任务列表 / [State Sync] Refresh task list after stopping recording
-      await taskStore.loadTasks()
-      router.push({ name: 'generating', params: { taskId: recTask.task_id } })
-    } catch (e) {
-      console.error('stop recording failed:', e)
-    }
+  const task = recTask.value
+  if (!task) return
+  try {
+    await taskStore.stopRecording(task.task_id)
+    // [状态同步] 停止录音后刷新任务列表 / [State Sync] Refresh task list after stopping recording
+    await taskStore.loadTasks()
+    router.push({ name: 'generating', params: { taskId: task.task_id } })
+  } catch (e) {
+    console.error('stop recording failed:', e)
+    showToast(extractErrorMessage(e), 'error')
   }
 }
 
 async function onAbandonRecording() {
   showAbandon.value = false
-  closeRecMore()
-  const recTask = taskStore.tasks.find(t => {
-    if (t.status !== 'recording' && t.status !== 'paused') return false
-    const createdAt = t.created_at ? new Date(t.created_at) : null
-    const now = new Date()
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    if (createdAt && createdAt < oneDayAgo) return false
-    return true
-  })
-  if (recTask) {
-    try {
-      await taskStore.abandonRecording(recTask.task_id)
-      // [状态同步] 放弃录音后刷新任务列表 / [State Sync] Refresh task list after abandoning recording
-      await taskStore.loadTasks()
-    } catch (e) {
-      console.error('abandon recording failed:', e)
-    }
+  const task = recTask.value
+  if (!task) return
+  try {
+    await taskStore.abandonRecording(task.task_id)
+    // [状态同步] 放弃录音后刷新任务列表 / [State Sync] Refresh task list after abandoning recording
+    await taskStore.loadTasks()
+  } catch (e) {
+    console.error('abandon recording failed:', e)
+    showToast(extractErrorMessage(e), 'error')
   }
 }
 
@@ -454,14 +427,16 @@ function selectTheme(id: ThemeId) {
   showThemeMenu.value = false
 }
 
-
-onUnmounted(() => {
-  stopRecTimer()
-})
-
-document.addEventListener('click', (e) => {
+// ─── 全局点击外部关闭菜单（命名函数引用，供卸载时对称清理） / Global click-outside to close menus (named function reference for symmetric cleanup on unmount) ───
+function onDocClick(e: Event) {
   const target = e.target as HTMLElement
   if (!target.closest('.theme-switcher')) showThemeMenu.value = false
   if (!target.closest('.lang-switcher')) showLangMenu.value = false
+}
+document.addEventListener('click', onDocClick)
+
+onUnmounted(() => {
+  stopRecTimer()
+  document.removeEventListener('click', onDocClick)
 })
 </script>

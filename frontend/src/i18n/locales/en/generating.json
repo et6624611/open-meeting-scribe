@@ -97,9 +97,9 @@
   "speaker_default": "Speaker {id}",
   "summary": {
     "loading": "Generating minutes...",
-    "action_items": "Action Items",
-    "todos_stat": "This meeting produced {total} to-do(s), {done} completed",
-    "view_todos": "View To-dos",
+    "action_items": "Decisions",
+    "todos_stat": "This meeting produced {total} decision(s), {done} completed",
+    "view_todos": "View Decisions",
     "pending": "Minutes not yet generated",
     "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate"
   },
@@ -131,8 +131,8 @@
     "source_ai": "AI",
     "source_manual": "Manual",
     "locate": "Locate in transcript",
-    "empty": "No to-dos",
-    "add": "Add To-do",
+    "empty": "No decisions",
+    "add": "Add Decision",
     "content_placeholder": "Record decision content (Markdown)…",
     "assignee_placeholder": "Assignee (optional)",
     "cancel": "Cancel",
@@ -219,7 +219,7 @@
   "ai_actions": {
     "rewrite": "Please rewrite the following, keeping the original meaning but more concise",
     "summarize": "Please summarize the following",
-    "extract_todo": "Please extract to-do items from the following"
+    "extract_todo": "Please extract decisions from the following"
   },
   "errors": {
     "create_speaker_failed": "Failed to create speaker",
@@ -236,5 +236,17 @@
     "title": "Meeting processing failed",
     "show_raw": "Show raw error",
     "back_to_library": "Back to library"
+  },
+  "roster": {
+    "title": "Attendees",
+    "add_placeholder": "Type a name to add…",
+    "add": "Add",
+    "remove": "Remove",
+    "person_suffix": " attending",
+    "add_inline_placeholder": "Add…",
+    "pick_speaker": "Pick from speakers",
+    "auto_tag": "auto",
+    "search_placeholder": "Search speakers…",
+    "create_hint": "Create \"{name}\""
   }
 }

@@ -8,6 +8,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { usePlayerStore } from '@/stores/player'
+import { useLayoutStore } from '@/stores/layout'
 import { usePolling } from '@/composables/usePolling'
 import { fetchTask, updateTask } from '@/api/tasks'
 import { fetchNotes, fetchTodos } from '@/api/notes'
@@ -196,6 +197,15 @@ export function useGeneratingData(
     localStorage.setItem('oms_gen_active_tab', tabId)
     ;(window as any).__omsUpdatePhilosophy?.(tabId)
   }
+
+  // ─── 消费 AI 面板的 Tab 切换信号 / Consume AI panel tab switch signal ───
+  const layoutStore = useLayoutStore()
+  watch(() => layoutStore.pendingGenTab, (tab) => {
+    if (tab) {
+      switchTab(tab)
+      layoutStore.pendingGenTab = null
+    }
+  })
 
   function dotClass(tabId: string): string {
     if (!task.value) return ''

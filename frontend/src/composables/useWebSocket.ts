@@ -51,9 +51,13 @@ export interface TranslationEntry {
   end_time: number
 }
 
+/** 段落合并时间阈值（同一说话人连续句子间隔 < 此值则合并为段落） / Paragraph merge gap threshold (merge consecutive sentences from same speaker if gap < this) */
+const PARAGRAPH_MERGE_GAP_MS = 3000
+
 export function useWebSocketTranscript() {
   const lines = ref<TranscriptLine[]>([])
   const partialText = ref('')
+  const listening = ref(false)
   const summary = ref('')
   const chapters = ref<ChapterItem[]>([])
   const connected = ref(false)
@@ -152,8 +156,8 @@ export function useWebSocketTranscript() {
           begin_time: msg.begin_time as number || 0,
           end_time: msg.end_time as number || 0,
         })
-        // 历史句子回放 / History sentence playback
-        lines.value.push({
+        // 历史句子回放（同样执行段落合并） / History sentence playback (also apply paragraph merging)
+        mergeOrAppendLine({
           speaker_id: msg.speaker_id as number,
           speaker_name: msg.speaker_name as string || '',
           text: msg.text as string,
@@ -164,8 +168,8 @@ export function useWebSocketTranscript() {
         break
 
       case 'partial':
-        // 临时识别结果 / Partial recognition result
-        partialText.value = msg.text as string
+        // 临时识别结果 → 仅标记「正在聆听」，不显示逐字流式文本 / Partial result → only mark "listening", no streaming text display
+        listening.value = true
         // 转写已有文字 → 麦克风正常，自动关闭音量警告 / Transcript has text → mic is working; auto-dismiss volume warning
         if (volumeWarning.value) volumeWarning.value = ''
         break
@@ -177,11 +181,12 @@ export function useWebSocketTranscript() {
           begin_time: msg.begin_time as number || 0,
           end_time: msg.end_time as number || 0,
         })
-        // 定稿句子 — 清除 partial，追加到 lines / Finalized sentence — clear partial, append to lines
+        // 定稿句子 — 清除 listening，执行段落合并 / Finalized sentence — clear listening, apply paragraph merging
+        listening.value = false
         partialText.value = ''
         // 转写已有文字 → 麦克风正常，自动关闭音量警告 / Transcript has text → mic is working; auto-dismiss volume warning
         if (volumeWarning.value) volumeWarning.value = ''
-        lines.value.push({
+        mergeOrAppendLine({
           speaker_id: msg.speaker_id as number,
           speaker_name: msg.speaker_name as string || '',
           text: msg.text as string,
@@ -276,6 +281,25 @@ export function useWebSocketTranscript() {
     }
   }
 
+  /** 段落合并：同一说话人连续句子间隔 < 阈值则合并文本，否则新建段落 / Paragraph merge: merge text if same speaker within gap, otherwise create new paragraph */
+  function mergeOrAppendLine(newLine: TranscriptLine) {
+    const last = lines.value[lines.value.length - 1]
+    if (
+      last &&
+      last.speaker_id === newLine.speaker_id &&
+      last.isFinal &&
+      newLine.begin_time &&
+      (last.end_time || 0) > 0 &&
+      (newLine.begin_time - (last.end_time || 0)) < PARAGRAPH_MERGE_GAP_MS
+    ) {
+      // 合并到上一段落（追加文本 + 更新时间戳） / Merge into previous paragraph (append text + update timestamps)
+      last.text += newLine.text
+      last.end_time = newLine.end_time
+    } else {
+      lines.value.push(newLine)
+    }
+  }
+
   /** 发送心跳消息（含存在性评分） / Send heartbeat message (with presence score) */
   function sendHeartbeat(score: number, userAck = false) {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -314,6 +338,7 @@ export function useWebSocketTranscript() {
     }
     connected.value = false
     partialText.value = ''
+    listening.value = false
     speakerCount.value = 0
     speakerNames.value = []
     summaryCountdownSec.value = -1
@@ -329,6 +354,7 @@ export function useWebSocketTranscript() {
     disconnect()
     lines.value = []
     partialText.value = ''
+    listening.value = false
     summary.value = ''
     chapters.value = []
     error.value = ''
@@ -344,7 +370,7 @@ export function useWebSocketTranscript() {
   onUnmounted(disconnect)
 
   return {
-    lines, partialText, summary, chapters, connected, error,
+    lines, partialText, listening, summary, chapters, connected, error,
     speakerCount, speakerNames, summaryCountdownSec, summaryPaused, volumeWarning,
     presenceWarning, autoStopped, wsRetryCount,
     connect, disconnect, reset, sendHeartbeat, sendTranslationControl,

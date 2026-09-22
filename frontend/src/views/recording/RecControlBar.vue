@@ -8,6 +8,52 @@
         <span class="sc-dot"></span>
         <span>{{ t('recording.speaker.count', { count: displaySpeakerCount }) }}</span>
       </span>
+      <!-- 参会人指示器 / Roster indicator -->
+      <span class="rec-roster-wrap">
+        <button class="rec-roster-chip" @click.stop="$emit('toggleRoster')" :title="t('recording.roster.title')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>{{ t('recording.roster.count', { count: rosterCount }) }}</span>
+        </button>
+        <div v-if="showRosterDropdown" class="rec-roster-dropdown" @click.stop>
+          <div class="rec-roster-search">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              ref="rosterSearchRef"
+              :value="rosterSearch"
+              @input="$emit('update:rosterSearch', ($event.target as HTMLInputElement).value)"
+              :placeholder="t('recording.roster.add_placeholder')"
+              autocomplete="off"
+              @keydown="$emit('roster-keydown', $event)"
+            />
+          </div>
+          <!-- 当前参会人列表 / Current roster -->
+          <div class="rec-roster-list" v-if="roster.length > 0">
+            <div v-for="(name, idx) in roster" :key="'r'+idx" class="rec-roster-item">
+              <span class="rec-roster-name">{{ name }}</span>
+              <button class="rec-roster-remove" :title="t('recording.roster.remove')" @click="$emit('rosterRemove', idx)">
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+              </button>
+            </div>
+          </div>
+          <div v-else class="rec-roster-empty">{{ t('recording.roster.empty') }}</div>
+          <!-- 搜索结果 / Search results -->
+          <div class="rec-roster-results" v-if="filteredRosterSpeakers.length > 0">
+            <div
+              v-for="(s, idx) in filteredRosterSpeakers" :key="s.id"
+              class="rec-roster-result"
+              :class="{ 'is-focused': rosterFocusIdx === idx }"
+              @click="$emit('rosterSelect', s)"
+            >
+              <span class="rec-roster-dot" :style="{ background: getSpeakerColor(s.id) }"></span>
+              <span>{{ s.name }}</span>
+            </div>
+          </div>
+          <!-- 新建入口 / Create entry -->
+          <div v-if="rosterSearch && filteredRosterSpeakers.length === 0" class="rec-roster-create" @click="$emit('rosterCreate')">
+            {{ t('recording.roster.create_hint', { name: rosterSearch }) }}
+          </div>
+        </div>
+      </span>
       <span class="rec-project-chip-wrap">
         <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" :title="projectId ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="$emit('toggleProjectDropdown')">
           <svg v-if="projectId" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -44,6 +90,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { Project } from '@/api/projects'
+import type { Speaker } from '@/api/speakers'
+import { getSpeakerColor } from '@/utils/speakerColors'
 
 const { t } = useI18n()
 
@@ -56,11 +104,25 @@ defineProps<{
   projectName: string
   showProjectDropdown: boolean
   isFocusMode: boolean
+  // 参会人 / Roster
+  rosterCount: number
+  showRosterDropdown: boolean
+  roster: string[]
+  rosterSearch: string
+  filteredRosterSpeakers: Speaker[]
+  rosterFocusIdx: number
 }>()
 
 defineEmits<{
   (e: 'toggleProjectDropdown'): void
   (e: 'selectProject', id: string): void
   (e: 'toggleFocus'): void
+  // 参会人 / Roster
+  (e: 'toggleRoster'): void
+  (e: 'update:rosterSearch', value: string): void
+  (e: 'roster-keydown', event: KeyboardEvent): void
+  (e: 'rosterRemove', index: number): void
+  (e: 'rosterSelect', speaker: Speaker): void
+  (e: 'rosterCreate'): void
 }>()
 </script>

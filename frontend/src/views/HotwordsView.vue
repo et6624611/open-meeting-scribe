@@ -9,10 +9,10 @@
 
     <!-- 统一输入框 + 过滤 / Unified input + filter -->
     <div class="hw-toolbar">
-      <div class="hw-unified">
+      <div class="hw-unified" ref="unifiedRef">
         <div class="hw-unified-field">
           <svg class="hw-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <template v-if="showCreateHint">
+            <template v-if="showCreateOption">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </template>
             <template v-else>
@@ -25,7 +25,73 @@
             type="text"
             :placeholder="t('hotwords.unified_placeholder')"
             @keyup.enter="onUnifiedEnter"
+            @keydown.down.prevent="onArrowDown"
+            @keydown.up.prevent="onArrowUp"
+            @keydown.escape="onUnifiedEsc"
+            @focus="openDropdown"
+            role="combobox"
+            :aria-expanded="showDropdown"
+            aria-haspopup="listbox"
           />
+        </div>
+        <!-- 映射创建表单 / Mapping creation form -->
+        <div v-if="pendingMapping" class="hw-mapping-form">
+          <div class="hw-mapping-form-row">
+            <input
+              v-model="mappingFrom"
+              class="hw-mapping-input"
+              type="text"
+              placeholder="错误词"
+              @keyup.enter="onMappingConfirm"
+              @keydown.escape.prevent="onMappingCancel"
+              ref="mappingFromRef"
+            />
+            <span class="hw-mapping-arrow-icon">→</span>
+            <input
+              v-model="mappingTo"
+              class="hw-mapping-input"
+              type="text"
+              placeholder="正确词"
+              @keyup.enter="onMappingConfirm"
+              @keydown.escape.prevent="onMappingCancel"
+            />
+            <button class="hw-mapping-btn hw-mapping-btn-confirm" @click="onMappingConfirm" title="确认">✓</button>
+            <button class="hw-mapping-btn hw-mapping-btn-cancel" @click="onMappingCancel" title="取消">✕</button>
+          </div>
+        </div>
+        <!-- 下拉列表 / Dropdown list -->
+        <div
+          v-if="showDropdown && showCreateOption"
+          class="hw-dropdown"
+          role="listbox"
+        >
+          <!-- 创建选项 / Create options（匹配项已在主列表中展示，不重复显示） -->
+          <template v-if="showCreateOption">
+            <!-- 添加热词 / Add hotword -->
+            <div
+              class="hw-dropdown-item hw-dropdown-create"
+              :class="{ 'is-highlighted': highlightedIndex === 0 }"
+              @click="onCreateAs('word')"
+              @mouseenter="highlightedIndex = 0"
+              role="option"
+              :aria-selected="highlightedIndex === 0"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>{{ t('hotwords.create_word_hint', { name: inputText.trim() }) }}</span>
+            </div>
+            <!-- 添加映射 / Add mapping -->
+            <div
+              class="hw-dropdown-item hw-dropdown-create"
+              :class="{ 'is-highlighted': highlightedIndex === 1 }"
+              @click="onCreateAs('mapping')"
+              @mouseenter="highlightedIndex = 1"
+              role="option"
+              :aria-selected="highlightedIndex === 1"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>{{ t('hotwords.create_mapping_hint', { content: inputText.trim() }) }}</span>
+            </div>
+          </template>
         </div>
       </div>
       <div class="hw-filter-chips">
@@ -51,8 +117,8 @@
             <td><span class="hw-type-badge" :class="it.type === 'word' ? 'is-word' : 'is-mapping'">{{ it.type === 'word' ? t('hotwords.type_word') : t('hotwords.type_mapping') }}</span></td>
             <td class="hw-content-cell">
               <template v-if="editingId === it.id">
-                <input ref="editInputRef" class="hw-inline-edit" v-model="editContent" @keydown.enter="confirmEdit" @keydown.escape="cancelEdit">
-                <input v-if="it.type === 'mapping'" class="hw-inline-edit" style="margin-top:4px" v-model="editTarget" @keydown.enter="confirmEdit" @keydown.escape="cancelEdit">
+                <input ref="editInputRef" class="hw-inline-edit" v-model="editContent" @keydown.enter="confirmEdit" @keydown.escape.prevent="cancelEdit">
+                <input v-if="it.type === 'mapping'" class="hw-inline-edit" style="margin-top:4px" v-model="editTarget" @keydown.enter="confirmEdit" @keydown.escape.prevent="cancelEdit">
               </template>
               <template v-else>
                 <template v-if="it.type === 'word'">{{ it.content }}</template>
@@ -78,13 +144,8 @@
           </tr>
         </tbody>
       </table>
-      <!-- 新建提示 / Create hint -->
-      <div v-if="showCreateHint" class="hw-create-hint" @click="onCreate">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>{{ createHintLabel }}</span>
-      </div>
       <!-- 空状态 / Empty state -->
-      <div v-if="hw.filteredItems.value.length === 0 && !showCreateHint" class="hw-empty">
+      <div v-if="hw.filteredItems.value.length === 0 && !inputText.trim()" class="hw-empty">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
         <p>{{ t('hotwords.empty') }}</p>
         <p class="sub">{{ t('hotwords.empty_hint') }}</p>
@@ -100,20 +161,97 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useHotwords } from '@/composables/useHotwords'
+import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
 const hw = useHotwords()
 
+// ESC 返回上一页（浮层/下拉/内联编辑打开时会先消费事件，不会触发返回） / ESC goes back (overlays/dropdown/inline-edit consume the event first, so back won't fire)
+usePageBack()
+
 // ─── 统一输入框 / Unified input ───
 const inputText = ref('')
+const unifiedRef = ref<HTMLElement | null>(null)
+
+// 同步输入框到搜索过滤，使列表实时过滤 / Sync input to search filter for live list filtering
+watch(inputText, (val) => {
+  hw.searchQuery.value = val
+  highlightedIndex.value = -1
+  // 有文本且无精确匹配时自动弹出下拉 / Auto-show dropdown when text exists and no exact match
+  if (val.trim() && !hasExactMatch.value) {
+    showDropdown.value = true
+  } else {
+    showDropdown.value = false
+  }
+})
+
+// ── 下拉列表 / Dropdown ──
+const showDropdown = ref(false)
+const highlightedIndex = ref(-1)
+
+// 映射输入模式：选择「添加映射」后等待用户填写完整映射 / Mapping input mode: waiting for user to type full mapping
+const pendingMapping = ref(false)
+const mappingFrom = ref('')
+const mappingTo = ref('')
+const mappingFromRef = ref<HTMLInputElement | null>(null)
+
+/** 是否显示创建选项 / Whether to show create option */
+const showCreateOption = computed(() => {
+  return inputText.value.trim().length > 0 && !hasExactMatch.value
+})
+
+/** 打开下拉列表 / Open dropdown */
+function openDropdown() {
+  if (inputText.value.trim()) {
+    showDropdown.value = true
+  }
+}
+
+/** 关闭下拉列表 / Close dropdown */
+function closeDropdown() {
+  showDropdown.value = false
+  highlightedIndex.value = -1
+  if (pendingMapping.value) {
+    onMappingCancel()
+  }
+}
+
+/** 统一输入框 ESC：仅当下拉/映射输入处于打开态时消费事件并关闭，否则交由页面级 ESC 返回上一页 / Unified input ESC: consume & close only when dropdown/mapping input is open; otherwise let page-level ESC go back */
+function onUnifiedEsc(e: KeyboardEvent) {
+  if (showDropdown.value || pendingMapping.value) {
+    e.preventDefault()
+    closeDropdown()
+  }
+}
+
+/** 方向键下 / Arrow down */
+function onArrowDown() {
+  if (!showCreateOption.value) return
+  showDropdown.value = true
+  highlightedIndex.value = highlightedIndex.value < 1 ? highlightedIndex.value + 1 : 0
+}
+
+/** 方向键上 / Arrow up */
+function onArrowUp() {
+  if (!showCreateOption.value) return
+  showDropdown.value = true
+  highlightedIndex.value = highlightedIndex.value > 0 ? highlightedIndex.value - 1 : 1
+}
+
+/** 点击外部关闭 / Close on outside click */
+function onDocClick(e: MouseEvent) {
+  if (unifiedRef.value && !unifiedRef.value.contains(e.target as Node)) {
+    closeDropdown()
+  }
+}
 
 /** 解析输入文本 → 类型 + 内容 / Parse input text into type + content */
 function parseInput(text: string): { type: 'word' | 'mapping'; content: string; target?: string } {
   const trimmed = text.trim()
-  // 检测映射分隔符 → 或 =
+  // 检测分隔符，有分隔符则解析为映射 / Detect separator; parse as mapping if found
   const arrowIdx = trimmed.indexOf('→')
   const eqIdx = trimmed.indexOf('=')
   const sepIdx = arrowIdx >= 0 ? arrowIdx : eqIdx
@@ -141,29 +279,52 @@ const hasExactMatch = computed(() => {
   })
 })
 
-/** 是否显示新建提示 / Whether to show create hint */
-const showCreateHint = computed(() => inputText.value.trim().length > 0 && !hasExactMatch.value)
-
-/** 新建提示文案 / Create hint label */
-const createHintLabel = computed(() => {
-  const parsed = parseInput(inputText.value)
-  if (parsed.type === 'mapping') {
-    return t('hotwords.create_mapping_hint', { content: `${parsed.content} → ${parsed.target}` })
+/** 按指定类型创建 / Create item with specified type */
+function onCreateAs(type: 'word' | 'mapping') {
+  const trimmed = inputText.value.trim()
+  if (!trimmed) return
+  if (type === 'mapping') {
+    // 进入映射输入模式，等待用户填写完整映射 / Enter mapping input mode
+    pendingMapping.value = true
+    mappingFrom.value = trimmed
+    mappingTo.value = ''
+    inputText.value = ''
+    showDropdown.value = false
+    highlightedIndex.value = -1
+    nextTick(() => mappingFromRef.value?.focus())
+    return
   }
-  return t('hotwords.create_word_hint', { name: parsed.content })
-})
-
-/** 创建词条 / Create item */
-function onCreate() {
-  const parsed = parseInput(inputText.value)
-  if (!parsed.content) return
-  hw.addItem(parsed.type, parsed.content, parsed.target)
+  hw.addItem('word', trimmed)
   inputText.value = ''
+}
+
+/** 确认创建映射 / Confirm mapping creation */
+function onMappingConfirm() {
+  const from = mappingFrom.value.trim()
+  const to = mappingTo.value.trim()
+  if (!from || !to) return
+  hw.addItem('mapping', from, to)
+  mappingFrom.value = ''
+  mappingTo.value = ''
+  pendingMapping.value = false
+}
+
+/** 取消映射创建 / Cancel mapping creation */
+function onMappingCancel() {
+  mappingFrom.value = ''
+  mappingTo.value = ''
+  pendingMapping.value = false
 }
 
 /** Enter 键处理 / Enter key handler */
 function onUnifiedEnter() {
-  if (showCreateHint.value) onCreate()
+  if (!showCreateOption.value) return
+  // 有高亮时按高亮项创建，否则默认创建热词 / Create based on highlight or default to word
+  if (showDropdown.value && highlightedIndex.value >= 0) {
+    onCreateAs(highlightedIndex.value === 1 ? 'mapping' : 'word')
+  } else {
+    onCreateAs('word')
+  }
 }
 
 // ─── 内联编辑 / Inline edit ───
@@ -191,7 +352,14 @@ function cancelEdit() {
   editingId.value = null
 }
 
-onMounted(() => hw.loadAll())
+onMounted(() => {
+  hw.loadAll()
+  document.addEventListener('mousedown', onDocClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocClick)
+})
 </script>
 
 <style scoped>
@@ -199,7 +367,7 @@ onMounted(() => hw.loadAll())
 
 /* 工具栏 / Toolbar */
 .hw-toolbar { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-4); flex-shrink: 0; }
-.hw-unified { flex: 1; min-width: 0; }
+.hw-unified { flex: 1; min-width: 0; position: relative; }
 .hw-unified-field { display: flex; align-items: center; position: relative; }
 .hw-unified-icon { position: absolute; left: 10px; color: var(--subtle); pointer-events: none; transition: color 0.15s; }
 .hw-unified-input { width: 100%; max-width: 400px; padding: 8px 10px 8px 32px; border: none; border-bottom: 1px solid var(--border); border-radius: 0; font-size: 14px; outline: none; background: transparent; color: var(--fg); transition: border-color 0.15s; }
@@ -207,6 +375,28 @@ onMounted(() => hw.loadAll())
 .hw-unified-input:focus ~ .hw-unified-icon,
 .hw-unified-field:focus-within .hw-unified-icon { color: var(--accent); }
 .hw-unified-input::placeholder { color: var(--subtle); }
+/* 映射创建表单 / Mapping creation form */
+.hw-mapping-form { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; z-index: 100; }
+.hw-mapping-form-row { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; box-shadow: var(--shadow-float); }
+.hw-mapping-input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; outline: none; background: var(--surface-2); color: var(--fg); transition: border-color 0.15s; }
+.hw-mapping-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.hw-mapping-input::placeholder { color: var(--subtle); }
+.hw-mapping-arrow-icon { color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.hw-mapping-btn { width: 28px; height: 28px; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: all 0.12s; }
+.hw-mapping-btn-confirm { background: var(--accent); color: #fff; }
+.hw-mapping-btn-confirm:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
+.hw-mapping-btn-cancel { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.hw-mapping-btn-cancel:hover { background: var(--border); color: var(--fg); }
+/* 下拉列表 / Dropdown */
+.hw-dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow-float); z-index: 100; max-height: 240px; overflow-y: auto; }
+.hw-dropdown-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; transition: background 0.1s; font-size: 13px; }
+.hw-dropdown-item:hover, .hw-dropdown-item.is-highlighted { background: var(--surface-2); }
+.hw-dropdown-create { color: var(--accent); border-top: 1px solid var(--border); }
+.hw-dropdown-create:hover, .hw-dropdown-create.is-highlighted { background: var(--accent-soft); }
+.hw-dropdown-type { flex-shrink: 0; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 500; }
+.hw-dropdown-type.is-word { background: oklch(92% 0.04 250); color: oklch(45% 0.12 250); }
+.hw-dropdown-type.is-mapping { background: oklch(92% 0.06 150); color: oklch(40% 0.12 150); }
+.hw-dropdown-content { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .hw-filter-chips { display: flex; gap: var(--s-1); flex-shrink: 0; }
 .hw-filter-chip { padding: 4px 10px; border-radius: 4px; font-size: var(--fs-11); color: var(--muted); border: none; background: transparent; cursor: pointer; transition: all 0.12s; white-space: nowrap; }
 .hw-filter-chip:hover { background: var(--surface-2); color: var(--fg); }
@@ -248,11 +438,6 @@ onMounted(() => hw.loadAll())
 .hw-edit-save:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
 .hw-edit-cancel { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border) !important; }
 .hw-edit-cancel:hover { background: var(--border); color: var(--fg); }
-
-/* 新建提示行 / Create hint row */
-.hw-create-hint { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-3) var(--s-4); cursor: pointer; transition: background 0.12s; color: var(--accent); font-size: 13px; border-top: 1px dashed var(--border); }
-.hw-create-hint:hover { background: var(--accent-soft); }
-.hw-create-hint svg { flex-shrink: 0; }
 
 /* 空状态 / Empty state */
 .hw-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--s-7); color: var(--muted); text-align: center; }

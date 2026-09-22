@@ -15,8 +15,8 @@
         v-for="todo in mainNodes"
         :key="todo.id"
         :todo="todo"
-        @cycle-status="cycleStatus(todo)"
-        @cycle-owner="emit('update', todo, { owner_type: nextOwner(todo) })"
+        @select-status="(s) => emit('status-change', todo, s)"
+        @select-owner="(o) => emit('update', todo, { owner_type: o })"
         @commit-content="(c) => emit('update', todo, { why: c })"
         @delete="emit('delete', todo)"
       />
@@ -33,8 +33,8 @@
           v-for="todo in completedNodes"
           :key="todo.id"
           :todo="todo"
-          @cycle-status="cycleStatus(todo)"
-          @cycle-owner="emit('update', todo, { owner_type: nextOwner(todo) })"
+          @select-status="(s) => emit('status-change', todo, s)"
+          @select-owner="(o) => emit('update', todo, { owner_type: o })"
           @commit-content="(c) => emit('update', todo, { why: c })"
           @delete="emit('delete', todo)"
         />
@@ -73,7 +73,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { TodoItem, DecisionStatus, OwnerType } from '@/api/types'
+import type { TodoItem, DecisionStatus } from '@/api/types'
 import type { TodoPatch } from '@/api/notes'
 import DecisionNode from './DecisionNode.vue'
 
@@ -96,9 +96,7 @@ const emit = defineEmits<{
 const newTodoText = defineModel<string>('newTodoText', { default: '' })
 const newTodoAssignee = defineModel<string>('newTodoAssignee', { default: '' })
 
-// ── 状态定义 / Status definitions ──
-const statusOrder: DecisionStatus[] = ['to_decide', 'to_start', 'in_progress', 'to_confirm', 'done']
-const ownerOrder: OwnerType[] = ['self', 'agent', 'colleague', 'enterprise']
+// ── 状态循环已移除，改为 DecisionNode 内下拉直选 / Status cycling removed, now dropdown-select in DecisionNode ──
 
 function statusOf(todo: TodoItem): DecisionStatus {
   return todo.status ?? (todo.done ? 'done' : 'in_progress')
@@ -130,17 +128,4 @@ const summaryText = computed(() => {
   return summary ? `${summary} · ${t('generating.todos.total_count', { count: total })}` : t('generating.todos.total_count', { count: total })
 })
 
-// ── 状态循环 / Status cycling ──
-function cycleStatus(todo: TodoItem) {
-  const cur = statusOf(todo)
-  const idx = statusOrder.indexOf(cur)
-  const next = statusOrder[(idx + 1) % statusOrder.length]
-  emit('status-change', todo, next)
-}
-
-// ── 负责人循环 / Owner cycling ──
-function nextOwner(todo: TodoItem): OwnerType {
-  const cur = todo.owner_type || 'self'
-  return ownerOrder[(ownerOrder.indexOf(cur) + 1) % ownerOrder.length]
-}
 </script>

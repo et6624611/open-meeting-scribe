@@ -12,6 +12,8 @@ import { watch, onUnmounted, type Ref } from 'vue'
 export function useEscClose(visible: Ref<boolean>, close: () => void) {
   const handler = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && visible.value) {
+      // 消费事件：阻止 usePageBack 等页面级 ESC 处理将“关闭浮层”误判为“返回上一页” / Consume event: prevent page-level ESC handlers (usePageBack) from mistaking "close overlay" for "go back"
+      e.preventDefault()
       e.stopPropagation()
       close()
     }

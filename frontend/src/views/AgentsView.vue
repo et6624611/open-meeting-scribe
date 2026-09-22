@@ -165,10 +165,15 @@ import { useI18n } from 'vue-i18n'
 import { fetchRoles, fetchRoleFiles, forkRole, saveRoleFile, deleteRole } from '@/api/agent'
 import type { AgentRole } from '@/api/agent'
 import { useAgentStore } from '@/stores/agent'
+import { useEscClose } from '@/composables/useEscClose'
+import { usePageBack } from '@/composables/usePageBack'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
 const { t } = useI18n()
 const agentStore = useAgentStore()
+
+// ESC 返回上一页（弹窗打开时会先消费事件，不会触发返回） / ESC goes back (dialogs consume the event first, so back won't fire)
+usePageBack()
 
 // ─── 角色图标 / Role icons (Lucide-style inline SVG) ───
 const SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
@@ -190,6 +195,8 @@ const roleSaving = ref(false)
 const showForkDialog = ref(false)
 const forkName = ref('')
 const forkSource = ref('')
+// ESC 关闭 fork 弹窗（自定义浮层，需显式接管 ESC 并消费事件） / ESC closes fork dialog (custom overlay; must explicitly handle ESC and consume the event)
+useEscClose(showForkDialog, () => { showForkDialog.value = false })
 
 // Delete role confirm
 const showDeleteRoleConfirm = ref(false)

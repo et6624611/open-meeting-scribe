@@ -69,10 +69,10 @@
   .topbar .player-pill .pp-title { display: none; }
 }
 /* ≤480px：顶栏进一步精简 —— 面板开关组与视图切换器功能重叠，隐藏前者；
-   状态胶囊只留呼吸灯圆点，保证顶栏 min-content 不超过视口 */
+   录音胶囊仅留脉冲点（隐藏计时），状态胶囊只留呼吸灯圆点，保证顶栏 min-content 不超过视口 */
 @media (max-width: 480px) {
   .topbar-toggles { display: none; }
-  .topbar .rec-pill span:not(.pip), .topbar .state-pill span:not(.pip) { display: none; }
+  .topbar .rec-pill .rec-pill-timer, .topbar .state-pill span:not(.pip) { display: none; }
   .topbar .player-pill .pp-progress, .topbar .player-pill .pp-time { display: none; }
 }
 

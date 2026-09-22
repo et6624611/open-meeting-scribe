@@ -91,11 +91,12 @@ export interface Task {
   voiceprint_match: unknown[]
   voiceprint_auto_mapping: Record<string, string>
   speaker_uuid_mapping: Record<string, string>
+  roster: string[]
   title: string | null
   todos: TodoItem[]
   chapters: Chapter[]
   project_id: string | null
-  source?: 'record' | 'upload'
+  source?: 'record' | 'upload' | 'import_transcript' | 'import_summary'
   archived_at: string | null
 }
 

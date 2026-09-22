@@ -166,10 +166,10 @@
 .gen-meta-date-btn::after { content: '✎'; margin-left: 4px; font-size: 10px; opacity: 0; transition: opacity 0.15s; }
 .gen-meta-date-btn:hover::after { opacity: 0.6; }
 
-/* Zone 2b: 说话人区（三态合并：只读名单 / 绑定横幅），详见 GeneratingSpeakerZone.vue */
+/* Zone 2b: 人员栏（渐进式压缩） / Personnel bar (progressive compression) */
 .gs-zone { flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .gs-zone.hidden { display: none; }
-.gs-zone.is-readonly { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-5); border-top: 1px solid var(--border); }
+.gs-zone.is-compact { display: flex; align-items: center; padding: var(--s-2) var(--s-5); border-top: 1px solid var(--border); }
 .gs-zone.is-binding { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-4) var(--s-5); background: var(--bg); font-size: var(--fs-13); }
 .gs-body { flex: 1; min-width: 0; }
 .gs-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
@@ -886,3 +886,70 @@
 .gen-failure-raw summary:hover { color: var(--muted); }
 .gen-failure-raw code { display: block; margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; word-break: break-all; white-space: pre-wrap; max-height: 160px; overflow-y: auto; }
 .gen-failure-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; }
+
+/* ═══════════════════════════════════════════════════════════
+   紧凑态人员栏 / Compact personnel bar
+   ═══════════════════════════════════════════════════════════ */
+.gs-compact-bar { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; width: 100%; container-type: inline-size; }
+
+/* 宽屏：完整说话人展示 / Wide: full speaker labels */
+.gs-compact-full { display: none; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+@container (min-width: 520px) {
+  .gs-compact-full { display: flex; }
+  .gs-compact-dots { display: none !important; }
+}
+.gs-compact-label { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; cursor: pointer; padding: 2px 4px; border-radius: var(--radius-sm); transition: background 0.12s; }
+.gs-compact-label:hover { background: var(--surface-2); }
+.gs-compact-label-row { display: inline-flex; align-items: center; gap: 5px; }
+.gs-compact-label-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.gs-compact-label-name { font-size: var(--fs-12); font-weight: 500; }
+.gs-compact-label-bar { display: block; width: 44px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.gs-compact-label-fill { display: block; height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+
+/* 窄屏：紧凑圆点 / Narrow: compact dots */
+.gs-compact-dots { display: flex; align-items: center; gap: 3px; }
+.gs-compact-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 700; color: white; flex-shrink: 0; cursor: pointer; transition: transform 0.12s; }
+.gs-compact-dot:hover { transform: scale(1.15); }
+
+.gs-compact-edit { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+.gs-compact-edit:hover { color: var(--accent); background: var(--accent-soft); }
+.gs-compact-sep { width: 1px; height: 14px; background: var(--border); flex-shrink: 0; margin: 0 var(--s-1); }
+
+/* 参会人 chip 列表 + 选择器 / Roster chips + picker */
+.gs-compact-roster { display: inline-flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.gs-roster-picker-wrap { position: relative; display: inline-flex; align-items: center; }
+.gs-roster-picker-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px dashed var(--border-strong); background: transparent; color: var(--muted); cursor: pointer; padding: 0; transition: all 0.15s; }
+.gs-roster-picker-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); border-style: solid; }
+
+/* 说话人选择器下拉 / Speaker picker dropdown */
+.gs-roster-dropdown { position: absolute; top: calc(100% + 4px); left: 0; z-index: var(--z-popover); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.1); padding: var(--s-1); min-width: 180px; }
+.gs-roster-dd-search { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: var(--s-1); }
+.gs-roster-dd-search svg { color: var(--subtle); flex-shrink: 0; }
+.gs-roster-dd-search input { border: none; outline: none; background: transparent; font-size: var(--fs-12); color: var(--fg); width: 100%; padding: 2px 0; }
+.gs-roster-dd-search input::placeholder { color: var(--subtle); }
+.gs-roster-dd-list { max-height: 160px; overflow-y: auto; }
+.gs-roster-dd-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) var(--s-2); border-radius: var(--radius-sm); font-size: var(--fs-12); cursor: pointer; transition: background 0.1s; white-space: nowrap; }
+.gs-roster-dd-item:hover, .gs-roster-dd-item.is-focused { background: var(--surface-2); }
+.gs-roster-dd-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.gs-roster-dd-create { padding: var(--s-1) var(--s-2); font-size: var(--fs-12); color: var(--accent); cursor: pointer; border-radius: var(--radius-sm); transition: background 0.1s; }
+.gs-roster-dd-create:hover { background: var(--accent-soft); }
+.gs-roster-dd-empty { padding: var(--s-1) var(--s-2); font-size: var(--fs-11); color: var(--subtle); }
+
+/* 绑定态底部参会人区 / Roster section at bottom of binding state */
+.gs-roster-section { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); padding-top: var(--s-2); border-top: 1px dashed var(--border); width: 100%; }
+.gs-roster-label { font-size: var(--fs-11); color: var(--subtle); font-weight: 500; flex-shrink: 0; }
+.gs-roster-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-11); color: var(--fg); transition: background 0.12s; }
+.gs-roster-chip:hover { background: var(--surface-3); }
+.gs-roster-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; border: none; background: transparent; color: var(--subtle); cursor: pointer; padding: 0; transition: color 0.12s; }
+.gs-roster-chip-x:hover { color: var(--red); }
+/* 绑定自动加入的参会人标记 / Auto-added member tag */
+.gs-roster-chip.is-auto { background: var(--accent-soft); border-color: transparent; }
+.gs-roster-auto-tag { font-size: 9px; color: var(--accent); font-weight: 500; opacity: 0.7; }
+/* 绑定态底部文本输入 / Binding state text input */
+.gs-roster-inline-add { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.gs-roster-inline-add input { width: 80px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-11); color: var(--fg); background: var(--surface); outline: none; transition: border-color 0.15s; }
+.gs-roster-inline-add input:focus { border-color: var(--accent); }
+.gs-roster-inline-add input::placeholder { color: var(--subtle); }
+.gs-roster-add-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; padding: 0; transition: all 0.12s; }
+.gs-roster-add-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.gs-roster-add-btn:disabled { opacity: 0.4; cursor: default; }

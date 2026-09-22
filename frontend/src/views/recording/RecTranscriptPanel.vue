@@ -64,7 +64,7 @@
         <span class="rec-chapter-title">{{ chapters[chapters.length - 1]?.title || t('recording.chapter.discussing') }}</span>
       </div>
     </div>
-    <!-- 转写列表（含 partial / 空状态，统一虚拟滚动） / Transcript list (with partial / empty state, unified virtual scroll) -->
+    <!-- 转写列表（含 listening 指示器 / 空状态，统一虚拟滚动） / Transcript list (with listening indicator / empty state, unified virtual scroll) -->
     <div class="rec-scroll-wrap">
       <DynamicScroller
         ref="scrollerRef"
@@ -117,12 +117,14 @@
               </div>
             </div>
           </div>
-          <!-- 实时部分转写 / Real-time partial transcript -->
-          <div v-else-if="item.type === 'partial'" class="rec-line rec-line-partial">
-            <div class="rec-line-avatar" style="background: var(--subtle)">…</div>
+          <!-- 正在聆听指示器 / Listening indicator -->
+          <div v-else-if="item.type === 'listening'" class="rec-line rec-line-listening">
+            <div class="rec-line-avatar" style="background: var(--subtle)">
+              <span class="listening-dots"><span></span><span></span><span></span></span>
+            </div>
             <div class="rec-line-content">
               <div class="rec-line-head"><span class="rec-line-speaker">…</span></div>
-              <div class="rec-line-body"><span class="rec-line-text">{{ partialText }}</span></div>
+              <div class="rec-line-body"><span class="rec-line-text rec-line-text--listening">{{ t('recording.transcript.listening') }}</span></div>
             </div>
           </div>
           <!-- 空状态 / Empty state -->
@@ -162,7 +164,7 @@ const { visible: showMore, toggle: toggleMore, close: closeMore } = usePopMenu(m
 
 const props = defineProps<{
   lines: TranscriptLine[]
-  partialText: string
+  listening: boolean
   chapters: Array<{ id?: number; title: string; start_ms: number; end_ms?: number; key_points?: string[]; summary?: string }>
   showTranscript: boolean
   markerMode: boolean
@@ -200,11 +202,11 @@ defineEmits<{
 const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const timelineRef = ref<InstanceType<typeof RecTimeline> | null>(null)
 
-// ── 混合列表：章节分隔 + 转写行 + 实时部分转写 + 空状态 / Mixed list: chapter divider + transcript lines + real-time partial + empty state ──
+// ── 混合列表：章节分隔 + 转写行 + 聆听指示器 + 空状态 / Mixed list: chapter divider + transcript lines + listening indicator + empty state ──
 type MixedItem =
   | { type: 'chapter'; key: string; chapterIdx: number; size: number }
   | { type: 'line'; key: string; lineIdx: number; size: number }
-  | { type: 'partial'; key: string; size: number }
+  | { type: 'listening'; key: string; size: number }
   | { type: 'empty'; key: string; size: number }
 
 // ── 行高预估辅助（提升 scrollToEnd 定位精度） / Row height estimation helpers (improve scrollToEnd accuracy) ──
@@ -270,9 +272,9 @@ const mixedItems = computed<MixedItem[]>(() => {
       items.push({ type: 'line', key: `ln-${i}`, lineIdx: i, size: estimateLineHeight(i) })
     }
   }
-  // 尾部：实时部分转写 或 空状态（合并进虚拟滚动，消除独立 tail 区域） / Tail: real-time partial transcript or empty state (merged into virtual scroll, eliminating separate tail area)
-  if (props.partialText) {
-    items.push({ type: 'partial', key: 'partial', size: 60 })
+  // 尾部：聆听指示器 或 空状态（合并进虚拟滚动，消除独立 tail 区域） / Tail: listening indicator or empty state (merged into virtual scroll, eliminating separate tail area)
+  if (props.listening) {
+    items.push({ type: 'listening', key: 'listening', size: 60 })
   } else if (items.length === 0) {
     items.push({ type: 'empty', key: 'empty', size: 80 })
   }
@@ -334,8 +336,8 @@ watch(() => props.lines.length, () => {
   })
 })
 
-// 实时部分转写更新 → 自动滚动到底部（partial 作为列表末尾 item） / Real-time partial transcript update → auto-scroll to bottom (partial as last item)
-watch(() => props.partialText, (val) => {
+// 聆听状态更新 → 自动滚动到底部（listening 作为列表末尾 item） / Listening state update → auto-scroll to bottom (listening as last item)
+watch(() => props.listening, (val) => {
   if (!val || !autoFollow.value) return
   nextTick(() => {
     requestAnimationFrame(() => {

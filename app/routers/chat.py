@@ -363,6 +363,156 @@ INLINE_EDIT_SYSTEM_PROMPT = """你是一位专业的文稿编辑助手。用户�
 
 
 # ============================================================
+# 共享上下文构建 / Shared Context Building
+# ============================================================
+
+
+def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[list[str], list[dict]]:
+    """为聊天请求构建上下文块（供 /api/chat 和 /api/chat/stream 共用）。
+    Build context blocks for chat request (shared by /api/chat and /api/chat/stream).
+
+    Returns:
+        (context_blocks, source_files)
+    """
+    user_message = data.message.strip()
+    context_blocks: list[str] = []
+    source_files: list[dict] = []
+
+    # ── 维度 1: 实时转写流 / Realtime transcript stream ──
+    realtime_entries = []
+    if data.realtime_transcripts:
+        realtime_entries = data.realtime_transcripts[-REALTIME_BUFFER_MAX:]
+    elif data.task_id and data.task_id in realtime_transcript_buffers:
+        realtime_entries = realtime_transcript_buffers[data.task_id]
+
+    if realtime_entries:
+        speaker_name_map = build_speaker_name_map(data.task_id) if data.task_id else {}
+        lines = []
+        for entry in realtime_entries[-10:]:
+            sid = entry.get("speaker_id")
+            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
+            text = entry.get("text", "").strip()
+            ts = _format_time_ms(entry.get("begin_time", 0))
+            if text:
+                prefix = f"[{ts}] " if ts else ""
+                lines.append(f"{prefix}{name}：{text}")
+        if lines:
+            context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
+
+    # ── 维度 2: 当前会议上下文 / Current meeting context ──
+    if data.task_id and data.task_id in tasks:
+        task = tasks[data.task_id]
+        meta_lines = [
+            f"- 会议标题：{task.get('title') or task.get('audio_name') or '未命名'}",
+            f"- 会议状态：{task.get('status', '未知')}",
+        ]
+        if task.get("audio_duration"):
+            dur = task["audio_duration"]
+            meta_lines.append(f"- 音频时长：{int(dur // 60)} 分 {int(dur % 60)} 秒")
+        if task.get("speaker_count"):
+            meta_lines.append(f"- 说话人数量：{task['speaker_count']}")
+        audio_path = task.get("audio_path", "")
+        if audio_path and Path(audio_path).exists():
+            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（已存在）")
+        elif audio_path:
+            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（路径记录但文件不存在）")
+        if task.get("error"):
+            meta_lines.append(f"- 错误信息：{task['error']}")
+        context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
+
+        summary = task.get("summary") or ""
+        is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
+        if summary and not is_summary_error:
+            context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
+        if task.get("dialogue") and not realtime_entries:
+            all_lines = []
+            idx = 0
+            for item in task["dialogue"]:
+                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
+                sents = item.get("sentences") or []
+                for s in sents:
+                    text = s.get("text", "").strip()
+                    if text:
+                        ts = _format_time_ms(s.get("begin_time", 0))
+                        prefix = f"[{ts}] " if ts else ""
+                        all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
+                        idx += 1
+                if not sents:
+                    text = item.get("text", "").strip()
+                    if text:
+                        all_lines.append((0, f"{name}：{text}", name, idx))
+                        idx += 1
+            if all_lines:
+                all_lines.sort(key=lambda x: x[0])
+                seen_speakers = set()
+                first_per_speaker = []
+                for ts_ms, line, spk, li in all_lines:
+                    if spk not in seen_speakers:
+                        seen_speakers.add(spk)
+                        first_per_speaker.append((ts_ms, line, li))
+                limit = 3000 if (summary and not is_summary_error) else 5000
+                included = set()
+                output_parts = []
+                char_count = 0
+                for ts_ms, line, li in first_per_speaker:
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                for ts_ms, line, _spk, li in all_lines:
+                    if li in included:
+                        continue
+                    if char_count + len(line) + 1 > limit:
+                        break
+                    output_parts.append((ts_ms, line))
+                    included.add(li)
+                    char_count += len(line) + 1
+                output_parts.sort(key=lambda x: x[0])
+                dialogue_text = "\n".join(line for _, line in output_parts)
+                if dialogue_text:
+                    context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
+
+        todos = task.get("todos") or []
+        if todos:
+            todo_lines = []
+            for t in todos:
+                status = "✅" if t.get("done") else "⬜"
+                assignee = t.get("assignee", "未分配")
+                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
+            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
+
+        if is_joblog_intent(user_message):
+            joblog_ctx = joblog.build_context(data.task_id, user_message)
+            if joblog_ctx:
+                context_blocks.append(joblog_ctx)
+
+    # ── 维度 3: 关联项目资料 / Linked project materials ──
+    resolved_project_id = data.project_id
+    if not resolved_project_id and data.task_id and data.task_id in tasks:
+        resolved_project_id = tasks[data.task_id].get("project_id")
+    if resolved_project_id:
+        from core import projects
+        context_text, source_files = projects.get_project_context_for_chat(resolved_project_id, user_message)
+        if context_text:
+            context_blocks.append(context_text)
+        if not source_files and context_text:
+            from core.project_index import get_project_index
+            index = get_project_index(resolved_project_id)
+            if index:
+                source_files = [
+                    {"title": f.get("title", f.get("name", "")), "path": f.get("relative_path", ""), "name": f.get("name", "")}
+                    for f in index.get("files", [])
+                ]
+
+    # ── 维度 4: 页面上下文 / Page context ──
+    if data.current_page:
+        page_ctx = build_page_context(data.current_page)
+        if page_ctx:
+            context_blocks.append(page_ctx)
+
+    return context_blocks, source_files
+
+
+# ============================================================
 # AI 对话端点 / AI Chat Endpoints
 # ============================================================
 
@@ -436,145 +586,10 @@ async def chat(data: ChatRequest):
                     level="info" if action_result.get("success") else "error",
                 )
 
-    # ── 维度 1: 实时转写流 ── / ── Dimension 1: Realtime transcript stream ──
-    realtime_entries = []
-    if data.realtime_transcripts:
-        realtime_entries = data.realtime_transcripts[-REALTIME_BUFFER_MAX:]
-    elif data.task_id and data.task_id in realtime_transcript_buffers:
-        realtime_entries = realtime_transcript_buffers[data.task_id]
-
-    if realtime_entries:
-        speaker_name_map = build_speaker_name_map(data.task_id) if data.task_id else {}
-        lines = []
-        for entry in realtime_entries[-10:]:
-            sid = entry.get("speaker_id")
-            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
-            text = entry.get("text", "").strip()
-            ts = _format_time_ms(entry.get("begin_time", 0))
-            if text:
-                prefix = f"[{ts}] " if ts else ""
-                lines.append(f"{prefix}{name}：{text}")
-        if lines:
-            context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
-
-    # ── 维度 2: 当前会议上下文 ── / ── Dimension 2: Current meeting context ──
-    if data.task_id and data.task_id in tasks:
-        task = tasks[data.task_id]
-        meta_lines = [
-            f"- 会议标题：{task.get('title') or task.get('audio_name') or '未命名'}",
-            f"- 会议状态：{task.get('status', '未知')}",
-        ]
-        if task.get("audio_duration"):
-            dur = task["audio_duration"]
-            meta_lines.append(f"- 音频时长：{int(dur // 60)} 分 {int(dur % 60)} 秒")
-        if task.get("speaker_count"):
-            meta_lines.append(f"- 说话人数量：{task['speaker_count']}")
-        audio_path = task.get("audio_path", "")
-        if audio_path and Path(audio_path).exists():
-            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（已存在）")
-        elif audio_path:
-            meta_lines.append(f"- 音频文件：{Path(audio_path).name}（路径记录但文件不存在）")
-        if task.get("error"):
-            meta_lines.append(f"- 错误信息：{task['error']}")
-        context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
-
-        summary = task.get("summary") or ""
-        is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
-        if summary and not is_summary_error:
-            context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
-        # 带时间戳的对话稿智能采样注入（确保每位说话人至少出现一次）
-        if task.get("dialogue") and not realtime_entries:
-            all_lines = []  # [(begin_time_ms, formatted_line, speaker_name, index)]
-            idx = 0
-            for item in task["dialogue"]:
-                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
-                sents = item.get("sentences") or []
-                for s in sents:
-                    text = s.get("text", "").strip()
-                    if text:
-                        ts = _format_time_ms(s.get("begin_time", 0))
-                        prefix = f"[{ts}] " if ts else ""
-                        all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
-                        idx += 1
-                if not sents:
-                    text = item.get("text", "").strip()
-                    if text:
-                        all_lines.append((0, f"{name}：{text}", name, idx))
-                        idx += 1
-
-            if all_lines:
-                all_lines.sort(key=lambda x: x[0])  # 按时间排序
-                # 每位说话人的首条发言（保证全员可见）
-                seen_speakers = set()
-                first_per_speaker = []
-                for ts_ms, line, spk, li in all_lines:
-                    if spk not in seen_speakers:
-                        seen_speakers.add(spk)
-                        first_per_speaker.append((ts_ms, line, li))
-
-                limit = 3000 if (summary and not is_summary_error) else 5000
-                included = set()
-                output_parts = []  # [(begin_time_ms, line)]
-                char_count = 0
-                # 先加入每位说话人的首条
-                for ts_ms, line, li in first_per_speaker:
-                    output_parts.append((ts_ms, line))
-                    included.add(li)
-                    char_count += len(line) + 1
-                # 再按时间顺序填充剩余空间
-                for ts_ms, line, _spk, li in all_lines:
-                    if li in included:
-                        continue
-                    if char_count + len(line) + 1 > limit:
-                        break
-                    output_parts.append((ts_ms, line))
-                    included.add(li)
-                    char_count += len(line) + 1
-                # 按时间重新排序
-                output_parts.sort(key=lambda x: x[0])
-                dialogue_text = "\n".join(line for _, line in output_parts)
-                if dialogue_text:
-                    context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
-
-        todos = task.get("todos") or []
-        if todos:
-            todo_lines = []
-            for t in todos:
-                status = "✅" if t.get("done") else "⬜"
-                assignee = t.get("assignee", "未分配")
-                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
-            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
-
-        if is_joblog_intent(user_message):
-            joblog_ctx = joblog.build_context(data.task_id, user_message)
-            if joblog_ctx:
-                context_blocks.append(joblog_ctx)
-
-    # ── 维度 3: 关联项目资料 ── / ── Dimension 3: Linked project materials ──
-    source_files = []
-    resolved_project_id = data.project_id
-    if not resolved_project_id and data.task_id and data.task_id in tasks:
-        resolved_project_id = tasks[data.task_id].get("project_id")
-    if resolved_project_id:
-        from core import projects
-        context_text, source_files = projects.get_project_context_for_chat(resolved_project_id, user_message)
-        if context_text:
-            context_blocks.append(context_text)
-        # 兜底：搜索未命中时 source_files 为空，从索引获取文件清单供前端展示引用来源
-        if not source_files and context_text:
-            from core.project_index import get_project_index
-            index = get_project_index(resolved_project_id)
-            if index:
-                source_files = [
-                    {"title": f.get("title", f.get("name", "")), "path": f.get("relative_path", ""), "name": f.get("name", "")}
-                    for f in index.get("files", [])
-                ]
-
-    # ── 维度 5: 页面上下文 ── / ── Dimension 5: Page context ──
-    if data.current_page:
-        page_ctx = build_page_context(data.current_page)
-        if page_ctx:
-            context_blocks.append(page_ctx)
+    # ── 使用共享函数构建上下文 / Use shared function to build context ──
+    ctx_blocks, src_files = _build_chat_context_blocks(data, is_qa_mode)
+    context_blocks.extend(ctx_blocks)
+    source_files = src_files
 
     if context_blocks:
         system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
@@ -836,11 +851,13 @@ async def chat_stream(data: ChatRequest):
         role = resolve_agent_role(data.role)
         system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
 
-    # 注入页面上下文（无对应工具，仍需预构建） / Inject page context (no tool for this, still pre-built)
-    if data.current_page:
-        page_ctx = build_page_context(data.current_page)
-        if page_ctx:
-            system_prompt += f"\n\n{page_ctx}"
+    # 使用共享函数构建上下文并注入系统提示词 / Use shared function to build context and inject into system prompt
+    context_blocks, source_files = _build_chat_context_blocks(data, is_qa_mode)
+    if context_blocks:
+        system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
+
+    logger.info("[AI对话-流式] 注入块 task=%s mode=%s blocks=%d", data.task_id, data.mode, len(context_blocks))
+    logger.debug("[AI对话-流式] 注入块详情=%s", [{"head": b[:120].replace("\n", " "), "len": len(b)} for b in context_blocks])
 
     chat_model = data.model or "qwen-plus"
 

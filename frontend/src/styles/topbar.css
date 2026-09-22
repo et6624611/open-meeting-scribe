@@ -68,52 +68,54 @@
 .update-badge.is-visible { display: inline-flex; }
 .ub-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
-/* ─── 录音中控件 pill（离开录音页时展示）─── */
-.rec-pill { display: none; align-items: center; gap: var(--s-2); padding: 3px 4px 3px 8px; border-radius: 999px; border: 1px solid oklch(from var(--rec) l c h / 0.3); background: var(--rec-soft); font-size: var(--fs-11); color: var(--rec); font-family: var(--font-mono); transition: background 0.15s, border-color 0.15s; }
+/* ─── 录音状态胶囊（方案 A：极简胶囊 + 展开面板，离开录音页时展示）─── */
+.rec-pill { display: none; align-items: center; position: relative; }
 .rec-pill.is-visible { display: inline-flex; }
-.rec-pill.is-paused { border-color: oklch(from var(--warn) l c h / 0.3); background: oklch(from var(--warn) l c h / 0.08); color: var(--warn); }
-.rec-pill:hover { background: oklch(from var(--rec) l c h / 0.25); border-color: oklch(from var(--rec) l c h / 0.45); }
-.rec-pill.is-paused:hover { background: oklch(from var(--warn) l c h / 0.15); border-color: oklch(from var(--warn) l c h / 0.45); }
 
-/* 迷你波形 */
-.rec-waveform { display: flex; align-items: center; gap: 2px; height: 16px; padding: 0 4px; }
-.rec-waveform .rw-bar { width: 2.5px; height: 100%; background: currentColor; border-radius: 2px; transform-origin: center; animation: rwbar 0.8s ease-in-out infinite; }
-.rec-waveform .rw-bar:nth-child(1) { animation-duration: 0.65s; }
-.rec-waveform .rw-bar:nth-child(2) { animation-duration: 0.85s; animation-delay: 0.1s; }
-.rec-waveform .rw-bar:nth-child(3) { animation-duration: 0.7s; animation-delay: 0.2s; }
-.rec-pill.is-paused .rw-bar { animation-play-state: paused; opacity: 0.35; }
-@keyframes rwbar { 0%,100%{ transform: scaleY(0.3); opacity: 0.4 } 50%{ transform: scaleY(1); opacity: 1 } }
+/* 触发按钮：脉冲点 + 计时 + 展开箭头 */
+.rec-pill-trigger { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; border-radius: 999px; border: 1px solid oklch(from var(--rec) l c h / 0.2); background: var(--rec-soft); color: var(--rec); cursor: pointer; transition: background 0.15s, border-color 0.15s; font-family: var(--font-mono); }
+.rec-pill-trigger:hover { background: oklch(from var(--rec) l c h / 0.14); border-color: oklch(from var(--rec) l c h / 0.35); }
+.rec-pill-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rec-pill.is-paused .rec-pill-trigger { border-color: oklch(from var(--warn) l c h / 0.25); background: oklch(from var(--warn) l c h / 0.08); color: var(--warn); }
+.rec-pill.is-paused .rec-pill-trigger:hover { background: oklch(from var(--warn) l c h / 0.15); border-color: oklch(from var(--warn) l c h / 0.4); }
+
+/* 脉冲点（录音中呼吸扩散，暂停时静止） */
+.rec-pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rec); position: relative; flex-shrink: 0; }
+.rec-pulse-dot::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: var(--rec); opacity: 0; animation: rec-pulse 2s ease-out infinite; }
+.rec-pill.is-paused .rec-pulse-dot { background: var(--warn); }
+.rec-pill.is-paused .rec-pulse-dot::after { animation: none; opacity: 0; }
+@keyframes rec-pulse { 0% { opacity: 0.4; transform: scale(0.8); } 100% { opacity: 0; transform: scale(2.2); } }
 
 /* 计时器 */
-.rec-timer { font-family: var(--font-mono); font-size: var(--fs-12); font-weight: 600; letter-spacing: 0.02em; padding: 2px 4px; border-radius: 4px; user-select: none; }
-.rec-pill.is-paused .rec-timer { color: var(--warn); }
+.rec-pill-timer { font-size: var(--fs-12); font-weight: 600; letter-spacing: 0.02em; user-select: none; }
 
-/* 暂停/恢复按钮（药丸形，与底部控制栏一致） */
-.rec-pause-btn { display: inline-flex; align-items: center; gap: var(--s-2); height: 32px; padding: 0 12px; border-radius: 16px; border: none; background: var(--rec); color: #fff; font-size: var(--fs-12); font-weight: 500; cursor: pointer; transition: background 0.12s, transform 0.1s; flex-shrink: 0; }
-.rec-pause-btn:hover { background: oklch(from var(--rec) calc(l - 0.08) c h); }
-.rec-pause-btn:active { transform: scale(0.95); }
-.rec-pill.is-paused .rec-pause-btn { background: var(--warn); }
-.rec-pill.is-paused .rec-pause-btn:hover { background: oklch(from var(--warn) calc(l - 0.08) c h); }
-.rec-pause-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.rec-pause-text { white-space: nowrap; }
+/* 展开箭头 */
+.rec-pill-chevron { width: 12px; height: 12px; opacity: 0.6; transition: transform 0.2s; flex-shrink: 0; }
+.rec-pill.is-expanded .rec-pill-chevron { transform: rotate(180deg); }
 
-/* 结束按钮 */
-.rec-end-btn { height: 32px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-12); font-weight: 500; cursor: pointer; transition: all 0.12s; flex-shrink: 0; }
-.rec-end-btn:hover { border-color: var(--border-strong); color: var(--fg); background: var(--surface-2); }
-.rec-end-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 展开面板（usePopMenu 以 fixed 定位并智能翻转） */
+.rec-pill-panel { display: none; position: fixed; width: 220px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px oklch(0% 0 0 / 0.1), 0 2px 6px oklch(0% 0 0 / 0.05); padding: var(--s-3); z-index: var(--z-popover); }
+.rec-pill-panel.is-open { display: block; animation: rec-panel-in 0.15s ease; }
+@keyframes rec-panel-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 更多操作菜单 */
-.rec-more-wrap { position: relative; }
-.rec-more-btn { width: 24px; height: 24px; border-radius: 50%; border: none; background: transparent; color: currentColor; display: grid; place-items: center; cursor: pointer; transition: background 0.12s; flex-shrink: 0; letter-spacing: 1px; font-size: 14px; font-weight: 700; line-height: 1; }
-.rec-more-btn:hover { background: oklch(from var(--rec) l c h / 0.15); }
-.rec-pill.is-paused .rec-more-btn:hover { background: oklch(from var(--warn) l c h / 0.15); }
-.rec-more-dropdown { display: none; position: fixed; min-width: 160px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.12); padding: var(--s-1); z-index: var(--z-popover); }
-.rec-more-dropdown.is-open { display: block; }
-.rec-more-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: calc(var(--radius) - 2px); border: none; background: transparent; color: var(--fg); font-size: var(--fs-13); cursor: pointer; transition: background 0.1s; text-align: left; font-family: var(--font-body); }
-.rec-more-item:hover { background: var(--surface-2); }
-.rec-more-item.danger { color: var(--rec); }
-.rec-more-item.danger:hover { background: var(--rec-soft); }
-.rec-more-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+/* 面板头部：状态点 + 标签 + 计时 */
+.rec-panel-header { display: flex; align-items: center; gap: var(--s-2); padding-bottom: var(--s-3); border-bottom: 1px solid var(--border); margin-bottom: var(--s-2); }
+.rec-panel-label { font-size: var(--fs-12); font-weight: 600; color: var(--fg); font-family: var(--font-body); }
+.rec-panel-timer { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-13); font-weight: 600; color: var(--rec); }
+.rec-pill.is-paused .rec-panel-timer { color: var(--warn); }
+
+/* 面板操作按钮 */
+.rec-panel-actions { display: flex; flex-direction: column; gap: 2px; }
+.rec-panel-btn { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 8px 10px; border-radius: calc(var(--radius) - 2px); border: none; background: transparent; font-size: var(--fs-13); color: var(--fg); cursor: pointer; transition: background 0.1s; text-align: left; font-family: var(--font-body); }
+.rec-panel-btn:hover { background: var(--surface-2); }
+.rec-panel-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rec-panel-btn svg { width: 16px; height: 16px; color: var(--muted); flex-shrink: 0; }
+.rec-panel-btn.danger { color: var(--rec); }
+.rec-panel-btn.danger svg { color: var(--rec); }
+.rec-panel-btn.danger:hover { background: var(--rec-soft); }
+
+/* 面板分隔线：分隔「导航/切换」与「终止类」操作 */
+.rec-panel-separator { height: 1px; background: var(--border); margin: var(--s-2) 0; }
 /* ─── 全局播放控件 pill（离开会议纪要页时展示）─── */
 .player-pill { display: inline-flex; align-items: center; gap: var(--s-2); padding: 3px 4px 3px 10px; border-radius: 999px; border: 1px solid oklch(from var(--accent) l c h / 0.3); background: var(--accent-soft); font-size: var(--fs-11); color: var(--accent); transition: background 0.15s, border-color 0.15s; }
 .player-pill .playing-eq { color: var(--accent); }
@@ -157,18 +159,15 @@
 .lang-option svg { flex-shrink: 0; color: var(--accent); }
 
 /* ─── 响应式：右侧控件折叠 ─── */
-@media (max-width: 1280px) {
+@media (max-width: 1024px) {
   .lang-switcher { display: none; }
   .view-switcher { display: none; }
 }
-@media (max-width: 1100px) {
+@media (max-width: 800px) {
   .topbar-new-btn span,
   .topbar-shortcut-kbd { display: none; }
   .topbar-new-btn { padding: 5px 8px; }
 }
-
-.topbar-title { font-size: var(--fs-13); color: var(--muted); }
-.topbar-title strong { color: var(--fg); font-weight: 500; }
 
 /* ─── Status bar + Usage ─── */
 /* ─── Status bar ─── */
@@ -232,11 +231,3 @@
 .usage-chart-bar:hover { background: oklch(55% 0.12 220); }
 .usage-chart-bar:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 2px 6px; border-radius: 3px; font-size: 10px; font-family: var(--font-mono); white-space: nowrap; pointer-events: none; }
 .usage-not-metered { font-size: var(--fs-13); color: var(--muted); line-height: 1.6; padding: var(--s-3) 0; }
-
-/* ─── 持久录音胶囊 ─── */
-/* ─── 持久录音胶囊（顶部右侧） ─── */
-.rec-pill { display: none; align-items: center; gap: var(--s-2); padding: 3px 10px; border-radius: 999px; border: 1px solid oklch(from var(--rec) l c h / 0.3); background: var(--rec-soft); font-size: 11px; color: var(--rec); font-family: var(--font-mono); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
-.rec-pill.is-visible { display: inline-flex; }
-.rec-pill .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--rec); animation: blink 1.4s ease-in-out infinite; }
-.rec-pill:hover { background: oklch(from var(--rec) l c h / 0.18); border-color: oklch(from var(--rec) l c h / 0.45); }
-.rec-pill:active { background: oklch(from var(--rec) l c h / 0.25); }

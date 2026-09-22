@@ -16,9 +16,9 @@
           <span>{{ t('ai-panel.context.action_generate_summary') }}</span>
           <span class="shortcut">⌘G</span>
         </button>
-        <button class="ctx-empty-action" @click="$emit('addFile')" :title="t('ai-panel.context.action_upload_file')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span>{{ t('ai-panel.context.action_upload_file') }}</span>
+        <button class="ctx-empty-action" @click="$emit('goProject')" :title="t('ai-panel.context.action_link_meeting')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span>{{ t('ai-panel.context.action_go_kb') }}</span>
           <span class="shortcut">U</span>
         </button>
         <button class="ctx-empty-action" @click="$emit('linkMeeting')" :title="t('ai-panel.context.action_link_meeting')">
@@ -86,22 +86,20 @@
         </div>
       </div>
 
-      <!-- 项目文件 / Project files -->
+      <!-- 关联知识库 / Linked knowledge base -->
       <div class="ctx-section" :class="{ 'is-collapsed': !sections.files }">
         <div class="ctx-section-header" @click="sections.files = !sections.files">
           <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.files" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4></div>
-          <div class="ctx-section-header-right"><span class="ctx-section-count">{{ projectFileCount }} 项</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+          <div class="ctx-section-header-right"><span v-if="linkedProject" class="ctx-section-count">1 个</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
-          <div v-if="projectFiles.length === 0" class="ctx-empty-section"><p>{{ t('ai-panel.context.no_files') }}</p></div>
-          <div v-for="file in visibleProjectFiles" :key="file.id" class="ctx-item">
-            <div class="ctx-item-icon type-file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>
-            <div class="ctx-item-body"><div class="ctx-item-title" :title="file.name">{{ file.name }}</div><div class="ctx-item-meta"><span>{{ file.size }}</span><span class="dot"></span><span>{{ file.date }}</span></div></div>
-            <span class="ctx-item-tag">{{ file.type }}</span>
+          <div v-if="!linkedProject" class="ctx-empty-section"><p>{{ t('ai-panel.context.no_files') }}</p></div>
+          <div v-else class="ctx-item" @click="$emit('goProject')">
+            <div class="ctx-item-icon type-file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+            <div class="ctx-item-body"><div class="ctx-item-title" :title="linkedProject.name">{{ linkedProject.name }}</div><div class="ctx-item-meta"><span>{{ linkedProject.fileCount }} {{ t('ai-panel.context.kb_file_count') }}</span></div></div>
+            <span class="ctx-item-tag">{{ t('ai-panel.context.kb_tag') }}</span>
           </div>
-          <button v-if="projectFiles.length > MAX_VISIBLE_FILES" class="ctx-show-more" @click="$emit('showAllFiles')">{{ t('ai-panel.context.show_more', { count: projectFiles.length - MAX_VISIBLE_FILES }) }}</button>
         </div>
-        <button class="ctx-add-btn" @click="$emit('addFile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>{{ t('ai-panel.context.add_file') }}</button>
       </div>
 
       <!-- 相关会议 / Related meetings -->
@@ -112,7 +110,7 @@
         </div>
         <div class="ctx-section-body">
           <div v-if="relatedMeetings.length === 0" class="ctx-empty-section"><p>{{ t('ai-panel.context.no_related') }}</p></div>
-          <div v-for="meeting in visibleRelatedMeetings" :key="meeting.id" class="ctx-item">
+          <div v-for="meeting in visibleRelatedMeetings" :key="meeting.id" class="ctx-item" @click="$emit('goMeeting', meeting.id)">
             <div class="ctx-item-icon type-meeting"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
             <div class="ctx-item-body"><div class="ctx-item-title" :title="meeting.title">{{ meeting.title }}</div><div class="ctx-item-meta"><span>{{ meeting.date }}</span><span class="dot"></span><span>{{ meeting.duration }}</span></div></div>
             <span class="ctx-item-tag">{{ meeting.tag }}</span>
@@ -156,9 +154,7 @@ defineProps<{
   todoCount: number
   todoPending: number
   todoDone: number
-  projectFiles: Array<{ id: string; name: string; size: string; date: string; type: string }>
-  visibleProjectFiles: Array<{ id: string; name: string; size: string; date: string; type: string }>
-  projectFileCount: number
+  linkedProject: { id: string; name: string; fileCount: number } | null
   relatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   visibleRelatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   relatedMeetingCount: number
@@ -166,17 +162,16 @@ defineProps<{
 
 defineEmits<{
   (e: 'generateSummary'): void
-  (e: 'addFile'): void
   (e: 'linkMeeting'): void
   (e: 'dismissHero'): void
   (e: 'goTranscript'): void
   (e: 'goSummary'): void
   (e: 'goTodos'): void
-  (e: 'showAllFiles'): void
+  (e: 'goProject'): void
+  (e: 'goMeeting', meetingId: string): void
   (e: 'showAllMeetings'): void
 }>()
 
-const MAX_VISIBLE_FILES = 5
 const MAX_VISIBLE_MEETINGS = 5
 const heroDismissed = ref(localStorage.getItem('ctx_hero_dismissed') === '1')
 const sections = ref({ meeting: true, files: true, related: true })

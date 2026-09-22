@@ -52,8 +52,13 @@
         </div>
       </div>
     </div>
-    <!-- 隐藏的文件输入 / Hidden file input -->
-    <input type="file" ref="fileInputRef" accept="audio/*,video/*" style="display:none" @change="onFileSelected">
+    <!-- 导入弹窗 / Import dialog -->
+    <ImportDialog
+      :visible="showImportDialog"
+      @close="showImportDialog = false"
+      @imported="onImported"
+      @open-existing="onOpenExistingTask"
+    />
 
     <!-- 隐私同意弹窗（首次录音/上传时强制显示，确认后不再出现） / Privacy consent dialog (forced on first record/upload, hidden after confirmation) -->
     <Teleport to="body">
@@ -100,11 +105,11 @@ import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useRecorder } from '@/composables/useRecorder'
 import { usePrivacyDisclaimer } from '@/composables/usePrivacyDisclaimer'
-import { submitTranscribe } from '@/api/tasks'
 import { getRecordStatus } from '@/api/record'
 import { extractErrorMessage } from '@/api/client'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
+import ImportDialog from '@/components/common/ImportDialog.vue'
 import { useEscClose } from '@/composables/useEscClose'
 import { modKey } from '@/utils/platform'
 
@@ -114,7 +119,7 @@ const taskStore = useTaskStore()
 const recorder = useRecorder()
 const { acknowledged, acknowledge, init: initPrivacy } = usePrivacyDisclaimer()
 
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const showImportDialog = ref(false)
 const showConsentDialog = ref(false)
 const participantConfirmed = ref(false)
 let pendingAction: (() => void) | null = null
@@ -166,12 +171,12 @@ const LockIcon = {
   },
 }
 
-const UploadIcon = {
+const ImportIcon = {
   render() {
-    return h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' }, [
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
       h('path', { d: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4' }),
-      h('polyline', { points: '17 8 12 3 7 8' }),
-      h('line', { x1: '12', y1: '3', x2: '12', y2: '15' }),
+      h('polyline', { points: '7 10 12 15 17 10' }),
+      h('line', { x1: '12', y1: '15', x2: '12', y2: '3' }),
     ])
   },
 }
@@ -187,12 +192,12 @@ const actionButtons = computed(() => [
     onClick: () => hasRecordingTask.value ? jumpToRecording() : onStartRecord(),
   },
   {
-    key: 'upload',
-    label: t('start.upload'),
-    icon: UploadIcon,
+    key: 'import',
+    label: t('start.import.title'),
+    icon: ImportIcon,
     variant: 'secondary' as const,
     shortcut: `${modKey}U`,
-    onClick: onUploadClick,
+    onClick: onImportClick,
   },
 ])
 
@@ -314,29 +319,29 @@ function doStartRecord() {
   })
 }
 
-function onUploadClick() {
-  if (!requireConsent(() => doUpload())) return
-  doUpload()
+function onImportClick() {
+  if (!requireConsent(() => doImport())) return
+  doImport()
 }
 
-function doUpload() {
-  fileInputRef.value?.click()
+function doImport() {
+  showImportDialog.value = true
 }
 
-async function onFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+function onImported(taskId: string) {
+  taskStore.loadTasks()
+  router.push({ name: 'generating', params: { taskId } })
+}
 
-  try {
-    const task = await submitTranscribe(file)
-    // [状态同步] 上传成功后刷新任务列表 / [State Sync] Refresh task list after upload success
-    await taskStore.loadTasks()
-    router.push({ name: 'generating', params: { taskId: task.task_id } })
-  } catch (e: unknown) {
-    alert(extractErrorMessage(e, t('start.errors.upload_failed')))
-  } finally {
-    input.value = ''
+function onOpenExistingTask(taskId: string) {
+  const task = taskStore.tasks.find(t => t.task_id === taskId)
+  if (task) {
+    taskStore.selectTask(taskId)
+    if (task.status === 'recording' || task.status === 'paused') {
+      router.push({ name: 'recording', params: { taskId } })
+    } else {
+      router.push({ name: 'generating', params: { taskId } })
+    }
   }
 }
 
@@ -381,11 +386,11 @@ function formatStatus(status: string): string {
 onMounted(() => {
   initPrivacy()
   window.addEventListener('global-start-record', onStartRecord)
-  window.addEventListener('global-start-upload', onUploadClick)
+  window.addEventListener('global-start-upload', onImportClick)
 })
 
 onUnmounted(() => {
   window.removeEventListener('global-start-record', onStartRecord)
-  window.removeEventListener('global-start-upload', onUploadClick)
+  window.removeEventListener('global-start-upload', onImportClick)
 })
 </script>

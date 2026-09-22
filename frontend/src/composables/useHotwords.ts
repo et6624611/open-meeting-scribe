@@ -95,16 +95,19 @@ async function saveAll(silent = false) {
 }
 
 function addItem(type: 'word' | 'mapping', content: string, target?: string) {
-  items.value.push({ id: nextId(), type, content, target })
+  // 新词条插入头部，保持最近添加/修改的在最前 / Insert at top so newest items appear first
+  items.value.unshift({ id: nextId(), type, content, target })
   scheduleSave()
 }
 
 function updateItem(id: number, updates: Partial<Pick<HwItem, 'content' | 'target'>>) {
-  const it = items.value.find(x => x.id === id)
-  if (it) {
-    Object.assign(it, updates)
-    scheduleSave()
-  }
+  const idx = items.value.findIndex(x => x.id === id)
+  if (idx < 0) return
+  Object.assign(items.value[idx], updates)
+  // 编辑后移到头部，保持最近维护的在最前 / Move to top after edit
+  const [it] = items.value.splice(idx, 1)
+  items.value.unshift(it)
+  scheduleSave()
 }
 
 function deleteItem(id: number) {

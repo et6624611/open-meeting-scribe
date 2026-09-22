@@ -98,9 +98,9 @@
   "speaker_default": "说话人{id}",
   "summary": {
     "loading": "纪要生成中...",
-    "action_items": "行动项",
-    "todos_stat": "本次会议共产生 {total} 项待办，已完成 {done} 项",
-    "view_todos": "查看待办",
+    "action_items": "决策",
+    "todos_stat": "本次会议共产生 {total} 项决策，已完成 {done} 项",
+    "view_todos": "查看决策",
     "pending": "纪要尚未生成",
     "placeholder": "双击此处开始编辑纪要… Enter 新建块 · ↑↓ 跨块移动"
   },
@@ -132,8 +132,8 @@
     "source_ai": "AI",
     "source_manual": "手动",
     "locate": "定位到原文",
-    "empty": "暂无待办事项",
-    "add": "添加待办事项",
+    "empty": "暂无决策",
+    "add": "添加决策",
     "assignee_placeholder": "执行人（可选）",
     "cancel": "取消",
     "submit": "添加",
@@ -220,7 +220,7 @@
   "ai_actions": {
     "rewrite": "请帮我改写以下内容，保持原意但更精炼",
     "summarize": "请帮我总结以下内容",
-    "extract_todo": "请从以下内容中提取待办事项"
+    "extract_todo": "请从以下内容中提取决策"
   },
   "errors": {
     "create_speaker_failed": "新建说话人失败",
@@ -237,5 +237,17 @@
     "title": "会议处理失败",
     "show_raw": "查看原始错误信息",
     "back_to_library": "返回会议库"
+  },
+  "roster": {
+    "title": "参会人",
+    "add_placeholder": "输入姓名添加…",
+    "add": "添加",
+    "remove": "移除",
+    "person_suffix": "人参会",
+    "add_inline_placeholder": "添加…",
+    "pick_speaker": "从说话人选择",
+    "auto_tag": "自动",
+    "search_placeholder": "搜索说话人…",
+    "create_hint": "新建「{name}」"
   }
 }

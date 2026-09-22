@@ -5,15 +5,19 @@
  * 项目文件、相关会议、统计概览、分区折叠等。 / Project files, related meetings, stats overview, section collapsing, etc.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
+import { useLayoutStore } from '@/stores/layout'
 import { showToast } from '@/composables/useToast'
+import { fetchProjectDetail } from '@/api/projects'
+import router from '@/router'
 
 export function useAiContext() {
   const { t } = useI18n()
   const taskStore = useTaskStore()
+  const layoutStore = useLayoutStore()
   const realtimeStore = useRealtimeStore()
 
   // ── 对话数据源（内联，原 useAiAnalysis 逻辑） / Dialogue data source (inlined, former useAiAnalysis logic) ──
@@ -72,9 +76,43 @@ export function useAiContext() {
   })
 
   // ── 本地状态 / Local state ──
-  const projectFiles = ref<Array<{ id: string; name: string; size: string; date: string; type: string }>>([])
+  const linkedProject = ref<{ id: string; name: string; fileCount: number } | null>(null)
   const relatedMeetings = ref<Array<{ id: string; title: string; date: string; duration: string; tag: string }>>([])
-  const showAllFiles = ref(false)
+
+  // ── 监听当前会议关联的知识库变化，加载知识库名称与关联会议 / Watch current task's linked knowledge base and load name + related meetings ──
+  watch(
+    () => taskStore.currentTask?.project_id ?? null,
+    async (projectId) => {
+      if (!projectId) {
+        linkedProject.value = null
+        relatedMeetings.value = []
+        return
+      }
+      try {
+        const detail = await fetchProjectDetail(projectId)
+        linkedProject.value = {
+          id: detail.id,
+          name: detail.name,
+          fileCount: detail.file_count || 0,
+        }
+        // 填充关联会议列表（排除当前会议自身） / Populate related meetings (exclude current task)
+        const currentTaskId = taskStore.currentTask?.task_id
+        relatedMeetings.value = (detail.meetings || [])
+          .filter((m) => m.task_id !== currentTaskId && m.status === 'completed')
+          .map((m) => ({
+            id: m.task_id,
+            title: m.title || '未命名会议',
+            date: m.meeting_date || m.created_at?.slice(0, 10) || '',
+            duration: m.audio_duration ? formatDuration(m.audio_duration) : '',
+            tag: m.status === 'completed' ? '已完成' : m.status,
+          }))
+      } catch {
+        linkedProject.value = null
+        relatedMeetings.value = []
+      }
+    },
+    { immediate: true },
+  )
   const showAllMeetings = ref(false)
   const heroDismissed = ref(localStorage.getItem('ctx_hero_dismissed') === '1')
 
@@ -84,14 +122,9 @@ export function useAiContext() {
     related: true,
   })
 
-  const MAX_VISIBLE_FILES = 5
   const MAX_VISIBLE_MEETINGS = 5
 
   // ── 计算属性 / Computed ──
-  const visibleProjectFiles = computed(() =>
-    showAllFiles.value ? projectFiles.value : projectFiles.value.slice(0, MAX_VISIBLE_FILES)
-  )
-
   const visibleRelatedMeetings = computed(() =>
     showAllMeetings.value ? relatedMeetings.value : relatedMeetings.value.slice(0, MAX_VISIBLE_MEETINGS)
   )
@@ -100,7 +133,7 @@ export function useAiContext() {
     transcript: taskStore.currentTask && dialogueLines.value.length > 0 ? 1 : 0,
     summary: taskStore.currentTask?.summary ? 1 : 0,
     todos: todoStats.value?.total || 0,
-    files: projectFiles.value.length,
+    files: linkedProject.value ? 1 : 0,
   }))
 
   const contextResourceCount = computed(() =>
@@ -115,7 +148,6 @@ export function useAiContext() {
     contextStats.value.transcript + contextStats.value.summary + (contextStats.value.todos > 0 ? 1 : 0)
   )
 
-  const projectFileCount = computed(() => projectFiles.value.length)
   const relatedMeetingCount = computed(() => relatedMeetings.value.length)
 
   const currentTaskDuration = computed(() => {
@@ -140,7 +172,7 @@ export function useAiContext() {
     contextStats.value.transcript === 0 &&
     contextStats.value.summary === 0 &&
     contextStats.value.todos === 0 &&
-    contextStats.value.files === 0 &&
+    !linkedProject.value &&
     relatedMeetings.value.length === 0
   )
 
@@ -160,47 +192,56 @@ export function useAiContext() {
   }
 
   function goToTranscript() {
-    const task = taskStore.currentTask
-    if (task?.task_id) {
-      showToast(t('ai-panel.context.toast_transcript'), 'info')
+    if (taskStore.currentTask?.task_id) {
+      layoutStore.pendingGenTab = 'transcript'
     }
   }
 
   function goToSummary() {
-    const task = taskStore.currentTask
-    if (task?.task_id) {
-      showToast(t('ai-panel.context.toast_summary'), 'info')
+    if (taskStore.currentTask?.task_id) {
+      layoutStore.pendingGenTab = 'summary'
     }
   }
 
   function goToTodos() {
-    const task = taskStore.currentTask
-    if (task?.task_id) {
-      showToast(t('ai-panel.context.toast_todos'), 'info')
+    if (taskStore.currentTask?.task_id) {
+      layoutStore.pendingGenTab = 'todos'
     }
   }
 
-  function addProjectFile() {
-    showToast(t('ai-panel.context.toast_upload'), 'info')
+  function goToProject() {
+    if (linkedProject.value) {
+      router.push({ name: 'projects' })
+    }
+  }
+
+  function goToMeeting(meetingId: string) {
+    if (meetingId) {
+      router.push({ name: 'generating', params: { taskId: meetingId } })
+    }
+  }
+
+  function formatDuration(seconds: number): string {
+    const mins = Math.floor(seconds / 60)
+    if (mins < 60) return `${mins}分钟`
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return m > 0 ? `${h}小时${m}分钟` : `${h}小时`
   }
 
   return {
     // 状态 / State
-    projectFiles,
+    linkedProject,
     relatedMeetings,
-    showAllFiles,
     showAllMeetings,
     heroDismissed,
     ctxSections,
-    MAX_VISIBLE_FILES,
     MAX_VISIBLE_MEETINGS,
     // 计算 / Computed
-    visibleProjectFiles,
     visibleRelatedMeetings,
     contextStats,
     contextResourceCount,
     meetingOutputCount,
-    projectFileCount,
     relatedMeetingCount,
     currentTaskDuration,
     speakerCount: speakerCountDisplay,
@@ -217,6 +258,7 @@ export function useAiContext() {
     goToTranscript,
     goToSummary,
     goToTodos,
-    addProjectFile,
+    goToProject,
+    goToMeeting,
   }
 }

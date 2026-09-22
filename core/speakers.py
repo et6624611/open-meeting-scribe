@@ -356,9 +356,13 @@ def build_speaker_prompt(dialogue: list[dict]) -> str:
     Returns:
         e.g. "Speaker 1 = Alice, Speaker 2 = Bob"
     """
+    seen_sids: set[int] = set()
     parts = []
     for item in dialogue:
         sid = item.get("speaker_id", 0)
+        if sid in seen_sids:
+            continue
+        seen_sids.add(sid)
         name = item.get("speaker_name", f"Speaker {sid + 1}")
         parts.append(f"Speaker {sid + 1} = {name}")
     return ", ".join(parts)

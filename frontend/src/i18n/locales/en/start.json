@@ -9,6 +9,21 @@
     "start_failed": "Failed to start recording",
     "upload_failed": "Upload failed"
   },
+  "import": {
+    "title": "Import",
+    "dropzone_text": "Drop files here, or click to browse",
+    "dropzone_hint": "Audio · Documents · Screenshots",
+    "or_paste": "or paste text",
+    "paste_placeholder": "Paste transcript or meeting notes here…",
+    "btn_submit": "Import",
+    "processing": "Analyzing content…",
+    "duplicate_found": "This file has been imported before:",
+    "duplicate_open": "Open Existing",
+    "duplicate_continue": "Import Anyway",
+    "errors": {
+      "import_failed": "Import failed"
+    }
+  },
   "privacy": {
     "disclaimer_title": "Data Privacy Notice",
     "disclaimer_local": "Recordings, meeting notes and other data are stored on your device",

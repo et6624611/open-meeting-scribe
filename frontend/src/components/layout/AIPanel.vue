@@ -102,20 +102,18 @@
       :todo-count="ctx.todoCount.value"
       :todo-pending="ctx.todoPending.value"
       :todo-done="ctx.todoDone.value"
-      :project-files="ctx.projectFiles.value"
-      :visible-project-files="ctx.visibleProjectFiles.value"
-      :project-file-count="ctx.projectFileCount.value"
+      :linked-project="ctx.linkedProject.value"
       :related-meetings="ctx.relatedMeetings.value"
       :visible-related-meetings="ctx.visibleRelatedMeetings.value"
       :related-meeting-count="ctx.relatedMeetingCount.value"
-      @show-all-files="ctx.showAllFiles.value = !ctx.showAllFiles.value"
       @show-all-meetings="ctx.showAllMeetings.value = !ctx.showAllMeetings.value"
       @generate-summary="ctx.generateSummary(chat.sendRaw, (tab: string) => aiTab = tab)"
-      @add-file="ctx.addProjectFile"
       @link-meeting="ctx.linkRelatedMeeting"
       @go-transcript="ctx.goToTranscript"
       @go-summary="ctx.goToSummary"
       @go-todos="ctx.goToTodos"
+      @go-project="ctx.goToProject"
+      @go-meeting="ctx.goToMeeting"
     />
 
     <!-- AI 命令删除确认弹窗 / AI command delete confirm dialog -->

@@ -27,6 +27,7 @@
     "hidden_indicator": "已隐藏 {count} 条原文，当前仅显示章节与要点",
     "empty": "等待识别结果…",
     "empty_hint": "开始说话后，识别内容将实时显示在这里",
+    "listening": "正在聆听…",
     "connect_failed": "转写连接已断开",
     "reconnecting": "正在重新连接…（第 {attempt} 次）",
     "retry": "重新连接"
@@ -49,13 +50,19 @@
   },
   "insights": {
     "title": "洞察台",
-    "empty": "AI 将在会议过程中实时分析对话并提供洞察",
-    "empty_hint": "点击立即分析按钮，AI 将从多个维度深度分析当前讨论",
+    "empty": "开启后 AI 将按设定频率自动分析讨论并绘图，也可点击立即分析",
+    "empty_hint": "图表用于辅助思考、揭示讨论盲点；可在右上角调整自动频率",
     "enabled": "洞察台已开启",
     "disabled": "洞察台已关闭",
     "unread_count": "{count} 条未读洞察",
     "expand": "扩展洞察台",
-    "collapse": "收起洞察台"
+    "collapse": "收起洞察台",
+    "freq_label": "自动频率",
+    "freq_tip": "自动分析频率：AI 按此节奏自动绘图，辅助你思考",
+    "freq_off": "关",
+    "freq_low": "低",
+    "freq_normal": "中",
+    "freq_high": "高"
   },
   "control": {
     "pause": "暂停",
@@ -115,5 +122,13 @@
     "display_original": "仅原文",
     "display_translation": "仅译文",
     "display_bilingual": "双语对照"
+  },
+  "roster": {
+    "title": "参会人",
+    "count": "{count} 人参会",
+    "add_placeholder": "搜索添加…",
+    "remove": "移除",
+    "create_hint": "新建「{name}」",
+    "empty": "暂无参会人"
   }
 }

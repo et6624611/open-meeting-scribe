@@ -62,3 +62,9 @@ export async function submitSpeakerMapping(taskId: string, mapping: Record<strin
 export async function saveSpeakerMapping(taskId: string, mapping: Record<string, string>): Promise<void> {
   await client.put(`/api/tasks/${taskId}/speaker-mapping`, { mapping })
 }
+
+/** 更新参会人名单（独立于说话人绑定） / Update meeting roster (independent of speaker binding) */
+export async function updateRoster(taskId: string, roster: string[]): Promise<{ roster: string[] }> {
+  const { data } = await client.put<{ roster: string[] }>(`/api/tasks/${taskId}/roster`, { roster })
+  return data
+}

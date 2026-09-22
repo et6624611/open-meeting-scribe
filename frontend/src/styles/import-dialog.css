@@ -1,0 +1,305 @@
+/* ═══ 导入弹窗 Import Dialog ═══ */
+
+/* 遮罩层 / Overlay */
+.import-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  animation: oms-overlay-in 0.2s ease;
+}
+
+/* 弹窗卡片 / Dialog card */
+.import-dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px 28px;
+  max-width: 480px;
+  width: 92%;
+  box-shadow: 0 12px 40px oklch(0% 0 0 / 0.15);
+  animation: oms-card-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 标题 / Title */
+.import-dialog-title {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: var(--s-4);
+  text-align: center;
+}
+
+/* ─── 拖拽上传区 ─── */
+.import-dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.import-dropzone:hover,
+.import-dropzone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft, oklch(95% 0.02 250 / 0.5));
+}
+
+.import-dropzone-icon {
+  color: var(--subtle);
+  margin-bottom: var(--s-2);
+}
+
+.import-dropzone-text {
+  font-size: var(--fs-14);
+  color: var(--fg);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.import-dropzone-hint {
+  font-size: var(--fs-12);
+  color: var(--subtle);
+}
+
+/* ─── 已选文件预览 ─── */
+.import-file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-top: var(--s-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.import-file-info {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.import-file-icon {
+  flex-shrink: 0;
+  font-size: var(--fs-14);
+}
+
+.import-file-name {
+  font-size: var(--fs-13);
+  color: var(--fg);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-file-size {
+  font-size: var(--fs-12);
+  color: var(--subtle);
+  flex-shrink: 0;
+}
+
+.import-file-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--subtle);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.import-file-remove:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+/* ─── 分隔线 ─── */
+.import-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: var(--s-3) 0;
+  color: var(--subtle);
+  font-size: var(--fs-12);
+}
+
+.import-divider::before,
+.import-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ─── 粘贴文字区 ─── */
+.import-paste-area {
+  width: 100%;
+  padding: var(--s-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: var(--font-body);
+  font-size: var(--fs-13);
+  line-height: 1.6;
+  color: var(--fg);
+  resize: vertical;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.import-paste-area::placeholder {
+  color: var(--subtle);
+}
+
+.import-paste-area:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ─── 处理中状态 ─── */
+.import-processing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  font-size: var(--fs-13);
+  color: var(--muted);
+}
+
+.import-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: import-spin 0.6s linear infinite;
+}
+
+@keyframes import-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── 重复检测提示 ─── */
+.import-duplicate {
+  padding: var(--s-3);
+  background: oklch(96% 0.02 60 / 0.5);
+  border: 1px solid oklch(85% 0.06 60);
+  border-radius: var(--radius);
+  margin-bottom: var(--s-3);
+}
+
+.import-duplicate-icon {
+  color: var(--warn);
+  margin-bottom: var(--s-2);
+}
+
+.import-duplicate-body {
+  margin-bottom: var(--s-3);
+}
+
+.import-duplicate-text {
+  font-size: var(--fs-13);
+  color: var(--fg);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.import-duplicate-detail {
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.import-duplicate-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}
+
+.import-dup-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.12s;
+  font-family: var(--font-body);
+}
+
+.import-dup-btn-secondary {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.import-dup-btn-secondary:hover {
+  background: var(--surface-2);
+}
+
+.import-dup-btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+
+.import-dup-btn-primary:hover {
+  background: oklch(from var(--accent) calc(l - 0.06) c h);
+}
+
+/* ─── 底部操作按钮 ─── */
+.import-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.import-action-cancel {
+  padding: 8px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--fs-14);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background 0.12s;
+}
+
+.import-action-cancel:hover {
+  background: var(--surface-2);
+}
+
+.import-action-submit {
+  padding: 8px 22px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-size: var(--fs-14);
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.import-action-submit:hover:not(:disabled) {
+  background: oklch(from var(--accent) calc(l - 0.06) c h);
+}
+
+.import-action-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

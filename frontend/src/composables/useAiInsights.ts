@@ -47,10 +47,37 @@ export interface InsightAction {
 const STORAGE_KEY = 'ai_insights_enabled'
 const LEGACY_STORAGE_KEY = 'ai_proactive_enabled'
 
+/** 自动分析频率档位 / Auto-analysis frequency level */
+export type AutoFreq = 'off' | 'low' | 'normal' | 'high'
+const FREQ_STORAGE_KEY = 'ai_insights_auto_freq'
+/** 各档位对应的最小触发间隔（毫秒）；off 表示纯手动 / Min trigger interval (ms) per level; off = manual only */
+const FREQ_INTERVAL_MS: Record<AutoFreq, number> = {
+  off: 0,
+  low: 300_000,
+  normal: 180_000,
+  high: 90_000,
+}
+/** 自动触发所需的最小新增转写行数（避免重复画同一张图） / Min new transcript lines required for auto trigger */
+const AUTO_MIN_NEW_LINES = 8
+
+function _loadAutoFreq(): AutoFreq {
+  const v = localStorage.getItem(FREQ_STORAGE_KEY)
+  return v === 'off' || v === 'low' || v === 'normal' || v === 'high' ? v : 'normal'
+}
+
 /* ─── 全局单例状态 / Global singleton state ─── */
 const insightsEnabled = ref<boolean>(
   (localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)) !== '0'
 )
+/** 自动分析频率（唯一暴露给用户的旋钮） / Auto-analysis frequency (the only user-facing knob) */
+const autoFreq = ref<AutoFreq>(_loadAutoFreq())
+/** 当前频率档对应的最小间隔 / Min interval for current frequency level */
+const autoIntervalMs = computed(() => FREQ_INTERVAL_MS[autoFreq.value])
+
+/* ─── 自动引擎内部游标（不暴露给用户） / Auto-engine internal cursors (not user-facing) ─── */
+const autoAnalyzing: Ref<boolean> = ref(false)
+let lastAnalyzedAt = 0
+let lastAnalyzedLineCount = 0
 
 /** 当前会议 ID（引擎运行时绑定） / Current meeting ID (bound at engine runtime) */
 const currentTaskId = ref<string>('')
@@ -90,6 +117,9 @@ async function setCurrentTask(taskId: string) {
     await persistMessages(currentTaskId.value)
   }
   currentTaskId.value = taskId
+  // 切换会议时重置自动引擎游标，避免跨会议误触发 / Reset auto-engine cursors on meeting switch to avoid cross-meeting misfire
+  lastAnalyzedAt = 0
+  lastAnalyzedLineCount = 0
   // 从后端加载该会议的洞察消息 / Load insight messages for this meeting from backend
   if (taskId && !messagesByTask.value[taskId]) {
     try {
@@ -136,38 +166,26 @@ function addInsightMessage(
   return id
 }
 
-/* ─── 手动分析（用户主动触发） / Manual analysis (user-triggered) ─── */
+/* ─── 分析（手动触发 + 自动触发共用核心） / Analysis (shared core for manual + auto trigger) ─── */
 
 /** 手动分析加载状态 / Manual analysis loading state */
 const manualAnalyzing: Ref<boolean> = ref(false)
 
+type TranscriptLineInput = Array<{ text: string; speaker_id: number; begin_time: number }>
+
 /**
- * 用户主动触发综合洞察分析 / User-triggered unified insight analysis
- * 数据不足时也会给出反馈，避免用户点击后无响应产生困扰。 / Provides feedback even when data is insufficient.
+ * 洞察分析核心：调用后端产出图卡片。手动/自动共用。
+ * @param silentNoFinding 无发现时是否静默（自动路径 true，避免刷屏；手动路径 false，给正面反馈）
+ * Core insight analysis: call backend to produce a diagram card. Shared by manual/auto.
  */
-async function runManualAnalysis(
-  recentLines: Array<{ text: string; speaker_id: number; begin_time: number }>,
-  chapterTitles: string[]
+async function runAnalysis(
+  recentLines: TranscriptLineInput,
+  chapterTitles: string[],
+  source: 'user' | 'system',
+  analyzing: Ref<boolean>,
+  silentNoFinding: boolean
 ) {
-  if (!insightsEnabled.value) return
-  if (manualAnalyzing.value) return
-
-  // 数据不足时给出反馈 / Provide feedback when data is insufficient
-  if (recentLines.length < 5 || chapterTitles.length === 0) {
-    const reasons: string[] = []
-    if (recentLines.length < 5) reasons.push(tt('ai-panel.insights.manual_check_need_transcript'))
-    if (chapterTitles.length === 0) reasons.push(tt('ai-panel.insights.manual_check_need_chapters'))
-    addInsightMessage(
-      tt('ai-panel.insights.manual_check_insufficient_title'),
-      reasons.join(''),
-      [],
-      'system',
-      tt('ai-panel.insights.cat_context')
-    )
-    return
-  }
-
-  manualAnalyzing.value = true
+  analyzing.value = true
   try {
     const result = await runInsightAnalysis({
       recent_lines: recentLines.slice(-20),
@@ -179,59 +197,88 @@ async function runManualAnalysis(
         result.title,
         result.body,
         [{ key: 'acknowledge', label: tt('ai-panel.insights.action_acknowledge'), primary: true }],
-        'user',
-        tt('ai-panel.insights.cat_context'),
+        source,
+        tt('ai-panel.insights.cat_insight'),
         result.solution,
         result.diagram,
         result.graph
       )
-    } else {
+    } else if (!silentNoFinding) {
       // 手动触发且无发现 → 给出正面反馈 / Manual trigger with no finding → positive feedback
       addInsightMessage(
         tt('ai-panel.insights.manual_check_ok_title'),
         tt('ai-panel.insights.manual_check_ok_body'),
         [],
         'system',
-        tt('ai-panel.insights.cat_context')
+        tt('ai-panel.insights.cat_insight')
       )
     }
   } catch {
     // API 调用失败静默忽略 / Silently ignore API call failures
   } finally {
-    manualAnalyzing.value = false
+    analyzing.value = false
   }
 }
 
-/* ─── 预设场景 / Preset scenarios ─── */
+/**
+ * 用户主动触发综合洞察分析 / User-triggered unified insight analysis
+ * 数据不足时也会给出反馈，避免用户点击后无响应产生困扰。 / Provides feedback even when data is insufficient.
+ * @param totalLineCount 当前转写总行数（可选），用于同步自动引擎游标，避免刚手动完又自动触发
+ */
+async function runManualAnalysis(
+  recentLines: TranscriptLineInput,
+  chapterTitles: string[],
+  totalLineCount?: number
+) {
+  if (!insightsEnabled.value) return
+  if (manualAnalyzing.value || autoAnalyzing.value) return
+
+  // 数据不足时给出反馈 / Provide feedback when data is insufficient
+  if (recentLines.length < 5 || chapterTitles.length === 0) {
+    const reasons: string[] = []
+    if (recentLines.length < 5) reasons.push(tt('ai-panel.insights.manual_check_need_transcript'))
+    if (chapterTitles.length === 0) reasons.push(tt('ai-panel.insights.manual_check_need_chapters'))
+    addInsightMessage(
+      tt('ai-panel.insights.manual_check_insufficient_title'),
+      reasons.join(''),
+      [],
+      'system',
+      tt('ai-panel.insights.cat_insight')
+    )
+    return
+  }
+
+  // 手动分析后刷新自动引擎游标，冷却从此刻重新计时 / Refresh auto-engine cursors after manual analysis
+  lastAnalyzedAt = Date.now()
+  if (typeof totalLineCount === 'number') lastAnalyzedLineCount = totalLineCount
+
+  await runAnalysis(recentLines, chapterTitles, 'user', manualAnalyzing, false)
+}
 
 /**
- * 场景 A：会议结束后，主动推送待办提取提醒 / Scenario A: After meeting ends, proactively push todo extraction reminder
+ * 自动触发入口：由 RecordingView 监听转写增长时调用，内部按频率/冷却/门槛节流。
+ * Auto trigger entry: called by RecordingView on transcript growth; throttled internally by frequency/cooldown/threshold.
+ * @param totalLineCount 当前转写总行数，用于判断新增行阈值 / Current total transcript line count for new-line threshold
  */
-function triggerMeetingEndTodos(todoList: Array<{ text: string; assignee?: string; deadline?: string }>) {
-  if (!insightsEnabled.value) return ''
-  const items = todoList.map(todo => {
-    let line = `<li><strong>${todo.text}</strong>`
-    const meta: string[] = []
-    if (todo.deadline) meta.push(tt('ai-panel.insights.todo_deadline', { deadline: todo.deadline }))
-    if (todo.assignee) meta.push(tt('ai-panel.insights.todo_assignee', { name: todo.assignee }))
-    if (meta.length) line += ` — ${meta.join(' · ')}`
-    line += '</li>'
-    return line
-  }).join('')
+async function maybeAutoAnalyze(
+  recentLines: TranscriptLineInput,
+  chapterTitles: string[],
+  totalLineCount: number
+) {
+  if (!insightsEnabled.value) return
+  if (autoFreq.value === 'off') return
+  if (manualAnalyzing.value || autoAnalyzing.value) return
+  // 数据门槛：无章节或转写太少不触发（静默） / Data gate: skip silently without chapters or too few lines
+  if (chapterTitles.length === 0 || recentLines.length < 5) return
+  // 冷却：距上次分析不足间隔不触发 / Cooldown: skip if interval not elapsed
+  const now = Date.now()
+  if (now - lastAnalyzedAt < autoIntervalMs.value) return
+  // 新增行阈值：内容增长不足不重复画图 / New-line threshold: skip if not enough growth
+  if (totalLineCount - lastAnalyzedLineCount < AUTO_MIN_NEW_LINES) return
 
-  const bodyHtml = tt('ai-panel.insights.scene_meeting_end_body_pre')
-    + `<strong>${todoList.length}${tt('ai-panel.insights.scene_meeting_end_body_unit')}</strong>`
-    + `<ul>${items}</ul>`
-
-  return addInsightMessage(
-    tt('ai-panel.insights.scene_meeting_end_title'),
-    bodyHtml,
-    [
-      { key: 'view', label: tt('ai-panel.insights.action_view'), primary: true },
-      { key: 'sync', label: tt('ai-panel.insights.action_sync') },
-      { key: 'later', label: tt('ai-panel.insights.action_later') },
-    ]
-  )
+  lastAnalyzedAt = now
+  lastAnalyzedLineCount = totalLineCount
+  await runAnalysis(recentLines, chapterTitles, 'system', autoAnalyzing, true)
 }
 
 /** 获取当前正在录音的任务 ID（供侧边栏洞察按钮导航使用） / Get currently recording task ID (for sidebar insight button navigation) */
@@ -275,6 +322,12 @@ export function useAiInsights() {
     if (!val) {
       if (currentTaskId.value) messagesByTask.value[currentTaskId.value] = []
     }
+  }
+
+  /** 设置自动分析频率 / Set auto-analysis frequency */
+  function setAutoFreq(val: AutoFreq) {
+    autoFreq.value = val
+    localStorage.setItem(FREQ_STORAGE_KEY, val)
   }
 
   /** 标记消息已读 / Mark message as read */
@@ -343,7 +396,7 @@ export function useAiInsights() {
       buildDiagramCaption(diagram, tt),
       [{ key: 'acknowledge', label: tt('ai-panel.insights.action_acknowledge'), primary: true }],
       'user',
-      tt('ai-panel.insights.cat_context'),
+      tt('ai-panel.insights.cat_insight'),
       '',  // solution
       diagram
     )
@@ -352,12 +405,15 @@ export function useAiInsights() {
   return {
     // 状态 / State
     insightsEnabled,
+    autoFreq,
+    autoIntervalMs,
     insightMessages,
     unreadCount,
     latestUnread,
     // 操作 / Actions
     toggleEnabled,
     setEnabled,
+    setAutoFreq,
     addInsightMessage,
     markAsRead,
     acknowledgeMessage,
@@ -366,14 +422,15 @@ export function useAiInsights() {
     clearInsightMessages,
     toggleExpanded,
     getFirstUnread,
-    // 预设场景 / Preset scenarios
-    triggerMeetingEndTodos,
     // 会议绑定 / Meeting binding
     setCurrentTask,
     persistMessages,
     // 手动分析 / Manual analysis
     manualAnalyzing,
     runManualAnalysis,
+    // 自动分析 / Auto analysis
+    autoAnalyzing,
+    maybeAutoAnalyze,
     // 导航辅助 / Navigation helper
     getActiveRecordingTaskId,
     // 对话图形化 / Chat diagram

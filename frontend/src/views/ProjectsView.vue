@@ -68,7 +68,7 @@
         <div class="proj-detail-left">
           <div class="proj-detail-name" @click="startRename">
             <span v-if="!isRenaming" class="proj-name-clickable">{{ selectedProject.name }}</span>
-            <input v-else ref="renameInputRef" v-model="renameValue" class="proj-inline-edit" @keyup.enter="saveRename" @keyup.escape="cancelRename" @blur="saveRename" />
+            <input v-else ref="renameInputRef" v-model="renameValue" class="proj-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
           </div>
           <div class="proj-index-status" :class="indexStatusClass">
             {{ indexStatusText }}
@@ -263,6 +263,7 @@ import {
 import type { Project, ProjectDetail, ProjectFolder, IndexedFile } from '@/api/projects'
 import { showToast } from '@/composables/useToast'
 import { useEscClose } from '@/composables/useEscClose'
+import { usePageBack } from '@/composables/usePageBack'
 import FolderBrowserDialog from './projects/FolderBrowserDialog.vue'
 
 const { t } = useI18n()
@@ -295,7 +296,12 @@ const showConfirmDialog = ref(false)
 const confirmDialogTitle = ref('')
 const confirmDialogMsg = ref('')
 let confirmCallback: (() => void) | null = null
-useEscClose(ref(showConfirmDialog.value), () => { showConfirmDialog.value = false })
+// 直接传入响应式 ref；之前传 ref(showConfirmDialog.value) 仅快照初始值（永远 false）导致 ESC 失效
+// Pass the reactive ref directly; the previous ref(showConfirmDialog.value) only snapshotted the initial value (always false), breaking ESC
+useEscClose(showConfirmDialog, () => { showConfirmDialog.value = false })
+
+// ESC 返回：详情页先回到列表，列表页再路由返回 / ESC back: detail view returns to list first, list view then navigates back
+usePageBack({ intercept: () => { if (selectedProject.value) { backToList(); return true } return false } })
 
 // ─── 文件夹选择器 / Folder browser ───
 const showFolderBrowser = ref(false)

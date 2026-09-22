@@ -27,7 +27,7 @@
   "role": {
     "meeting-minutes": {
       "title": "Meeting Minutes",
-      "description": "Focused on structured minutes output, faithfully recording meeting conclusions and action items. Default role of Open Meeting Scribe."
+      "description": "Focused on structured minutes output, faithfully recording meeting conclusions and decisions. Default role of Open Meeting Scribe."
     },
     "learning-tutor": {
       "title": "Learning Tutor",

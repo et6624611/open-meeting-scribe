@@ -60,11 +60,11 @@ RecordingView 内部按职责拆分为以下子组件：
 |------|----------|------|
 | `recording/RecControlBar.vue` | 底部控制栏 | 录音控制按钮（暂停/继续/停止、标记） |
 | `recording/RecTranscriptPanel.vue` | 实时转写区 | 实时转写文本流 + 说话人标签 |
-| `recording/RecInsightsPanel.vue` | 洞察台区 | 洞察台面板（上下文关联/盲点揭示/共识提炼） |
+| `recording/RecInsightsPanel.vue` | 洞察台区 | 洞察台绘图面板（Mermaid 图 + G6 知识图谱双轨渲染，支持复制/重新生成/在对话中编辑） |
 | `recording/RecNotesBar.vue` | 随记栏 | 录音中的快捷随记输入 |
 | `recording/RecSpeakerBind.vue` | 说话人绑定 | 录音中说话人身份关联 |
 | `recording/RecTimeline.vue` | 时间轴导航 | Canvas 说话人色带可视化 + 滑块拖拽定位 + 章节刻度线 + hover 时间标签 |
-| `ai/AiInsightsSettings.vue` | 洞察台设置 | 洞察台功能开关与配置（文件位于 `components/layout/ai/`，由 RecInsightsPanel 引用） |
+| `ai/AiInsightsSettings.vue` | ~~洞察台设置~~ | **已删除**（重构中移除，纯手动触发无需设置面板） |
 
 ## 四、会议纪要页（GeneratingView.vue）
 
@@ -121,7 +121,7 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useAiCommands.ts` | AI 指令系统：指令定义、按状态过滤、面板状态 |
 | `composables/useAiContext.ts` | AI 上下文数据源（对话/转写/纪要聚合，含原 useAiAnalysis 逻辑） |
 | `composables/useAiGuidance.ts` | AI 引导面板：根据会议状态动态生成上下文引导建议 |
-| `composables/useAiInsights.ts` | 洞察台引擎：消息管理、未读计数、三类洞察（关联/盲点/共识） |
+| `composables/useAiInsights.ts` | 洞察台引擎：消息管理、未读计数、手动分析、图交互状态 |
 | `composables/useAnnouncements.ts` | 公告横幅：拉取/显示/关闭策略、登录状态联动 |
 | `composables/useBlockEditor.ts` | Markdown 块级编辑逻辑（解析/AI 标记/diff） |
 | `composables/useContainerSize.ts` | 容器宽度档位检测（ResizeObserver → 标准化 tier） |
@@ -288,7 +288,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | 录音页 — 洞察台区 | [RecInsightsPanel.vue](../frontend/src/views/recording/RecInsightsPanel.vue) |
 | 录音页 — 随记栏 | [RecNotesBar.vue](../frontend/src/views/recording/RecNotesBar.vue) |
 | 录音页 — 说话人绑定 | [RecSpeakerBind.vue](../frontend/src/views/recording/RecSpeakerBind.vue) |
-| 录音页 — 洞察台设置 | [AiInsightsSettings.vue](../frontend/src/components/layout/ai/AiInsightsSettings.vue) |
+| 录音页 — 洞察台设置 | ~~AiInsightsSettings.vue~~ **已删除** |
 | 录音采集逻辑 | [useRecorder.ts](../frontend/src/composables/useRecorder.ts) |
 | **会议纪要页** |
 | 会议纪要 — 原文区域 | [TranscriptPanel.vue](../frontend/src/views/generating/TranscriptPanel.vue) |

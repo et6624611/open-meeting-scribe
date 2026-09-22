@@ -163,7 +163,7 @@
       </div>
     </div>
 
-    <!-- 说话人区（三态合并：只读名单 / 绑定提示 / 绑定完成） / Speaker zone (three-state: readonly / binding prompt / binding complete) -->
+    <!-- 人员栏（渐进式压缩：说话人 + 参会人合并） / Personnel bar (progressive compression: speakers + roster merged) -->
     <GeneratingSpeakerZone
       :mode="speakerZoneMode"
       :visible="bindingLegend.length > 0"
@@ -173,6 +173,9 @@
       :current-mapping="currentBindingMapping"
       :dropdown="bindingDropdown"
       :filtered-speakers="dropdownSpeakers"
+      :roster="rosterComposable.roster.value"
+      :bound-names="boundNames"
+      :all-speakers="speakers"
       @open-info="openOnboarding"
       @open-dropdown="openBindingDropdown"
       @locate-speaker="onLocateSpeaker"
@@ -184,6 +187,8 @@
       @create-and-bind="createAndBind"
       @dropdown-keydown="onDropdownKeydown"
       @update:dropdown-search="bindingDropdown.search = $event"
+      @roster-add="rosterComposable.addMember($event)"
+      @roster-remove="rosterComposable.removeMember($event)"
     />
 
     <!-- 控制区：Tab / Control zone: Tabs -->
@@ -367,6 +372,7 @@ import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useProjectOnboarding } from '@/composables/useProjectOnboarding'
 import { useInlineEdit } from '@/composables/useInlineEdit'
+import { useMeetingRoster } from '@/composables/useMeetingRoster'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -405,6 +411,7 @@ const notes = useNotesAndTodos(
 const onboarding = useOnboarding()
 const projOnboarding = useProjectOnboarding()
 const inlineEdit = useInlineEdit()
+const rosterComposable = useMeetingRoster(data.taskId, data.task)
 
 // ─── 解构到模板作用域 / Destructure to template scope ───
 const {
@@ -481,6 +488,30 @@ watch(() => data.task.value, (t) => {
   }
 }, { immediate: true })
 
+// ─── 说话人绑定 → 参会人自动同步 / Speaker binding → roster auto-sync ───
+const boundNames = computed(() =>
+  bindingLegend.value.filter(b => b.bound).map(b => b.displayName)
+)
+
+watch(boundNames, (names) => {
+  const currentRoster = [...rosterComposable.roster.value]
+  const manualNames = rosterComposable.manualNames
+  let changed = false
+  // 新增：绑定的人自动加入 roster / Auto-add bound speakers to roster
+  for (const name of names) {
+    if (!currentRoster.includes(name)) {
+      currentRoster.push(name)
+      changed = true
+    }
+  }
+  // 移除：仅移除不再绑定的「自动同步」名字，保留手动添加的 / Only remove auto-synced names no longer bound; preserve manual adds
+  const nameSet = new Set(names)
+  const before = currentRoster.length
+  rosterComposable.roster.value = currentRoster.filter(n => nameSet.has(n) || manualNames.has(n))
+  if (rosterComposable.roster.value.length !== before) changed = true
+  if (changed) rosterComposable.persist()
+})
+
 // ─── 更多菜单 / More menu ──
 const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
@@ -488,7 +519,12 @@ const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore } = us
 
 // ─── 工具栏操作 / Toolbar actions ───
 function onEditSummary() { closeGenMore(); data.switchTab('summary') }
-async function onRetrySummary() { closeGenMore(); await retrySummary(data.taskId); await taskStore.loadTasks() }
+async function onRetrySummary() {
+  closeGenMore()
+  await retrySummary(data.taskId)
+  await taskStore.loadTasks()
+  data.startPolling()
+}
 async function onRetranscribe() { closeGenMore(); await retranscribe(data.taskId); router.push({ name: 'generating', params: { taskId: data.taskId } }) }
 
 /** 失败态卡片「重试转写」：复用 retranscribe API，乐观更新状态并恢复轮询，与 TaskList.vue 重试行为一致

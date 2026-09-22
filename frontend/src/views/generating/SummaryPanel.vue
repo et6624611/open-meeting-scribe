@@ -63,7 +63,7 @@
         </ul>
       </div>
     </div>
-    <!-- 行动项入口 / Action items entry -->
+    <!-- 决策入口 / Decisions entry -->
     <div class="sum-section" v-if="hasSummary">
       <div class="sum-section-label">{{ t('generating.summary.action_items') }}</div>
       <button class="sum-todos-link" @click="emit('switch-tab', 'todos')" :title="t('generating.summary.view_todos')">

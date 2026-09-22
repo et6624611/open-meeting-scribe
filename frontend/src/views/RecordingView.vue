@@ -10,9 +10,21 @@
       :project-name="currentProjectName"
       :show-project-dropdown="showProjectDropdown"
       :is-focus-mode="isFocusMode"
+      :roster-count="rosterComposable.roster.value.length"
+      :show-roster-dropdown="showRosterDropdown"
+      :roster="rosterComposable.roster.value"
+      :roster-search="rosterSearch"
+      :filtered-roster-speakers="filteredRosterSpeakers"
+      :roster-focus-idx="rosterFocusIdx"
       @toggle-project-dropdown="showProjectDropdown = !showProjectDropdown"
       @select-project="onSelectProject"
       @toggle-focus="onFocusMode"
+      @toggle-roster="toggleRosterDropdown"
+      @update:roster-search="rosterSearch = $event"
+      @roster-keydown="onRosterKeydown"
+      @roster-remove="rosterComposable.removeMember($event)"
+      @roster-select="onRosterSelect"
+      @roster-create="onRosterCreate"
     />
 
     <!-- 内容区 / Content area -->
@@ -78,7 +90,7 @@
       <RecTranscriptPanel
         ref="transcriptRef"
         :lines="wsLines"
-        :partial-text="wsPartial"
+        :listening="ws.listening.value"
         :chapters="wsChapters"
         :show-transcript="showTranscript"
         :marker-mode="markerMode"
@@ -114,13 +126,15 @@
         :enabled="insights.insightsEnabled.value"
         :unread-count="insights.unreadCount.value"
         :acted-actions="actedActions"
-        :analyzing="insights.manualAnalyzing.value"
+        :analyzing="insights.manualAnalyzing.value || insights.autoAnalyzing.value"
         :expanded="insightsExpanded"
+        :auto-freq="insights.autoFreq.value"
         @toggle-enabled="insights.toggleEnabled()"
         @toggle-message="insights.toggleExpanded($event)"
         @action="onInsightAction"
         @manual-check="onInsightManualCheck"
         @toggle-expand="insightsExpanded = !insightsExpanded"
+        @update:auto-freq="insights.setAutoFreq($event)"
         @seek-to="player.seekToMs($event)"
       />
     </div>
@@ -207,6 +221,7 @@ import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
 import { usePresenceDetection } from '@/composables/usePresenceDetection'
 import { useRecordingNotes } from '@/composables/useRecordingNotes'
+import { useMeetingRoster } from '@/composables/useMeetingRoster'
 import { useTranslation } from '@/composables/useTranslation'
 import { fetchSpeakers, createSpeaker, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
@@ -227,7 +242,6 @@ const recorder = useRecorder()
 const recPaused = recorder.isPaused
 const ws = useWebSocketTranscript()
 const wsLines = ws.lines
-const wsPartial = ws.partialText
 const wsChapters = ws.chapters
 const translation = useTranslation(ws)
 const taskStore = useTaskStore()
@@ -243,6 +257,7 @@ const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId.value
 const presence = usePresenceDetection((score, ack) => ws.sendHeartbeat(score, ack))
 const elapsedMs = computed(() => recorder.elapsed.value * 1000)
 const notes = useRecordingNotes(wsLines, elapsedMs)
+const rosterComposable = useMeetingRoster(taskId.value, task)
 
 // ── 本地状态 / Local state ──
 const recTab = ref<'transcript' | 'insights'>('transcript')
@@ -262,6 +277,67 @@ const currentProjectName = computed(() => {
   if (!task.value?.project_id) return t('generating.meta.link_project')
   return projects.value.find(p => p.id === task.value?.project_id)?.name || t('generating.meta.link_project')
 })
+
+// 参会人 / Roster
+const showRosterDropdown = ref(false)
+const rosterSearch = ref('')
+const rosterFocusIdx = ref(-1)
+const rosterSearchRef = ref<HTMLInputElement | null>(null)
+
+const filteredRosterSpeakers = computed(() => {
+  const q = rosterSearch.value.toLowerCase().trim()
+  let list = speakers.value.filter(s => !rosterComposable.roster.value.includes(s.name))
+  if (q) list = list.filter(s => s.name.toLowerCase().includes(q) || (s.role || '').toLowerCase().includes(q))
+  return list
+})
+
+function toggleRosterDropdown() {
+  showRosterDropdown.value = !showRosterDropdown.value
+  if (showRosterDropdown.value) {
+    rosterSearch.value = ''
+    rosterFocusIdx.value = -1
+    nextTick(() => rosterSearchRef.value?.focus())
+  }
+}
+
+function onRosterSelect(s: Speaker) {
+  rosterComposable.addMember(s.name)
+  rosterSearch.value = ''
+  rosterFocusIdx.value = -1
+}
+
+async function onRosterCreate() {
+  const name = rosterSearch.value.trim()
+  if (!name) return
+  try {
+    await createSpeaker(name)
+    rosterComposable.addMember(name)
+    rosterSearch.value = ''
+    rosterFocusIdx.value = -1
+  } catch (e) {
+    console.error('create speaker failed:', e)
+  }
+}
+
+function onRosterKeydown(e: KeyboardEvent) {
+  const items = filteredRosterSpeakers.value
+  const hasCreate = rosterSearch.value.trim() && items.length === 0
+  const total = hasCreate ? 1 : items.length
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    rosterFocusIdx.value = total > 0 ? (rosterFocusIdx.value + 1) % total : 0
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    rosterFocusIdx.value = total > 0 ? (rosterFocusIdx.value <= 0 ? total - 1 : rosterFocusIdx.value - 1) : 0
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    if (hasCreate && rosterFocusIdx.value === 0) onRosterCreate()
+    else if (rosterFocusIdx.value >= 0 && rosterFocusIdx.value < items.length) onRosterSelect(items[rosterFocusIdx.value])
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    showRosterDropdown.value = false
+  }
+}
 
 // 说话人 / Speakers
 const speakers = ref<Speaker[]>([])
@@ -379,7 +455,8 @@ function onInsightAction(msg: InsightMessage, act: InsightAction) {
 function onInsightManualCheck() {
   insights.runManualAnalysis(
     wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
-    wsChapters.value.map(c => c.title)
+    wsChapters.value.map(c => c.title),
+    wsLines.value.length
   )
 }
 
@@ -419,6 +496,15 @@ async function onAbandon() { showAbandon.value = false; ws.disconnect(); notes.c
 
 // ── Watchers ── / ── Watchers ──
 watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n })
+// 洞察台自动触发：监听转写增长，由 composable 内部按频率/冷却/门槛节流自动产图 / Insight Deck auto trigger: watch transcript growth; composable throttles by frequency/cooldown/threshold
+watch(() => wsLines.value.length, (n) => {
+  if (n === 0) return
+  insights.maybeAutoAnalyze(
+    wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
+    wsChapters.value.map(c => c.title),
+    n
+  )
+})
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
 watch(recTab, (tab) => {

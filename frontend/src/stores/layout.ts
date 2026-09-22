@@ -22,6 +22,8 @@ export const useLayoutStore = defineStore('layout', () => {
   const aiCollapsed = ref(false)
   /** 时间轴“全部折叠”状态 / Timeline "collapse all" state */
   const timelineAllCollapsed = ref(false)
+  /** AI 面板请求切换左侧会议纪要 Tab 的信号（设置后由 GeneratingView 消费并清空） / Signal from AI panel to switch left-side generating tab (consumed and cleared by GeneratingView) */
+  const pendingGenTab = ref<string | null>(null)
 
   /** 由两个折叠状态派生当前视图模式（供按钮高亮） / Derive current view mode from two collapse states (for button highlighting) */
   const viewMode = computed<ViewMode>(() => {
@@ -91,7 +93,7 @@ export const useLayoutStore = defineStore('layout', () => {
   }
 
   return {
-    sidebarCollapsed, aiCollapsed, timelineAllCollapsed, viewMode,
+    sidebarCollapsed, aiCollapsed, timelineAllCollapsed, pendingGenTab, viewMode,
     setViewMode, toggleSidebar, toggleAi, toggleTimelineCollapseAll, restore,
   }
 })

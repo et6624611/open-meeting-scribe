@@ -21,6 +21,16 @@
           </div>
           <span class="toggle-switch-label">{{ enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off') }}</span>
         </div>
+        <!-- 自动频率选择（仅开启时显示）：唯一暴露给用户的旋钮 / Auto frequency selector (only when enabled): the single user-facing knob -->
+        <div v-if="enabled" class="rec-insights-freq" :title="t('recording.insights.freq_tip')">
+          <button
+            v-for="opt in FREQ_OPTIONS" :key="opt"
+            class="rec-insights-freq-opt"
+            :class="{ 'is-active': autoFreq === opt }"
+            :title="t('recording.insights.freq_' + opt)"
+            @click="$emit('update:autoFreq', opt)"
+          >{{ t('recording.insights.freq_' + opt) }}</button>
+        </div>
         <button
           v-if="enabled"
           class="rec-insights-btn rec-insights-analyze-btn"
@@ -118,7 +128,7 @@
               >{{ act.label }}</button>
             </div>
             <div class="rec-insight-meta">
-              {{ t('ai-panel.insights.meta_auto') }} · {{ formatTime(msg.timestamp) }}
+              {{ msg.source === 'user' ? t('ai-panel.insights.meta_manual') : t('ai-panel.insights.meta_auto') }} · {{ formatTime(msg.timestamp) }}
             </div>
           </div>
         </div>
@@ -139,13 +149,16 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
-import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
+import type { InsightMessage, InsightAction, AutoFreq } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
 import InsightGraph from '@/components/common/InsightGraph.vue'
 
 const { t } = useI18n()
 const insights = useAiInsights()
+
+/** 频率档位选项（从“关闭自动”到“高”） / Frequency options (from off to high) */
+const FREQ_OPTIONS: AutoFreq[] = ['off', 'low', 'normal', 'high']
 
 /**
  * 将洞察台的 Markdown 文本渲染为 HTML。
@@ -180,6 +193,7 @@ defineProps<{
   actedActions: Record<string, boolean>
   analyzing: boolean
   expanded: boolean
+  autoFreq: AutoFreq
 }>()
 
 defineEmits<{
@@ -189,6 +203,7 @@ defineEmits<{
   (e: 'manualCheck'): void
   (e: 'toggleExpand'): void
   (e: 'seekTo', ms: number): void
+  (e: 'update:autoFreq', value: AutoFreq): void
 }>()
 
 /** 复制图源码到剪贴板 / Copy diagram source to clipboard */

@@ -141,12 +141,21 @@ watch(() => props.open, (val) => {
   if (val) {
     updatePosition()
     setTimeout(() => document.addEventListener('click', onClickOutside, { once: true }), 0)
+    window.addEventListener('keydown', onEscKey)
   } else {
     copied.value = null
+    window.removeEventListener('keydown', onEscKey)
   }
 })
 
 function onClickOutside() {
+  emit('close')
+}
+
+/** ESC 关闭菜单：消费事件，避免页面级 ESC（usePageBack）误将其当作返回上一页 / ESC closes menu: consume event so page-level ESC (usePageBack) won't mistake it for going back */
+function onEscKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  e.preventDefault()
   emit('close')
 }
 
@@ -192,5 +201,6 @@ const durationDisplay = computed(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside)
+  window.removeEventListener('keydown', onEscKey)
 })
 </script>

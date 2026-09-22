@@ -185,6 +185,7 @@ import DurationDial from '@/components/common/DurationDial.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useContainerSize } from '@/composables/useContainerSize'
+import { usePageBack } from '@/composables/usePageBack'
 import { matchTask, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
@@ -192,6 +193,9 @@ const { t } = useI18n()
 const router = useRouter()
 const taskStore = useTaskStore()
 const player = usePlayerStore()
+
+// ESC 返回上一页（删除确认弹窗打开时会先消费事件，不会触发返回） / ESC goes back (batch-delete confirm dialog consumes the event first)
+usePageBack()
 
 // ─── 宽度档位（统一 composable 驱动） / Width tier (unified composable driven) ───
 const libPageRef = ref<HTMLElement | null>(null)

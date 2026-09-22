@@ -81,7 +81,7 @@
           <div class="spk-detail-info">
             <div class="spk-detail-name" @click="startRename">
               <span v-if="!isRenaming" class="spk-name-clickable" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
-              <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keyup.escape="cancelRename" @blur="saveRename" />
+              <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
               <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
             </div>
             <div v-if="selectedSpeaker.alias" class="spk-detail-role">{{ selectedSpeaker.alias }}</div>
@@ -239,6 +239,7 @@ import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
 import { useUserStore } from '@/stores/user'
 import { useEscClose } from '@/composables/useEscClose'
+import { usePageBack } from '@/composables/usePageBack'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -263,6 +264,8 @@ const confirmDialogTitle = ref('')
 const confirmDialogMsg = ref('')
 
 useEscClose(showConfirmDialog, () => { showConfirmDialog.value = false })
+// ESC 返回：详情页先回到列表，列表页再路由返回 / ESC back: detail view returns to list first, list view then navigates back
+usePageBack({ intercept: () => { if (selectedSpeaker.value) { backToList(); return true } return false } })
 let confirmCallback: (() => void) | null = null
 
 /** 判断说话人是否为当前用户（通过 linked_user_id 比较） / Check if speaker is current user (via linked_user_id) */

@@ -590,7 +590,8 @@
 .db-card-textarea:focus { border-color: var(--accent); }
 .db-card-textarea::placeholder { color: var(--subtle); }
 
-/* ═══ 决策卡片状态/负责人按钮 ═══ */
+/* ═══ 决策卡片状态/负责人下拉按钮 ═══ */
+.db-dropdown-wrap { position: relative; display: inline-flex; }
 .db-status-btn {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px; border: none; border-radius: 10px;
@@ -603,8 +604,39 @@
 .db-status-btn.pill-in_progress { background: var(--accent-soft); color: var(--accent); }
 .db-status-btn.pill-to_confirm { background: oklch(0.94 0.04 70); color: var(--st-confirm); }
 .db-status-btn.pill-done { background: oklch(0.92 0.03 150); color: var(--st-done); }
-.db-owner-btn { font-size: var(--fs-11); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.db-dd-caret { opacity: 0.6; flex-shrink: 0; }
+.db-owner-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-11); color: var(--muted); cursor: pointer;
+  white-space: nowrap; background: none; border: none; padding: 2px 4px;
+  border-radius: var(--radius-sm); transition: color 0.12s;
+}
 .db-owner-btn:hover { color: var(--fg); }
+/* ─── 下拉菜单面板 / Dropdown panel ─── */
+.db-dropdown {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 140px; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.12);
+  padding: var(--s-1); z-index: var(--z-popover); animation: db-dd-in 0.12s ease;
+}
+.db-dropdown.is-open { display: block; }
+@keyframes db-dd-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.db-dd-item {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 6px 10px; border: none; background: transparent;
+  color: var(--fg); font-size: var(--fs-12); cursor: pointer;
+  border-radius: var(--radius-sm); transition: background 0.1s;
+  text-align: left; font-family: inherit; white-space: nowrap;
+}
+.db-dd-item:hover { background: var(--surface-2); }
+.db-dd-item.is-active { color: var(--accent); font-weight: 500; }
+.db-dd-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.db-dd-dot.dot-to_decide { background: var(--st-decide); }
+.db-dd-dot.dot-to_start { background: var(--st-start); }
+.db-dd-dot.dot-in_progress { background: var(--st-progress); }
+.db-dd-dot.dot-to_confirm { background: var(--st-confirm); }
+.db-dd-dot.dot-done { background: var(--st-done); }
+.db-dd-check { margin-left: auto; flex-shrink: 0; color: var(--accent); }
 .db-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: var(--s-1); }
 .db-footer-spacer { flex: 1; }
 .db-delete-btn {

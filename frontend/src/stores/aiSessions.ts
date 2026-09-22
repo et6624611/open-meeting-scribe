@@ -7,6 +7,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage } from '@/api/chat'
+import { tt } from '@/i18n'
 
 const STORAGE_KEY = 'oms_ai_chat'
 const DEFAULT_KEY = '__default__'
@@ -36,7 +37,7 @@ interface PersistedData {
 function createSession(index: number): AiSession {
   return {
     id: `sess_${Date.now()}_${index}`,
-    name: `对话 ${index}`,
+    name: tt('ai-panel.session_name', { index }),
     createdAt: Date.now(),
     messages: [],
   }

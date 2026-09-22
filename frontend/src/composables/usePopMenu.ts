@@ -77,7 +77,11 @@ export function usePopMenu(
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && visible.value) close()
+    if (e.key === 'Escape' && visible.value) {
+      // 消费事件：避免页面级 ESC（usePageBack）将“关闭菜单”误判为“返回上一页” / Consume event so page-level ESC (usePageBack) won't mistake "close menu" for "go back"
+      e.preventDefault()
+      close()
+    }
   }
 
   function onReflow() {

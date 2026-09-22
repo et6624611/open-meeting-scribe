@@ -55,6 +55,10 @@ class TaskSpeakerMapping(BaseModel):
     mapping: dict[str, str]  # {"0": "uuid1", "1": "uuid2"} 说话人映射 / Speaker mapping
 
 
+class RosterUpdate(BaseModel):
+    roster: list[str]  # 参会人姓名列表 / Participant name list
+
+
 @router.get("/api/speakers")
 def list_speakers():
     """获取说话人列表（读 speakers.json） / Get speaker list (reads speakers.json)"""
@@ -317,3 +321,29 @@ def regenerate_summary(
     background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
 
     return {"status": "processing", "message": _("Regenerating minutes...")}
+
+
+@router.put("/api/tasks/{task_id}/roster")
+def update_roster(task_id: str, data: RosterUpdate):
+    """更新参会人名单（独立于说话人绑定，不触发声纹注册） / Update meeting roster (independent of speaker binding; no voiceprint registration).
+
+    仅记录「谁参加了这次会议」，与 ASR 说话人检测 / Only records "who attended this meeting"; unrelated
+    和身份绑定完全解耦。 / to ASR speaker detection or identity binding.
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+
+    # 去重 + 去空 / Deduplicate + strip empties
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for name in data.roster:
+        n = name.strip()
+        if n and n not in seen:
+            seen.add(n)
+            cleaned.append(n)
+
+    tasks[task_id]["roster"] = cleaned
+    _mark_modified(task_id)
+    save_task_to_disk(task_id)
+
+    return {"status": "ok", "roster": cleaned}

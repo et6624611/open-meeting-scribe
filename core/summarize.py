@@ -194,18 +194,23 @@ def generate_summary(
     if total_sentences < 3:
         return _("Dialogue too short (only {count} sentences) to generate meaningful minutes. Please record a longer meeting audio.").format(count=total_sentences)
 
-    # 构造发言人说明
+    # 构造发言人说明（按 speaker_id 去重，避免同一人多次发言被重复统计）
+    seen_sids: set[int] = set()
     speaker_names = []
     for item in dialogue:
         sid = item.get("speaker_id", 0)
+        if sid in seen_sids:
+            continue
+        seen_sids.add(sid)
         name = item.get("speaker_name", f"Speaker {sid + 1}")
         speaker_names.append(f"Speaker {sid + 1} = {name}")
+    unique_speaker_count = len(speaker_names)
     speaker_info = "，".join(speaker_names)
 
     # 构造用户消息
     user_content = "请根据以下会议对话内容生成会议纪要：\n\n"
     user_content += "---\n"
-    user_content += f"**说话人数量**：{len(dialogue)} 位\n"
+    user_content += f"**说话人数量**：{unique_speaker_count} 位\n"
     user_content += f"**发言人对应关系**：{speaker_info}\n"
     user_content += f"**对话总句数**：{total_sentences} 句\n"
     if meeting_time:
@@ -216,12 +221,27 @@ def generate_summary(
     user_content += "---\n\n"
     user_content += "## 对话内容\n\n"
 
+    # 按说话人合并所有发言（避免同一人多次轮转产生 61 条对话，误导 LLM 误判参会人数）
+    merged_texts: dict[int, list[str]] = {}
+    speaker_order: list[int] = []
     for item in dialogue:
-        speaker_id = item.get("speaker_id", 0)
-        speaker_name = item.get("speaker_name", f"Speaker {speaker_id + 1}")
+        sid = item.get("speaker_id", 0)
         text = item.get("text", "").strip()
-        if text:
-            user_content += f"**{speaker_name}**：{text}\n\n"
+        if not text:
+            continue
+        if sid not in merged_texts:
+            merged_texts[sid] = []
+            speaker_order.append(sid)
+        merged_texts[sid].append(text)
+
+    for sid in speaker_order:
+        name = next(
+            (item.get("speaker_name", f"Speaker {sid + 1}")
+             for item in dialogue if item.get("speaker_id") == sid and item.get("speaker_name")),
+            f"Speaker {sid + 1}"
+        )
+        combined = "\n".join(merged_texts[sid])
+        user_content += f"**{name}**：{combined}\n\n"
 
     # Agent 角色工作区：优先从 summary-template.md 加载，回退到硬编码常量 / Agent workspace: prefer role template, fallback to hardcoded
     from core.agent_workspace import get_role_summary_prompt
@@ -232,7 +252,7 @@ def generate_summary(
         {"role": "user", "content": user_content},
     ]
 
-    logger.info(f"生成纪要: {len(dialogue)} 位说话人, 会议时间={meeting_time}")
+    logger.info(f"生成纪要: {unique_speaker_count} 位说话人（{len(dialogue)} 条对话）, 会议时间={meeting_time}")
     summary = chat_completion(messages, model=model)
 
     # 后处理兜底：如果 LLM 仍输出"未提供"，用实际值替换
