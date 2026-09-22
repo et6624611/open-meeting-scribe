@@ -192,11 +192,11 @@ const { dialogRef } = useDialog(computed(() => props.modelValue), onCancel)
 }
 
 .confirm-action.is-danger {
-  background: var(--rec);
-  border-color: var(--rec);
+  background: var(--error);
+  border-color: var(--error);
 }
 
 .confirm-action.is-danger:hover {
-  background: oklch(from var(--rec) calc(l - 0.06) c h);
+  background: oklch(from var(--error) calc(l - 0.06) c h);
 }
 </style>

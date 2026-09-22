@@ -89,7 +89,7 @@
         </div>
         <div class="spk-detail-actions">
           <button v-if="!isMe(selectedSpeaker)" class="btn btn-secondary btn-sm" @click="onToggleMe">{{ t('speakers.set_me') }}</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--rec)" @click="confirmDelete(selectedSpeaker)">{{ t('common.action.delete') }}</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedSpeaker)">{{ t('common.action.delete') }}</button>
         </div>
       </div>
 
@@ -578,7 +578,7 @@ onMounted(load)
 .spk-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 0.12s; }
 .spk-action-btn { padding: 4px 10px; font-size: 12px; color: var(--muted); background: transparent; border: none; border-radius: 4px; cursor: pointer; transition: all 0.12s; }
 .spk-action-btn:hover { color: var(--fg); background: var(--surface-2); }
-.spk-action-btn.danger:hover { color: var(--rec); background: oklch(95% 0.04 25); }
+.spk-action-btn.danger:hover { color: var(--error); background: oklch(95% 0.04 25); }
 .empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
 .empty-hint { font-size: 12px; color: var(--subtle); }
 .spk-set-me-hint { font-size: 12px; color: var(--subtle); margin-top: var(--s-3); text-align: center; }
@@ -682,8 +682,8 @@ onMounted(load)
 .spk-dialog h3 { font-size: 16px; font-weight: 600; margin: 0 0 var(--s-3); color: var(--fg); }
 .spk-dialog p { font-size: 14px; color: var(--muted); margin: 0 0 var(--s-5); line-height: 1.5; }
 .spk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
-.danger-confirm { color: var(--rec) !important; border-color: var(--rec) !important; }
-.danger-confirm:hover { background: var(--rec-soft) !important; }
+.danger-confirm { color: var(--error) !important; border-color: var(--error) !important; }
+.danger-confirm:hover { background: var(--error-soft) !important; }
 
 /* 声纹骨架屏 / Voiceprint skeleton */
 .vp-skeleton { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2) 0; }

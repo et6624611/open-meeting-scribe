@@ -404,7 +404,7 @@
 .note-inline-content { font-size: var(--fs-13); color: var(--note-fg); line-height: 1.55; word-break: break-word; }
 .note-inline-delete { width: 24px; height: 24px; border: none; background: transparent; color: var(--subtle); cursor: pointer; border-radius: 4px; display: grid; place-items: center; flex-shrink: 0; opacity: 0; transition: opacity 0.12s, color 0.12s, background 0.12s; }
 .note-inline-bubble:hover .note-inline-delete { opacity: 1; }
-.note-inline-delete:hover { color: var(--rec); background: var(--rec-soft); }
+.note-inline-delete:hover { color: var(--error); background: var(--error-soft); }
 /* 删除确认 */
 .note-inline-confirm { display: none; align-items: center; gap: 6px; flex-shrink: 0; }
 .note-inline-confirm.visible { display: flex; }
@@ -466,23 +466,23 @@
 .more-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: calc(var(--radius) - 2px); border: none; background: transparent; color: var(--fg); font-size: var(--fs-13); cursor: pointer; transition: background 0.1s; text-align: left; font-family: var(--font-body); }
 .more-menu-item:hover { background: var(--surface-2); }
 .more-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.more-menu-item.danger { color: var(--rec); }
-.more-menu-item.danger:hover { background: oklch(from var(--rec) l c h / 0.14); }
+.more-menu-item.danger { color: var(--error); }
+.more-menu-item.danger:hover { background: oklch(from var(--error) l c h / 0.14); }
 
 /* 放弃录音确认弹窗 */
 .abandon-overlay { position: fixed; inset: 0; background: var(--overlay-bg); display: flex; align-items: center; justify-content: center; z-index: var(--z-modal); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 .abandon-overlay.is-open { opacity: 1; pointer-events: auto; }
 .abandon-overlay.is-open .abandon-dialog { transform: translateY(0); opacity: 1; }
 .abandon-dialog { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 360px; width: 90%; box-shadow: 0 8px 32px oklch(0% 0 0 / 0.12); transform: translateY(8px); opacity: 0; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-.abandon-dialog-icon { width: 40px; height: 40px; border-radius: 50%; background: oklch(from var(--rec) l c h / 0.1); display: grid; place-items: center; color: var(--rec); margin-bottom: 12px; }
+.abandon-dialog-icon { width: 40px; height: 40px; border-radius: 50%; background: oklch(from var(--error) l c h / 0.1); display: grid; place-items: center; color: var(--error); margin-bottom: 12px; }
 .abandon-dialog-title { font-size: var(--fs-16); font-weight: 600; color: var(--fg); margin-bottom: 6px; }
 .abandon-dialog-desc { font-size: var(--fs-13); color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
-.abandon-dialog-info { font-size: var(--fs-12); color: var(--muted); padding: 8px 12px; border-left: 2px solid var(--rec); background: oklch(from var(--rec) l c h / 0.04); border-radius: 0 6px 6px 0; margin-bottom: 20px; }
+.abandon-dialog-info { font-size: var(--fs-12); color: var(--muted); padding: 8px 12px; border-left: 2px solid var(--error); background: oklch(from var(--error) l c h / 0.04); border-radius: 0 6px 6px 0; margin-bottom: 20px; }
 .abandon-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .abandon-dialog-actions .btn-cancel { padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-size: var(--fs-13); cursor: pointer; font-family: var(--font-body); }
 .abandon-dialog-actions .btn-cancel:hover { background: var(--surface-2); }
-.abandon-dialog-actions .btn-confirm-abandon { padding: 8px 16px; border-radius: var(--radius); border: none; background: var(--rec); color: #fff; font-size: var(--fs-13); cursor: pointer; font-weight: 500; font-family: var(--font-body); }
-.abandon-dialog-actions .btn-confirm-abandon:hover { background: oklch(from var(--rec) calc(l - 0.06) c h); }
+.abandon-dialog-actions .btn-confirm-abandon { padding: 8px 16px; border-radius: var(--radius); border: none; background: var(--error); color: var(--surface); font-size: var(--fs-13); cursor: pointer; font-weight: 500; font-family: var(--font-body); }
+.abandon-dialog-actions .btn-confirm-abandon:hover { background: oklch(from var(--error) calc(l - 0.06) c h); }
 
 /* 录音结束过渡态 */
 .rec-content-area.is-ending { position: relative; }

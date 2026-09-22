@@ -4,8 +4,10 @@
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); padding: 8px 14px; border-radius: var(--radius); font-size: var(--fs-13); font-weight: 500; border: 1px solid transparent; transition: all 0.12s; white-space: nowrap; }
 .btn-primary { background: var(--accent); color: var(--accent-fg); }
 .btn-primary:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
-.btn-danger { background: oklch(0.55 0.2 25); color: #fff; }
-.btn-danger:hover { background: oklch(0.48 0.2 25); }
+/* 前景用 --surface 而非 #fff：--error 在暗色主题被提到 L66%，白字不达 AA；
+   --surface 在明（L≈99%）暗（L≈21%）两侧分别给出约 7:1 与 5:1 */
+.btn-danger { background: var(--error); color: var(--surface); }
+.btn-danger:hover { background: oklch(from var(--error) calc(l - 0.06) c h); }
 .btn-secondary { background: var(--surface); color: var(--fg); border-color: var(--border); }
 .btn-secondary:hover { border-color: var(--border-strong); background: var(--surface-2); }
 

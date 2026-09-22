@@ -133,12 +133,14 @@ const { dialogRef } = useDialog(computed(() => props.modelValue), () => emit('up
 }
 
 .btn-danger {
-  background: var(--rec);
-  border: 1px solid var(--rec);
-  color: #fff;
+  background: var(--error);
+  border: 1px solid var(--error);
+  /* 原为 #fff：暗色主题下 --error 提到 L66% 后白字不足 AA，
+     --surface 在明暗两侧都能达到 ≥4.5:1 */
+  color: var(--surface);
 }
 
 .btn-danger:hover {
-  background: oklch(from var(--rec) calc(l - 0.06) c h);
+  background: oklch(from var(--error) calc(l - 0.06) c h);
 }
 </style>

@@ -463,7 +463,7 @@
 .speaker-actions { display: flex; gap: var(--s-1); }
 .speaker-actions button { width: 24px; height: 24px; border-radius: 4px; display: grid; place-items: center; color: var(--subtle); cursor: pointer; }
 .speaker-actions button:hover { background: var(--surface-2); color: var(--fg); }
-.speaker-actions button.delete:hover { color: var(--rec); }
+.speaker-actions button.delete:hover { color: var(--error); }
 
 .speaker-form { display: flex; flex-direction: column; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--border); }
 .form-row { display: flex; gap: var(--s-2); }
@@ -864,7 +864,7 @@
 .project-folder-item { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); background: var(--surface-2); border-radius: var(--radius); font-size: var(--fs-13); }
 .project-folder-item .folder-path { flex: 1; font-family: var(--font-mono); font-size: var(--fs-12); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .project-folder-item .folder-remove { color: var(--subtle); cursor: pointer; padding: 2px; border-radius: 4px; }
-.project-folder-item .folder-remove:hover { color: var(--rec); background: var(--rec-soft); }
+.project-folder-item .folder-remove:hover { color: var(--error); background: var(--error-soft); }
 
 /* 文件夹同步配置 */
 .project-folder-item { flex-wrap: wrap; }
@@ -1043,8 +1043,8 @@
 .lib-bulk-bar button { padding: 4px 10px; border-radius: var(--radius-sm); font-size: var(--fs-12); cursor: pointer; border: 1px solid transparent; transition: all 0.12s; background: transparent; color: inherit; font: inherit; }
 .lib-bulk-bar .btn-export { background: var(--surface); color: var(--fg); border-color: var(--border); }
 .lib-bulk-bar .btn-export:hover { border-color: var(--border-strong); }
-.lib-bulk-bar .btn-delete { color: var(--rec); }
-.lib-bulk-bar .btn-delete:hover { background: var(--rec-soft); }
+.lib-bulk-bar .btn-delete { color: var(--error); }
+.lib-bulk-bar .btn-delete:hover { background: var(--error-soft); }
 .lib-bulk-bar .btn-clear { color: var(--muted); margin-left: auto; }
 .lib-bulk-bar .btn-clear:hover { background: var(--surface); }
 .lib-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-4); }

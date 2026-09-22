@@ -81,7 +81,7 @@
           <button class="btn btn-secondary btn-sm" @click="onTriggerSync" :disabled="syncing">
             {{ syncing ? t('projects.syncing') : t('projects.sync_trigger') }}
           </button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--rec)" @click="confirmDelete(selectedProject)">
+          <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedProject)">
             {{ t('common.action.delete') }}
           </button>
         </div>
@@ -598,7 +598,7 @@ onMounted(load)
 .proj-card-actions { display: flex; gap: var(--s-1); opacity: 0; transition: opacity 0.12s; }
 .proj-card-action { color: var(--subtle); background: none; border: none; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); transition: all 0.12s; display: flex; }
 .proj-card-action:hover { color: var(--fg); background: var(--surface-2); }
-.proj-card-action.danger:hover { color: var(--rec); background: oklch(95% 0.04 25); }
+.proj-card-action.danger:hover { color: var(--error); background: oklch(95% 0.04 25); }
 .proj-card-meta { font-size: 12px; color: var(--subtle); margin-top: 4px; }
 
 /* 新建提示 / Create hint */
@@ -644,7 +644,7 @@ onMounted(load)
 .proj-sync-label { font-size: 11px; color: var(--muted); }
 .proj-folder-btn { color: var(--subtle); background: none; border: none; cursor: pointer; padding: 4px; border-radius: var(--radius-sm); transition: all 0.12s; display: flex; }
 .proj-folder-btn:hover { color: var(--fg); background: var(--border); }
-.proj-folder-btn.danger:hover { color: var(--rec); background: oklch(95% 0.04 25); }
+.proj-folder-btn.danger:hover { color: var(--error); background: oklch(95% 0.04 25); }
 
 /* Tab 切换 / Tabs */
 .proj-tabs { display: flex; gap: var(--s-1); border-bottom: 1px solid var(--border); margin-bottom: var(--s-4); }
@@ -704,8 +704,8 @@ onMounted(load)
 .proj-dialog p { font-size: 14px; color: var(--muted); margin: 0 0 var(--s-5); line-height: 1.5; }
 .proj-dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
 .proj-dialog-actions kbd { font-family: var(--font-mono); font-size: 9px; padding: 1px 4px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--subtle); line-height: 1.3; margin-left: 4px; }
-.danger-confirm { color: var(--rec) !important; border-color: var(--rec) !important; }
-.danger-confirm:hover { background: var(--rec-soft) !important; }
+.danger-confirm { color: var(--error) !important; border-color: var(--error) !important; }
+.danger-confirm:hover { background: var(--error-soft) !important; }
 
 @media (max-width: 920px) {
   .proj-unified-input { max-width: 100%; }

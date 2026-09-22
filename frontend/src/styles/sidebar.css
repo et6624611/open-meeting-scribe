@@ -179,7 +179,7 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-ctx-menu { z-index: var(--z-popover); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.14); padding: var(--s-1) 0; animation: fadeIn 0.12s ease; }
 .sb-ctx-section button { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 7px 12px; border: none; background: none; color: var(--fg); font-size: var(--fs-13); cursor: pointer; text-align: left; transition: background 0.1s; }
 .sb-ctx-section button:hover { background: var(--surface-2); }
-.sb-ctx-section button.is-danger { color: var(--rec); }
+.sb-ctx-section button.is-danger { color: var(--error); }
 .sb-ctx-section button.is-danger:hover { background: oklch(95% 0.02 25); }
 .sb-ctx-section button svg { flex-shrink: 0; }
 .sb-ctx-sep { height: 1px; background: var(--border); margin: var(--s-1) 0; }

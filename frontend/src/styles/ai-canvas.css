@@ -458,8 +458,8 @@ html[data-theme="standard-dark"] ::selection { background: var(--accent-soft); }
   transition: all 0.1s ease;
 }
 .conv-custom-model-item .conv-custom-remove:hover {
-  color: var(--rec);
-  background: var(--rec-soft);
+  color: var(--error);
+  background: var(--error-soft);
 }
 
 .conv-action-btn {
