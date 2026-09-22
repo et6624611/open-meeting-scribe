@@ -60,6 +60,9 @@ browser/
 # 前端构建产物（npm run build 生成，由 FastAPI 托管）
 frontend/node_modules/
 frontend/dist/
+# vue-tsc 增量编译缓存，每次构建都会产生无意义 diff
+# Incremental type-check cache; produces a meaningless diff on every build
+*.tsbuildinfo
 
 # PyInstaller 打包产物
 dist/
@@ -77,3 +80,10 @@ scripts/_ssh_*.exp
 # AI 协作文档（内部使用，不对外）
 AGENTS.md
 CODEX.md
+
+# 云盘同步生成的重名副本（"xxx 2" / "xxx 2.ext" / "xxx 2/"），非人工成果，会随构建反复出现
+# 两条都要：* 2 覆盖无扩展名的文件与目录，* 2.* 覆盖带扩展名的副本
+# Cloud-sync duplicate artifacts. Both patterns are needed: "* 2" catches
+# extension-less files and directories, "* 2.*" catches ones with an extension.
+* 2
+* 2.*
