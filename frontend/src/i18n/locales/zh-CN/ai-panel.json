@@ -47,6 +47,7 @@
   "input_aria": "输入问题",
   "send": "发送消息",
   "session_default": "会话",
+  "sessions": "会话列表",
   "session_name": "对话 {index}",
   "user_instruction": "用户指令: ",
   "process_quote": "请帮我处理这段引用内容",

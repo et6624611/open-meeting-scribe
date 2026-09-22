@@ -60,10 +60,10 @@
     </div>
 
     <!-- 表格容器 / Table container -->
-    <div v-if="libGroupedTasks.length > 0 && !taskStore.loadError" class="table-container">
+    <div v-if="libGroupedTasks.length > 0 && !taskStore.loadError" class="table-container" role="table" aria-colcount="7">
       <!-- 列标题（仅在第一个分组上方显示一次） / Column headers (shown only above first group) -->
-      <div class="table-head">
-        <div class="cell-checkbox">
+      <div class="table-head" role="row">
+        <div class="cell-checkbox" role="columnheader">
           <button
             type="button"
             class="row-checkbox"
@@ -74,49 +74,49 @@
             @click.stop="toggleSelectAll"
           ></button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'title' }">
+        <div class="col-header sortable" role="columnheader" :aria-sort="ariaSort('title')" :class="{ sorted: sortKey === 'title' }">
           <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_name') })" @click="toggleSort('title')">
             <span>{{ t('library.col_name') }}</span>
             <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
           </button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'status' }">
+        <div class="col-header sortable" role="columnheader" :aria-sort="ariaSort('status')" :class="{ sorted: sortKey === 'status' }">
           <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_status') })" @click="toggleSort('status')">
             <span>{{ t('library.col_status') }}</span>
             <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
           </button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'duration' }">
+        <div class="col-header sortable" role="columnheader" :aria-sort="ariaSort('duration')" :class="{ sorted: sortKey === 'duration' }">
           <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_duration') })" @click="toggleSort('duration')">
             <span>{{ t('library.col_duration') }}</span>
             <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
           </button>
         </div>
-        <div class="col-header">{{ t('library.col_speakers') }}</div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'created_at' }">
+        <div class="col-header" role="columnheader">{{ t('library.col_speakers') }}</div>
+        <div class="col-header sortable" role="columnheader" :aria-sort="ariaSort('created_at')" :class="{ sorted: sortKey === 'created_at' }">
           <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_time') })" @click="toggleSort('created_at')">
             <span>{{ t('library.col_time') }}</span>
             <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
           </button>
         </div>
-        <div class="col-header"></div>
+        <div class="col-header" role="columnheader"></div>
       </div>
 
       <!-- 按日期分组的表格内容 / Table content grouped by date -->
-      <div class="table-body">
+      <div class="table-body" role="rowgroup">
         <template v-for="group in libGroupedTasks" :key="group.label">
-          <div class="table-group-header">{{ group.label }}</div>
+          <div class="table-group-header" role="row"><span role="cell" :aria-colspan="7">{{ group.label }}</span></div>
           <div
             v-for="task in sortGroupTasks(group.tasks)"
             :key="task.task_id"
-            class="table-row"
+            class="table-row" role="row"
             tabindex="0"
             :aria-label="task.title || task.audio_name || t('common.untitled')"
             :class="{ selected: selectedIds.has(task.task_id), 'is-playing': player.taskId === task.task_id }"
             @click="openTask(task)"
             @keydown.enter.prevent="openTask(task)"
           >
-            <div class="cell-checkbox">
+            <div class="cell-checkbox" role="cell">
               <button
                 type="button"
                 class="row-checkbox"
@@ -127,19 +127,19 @@
                 @click.stop="toggleSelect(task, $event)"
               ></button>
             </div>
-            <div class="cell-title">
+            <div class="cell-title" role="cell">
               <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
               <span class="cell-title-text" v-html="highlightLibTitle(task)"></span>
             </div>
-            <div class="cell-status">
+            <div class="cell-status" role="cell">
               <span class="status-dot" :class="statusDotClass(task.status)"></span>
               <span>{{ taskStore.getStatusLabel(task.status) }}</span>
             </div>
-            <div class="cell-duration">
+            <div class="cell-duration" role="cell">
               <DurationDial v-if="task.audio_duration" :seconds="task.audio_duration" />
               <span v-else class="cell-muted">—</span>
             </div>
-            <div class="cell-speakers">
+            <div class="cell-speakers" role="cell">
               <template v-if="getSpeakerList(task).length > 0">
                 <span
                   v-for="sp in visibleSpeakers(task)"
@@ -154,8 +154,8 @@
               </template>
               <span v-else class="cell-muted">—</span>
             </div>
-            <div class="cell-time">{{ formatDateTime(task.created_at) }}</div>
-            <div class="cell-actions">
+            <div class="cell-time" role="cell">{{ formatDateTime(task.created_at) }}</div>
+            <div class="cell-actions" role="cell">
               <button class="cell-actions-btn" @click.stop="openTask(task)" :title="t('library.open_title')">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               </button>
@@ -423,6 +423,13 @@ function toggleSort(key: SortKey) {
     sortKey.value = key
     sortAsc.value = true
   }
+}
+
+/** 读屏播报列的排序方向；非当前排序列返回 none
+    Lets AT announce which column drives ordering, and that the others don't */
+function ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
+  if (sortKey.value !== key) return 'none'
+  return sortAsc.value ? 'ascending' : 'descending'
 }
 
 function sortGroupTasks(tasks: Task[]): Task[] {

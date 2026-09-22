@@ -57,7 +57,10 @@
 .ai-session-seg-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; opacity: 0; transition: opacity 0.12s; }
 .ai-session-seg-actions { display: flex; align-items: center; gap: 1px; margin-left: 2px; opacity: 0; transition: opacity 0.1s; }
 .ai-session-seg:hover .ai-session-seg-actions { opacity: 1; }
+/* 键盘路径的等价物：仅靠 hover 的话，键盘用户永远打不开重命名/删除 */
+.ai-session-seg:focus-within .ai-session-seg-actions { opacity: 1; }
 .ai-session-seg.is-active:hover .ai-session-seg-actions { opacity: 0; }
+.ai-session-seg.is-active:focus-within .ai-session-seg-actions { opacity: 0; }
 .ai-session-seg.is-active:hover .ai-session-seg-dot { opacity: 1; }
 .ai-session-seg-action { width: 16px; height: 16px; border-radius: 3px; display: grid; place-items: center; color: var(--muted); transition: all 0.1s; padding: 0; }
 .ai-session-seg-action svg { width: 10px; height: 10px; }

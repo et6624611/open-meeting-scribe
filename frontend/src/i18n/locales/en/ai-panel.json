@@ -47,6 +47,7 @@
   "input_aria": "Ask a question",
   "send": "Send message",
   "session_default": "Session",
+  "sessions": "Sessions",
   "session_name": "Chat {index}",
   "user_instruction": "User instruction: ",
   "process_quote": "Please help me process this quoted content",
