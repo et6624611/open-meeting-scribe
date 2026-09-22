@@ -100,7 +100,32 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   --z-popover: 500;
   --z-modal: 1000;
   --z-toast: 1100;
+
+  /* ── 圆角标尺补全（sm/radius/lg 由各主题定义，此处补齐缺档） ──
+     --radius-md 对齐 --radius(8px)，使下拉面板圆角与既有浮层一致。 */
+  --radius-xs: 4px;
+  --radius-md: 8px;
   --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ── 字号标尺补全 ──
+     --fs-10 曾被子组件大量引用但从未定义，声明被浏览器丢弃后回退到继承字号。
+     此处刻意等于 --fs-11 而非 10px：10px 低于本产品最小可读字号下限。
+     --fs-10 was referenced but never defined, so those declarations were dropped
+     and inherited the parent size. Deliberately mapped to --fs-11, not 10px,
+     because 10px sits below this product's minimum legible size. */
+  --fs-10: var(--fs-11);
+  --fs-16: 16px;
+
+  /* ── 错误态语义色 ──
+     此前「失败/危险操作」全站借用 --rec（录音色），且多处写成
+     var(--danger, oklch(0.55 0.2 25)) —— 该回退值是非法 oklch 语法（缺 %），
+     声明被整条丢弃，危险菜单项实际根本没有变红。
+     --error 在明色主题取 oklch(48% .2 20)、暗色主题由各暗色文件覆盖为
+     oklch(66% .19 20)，两者均已核算对 --surface 的小字对比度 ≥4.5:1（AA）。
+     --error-soft 由 --error 派生，随主题自动变化。 */
+  --error: oklch(48% 0.2 20);
+  --error-soft: color-mix(in oklch, var(--error) 10%, transparent);
 
   /* ── 蒙版体系 token ── */
   --overlay-bg: oklch(0% 0 0 / 0.4);        /* 标准 Modal 蒙版背景（硬阻断） */
@@ -116,42 +141,6 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   --modal-width-sm: 400px;   /* 确认弹窗 */
   --modal-width-md: 480px;   /* 标准弹窗、引导弹窗 */
   --modal-width-lg: 560px;   /* 向导 */
-}
-
-/* ─── 全局滚动条：hover 触发，默认隐藏 ─── */
-*::-webkit-scrollbar { width: 5px; height: 5px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
-* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-
-/* 悬停时显示滚动条滑块 */
-.sb-history:hover::-webkit-scrollbar-thumb,
-.ai-feed:hover::-webkit-scrollbar-thumb,
-.rec-transcript-body:hover::-webkit-scrollbar-thumb,
-.gen-content:hover::-webkit-scrollbar-thumb,
-.spk-transcript-scroll:hover::-webkit-scrollbar-thumb,
-.main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
-.sb-history:hover::-webkit-scrollbar-thumb:hover,
-.ai-feed:hover::-webkit-scrollbar-thumb:hover,
-.rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
-.gen-content:hover::-webkit-scrollbar-thumb:hover,
-.spk-transcript-scroll:hover::-webkit-scrollbar-thumb:hover,
-.main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
-
-/* Firefox hover 触发 */
-.sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
-.gen-content:hover, .spk-transcript-scroll:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
-
-/* ─── Utility ─── */
-.hidden { display: none !important; }
-
-/* ─── 减弱动效 ─── */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 /* ═══ 统一蒙版基础类 ═══

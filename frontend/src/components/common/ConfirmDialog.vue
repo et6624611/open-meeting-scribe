@@ -1,10 +1,10 @@
 <template>
   <Teleport to="body">
-    <div v-show="modelValue" class="confirm-overlay" :class="{ 'is-open': modelValue }" @click.self="onCancel">
-      <div class="confirm-dialog">
+    <div v-show="modelValue" class="confirm-overlay" data-vue-overlay :class="{ 'is-open': modelValue }" @click.self="onCancel">
+      <div ref="dialogRef" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmDialogTitle">
         <div class="confirm-header">
-          <h3>{{ resolvedTitle }}</h3>
-          <button class="confirm-close" @click="onCancel">
+          <h3 id="confirmDialogTitle">{{ resolvedTitle }}</h3>
+          <button class="confirm-close" :aria-label="t('common.action.close')" @click="onCancel">
             <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
           </button>
         </div>
@@ -23,7 +23,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useEscClose } from '@/composables/useEscClose'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
@@ -59,7 +59,7 @@ function onConfirm() {
   emit('update:modelValue', false)
 }
 
-useEscClose(computed(() => props.modelValue), onCancel)
+const { dialogRef } = useDialog(computed(() => props.modelValue), onCancel)
 </script>
 
 <style scoped>

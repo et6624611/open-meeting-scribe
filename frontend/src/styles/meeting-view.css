@@ -29,9 +29,9 @@
 .gen-toolbar-more-item:hover { background: var(--surface-2); }
 .gen-toolbar-more-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .gen-toolbar-more-item svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
-.gen-toolbar-more-item.is-danger { color: var(--danger, oklch(0.55 0.2 25)); }
-.gen-toolbar-more-item.is-danger:hover { background: oklch(0.95 0.04 25); }
-.gen-toolbar-more-item.is-danger svg { color: var(--danger, oklch(0.55 0.2 25)); }
+.gen-toolbar-more-item.is-danger { color: var(--error); }
+.gen-toolbar-more-item.is-danger:hover { background: var(--error-soft); }
+.gen-toolbar-more-item.is-danger svg { color: var(--error); }
 .gen-toolbar-more-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* ─── 面包屑导航 ─── */
@@ -941,7 +941,7 @@
 .gs-roster-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-11); color: var(--fg); transition: background 0.12s; }
 .gs-roster-chip:hover { background: var(--surface-3); }
 .gs-roster-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; border: none; background: transparent; color: var(--subtle); cursor: pointer; padding: 0; transition: color 0.12s; }
-.gs-roster-chip-x:hover { color: var(--red); }
+.gs-roster-chip-x:hover { color: var(--error); }
 /* 绑定自动加入的参会人标记 / Auto-added member tag */
 .gs-roster-chip.is-auto { background: var(--accent-soft); border-color: transparent; }
 .gs-roster-auto-tag { font-size: 9px; color: var(--accent); font-weight: 500; opacity: 0.7; }

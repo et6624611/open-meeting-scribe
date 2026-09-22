@@ -18,15 +18,15 @@
     </button>
 
     <!-- 更多按钮 / More button -->
-    <div v-if="hiddenButtons.length > 0" class="more-wrap" ref="moreBtnEl">
-      <button class="responsive-btn-item is-more" @click="toggleMore" :title="t('common.action.more')" aria-haspopup="menu" :aria-label="t('common.action.more')">
+    <div v-if="hiddenButtons.length > 0" class="more-wrap">
+      <button ref="moreBtnEl" class="responsive-btn-item is-more" v-bind="moreTriggerAttrs" @click="toggleMore" :title="t('common.action.more')" :aria-label="t('common.action.more')">
         <svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
         </svg>
       </button>
       <!-- Teleport 到 body：避免祖先 transform/overflow 劫持 fixed 定位与层叠上下文 / Teleport to body: avoid ancestor transform/overflow hijacking fixed positioning and stacking context -->
       <Teleport to="body">
-        <div ref="dropdownEl" class="more-dropdown" :class="{ 'is-open': showMore }" role="menu">
+        <div ref="dropdownEl" class="more-dropdown" v-bind="moreMenuAttrs" :class="{ 'is-open': showMore }">
           <button
             v-for="btn in hiddenButtons"
             :key="btn.key"
@@ -78,7 +78,7 @@ const containerEl = ref<HTMLElement | null>(null)
 const moreBtnEl = ref<HTMLElement | null>(null)
 const dropdownEl = ref<HTMLElement | null>(null)
 
-const { visible: showMore, toggle: toggleMore, close: closeMore } = usePopMenu(dropdownEl, moreBtnEl)
+const { visible: showMore, toggle: toggleMore, close: closeMore, triggerAttrs: moreTriggerAttrs, menuAttrs: moreMenuAttrs } = usePopMenu(dropdownEl, moreBtnEl)
 
 /** 当前容器宽度 / Current container width */
 const containerWidth = ref(0)

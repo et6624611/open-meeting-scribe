@@ -4,6 +4,7 @@
  */
 import { ref, computed } from 'vue'
 import { fetchHotwords, saveHotwords, fetchHotwordMappings, saveHotwordMappings } from '@/api/hotwords'
+import { extractErrorMessage } from '@/api/client'
 import { showToast } from './useToast'
 import { tt } from '@/i18n'
 
@@ -17,8 +18,13 @@ interface HwItem {
 const items = ref<HwItem[]>([])
 const filter = ref<'all' | 'word' | 'mapping'>('all')
 const searchQuery = ref('')
+/** 此前 isLoading 是普通 boolean，不参与响应式，视图无法绑定 → 热词页没有加载态。
+    Plain booleans are not reactive, which is why this view had no loading state at all. */
+const loading = ref(false)
+/** 加载失败原因；null 表示成功。失败必须与「没有词条」区分开。
+    Load failure, distinct from "no hotwords configured". */
+const loadError = ref<string | null>(null)
 let idCounter = 0
-let isLoading = false
 
 function nextId() { return ++idCounter }
 
@@ -43,7 +49,8 @@ const stats = computed(() => ({
 }))
 
 async function loadAll() {
-  isLoading = true
+  loading.value = true
+  loadError.value = null
   items.value = []
   try {
     const [wordsText, mapsText] = await Promise.all([fetchHotwords(), fetchHotwordMappings()])
@@ -71,14 +78,15 @@ async function loadAll() {
     items.value = newItems
   } catch (e) {
     console.error('加载热词失败:', e)
+    loadError.value = extractErrorMessage(e) || tt('hotwords.load_failed')
   } finally {
-    isLoading = false
+    loading.value = false
   }
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSave() {
-  if (isLoading) return
+  if (loading.value) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => saveAll(true), 800)
 }
@@ -117,7 +125,7 @@ function deleteItem(id: number) {
 
 export function useHotwords() {
   return {
-    items, filter, searchQuery,
+    items, filter, searchQuery, loading, loadError,
     filteredItems, stats,
     loadAll, saveAll, scheduleSave,
     addItem, updateItem, deleteItem,

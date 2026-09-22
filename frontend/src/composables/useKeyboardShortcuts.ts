@@ -32,25 +32,28 @@ export function useKeyboardShortcuts() {
         return
       }
 
-      // 2. 关闭所有可见的下拉菜单（排除 Vue 响应式管理的 overlay，它们由 useEscClose 自行处理） / 2. Close all visible dropdowns (excluding Vue-managed overlays handled by useEscClose)
+      // 2. 兜底关闭遗留的下拉：仅剥 class，不再 return，避免与 Vue 状态脱钩。
+      //    脱钩后果：aria-expanded 停留在 true、下次渲染又把浮层打开。
+      //    有主的状态现由 useEscClose / usePopMenu 各自负责（见下方接入点）。
+      // Legacy fallback only: strip residual classes but keep propagating so that
+      // state-owning components stay in sync (a stripped class alone leaves
+      // aria-expanded=true and the next render reopens the surface).
       const openDropdowns = document.querySelectorAll('.is-open:not([data-vue-overlay]), [data-dropdown].is-visible')
       if (openDropdowns.length > 0) {
         openDropdowns.forEach(el => {
           el.classList.remove('is-open', 'is-visible')
         })
         e.preventDefault()
-        return
       }
 
-      // 3. 关闭浮动选中工具栏 / 3. Close floating selection toolbar
+      // 3. 关闭浮动选中工具栏（兜底；组件自身也有 useEscClose） / 3. Selection toolbar fallback
       const toolbar = document.getElementById('selectionToolbar')
       if (toolbar && toolbar.classList.contains('is-visible')) {
         toolbar.classList.remove('is-visible')
         e.preventDefault()
-        return
       }
 
-      // 4. 派发全局 esc 事件（供各组件按需监听） / 4. Dispatch global esc event (for components to listen as needed)
+      // 4. 派发全局 esc 事件（供各组件按需监听） / 4. Dispatch global esc event
       window.dispatchEvent(new CustomEvent('global-esc'))
       return
     }

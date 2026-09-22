@@ -21,7 +21,7 @@
 .rec-project-chip-wrap { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
 .rec-title { font-size: var(--fs-15); font-weight: 600; }
 .rec-status { font-size: var(--fs-13); color: var(--accent); font-weight: 500; }
-.rec-speaker-count { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; transition: all 0.2s; }
+.rec-speaker-count { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; transition: all 0.2s; }
 .rec-speaker-count .sc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .rec-speaker-count.has-update { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
 /* 参会人指示器 + 下拉 / Roster indicator + dropdown */
@@ -163,7 +163,7 @@
 .rec-insights-freq-opt:hover { color: var(--fg); }
 .rec-insights-freq-opt.is-active { color: var(--proactive); background: var(--proactive-soft); font-weight: 600; }
 .rec-insights-dropdown-wrap { position: relative; }
-.rec-insights-dropdown { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 120px; margin-top: 4px; padding: 4px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.rec-insights-dropdown { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 120px; margin-top: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
 .rec-insights-dropdown-item { display: block; width: 100%; padding: 6px 10px; border: none; border-radius: var(--radius-xs); background: transparent; color: var(--fg); font-size: 0.8rem; text-align: left; cursor: pointer; white-space: nowrap; }
 .rec-insights-dropdown-item:hover { background: var(--surface); color: var(--proactive); }
 .rec-insights-btn svg { width: 14px; height: 14px; }
@@ -239,7 +239,7 @@
 .rec-insight-diagram-wrap { display: flex; flex-direction: column; gap: 0; }
 .rec-insight-diagram-toolbar { display: flex; gap: var(--s-1); padding: var(--s-1) var(--s-2); background: var(--surface); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
 .rec-insight-diagram-btn { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; transition: color 0.12s, background 0.12s; }
-.rec-insight-diagram-btn:hover { background: var(--hover-bg, oklch(92% 0.01 270)); color: var(--fg); }
+.rec-insight-diagram-btn:hover { background: var(--surface-2); color: var(--fg); }
 .rec-insight-diagram-btn svg { flex-shrink: 0; }
 
 /* 已确认卡片：切换为系统默认色系，让出视觉空间 */
@@ -435,7 +435,7 @@
 .ctrl-actions-group { display: flex; align-items: center; gap: var(--s-3); }
 .ctrl-status-text { font-size: var(--fs-13); color: var(--accent); font-weight: 500; white-space: nowrap; }
 .ctrl-status-text.is-paused { color: var(--muted); }
-.ctrl-speaker-pill { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; transition: all 0.2s; white-space: nowrap; }
+.ctrl-speaker-pill { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-12); color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 2px 10px; transition: all 0.2s; white-space: nowrap; }
 .ctrl-speaker-pill .sc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .ctrl-speaker-pill.has-update { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); animation: rec-spk-flash 0.6s ease-in-out 3; }
 .waveform { display: flex; align-items: center; gap: 3px; height: 24px; }

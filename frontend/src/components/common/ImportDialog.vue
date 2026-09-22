@@ -1,9 +1,9 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="import-overlay" @click.self="onCancel">
-      <div class="import-dialog">
+    <div v-if="visible" class="import-overlay" data-vue-overlay @click.self="onCancel">
+      <div ref="dialogRef" class="import-dialog" role="dialog" aria-modal="true" aria-labelledby="importDialogTitle">
         <!-- 标题 / Title -->
-        <div class="import-dialog-title">{{ t('start.import.title') }}</div>
+        <div class="import-dialog-title" id="importDialogTitle">{{ t('start.import.title') }}</div>
 
         <!-- 重复检测提示 / Duplicate detection notice -->
         <div v-if="duplicateInfo" class="import-duplicate">
@@ -107,6 +107,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { checkDuplicate, importFile, importText } from '@/api/import'
 import { extractErrorMessage } from '@/api/client'
+import { useDialog } from '@/composables/useDialog'
 import type { DuplicateCheckResult } from '@/api/import'
 
 const props = defineProps<{
@@ -120,6 +121,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { dialogRef } = useDialog(computed(() => props.visible), () => emit('close'))
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)

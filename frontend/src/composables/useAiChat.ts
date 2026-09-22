@@ -297,7 +297,11 @@ export function useAiChat() {
         const tid = d.task_id as string
         if (tid) {
           taskStore.selectTask(tid)
-          router.push(`/processing/${tid}`)
+          // /processing 路由已不存在（i18n 里的 processing 命名空间是残留）。
+          // 重新转写的进行中状态由 GeneratingView 的轮询内联处理。
+          // The /processing route no longer exists; GeneratingView renders the
+          // in-progress state via its own polling.
+          router.push(`/meeting/${tid}`)
         }
         break
       }

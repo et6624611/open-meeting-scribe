@@ -36,6 +36,7 @@
   "inject_all": "Inject All",
   "inject_dismiss": "Ignore",
   "thinking": "Thinking…",
+  "thinking_elapsed": "Thinking · {sec}s",
   "stop_generating": "Stop generating",
   "quote": {
     "source": "Source: {source}",

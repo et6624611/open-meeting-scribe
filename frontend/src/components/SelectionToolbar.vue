@@ -66,6 +66,7 @@ import { useI18n } from 'vue-i18n'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useHotwords } from '@/composables/useHotwords'
 import { showToast } from '@/composables/useToast'
+import { useEscClose } from '@/composables/useEscClose'
 
 const { t } = useI18n()
 
@@ -82,6 +83,10 @@ const { setQuote } = useQuoteRef()
 const hw = useHotwords()
 
 const visible = ref(false)
+// ESC 收起浮动工具栏落到状态上；全局兜底只剥 class 会让 visible 卡在 true，
+// 下一次选区变化时又被重新显示
+// Clear state on ESC; the global class-only fallback left `visible` stuck at true.
+useEscClose(visible, () => { visible.value = false })
 const measuring = ref(false)
 const toolbarStyle = ref({ top: '0px', left: '0px' })
 const toolbarEl = ref<HTMLElement | null>(null)

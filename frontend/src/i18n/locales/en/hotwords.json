@@ -21,6 +21,7 @@
   "stat_mappings": "Mappings {count}",
   "saved": "Hotwords saved, effective on next recognition",
   "save_failed": "Save failed: {err}",
+  "load_failed": "Failed to load hot words",
   "create_word_hint": "Add hotword \"{name}\"",
   "create_mapping_hint": "Add mapping \"{content}\""
 }

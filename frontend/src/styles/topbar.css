@@ -49,8 +49,8 @@
 .state-pill.is-proc .pip { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
 .state-pill.is-done { color: var(--ok); }
 .state-pill.is-done .pip { background: var(--ok); }
-.state-pill.is-fail { color: var(--rec); }
-.state-pill.is-fail .pip { background: var(--rec); }
+.state-pill.is-fail { color: var(--error); }
+.state-pill.is-fail .pip { background: var(--error); }
 .state-pill.is-pending { color: var(--warn); }
 .state-pill.is-pending .pip { background: var(--warn); }
 .state-pill.is-map { color: var(--warn); }

@@ -23,18 +23,23 @@
           <span>{{ showTranscript ? t('recording.transcript.hide') : t('recording.transcript.show') }}</span>
         </button>
         <!-- 翻译更多菜单 / Translation more menu -->
-        <div class="transcript-more-wrap" ref="moreBtn">
-          <button class="transcript-more-btn" @click="toggleMore" :title="t('common.action.more')" aria-haspopup="menu" :aria-label="t('common.action.more')">
+        <div class="transcript-more-wrap">
+          <button ref="moreBtn" class="transcript-more-btn" v-bind="moreTriggerAttrs" @click="toggleMore" :title="t('common.action.more')" :aria-label="t('common.action.more')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
           </button>
           <Teleport to="body">
-            <div ref="moreDropdown" class="transcript-more-dropdown" :class="{ 'is-open': showMore }" role="menu">
+            <div ref="moreDropdown" class="transcript-more-dropdown" v-bind="moreMenuAttrs" :class="{ 'is-open': showMore }">
               <!-- 翻译开关 / Translation toggle -->
               <div class="transcript-more-item transcript-more-toggle">
                 <div
                   class="toggle-switch"
+                  role="menuitemcheckbox"
+                  tabindex="0"
+                  :aria-checked="translateEnabled"
                   :class="{ 'is-on': translateEnabled }"
                   @click="$emit('toggleTranslate')"
+                  @keydown.enter.prevent="$emit('toggleTranslate')"
+                  @keydown.space.prevent="$emit('toggleTranslate')"
                 >
                   <div class="toggle-switch-track">
                     <div class="toggle-switch-knob"></div>
@@ -45,7 +50,7 @@
               </div>
               <!-- 语言选择 / Language selection -->
               <template v-if="translateEnabled">
-                <button v-for="lang in supportedLanguages" :key="lang.code" class="transcript-more-item transcript-more-lang-item" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); closeMore()">
+                <button v-for="lang in supportedLanguages" :key="lang.code" class="transcript-more-item transcript-more-lang-item" role="menuitem" :aria-selected="lang.code === targetLang" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); closeMore()">
                   {{ lang.label }}
                   <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
@@ -160,7 +165,7 @@ const { t } = useI18n()
 // ── 更多菜单 / More menu ──
 const moreBtn = ref<HTMLElement | null>(null)
 const moreDropdown = ref<HTMLElement | null>(null)
-const { visible: showMore, toggle: toggleMore, close: closeMore } = usePopMenu(moreDropdown, moreBtn)
+const { visible: showMore, toggle: toggleMore, close: closeMore, triggerAttrs: moreTriggerAttrs, menuAttrs: moreMenuAttrs } = usePopMenu(moreDropdown, moreBtn)
 
 const props = defineProps<{
   lines: TranscriptLine[]

@@ -144,11 +144,17 @@
           </tr>
         </tbody>
       </table>
+      <!-- 加载失败态 / Load-failure state -->
+      <div v-if="hw.loadError.value" class="hw-error" role="alert">
+        <p>{{ hw.loadError.value }}</p>
+        <button type="button" class="hw-error-retry" @click="hw.loadAll()">{{ t('common.error.retry') }}</button>
+      </div>
       <!-- 空状态 / Empty state -->
-      <div v-if="hw.filteredItems.value.length === 0 && !inputText.trim()" class="hw-empty">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
-        <p>{{ t('hotwords.empty') }}</p>
-        <p class="sub">{{ t('hotwords.empty_hint') }}</p>
+      <div v-else-if="hw.filteredItems.value.length === 0 && !inputText.trim()" class="hw-empty" :aria-busy="hw.loading.value">
+        <svg v-if="hw.loading.value" class="hw-spinner" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
+        <svg v-else width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
+        <p>{{ hw.loading.value ? t('common.status.loading') : t('hotwords.empty') }}</p>
+        <p v-if="!hw.loading.value" class="sub">{{ t('hotwords.empty_hint') }}</p>
       </div>
     </div>
 
@@ -443,6 +449,16 @@ onBeforeUnmount(() => {
 .hw-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--s-7); color: var(--muted); text-align: center; }
 .hw-empty svg { width: 40px; height: 40px; color: var(--subtle); margin-bottom: var(--s-3); }
 .hw-empty p { font-size: var(--fs-12); margin: 0; }
+
+/* 加载失败态 / Load-failure state */
+.hw-error { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-7); color: var(--error); text-align: center; font-size: var(--fs-12); }
+.hw-error p { margin: 0; }
+.hw-error-retry { padding: var(--s-2) var(--s-3); font: inherit; font-size: var(--fs-12); color: var(--error); background: transparent; border: 1px solid var(--error); border-radius: var(--radius-sm); cursor: pointer; transition: background 0.15s, color 0.15s; }
+.hw-error-retry:hover { background: var(--error); color: var(--surface); }
+
+/* 加载中：复用空态容器，图标改为旋转 / Loading reuses the empty container with a spinning glyph */
+.hw-empty .hw-spinner { width: 24px; height: 24px; color: var(--accent); animation: hw-spin 0.9s linear infinite; }
+@keyframes hw-spin { to { transform: rotate(360deg); } }
 
 /* 统计栏 / Stats bar */
 .hw-stats-bar { display: flex; align-items: center; gap: var(--s-4); padding: var(--s-2) var(--s-4); border-top: 1px solid var(--border); font-size: var(--fs-11); color: var(--muted); background: var(--surface-2); flex-shrink: 0; }

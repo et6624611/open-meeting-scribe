@@ -1025,7 +1025,7 @@
 .ai-ps-scan-freq-label { white-space: nowrap; }
 .ai-ps-scan-freq-select {
   padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius-xs);
-  background: var(--card); color: var(--fg); font-size: var(--fs-11);
+  background: var(--surface); color: var(--fg); font-size: var(--fs-11);
   cursor: pointer; min-width: 80px;
 }
 .ai-ps-scan-freq-select:focus { outline: none; border-color: var(--proactive); }
@@ -1098,9 +1098,9 @@
 .follow-up-chip svg { width: 12px; height: 12px; opacity: 0.7; flex-shrink: 0; }
 
 /* ─── AI · 错误重试 ─── */
-.msg-error { display: flex; align-items: center; gap: var(--s-2); margin-top: 6px; padding: 6px 10px; background: oklch(96% 0.02 25); border: 1px solid oklch(88% 0.04 25); border-radius: var(--radius-sm); font-size: var(--fs-12); color: var(--rec); }
-.msg-error .retry-btn { padding: 3px 10px; border-radius: var(--radius-sm); border: 1px solid var(--rec); background: transparent; color: var(--rec); font-size: var(--fs-11); cursor: pointer; transition: all 0.12s; white-space: nowrap; }
-.msg-error .retry-btn:hover { background: var(--rec); color: #fff; }
+.msg-error { display: flex; align-items: center; gap: var(--s-2); margin-top: 6px; padding: 6px 10px; background: var(--error-soft); border: 1px solid color-mix(in oklch, var(--error) 28%, transparent); border-radius: var(--radius-sm); font-size: var(--fs-12); color: var(--error); }
+.msg-error .retry-btn { padding: 3px 10px; border-radius: var(--radius-sm); border: 1px solid var(--error); background: transparent; color: var(--error); font-size: var(--fs-11); cursor: pointer; transition: all 0.12s; white-space: nowrap; }
+.msg-error .retry-btn:hover { background: var(--error); color: var(--surface); }
 
 /* ─── AI · 停止生成按钮 ─── */
 .ai-stop-gen { display: none; align-items: center; justify-content: center; gap: var(--s-2); padding: 4px 0; }

@@ -248,5 +248,8 @@
     "auto_tag": "auto",
     "search_placeholder": "Search speakers…",
     "create_hint": "Create \"{name}\""
+  },
+  "pipeline": {
+    "completed": "Minutes ready"
   }
 }

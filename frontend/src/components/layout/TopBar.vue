@@ -45,13 +45,13 @@
         <!-- 录音状态胶囊（方案 A：极简胶囊 + 展开面板） / Recording status pill (Plan A: minimal pill + expandable panel) -->
         <div class="rec-pill" :class="{ 'is-visible': showRecPill, 'is-paused': isRecPaused, 'is-expanded': showRecPanel }" v-if="showRecPill">
           <!-- 触发按钮：脉冲点 + 计时 + 展开箭头 / Trigger: pulse dot + timer + chevron -->
-          <button ref="recPillTrigger" class="rec-pill-trigger" @click="toggleRecPanel" :title="t('topbar.rec_panel_toggle')" :aria-expanded="showRecPanel" aria-haspopup="menu">
+          <button ref="recPillTrigger" class="rec-pill-trigger" v-bind="recPanelTriggerAttrs" @click="toggleRecPanel" :title="t('topbar.rec_panel_toggle')">
             <span class="rec-pulse-dot"></span>
             <span class="rec-pill-timer">{{ recElapsed }}</span>
             <svg class="rec-pill-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <!-- 展开面板：状态头 + 导航/切换 + 终止类操作 / Expandable panel: status header + nav/toggle + termination actions -->
-          <div ref="recPanelEl" class="rec-pill-panel" :class="{ 'is-open': showRecPanel }" role="menu">
+          <div ref="recPanelEl" class="rec-pill-panel" v-bind="recPanelMenuAttrs" :class="{ 'is-open': showRecPanel }">
             <div class="rec-panel-header">
               <span class="rec-pulse-dot"></span>
               <span class="rec-panel-label">{{ isRecPaused ? t('topbar.rec_paused_label') : t('topbar.rec_status_label') }}</span>
@@ -106,7 +106,7 @@
           <kbd class="topbar-shortcut-kbd">{{ modKey }}N</kbd>
         </button>
         <div class="lang-switcher">
-          <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" @click="showLangMenu = !showLangMenu">
+          <button class="lang-btn" id="langBtn" :title="t('topbar.lang_switch')" :aria-expanded="showLangMenu" aria-haspopup="listbox" @click="showLangMenu = !showLangMenu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </button>
           <div class="lang-dropdown" :class="{ 'is-open': showLangMenu }" role="listbox">
@@ -119,7 +119,7 @@
 
         <!-- 主题切换器 / Theme switcher -->
         <div class="theme-switcher">
-          <IconButton class="theme-switcher-btn" :label="t('common.theme.switch')" tip-position="bottom" @click="showThemeMenu = !showThemeMenu">
+          <IconButton class="theme-switcher-btn" :label="t('common.theme.switch')" tip-position="bottom" :aria-expanded="showThemeMenu" aria-haspopup="listbox" @click="showThemeMenu = !showThemeMenu">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="4"/>
               <path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
@@ -211,6 +211,10 @@ function onSeekPlayer(e: MouseEvent) {
 
 const showThemeMenu = ref(false)
 const showLangMenu = ref(false)
+// ESC 走状态而非剥 class，否则 aria-expanded 会与真实状态长期不一致
+// Close through state so aria-expanded cannot drift from the visible surface.
+useEscClose(showThemeMenu, () => { showThemeMenu.value = false })
+useEscClose(showLangMenu, () => { showLangMenu.value = false })
 
 // ─── 语言切换 / Language switching ───
 const currentLocale = computed(() => getLocale())
@@ -225,7 +229,7 @@ async function onSwitchLang(locale: SupportedLocale) {
 // ─── 录音状态胶囊面板（方案 A：usePopMenu 统一管理展开/定位/关闭） / Recording pill panel (Plan A: usePopMenu manages expand/position/close) ───
 const recPillTrigger = ref<HTMLElement | null>(null)
 const recPanelEl = ref<HTMLElement | null>(null)
-const { visible: showRecPanel, toggle: toggleRecPanel, close: closeRecPanel } = usePopMenu(recPanelEl, recPillTrigger)
+const { visible: showRecPanel, toggle: toggleRecPanel, close: closeRecPanel, triggerAttrs: recPanelTriggerAttrs, menuAttrs: recPanelMenuAttrs } = usePopMenu(recPanelEl, recPillTrigger)
 const showAbandon = ref(false)
 useEscClose(showAbandon, () => { showAbandon.value = false })
 

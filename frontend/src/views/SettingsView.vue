@@ -1193,7 +1193,7 @@ async function loadCliReference() {
 .settings-title { font-size: 16px; font-weight: 600; margin-bottom: var(--s-3); padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
 .settings-account { display: flex; align-items: center; gap: var(--s-3); }
 .settings-logout-btn { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s ease; }
-.settings-logout-btn:hover { color: var(--danger, #e53e3e); border-color: var(--danger, #e53e3e); background: rgba(229, 62, 62, 0.06); }
+.settings-logout-btn:hover { color: var(--error); border-color: var(--error); background: var(--error-soft); }
 .settings-logout-btn svg { flex-shrink: 0; }
 .settings-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--border); color: var(--muted); display: grid; place-items: center; font-size: 16px; font-weight: 600; flex-shrink: 0; }
 .settings-account-info { display: flex; flex-direction: column; gap: 2px; }
@@ -1212,7 +1212,7 @@ async function loadCliReference() {
 .api-readonly { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
 .api-proxy-hint { font-size: 11px; color: var(--subtle); }
 .settings-test-result { font-size: 12px; margin-top: var(--s-2); }
-.settings-test-result.is-error { color: var(--rec); }
+.settings-test-result.is-error { color: var(--error); }
 .theme-grid { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .theme-chip { padding: 6px var(--s-4); border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .theme-chip:hover { border-color: var(--border-strong); }
@@ -1277,7 +1277,7 @@ async function loadCliReference() {
 .version-value.is-newer { color: var(--accent); }
 .version-actions { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); flex-wrap: wrap; }
 .version-msg { font-size: 12px; color: var(--accent); font-weight: 500; }
-.version-msg.is-error { color: var(--danger, #e53e3e); }
+.version-msg.is-error { color: var(--error); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 

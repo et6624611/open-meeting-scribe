@@ -15,7 +15,8 @@ import { fetchNotes, fetchTodos } from '@/api/notes'
 import { fetchSpeakers, type Speaker } from '@/api/speakers'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
-import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine } from '@/api/types'
+import { showToast } from '@/composables/useToast'
+import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
 
 export function useGeneratingData(
   transcriptPanelRef: Ref<any>,
@@ -317,10 +318,15 @@ export function useGeneratingData(
   }
 
   // ─── 轮询 / Polling ───
+  /** 产物待刷新标记：生成完成时若用户正停留在随记页，推迟到离开该页再拉取，
+      避免覆盖正在输入的内容 / Artifacts pending refresh — deferred while the user
+      is on the notes tab so in-flight typing is never overwritten. */
+  const artifactsStale = ref(false)
+
   const { start: startPolling, stop: stopPolling } = usePolling(async () => {
     const updated = await fetchTask(taskId)
     taskStore.patchTaskLocal(taskId, updated)
-    if (updated.status === 'completed') { stopPolling(); window.location.reload() }
+    if (updated.status === 'completed') { stopPolling(); onPipelineCompleted(updated) }
     else if (updated.status === 'failed') { stopPolling() }
   }, 3000)
 
@@ -338,6 +344,33 @@ export function useGeneratingData(
       console.warn('[chapters] 补生成轮询达到上限，停止')
     }
   }, 3000)
+
+  /**
+   * 就地切换到完成态。原先这里是一句 window.location.reload()：
+   * 整页重载会丢掉滚动位置与未保存的编辑草稿，几百毫秒白屏也被用户读作「崩溃」。
+   * 改为：显式成功反馈 + 拉取新生成的随记/待办 + 补起章节轮询。
+   * Switch to the completed state in place. The previous blanket reload threw away
+   * scroll position and unsaved drafts, and its white flash read as a crash.
+   */
+  async function onPipelineCompleted(updated: Task) {
+    showToast(t('generating.pipeline.completed'), 'success')
+    if (!updated.chapters?.length && (updated.dialogue?.length ?? 0) > 0) startChapterPolling()
+    if (todos.value.length === 0) { try { await loadTodos() } catch { /* 保留空态 */ } }
+    if (activeTab.value !== 'notes') {
+      try { await loadNotes() } catch { /* 保留空态 */ }
+    } else {
+      artifactsStale.value = true
+    }
+  }
+
+  // 完成时用户正在写随记 → 离开随记页那一刻再刷新产物
+  // Deferred artifact refresh: the user was editing notes when generation finished.
+  watch(activeTab, (tab, prev) => {
+    if (artifactsStale.value && prev === 'notes' && tab !== 'notes') {
+      artifactsStale.value = false
+      loadNotes().catch(() => { /* */ })
+    }
+  })
 
   // ─── AI 引用 / AI quote ───
   const { setQuote, startRewrite, rewritePending, registerBlockUpdater, registerSummaryAppender, registerNotesAppender } = useQuoteRef()

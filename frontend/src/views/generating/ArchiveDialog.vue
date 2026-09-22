@@ -1,9 +1,9 @@
 <template>
   <!-- 归档确认对话框 / Archive confirmation dialog -->
   <div v-show="modelValue" class="oms-overlay archive-overlay" data-vue-overlay :class="{ 'is-open': modelValue }" @click.self="emit('update:modelValue', false)">
-    <div class="oms-overlay-card archive-dialog">
+    <div ref="dialogRef" class="oms-overlay-card archive-dialog" role="dialog" aria-modal="true" aria-labelledby="archiveDialogTitle">
       <div class="archive-dialog-header">
-        <h3>{{ isUnarchive ? t('generating.archive_dialog.unarchive_title') : t('generating.archive_dialog.title') }}</h3>
+        <h3 id="archiveDialogTitle">{{ isUnarchive ? t('generating.archive_dialog.unarchive_title') : t('generating.archive_dialog.title') }}</h3>
         <button class="archive-dialog-close" @click="emit('update:modelValue', false)" :title="t('generating.archive_dialog.close')">
           <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
         </button>
@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useEscClose } from '@/composables/useEscClose'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
@@ -36,7 +36,7 @@ const emit = defineEmits<{
   (e: 'confirm'): void
 }>()
 
-useEscClose(computed(() => props.modelValue), () => emit('update:modelValue', false))
+const { dialogRef } = useDialog(computed(() => props.modelValue), () => emit('update:modelValue', false))
 </script>
 
 <style scoped>

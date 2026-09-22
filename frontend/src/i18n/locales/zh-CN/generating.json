@@ -249,5 +249,8 @@
     "auto_tag": "自动",
     "search_placeholder": "搜索说话人…",
     "create_hint": "新建「{name}」"
+  },
+  "pipeline": {
+    "completed": "纪要已生成"
   }
 }

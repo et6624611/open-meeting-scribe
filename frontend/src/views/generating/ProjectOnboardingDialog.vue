@@ -1,7 +1,7 @@
 <template>
   <!-- 知识库关联引导弹窗 / Knowledge base onboarding dialog -->
-  <div v-if="modelValue" class="proj-onboarding-overlay" @click.self="emit('close')" @keydown.esc="emit('close')">
-    <div class="proj-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="projObDialogTitle">
+  <div v-if="modelValue" class="proj-onboarding-overlay" data-vue-overlay @click.self="emit('close')">
+    <div ref="dialogRef" class="proj-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="projObDialogTitle">
       <!-- 标题区（复用说话人引导弹窗样式） / Title area (reuses speaker onboarding dialog styles) -->
       <div class="spk-ob-header">
         <h3 id="projObDialogTitle">{{ t('generating.project_onboarding.title') }}</h3>
@@ -76,11 +76,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
   connected: boolean
 }>()
@@ -88,4 +90,6 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+const { dialogRef } = useDialog(computed(() => props.modelValue), () => emit('close'))
 </script>

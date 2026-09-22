@@ -60,32 +60,44 @@
     </div>
 
     <!-- 表格容器 / Table container -->
-    <div v-if="libGroupedTasks.length > 0" class="table-container">
+    <div v-if="libGroupedTasks.length > 0 && !taskStore.loadError" class="table-container">
       <!-- 列标题（仅在第一个分组上方显示一次） / Column headers (shown only above first group) -->
       <div class="table-head">
         <div class="cell-checkbox">
-          <div
+          <button
+            type="button"
             class="row-checkbox"
+            role="checkbox"
             :class="{ checked: isAllSelected, indeterminate: isIndeterminate }"
+            :aria-checked="isAllSelected ? 'true' : isIndeterminate ? 'mixed' : 'false'"
+            :aria-label="t('library.select_all')"
             @click.stop="toggleSelectAll"
-          ></div>
+          ></button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'title' }" @click="toggleSort('title')">
-          <span>{{ t('library.col_name') }}</span>
-          <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+        <div class="col-header sortable" :class="{ sorted: sortKey === 'title' }">
+          <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_name') })" @click="toggleSort('title')">
+            <span>{{ t('library.col_name') }}</span>
+            <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+          </button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'status' }" @click="toggleSort('status')">
-          <span>{{ t('library.col_status') }}</span>
-          <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+        <div class="col-header sortable" :class="{ sorted: sortKey === 'status' }">
+          <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_status') })" @click="toggleSort('status')">
+            <span>{{ t('library.col_status') }}</span>
+            <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+          </button>
         </div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'duration' }" @click="toggleSort('duration')">
-          <span>{{ t('library.col_duration') }}</span>
-          <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+        <div class="col-header sortable" :class="{ sorted: sortKey === 'duration' }">
+          <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_duration') })" @click="toggleSort('duration')">
+            <span>{{ t('library.col_duration') }}</span>
+            <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+          </button>
         </div>
         <div class="col-header">{{ t('library.col_speakers') }}</div>
-        <div class="col-header sortable" :class="{ sorted: sortKey === 'created_at' }" @click="toggleSort('created_at')">
-          <span>{{ t('library.col_time') }}</span>
-          <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+        <div class="col-header sortable" :class="{ sorted: sortKey === 'created_at' }">
+          <button type="button" class="col-header-btn" :aria-label="t('library.sort_by', { col: t('library.col_time') })" @click="toggleSort('created_at')">
+            <span>{{ t('library.col_time') }}</span>
+            <svg class="sort-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/></svg>
+          </button>
         </div>
         <div class="col-header"></div>
       </div>
@@ -98,15 +110,22 @@
             v-for="task in sortGroupTasks(group.tasks)"
             :key="task.task_id"
             class="table-row"
+            tabindex="0"
+            :aria-label="task.title || task.audio_name || t('common.untitled')"
             :class="{ selected: selectedIds.has(task.task_id), 'is-playing': player.taskId === task.task_id }"
             @click="openTask(task)"
+            @keydown.enter.prevent="openTask(task)"
           >
             <div class="cell-checkbox">
-              <div
+              <button
+                type="button"
                 class="row-checkbox"
+                role="checkbox"
                 :class="{ checked: selectedIds.has(task.task_id) }"
+                :aria-checked="selectedIds.has(task.task_id)"
+                :aria-label="t('library.select_row', { name: task.title || task.audio_name || t('common.untitled') })"
                 @click.stop="toggleSelect(task, $event)"
-              ></div>
+              ></button>
             </div>
             <div class="cell-title">
               <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
@@ -146,8 +165,14 @@
       </div>
     </div>
 
+    <!-- 加载失败态（优先于空态：失败 ≠ 没有会议） / Load-failure state, ahead of empty -->
+    <div v-if="taskStore.loadError && !taskStore.loading" class="lib-error" role="alert">
+      <span class="lib-error-text">{{ taskStore.loadError }}</span>
+      <button type="button" class="lib-error-retry" @click="taskStore.loadTasks()">{{ t('common.error.retry') }}</button>
+    </div>
+
     <!-- 空状态 / Empty state -->
-    <div v-if="libGroupedTasks.length === 0 && !taskStore.loading" class="empty-state">
+    <div v-else-if="libGroupedTasks.length === 0 && !taskStore.loading" class="empty-state">
       {{ taskStore.searchQuery ? t('library.empty_search') : (taskStore.showArchived ? t('library.empty_archived') : t('library.empty')) }}
     </div>
 
@@ -802,6 +827,13 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .col-header.sortable { cursor: pointer; }
 .col-header.sortable:hover { color: var(--fg); }
+/* 排序按钮承载在列标题单元格里，保持原有 flex 外观与网格轨道不变
+   The sort button lives inside the header cell so the grid track is unchanged. */
+.col-header-btn {
+  display: flex; align-items: center; gap: var(--s-1);
+  font: inherit; color: inherit; background: transparent; border: 0; padding: 0;
+  cursor: pointer; width: 100%; text-align: left;
+}
 .col-header .sort-icon { opacity: 0.4; transition: opacity 0.15s; }
 .col-header.sorted .sort-icon { opacity: 1; color: var(--accent); }
 
@@ -881,10 +913,11 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .status-dot.is-done { background: var(--ok); }
-.status-dot.is-failed { background: var(--rec); }
+.status-dot.is-failed { background: var(--error); }
 .status-dot.is-processing { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
 .status-dot.is-paused { background: var(--warn); }
-.status-dot.is-pending { background: var(--warn); }
+/* pending（排队待处理）与 paused（已暂停，需用户操作）此前同为 --warn，不可区分 */
+.status-dot.is-pending { background: var(--subtle); }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .cell-duration, .cell-speakers, .cell-time {
   font-size: 13px; color: var(--muted);
@@ -960,6 +993,20 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 
 /* ─── 空状态 / Empty state ─── */
 .empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); font-size: 13px; }
+
+/* 加载失败态 / Load-failure state */
+.lib-error {
+  display: flex; align-items: center; justify-content: center; gap: var(--s-3);
+  text-align: center; padding: var(--s-9) var(--s-7);
+  color: var(--error); font-size: var(--fs-13);
+}
+.lib-error-retry {
+  padding: var(--s-2) var(--s-3); font: inherit; font-size: var(--fs-12);
+  color: var(--error); background: transparent;
+  border: 1px solid var(--error); border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lib-error-retry:hover { background: var(--error); color: var(--surface); }
 
 /* ─── 响应式：视口级 @media 渐进隐藏次要列 / Responsive: viewport @media progressive hide ─── */
 

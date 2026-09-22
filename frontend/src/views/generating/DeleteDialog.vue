@@ -1,9 +1,9 @@
 <template>
   <!-- 删除确认对话框 / Delete confirmation dialog -->
   <div v-show="modelValue" class="oms-overlay delete-overlay" data-vue-overlay :class="{ 'is-open': modelValue }" @click.self="emit('update:modelValue', false)">
-    <div class="oms-overlay-card delete-dialog">
+    <div ref="dialogRef" class="oms-overlay-card delete-dialog" role="dialog" aria-modal="true" aria-labelledby="deleteDialogTitle">
       <div class="delete-dialog-header">
-        <h3>{{ t('generating.delete_dialog.title') }}</h3>
+        <h3 id="deleteDialogTitle">{{ t('generating.delete_dialog.title') }}</h3>
         <button class="delete-dialog-close" @click="emit('update:modelValue', false)" :title="t('generating.delete_dialog.close')">
           <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
         </button>
@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useEscClose } from '@/composables/useEscClose'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
@@ -35,7 +35,7 @@ const emit = defineEmits<{
   (e: 'confirm'): void
 }>()
 
-useEscClose(computed(() => props.modelValue), () => emit('update:modelValue', false))
+const { dialogRef } = useDialog(computed(() => props.modelValue), () => emit('update:modelValue', false))
 </script>
 
 <style scoped>

@@ -10,7 +10,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { fetchTasks, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
-import client from '@/api/client'
+import client, { extractErrorMessage } from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
 import { matchTask } from '@/utils/search'
 import { useI18n } from 'vue-i18n'
@@ -20,6 +20,10 @@ export const useTaskStore = defineStore('task', () => {
   // ─── 状态 / State ───
   const tasks = ref<Task[]>([])
   const currentTaskId = ref<string | null>(null)
+  /** 任务列表加载错误（此前失败只写 console，界面停留在空态，用户看到的是「没有会议」而非「加载失败」）
+      Load error surfaced to the UI; previously it only reached the console, so a
+      failed fetch rendered as "no meetings" instead of "failed to load". */
+  const loadError = ref<string | null>(null)
   const loading = ref(false)
   const searchQuery = ref('')
   /** 侧边栏专用搜索词（与 Library 的 searchQuery 互不干扰） / Sidebar-only search query (independent from Library's searchQuery) */
@@ -137,8 +141,12 @@ export const useTaskStore = defineStore('task', () => {
     loading.value = true
     try {
       tasks.value = await fetchTasks()
+      loadError.value = null
     } catch (e) {
+      // 失败必须落到界面上：只写 console 会让「加载失败」被用户读作「没有会议」
+      // A failed fetch must reach the UI, or it reads as "no meetings".
       console.error('[TaskStore] 加载任务列表失败:', e)
+      loadError.value = extractErrorMessage(e) || t('common.error.load_failed')
     } finally {
       loading.value = false
     }
@@ -252,7 +260,7 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   return {
-    tasks, currentTaskId, loading, searchQuery, sidebarSearchQuery, showArchived,
+    tasks, currentTaskId, loading, loadError, searchQuery, sidebarSearchQuery, showArchived,
     currentTask, filteredTasks, groupedTasks, activeTasks, archivedTasks,
     loadTasks, selectTask, removeTask, patchTaskLocal, archiveTask, unarchiveTask,
     pauseRecording, resumeRecording, abandonRecording, stopRecording, getStatusLabel,

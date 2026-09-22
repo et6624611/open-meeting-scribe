@@ -82,6 +82,7 @@ import { useLayoutStore } from '@/stores/layout'
 import TaskList from '@/components/task/TaskList.vue'
 import IconButton from '@/components/common/IconButton.vue'
 import { beginResize } from '@/composables/useDivider'
+import { useEscClose } from '@/composables/useEscClose'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus, recoverRecord } from '@/api/record'
 import { modKey } from '@/utils/platform'
@@ -97,26 +98,25 @@ function onToggleDown(e: MouseEvent) {
   beginResize(e, 'left', { onClick: () => layout.toggleSidebar(), resizable: !layout.sidebarCollapsed })
 }
 
-/** 点击侧边栏外部区域时自动折叠（已折叠 / 分隔条拖拽中 忽略） / Auto-collapse on outside click (ignore if already collapsed / divider dragging) */
+/** 点击侧边栏外部区域：仅关闭筛选行，不再折叠整个侧边栏
+   Outside click now only dismisses the filter row, never the whole sidebar.
+   旧行为会把 layout.sidebarCollapsed 直接置 true 且绕过 persist()，导致 TopBar
+   视图切换器的高亮在用户没有操作的情况下从 full 跳到 right，也让「时间轴 +
+   正文」无法对照查看。折叠仍由拉手 / ⌘B / rail / 视图切换器负责。
+   The old path mutated sidebarCollapsed without persist(), silently moving the
+   TopBar view-switcher highlight from full to right with no user action. */
 function onDocClickOutside(e: MouseEvent) {
   const target = e.target as HTMLElement
   // 隐式收起：点击外部关闭筛选行 / Implicit collapse: close filter row on outside click
   if (showFilter.value && !target.closest('.sb-filter-row') && !target.closest('.sb-text-btn')) {
     showFilter.value = false
   }
-  // 侧边栏折叠 / Sidebar collapse
-  if (layout.sidebarCollapsed) return
-  if (document.body.classList.contains('is-divider-dragging')) return
-  // 排除 Activity Rail 的折叠/展开按钮（点击它不应触发「外部点击折叠」） / Exclude Activity Rail toggle button (clicking it should not trigger 'outside click collapse')
-  if (target.closest('.ar-toggle-btn')) return
-  // 排除视图切换按钮（点击 full/left/right 展开侧边栏后不应被立即折叠） / Exclude view switcher buttons (clicking full/left/right to expand sidebar should not be immediately collapsed)
-  if (target.closest('.view-switcher')) return
-  if (sidebarRef.value && !sidebarRef.value.contains(target)) {
-    layout.sidebarCollapsed = true
-  }
 }
 
 const showFilter = ref(false)
+/** ESC 关闭筛选行并同步状态（此前只被全局剥 class，showFilter 仍为 true）
+    ESC now closes the filter row through state, not a stripped class. */
+useEscClose(showFilter, () => { showFilter.value = false })
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const showOrphanBanner = ref(false)
 

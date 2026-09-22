@@ -5,8 +5,8 @@ html[data-theme="dark"] {
   --surface-2: oklch(25% 0.02 260);
   --surface-3: oklch(29% 0.02 260);
   --fg: oklch(90% 0.008 260);
-  --muted: oklch(52% 0.015 260);
-  --subtle: oklch(48% 0.012 260);
+  --muted: oklch(64.5% 0.015 260);
+  --subtle: oklch(61% 0.012 260);
   --border: oklch(33% 0.022 260);
   --border-strong: oklch(40% 0.025 260);
   --accent: oklch(65% 0.13 260);
@@ -15,6 +15,8 @@ html[data-theme="dark"] {
   --accent-fg: oklch(14% 0.015 260);
   --rec: oklch(70% 0.18 25);
   --rec-soft: oklch(70% 0.18 25 / 0.12);
+  /* 暗色下 :root 的 48% 明度红对深底不足 AA，提亮至 66%（对 surface 5.08:1） */
+  --error: oklch(66% 0.19 20);
   --note-bg: oklch(24% 0.018 260);
   --note-border: oklch(34% 0.025 260);
   --note-fg: oklch(88% 0.012 260);

@@ -632,7 +632,7 @@
   color: var(--subtle);
   cursor: pointer; transition: all 0.12s; flex-shrink: 0;
 }
-.gen-panel-audio-footer .gen-audio-skip:hover { color: var(--fg); background: var(--surface-hover); }
+.gen-panel-audio-footer .gen-audio-skip:hover { color: var(--fg); background: var(--surface-3); }
 .gen-panel-audio-footer .gen-audio-skip svg { width: 18px; height: 18px; flex-shrink: 0; }
 /* 倍速按钮 */
 .gen-panel-audio-footer .gen-audio-speed { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-11); font-family: var(--font-mono); font-weight: 600; cursor: pointer; transition: all 0.12s; flex-shrink: 0; padding: 0 8px; }

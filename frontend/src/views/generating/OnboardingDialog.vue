@@ -1,7 +1,7 @@
 <template>
   <!-- 说话人绑定引导弹窗 / Speaker binding onboarding dialog -->
-  <div v-if="modelValue" class="spk-onboarding-overlay" @click.self="emit('close')" @keydown.esc="emit('close')">
-    <div class="spk-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="obDialogTitle">
+  <div v-if="modelValue" class="spk-onboarding-overlay" data-vue-overlay @click.self="emit('close')">
+    <div ref="dialogRef" class="spk-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="obDialogTitle">
       <!-- 标题区 / Title area -->
       <div class="spk-ob-header">
         <h3 id="obDialogTitle">{{ t('generating.onboarding.title') }}</h3>
@@ -32,11 +32,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
   demoLines: Array<{
     ts: string
@@ -53,4 +55,6 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+const { dialogRef } = useDialog(computed(() => props.modelValue), () => emit('close'))
 </script>

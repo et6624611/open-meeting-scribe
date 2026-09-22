@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="fb-overlay" @click.self="close" @keydown.esc="close">
-      <div class="fb-dialog" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
+    <div v-if="modelValue" class="fb-overlay" data-vue-overlay @click.self="close">
+      <div ref="dialogRef" class="fb-dialog" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
         <!-- 头部 / Header -->
         <div class="fb-header">
           <h3 id="fbTitle">{{ t('projects.browse_title') }}</h3>
@@ -107,7 +107,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { browseFilesystem } from '@/api/projects'
-import { useEscClose } from '@/composables/useEscClose'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
@@ -139,7 +139,7 @@ const canSelect = computed(() => browsing.value && currentPath.value !== '')
 
 // 使用 computed 保持与 props.modelValue 响应式同步；传入 ref(props.modelValue) 只会快照初始值导致 ESC 失效
 // Use computed to stay reactive with props.modelValue; passing ref(props.modelValue) only snapshots the initial value, breaking ESC
-useEscClose(computed(() => props.modelValue), () => close())
+const { dialogRef } = useDialog(computed(() => props.modelValue), () => close())
 
 watch(() => props.modelValue, async (visible) => {
   if (!visible) return
@@ -269,7 +269,7 @@ function close() {
 .fb-path-row { display: flex; gap: var(--s-2); padding: var(--s-4) var(--s-5); }
 .fb-path-input { flex: 1; min-width: 0; padding: 7px 10px; font-size: 13px; font-family: var(--font-mono); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); outline: none; transition: border-color 0.15s; }
 .fb-path-input:focus { border-color: var(--accent); }
-.fb-path-input::placeholder { color: var(--subtle); font-family: var(--font-sans); }
+.fb-path-input::placeholder { color: var(--subtle); font-family: var(--font-body); }
 .fb-browse-btn { padding: 7px 14px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); cursor: pointer; white-space: nowrap; transition: all 0.12s; }
 .fb-browse-btn:hover { background: var(--border); }
 

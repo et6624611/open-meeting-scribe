@@ -205,14 +205,14 @@
 .start-recent-status.status-transcribing,
 .start-recent-status.status-summarizing { color: var(--accent); }
 .start-recent-status.status-paused { color: var(--subtle); }
-.start-recent-status.status-failed { color: var(--danger, #e54); }
+.start-recent-status.status-failed { color: var(--error); }
 .start-recent-more {
   display: block; width: 100%; margin-top: 8px; padding: 6px 0;
   background: none; border: none; border-radius: 6px;
   font-size: var(--fs-12); color: var(--subtle); cursor: pointer;
   transition: color .15s, background .15s;
 }
-.start-recent-more:hover { color: var(--accent); background: var(--hover); }
+.start-recent-more:hover { color: var(--accent); background: var(--surface-2); }
 
 
 /* ─── 最近会议区域容器 + 折叠呼吸感 ─── */

@@ -76,28 +76,28 @@
         </button>
         <div class="gen-toolbar-divider"></div>
         <div class="gen-toolbar-more-wrap">
-          <button ref="genMoreBtn" class="gen-toolbar-icon" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')" aria-haspopup="menu">
+          <button ref="genMoreBtn" class="gen-toolbar-icon" v-bind="genMoreTriggerAttrs" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
-          <div ref="genMoreDropdown" class="gen-toolbar-more-menu" :class="{ 'is-open': showMoreMenu }">
-            <button class="gen-toolbar-more-item" @click="onEditSummary">
+          <div ref="genMoreDropdown" class="gen-toolbar-more-menu" v-bind="genMoreMenuAttrs" :class="{ 'is-open': showMoreMenu }">
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onEditSummary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               {{ t('generating.toolbar.edit') }}
             </button>
-            <button class="gen-toolbar-more-item" @click="onRetrySummary">
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onRetrySummary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               {{ t('generating.toolbar.regenerate') }}
             </button>
-            <button class="gen-toolbar-more-item" @click="onRetranscribe">
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onRetranscribe">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               {{ t('generating.toolbar.retranscribe') }}
             </button>
             <div class="gen-toolbar-more-divider"></div>
-            <button class="gen-toolbar-more-item" @click="onArchiveConfirm">
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onArchiveConfirm">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
               {{ data.isArchived.value ? t('generating.toolbar.unarchive') : t('generating.toolbar.archive') }}
             </button>
-            <button class="gen-toolbar-more-item is-danger" @click="onDelete">
+            <button class="gen-toolbar-more-item is-danger" role="menuitem" @click="onDelete">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
               {{ t('generating.toolbar.delete') }}
             </button>
@@ -126,7 +126,7 @@
           </span>
         </div>
         <span class="gen-meta-project">
-          <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown">
+          <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :aria-expanded="showProjectDropdown" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown" @keydown.enter.prevent="showProjectDropdown = !showProjectDropdown" @keydown.space.prevent="showProjectDropdown = !showProjectDropdown">
             <!-- book-open 图标：知识库语义 / book-open icon: knowledge base semantics -->
             <svg v-if="task?.project_id" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
             <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -515,7 +515,7 @@ watch(boundNames, (names) => {
 // ─── 更多菜单 / More menu ──
 const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
-const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore } = usePopMenu(genMoreDropdown, genMoreBtn)
+const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore, triggerAttrs: genMoreTriggerAttrs, menuAttrs: genMoreMenuAttrs } = usePopMenu(genMoreDropdown, genMoreBtn)
 
 // ─── 工具栏操作 / Toolbar actions ───
 function onEditSummary() { closeGenMore(); data.switchTab('summary') }

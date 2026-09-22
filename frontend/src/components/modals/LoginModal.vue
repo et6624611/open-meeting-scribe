@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
-    <div class="login-overlay" :class="{ 'is-hidden': !visible }" id="loginOverlay">
-      <div class="login-card">
+    <div class="login-overlay" data-vue-overlay :class="{ 'is-hidden': !visible }" id="loginOverlay">
+      <div ref="dialogRef" class="login-card" role="dialog" aria-modal="true" aria-labelledby="loginBrand">
         <div class="login-card-brand">
           <div class="brand-mark">
             <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -11,7 +11,7 @@
               <line x1="26" y1="29" x2="30" y2="29" stroke="var(--fg)" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </div>
-          <span>Open Meeting Scribe</span>
+          <span id="loginBrand">Open Meeting Scribe</span>
         </div>
         <p class="login-card-sub">{{ t('login.subtitle') }}</p>
 
@@ -72,6 +72,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
+import { useDialog } from '@/composables/useDialog'
 
 const { t } = useI18n()
 
@@ -90,6 +91,10 @@ let cooldownTimer: ReturnType<typeof setInterval> | null = null
 function open() { visible.value = false } // 登录遮罩不再强制弹出，仅按需显示 / Login overlay no longer forced, show on demand only
 function show() { visible.value = true }
 function hide() { visible.value = false }
+
+// 焦点陷阱与关闭后焦点归还；ESC 仍由 useKeyboardShortcuts 的 #loginOverlay 分支先行处理
+// Tab trap + focus restore; ESC still short-circuits in useKeyboardShortcuts' login branch first
+const { dialogRef } = useDialog(visible, hide)
 
 function switchTab(tab: 'github' | 'sms') {
   activeTab.value = tab

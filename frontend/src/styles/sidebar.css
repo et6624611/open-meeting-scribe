@@ -117,7 +117,7 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-tl-meta .sb-tl-dot.is-done { background: var(--ok); }
 .sb-tl-meta .sb-tl-dot.is-processing { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
 .sb-tl-meta .sb-tl-dot.is-pending { background: var(--warn); }
-.sb-tl-meta .sb-tl-dot.is-failed { background: var(--rec); }
+.sb-tl-meta .sb-tl-dot.is-failed { background: var(--error); }
 
 /* ─── 主要讲话人行 ─── */
 .sb-tl-speakers { display: flex; align-items: flex-end; gap: 6px; margin-top: 3px; overflow: hidden; }
@@ -244,7 +244,7 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-history-item:hover { background: var(--surface); border-color: var(--border); }
 .sb-history-item.is-active { background: var(--surface); border-color: var(--border-strong); }
 /* P0: 状态视觉权重 - 左边框色彩仅选中项显示 */
-.sb-history-item.is-active.status-failed { border-left: 2.5px solid var(--rec); }
+.sb-history-item.is-active.status-failed { border-left: 2.5px solid var(--error); }
 .sb-history-item.is-active.status-awaiting { border-left: 2.5px solid var(--warn); }
 .sb-history-item.is-active.status-recording { border-left: 2.5px solid var(--rec); animation: sb-pulse 1.5s ease-in-out infinite; }
 .sb-history-item.is-active.status-processing { border-left: 2.5px solid var(--accent); animation: sb-pulse 2s ease-in-out infinite; }
@@ -256,8 +256,8 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-history-item.is-active .sb-card-meta .status-label { font-weight: 500; }
 .sb-history-item.is-active.status-completed .sb-card-meta .status-dot { background: var(--ok); }
 .sb-history-item.is-active.status-completed .sb-card-meta .status-label { color: var(--ok); }
-.sb-history-item.is-active.status-failed .sb-card-meta .status-dot { background: var(--rec); }
-.sb-history-item.is-active.status-failed .sb-card-meta .status-label { color: var(--rec); }
+.sb-history-item.is-active.status-failed .sb-card-meta .status-dot { background: var(--error); }
+.sb-history-item.is-active.status-failed .sb-card-meta .status-label { color: var(--error); }
 .sb-history-item.is-active.status-awaiting .sb-card-meta .status-dot { background: var(--warn); }
 .sb-history-item.is-active.status-awaiting .sb-card-meta .status-label { color: var(--warn); }
 .sb-history-item.is-active.status-processing .sb-card-meta .status-dot { background: var(--accent); animation: blink 1.2s ease-in-out infinite; }

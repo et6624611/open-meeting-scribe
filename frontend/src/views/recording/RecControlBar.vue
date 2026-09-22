@@ -55,7 +55,7 @@
         </div>
       </span>
       <span class="rec-project-chip-wrap">
-        <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" :title="projectId ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="$emit('toggleProjectDropdown')">
+        <span class="gen-meta-project-chip" :class="{ 'is-unbound': !projectId, 'is-bound': !!projectId }" role="button" tabindex="0" :title="projectId ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="$emit('toggleProjectDropdown')" @keydown.enter.prevent="$emit('toggleProjectDropdown')" @keydown.space.prevent="$emit('toggleProjectDropdown')">
           <svg v-if="projectId" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
           <span>{{ projectName }}</span>

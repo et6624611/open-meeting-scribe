@@ -85,9 +85,9 @@
         </div>
       </div>
       <!-- 回退：无阶段时显示简单思考指示器 / Fallback: simple thinking indicator when no stages -->
-      <div v-else-if="isLoading && stages.length === 0 && !isStreaming" class="ai-thinking">
-        <svg class="ai-thinking-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
-        <span class="ai-thinking-text">思考中 · {{ thinkingElapsed }}s</span>
+      <div v-else-if="isLoading && stages.length === 0 && !isStreaming" class="ai-thinking" role="status" aria-live="polite">
+        <svg class="ai-thinking-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
+        <span class="ai-thinking-text">{{ t('ai-panel.thinking_elapsed', { sec: thinkingElapsed }) }}</span>
       </div>
     </Transition>
   </div>
@@ -216,8 +216,8 @@ function shortText(text: string): string {
 /* ── 截断警告 / Truncation warning ── */
 .ai-trunc-warn {
   font-size: 11px;
-  color: #b45309;
-  background: #fef3c7;
+  color: var(--warn);
+  background: var(--warn-soft);
   border-radius: 4px;
   padding: 3px 8px;
   margin: 4px 0 0;
@@ -244,12 +244,12 @@ function shortText(text: string): string {
   transition: all 0.15s;
 }
 .ai-meta-icon-btn:hover {
-  background: var(--hover-bg, rgba(0,0,0,0.06));
-  color: var(--fg, #333);
+  background: var(--surface-2);
+  color: var(--fg);
 }
 .ai-meta-icon-btn.is-active {
-  background: var(--accent-bg, rgba(59,130,246,0.1));
-  color: var(--accent, #3b82f6);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .ai-meta-icon-btn svg {
   width: 14px;
@@ -259,7 +259,7 @@ function shortText(text: string): string {
 .ai-meta-detail {
   margin-top: 4px;
   padding: 6px 8px;
-  background: var(--bg-secondary, #f8f9fa);
+  background: var(--surface-2);
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.6;
@@ -313,7 +313,7 @@ function shortText(text: string): string {
   gap: 4px;
   padding: 8px 10px;
   margin: 4px 0;
-  background: var(--bg-secondary, #f8f9fa);
+  background: var(--surface-2);
   border-radius: 8px;
   border: 1px solid var(--border, #e5e7eb);
 }
@@ -322,14 +322,14 @@ function shortText(text: string): string {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text-secondary, #555);
+  color: var(--muted);
   line-height: 1.5;
 }
 .ai-stage-item.is-done {
-  color: var(--muted, #999);
+  color: var(--subtle);
 }
 .ai-stage-item.is-error {
-  color: #b45309;
+  color: var(--error);
 }
 .ai-stage-icon {
   font-size: 13px;
@@ -384,4 +384,26 @@ function shortText(text: string): string {
   opacity: 0.7;
   max-height: 40px;
 }
+/* ── 已验证变更卡片 / Verified changes ──
+   原先定义在 AIPanel.vue 的 <style scoped> 中，但标记在本子组件内，
+   scoped 选择器无法命中 → 该卡片此前完全无样式。迁移至实际拥有者。
+   Previously declared in the parent's scoped block while the markup lives here,
+   so the selectors never matched and the card rendered unstyled. */
+.verified-changes-block {
+  margin-top: var(--s-3);
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.vc-header { font-size: var(--fs-12); font-weight: 600; color: var(--fg); margin-bottom: 10px; padding-bottom: var(--s-2); border-bottom: 1px solid var(--border); }
+.vc-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.vc-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) 10px; background: var(--surface); border-radius: var(--radius-sm); border-left: 3px solid var(--border-strong); transition: all 0.15s; }
+.vc-item.is-verified { border-left-color: var(--ok); background: linear-gradient(90deg, var(--ok-soft) 0%, transparent 100%); }
+.vc-item:not(.is-verified) { border-left-color: var(--warn); background: linear-gradient(90deg, var(--warn-soft) 0%, transparent 100%); }
+.vc-icon { font-size: var(--fs-14); flex-shrink: 0; }
+.vc-desc { flex: 1; font-size: var(--fs-12); color: var(--muted); line-height: 1.5; }
+.vc-status { font-size: var(--fs-11); color: var(--muted); white-space: nowrap; padding: 2px var(--s-2); border-radius: var(--radius-xs); background: var(--surface-3); }
+.vc-item.is-verified .vc-status { color: var(--ok); background: var(--ok-soft); }
+.vc-item:not(.is-verified) .vc-status { color: var(--warn); background: var(--warn-soft); }
 </style>

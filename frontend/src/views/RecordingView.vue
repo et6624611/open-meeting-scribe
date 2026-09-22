@@ -165,10 +165,10 @@
         </button>
         <button class="btn-end-rec" @click="onStop">{{ t('recording.control.end') }}</button>
         <div class="more-menu-wrap">
-          <button ref="recMoreBtn" class="more-menu-btn" @click="toggleRecMore" :title="t('common.action.more')" aria-haspopup="menu" :aria-label="t('common.action.more')">
+          <button ref="recMoreBtn" class="more-menu-btn" v-bind="recMoreTriggerAttrs" @click="toggleRecMore" :title="t('common.action.more')" :aria-label="t('common.action.more')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
           </button>
-          <div ref="recDropdown" class="more-menu-dropdown" :class="{ 'is-open': showRecMore }" role="menu">
+          <div ref="recDropdown" class="more-menu-dropdown" v-bind="recMoreMenuAttrs" :class="{ 'is-open': showRecMore }">
             <button class="more-menu-item danger" @click="closeRecMore(); showAbandon = true" role="menuitem">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               {{ t('recording.control.abandon') }}
@@ -366,7 +366,7 @@ useEscClose(showAbandon, () => { showAbandon.value = false })
 // 弹出菜单 / Popover menu
 const recMoreBtn = ref<HTMLElement | null>(null)
 const recDropdown = ref<HTMLElement | null>(null)
-const { visible: showRecMore, toggle: toggleRecMore, close: closeRecMore } = usePopMenu(recDropdown, recMoreBtn)
+const { visible: showRecMore, toggle: toggleRecMore, close: closeRecMore, triggerAttrs: recMoreTriggerAttrs, menuAttrs: recMoreMenuAttrs } = usePopMenu(recDropdown, recMoreBtn)
 
 // ── 计算属性 / Computed ──
 const displaySpeakerCount = computed(() => ws.speakerCount.value > 0 ? ws.speakerCount.value : new Set(wsLines.value.map(l => l.speaker_id)).size)

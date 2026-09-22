@@ -7,7 +7,7 @@
       <span class="db-title">{{ todo.text }}</span>
       <!-- 状态下拉 / Status dropdown -->
       <div class="db-dropdown-wrap" ref="statusDropRef">
-        <button class="db-status-btn" :class="'pill-' + status" @click.stop="statusOpen = !statusOpen">
+        <button class="db-status-btn" :class="'pill-' + status" :aria-expanded="statusOpen" aria-haspopup="menu" @click.stop="statusOpen = !statusOpen">
           {{ t('generating.todos.status_' + status) }}
           <svg class="db-dd-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -27,7 +27,7 @@
       </div>
       <!-- 负责人下拉 / Owner dropdown -->
       <div class="db-dropdown-wrap" ref="ownerDropRef">
-        <button class="db-owner-btn" @click.stop="ownerOpen = !ownerOpen">
+        <button class="db-owner-btn" :aria-expanded="ownerOpen" aria-haspopup="menu" @click.stop="ownerOpen = !ownerOpen">
           {{ ownerLabel }}
           <svg class="db-dd-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -73,6 +73,7 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TodoItem, DecisionStatus, OwnerType } from '@/api/types'
+import { useEscClose } from '@/composables/useEscClose'
 
 const { t } = useI18n()
 
@@ -94,6 +95,10 @@ const ownerOptions: OwnerType[] = ['self', 'agent', 'colleague', 'enterprise']
 // ── 下拉状态 / Dropdown open state ──
 const statusOpen = ref(false)
 const ownerOpen = ref(false)
+// ESC 关闭下拉需落到状态上，仅剥 class 会让下次渲染重新打开
+// ESC must clear state, not just the class, or the next render reopens the surface.
+useEscClose(statusOpen, () => { statusOpen.value = false })
+useEscClose(ownerOpen, () => { ownerOpen.value = false })
 const statusDropRef = ref<HTMLElement | null>(null)
 const ownerDropRef = ref<HTMLElement | null>(null)
 

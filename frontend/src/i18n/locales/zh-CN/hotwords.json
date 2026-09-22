@@ -21,6 +21,7 @@
   "stat_mappings": "映射 {count}",
   "saved": "热词已保存，下次识别生效",
   "save_failed": "保存失败: {err}",
+  "load_failed": "加载热词失败",
   "create_word_hint": "添加热词「{name}」",
   "create_mapping_hint": "添加映射「{content}」"
 }
