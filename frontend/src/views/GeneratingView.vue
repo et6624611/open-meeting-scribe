@@ -671,9 +671,20 @@ onMounted(async () => {
   })
 
   // 任务数据可能尚未加载（刷新页面时 store 为空），用 watch 等待任务就绪后初始化绑定映射 / Task data may not be loaded yet (store empty on page refresh), use watch to init binding mapping when ready
-  const stopWatch = watch(() => data.task.value, (t) => {
-    if (t) { binding.initBindingMapping(); stopWatch() }
-  }, { immediate: true })
+  // 原写法是 const stopWatch = watch(..., { immediate: true })，而 immediate 回调在
+  // const 完成赋值之前就会同步执行 → stopWatch() 触发 TDZ ReferenceError，
+  // 连带 initBindingMapping() 被跳过：从侧栏点进会议（任务已在 store 里）必命中此路径。
+  // The previous form ran the immediate callback before `const stopWatch` was
+  // assigned, so stopWatch() threw a TDZ ReferenceError and initBindingMapping()
+  // was skipped — guaranteed on the common path where the task is already loaded.
+  if (data.task.value) {
+    binding.initBindingMapping()
+  } else {
+    const stopUntilTaskReady = watch(() => data.task.value, (t) => {
+      if (t) { binding.initBindingMapping(); stopUntilTaskReady() }
+    })
+    onUnmounted(stopUntilTaskReady)
+  }
   document.addEventListener('click', panel.onDocClickCloseSearch)
   document.addEventListener('click', binding.onDocClickForDropdown)
 
