@@ -74,15 +74,8 @@
 .main.is-narrow .gen-tab .tab-label { display: none; }
 
 /* 对话底栏自适应 */
-.conv-bottom-left { overflow: visible; }
-.conv-mode-selector .mode-label { display: inline; }
-.conv-model-selector .model-label { display: inline; }
-.conv-model-selector .model-icon { display: none; width: 14px; height: 14px; flex-shrink: 0; }
 .conv-bottom-bar.is-compact .conv-model-selector .model-label { display: none; }
 .conv-bottom-bar.is-compact .conv-model-selector .model-icon { display: block; }
-.conv-bottom-bar.is-minimal .conv-mode-selector .mode-label { display: none; }
-.conv-bottom-bar.is-minimal .conv-model-selector .model-label { display: none; }
-.conv-bottom-bar.is-minimal .conv-model-selector .model-icon { display: block; }
 
 .gen-panel { padding: var(--s-6) var(--s-7); width: 80%; min-width: 600px; max-width: 960px; margin: 0 auto; box-sizing: border-box; }
 .gen-panel.hidden { display: none; }
@@ -98,49 +91,6 @@
 .gen-empty-hint { font-size: var(--fs-14); color: var(--muted); line-height: 1.6; }
 
 /* 可操作的加载态（等待用户绑定说话人） */
-.gen-loading-actionable {
-  display: flex;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-5);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.gen-loading-icon {
-  width: 24px;
-  height: 24px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-.gen-loading-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-.gen-loading-text strong {
-  font-size: var(--fs-15);
-  color: var(--fg);
-}
-.gen-loading-text span {
-  font-size: var(--fs-13);
-  color: var(--muted);
-}
-.gen-loading-btn {
-  padding: var(--s-2) var(--s-4);
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
-  font-size: var(--fs-14);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.gen-loading-btn:hover {
-  background: oklch(from var(--accent) calc(l - 0.06) c h);
-}
 
 /* 骨架屏 */
 .gen-skeleton { display: flex; flex-direction: column; gap: var(--s-3); }
@@ -194,11 +144,6 @@
 .gs-chip:hover .bl-locate { opacity: 1; }
 .gs-chip .bl-locate:hover { color: var(--accent); background: rgba(0,0,0,0.06); }
 /* 只读态编辑关联入口按钮 */
-.gs-edit-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
-.gs-edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.gen-date-picker-wrap { position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: var(--z-popover); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--s-2); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.12); }
-.gen-date-picker-wrap input[type="date"] { font-family: var(--font-mono); font-size: 12px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); outline: none; }
-.gen-date-picker-wrap input[type="date"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 
 /* 说话人身份关联横幅 — 图标/标题/操作区（外壳布局由 .gs-zone.is-binding 承担） */
 .gbb-icon { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); }
@@ -247,15 +192,12 @@
 
 /* 底部操作区 */
 .spk-ob-footer { display: flex; align-items: center; justify-content: space-between; padding: var(--s-4) var(--s-6); border-top: 1px solid var(--border); }
-.spk-ob-dont-show { font-size: var(--fs-13); color: var(--muted); cursor: pointer; display: flex; align-items: center; gap: var(--s-2); }
-.spk-ob-dont-show input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .spk-ob-got-it { background: var(--accent); color: var(--accent-fg); border: none; border-radius: var(--radius); padding: var(--s-2) var(--s-5); font-size: var(--fs-14); font-weight: 500; cursor: pointer; transition: background 0.2s ease; }
 .spk-ob-got-it:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
 .spk-ob-got-it:active { background: oklch(from var(--accent) calc(l - 0.10) c h); }
 
 /* 键盘焦点环 */
 .spk-ob-got-it:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.spk-ob-dont-show input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 减少动效偏好降级 */
 @media (prefers-reduced-motion: reduce) {
@@ -353,31 +295,13 @@
 .gs-label:hover { filter: brightness(0.92); }
 .gs-label.is-active { font-weight: 500; }
 .gs-label.is-dimmed { opacity: 0.25; }
-.gs-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.gs-pct { font-size: 10px; opacity: 0.7; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* 溢出"更多说话人"按钮 */
-.gs-more-btn { font-size: var(--fs-11); color: var(--muted); padding: 3px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.12s; white-space: nowrap; display: flex; align-items: center; gap: 4px; flex-shrink: 0; background: var(--surface-2); border: 1px solid var(--border); }
-.gs-more-btn:hover { background: var(--surface-3); color: var(--fg); border-color: var(--accent); }
 
 /* 纪要待绑定提示 */
-.gen-pending { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); padding: var(--s-8) var(--s-4); text-align: center; }
-.gen-pending-icon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
-.gen-pending-icon svg { width: 20px; height: 20px; }
-.gen-pending-text { font-size: var(--fs-13); color: var(--muted); }
 
 /* 转写面板 */
 .gen-transcript-list { display: flex; flex-direction: column; }
-.gen-ts-entry { display: flex; gap: var(--s-3); }
-.gen-ts-avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff; flex-shrink: 0; }
-.gen-ts-body { flex: 1; min-width: 0; }
-.gen-ts-meta { display: flex; align-items: baseline; gap: var(--s-2); margin-bottom: 2px; }
-.gen-ts-name { font-size: var(--fs-13); font-weight: 500; color: var(--muted); }
-.gen-ts-name[onclick]:hover { color: var(--accent); text-decoration: underline; }
-.gen-ts-avatar[onclick] { cursor: pointer; outline: 2px solid transparent; transition: outline-color 0.12s; }
-.gen-ts-avatar[onclick]:hover { outline-color: var(--accent); }
-.gen-ts-time { font-size: var(--fs-12); color: var(--subtle); font-family: var(--font-mono); }
-.gen-ts-text { font-size: var(--fs-14); color: var(--fg); line-height: 1.6; }
 
 /* ═══ 转写行基础样式（微信风格：头像 + 内容列） ══ */
 .ts-line { display: flex; flex-direction: row; gap: 10px; padding-bottom: var(--s-4); align-items: flex-start; }
@@ -533,8 +457,6 @@
 .folder-sync-panel.is-open { display: block; }
 .sync-enable-switch.is-on { background: var(--accent); }
 .sync-enable-switch.is-on::after { transform: translateX(16px); }
-.sync-subfolder-input { font-size: var(--fs-12); font-family: var(--font-mono); padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--fg); width: 180px; outline: none; transition: border-color 0.12s; }
-.sync-subfolder-input:focus { border-color: var(--accent); }
 
 /* 项目表格 */
 
@@ -622,10 +544,6 @@
 .lib-header-row .lib-count { font-size: var(--fs-13); color: var(--muted); font-family: var(--font-mono); }
 
 /* ── 内联快速创建入口 ─── */
-.lib-quick-create:focus-within .lib-quick-create-icon,
-.lib-quick-create:hover .lib-quick-create-icon {
-  color: var(--accent);
-}
 
 /* ── 响应式断点 ─── */
 /* 窄屏(≤1200px)：AI 面板未手动展开时默认折叠为窄条 */
@@ -759,10 +677,3 @@
 .gs-roster-chip.is-auto { background: var(--accent-soft); border-color: transparent; }
 .gs-roster-auto-tag { font-size: 9px; color: var(--accent); font-weight: 500; opacity: 0.7; }
 /* 绑定态底部文本输入 / Binding state text input */
-.gs-roster-inline-add { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
-.gs-roster-inline-add input { width: 80px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-11); color: var(--fg); background: var(--surface); outline: none; transition: border-color 0.15s; }
-.gs-roster-inline-add input:focus { border-color: var(--accent); }
-.gs-roster-inline-add input::placeholder { color: var(--subtle); }
-.gs-roster-add-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; padding: 0; transition: all 0.12s; }
-.gs-roster-add-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-.gs-roster-add-btn:disabled { opacity: 0.4; cursor: default; }
