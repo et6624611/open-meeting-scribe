@@ -8,7 +8,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { fetchMe, logout as apiLogout } from '@/api/auth'
+import { fetchMe, logout as apiLogout, probeSession } from '@/api/auth'
 import type { User } from '@/api/types'
 
 export const useUserStore = defineStore('user', () => {
@@ -29,7 +29,16 @@ export const useUserStore = defineStore('user', () => {
   async function checkAuth() {
     loading.value = true
     try {
-      user.value = await fetchMe()
+      // DEF-01: 先探测会话，无会话时跳过 /auth/me，避免本地/匿名模式每页一次 401 控制台噪音。
+      // 探测返回 null（不可用/旧后端）时回退为直接请求 /auth/me，保证登录态检测不受影响。
+      // Probe the session first; skip /auth/me when there is none. null (probe
+      // unavailable) falls back to the legacy direct call so login detection is preserved.
+      const hasSession = await probeSession()
+      if (hasSession === false) {
+        user.value = null
+      } else {
+        user.value = await fetchMe()
+      }
     } catch {
       user.value = null
     } finally {

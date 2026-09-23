@@ -10,6 +10,23 @@ export async function fetchMe(): Promise<User> {
   return data
 }
 
+/**
+ * DEF-01: 探测当前是否已有会话（有效 JWT cookie 或本地用户）。
+ * 无会话时跳过 /auth/me，避免本地/匿名模式下每页一次 401 控制台噪音。
+ * 探测失败（网络异常、旧后端无 auth 字段）返回 null，调用方应回退为直接请求 /auth/me。
+ * Probe whether a session exists before calling /auth/me, so anonymous/local
+ * mode avoids a per-page 401 console error. null = probe unavailable → caller
+ * should fall back to the legacy direct /auth/me request.
+ */
+export async function probeSession(): Promise<boolean | null> {
+  try {
+    const { data } = await client.get<{ auth?: { logged_in?: boolean } }>('/api/health')
+    return typeof data?.auth?.logged_in === 'boolean' ? data.auth.logged_in : null
+  } catch {
+    return null
+  }
+}
+
 /** 登出 / Logout */
 export async function logout(): Promise<void> {
   await client.post('/auth/logout')
