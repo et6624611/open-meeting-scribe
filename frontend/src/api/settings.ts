@@ -62,6 +62,19 @@ export interface Settings {
   }
   /** 当前激活的 AI 助手角色名 / Currently active AI assistant role name */
   active_agent?: string
+  /**
+   * 计算引擎配置（PRD-LOCAL-ENGINE §9，R6 徽章双因子之一）。
+   * Compute engine config (PRD-LOCAL-ENGINE §9; factor 1 of the R6 badge).
+   * TODO(WP-B 联调 / integration): 后端 settings.engine 契约落地前为占位字段。
+   */
+  engine?: {
+    mode?: 'cloud' | 'proxy' | 'direct' | 'local'
+    local?: {
+      /** 本地引擎目录存在且模型就绪 / Local engine directory exists and models ready */
+      ready?: boolean
+      model_dir?: string
+    }
+  }
   /** 后端返回的 LLM Provider 预设列表 / LLM provider presets returned by backend */
   llm_provider_presets?: ProviderPreset[]
   [key: string]: unknown

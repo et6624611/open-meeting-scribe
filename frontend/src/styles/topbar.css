@@ -57,6 +57,20 @@
 .state-pill.is-map .pip { background: var(--warn); }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+/* ─── 全局引擎状态徽章（R6 / PRD-LOCAL-ENGINE：本地引擎 / 体验代理 / 自持 Key / 未就绪） ─── */
+.engine-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-11); font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; white-space: nowrap; flex-shrink: 0; }
+.engine-badge:hover { border-color: var(--border-strong); background: var(--surface-3, var(--surface-2)); }
+.engine-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.engine-badge .eb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--subtle); flex-shrink: 0; }
+.engine-badge.is-local { color: var(--ok); border-color: oklch(from var(--ok) l c h / 0.25); background: var(--ok-soft); }
+.engine-badge.is-local .eb-dot { background: var(--ok); }
+.engine-badge.is-proxy { color: var(--accent); border-color: var(--accent-mid); background: var(--accent-soft); }
+.engine-badge.is-proxy .eb-dot { background: var(--accent); }
+.engine-badge.is-selfkey { color: var(--fg); }
+.engine-badge.is-selfkey .eb-dot { background: var(--muted); }
+.engine-badge.is-unready { color: var(--warn); border-color: oklch(from var(--warn) l c h / 0.3); background: var(--warn-soft); }
+.engine-badge.is-unready .eb-dot { background: var(--warn); animation: blink 1.2s ease-in-out infinite; }
+
 /* ─── 新建按钮（基础样式已迁移至 hotwords.css） ── */
 .topbar-new-btn.is-disabled { opacity: 0.6; cursor: pointer; }
 .topbar-new-btn.is-disabled svg { opacity: 0.7; }

@@ -16,6 +16,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
         {{ t('settings.cat_services') }}
       </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'engine' }" @click="activeCategory = 'engine'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
+        {{ t('settings.cat_engine') }}
+      </button>
       <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'transcription' }" @click="activeCategory = 'transcription'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
         {{ t('settings.cat_transcription') }}
@@ -262,6 +266,88 @@
         <label class="settings-label">{{ t('settings.voiceprint_cloud_api_key') }}</label>
         <input v-model="settings.voiceprint!.cloud_api_key" type="password" class="settings-input" :placeholder="t('settings.voiceprint_cloud_api_key_placeholder')" />
       </div>
+    </div>
+    </div>
+
+    <!-- ═══ 计算引擎 / Compute engine（R6：引擎状态透明 + 数据流向矩阵；D-R2：管理员级配置） ═══ -->
+    <div v-show="activeCategory === 'engine'">
+    <!-- 引擎状态 / Engine status -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.engine_status') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.engine_status_desc') }}</p>
+      <div class="engine-status-panel">
+        <div class="engine-status-row">
+          <span class="engine-status-label">{{ t('settings.engine_current') }}</span>
+          <span class="engine-badge" :class="`is-${engineStore.badge}`"><span class="eb-dot"></span><span class="eb-label">{{ t(`topbar.engine_badge_${engineStore.badge}`) }}</span></span>
+        </div>
+        <div class="engine-status-row">
+          <span class="engine-status-label">{{ t('settings.engine_mode') }}</span>
+          <span class="engine-status-value">{{ engineStore.status ? t(`settings.engine_mode_${engineStore.status.mode}`) : '—' }}</span>
+        </div>
+        <div class="engine-status-row">
+          <span class="engine-status-label">{{ t('settings.engine_local_ready') }}</span>
+          <span class="engine-status-value" :class="engineStore.status?.local_ready ? 'is-ok' : 'is-warn'">
+            {{ engineStore.status?.local_ready ? t('settings.engine_local_ready_yes') : t('settings.engine_local_ready_no') }}
+          </span>
+        </div>
+
+        <!-- D-R2：管理员可编辑引擎模式；普通用户只读 / D-R2: admin can edit engine mode; regular users read-only -->
+        <template v-if="userStore.isAdmin">
+          <div class="engine-status-row">
+            <span class="engine-status-label">{{ t('settings.engine_mode_switch') }}</span>
+            <select v-model="engineModeDraft" class="settings-input engine-mode-select">
+              <option value="proxy">{{ t('settings.engine_mode_proxy') }}</option>
+              <option value="direct">{{ t('settings.engine_mode_direct') }}</option>
+              <option value="local">{{ t('settings.engine_mode_local') }}</option>
+            </select>
+            <button class="btn btn-primary btn-sm" @click="onSaveEngineMode" :disabled="engineSaving || engineModeDraft === engineStore.status?.mode">
+              {{ engineSaving ? t('settings.engine_saving') : t('settings.save') }}
+            </button>
+          </div>
+          <p v-if="engineSaveMessage" class="engine-save-msg" :class="{ 'is-error': engineSaveError }">{{ engineSaveMessage }}</p>
+        </template>
+        <p v-else class="engine-readonly-hint">{{ t('settings.engine_admin_only') }}</p>
+      </div>
+
+      <!-- dev 四态手工切换（仅开发模式，验证 R6 徽章用） / Dev-only four-state switch (verification aid) -->
+      <div v-if="isDev" class="engine-dev-panel">
+        <span class="engine-dev-label">DEV {{ t('settings.engine_dev_override') }}</span>
+        <div class="engine-dev-btns">
+          <button v-for="s in ENGINE_BADGE_STATES" :key="s" class="theme-chip" :class="{ 'is-active': engineStore.devOverride === s }" @click="engineStore.setDevOverride(engineStore.devOverride === s ? null : s)">
+            {{ t(`topbar.engine_badge_${s}`) }}
+          </button>
+          <button class="theme-chip" :class="{ 'is-active': !engineStore.devOverride }" @click="engineStore.setDevOverride(null)">{{ t('settings.engine_dev_auto') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 数据处理流向矩阵 / Data flow matrix -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.engine_matrix_title') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.engine_matrix_desc') }}</p>
+      <div class="engine-matrix-wrap">
+        <table class="engine-matrix">
+          <thead>
+            <tr>
+              <th class="em-corner">{{ t('settings.engine_matrix_corner') }}</th>
+              <th v-for="col in MATRIX_COLS" :key="col" :class="`is-${col}`">
+                <span class="em-col-name">{{ t(`settings.engine_col_${col}`) }}</span>
+                <span class="em-col-sub">{{ t(`settings.engine_col_${col}_sub`) }}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in MATRIX_ROWS" :key="row">
+              <th class="em-row-name">{{ t(`settings.engine_row_${row}`) }}</th>
+              <td v-for="col in MATRIX_COLS" :key="col">
+                <span class="em-tag" :class="`is-${MATRIX_TAGS[row][col]}`">{{ t(`settings.engine_tag_${MATRIX_TAGS[row][col]}`) }}</span>
+                <span class="em-cell">{{ t(`settings.engine_cell_${row}_${col}`) }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="engine-matrix-note">{{ t('settings.engine_matrix_note') }}</p>
     </div>
     </div>
 
@@ -684,10 +770,14 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useThemeStore, THEMES } from '@/stores/theme'
 import { useWatermarkStore } from '@/stores/watermark'
 import { useTaskStore } from '@/stores/task'
+import { useEngineStore } from '@/stores/engine'
+import type { EngineBadgeState } from '@/stores/engine'
+import type { EngineMode } from '@/api/engine'
 import { fetchSettings, saveSettings, testApiConnection, fetchCliReference } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory, updateUserPrefs } from '@/api/usage'
@@ -703,10 +793,12 @@ import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
 const { t } = useI18n()
 const { goBack } = usePageBack()
+const route = useRoute()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const watermarkStore = useWatermarkStore()
 const taskStore = useTaskStore()
+const engineStore = useEngineStore()
 
 // 版本检查 / Version check
 const {
@@ -784,8 +876,52 @@ watch(selectedDevice, async (newVal) => {
   }
 })
 
-/** 当前选中的设置类别 / Currently selected settings category */
-const activeCategory = ref<string>('account')
+/** 当前选中的设置类别（支持 ?cat= 深链，如顶栏引擎徽章跳转） / Active settings category (supports ?cat= deep link, e.g. from top bar engine badge) */
+const SETTINGS_CATEGORIES = ['account', 'services', 'engine', 'transcription', 'appearance', 'features', 'system']
+const queryCat = typeof route.query.cat === 'string' ? route.query.cat : ''
+const activeCategory = ref<string>(SETTINGS_CATEGORIES.includes(queryCat) ? queryCat : 'account')
+
+// ─── 计算引擎（R6 / D-R2） / Compute engine (R6 / D-R2) ───
+const isDev = import.meta.env.DEV
+const ENGINE_BADGE_STATES: EngineBadgeState[] = ['local', 'proxy', 'selfkey', 'unready']
+
+/** 流向矩阵：4 类数据 × 3 引擎；tag 决定单元格流向标 / Flow matrix: 4 data kinds × 3 engines; tag drives the cell flow label */
+const MATRIX_ROWS = ['audio', 'transcript', 'voiceprint', 'llm_context'] as const
+const MATRIX_COLS = ['local', 'proxy', 'selfkey'] as const
+const MATRIX_TAGS: Record<(typeof MATRIX_ROWS)[number], Record<(typeof MATRIX_COLS)[number], string>> = {
+  audio:      { local: 'stay',     proxy: 'proxy',    selfkey: 'cloud' },
+  transcript: { local: 'stay',     proxy: 'proxy',    selfkey: 'cloud' },
+  voiceprint: { local: 'stay',     proxy: 'proxy',    selfkey: 'endpoint' },
+  llm_context:{ local: 'endpoint', proxy: 'proxy',    selfkey: 'endpoint' },
+}
+
+const engineModeDraft = ref<EngineMode>('proxy')
+const engineSaving = ref(false)
+const engineSaveMessage = ref('')
+const engineSaveError = ref(false)
+
+async function onSaveEngineMode() {
+  engineSaving.value = true
+  engineSaveMessage.value = ''
+  try {
+    // TODO(WP-B 联调 / integration): 后端 settings.engine 契约落地后确认字段名与生效逻辑（切 local 需就绪校验）。
+    // Confirm field names and activation logic once the backend engine contract lands (switching to local requires readiness check).
+    await saveSettings({ engine: { mode: engineModeDraft.value } })
+    engineStore.applyMode(engineModeDraft.value)
+    engineSaveMessage.value = t('settings.engine_saved')
+    engineSaveError.value = false
+  } catch (e) {
+    console.error('[engine] save mode failed:', e)
+    engineSaveMessage.value = t('settings.engine_save_failed')
+    engineSaveError.value = true
+  } finally {
+    engineSaving.value = false
+  }
+}
+
+watch(() => engineStore.status?.mode, (mode) => {
+  if (mode) engineModeDraft.value = mode
+}, { immediate: true })
 
 // ─── 水印氛围 / Watermark ambiance ───
 const wmEnabled = computed(() => watermarkStore.enabled)
@@ -1152,6 +1288,7 @@ onMounted(async () => {
   loadStorageUsage()
   updateLoadCurrentVersion()
   loadDevices()
+  engineStore.load()
 })
 
 async function loadUsage() {
@@ -1279,6 +1416,40 @@ async function loadCliReference() {
 .version-msg { font-size: 12px; color: var(--accent); font-weight: 500; }
 .version-msg.is-error { color: var(--error); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ─── 计算引擎（R6） / Compute engine (R6) ─── */
+.engine-status-panel { display: flex; flex-direction: column; gap: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-4); background: var(--surface-2); }
+.engine-status-row { display: flex; align-items: center; gap: var(--s-3); font-size: 13px; flex-wrap: wrap; }
+.engine-status-label { color: var(--muted); min-width: 96px; }
+.engine-status-value { font-weight: 500; color: var(--fg); }
+.engine-status-value.is-ok { color: var(--ok); }
+.engine-status-value.is-warn { color: var(--warn); }
+.engine-mode-select { max-width: 220px; padding: 4px 8px; font-size: 12px; }
+.engine-save-msg { font-size: 12px; color: var(--accent); margin: 0; font-weight: 500; }
+.engine-save-msg.is-error { color: var(--error); }
+.engine-readonly-hint { font-size: 12px; color: var(--subtle); margin: 0; }
+.engine-dev-panel { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); padding: var(--s-2) var(--s-3); border: 1px dashed var(--border-strong); border-radius: var(--radius); flex-wrap: wrap; }
+.engine-dev-label { font-family: var(--font-mono); font-size: 11px; color: var(--warn); text-transform: uppercase; letter-spacing: 0.04em; }
+.engine-dev-btns { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.engine-matrix-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.engine-matrix { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 640px; }
+.engine-matrix th, .engine-matrix td { padding: var(--s-3); text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.engine-matrix th:last-child, .engine-matrix td:last-child { border-right: none; }
+.engine-matrix thead th { background: var(--surface-2); font-weight: 600; }
+.engine-matrix tbody tr:last-child th, .engine-matrix tbody tr:last-child td { border-bottom: none; }
+.engine-matrix .em-corner { font-size: 11px; color: var(--subtle); font-weight: 500; }
+.engine-matrix .em-col-name { display: block; font-size: 13px; color: var(--fg); }
+.engine-matrix .em-col-sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+.engine-matrix thead th.is-local .em-col-name { color: var(--ok); }
+.engine-matrix .em-row-name { font-weight: 500; color: var(--fg); background: var(--surface); min-width: 96px; }
+.engine-matrix td { color: var(--muted); line-height: 1.5; }
+.em-tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-bottom: 4px; letter-spacing: 0.02em; }
+.em-tag.is-stay { color: var(--ok); background: var(--ok-soft); border: 1px solid oklch(from var(--ok) l c h / 0.25); }
+.em-tag.is-proxy { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-mid); }
+.em-tag.is-cloud { color: var(--fg); background: var(--surface-2); border: 1px solid var(--border-strong); }
+.em-tag.is-endpoint { color: var(--warn); background: var(--warn-soft); border: 1px solid oklch(from var(--warn) l c h / 0.3); }
+.em-cell { display: block; }
+.engine-matrix-note { font-size: 12px; color: var(--muted); margin: var(--s-3) 0 0; padding-left: var(--s-3); border-left: 2px solid var(--accent-mid); line-height: 1.6; }
 
 
 </style>

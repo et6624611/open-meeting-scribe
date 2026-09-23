@@ -17,6 +17,8 @@ export const useUserStore = defineStore('user', () => {
   const checked = ref(false) // 是否已完成首次检测 / Whether initial check is complete
 
   const isLoggedIn = computed(() => !!user.value)
+  /** 管理员判定（复用 /auth/me 返回的 role 字段；引擎设置等管理员级配置用，D-R2） / Admin check (reuses role field from /auth/me; for admin-level config like engine settings, D-R2) */
+  const isAdmin = computed(() => user.value?.role === 'admin')
   const displayName = computed(() => user.value?.name || '未登录')
   const avatarLetter = computed(() => {
     const name = user.value?.name || ''
@@ -46,5 +48,5 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
   }
 
-  return { user, loading, checked, isLoggedIn, displayName, avatarLetter, checkAuth, logout }
+  return { user, loading, checked, isLoggedIn, isAdmin, displayName, avatarLetter, checkAuth, logout }
 })
