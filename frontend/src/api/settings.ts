@@ -16,6 +16,32 @@ export interface ProviderPreset {
   name: string
   base_url: string
   models: string[]
+  /** 本地端点 Key 可留空（R4） / Key optional for local endpoints */
+  key_optional?: boolean
+  /** 是否本机端点（localhost/127.0.0.1） / Whether this is a localhost endpoint */
+  localhost?: boolean
+}
+
+/** 单个本地引擎探测结果 / One local-engine probe result */
+export interface LocalEngineProbe {
+  key: string
+  name: string
+  base_url: string
+  install_url: string
+  reachable: boolean
+  models: string[]
+  model_count: number
+  /** unreachable / timeout / http_error / invalid_response / ''（可达且正常） */
+  error_code: string
+}
+
+/** 本地引擎探测响应 / Local-engine probe response */
+export interface LocalEngineProbeResult {
+  ok: boolean
+  probed_at: number
+  timeout_seconds: number
+  engines: LocalEngineProbe[]
+  detected: string[]
 }
 
 export interface Settings {
@@ -96,6 +122,15 @@ export async function testApiConnection(params?: { service_type?: string; asr?: 
 
 export async function fetchModels(): Promise<{ asr: string[]; llm: string[] }> {
   const { data } = await client.get('/api/models')
+  return data
+}
+
+/**
+ * 探测本机 Ollama / LM Studio（仅 localhost，超时 ≤2s）。
+ * Probe local Ollama / LM Studio (localhost only, ≤2s timeout).
+ */
+export async function probeLocalEngine(): Promise<LocalEngineProbeResult> {
+  const { data } = await client.get<LocalEngineProbeResult>('/api/settings/probe-local-engine')
   return data
 }
 

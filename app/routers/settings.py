@@ -690,6 +690,114 @@ def _test_llm_fail(error_code: str, error: str, warning: str | None = None) -> d
     return result
 
 
+# ============================================================
+# 本地引擎自动探测（R4 / WP-A，PRD §7.2-4） / Local engine auto-probe
+# ============================================================
+
+# PRD §7.2-4：探测超时 ≤2s / Probe timeout must be ≤2s
+PROBE_TIMEOUT_SECONDS = 2
+
+# 探测目标固定为本机 Ollama / LM Studio 的 OpenAI 兼容 /v1/models 端点。
+# 硬编码 localhost，绝不接受外部输入 → 无 SSRF 面（PRD：探测仅访问 localhost，不计作出网）。
+# Hardcoded localhost targets only; never user-supplied → no SSRF surface.
+LOCAL_ENGINE_PROBE_TARGETS = [
+    {
+        "key": "ollama",
+        "name": "Ollama（本地）",
+        "base_url": "http://localhost:11434/v1",
+        "models_url": "http://localhost:11434/v1/models",
+        "install_url": "https://ollama.com/download",
+    },
+    {
+        "key": "lmstudio",
+        "name": "LM Studio（本地）",
+        "base_url": "http://localhost:1234/v1",
+        "models_url": "http://localhost:1234/v1/models",
+        "install_url": "https://lmstudio.ai/",
+    },
+]
+
+
+def _probe_one_engine(target: dict) -> dict:
+    """探测单个本地引擎的 /v1/models（OpenAI 兼容），返回可达性与已拉取模型列表。
+    Probe one local engine's /v1/models; returns reachability + pulled model list.
+    """
+    base = {
+        "key": target["key"],
+        "name": target["name"],
+        "base_url": target["base_url"],
+        "install_url": target["install_url"],
+    }
+    # 防御性断言：探测目标必须是 localhost / Defensive: target must be localhost
+    if not is_localhost_base_url(target["base_url"]):
+        return {**base, "reachable": False, "models": [], "model_count": 0, "error_code": "non_local_target"}
+
+    try:
+        resp = requests.get(target["models_url"], timeout=PROBE_TIMEOUT_SECONDS)
+    except requests.exceptions.Timeout:
+        return {**base, "reachable": False, "models": [], "model_count": 0, "error_code": "timeout"}
+    except requests.exceptions.ConnectionError:
+        return {**base, "reachable": False, "models": [], "model_count": 0, "error_code": "unreachable"}
+    except Exception:
+        return {**base, "reachable": False, "models": [], "model_count": 0, "error_code": "unreachable"}
+
+    if resp.status_code != 200:
+        return {**base, "reachable": False, "models": [], "model_count": 0, "error_code": "http_error"}
+
+    try:
+        payload = resp.json()
+    except Exception:
+        # 端口可达但非 OpenAI 兼容响应 / Reachable but not an OpenAI-compatible response
+        return {**base, "reachable": True, "models": [], "model_count": 0, "error_code": "invalid_response"}
+
+    raw = payload.get("data") if isinstance(payload, dict) else None
+    models = [m["id"] for m in (raw or []) if isinstance(m, dict) and m.get("id")]
+    return {**base, "reachable": True, "models": models, "model_count": len(models), "error_code": ""}
+
+
+@router.get("/api/settings/probe-local-engine")
+def probe_local_engine():
+    """
+    本地引擎自动探测（PRD §7.2-4） / Local engine auto-probe.
+
+    进入设置页时调用：并发探测本机 Ollama（:11434）与 LM Studio（:1234）的
+    OpenAI 兼容 /v1/models 端点，单个超时 ≤2s。仅访问 localhost，不计作出网。
+    返回每个引擎的可达性与已拉取模型列表，供前端置「已检测到」标记、回填 model 下拉、
+    不可达时置灰并给安装指引。
+    """
+    import concurrent.futures
+
+    engines: list[dict] = []
+    # 并发探测，整体上限 ≈ 单探测超时（2s），避免设置页进入时串行等待 4s
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(LOCAL_ENGINE_PROBE_TARGETS)) as pool:
+        futures = {pool.submit(_probe_one_engine, t): t for t in LOCAL_ENGINE_PROBE_TARGETS}
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                engines.append(fut.result())
+            except Exception as e:  # 探测体已自兜底，此处双保险 / Probe already guards; double safety
+                t = futures[fut]
+                engines.append({
+                    "key": t["key"], "name": t["name"], "base_url": t["base_url"],
+                    "install_url": t["install_url"], "reachable": False, "models": [],
+                    "model_count": 0, "error_code": "probe_error",
+                })
+                logger.warning(f"[本地引擎探测] {t['key']} 异常: {e}")
+
+    # 按 LOCAL_ENGINE_PROBE_TARGETS 顺序稳定排序 / Stable order matching target list
+    order = {t["key"]: i for i, t in enumerate(LOCAL_ENGINE_PROBE_TARGETS)}
+    engines.sort(key=lambda e: order.get(e["key"], 99))
+
+    detected = [e["key"] for e in engines if e["reachable"]]
+    logger.info(f"[本地引擎探测] 完成: 检测到 {detected or '无'}")
+    return {
+        "ok": True,
+        "probed_at": time.time(),
+        "timeout_seconds": PROBE_TIMEOUT_SECONDS,
+        "engines": engines,
+        "detected": detected,
+    }
+
+
 # CLI 命令参考（供前端展示与其他 Agent 工具调用） / CLI command reference
 CLI_REFERENCE = {
     "server": "python cli.py server --host 127.0.0.1 --port 8000",

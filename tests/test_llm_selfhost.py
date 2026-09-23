@@ -113,6 +113,10 @@ class _FakeResponse:
     def json(self):
         return json.loads(self.text or "{}")
 
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
+
 
 @pytest.fixture
 def client():
@@ -296,3 +300,130 @@ class TestSaveSettingsLocalhost:
         names = [p["name"] for p in data["llm_provider_presets"]]
         assert "Ollama（本地）" in names
         assert "LM Studio（本地）" in names
+
+
+# ============================================================
+# GET /api/settings/probe-local-engine（R4 / PRD §7.2-4）
+# ============================================================
+
+class TestProbeLocalEngine:
+    def test_detects_ollama_only(self, client, monkeypatch):
+        def fake_get(url, timeout=None, **kwargs):
+            if "11434" in url:
+                return _FakeResponse(200, json.dumps({"data": [{"id": "qwen3:8b"}, {"id": "llama3.1:8b"}]}))
+            raise requests.exceptions.ConnectionError("refused")
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        resp = client.get("/api/settings/probe-local-engine")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        by_key = {e["key"]: e for e in data["engines"]}
+        assert by_key["ollama"]["reachable"] is True
+        assert by_key["ollama"]["models"] == ["qwen3:8b", "llama3.1:8b"]
+        assert by_key["ollama"]["model_count"] == 2
+        assert by_key["lmstudio"]["reachable"] is False
+        assert by_key["lmstudio"]["error_code"] == "unreachable"
+        assert data["detected"] == ["ollama"]
+        # 安装指引链接随不可达引擎返回，供前端渲染 / Install guide returned for the UI
+        assert by_key["lmstudio"]["install_url"]
+
+    def test_probe_timeout_is_2s(self, client, monkeypatch):
+        captured = []
+
+        def fake_get(url, timeout=None, **kwargs):
+            captured.append(timeout)
+            raise requests.exceptions.Timeout()
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        resp = client.get("/api/settings/probe-local-engine")
+        data = resp.json()
+        assert data["timeout_seconds"] == 2
+        assert captured and all(t == 2 for t in captured)
+        assert all(e["error_code"] == "timeout" for e in data["engines"])
+        assert data["detected"] == []
+
+    def test_probe_only_touches_localhost(self, client, monkeypatch):
+        """探测仅访问 localhost（不计作出网）/ Probe only hits localhost."""
+        seen = []
+
+        def fake_get(url, timeout=None, **kwargs):
+            seen.append(url)
+            return _FakeResponse(200, json.dumps({"data": []}))
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        client.get("/api/settings/probe-local-engine")
+        assert seen, "应至少探测一个目标"
+        for u in seen:
+            assert is_localhost_base_url(u.replace("/models", "")) or "localhost" in u or "127.0.0.1" in u
+
+    def test_probe_invalid_json_marks_reachable(self, client, monkeypatch):
+        def fake_get(url, timeout=None, **kwargs):
+            return _FakeResponse(200, "not-json")
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        data = client.get("/api/settings/probe-local-engine").json()
+        by_key = {e["key"]: e for e in data["engines"]}
+        # 端口可达但响应非 OpenAI 兼容 / Reachable but non-compatible payload
+        assert by_key["ollama"]["reachable"] is True
+        assert by_key["ollama"]["error_code"] == "invalid_response"
+        assert by_key["ollama"]["models"] == []
+
+    def test_probe_http_error(self, client, monkeypatch):
+        def fake_get(url, timeout=None, **kwargs):
+            return _FakeResponse(500, "boom")
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        data = client.get("/api/settings/probe-local-engine").json()
+        assert all(e["reachable"] is False and e["error_code"] == "http_error" for e in data["engines"])
+
+
+# ============================================================
+# R4 验收：配置本地端点后，纪要请求仅发往 localhost（不回退云端）
+# ============================================================
+
+class TestLocalhostNoCloudFallback:
+    def test_chat_completion_goes_to_localhost_not_cloud(self, tmp_path, monkeypatch):
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {"base_url": "http://localhost:11434/v1", "api_key": "", "model": "qwen3:8b"},
+        }), encoding="utf-8")
+        monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+        # 云端可用 + 用户偏好订阅，均不得触发回退 / Cloud available + subscription pref must not trigger fallback
+        monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: True, raising=False)
+
+        def _boom(*a, **k):
+            raise AssertionError("localhost 端点不得走云端代理")
+
+        monkeypatch.setattr("core.cloud_client.cloud_llm_chat", _boom, raising=False)
+
+        posted = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None, **kwargs):
+            posted["url"] = url
+            posted["headers"] = headers or {}
+            return _FakeResponse(200, '{"choices":[{"message":{"content":"纪要"}}]}')
+
+        from core import llm as llm_mod
+        monkeypatch.setattr(llm_mod.requests, "post", fake_post)
+        out = llm_mod.chat_completion([{"role": "user", "content": "hi"}], model="qwen3:8b")
+        assert out == "纪要"
+        assert posted["url"].startswith("http://localhost:11434/v1")
+        # 空 Key 不携带 Authorization / Empty key sends no Authorization
+        assert "Authorization" not in posted["headers"]
+
+    def test_should_use_cloud_false_even_with_subscription_pref(self, tmp_path, monkeypatch):
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({
+            "llm": {"base_url": "http://127.0.0.1:1234/v1", "api_key": "", "model": "x"},
+        }), encoding="utf-8")
+        monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: True, raising=False)
+        monkeypatch.setattr(
+            "core.users.get_current_user",
+            lambda: {"id": "u1", "quota": 100, "prefs": {"prefer_subscription": True}},
+            raising=False,
+        )
+        from core import llm as llm_mod
+        assert llm_mod._should_use_cloud() is False
