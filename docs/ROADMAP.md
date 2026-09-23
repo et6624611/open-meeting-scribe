@@ -142,8 +142,14 @@ status: published
   - WP-A（R4 LLM 自接增强）✅ `c2a1272` 等；含 §7.2-4/5 本地引擎自动探测与状态栏三态
   - WP-B R5（模型下载器 + 常驻引擎子进程后端）✅ `c05c198`；WP-B R6（引擎徽章 + 数据流向矩阵 UI，D-R2 管理员级）✅ `d30ddee`
   - WP-C（AC-2 评测体系）✅ `830ddc1..cf6f0e7`——本地 vs 云 WER、多说话人 DER、LLM 规格实验（推荐 qwen3:8b、下限 4b）；发现并修复 AC-6 跨端 CMN 缺陷 ✅ `0788390`（回归 PASS：跨端 cos 1.0、EER 0）
-  - WP-D（Windows 冻结 CI + AC-7 云包体积守护）✅ `feed200`
-- **剩余范围**：R1/R2 主干接线（`_handle_infer` 落地 + 热词映射必配项）、R3 声纹离线化链路、R7 打包首启引导、AC-1 断网闭环 / AC-4 可回退真机验收（mac + Win）
+  - WP-D（Windows 冻结 CI + AC-7 云包体积守护）✅ `feed200` ⚠️ 2026-09-24 更正：其 workflow 实际从未跑绿，见下方「已知缺陷」
+- **第二轮派工（2026-09-24，经项目方批准推送）**：
+  - WP-E（R1/R2 主干接线 + R3 声纹离线化 + AC-4 分类化回退 `LocalEngineError(can_fallback_cloud)`）✅ `20dee6d..74a1281`：27 例契约/回退打桩，HEAD 全量回归 260 passed
+  - WP-F（R5 模型管理前端 UI：清单/下载/引导弹窗/降级横幅）✅ `aaaaa958`
+- **WP-G 派工（2026-09-24）**：R8 打包首启引导——onedir 冻结代码包 + 外置引擎目录分离（D-R3）、Windows Inno Setup「本地引擎组件」可选安装、冻结应用内首启引导接 WP-F UI、CI 增 local 链路冒烟（替身权重，禁真实下载）。依赖：无新决策阻塞；Windows 侧 AC-1 真机验收依赖本包产物
+- **真机断网验收（与 WP-G 并行，macOS 先行）**：Spike venv + 真实权重，AC-1/2/3/6 清单见 WP-E 测试 docstring；重点 = 真实 WER/耗时（AC-2/3）、ct-punc 缺省下标点降级、AC-1 抓包白名单（顺带产出 AC-5 一致性证据）。若 ct-punc 降级不可接受 → 触发「可选转必装 ≈3.0GB 超 AC-3 预算需评审」或「接受降级 + 文档标注」决策，先实测后议
+- **已知缺陷（登记待查）**：`ci-local-engine.yml` 全部 4 次运行 0s 失败（"workflow file issue"，jobs 未创建；本地 YAML 解析无误），主 CI（ubuntu）不受影响。后果 = AC-7 体积守护与 Windows 冻结冒烟当前无 CI 覆盖，WP-D 验收项「Windows CI 绿灯」存疑待复核。疑似方向 = 私有仓库 Windows metered 额度 / 账号侧 runner 配额或 workflow 校验失败；派 WP-D owner 排查
+- **剩余范围**：R8 打包首启引导（WP-G）、AC-1 断网闭环 / AC-4 可回退真机验收（mac + Win）
 - **D-R4 让渡清单（2026-09-24 项目方口头授权"听你的/继续"暂定采纳，待正式批准）**：建议让渡——v7 产品介绍页、v8 移动端消息流、BACKLOG 中期/长期分离优化项（M2/M3/L1-L3）；不让渡——进行中的笔记/决策流/知识库 WIP 与在途缺陷修复（与 v10 无资源冲突，可并行）
 
 ## 待定 / 想法池
