@@ -580,7 +580,11 @@ if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
     # 挂载 Vite 构建的静态资源（带 hash 的文件） / Mount Vite build static assets (hashed files)
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="frontend_assets")
 
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    # OBS-01: 显式注册 HEAD，使 HEAD / 与 GET / 返回相同 content-type
+    # （FastAPI 的 @app.get 不像 Starlette Route 那样自动附带 HEAD）/
+    # Register HEAD explicitly so HEAD / matches this route with the same
+    # content-type as GET (FastAPI's @app.get does not auto-add HEAD).
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def frontend_catch_all(full_path: str):
         """Vue Router history 模式：所有非 API 路由返回 index.html / Vue Router history mode: all non-API routes return index.html."""
         # 跳过 API 和 WebSocket 路径 / Skip API and WebSocket paths
@@ -611,7 +615,8 @@ else:
     # ensuring F5 refresh on subpages like /settings, /library does not hit the 404 JSON.
     _LEGACY_INDEX = STATIC_DIR / "index.html"
 
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    # OBS-01: 同上，显式注册 HEAD / Same as above: register HEAD explicitly
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def legacy_frontend_catch_all(full_path: str):
         """旧版 SPA catch-all：非 API 路径返回 app/static/index.html。
         Legacy SPA catch-all: non-API paths return app/static/index.html.
