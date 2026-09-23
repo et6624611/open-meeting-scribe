@@ -1,0 +1,86 @@
+[
+ {
+  "name": "廖书豪",
+  "clips": [
+   {
+    "role": "enroll",
+    "path": ".eval_local_engine/audio/vp/廖书豪_enroll.wav",
+    "begin_ms": 5070580,
+    "seconds": 30,
+    "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+   },
+   {
+    "role": "test",
+    "path": ".eval_local_engine/audio/vp/廖书豪_test.wav",
+    "begin_ms": 334460,
+    "seconds": 30,
+    "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+   }
+  ]
+ },
+ {
+  "name": "赵里海",
+  "clips": [
+   {
+    "role": "enroll",
+    "path": ".eval_local_engine/audio/vp/赵里海_enroll.wav",
+    "begin_ms": 4285560,
+    "seconds": 30,
+    "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+   },
+   {
+    "role": "test",
+    "path": ".eval_local_engine/audio/vp/赵里海_test.wav",
+    "begin_ms": 4256480,
+    "seconds": 26.7,
+    "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+   }
+  ]
+ },
+ {
+  "name": "王永亮",
+  "clips": [
+   {
+    "role": "enroll",
+    "path": ".eval_local_engine/audio/vp/王永亮_enroll.wav",
+    "begin_ms": 2223040,
+    "seconds": 30,
+    "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+   },
+   {
+    "role": "test",
+    "path": ".eval_local_engine/audio/vp/王永亮_test.wav",
+    "begin_ms": 317660,
+    "seconds": 30,
+    "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+   }
+  ]
+ },
+ {
+  "name": "张天雷",
+  "clips": [
+   {
+    "role": "enroll",
+    "path": ".eval_local_engine/audio/vp/张天雷_enroll.wav",
+    "begin_ms": 106360,
+    "seconds": 30,
+    "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+   },
+   {
+    "role": "test",
+    "path": ".eval_local_engine/audio/vp/张天雷_test.wav",
+    "begin_ms": 40220,
+    "seconds": 30,
+    "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+   }
+  ]
+ },
+ {
+  "name": "郑思",
+  "clips": []
+ },
+ {
+  "name": "任亚单",
+  "clips": []
+ }
+]

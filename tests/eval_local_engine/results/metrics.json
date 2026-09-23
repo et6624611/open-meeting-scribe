@@ -1,0 +1,265 @@
+{
+ "SEG-2P": {
+  "segment": "SEG-2P",
+  "expected_speakers": 2,
+  "speakers_detected_local": 2,
+  "speakers_detected_cloud": 2,
+  "local_infer_seconds": 27.4,
+  "local_rtf": 0.0761,
+  "cloud_elapsed_seconds": 16.5,
+  "cer_local_vs_cloudref": {
+   "ref_chars": 1860,
+   "hyp_chars": 1875,
+   "edits": 136,
+   "sub": 79,
+   "ins": 36,
+   "del": 21,
+   "cer": 0.0731
+  },
+  "cer_cloud_vs_localref": {
+   "ref_chars": 1875,
+   "hyp_chars": 1860,
+   "edits": 136,
+   "sub": 79,
+   "ins": 21,
+   "del": 36,
+   "cer": 0.0725
+  },
+  "cer_local_vs_consensus": {
+   "ref_chars": 1860,
+   "hyp_chars": 1875,
+   "edits": 136,
+   "sub": 79,
+   "ins": 36,
+   "del": 21,
+   "cer": 0.0731
+  },
+  "cer_cloud_vs_consensus": {
+   "ref_chars": 1860,
+   "hyp_chars": 1860,
+   "edits": 0,
+   "sub": 0,
+   "ins": 0,
+   "del": 0,
+   "cer": 0.0
+  },
+  "consensus_uncertain_sentences": 53,
+  "der_local_vs_cloud_pseudoref": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 2,
+   "hyp_speakers": 2,
+   "label_map_hyp_to_ref": {
+    "0": "0",
+    "1": "1"
+   },
+   "ref_speech_seconds": 356.6,
+   "miss_seconds": 23.4,
+   "false_alarm_seconds": 2.1,
+   "confusion_seconds": 5.2,
+   "der": 0.0861,
+   "frame_agreement_on_ref_speech": 0.9198
+  },
+  "der_local_vs_hist_timeline": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 2,
+   "hyp_speakers": 2,
+   "label_map_hyp_to_ref": {
+    "0": "廖书豪",
+    "1": "说话人5"
+   },
+   "ref_speech_seconds": 357.3,
+   "miss_seconds": 23.4,
+   "false_alarm_seconds": 1.4,
+   "confusion_seconds": 32.0,
+   "der": 0.1592,
+   "frame_agreement_on_ref_speech": 0.8448
+  },
+  "hist_timeline_speakers": 2,
+  "cer_local_vs_cloudref_hotword_applied": {
+   "ref_chars": 1860,
+   "hyp_chars": 1875,
+   "edits": 136,
+   "sub": 79,
+   "ins": 36,
+   "del": 21,
+   "cer": 0.0731
+  }
+ },
+ "SEG-4P": {
+  "segment": "SEG-4P",
+  "expected_speakers": 4,
+  "speakers_detected_local": 3,
+  "speakers_detected_cloud": 7,
+  "local_infer_seconds": 24.8,
+  "local_rtf": 0.0689,
+  "cloud_elapsed_seconds": 13.7,
+  "cer_local_vs_cloudref": {
+   "ref_chars": 1266,
+   "hyp_chars": 1314,
+   "edits": 243,
+   "sub": 153,
+   "ins": 69,
+   "del": 21,
+   "cer": 0.1919
+  },
+  "cer_cloud_vs_localref": {
+   "ref_chars": 1314,
+   "hyp_chars": 1266,
+   "edits": 243,
+   "sub": 153,
+   "ins": 21,
+   "del": 69,
+   "cer": 0.1849
+  },
+  "cer_local_vs_consensus": {
+   "ref_chars": 1276,
+   "hyp_chars": 1314,
+   "edits": 243,
+   "sub": 163,
+   "ins": 59,
+   "del": 21,
+   "cer": 0.1904
+  },
+  "cer_cloud_vs_consensus": {
+   "ref_chars": 1276,
+   "hyp_chars": 1266,
+   "edits": 10,
+   "sub": 0,
+   "ins": 0,
+   "del": 10,
+   "cer": 0.0078
+  },
+  "consensus_uncertain_sentences": 59,
+  "der_local_vs_cloud_pseudoref": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 7,
+   "hyp_speakers": 3,
+   "label_map_hyp_to_ref": {
+    "0": "0",
+    "1": "2",
+    "2": "3"
+   },
+   "ref_speech_seconds": 269.0,
+   "miss_seconds": 32.7,
+   "false_alarm_seconds": 11.3,
+   "confusion_seconds": 82.1,
+   "der": 0.4688,
+   "frame_agreement_on_ref_speech": 0.573
+  },
+  "der_local_vs_hist_timeline": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 4,
+   "hyp_speakers": 3,
+   "label_map_hyp_to_ref": {
+    "0": "廖书豪",
+    "1": "说话人2",
+    "2": "说话人5"
+   },
+   "ref_speech_seconds": 273.6,
+   "miss_seconds": 34.1,
+   "false_alarm_seconds": 8.1,
+   "confusion_seconds": 78.3,
+   "der": 0.4402,
+   "frame_agreement_on_ref_speech": 0.5893
+  },
+  "hist_timeline_speakers": 4,
+  "cer_local_vs_cloudref_hotword_applied": {
+   "ref_chars": 1266,
+   "hyp_chars": 1314,
+   "edits": 243,
+   "sub": 153,
+   "ins": 69,
+   "del": 21,
+   "cer": 0.1919
+  }
+ },
+ "SEG-6P": {
+  "segment": "SEG-6P",
+  "expected_speakers": 6,
+  "speakers_detected_local": 4,
+  "speakers_detected_cloud": 3,
+  "local_infer_seconds": 34.7,
+  "local_rtf": 0.0723,
+  "cloud_elapsed_seconds": 11.2,
+  "cer_local_vs_cloudref": {
+   "ref_chars": 1522,
+   "hyp_chars": 1691,
+   "edits": 376,
+   "sub": 171,
+   "ins": 187,
+   "del": 18,
+   "cer": 0.247
+  },
+  "cer_cloud_vs_localref": {
+   "ref_chars": 1691,
+   "hyp_chars": 1522,
+   "edits": 376,
+   "sub": 171,
+   "ins": 18,
+   "del": 187,
+   "cer": 0.2224
+  },
+  "cer_local_vs_consensus": {
+   "ref_chars": 1543,
+   "hyp_chars": 1691,
+   "edits": 366,
+   "sub": 182,
+   "ins": 166,
+   "del": 18,
+   "cer": 0.2372
+  },
+  "cer_cloud_vs_consensus": {
+   "ref_chars": 1543,
+   "hyp_chars": 1522,
+   "edits": 21,
+   "sub": 0,
+   "ins": 0,
+   "del": 21,
+   "cer": 0.0136
+  },
+  "consensus_uncertain_sentences": 78,
+  "der_local_vs_cloud_pseudoref": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 3,
+   "hyp_speakers": 4,
+   "label_map_hyp_to_ref": {
+    "0": "0",
+    "1": "1",
+    "2": "2"
+   },
+   "ref_speech_seconds": 382.7,
+   "miss_seconds": 51.9,
+   "false_alarm_seconds": 47.0,
+   "confusion_seconds": 114.7,
+   "der": 0.5583,
+   "frame_agreement_on_ref_speech": 0.5646
+  },
+  "der_local_vs_hist_timeline": {
+   "note": "伪参照 DER：以云端 paraformer-v2 diarization 为参照时间线（非人工标注真值），帧粒度 10ms，穷举最优标签映射",
+   "ref_speakers": 6,
+   "hyp_speakers": 4,
+   "label_map_hyp_to_ref": {
+    "0": "张天雷",
+    "1": "廖书豪",
+    "2": "王永亮",
+    "3": "任亚单"
+   },
+   "ref_speech_seconds": 381.2,
+   "miss_seconds": 53.9,
+   "false_alarm_seconds": 50.5,
+   "confusion_seconds": 122.9,
+   "der": 0.5961,
+   "frame_agreement_on_ref_speech": 0.5363
+  },
+  "hist_timeline_speakers": 6,
+  "cer_local_vs_cloudref_hotword_applied": {
+   "ref_chars": 1522,
+   "hyp_chars": 1692,
+   "edits": 377,
+   "sub": 171,
+   "ins": 188,
+   "del": 18,
+   "cer": 0.2477
+  }
+ }
+}
