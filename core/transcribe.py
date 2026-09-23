@@ -255,6 +255,37 @@ def _local_sentence_info_to_transcription(
     }
 
 
+def _apply_local_hotword_mappings(dialogue: list[dict]) -> int:
+    """R2：本地引擎热词映射（转写后替换）——必配项，非降级选项。
+
+    复用 core/hotwords.py 的映射语义（data/hotword_mappings.txt，`错误识别→正确文本`，
+    长匹配优先 + 英文词边界）。assemble_dialogue 内部已施加一次；此处对本地路径显式
+    再施加一遍（幂等），使「本地必配热词」成为可见、可观测的独立步骤，并返回生效条数。
+
+    与云端热词加权的差距（显性声明，PRD R2 / SPIKE-R8 §2.3）：
+      - 云端 paraformer-v2 走 vocabulary_id **识别期加权**（热词表在解码时提升专名召回，
+        从源头减少「智达方通→其他方通/吉达方通」「交付→提付」类错误）；
+      - 本地 FunASR 管线**不做识别期加权**，仅能**转写后按已知映射表替换**——
+        只能纠正映射表中已登记的「错误串→正确串」，对未登记的新错误无能为力，
+        召回率低于云端加权。此为本地模式相对云端的已知质量差距，UI/文档需显性标注。
+    """
+    from core.hotwords import apply_hotword_mappings, load_hotword_mappings
+
+    try:
+        mapping_count = len(load_hotword_mappings())
+    except Exception:
+        mapping_count = 0
+    for block in dialogue:
+        block["text"] = apply_hotword_mappings(block.get("text", ""))
+        for sent in block.get("sentences", []) or []:
+            sent["text"] = apply_hotword_mappings(sent.get("text", ""))
+    if mapping_count:
+        logger.info(f"[本地热词] 转写后替换生效（映射表 {mapping_count} 条；识别期加权为云端专有，见差距声明）")
+    else:
+        logger.info("[本地热词] 映射表为空（data/hotword_mappings.txt）；本地无云端识别期加权，专名纠正依赖映射表")
+    return mapping_count
+
+
 def _transcribe_local(
     file_path: Path,
     model: str,
@@ -286,6 +317,9 @@ def _transcribe_local(
     sentence_info = resp.get("sentence_info", []) or []
     transcription = _local_sentence_info_to_transcription(sentence_info, diarization_enabled)
     dialogue = assemble_dialogue(transcription)
+
+    # R2：本地热词映射（转写后替换）为必配步骤（差距声明见 _apply_local_hotword_mappings）
+    _apply_local_hotword_mappings(dialogue)
 
     elapsed = time.perf_counter() - start
     logger.info(
