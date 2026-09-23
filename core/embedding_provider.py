@@ -2,9 +2,10 @@
 core/embedding_provider.py — 声纹嵌入提取抽象层 / Speaker embedding extraction abstraction layer
 
 职责 / Responsibilities:
-  定义 EmbeddingProvider 接口，支持两种实现 / Define EmbeddingProvider interface, two implementations:
+  定义 EmbeddingProvider 接口，支持三种实现 / Define EmbeddingProvider interface, three implementations:
     1. CloudEmbeddingProvider — 云端 HTTP 调用（通过环境变量配置地址） / Cloud HTTP call (address configured via env vars)
     2. MfccFallbackProvider — 14 维 MFCC 降级（零依赖兆底） / 14-dim MFCC fallback (zero-dep fallback)
+    3. LocalCamPlusProvider — 本地 CAM++ 192 维（R3 离线，经引擎常驻子进程） / Local CAM++ 192-dim (R3 offline, via resident engine subprocess)
 
   通过 get_embedding_provider() 按配置自动选择提供者 / Auto-select provider via get_embedding_provider() based on config.
 
@@ -358,10 +359,135 @@ class MfccFallbackProvider:
 
 
 # ============================================================
+# 实现 3：本地 CAM++（R3 / 离线声纹，经引擎常驻子进程）
+# ============================================================
+
+class LocalCamPlusProvider:
+    """本地 CAM++ 声纹（R3，离线模式）。
+
+    经 core.engine_host 常驻子进程跑 FunASR `iic/speech_campplus_sv_zh-cn_16k-common`
+    （28MB，与说话人分离共用同一份权重），返回 192 维 L2 归一化嵌入。
+
+    跨端零迁移兼容（AC-6 / ADR-0009）：
+      - model_version = "cam++-v1"（本地标识），与云端 "cam++-v1-cloud" 在
+        voiceprint_registry.COMPATIBLE_VERSIONS 中互兼容，注册表双向零迁移；
+      - FunASR CAM++ 内建 CMN 前处理，口径与 fix(ac6-cmn) 后的云侧
+        voiceprint-service 一致（同片段 cos=1.0 已验证，见
+        tests/eval_local_engine/results/vp_cmn_fix.json），故云/本地嵌入落在同一空间。
+
+    主进程不加载 torch/funasr：重依赖只在引擎子进程内，云精简包安全。
+    """
+
+    dim = 192
+    model_version = "cam++-v1"
+
+    def __init__(self, timeout: float = 60.0):
+        self.timeout = timeout
+
+    def extract(
+        self,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+    ) -> Optional[np.ndarray]:
+        if audio is None or len(audio) < sample_rate * 0.5:
+            return None
+
+        if audio.dtype not in (np.float32, np.float64):
+            audio = audio.astype(np.float32) / 32768.0
+        elif audio.dtype == np.float64:
+            audio = audio.astype(np.float32)
+
+        # 重采样到 16kHz（CAM++ 要求）/ Resample to 16kHz
+        if sample_rate != 16000:
+            ratio = 16000 / sample_rate
+            new_len = int(len(audio) * ratio)
+            audio = np.interp(
+                np.linspace(0, len(audio) - 1, new_len),
+                np.arange(len(audio)),
+                audio,
+            ).astype(np.float32)
+            sample_rate = 16000
+
+        wav_bytes = _float32_to_wav(audio.astype(np.float32), sample_rate)
+        return self._infer_embedding(wav_bytes)
+
+    def extract_from_pcm(
+        self,
+        pcm_bytes: bytes,
+        sample_rate: int = 16000,
+    ) -> Optional[np.ndarray]:
+        n_samples = len(pcm_bytes) // 2
+        if n_samples == 0:
+            return None
+        samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        return self.extract(samples, sample_rate)
+
+    def _infer_embedding(self, wav_bytes: bytes) -> Optional[np.ndarray]:
+        """写临时 wav → 引擎子进程 task=embedding → 192 维 L2 归一化嵌入。"""
+        import os
+        import tempfile
+
+        from core.engine_host import get_engine_host
+        from core.errors import LocalEngineError
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp.write(wav_bytes)
+                tmp_path = tmp.name
+            resp = get_engine_host().infer(
+                "embedding", {"audio_path": tmp_path}, timeout=self.timeout
+            )
+            emb = resp.get("embedding")
+            if not emb:
+                return None
+            vec = np.array(emb, dtype=np.float32)
+            if vec.shape[0] != self.dim:
+                logger.warning(f"[声纹Provider] 本地 CAM++ 维度异常: {vec.shape[0]} != {self.dim}")
+                return None
+            # L2 归一化（契约：provider 返回已归一化嵌入；余弦匹配对归一化不敏感）
+            norm = float(np.linalg.norm(vec))
+            if norm > 0:
+                vec = vec / norm
+            return vec.astype(np.float32)
+        except LocalEngineError as e:
+            logger.warning(f"[声纹Provider] 本地 CAM++ 推理失败({e.error_code}): {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"[声纹Provider] 本地 CAM++ 调用异常: {e}")
+            return None
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    def is_available(self) -> bool:
+        """本地引擎模型就绪（必需模型完整）即视为可用。"""
+        try:
+            from core.engine_host import check_required_models, get_engine_host
+            if get_engine_host().is_running():
+                return True
+            return bool(check_required_models().get("ready"))
+        except Exception:
+            return False
+
+
+# ============================================================
 # Provider 选择逻辑
 # ============================================================
 
 _provider: Optional[EmbeddingProvider] = None
+
+
+def _local_engine_active() -> bool:
+    """R3：是否处于本地引擎模式（settings.engine.mode == "local"）。"""
+    try:
+        from app.settings_store import get_engine_config
+        return get_engine_config().get("mode") == "local"
+    except Exception:
+        return False
 
 
 def get_embedding_provider() -> EmbeddingProvider:
@@ -369,10 +495,14 @@ def get_embedding_provider() -> EmbeddingProvider:
     获取当前生效的 embedding 提供者。
 
     选择优先级：
+      0. 本地 CAM++ LocalCamPlusProvider（R3：engine.mode==local 或 voiceprint.provider==local）
+         —— 本地模式下绝不触达云端（零出网）；CAM++ 不可用时直接降级 MFCC。
       1. 云端 CloudEmbeddingProvider（settings.json 配置 + 服务可达）
       2. 兜底 MfccFallbackProvider（14 维，精度较低但零依赖）
 
     环境变量 VOICEPRINT_PROVIDER 可覆盖 settings.json。
+    注：实时聚类 MFCC 路径（diarization_cluster.should_use_local_diarization）直接构造
+    MfccFallbackProvider，不经本函数，故本改动对实时 MFCC 路径零影响。
     """
     global _provider
     if _provider is not None:
@@ -383,6 +513,21 @@ def get_embedding_provider() -> EmbeddingProvider:
 
     # 确定 provider 模式
     provider_mode = env_provider or settings.get("provider", "auto")
+
+    # 0. 本地引擎（R3）：仅在本地模式激活；云模式与 MFCC 实时路径零改动
+    if provider_mode == "local" or _local_engine_active():
+        try:
+            candidate = LocalCamPlusProvider()
+            if candidate.is_available():
+                _provider = candidate
+                logger.info("[声纹Provider] 使用本地 CAM++ embedding 提供者（离线，cam++-v1）")
+                return _provider
+        except Exception as e:
+            logger.warning(f"[声纹Provider] 本地 CAM++ 提供者初始化失败: {e}")
+        # 本地模式下绝不触达云端（零出网）：CAM++ 未就绪则直接 MFCC 兜底
+        logger.warning("[声纹Provider] 本地引擎模式但 CAM++ 不可用（模型未就绪），降级 MFCC（不触达云端）")
+        _provider = MfccFallbackProvider()
+        return _provider
 
     # 1. 云端优先
     if provider_mode in ("cloud", "auto"):
