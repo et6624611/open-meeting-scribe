@@ -504,3 +504,33 @@ msgstr "完成"
 
 msgid "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
 msgstr "纪要生成遇到临时错误，{delay}秒后自动重试 ({attempt}/{max_retries})..."
+
+msgid "Non-localhost endpoint is not using HTTPS; the API Key will be sent in plaintext"
+msgstr "非本机端点未使用 HTTPS，API Key 将以明文传输"
+
+msgid "Connection timed out after {sec}s; the service may be overloaded or the model is still loading"
+msgstr "连接超时（{sec}秒）：服务可能过载或模型仍在加载"
+
+msgid "Cannot connect to the local LLM service. Please make sure Ollama / LM Studio is running and listening on the configured port; if you call the endpoint directly from a browser, also check its CORS settings (for Ollama set OLLAMA_ORIGINS)"
+msgstr "无法连接本地 LLM 服务。请确认 Ollama / LM Studio 已启动并监听所配置端口；若从浏览器直接调用该端点，请同时检查其 CORS 设置（Ollama 需配置 OLLAMA_ORIGINS）"
+
+msgid "Cannot connect to {url}; please check the address, network, and firewall settings"
+msgstr "无法连接到 {url}，请检查地址、网络与防火墙设置"
+
+msgid "Model '{model}' is not available on the server. Pull or load it first (for Ollama: `ollama pull {model}`; for LM Studio: load the model in the app), then retry"
+msgstr "服务端没有模型 '{model}'。请先拉取或加载（Ollama：`ollama pull {model}`；LM Studio：在应用内加载该模型）后重试"
+
+msgid "Endpoint or model not found (404). Please check that Base URL ends with /v1 and the model name is correct"
+msgstr "端点或模型不存在（404）。请检查 Base URL 是否以 /v1 结尾、模型名是否正确"
+
+msgid "Authentication failed (HTTP {code}). Please check the API Key"
+msgstr "认证失败（HTTP {code}）。请检查 API Key"
+
+msgid "Too many requests (429 Rate Limited); the endpoint itself is reachable"
+msgstr "请求过多（429 限流）；端点本身可达"
+
+msgid "Connection successful, model {model} responding in {latency}ms"
+msgstr "连接成功，模型 {model} 响应耗时 {latency}ms"
+
+msgid "HTTP {code}: {detail}"
+msgstr "HTTP {code}：{detail}"

@@ -343,3 +343,36 @@ def get_storage_config() -> dict:
         "auto_clean_intermediate": sc.get("auto_clean_intermediate", True),
         "auto_archive_days": sc.get("auto_archive_days", 0),
     }
+
+
+# 本地引擎默认模型存储目录（gitignored，见 .gitignore data/models/）
+# Default local-engine model storage directory
+DEFAULT_MODEL_DIR = "data/models/"
+
+
+def get_engine_config() -> dict:
+    """
+    获取计算引擎配置（从 settings.json） / Get compute-engine config (from settings.json).
+
+    R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier}。
+
+    返回格式 / Returns:
+      {
+        "mode": "cloud",            # cloud | proxy | direct | local（默认 cloud，本地引擎为显式选择）
+        "local": {
+          "model_dir": "data/models/",   # 模型权重存储目录 / Model weights directory
+          "model_tier": "auto"           # auto | conservative | standard（R4 小模型提示词档）
+        }
+      }
+    """
+    settings = load_settings()
+    engine = settings.get("engine", {}) or {}
+    local = engine.get("local", {}) or {}
+    mode = os.getenv("ENGINE_MODE", "") or engine.get("mode", "cloud")
+    return {
+        "mode": mode,
+        "local": {
+            "model_dir": local.get("model_dir", DEFAULT_MODEL_DIR),
+            "model_tier": local.get("model_tier", "auto"),
+        },
+    }

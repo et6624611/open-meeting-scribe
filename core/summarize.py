@@ -250,6 +250,10 @@ def generate_summary(
     from core.agent_workspace import get_role_summary_prompt
     summary_prompt = get_role_summary_prompt() or SYSTEM_PROMPT
 
+    # R4（WP-A）：小模型保守档追加防幻觉约束；standard 档为空串，行为零变化
+    from core.model_tier import get_tier_prompt_guard
+    summary_prompt += get_tier_prompt_guard(model)
+
     messages = [
         {"role": "system", "content": summary_prompt},
         {"role": "user", "content": user_content},

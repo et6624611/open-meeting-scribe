@@ -225,6 +225,10 @@ async def run_analysis(
     if not system_prompt:
         system_prompt = INSIGHT_ANALYSIS_PROMPT
 
+    # R4（WP-A）：小模型保守档追加防幻觉约束；standard 档为空串，行为零变化
+    from core.model_tier import get_tier_prompt_guard
+    system_prompt += get_tier_prompt_guard()
+
     user_message = _build_user_message(recent_lines, chapter_titles)
 
     messages = [

@@ -34,6 +34,7 @@ from app.routers.chat import CHAT_SYSTEM_PROMPT
 from app.store import (
     get_active_api_key,
     get_asr_config,
+    get_engine_config,
     get_feature_flags,
     get_llm_config,
     get_storage_config,
@@ -43,6 +44,7 @@ from app.store import (
     save_settings_to_disk,
 )
 from core.i18n import _
+from core.llm import is_localhost_base_url
 from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
 from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
 
@@ -76,6 +78,22 @@ PROVIDER_PRESETS = [
         "name": "零一万物",
         "base_url": "https://api.lingyiwanwu.com/v1",
         "models": ["yi-large", "yi-medium", "yi-spark"],
+    },
+    {
+        # R4（WP-A）：本地自持端点，Key 可留空 / Local self-hosted endpoint; key optional
+        "name": "Ollama（本地）",
+        "base_url": "http://localhost:11434/v1",
+        "models": ["qwen3:8b", "qwen3:14b", "llama3.1:8b"],
+        "key_optional": True,
+        "localhost": True,
+    },
+    {
+        # R4（WP-A）：本地自持端点，Key 可留空 / Local self-hosted endpoint; key optional
+        "name": "LM Studio（本地）",
+        "base_url": "http://localhost:1234/v1",
+        "models": [],
+        "key_optional": True,
+        "localhost": True,
     },
     {
         "name": "自定义",
@@ -163,12 +181,48 @@ def get_settings():
         },
         "prefer_subscription": prefer_subscription,
         "output_dir": settings.get("output_dir", "data/output/"),
+        "engine": get_engine_config(),
         "feature_flags": feature_flags,
         "storage": get_storage_config(),
         "disabled_commands": settings.get("disabled_commands", []),
         "active_agent": settings.get("active_agent", "meeting-minutes"),
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
+    }
+
+
+_VALID_ENGINE_MODES = ("cloud", "proxy", "direct", "local")
+_VALID_MODEL_TIERS = ("auto", "conservative", "standard")
+
+
+def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_local: dict) -> dict:
+    """合并计算引擎配置（R4/R5，PRD §9），带白名单校验 / Merge engine config with whitelist validation.
+
+    非法 mode / model_tier 值回退到既有值或默认值，防止脏配置写入 settings.json。
+    """
+    from app.settings_store import DEFAULT_MODEL_DIR
+
+    incoming = incoming or {}
+    incoming_local = incoming.get("local", {}) or {}
+
+    mode = incoming.get("mode", existing_engine.get("mode", "cloud"))
+    if mode not in _VALID_ENGINE_MODES:
+        mode = existing_engine.get("mode", "cloud")
+
+    model_dir = incoming_local.get("model_dir", existing_local.get("model_dir", DEFAULT_MODEL_DIR))
+    if not isinstance(model_dir, str) or not model_dir.strip():
+        model_dir = existing_local.get("model_dir", DEFAULT_MODEL_DIR)
+
+    model_tier = incoming_local.get("model_tier", existing_local.get("model_tier", "auto"))
+    if model_tier not in _VALID_MODEL_TIERS:
+        model_tier = existing_local.get("model_tier", "auto")
+
+    return {
+        "mode": mode,
+        "local": {
+            "model_dir": model_dir,
+            "model_tier": model_tier,
+        },
     }
 
 
@@ -198,12 +252,20 @@ def save_settings(data: dict):
     existing_vp = existing.get("voiceprint", {})
     existing_vp_cloud = existing_vp.get("cloud", {})
     existing_ff = existing.get("feature_flags", {})
+    existing_engine = existing.get("engine", {}) or {}
+    existing_engine_local = existing_engine.get("local", {}) or {}
 
     # ── LLM 配置 / LLM config ──
     new_llm = data.get("llm", {})
     incoming_llm_key = new_llm.get("api_key", "")
+    # R4（WP-A）：localhost 自持端点允许空 Key —— 保存后的 base_url 若指向本机，
+    # 且用户未显式提供 Key，则保持为空，不从云端环境变量回填 / Local endpoint tolerates empty key.
+    final_llm_base_url = new_llm.get("base_url", existing_llm.get("base_url", ""))
     if not incoming_llm_key or "****" in incoming_llm_key:
-        final_llm_key = existing_llm.get("api_key") or get_active_api_key()
+        if is_localhost_base_url(final_llm_base_url):
+            final_llm_key = existing_llm.get("api_key", "")
+        else:
+            final_llm_key = existing_llm.get("api_key") or get_active_api_key()
     else:
         final_llm_key = incoming_llm_key
 
@@ -251,6 +313,7 @@ def save_settings(data: dict):
             "api_key": final_llm_key,
             "model": new_llm.get("model", existing_llm.get("model", "qwen-plus")),
         },
+        "engine": _merge_engine_config(data.get("engine"), existing_engine, existing_engine_local),
         "voiceprint": {
             "provider": new_vp.get("provider", existing_vp.get("provider", "auto")),
             "cloud": {
@@ -485,6 +548,146 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
         return {"ok": False, "error": _("Cannot connect to {url}, please check the address").format(url=base_url)}
     except Exception as e:
         return {"ok": False, "error": _("Test failed: {err}").format(err=str(e)[:200])}
+
+
+# ============================================================
+# LLM 连通性测试（R4 / WP-A） / LLM connectivity test (R4 / WP-A)
+# ============================================================
+
+# PRD R4 边界：测试超时 10s / Test timeout per PRD R4
+TEST_LLM_TIMEOUT_SECONDS = 10
+
+
+@router.post("/api/settings/test-llm")
+def test_llm_connection(data: dict = None):
+    """
+    LLM 连通性测试（PRD R4） / LLM connectivity test (PRD R4).
+
+    发送一条最小 chat 请求，返回延迟与模型可达性；失败返回可行动排错文案
+    （error_code: invalid_config / missing_key / service_down / model_not_pulled /
+    auth_failed / rate_limited / timeout / http_error）。
+    localhost 端点允许空 Key；非 localhost 的 http:// 端点返回显式安全警告。
+    """
+    incoming = (data or {}).get("llm") or data or {}
+    cfg = get_llm_config()
+
+    base_url = (incoming.get("base_url") or cfg.get("base_url") or "").strip()
+    model = (incoming.get("model") or cfg.get("model") or "").strip()
+    api_key = incoming.get("api_key") or ""
+    if not api_key or "****" in api_key:
+        api_key = cfg.get("api_key") or ""
+
+    if not base_url:
+        return {
+            "ok": False,
+            "error_code": "invalid_config",
+            "error": _("LLM API Base URL not configured"),
+        }
+
+    localhost = is_localhost_base_url(base_url)
+    if not localhost and not api_key:
+        api_key = get_active_api_key()
+    if not api_key and not localhost:
+        return {
+            "ok": False,
+            "error_code": "missing_key",
+            "error": _("LLM API Key not configured"),
+        }
+
+    # R4 边界：非 localhost 端点要求 https，否则显式警告 / Non-localhost endpoints should use https
+    warning = None
+    if not localhost and base_url.startswith("http://"):
+        warning = _("Non-localhost endpoint is not using HTTPS; the API Key will be sent in plaintext")
+
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    body = {
+        "model": model or "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 5,
+        "stream": False,
+    }
+
+    start = time.perf_counter()
+    try:
+        resp = requests.post(url, headers=headers, json=body, timeout=TEST_LLM_TIMEOUT_SECONDS)
+    except requests.exceptions.Timeout:
+        return _test_llm_fail(
+            "timeout",
+            _("Connection timed out after {sec}s; the service may be overloaded or the model is still loading").format(sec=TEST_LLM_TIMEOUT_SECONDS),
+            warning=warning,
+        )
+    except requests.exceptions.ConnectionError:
+        if localhost:
+            return _test_llm_fail(
+                "service_down",
+                _("Cannot connect to the local LLM service. Please make sure Ollama / LM Studio is running and listening on the configured port; if you call the endpoint directly from a browser, also check its CORS settings (for Ollama set OLLAMA_ORIGINS)"),
+                warning=warning,
+            )
+        return _test_llm_fail(
+            "service_down",
+            _("Cannot connect to {url}; please check the address, network, and firewall settings").format(url=base_url),
+            warning=warning,
+        )
+    except Exception as e:
+        return _test_llm_fail("http_error", _("Test failed: {err}").format(err=str(e)[:200]), warning=warning)
+
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    resp_text = (resp.text or "")[:500]
+    resp_lower = resp_text.lower()
+
+    if resp.status_code == 200:
+        result = {
+            "ok": True,
+            "latency_ms": latency_ms,
+            "model": model,
+            "message": _("Connection successful, model {model} responding in {latency}ms").format(model=model, latency=latency_ms),
+        }
+        if warning:
+            result["warning"] = warning
+        return result
+
+    # 模型未拉取/未加载：Ollama 404 "try pulling it first"；LM Studio 400/404 "model not found"
+    model_missing_markers = ("not found", "pull", "does not exist", "no model", "load the model")
+    if resp.status_code in (400, 404) and any(m in resp_lower for m in model_missing_markers):
+        return _test_llm_fail(
+            "model_not_pulled",
+            _("Model '{model}' is not available on the server. Pull or load it first (for Ollama: `ollama pull {model}`; for LM Studio: load the model in the app), then retry").format(model=model),
+            warning=warning,
+        )
+    if resp.status_code == 404:
+        return _test_llm_fail(
+            "invalid_config",
+            _("Endpoint or model not found (404). Please check that Base URL ends with /v1 and the model name is correct"),
+            warning=warning,
+        )
+    if resp.status_code in (401, 403):
+        return _test_llm_fail(
+            "auth_failed",
+            _("Authentication failed (HTTP {code}). Please check the API Key").format(code=resp.status_code),
+            warning=warning,
+        )
+    if resp.status_code == 429:
+        return _test_llm_fail(
+            "rate_limited",
+            _("Too many requests (429 Rate Limited); the endpoint itself is reachable"),
+            warning=warning,
+        )
+    return _test_llm_fail(
+        "http_error",
+        _("HTTP {code}: {detail}").format(code=resp.status_code, detail=resp_text[:200]),
+        warning=warning,
+    )
+
+
+def _test_llm_fail(error_code: str, error: str, warning: str | None = None) -> dict:
+    """构造 test-llm 失败响应 / Build test-llm failure response."""
+    result = {"ok": False, "error_code": error_code, "error": error}
+    if warning:
+        result["warning"] = warning
+    return result
 
 
 # CLI 命令参考（供前端展示与其他 Agent 工具调用） / CLI command reference

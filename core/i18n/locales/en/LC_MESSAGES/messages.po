@@ -483,3 +483,33 @@ msgstr "Completed"
 
 msgid "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
 msgstr "Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})..."
+
+msgid "Non-localhost endpoint is not using HTTPS; the API Key will be sent in plaintext"
+msgstr "Non-localhost endpoint is not using HTTPS; the API Key will be sent in plaintext"
+
+msgid "Connection timed out after {sec}s; the service may be overloaded or the model is still loading"
+msgstr "Connection timed out after {sec}s; the service may be overloaded or the model is still loading"
+
+msgid "Cannot connect to the local LLM service. Please make sure Ollama / LM Studio is running and listening on the configured port; if you call the endpoint directly from a browser, also check its CORS settings (for Ollama set OLLAMA_ORIGINS)"
+msgstr "Cannot connect to the local LLM service. Please make sure Ollama / LM Studio is running and listening on the configured port; if you call the endpoint directly from a browser, also check its CORS settings (for Ollama set OLLAMA_ORIGINS)"
+
+msgid "Cannot connect to {url}; please check the address, network, and firewall settings"
+msgstr "Cannot connect to {url}; please check the address, network, and firewall settings"
+
+msgid "Model '{model}' is not available on the server. Pull or load it first (for Ollama: `ollama pull {model}`; for LM Studio: load the model in the app), then retry"
+msgstr "Model '{model}' is not available on the server. Pull or load it first (for Ollama: `ollama pull {model}`; for LM Studio: load the model in the app), then retry"
+
+msgid "Endpoint or model not found (404). Please check that Base URL ends with /v1 and the model name is correct"
+msgstr "Endpoint or model not found (404). Please check that Base URL ends with /v1 and the model name is correct"
+
+msgid "Authentication failed (HTTP {code}). Please check the API Key"
+msgstr "Authentication failed (HTTP {code}). Please check the API Key"
+
+msgid "Too many requests (429 Rate Limited); the endpoint itself is reachable"
+msgstr "Too many requests (429 Rate Limited); the endpoint itself is reachable"
+
+msgid "Connection successful, model {model} responding in {latency}ms"
+msgstr "Connection successful, model {model} responding in {latency}ms"
+
+msgid "HTTP {code}: {detail}"
+msgstr "HTTP {code}: {detail}"

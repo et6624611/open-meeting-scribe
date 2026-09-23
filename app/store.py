@@ -97,6 +97,7 @@ from app.settings_store import (  # noqa: E402, F401
     SETTINGS_FILE,
     get_active_api_key,
     get_asr_config,
+    get_engine_config,
     get_feature_flags,
     get_llm_config,
     get_silence_detection_config,

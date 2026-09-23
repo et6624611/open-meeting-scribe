@@ -55,6 +55,24 @@ async def close_async_client() -> None:
         _async_client = None
 
 
+def is_localhost_base_url(base_url: str) -> bool:
+    """判断 base_url 是否指向本机（localhost / 127.0.0.1 / ::1）。
+    Check whether base_url points to the local machine.
+
+    R4（WP-A）：本地自持端点（Ollama / LM Studio）允许空 API Key，
+    且不做云端代理回退 / Local self-hosted endpoints tolerate empty keys
+    and never fall back to the cloud proxy.
+    """
+    if not base_url:
+        return False
+    from urllib.parse import urlparse
+    try:
+        host = (urlparse(base_url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+
+
 def _get_config() -> dict:
     """获取当前 LLM 配置（base_url + api_key + model），优先从 settings 读取"""
     from app.store import get_llm_config
@@ -96,6 +114,10 @@ def _should_use_cloud() -> bool:
     用户偏好 prefer_subscription 开启时，即使有本地 Key 也优先走云端代理消耗订阅配额。
     When prefer_subscription is enabled, prefer cloud proxy to consume subscription quota.
     """
+    # R4（WP-A）：localhost 自持端点显式本地直连，绝不回退云端 / Local endpoint: never cloud fallback
+    if is_localhost_base_url(_get_base_url()):
+        return False
+
     # 用户偏好覆盖：优先使用订阅流量 / User preference override: prefer subscription quota
     try:
         from core.users import get_current_user
@@ -192,11 +214,25 @@ def _build_request_body(
 
 
 def _get_headers() -> dict:
-    """构建请求头（同步/异步共用）"""
-    return {
-        "Authorization": f"Bearer {_get_api_key()}",
-        "Content-Type": "application/json",
-    }
+    """构建请求头（同步/异步共用）。
+
+    R4（WP-A）：localhost 自持端点允许空 Key —— 无有效 Key 时省略 Authorization 头，
+    而非抛错 / Local endpoints tolerate empty keys: omit Authorization instead of raising.
+    """
+    headers = {"Content-Type": "application/json"}
+    if is_localhost_base_url(_get_base_url()):
+        try:
+            from app.store import get_active_api_key
+            key = get_active_api_key()
+        except Exception:
+            key = ""
+        # 本地端点尊重用户显式配置的任何 Key（如 LM Studio 的 "lm-studio"），
+        # 仅排除空值与脱敏占位 / Honor any explicitly configured key; skip empty & masked values
+        if key and "****" not in key:
+            headers["Authorization"] = f"Bearer {key}"
+        return headers
+    headers["Authorization"] = f"Bearer {_get_api_key()}"
+    return headers
 
 
 def _extract_content(data: dict) -> str:
