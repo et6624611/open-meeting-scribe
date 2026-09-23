@@ -13,7 +13,7 @@ import { usePolling } from '@/composables/usePolling'
 import { fetchTask, updateTask } from '@/api/tasks'
 import { fetchNotes, fetchTodos } from '@/api/notes'
 import { fetchSpeakers, type Speaker } from '@/api/speakers'
-import { fetchProjects, type Project } from '@/api/projects'
+import { fetchProjects, createProject, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { showToast } from '@/composables/useToast'
 import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
@@ -291,12 +291,51 @@ export function useGeneratingData(
   const projects = ref<Project[]>([])
   const showProjectDropdown = ref(false)
 
+  // ─── 知识库检索 + 就地新建 / KB search + inline create ───
+  const kbSearchQuery = ref('')
+  const showKbCreateInput = ref(false)
+  const kbCreateName = ref('')
+
+  const filteredProjects = computed(() => {
+    const q = kbSearchQuery.value.trim().toLowerCase()
+    if (!q) return projects.value
+    return projects.value.filter(p => p.name.toLowerCase().includes(q))
+  })
+
   async function onSelectProject(projectId: string) {
     showProjectDropdown.value = false
+    kbSearchQuery.value = ''
+    showKbCreateInput.value = false
+    kbCreateName.value = ''
     try {
       await updateTask(taskId, { project_id: projectId || undefined })
       taskStore.patchTaskLocal(taskId, { project_id: projectId || null })
     } catch (e) { console.error('update project link failed:', e) }
+  }
+
+  async function createAndLinkKb() {
+    const name = kbCreateName.value.trim() || kbSearchQuery.value.trim()
+    if (!name) {
+      showToast(t('generating.errors.kb_name_empty'), 'error')
+      return
+    }
+    try {
+      const newProject = await createProject(name)
+      // 追加到列表供后续选择 / Append to list for future selection
+      projects.value.push(newProject)
+      // 走与 onSelectProject 相同的持久化路径 / Same persistence path as onSelectProject
+      await updateTask(taskId, { project_id: newProject.id })
+      taskStore.patchTaskLocal(taskId, { project_id: newProject.id })
+      // 关闭下拉、清理状态 / Close dropdown, clean up state
+      showProjectDropdown.value = false
+      kbSearchQuery.value = ''
+      showKbCreateInput.value = false
+      kbCreateName.value = ''
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail || e?.message || t('generating.errors.kb_create_failed')
+      showToast(detail, 'error')
+      // 保留输入框可编辑重试 / Keep input editable for retry
+    }
   }
 
   function openDatePicker() {
@@ -453,6 +492,7 @@ export function useGeneratingData(
     player, seekAudio,
     // 项目 / Project
     projects, showProjectDropdown, onSelectProject, openDatePicker,
+    kbSearchQuery, filteredProjects, showKbCreateInput, kbCreateName, createAndLinkKb,
     // 轮询 / Polling
     startPolling, stopPolling,
     // AI 引用 / AI quote

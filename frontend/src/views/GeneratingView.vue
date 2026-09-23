@@ -136,19 +136,60 @@
             <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </span>
           <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-            <template v-if="projects.length > 0">
-              <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
+            <!-- 检索输入框 / Search input -->
+            <div class="gen-meta-proj-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                ref="kbSearchInputRef"
+                v-model="kbSearchQuery"
+                class="gen-meta-proj-search-input"
+                :placeholder="t('generating.meta.kb_search_placeholder')"
+                @keydown.escape="showProjectDropdown = false"
+              />
+            </div>
+            <!-- 过滤后的知识库列表 / Filtered project list -->
+            <template v-if="filteredProjects.length > 0">
+              <button v-for="p in filteredProjects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
                 {{ p.name }}
               </button>
+            </template>
+            <!-- 不关联知识库 / No knowledge base linked -->
+            <div class="gen-meta-proj-divider"></div>
+            <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
+              {{ t('generating.meta.no_project') }}
+            </button>
+            <!-- 新建知识库区域 / Create KB area -->
+            <template v-if="showKbCreateInput">
               <div class="gen-meta-proj-divider"></div>
-              <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
-                {{ t('generating.meta.no_project') }}
+              <div class="gen-meta-proj-create-inline">
+                <input
+                  ref="kbCreateInputRef"
+                  v-model="kbCreateName"
+                  class="gen-meta-proj-create-input"
+                  :placeholder="t('generating.meta.create_kb')"
+                  @keydown.enter="createAndLinkKb"
+                  @keydown.escape="showKbCreateInput = false; kbCreateName = ''"
+                />
+              </div>
+            </template>
+            <template v-else-if="filteredProjects.length === 0 && projects.length > 0">
+              <!-- 检索无匹配但总列表非空 / Search no match but total list non-empty -->
+              <div class="gen-meta-proj-divider"></div>
+              <button class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
+                <span v-else>{{ t('generating.meta.create_kb') }}</span>
               </button>
             </template>
-            <button v-else class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              {{ t('generating.meta.create_kb') }}
-            </button>
+            <template v-else-if="projects.length === 0">
+              <!-- 知识库总数为 0 / Total projects is 0 -->
+              <div class="gen-meta-proj-divider"></div>
+              <button class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
+                <span v-else>{{ t('generating.meta.create_kb') }}</span>
+              </button>
+            </template>
           </div>
           <!-- 知识库关联引导图标（仅未关联时显示） / Knowledge base link guide icon (shown only when unlinked) -->
           <span
@@ -382,6 +423,8 @@ const taskStore = useTaskStore()
 const transcriptPanelRef = ref<InstanceType<typeof TranscriptPanel> | null>(null)
 const summaryPanelRef = ref<InstanceType<typeof SummaryPanel> | null>(null)
 const notesPanelRef = ref<InstanceType<typeof NotesPanel> | null>(null)
+const kbSearchInputRef = ref<HTMLInputElement | null>(null)
+const kbCreateInputRef = ref<HTMLInputElement | null>(null)
 
 // ─── Composable 编排 / Composable orchestration ───
 const data = useGeneratingData(transcriptPanelRef, summaryPanelRef, notesPanelRef)
@@ -421,6 +464,7 @@ const {
   transcriptItems, flatTranscript, summaryMd, todos, notesContent, notesSaved,
   showArchiveDialog, showDeleteDialog, metaDuration, metaDateShort,
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
+  kbSearchQuery, filteredProjects, showKbCreateInput, kbCreateName, createAndLinkKb,
   player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
   isFailed, failureInfo,
@@ -510,6 +554,18 @@ watch(boundNames, (names) => {
   rosterComposable.roster.value = currentRoster.filter(n => nameSet.has(n) || manualNames.has(n))
   if (rosterComposable.roster.value.length !== before) changed = true
   if (changed) rosterComposable.persist()
+})
+
+// ─── 知识库下拉打开时自动聚焦检索框 / Auto-focus search input when KB dropdown opens ───
+watch(() => data.showProjectDropdown.value, (open) => {
+  if (open) {
+    nextTick(() => { kbSearchInputRef.value?.focus() })
+  } else {
+    // 关闭时清理检索与新建状态 / Clean up search & create state on close
+    data.kbSearchQuery.value = ''
+    data.showKbCreateInput.value = false
+    data.kbCreateName.value = ''
+  }
 })
 
 // ─── 更多菜单 / More menu ──

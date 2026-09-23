@@ -65,6 +65,14 @@
 .gen-meta-proj-item:hover { background: var(--surface-2); }
 .gen-meta-proj-item.is-selected { color: var(--accent); font-weight: 500; }
 .gen-meta-proj-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.gen-meta-proj-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); margin: -4px -4px 4px; border-radius: var(--radius) var(--radius) 0 0; }
+.gen-meta-proj-search svg { width: 14px; height: 14px; color: var(--subtle); flex-shrink: 0; }
+.gen-meta-proj-search-input { flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--fs-12); color: var(--fg); padding: 2px 0; }
+.gen-meta-proj-search-input::placeholder { color: var(--subtle); }
+.gen-meta-proj-create-inline { padding: 4px 0; }
+.gen-meta-proj-create-input { width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-12); color: var(--fg); background: var(--surface); outline: none; transition: border-color 0.15s; }
+.gen-meta-proj-create-input:focus { border-color: var(--accent); }
+.gen-meta-proj-create-input::placeholder { color: var(--subtle); }
 .lib-search { display: flex; align-items: center; gap: var(--s-2); flex: 1; min-width: 200px; border: 1px solid var(--border); border-radius: var(--radius); padding: 0 var(--s-3); background: var(--surface); transition: border-color 0.15s; }
 .lib-search:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
 .lib-search svg { width: 16px; height: 16px; color: var(--subtle); flex-shrink: 0; }

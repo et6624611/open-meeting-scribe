@@ -93,7 +93,9 @@
           <div class="ctx-section-header-right"><span v-if="linkedProject" class="ctx-section-count">1 个</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
-          <div v-if="!linkedProject" class="ctx-empty-section"><p>{{ t('ai-panel.context.no_files') }}</p></div>
+          <div v-if="!linkedProject" class="ctx-empty-section">
+            <p>{{ t('ai-panel.context.no_files') }}</p>
+          </div>
           <div v-else class="ctx-item" @click="$emit('goProject')">
             <div class="ctx-item-icon type-file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
             <div class="ctx-item-body"><div class="ctx-item-title" :title="linkedProject.name">{{ linkedProject.name }}</div><div class="ctx-item-meta"><span>{{ linkedProject.fileCount }} {{ t('ai-panel.context.kb_file_count') }}</span></div></div>

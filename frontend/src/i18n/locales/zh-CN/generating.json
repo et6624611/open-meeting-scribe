@@ -31,7 +31,9 @@
     "link_project": "关联知识库",
     "link_kb_tip": "关联知识库，让 AI 基于你的资料理解会议",
     "linked_kb_tip": "已关联知识库，点击可切换",
-    "create_kb": "新建知识库"
+    "create_kb": "新建知识库",
+    "create_named": "新建「{name}」",
+    "kb_search_placeholder": "搜索知识库…"
   },
   "binding": {
     "title": "为说话人关联真实身份",
@@ -227,7 +229,9 @@
     "save_mapping_failed": "增量保存映射失败",
     "submit_mapping_failed": "提交映射失败",
     "update_project_failed": "更新知识库关联失败",
-    "save_date_failed": "保存日期失败"
+    "save_date_failed": "保存日期失败",
+    "kb_name_empty": "知识库名称不能为空",
+    "kb_create_failed": "创建知识库失败"
   },
   "source": {
     "minutes": "纪要",

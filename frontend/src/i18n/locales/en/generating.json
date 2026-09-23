@@ -31,7 +31,9 @@
     "link_project": "Link knowledge base",
     "link_kb_tip": "Link a knowledge base so AI understands meetings through your documents",
     "linked_kb_tip": "Knowledge base linked, click to switch",
-    "create_kb": "Create knowledge base"
+    "create_kb": "Create knowledge base",
+    "create_named": "Create \"{name}\"",
+    "kb_search_placeholder": "Search knowledge base…"
   },
   "binding": {
     "title": "Link speakers to real identities",
@@ -226,7 +228,9 @@
     "save_mapping_failed": "Failed to save mapping incrementally",
     "submit_mapping_failed": "Failed to submit mapping",
     "update_project_failed": "Failed to update knowledge base link",
-    "save_date_failed": "Failed to save date"
+    "save_date_failed": "Failed to save date",
+    "kb_name_empty": "Knowledge base name cannot be empty",
+    "kb_create_failed": "Failed to create knowledge base"
   },
   "source": {
     "minutes": "Minutes",
