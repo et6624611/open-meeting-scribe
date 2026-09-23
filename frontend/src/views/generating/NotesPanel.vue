@@ -8,8 +8,8 @@
         {{ t('generating.toolbar.edit') }}
       </button>
       <template v-else>
-        <button class="gen-ta-save-btn" @click="finishEdit">{{ t('common.save') }}</button>
-        <button class="gen-ta-cancel-btn" @click="cancelEdit">{{ t('common.cancel') }}</button>
+        <button class="gen-ta-save-btn" @click="finishEdit">{{ t('common.action.save') }}</button>
+        <button class="gen-ta-cancel-btn" @click="cancelEdit">{{ t('common.action.cancel') }}</button>
       </template>
     </div>
     <!-- Markdown textarea 编辑器 / Markdown textarea editor -->

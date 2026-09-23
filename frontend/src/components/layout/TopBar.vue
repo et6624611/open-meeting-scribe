@@ -315,6 +315,7 @@ function stopRecTimer() {
 watch(recTask, async (task) => {
   if (task) {
     // 优先从后端获取精确已过时长（已扣除暂停），失败则回退到 created_at 估算 / Prefer precise elapsed time from backend (pause deducted), fallback to created_at estimation
+    let backendPaused = false
     try {
       const status = await getRecordStatus()
       if (status.recording && status.elapsed != null) {
@@ -322,11 +323,16 @@ watch(recTask, async (task) => {
       } else {
         recElapsedSec = calcElapsedFromTask(task)
       }
+      // 后端是唯一事实源：录音页暂停不会同步 store，这里兜底修正过期状态 / Backend is the source of truth: pausing on the recording page does not sync the store, so correct stale status here
+      backendPaused = !!status.paused
+      if (status.recording && status.paused && task.status === 'recording') {
+        taskStore.patchTaskLocal(task.task_id, { status: 'paused' })
+      }
     } catch {
       recElapsedSec = calcElapsedFromTask(task)
     }
     recElapsed.value = formatRecTime(recElapsedSec)
-    if (task.status === 'paused') {
+    if (task.status === 'paused' || backendPaused) {
       // 暂停中：冻结计时器，保留已过时长 / Paused: freeze timer, preserve elapsed time
       stopRecTimer()
     } else {

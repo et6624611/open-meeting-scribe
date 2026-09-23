@@ -18,6 +18,7 @@ export function useNotesAndTodos(
   const showAddForm = ref(false)
   const newTodoText = ref('')
   const newTodoAssignee = ref('')
+  const newTodoContent = ref('')
   let notesTimer: ReturnType<typeof setTimeout> | null = null
   let summaryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -65,9 +66,9 @@ export function useNotesAndTodos(
     const text = newTodoText.value.trim()
     if (!text) return
     try {
-      const t = await createTodo(taskId, text, newTodoAssignee.value.trim() || undefined)
+      const t = await createTodo(taskId, text, newTodoAssignee.value.trim() || undefined, newTodoContent.value.trim() || undefined)
       todos.value.push(t)
-      newTodoText.value = ''; newTodoAssignee.value = ''; showAddForm.value = false
+      newTodoText.value = ''; newTodoAssignee.value = ''; newTodoContent.value = ''; showAddForm.value = false
       onContentModified?.()
     } catch { /* */ }
   }
@@ -90,7 +91,7 @@ export function useNotesAndTodos(
   })
 
   return {
-    showAddForm, newTodoText, newTodoAssignee,
+    showAddForm, newTodoText, newTodoAssignee, newTodoContent,
     loadNotes, loadTodos, onNotesChange, onSummaryChange,
     onToggleTodo, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, locateTodoSource,
   }

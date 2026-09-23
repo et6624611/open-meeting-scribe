@@ -47,8 +47,9 @@ export async function createTodo(
   taskId: string,
   text: string,
   assignee?: string,
+  why?: string,
 ): Promise<TodoItem> {
-  const { data } = await client.post<{ todo: TodoItem }>(`/api/tasks/${taskId}/todos`, { text, assignee })
+  const { data } = await client.post<{ todo: TodoItem }>(`/api/tasks/${taskId}/todos`, { text, assignee, why })
   return data.todo
 }
 

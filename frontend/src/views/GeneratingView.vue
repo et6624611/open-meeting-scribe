@@ -335,6 +335,7 @@
         :show-add-form="showAddForm"
         v-model:new-todo-text="newTodoText"
         v-model:new-todo-assignee="newTodoAssignee"
+        v-model:new-todo-content="newTodoContent"
         @delete="onDeleteTodo"
         @update="onEditTodo"
         @status-change="onStatusChange"
@@ -482,7 +483,7 @@ const {
 } = panel
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
-  showAddForm, newTodoText, newTodoAssignee,
+  showAddForm, newTodoText, newTodoAssignee, newTodoContent,
   onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange,
 } = notes
 const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding

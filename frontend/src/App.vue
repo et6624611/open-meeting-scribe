@@ -127,7 +127,7 @@
           <span class="usage-text" id="usageText"></span>
         </div>
       </div>
-      <span class="philosophy-text" id="philosophyText"><span v-for="(ch, i) in philosophyChars" :key="i" class="philosophy-char" :style="{ animationDelay: `${i * 0.08}s` }">{{ ch }}</span></span>
+      <span class="philosophy-text" id="philosophyText"><template v-for="(word, wIdx) in philosophyChars" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="philosophy-char" :style="{ animationDelay: `${((wIdx > 0 ? philosophyChars.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.08}s` }">{{ ch }}</span>{{ wIdx < philosophyChars.length - 1 ? ' ' : '' }}</template></span>
       <div class="right">
         <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
       </div>

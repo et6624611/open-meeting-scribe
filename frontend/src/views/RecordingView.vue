@@ -467,8 +467,8 @@ function onPresenceStop() { ws.clearPresenceWarning(); onStop() }
 // 暂停/恢复 / Pause/Resume
 async function onTogglePause() {
   try {
-    if (recPaused.value) { const r = await recorder.resumeRecording() as any; if (r?.summary_resumed) ws.summaryPaused.value = false; ws.connect(taskId.value) }
-    else { ws.disconnect(); const r = await recorder.pauseRecording() as any; if (r?.summary_paused) ws.summaryPaused.value = true }
+    if (recPaused.value) { const r = await recorder.resumeRecording() as any; if (r?.summary_resumed) ws.summaryPaused.value = false; ws.connect(taskId.value); taskStore.patchTaskLocal(taskId.value, { status: 'recording' }) }
+    else { ws.disconnect(); const r = await recorder.pauseRecording() as any; if (r?.summary_paused) ws.summaryPaused.value = true; taskStore.patchTaskLocal(taskId.value, { status: 'paused' }) }
   } catch (e) { if (!recPaused.value && !ws.connected.value) ws.connect(taskId.value) }
 }
 

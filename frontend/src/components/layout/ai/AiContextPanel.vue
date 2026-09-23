@@ -60,7 +60,7 @@
         <div class="ctx-section-header" @click="sections.meeting = !sections.meeting">
           <div class="ctx-section-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.meeting" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4>
+            <h4><template v-if="panelMounted" v-for="(word, wIdx) in sectionTitleChars.meeting" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="ctx-title-char" :style="{ animationDelay: `${((wIdx > 0 ? sectionTitleChars.meeting.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.06}s` }">{{ ch }}</span>{{ wIdx < sectionTitleChars.meeting.length - 1 ? ' ' : '' }}</template></h4>
           </div>
           <div class="ctx-section-header-right">
             <span class="ctx-section-count">{{ meetingOutputCount }} 项</span>
@@ -89,7 +89,7 @@
       <!-- 关联知识库 / Linked knowledge base -->
       <div class="ctx-section" :class="{ 'is-collapsed': !sections.files }">
         <div class="ctx-section-header" @click="sections.files = !sections.files">
-          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.files" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4></div>
+          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4><template v-if="panelMounted" v-for="(word, wIdx) in sectionTitleChars.files" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="ctx-title-char" :style="{ animationDelay: `${((wIdx > 0 ? sectionTitleChars.files.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.06}s` }">{{ ch }}</span>{{ wIdx < sectionTitleChars.files.length - 1 ? ' ' : '' }}</template></h4></div>
           <div class="ctx-section-header-right"><span v-if="linkedProject" class="ctx-section-count">1 个</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
@@ -107,7 +107,7 @@
       <!-- 相关会议 / Related meetings -->
       <div class="ctx-section" :class="{ 'is-collapsed': !sections.related }">
         <div class="ctx-section-header" @click="sections.related = !sections.related">
-          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><h4><span v-if="panelMounted" v-for="(ch, i) in sectionTitleChars.related" :key="i" class="ctx-title-char" :style="{ animationDelay: `${i * 0.06}s` }">{{ ch }}</span></h4></div>
+          <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><h4><template v-if="panelMounted" v-for="(word, wIdx) in sectionTitleChars.related" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="ctx-title-char" :style="{ animationDelay: `${((wIdx > 0 ? sectionTitleChars.related.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.06}s` }">{{ ch }}</span>{{ wIdx < sectionTitleChars.related.length - 1 ? ' ' : '' }}</template></h4></div>
           <div class="ctx-section-header-right"><span class="ctx-section-count">{{ relatedMeetingCount }} 项</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.related }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
         </div>
         <div class="ctx-section-body">
@@ -139,11 +139,15 @@ const { t } = useI18n()
 // 分区标题逐字显现触发 / Section title character-by-character reveal trigger
 const panelMounted = ref(false)
 onMounted(() => { setTimeout(() => { panelMounted.value = true }, 200) })
-const sectionTitleChars = computed(() => ({
-  meeting: t('ai-panel.context.section_meeting').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
-  files: t('ai-panel.context.section_files').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
-  related: t('ai-panel.context.section_related').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
-}))
+// 按词分组，避免空格字符在 inline-block span 中丢失宽度 / Group by word so spaces are natural whitespace between inline-block word groups
+const sectionTitleChars = computed(() => {
+  const build = (text: string) => text.split(' ').map(w => w.split(''))
+  return {
+    meeting: build(t('ai-panel.context.section_meeting')),
+    files: build(t('ai-panel.context.section_files')),
+    related: build(t('ai-panel.context.section_related')),
+  }
+})
 
 defineProps<{
   isEmpty: boolean

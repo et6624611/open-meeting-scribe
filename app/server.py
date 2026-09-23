@@ -157,13 +157,11 @@ else:
         "http://127.0.0.1:8080",
     ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 注意：CORSMiddleware 在所有中间件之后注册（见下方），确保其为最外层，
+# 以便正确处理 OPTIONS 预检请求，避免被认证中间件拦截。
+# Note: CORSMiddleware is registered after all other middleware (see below),
+# ensuring it's the outermost layer to properly handle OPTIONS preflight requests
+# and prevent interception by auth middleware.
 
 
 # ============================================================
@@ -349,6 +347,27 @@ async def security_audit_middleware(request: Request, call_next):
             )
 
     return response
+
+
+# ============================================================
+# CORS 中间件（最外层） / CORS Middleware (outermost layer)
+# ============================================================
+
+# CORSMiddleware 必须作为最外层中间件注册（最后添加），确保：
+# 1. OPTIONS 预检请求在到达认证中间件之前就被处理并返回 CORS 头
+# 2. 所有响应都能正确添加 Access-Control-Allow-Origin 等头
+# 3. 跨域部署（如前端 localhost:5173 访问后端 localhost:8000）正常工作
+# CORSMiddleware must be registered as the outermost middleware (added last) to ensure:
+# 1. OPTIONS preflight requests are handled and return CORS headers before reaching auth middleware
+# 2. All responses correctly include Access-Control-Allow-Origin and other CORS headers
+# 3. Cross-origin deployment (e.g., frontend localhost:5173 to backend localhost:8000) works properly
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ============================================================

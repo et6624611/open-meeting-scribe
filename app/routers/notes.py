@@ -207,6 +207,8 @@ def delete_todo(task_id: str, todo_id: str):
 class TodoCreateRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
     assignee: str = Field(default="", max_length=100)
+    # 新建时允许直接携带决策正文（与更新接口的 why 字段一致） / Allow body text at creation (same `why` field as the update endpoint)
+    why: str | None = Field(default=None, max_length=2000)
 
 
 class TodoUpdateRequest(BaseModel):
@@ -238,6 +240,8 @@ def create_todo(task_id: str, req: TodoCreateRequest):
         "owner_type": "self",
         "created_at": datetime.now().isoformat(),
     }
+    if req.why and req.why.strip():
+        todo_item["why"] = req.why.strip()
     todos.append(todo_item)
     _mark_modified(task_id)
     save_task_to_disk(task_id)

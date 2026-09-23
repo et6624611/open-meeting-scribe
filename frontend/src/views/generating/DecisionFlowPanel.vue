@@ -58,6 +58,7 @@
       </button>
       <div class="todos-add-form" v-if="showAddForm">
         <textarea v-model="newTodoText" :placeholder="t('generating.todos.decision_title_placeholder')" rows="2"></textarea>
+        <textarea v-model="newTodoContent" :placeholder="t('generating.todos.content_placeholder')" rows="3"></textarea>
         <div class="add-form-row">
           <input type="text" v-model="newTodoAssignee" :placeholder="t('generating.todos.assignee_placeholder')" style="flex:1">
         </div>
@@ -95,6 +96,7 @@ const emit = defineEmits<{
 
 const newTodoText = defineModel<string>('newTodoText', { default: '' })
 const newTodoAssignee = defineModel<string>('newTodoAssignee', { default: '' })
+const newTodoContent = defineModel<string>('newTodoContent', { default: '' })
 
 // ── 状态循环已移除，改为 DecisionNode 内下拉直选 / Status cycling removed, now dropdown-select in DecisionNode ──
 

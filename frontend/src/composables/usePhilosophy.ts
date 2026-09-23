@@ -15,7 +15,8 @@ const text = computed(() => {
   return variants.value[lang] || variants.value.zh || ''
 })
 
-const chars = computed(() => text.value.split('').map(ch => ch === ' ' ? '\u00A0' : ch))
+// 按词分组，避免空格字符在 inline-block span 中丢失宽度 / Group by word so spaces are natural whitespace between inline-block word groups
+const chars = computed(() => text.value.split(' ').filter(w => w.length > 0).map(w => w.split('')))
 
 /** 缓存 key：page + tab 组合 / Cache key: combination of page + tab */
 function cacheKey(page?: string, tab?: string): string {
