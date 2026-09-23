@@ -77,7 +77,9 @@
 .conv-bottom-bar.is-compact .conv-model-selector .model-label { display: none; }
 .conv-bottom-bar.is-compact .conv-model-selector .model-icon { display: block; }
 
-.gen-panel { padding: var(--s-6) var(--s-7); width: 80%; min-width: 600px; max-width: 960px; margin: 0 auto; box-sizing: border-box; }
+.gen-panel { padding: var(--s-6) var(--s-7); width: 80%; /* 原为固定 600px：窗口 <1280px 时把主区顶穿（实测 900px 宽下主区仅 300px，
+     面板仍占 600px → 300px 内容被裁且不可滚动发现）。改为可收缩，宽窗口行为不变。 */
+  min-width: min(600px, 100%); max-width: 960px; margin: 0 auto; box-sizing: border-box; }
 .gen-panel.hidden { display: none; }
 
 /* 加载态 */
