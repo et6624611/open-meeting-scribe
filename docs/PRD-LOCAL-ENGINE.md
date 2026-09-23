@@ -4,10 +4,11 @@ description: 本地 ASR + 声纹离线化 + LLM 自接端点，实现断网全�
 tags: ["prd", "offline", "funasr", "camplus", "ollama"]
 author: 产品经理（AI 起草，待项目方评审）
 created_at: 2026-09-23
-version: "1.0.0-draft"
-status: pending-review
+version: "1.1.0"
+status: active (D-R1/D-R3 已按 Spike 证据采纳)
 requirement: docs/REQUIREMENT_LOCAL_ENGINE.md (v0.3.0, approved-p0)
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
+spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 ---
 
 # PRD: 本地可选计算引擎（离线模式）
@@ -61,7 +62,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 
 ### 依赖
 
-- FunASR 离线管线模型组合（paraformer-zh + VAD + 标点 + 说话人分离，**具体组合与版本由工程评审定**，D-R1 决策点）。
+- ~~D-R1~~ **已采纳（2026-09-23，[Spike §2](SPIKE-R8-LOCAL-ENGINE.md)）**：全家桶四模型 = seaco-paraformer-zh（944MB）+ fsmn-vad（3.9MB）+ ct-punc（1.0GB，**可选项**，唯一可裁剪大件）+ cam++（28MB，说话人分离与声纹 R3 **共用同一份权重**）；总下载 ≈2.0GB，AC-3 预算内。
 - ModelScope 权重许可逐模型核查（引导下载不内置分发）。
 - 现有设置面：`app/routers/settings.py`、`data/settings.json`；转写：`core/transcribe.py`、`core/pipeline.py`；声纹：`core/embedding_provider.py`、`core/voiceprint.py`；LLM：`core/llm.py`。
 
@@ -123,7 +124,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 ### R2: 本地 ASR 管线（FunASR）
 
 - **用户故事**：同上，需拿到带说话人分离的转写结果。
-- **功能行为**：集成 FunASR 离线管线（转写 + VAD + 标点 + 说话人分离）；热词降级方案 = 转写后热词映射替换（复用 `core/hotwords.py` 映射表能力，加权能力差距在 UI 显性声明）。
+- **功能行为**：集成 FunASR 离线管线（转写 + VAD + 标点 + 说话人分离）；**热词映射（转写后替换）为必配项而非降级选项**——Spike 实测专名错误「智达方通→其他方通/吉达方通」「交付→提付」（[Spike §2.3](SPIKE-R8-LOCAL-ENGINE.md)）；复用 `core/hotwords.py` 映射表能力，与云端加权的效果差距在 UI 显性声明。
 - **数据**：模型存放于可配置 `data/models/`（gitignore）；任务日志记录引擎与模型版本。
 - **边界**：CPU/MPS 基线；超大音频分段处理内存峰值达标（AC-3）；推理不阻塞 Web 服务（线程/子进程隔离由工程定）。
 - **验收**：AC-1/AC-2（WER 差距 ≤15% 相对值，`samples/` ≥3 段 2/4/6 人录音）。
@@ -143,6 +144,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 - **用户故事**：作为国际开发者，我装好 Ollama 后在设置里点两下就能出纪要，不想注册任何云。
 - **功能行为**：`PROVIDER_PRESETS` 增 Ollama/LM Studio；「测试连接」端点（`POST /api/settings/test-llm`）；Key 允许为空（localhost 端点）；小模型防幻觉提示词档（纪要/洞察管线按 `model_tier` 选择提示词模板，默认 auto：≤14B 走保守档）。
 - **边界**：非 localhost 端点要求 https 或显式警告；测试超时 10s；不影响云默认 qwen-plus。
+- **Spike 证据（[§4](SPIKE-R8-LOCAL-ENGINE.md)）**：Ollama qwen3:8b 对 2500 字本地转写 31s 产出结构正确、未见幻觉的纪要——**8B 即达可用档**，支持 `model_tier` auto（≤14B 保守档）设计；正式最低推荐规格实验随 AC-2 评测脚本一并出。
 - **验收**：本地 Ollama 出纪要；无 Key 保存不报错；错误端点有可行动提示。
 - **优先级**：P0
 
@@ -151,6 +153,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 - **用户故事**：作为用户，我要清楚地知道要下载什么、多大、许可是什么，下载中断可续。
 - **功能行为**：模型清单（R2/R3 所需权重）引导下载：进度/速度/剩余、SHA256 校验、断点续传、可取消、存储位置配置、磁盘空间预检；**内网路径**：导出/导入离线模型包目录结构与校验说明写入文档。
 - **边界**：不内置分发权重（许可 + 包体）；校验失败自动重下 ≤1 次后转人工提示。
+- **实施约束（Spike 实测，[§3](SPIKE-R8-LOCAL-ENGINE.md)）**：① 引擎以**常驻子进程**运行（冻结态 funasr 冷 import 最高 86s，禁止每任务冷启动）；② 多进程必须 `__main__` 保护 + 显式 `freeze_support`（Spike 观察到 import 重复引导 5–6 次）；③ 目录布局 = onedir 冻结代码包与模型权重分目录（`MODELSCOPE_CACHE` 指向 `data/models/`）；④ 政企离线路径 = Windows Inno Setup **组件选项**承载同一目录布局（对齐 D2 需求记录未决 1 的离线模型包问题，形态就此落定）。
 - **验收**：断网首启无模型 → 全程可恢复；篡改文件被拒载。
 - **优先级**：P0
 
@@ -173,7 +176,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 ### R8: 分发与构建
 
 - **用户故事**：云模式老用户升级后包体与构建产物零变化。
-- **功能行为**：本地引擎组件独立可选安装（macOS/Windows 安装器附加组件或独立压缩包 + 应用内安装引导，形态由工程评审 D-R3）；云端精简包保持现状；CI 增加 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。
+- **功能行为**：**D-R3 已采纳**——应用内引导下载 + 外置引擎目录（onedir 冻结代码包 ~975MB + 权重 ≈2.0GB 分离，合计 ≈3GB），**否决内置云精简主包**（保 AC-7）；macOS 冻结 PASS，Windows 侧 Inno Setup 组件形态；本地引擎组件独立可选安装，CI 增 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。**实施首任务 = Windows PyInstaller+funasr 冻结冒烟**（Spike 未覆盖 Windows，为残余风险最高点）。
 - **验收**：双平台本地组件安装 → AC-1 全流程；云包体积回归无增长。
 - **优先级**：P0
 
@@ -190,7 +193,7 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 |---|---|---|
 | AC-1 | 断网闭环：macOS + Windows 各完成「录音→转写→分离→声纹姓名化→纪要（自接端点）→导出 docx/md」；除 localhost 外零出网（代理抓包白名单验证） | QA 手工 + 抓包脚本 |
 | AC-2 | 质量：`samples/` ≥3 段真实会议（2/4/6 人），本地 WER 与 paraformer-v2 差距 ≤15% 相对值；纪要结论/行动项可用性内部评审 ≥「可接受」 | 基准评测脚本（新增） |
-| AC-3 | 资源：16GB 机型转写 30 分钟会议峰值内存 ≤8GB；模型总下载体积 ≤3GB（超出需评审修订） | 性能测试 |
+| AC-3 | 资源：16GB 机型转写 30 分钟会议峰值内存 ≤8GB；模型总下载体积 ≤3GB（超出需评审修订）。Spike 参考：10 分钟会议 CPU 全管线峰值 RSS 3.3GB、RTF 0.081（30 分钟 ≈2.5 分钟转完），双门槛均有裕量 | 性能测试 |
 | AC-4 | 回退：本地失败可切云端重跑，任务与笔记状态不丢失；纯内网正确置灰 | QA |
 | AC-5 | 合规：数据流向矩阵上线（UI + README + SECURITY.md），与实测抓包一致 | 产品验收 |
 | AC-6 | 声纹：云/本地注册表零迁移互用；同组说话人匹配结果一致（FPR 相对差 ≤5%） | 自动化对比测试 |
@@ -209,11 +212,22 @@ adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 **风险**（详表见需求记录 §依赖与风险）：
 - torch 回归使本地组件包体大增 → 组件隔离，云包无损（AC-7 兜底）。
 - 小模型纪要质量不达预期 → 保守提示词档 + 回云提质路径；若 AC-2 不达标**不降级标准，砍范围**（先交付 ASR+声纹离线，LLM 提质后置）——此为本 PRD 唯一预留的范围裁剪点，需项目方认可。
-- PyInstaller + FunASR 双平台构建复杂度 → R8 提前做构建 Spike 验证，失败则改"外置引擎目录"方案。
+- PyInstaller + FunASR 构建复杂度 → **Spike 已验证 macOS PASS**（975MB onedir 冻结包真实推理出文本，PRD §12 预留失败出口未触发）；残余风险 = **Windows 未实测**，以 WP-D（实施首任务）处置。
 
 **Open Questions（决策点）**：
-- D-R1：FunASR 模型组合与量化档位（工程评审）。
-- D-R2：多用户 Web 部署下引擎配置的权限归属（管理员级 or 用户级）。
-- D-R3：本地组件分发形态（安装器附加组件 / 应用内下载引擎 / 独立压缩包）。
+- ~~D-R1~~ **已采纳（2026-09-23）**：全家桶四模型 ≈2.0GB，标点可选裁剪（Spike §2）。
+- D-R2：多用户 Web 部署下引擎配置的权限归属（管理员级 or 用户级）。**当前唯一阻塞决策点**——R5 存储位置与 R6 徽章交互依赖此答案。
+- ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定，进 ROADMAP v8 时登记）。
-- 承接需求记录未决：离线模型包政企 SKU、最低推荐 LLM 规格实验、分段批处理体验内部演示验证。
+- ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：初步证据 qwen3:8b 达可用档，正式结论随 WP-C 产出。
+
+## 13. 实施任务包（Spike 后移交拆解）
+
+| 包 | 内容 | PRD 契约 | 依赖 | 验收 |
+|---|---|---|---|---|
+| **WP-A** | R4 LLM 自接增强：Ollama/LM Studio 预设、`POST /api/settings/test-llm`、空 Key 容错、model_tier 保守档提示词 | R4 | 无（立即可开工） | R4 验收 + qwen3:8b/14b 双档实测记录 |
+| **WP-B** | R5 模型下载器 + R6 引擎徽章/流向矩阵（含 README/SECURITY 文档更新） | R5/R6 | D-R2 裁决；目录布局按 Spike §3.3 | R5/R6 验收；篡改拒载用例 |
+| **WP-C** | AC-2 评测基准脚本（≥3 段 2/4/6 人样本 + paraformer-v2 云端参照 + WER 计算 + 多说话人分离准确性补测） | AC-2 | 无 | 输出可复跑报告；Spike 遗留 2.3/5.1/5.3 三项一并覆盖 |
+| **WP-D** | Windows PyInstaller+funasr 冻结 CI 冒烟（替身权重，禁真模型下载） | R8/AC-7 | **实施首任务** | Windows CI 绿灯；云包体积零增长回归 |
+
+主干 R1/R2/R3（本地 ASR 挂线、管线集成、CAM++ 回归）按既定分工仍由 QoderIDE 侧推进；WP-A~D 与主干接口点少，可并行派发。

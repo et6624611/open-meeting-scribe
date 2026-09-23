@@ -87,3 +87,6 @@ CODEX.md
 # extension-less files and directories, "* 2.*" catches ones with an extension.
 * 2
 * 2.*
+
+# R8 Spike 隔离环境（venv/模型权重/冻结产物，本地位于工作区内但不入库）
+.spike_local_engine/
