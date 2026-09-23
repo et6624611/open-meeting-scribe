@@ -4,7 +4,7 @@ description: 本地 ASR + 声纹离线化 + LLM 自接端点，实现断网全�
 tags: ["prd", "offline", "funasr", "camplus", "ollama"]
 author: 产品经理（AI 起草，待项目方评审）
 created_at: 2026-09-23
-version: "1.2.0"
+version: "1.3.0"
 status: active (D-R1/D-R2/D-R3 均已裁决采纳)
 requirement: docs/REQUIREMENT_LOCAL_ENGINE.md (v0.3.0, approved-p0)
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
@@ -88,6 +88,8 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 1. 计算引擎 Tab → LLM 区块 → 预设下拉新增「Ollama（本地）」「LM Studio（本地）」（base_url 预填 `http://localhost:11434/v1` / `http://localhost:1234/v1`，Key 可留空）。
 2. 「测试连接」按钮：发一条最小 chat 请求，展示延迟与模型可达性；失败给出可行动排错文案（服务未启动/CORS/模型未拉取）。
 3. 测试通过前允许保存但纪要生成按钮侧给出醒目提示。
+4. **本地引擎自动探测（辅助配置）**：进入设置页时后台 `GET http://localhost:11434/v1/models`（及 LM Studio `:1234/v1/models`，超时 ≤2s）——探测可达时，对应预设项高亮并附「已检测到」标记，且将返回的已拉取模型列表直接渲染为 model 下拉选项（用户免手打模型名）；不可达时预设项置灰并提示「未检测到本地服务」+ 安装/启动指引链接。探测仅访问 localhost，不计作出网。
+5. **本地端点占位 Key**：选中本地预设时前端自动填入占位 Key（如 `ollama`）并标注「本地端点无需真实密钥」。注意：现状 `core/llm.py:_should_use_cloud()` 在本地 Key 为空且云端可用时会**静默回退云端代理**，与「Key 可留空」直接冲突——R4 落地必须实现「base_url 为 localhost 时不回退云端」（与 [BACKLOG 状态栏三态条目](BACKLOG.md) 同批交付，保证状态栏显示的路由与真实路由一致）。
 
 ### 7.3 断网开会（空态/加载/错误态）
 
@@ -142,11 +144,11 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 ### R4: LLM 自接端点增强
 
 - **用户故事**：作为国际开发者，我装好 Ollama 后在设置里点两下就能出纪要，不想注册任何云。
-- **功能行为**：`PROVIDER_PRESETS` 增 Ollama/LM Studio；「测试连接」端点（`POST /api/settings/test-llm`）；Key 允许为空（localhost 端点）；小模型防幻觉提示词档（纪要/洞察管线按 `model_tier` 选择提示词模板，默认 auto：≤14B 走保守档）。
+- **功能行为**：`PROVIDER_PRESETS` 增 Ollama/LM Studio；「测试连接」端点（`POST /api/settings/test-llm`）；Key 允许为空（localhost 端点）；小模型防幻觉提示词档（纪要/洞察管线按 `model_tier` 选择提示词模板，默认 auto：≤14B 走保守档）；设置页 localhost `/v1/models` 自动探测 + 已拉取模型下拉回填 + 不可达置灰指引（见 §7.2-4）；localhost 端点不回退云端代理（修复 `_should_use_cloud()` 空 Key 静默回退，见 §7.2-5）。
 - **边界**：非 localhost 端点要求 https 或显式警告；测试超时 10s；不影响云默认 qwen-plus。
 - **Spike 证据（[§4](SPIKE-R8-LOCAL-ENGINE.md)）**：Ollama qwen3:8b 对 2500 字本地转写 31s 产出结构正确、未见幻觉的纪要——**8B 即达可用档**，支持 `model_tier` auto（≤14B 保守档）设计；正式最低推荐规格实验随 AC-2 评测脚本一并出。
 - **WP-C 正式实验结论（2026-09-23，[EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5）**：5 档 × 2 段（SEG-2P/6P）实测，以 qwen3:14b 为幻觉裁判。**推荐默认 = qwen3:8b**（结构完整度 1.0/1.0、裁判判定幻觉 0/0、时延 42–47s）；**可用下限 = qwen3:4b**（结构 1.0/1.0、幻觉 0/1、时延偏慢 39–55s）；**qwen2.5:3b-instruct 及 1.5b 不达可用档**（各丢一个「议题归类」章节、裁判判定幻觉 2–3 条/段）。据此细化 `model_tier` auto 策略：判定应基于能力档而非纯参数量——推理型 qwen3 ≥8B 走标准档、4–7B 走保守档、非推理型 ≤3B（如 qwen2.5 instruct）触发「降级警示」提示用户纪要可靠性不足。
-- **验收**：本地 Ollama 出纪要；无 Key 保存不报错；错误端点有可行动提示。
+- **验收**：本地 Ollama 出纪要；无 Key 保存不报错；错误端点有可行动提示；Ollama 在跑时模型名可下拉选择无需手打；Ollama 不在跑时预设置灰并给出安装指引；配置本地端点后抓包验证纪要生成请求仅发往 localhost（不回退云端）。
 - **优先级**：P0
 
 ### R5: 模型资产管理
@@ -226,7 +228,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 | 包 | 内容 | PRD 契约 | 依赖 | 验收 |
 |---|---|---|---|---|
-| **WP-A** | R4 LLM 自接增强：Ollama/LM Studio 预设、`POST /api/settings/test-llm`、空 Key 容错、model_tier 保守档提示词 | R4 | 无（立即可开工） | R4 验收 + qwen3:8b/14b 双档实测记录 |
+| **WP-A** | R4 LLM 自接增强：Ollama/LM Studio 预设、`POST /api/settings/test-llm`、空 Key 容错（含 localhost 不回退云端修复）、model_tier 保守档提示词、`/v1/models` 自动探测辅助配置、底部状态栏路由三态（[BACKLOG 缺陷条目](BACKLOG.md)并入） | R4 | 无（立即可开工） | R4 验收 + qwen3:8b/14b 双档实测记录 |
 | **WP-B** | R5 模型下载器 + R6 引擎徽章/流向矩阵（含 README/SECURITY 文档更新） | R5/R6 | 无（D-R2 已裁决：管理员级）；目录布局按 Spike §3.3 | R5/R6 验收；篡改拒载用例 |
 | **WP-C** | AC-2 评测基准脚本（≥3 段 2/4/6 人样本 + paraformer-v2 云端参照 + WER 计算 + 多说话人分离准确性补测） | AC-2 | 无 | 输出可复跑报告；Spike 遗留 2.3/5.1/5.3 三项一并覆盖 |
 | **WP-D** | Windows PyInstaller+funasr 冻结 CI 冒烟（替身权重，禁真模型下载） | R8/AC-7 | **实施首任务** | Windows CI 绿灯；云包体积零增长回归 |

@@ -4,8 +4,8 @@ description: 零散缺陷与体验优化条目，从版本主线中剥离独立�
 tags: ["backlog", "requirements", "bugfix", "ux"]
 author: Yongliang Wang
 created_at: 2026-09-07
-updated_at: 2026-09-09
-version: "1.5.0"
+updated_at: 2026-09-23
+version: "1.6.0"
 status: published
 ---
 
@@ -72,6 +72,22 @@ status: published
 - 收集典型 bad case 音频（2 人、4 人、6 人会议各若干）进行复现
 - 评估实时侧特征质量升级的可行性与性能影响（参考 ROADMAP v3+ 中期/长期条目）
 - 考虑提供「手动修正说话人归属」的交互入口，作为算法精度不足的体验补偿
+
+### 底部状态栏「云端 AI 服务已连接」为静态文案，与真实路由不符
+**目标**：修复 UI 缺陷——底部状态栏在任何状态下都宣称「云端 AI 服务已连接」，与登录态、云端配置、LLM 实际路由均无关。全本地（Ollama）运行、零出网时该文案与「本地 Ollama 时零出网」隐私承诺（`frontend/src/i18n/*/settings.json` engine_cell_llm_context_local）直接冲突，侵蚀用户信任。
+
+#### 现状与根因
+- `frontend/src/App.vue:113` 写死绿点 pip + `t('common.usage.cloud_connected')`（「云端 AI 服务已连接」），无响应式数据源；登录遮罩、非登录、本地端点下均恒显已连接。
+- 真实判据已存在但未被该 UI 引用：`is_cloud_enabled()`（`core/cloud_client.py:43`，按 CLOUD_API_URL+TOKEN 判定）、用户登录态、`GET /api/settings` 返回的 `llm.provider/base_url`。
+
+#### 设计要求
+- 状态栏该项改为展示纪要 LLM 实际路由，三态：`本地引擎（Ollama / LM Studio）` / `云端服务` / `未配置（点击进入设置）`；数据源复用现有 `GET /api/settings` + 登录态，**无需新增后端接口**。
+- 本地引擎判定：`llm.base_url` 的 host 为 `localhost` / `127.0.0.1`。
+- 点击该项跳转 设置 → 计算引擎 Tab。
+- i18n 新增三态键，废弃恒真文案键。
+
+#### 建议排期
+与 [PRD-LOCAL-ENGINE](PRD-LOCAL-ENGINE.md) WP-A（R4 LLM 自接增强）同域，建议并入 WP-A 一并交付（R6 已有「引擎徽章三态」语义，本条是其底部状态栏投影）。
 
 ## 体验优化
 
