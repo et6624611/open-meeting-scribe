@@ -4,8 +4,8 @@ description: 为计算能力层增加全本地引擎选项（FunASR 本地 ASR +
 tags: ["requirement", "offline", "funasr", "ollama", "open-source"]
 author: 产品经理（AI 起草）/ 项目方裁决
 created_at: 2026-09-23
-updated_at: 2026-09-23
-version: "0.3.1"
+updated_at: 2026-09-24
+version: "0.3.2"
 status: approved-p0
 ---
 
@@ -82,7 +82,7 @@ D2 的内在逻辑：ADR-0009 拆分的首要动机是裁掉 torch（~543MB）�
 - **优先级**：P0（已裁决生效，依 D3）——立即进入开发队列，作为 GitHub 转 Public 前的最后一个功能里程碑。MVP 范围按 D1/D2 裁决收敛（本地 ASR + LLM 自接端点 + 声纹离线化），不再拆分降级路径。
 - **分类**：核心引擎 / 平台能力
 - **Owner**：产品定义 — 产品经理（AI 起草）；决策与工程评审 — Yongliang Wang
-- **状态**：已批准（P0）；PRD 已出 → [docs/PRD-LOCAL-ENGINE.md](PRD-LOCAL-ENGINE.md)（pending-review），待 ROADMAP 版本节点登记
+- **状态**：已批准（P0）；PRD 已出 → [docs/PRD-LOCAL-ENGINE.md](PRD-LOCAL-ENGINE.md)；已登记 ROADMAP [v10](ROADMAP.md)（首轮派工 WP-A~D 已入库，AC-6 缺陷已修复）
 
 ## 依赖与风险
 
@@ -107,7 +107,7 @@ D2 的内在逻辑：ADR-0009 拆分的首要动机是裁掉 torch（~543MB）�
 1. ~~政企完全离线模型包独立分发物~~：**已关闭**——D-R3 采纳后由 Windows Inno Setup 组件承载同一目录布局（见 PRD R5 实施约束 ④）。
 2. ~~LLM 最低推荐规格~~：**已关闭（WP-C 正式实验，2026-09-23）**——5 档 ×2 段实测（qwen3:14b 裁判）：推荐默认 **qwen3:8b**（结构完整、裁判判定零幻觉、时延 42–47s），可用下限 **qwen3:4b**（结构完整、幻觉 ≤1、时延偏慢），**qwen2.5:3b/1.5b-instruct 不达可用档**（丢章节 + 幻觉 2–3 条/段）。证据与配置表见 [tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5，已回填 PRD R4 `model_tier`。
 3. 离线模式实时转写降级为分段批处理，体验是否可接受？需内部演示验证（Spike RTF 0.081 表明批处理时延无压力，待真机演示确认）。
-4. ROADMAP 登记：作为新版本节点（建议 v8）纳入主线，当前迭代中被让渡的功能项清单需项目方确认（D-R4）。
+4. ROADMAP 登记：**已作为 v10 落主线（2026-09-24）**——原建议 v8 已被「移动端消息流」占用，顺延登记；D-R4 让渡清单已在 ROADMAP v10 节点给出建议口径（让渡 v7 产品页/v8 移动端/分离优化中长期项，不让渡在途 WIP 与缺陷修复），待项目方圈定。
 
 ## 关联链接
 

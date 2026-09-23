@@ -30,6 +30,7 @@ version: "2.1.0"
 - **High-accuracy transcription**: Powered by DashScope paraformer-v2, state-of-the-art for CJK languages
 - **Speaker diarization**: Automatically identifies and labels different speakers (Speaker 1, Speaker 2, ...)
 - **Voiceprint naming**: Register a voiceprint once, and "Speaker 1" becomes "John Smith" across all future meetings
+- **Optional fully local engine** 🚧: Offline FunASR transcription + local CAM++ voiceprint + your self-hosted Ollama / LM Studio endpoint — meeting data never leaves your device (in development, see [SECURITY.md §1.3](SECURITY.md) data-flow matrix)
 - **Hotword boosting**: Custom vocabulary (names, jargon) weighted during recognition for higher accuracy
 - **Structured minutes**: LLM-generated conclusions + action items (who / what / deadline)
 - **AI chat-driven workflow**: Control recording, transcription, queries, and settings through natural language

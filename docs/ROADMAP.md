@@ -3,8 +3,8 @@ title: 版本路线
 description: 渐进构建路线图（版本主线），从 v1 云方案到本地数据·云端智能。零散需求与缺陷修复见 BACKLOG.md
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-17
-version: "1.6.0"
+updated_at: 2026-09-24
+version: "1.7.0"
 status: published
 ---
 
@@ -12,6 +12,7 @@ status: published
 
 > 渐进构建：先跑通最小链路，再叠加能力。呼应 MISSION「本地数据·云端智能」长期方向。
 > 零散缺陷修复与体验优化条目见 [BACKLOG.md](BACKLOG.md)。
+> 注：需求记录原建议本地引擎登记为 v8，因 v8（移动端消息流）/v9（Agent 角色系统）已先行占用，顺延为 **v10**。
 
 ## v1 · 云方案 ✅
 **目标**：最快跑通「音频 → 纪要」，验证产品价值。
@@ -132,6 +133,18 @@ status: published
 - **核心模块**：`core/agent_workspace.py`（角色加载/fork/save/delete）+ `app/routers/agent.py`（REST API）
 - **前端**：`AgentsView.vue`（角色管理 UI）+ `stores/agent.ts`（Pinia store）
 - 依据：[ADR-0017](adr/0017-agent角色系统从硬编码提示词到md工作区.md)，设计详情见 [AGENT_ROLE_SYSTEM.md](design/AGENT_ROLE_SYSTEM.md)
+
+## v10 · 本地可选计算引擎（离线模式）🚧
+**目标**：让「数据永不出设备」从主张变为可验证事实——新增全本地引擎选项（FunASR ASR + LLM 自接端点 + 声纹本地化），兑现并强化 ADR-0015 本地数据主权原则。
+- **立项**：P0 战略级（D3 裁决，2026-09-23），GitHub 转 Public 前最后一个功能里程碑
+- **决策链**：[ADR-0018](adr/0018-本地可选计算引擎与声纹离线化.md)、[需求记录](REQUIREMENT_LOCAL_ENGINE.md)、[PRD-LOCAL-ENGINE](PRD-LOCAL-ENGINE.md)、[Spike 报告](SPIKE-R8-LOCAL-ENGINE.md)（D-R1 全家桶 ≈2.0GB / D-R3 引导下载+外置引擎目录，均已裁决）
+- **首轮派工（2026-09-23 已入库 main）**：
+  - WP-A（R4 LLM 自接增强）✅ `c2a1272` 等；含 §7.2-4/5 本地引擎自动探测与状态栏三态
+  - WP-B R5（模型下载器 + 常驻引擎子进程后端）✅ `c05c198`；WP-B R6（引擎徽章 + 数据流向矩阵 UI，D-R2 管理员级）✅ `d30ddee`
+  - WP-C（AC-2 评测体系）✅ `830ddc1..cf6f0e7`——本地 vs 云 WER、多说话人 DER、LLM 规格实验（推荐 qwen3:8b、下限 4b）；发现并修复 AC-6 跨端 CMN 缺陷 ✅ `0788390`（回归 PASS：跨端 cos 1.0、EER 0）
+  - WP-D（Windows 冻结 CI + AC-7 云包体积守护）✅ `feed200`
+- **剩余范围**：R1/R2 主干接线（`_handle_infer` 落地 + 热词映射必配项）、R3 声纹离线化链路、R7 打包首启引导、AC-1 断网闭环 / AC-4 可回退真机验收（mac + Win）
+- **D-R4 让渡清单（待项目方圈定）**：建议让渡——v7 产品介绍页、v8 移动端消息流、BACKLOG 中期/长期分离优化项（M2/M3/L1-L3）；不让渡——进行中的笔记/决策流/知识库 WIP 与在途缺陷修复（与 v10 无资源冲突，可并行）
 
 ## 待定 / 想法池
 - **产品战略：跨平台中立枢纽闭环**：会议软件与转录工具分属两个生态，接缝在会前上下文 / 会中采集 / 会后回流三处。闭环方向**不是**接入平台开放 API 做深度集成（违背「反生态锁定」使命、自降为附庸），而是做中立枢纽——上游靠「项目」机制补上下文、会中靠主动型 AI 基于音频流越界、下游多路回流协作生态。让会议软件始终是「可替换音频源之一」、协作工具是「可分发下游之一」。详见 [PRD.md](PRD.md)「生态闭环：做跨平台的中立枢纽」章节

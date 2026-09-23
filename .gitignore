@@ -94,3 +94,6 @@ CODEX.md
 
 # WP-C AC-2 评测中间产物（切分音频/模型输出/大文件，不入库）
 .eval_local_engine/
+
+# 会话验证截图目录（verify 产物，不入库）
+.verify_shots/
