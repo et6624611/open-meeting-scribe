@@ -118,7 +118,10 @@
   },
   "usage": {
     "title": "本月识别额度",
-    "cloud_connected": "云端 AI 服务已连接"
+    "engine_local": "本地引擎",
+    "engine_cloud": "云端服务",
+    "engine_unconfigured": "未配置 · 点击进入设置",
+    "engine_hint": "点击查看计算引擎设置"
   },
   "playing": "播放中",
   "paused": "已暂停",

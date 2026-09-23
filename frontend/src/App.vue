@@ -110,7 +110,16 @@
     <!-- 底部状态栏 / Bottom status bar -->
     <footer class="status">
       <div class="left">
-        <div class="item"><span class="pip"></span> {{ t('common.usage.cloud_connected') }}</div>
+        <div
+          class="item status-engine"
+          :class="`is-${statusEngine}`"
+          role="button"
+          tabindex="0"
+          :title="t('common.usage.engine_hint')"
+          @click="goToEngineSettings"
+          @keydown.enter="goToEngineSettings"
+          @keydown.space.prevent="goToEngineSettings"
+        ><span class="pip"></span> {{ engineStatusLabel }}</div>
         <div class="item status-models">{{ statusModels }}</div>
         <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
@@ -177,6 +186,30 @@ if (typeof window !== 'undefined') {
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 const statusModels = ref('paraformer-v2 + qwen-plus')  // 默认值，加载设置后更新
 
+// ─── 底部状态栏路由三态（BACKLOG v1.6.0 / R4） / Status-bar routing tri-state ───
+// local: 本机端点（Ollama/LM Studio）；cloud: 远端服务；unconfigured: 未配置
+type EngineRoute = 'local' | 'cloud' | 'unconfigured'
+const statusEngine = ref<EngineRoute>('unconfigured')
+
+const engineStatusLabel = computed(() => {
+  switch (statusEngine.value) {
+    case 'local': return t('common.usage.engine_local')
+    case 'cloud': return t('common.usage.engine_cloud')
+    default: return t('common.usage.engine_unconfigured')
+  }
+})
+
+/** 本机地址判定（与后端 is_localhost_base_url 对齐） / Localhost check (mirrors backend) */
+function isLocalhostUrl(url?: string): boolean {
+  if (!url) return false
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url)
+}
+
+/** 点击状态栏跳转到 设置 → 计算引擎（服务分类） / Click navigates to Settings → compute engine (services tab) */
+function goToEngineSettings() {
+  router.push({ name: 'settings', query: { tab: 'services' } })
+}
+
 // 加载设置以获取实际模型名与功能开关 / Load settings to get actual model names and feature flags
 async function loadStatusModels() {
   try {
@@ -185,6 +218,16 @@ async function loadStatusModels() {
     const asrModel = data?.asr?.model || 'paraformer-v2'
     const llmModel = data?.llm?.model || 'qwen-plus'
     statusModels.value = `${asrModel} + ${llmModel}`
+    // 三态路由判定：数据源为 llm 配置 + 登录态，不新增业务接口 / Tri-state from llm config + login state; no new endpoint
+    const llm = data?.llm || {}
+    const baseUrl = llm.base_url || ''
+    if (isLocalhostUrl(baseUrl)) {
+      statusEngine.value = 'local'
+    } else if (baseUrl && (llm.api_key_set || userStore.isLoggedIn)) {
+      statusEngine.value = 'cloud'
+    } else {
+      statusEngine.value = 'unconfigured'
+    }
     // 启动时版本检查（受 update_check 开关控制） / Startup version check (controlled by update_check flag)
     const updateCheckEnabled = data?.feature_flags?.update_check !== false
     updateStartupCheck(updateCheckEnabled)
@@ -330,3 +373,13 @@ onMounted(() => {
 
 
 </script>
+
+<style scoped>
+/* 底部状态栏「计算引擎」三态 / Status-bar compute-engine tri-state */
+.status-engine { cursor: pointer; user-select: none; }
+.status-engine:hover { text-decoration: underline; }
+.status-engine:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.status-engine.is-local .pip { background: var(--ok); }
+.status-engine.is-cloud .pip { background: var(--accent); }
+.status-engine.is-unconfigured .pip { background: var(--warn); }
+</style>
