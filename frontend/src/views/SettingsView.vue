@@ -308,6 +308,17 @@
             {{ engineStore.status?.local_ready ? t('settings.engine_local_ready_yes') : t('settings.engine_local_ready_no') }}
           </span>
         </div>
+        <div class="engine-status-row">
+          <span class="engine-status-label">{{ t('settings.engine_process') }}</span>
+          <span class="engine-status-value" :class="engineStore.status?.process_running ? 'is-ok' : ''">
+            {{ engineStore.status?.process_running ? t('settings.engine_process_running', { pid: engineStore.status?.pid ?? '-' }) : t('settings.engine_process_stopped') }}
+          </span>
+          <template v-if="userStore.isAdmin">
+            <button v-if="!engineStore.status?.process_running" class="btn btn-primary btn-sm" :disabled="engineBusy" @click="onStartEngine">{{ t('settings.engine_action_start') }}</button>
+            <button v-else class="btn btn-secondary btn-sm" :disabled="engineBusy" @click="onStopEngine">{{ t('settings.engine_action_stop') }}</button>
+          </template>
+        </div>
+        <p v-if="engineStore.status?.mode === 'local' && engineStore.status.local_ready && !engineStore.status.process_running" class="engine-ready-hint">{{ t('settings.engine_ready_not_running') }}</p>
 
         <!-- D-R2：管理员可编辑引擎模式；普通用户只读 / D-R2: admin can edit engine mode; regular users read-only -->
         <template v-if="userStore.isAdmin">
@@ -339,6 +350,70 @@
       </div>
     </div>
 
+    <!-- 本地引擎模型资产（R5） / Local engine model assets (R5) -->
+    <div class="settings-section">
+      <h2 class="settings-title">{{ t('settings.engine_models_title') }}</h2>
+      <p class="settings-section-desc">{{ t('settings.engine_models_desc') }}</p>
+
+      <div v-if="!engineStore.overview" class="settings-empty">{{ t('common.loading') }}</div>
+      <template v-else>
+        <!-- 存储位置与容量提示 / Storage location & capacity hint -->
+        <div class="engine-storage-block">
+          <label class="settings-label">{{ t('settings.engine_storage') }}</label>
+          <div class="engine-storage-controls">
+            <input v-model="storageDraft" class="settings-input" :disabled="!userStore.isAdmin" />
+            <button v-if="userStore.isAdmin" class="btn btn-secondary btn-sm" :disabled="storageSaving || storageDraft === engineStore.overview.model_dir" @click="onSaveStorage">{{ t('settings.engine_storage_save') }}</button>
+          </div>
+          <div class="engine-disk-hint" :class="{ 'is-short': diskShort }">
+            <span>{{ t('settings.engine_disk_free', { size: fmtBytes(engineStore.overview.disk_free_bytes) }) }}</span>
+            <span class="engine-disk-sep">·</span>
+            <span>{{ t('settings.engine_disk_required', { size: fmtBytes(engineStore.overview.total_size_required_bytes), optional: fmtBytes(engineStore.overview.total_size_all_bytes - engineStore.overview.total_size_required_bytes) }) }}</span>
+            <span v-if="diskShort" class="engine-disk-short">{{ t('settings.engine_disk_short') }}</span>
+          </div>
+        </div>
+
+        <!-- 模型清单 / Model manifest -->
+        <div class="engine-model-list">
+          <div v-for="m in engineStore.overview.models" :key="m.key" class="engine-model-row">
+            <div class="engine-model-head">
+              <span class="engine-model-name">{{ m.name }}</span>
+              <span v-if="m.optional" class="engine-model-optional">{{ t('settings.engine_model_optional') }}</span>
+              <span class="engine-model-size">{{ fmtBytes(m.size_bytes) }}</span>
+              <span class="engine-model-status" :class="`is-${m.status}`">{{ t(`settings.engine_model_status_${m.status}`) }}</span>
+            </div>
+            <div class="engine-model-purpose">{{ m.purpose }}</div>
+            <!-- 下载中：进度 + 速度 + ETA + 取消 / Downloading: progress + speed + ETA + cancel -->
+            <div v-if="m.status === 'downloading' && m.job" class="engine-model-progress">
+              <div class="engine-progress-bar" role="progressbar" :aria-valuenow="m.job.percent" aria-valuemin="0" aria-valuemax="100">
+                <div class="engine-progress-fill" :style="{ width: m.job.percent + '%' }"></div>
+              </div>
+              <span class="engine-progress-pct">{{ m.job.percent }}%</span>
+              <span class="engine-progress-meta">{{ fmtSpeed(m.job.speed_bps) }}</span>
+              <span v-if="m.job.eta_seconds != null" class="engine-progress-meta">{{ t('settings.engine_progress_eta', { eta: fmtDuration(m.job.eta_seconds) }) }}</span>
+              <button v-if="userStore.isAdmin" class="btn btn-sm btn-secondary" :disabled="busyKey === m.job.id" @click="onCancel(m.job.id)">{{ t('settings.engine_action_cancel') }}</button>
+            </div>
+            <div v-if="userStore.isAdmin && m.status !== 'downloading'" class="engine-model-actions">
+              <button v-if="m.status === 'not_downloaded' || m.status === 'missing'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onDownload(m.key)">{{ t('settings.engine_action_download') }}</button>
+              <button v-else-if="m.status === 'partial'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onDownload(m.key)">{{ t('settings.engine_action_resume') }}</button>
+              <button v-else-if="m.status === 'ready'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onVerify(m.key)">{{ t('settings.engine_action_verify') }}</button>
+              <button v-else-if="m.status === 'tampered'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onDownload(m.key)">{{ t('settings.engine_action_redownload') }}</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 失败任务排错 / Failed job troubleshooting -->
+        <div v-for="j in failedJobs" :key="j.id" class="engine-job-failed">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>{{ jobErrorText(j) }}</span>
+        </div>
+
+        <div class="engine-models-actions">
+          <button v-if="userStore.isAdmin" class="btn btn-primary btn-sm" :disabled="busyKey === 'all' || engineStore.isDownloading" @click="onDownload('all')">{{ t('settings.engine_download_all') }}</button>
+          <button class="btn btn-secondary btn-sm" :disabled="engineStore.overviewLoading" @click="engineStore.loadOverview(true)">{{ t('settings.engine_refresh') }}</button>
+        </div>
+      </template>
+    </div>
+
     <!-- 数据处理流向矩阵 / Data flow matrix -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.engine_matrix_title') }}</h2>
@@ -367,6 +442,18 @@
       </div>
       <p class="engine-matrix-note">{{ t('settings.engine_matrix_note') }}</p>
     </div>
+
+    <!-- 首次启用本地引擎引导弹窗（磁盘预检 / 权重缺失 / 校验失败排错） / First-enable guide dialog (disk precheck / missing weights / integrity failure) -->
+    <LocalEngineGuideDialog
+      :open="guideOpen"
+      :disk-free-bytes="engineStore.overview?.disk_free_bytes ?? 0"
+      :disk-required-bytes="engineStore.overview?.total_size_required_bytes ?? 0"
+      :disk-buffer-bytes="DISK_BUFFER_BYTES"
+      :missing="engineStore.requiredNotReady"
+      :tampered="engineStore.tamperedModels"
+      @close="guideOpen = false"
+      @download-all="onGuideDownloadAll"
+    />
     </div>
 
     <!-- ═══ 转写 / Transcription ═══ -->
@@ -786,7 +873,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
@@ -795,7 +882,9 @@ import { useWatermarkStore } from '@/stores/watermark'
 import { useTaskStore } from '@/stores/task'
 import { useEngineStore } from '@/stores/engine'
 import type { EngineBadgeState } from '@/stores/engine'
-import type { EngineMode } from '@/api/engine'
+import type { EngineMode, DownloadJob } from '@/api/engine'
+import LocalEngineGuideDialog from '@/components/modals/LocalEngineGuideDialog.vue'
+import { showToast } from '@/composables/useToast'
 import { fetchSettings, saveSettings, testApiConnection, fetchCliReference, probeLocalEngine } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset, LocalEngineProbe, LocalEngineProbeResult } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory, updateUserPrefs } from '@/api/usage'
@@ -918,16 +1007,175 @@ const engineSaving = ref(false)
 const engineSaveMessage = ref('')
 const engineSaveError = ref(false)
 
+// ─── R5 模型资产管理 / R5 model asset management ───
+/** 与后端 core/model_downloader.DISK_BUFFER_BYTES 对齐（500MB 磁盘缓冲） / Mirrors backend DISK_BUFFER_BYTES (500MB) */
+const DISK_BUFFER_BYTES = 500 * 1024 * 1024
+
+const storageDraft = ref('')
+const storageSaving = ref(false)
+const busyKey = ref('')
+const engineBusy = ref(false)
+const guideOpen = ref(false)
+
+/** 磁盘预检：剩余空间 < 必装体积 + 缓冲 / Disk precheck: free < required + buffer */
+const diskShort = computed(() => {
+  const o = engineStore.overview
+  if (!o) return false
+  return o.disk_free_bytes < o.total_size_required_bytes + DISK_BUFFER_BYTES
+})
+
+/** 失败任务（排错文案展示） / Failed jobs (troubleshooting rows) */
+const failedJobs = computed(() => engineStore.jobs.filter(j => j.state === 'failed'))
+
+// 存储位置回显（overview 加载/刷新后同步草稿） / Reflect storage dir into draft after overview loads
+watch(() => engineStore.overview?.model_dir, (dir) => {
+  if (dir && !storageSaving.value) storageDraft.value = dir
+}, { immediate: true })
+
+/** error_code → i18n 排错文案（下载/校验/启停/存储共用） / error_code → i18n troubleshooting text (shared) */
+function engineErrText(code?: string | null, error?: string | null): string {
+  const map: Record<string, string> = {
+    insufficient_disk: 'settings.engine_err_insufficient_disk',
+    unwritable_dir: 'settings.engine_err_unwritable_dir',
+    unknown_model: 'settings.engine_err_unknown_model',
+    invalid_request: 'settings.engine_err_generic',
+    models_tampered: 'settings.engine_err_models_tampered',
+    models_missing: 'settings.engine_err_models_missing',
+    download_failed: 'settings.engine_err_download_failed',
+  }
+  const key = code ? map[code] : undefined
+  if (key && key !== 'settings.engine_err_generic') return t(key)
+  return t('settings.engine_err_generic', { error: error || code || '-' })
+}
+
+function jobErrorText(j: DownloadJob): string {
+  return engineErrText(j.error_code, j.error)
+}
+
+function fmtBytes(bytes: number): string { return formatBytes(bytes) }
+
+function fmtSpeed(bps: number): string { return `${fmtBytes(bps)}/s` }
+
+function fmtDuration(sec: number): string {
+  if (sec == null || !isFinite(sec)) return '—'
+  if (sec < 60) return `${Math.max(1, Math.round(sec))}s`
+  if (sec < 3600) return `${Math.floor(sec / 60)}m${Math.round(sec % 60)}s`
+  return `${Math.floor(sec / 3600)}h${Math.round((sec % 3600) / 60)}m`
+}
+
+async function onDownload(key: string) {
+  busyKey.value = key
+  try {
+    const r = await engineStore.download(key)
+    if (!r.ok) showToast(engineErrText(r.error_code, r.error), 'error')
+  } catch (e) {
+    showToast(engineErrText(null, String(e)), 'error')
+  } finally {
+    busyKey.value = ''
+  }
+}
+
+async function onCancel(jobId: string) {
+  busyKey.value = jobId
+  try {
+    const r = await engineStore.cancel(jobId)
+    if (!r.ok) showToast(engineErrText(r.error_code, r.error), 'error')
+  } catch (e) {
+    showToast(engineErrText(null, String(e)), 'error')
+  } finally {
+    busyKey.value = ''
+  }
+}
+
+async function onVerify(key: string) {
+  busyKey.value = key
+  try {
+    const r = await engineStore.verify(key)
+    if (r.ok && r.status !== 'tampered') showToast(t('settings.engine_verify_ok'), 'success')
+    else if (r.status === 'tampered') showToast(t('settings.engine_verify_tampered'), 'error')
+    else showToast(engineErrText(r.error_code, r.error), 'error')
+  } catch (e) {
+    showToast(engineErrText(null, String(e)), 'error')
+  } finally {
+    busyKey.value = ''
+  }
+}
+
+async function onSaveStorage() {
+  const dir = storageDraft.value.trim()
+  if (!dir) return
+  storageSaving.value = true
+  try {
+    const r = await engineStore.saveStorage(dir)
+    if (r.ok) showToast(t('settings.engine_storage_saved'), 'success')
+    else showToast(engineErrText(r.error_code, r.error), 'error')
+  } catch (e) {
+    showToast(t('settings.engine_storage_failed'), 'error')
+  } finally {
+    storageSaving.value = false
+  }
+}
+
+async function onStartEngine() {
+  engineBusy.value = true
+  try {
+    const r = await engineStore.start()
+    if (r.ok) {
+      showToast(t('settings.engine_started'), 'success')
+    } else if (r.error_code === 'models_tampered' || r.error_code === 'models_missing') {
+      // 篡改拒载 / 权重缺失 → 打开引导弹窗排错 / Tamper rejection or missing weights → open guide dialog
+      await engineStore.loadOverview(true)
+      guideOpen.value = true
+    } else {
+      showToast(engineErrText(r.error_code, r.error), 'error')
+    }
+  } catch (e) {
+    showToast(t('settings.engine_start_failed'), 'error')
+  } finally {
+    engineBusy.value = false
+  }
+}
+
+async function onStopEngine() {
+  engineBusy.value = true
+  try {
+    const r = await engineStore.stop()
+    if (r.ok) showToast(t('settings.engine_stopped'), 'success')
+    else showToast(engineErrText(r.error_code, r.error), 'error')
+  } catch (e) {
+    showToast(t('settings.engine_stop_failed'), 'error')
+  } finally {
+    engineBusy.value = false
+  }
+}
+
+function onGuideDownloadAll() {
+  guideOpen.value = false
+  onDownload('all')
+}
+
 async function onSaveEngineMode() {
   engineSaving.value = true
   engineSaveMessage.value = ''
   try {
-    // TODO(WP-B 联调 / integration): 后端 settings.engine 契约落地后确认字段名与生效逻辑（切 local 需就绪校验）。
-    // Confirm field names and activation logic once the backend engine contract lands (switching to local requires readiness check).
     await saveSettings({ engine: { mode: engineModeDraft.value } })
     engineStore.applyMode(engineModeDraft.value)
     engineSaveMessage.value = t('settings.engine_saved')
     engineSaveError.value = false
+
+    if (engineModeDraft.value === 'local') {
+      // 首次启用本地引擎前置检查：磁盘预检 / 权重缺失 / 校验失败 → 引导弹窗；全部就绪 → 直接启动
+      // First-enable precheck: disk / missing / tampered → guide dialog; all ready → start engine
+      await engineStore.loadOverview(true)
+      if (diskShort.value || engineStore.requiredNotReady.length || engineStore.tamperedModels.length) {
+        guideOpen.value = true
+      } else {
+        await onStartEngine()
+      }
+    } else if (engineStore.status?.process_running) {
+      // 切离本地模式：停掉常驻引擎子进程 / Leaving local mode: stop resident engine subprocess
+      await engineStore.stop()
+    }
   } catch (e) {
     console.error('[engine] save mode failed:', e)
     engineSaveMessage.value = t('settings.engine_save_failed')
@@ -1425,7 +1673,12 @@ onMounted(async () => {
   updateLoadCurrentVersion()
   loadDevices()
   engineStore.load()
+  engineStore.loadOverview()  // R5：模型清单 + 下载任务（有活动下载会自动轮询） / Model manifest + jobs (auto-polls if active)
   runLocalProbe()  // 探测本机 Ollama / LM Studio（§7.2-4） / Probe local Ollama / LM Studio
+})
+
+onUnmounted(() => {
+  engineStore.stopPolling()
 })
 
 async function loadUsage() {
@@ -1587,6 +1840,39 @@ async function loadCliReference() {
 .em-tag.is-endpoint { color: var(--warn); background: var(--warn-soft); border: 1px solid oklch(from var(--warn) l c h / 0.3); }
 .em-cell { display: block; }
 .engine-matrix-note { font-size: 12px; color: var(--muted); margin: var(--s-3) 0 0; padding-left: var(--s-3); border-left: 2px solid var(--accent-mid); line-height: 1.6; }
+
+/* ─── R5：模型资产管理 / R5: model asset management ─── */
+.engine-ready-hint { font-size: 12px; color: var(--warn); margin: 0; }
+.engine-storage-block { margin-bottom: var(--s-4); }
+.engine-storage-controls { display: flex; align-items: center; gap: var(--s-2); }
+.engine-storage-controls .settings-input { font-family: var(--font-mono); font-size: 12px; }
+.engine-disk-hint { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.engine-disk-hint.is-short { color: var(--warn); }
+.engine-disk-sep { color: var(--subtle); }
+.engine-disk-short { font-weight: 600; }
+.engine-model-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.engine-model-row { padding: var(--s-3) var(--s-4); }
+.engine-model-row + .engine-model-row { border-top: 1px solid var(--border); }
+.engine-model-head { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.engine-model-name { font-size: 13px; font-weight: 600; color: var(--fg); }
+.engine-model-optional { font-size: 10px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); padding: 1px 6px; border-radius: 999px; }
+.engine-model-size { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.engine-model-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; letter-spacing: 0.02em; }
+.engine-model-status.is-ready { color: var(--ok); background: var(--ok-soft); }
+.engine-model-status.is-downloading { color: var(--accent); background: var(--accent-soft); }
+.engine-model-status.is-partial { color: var(--warn); background: var(--warn-soft); }
+.engine-model-status.is-tampered { color: var(--error); background: var(--error-soft, var(--surface-2)); }
+.engine-model-status.is-not_downloaded, .engine-model-status.is-missing { color: var(--muted); background: var(--surface-2); }
+.engine-model-purpose { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.engine-model-progress { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); flex-wrap: wrap; }
+.engine-progress-bar { flex: 1; min-width: 140px; height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.engine-progress-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s ease; }
+.engine-progress-pct { font-size: 12px; font-weight: 600; font-family: var(--font-mono); color: var(--accent); min-width: 36px; }
+.engine-progress-meta { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+.engine-model-actions { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+.engine-job-failed { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--error); margin-top: var(--s-2); line-height: 1.5; }
+.engine-job-failed svg { flex-shrink: 0; margin-top: 2px; }
+.engine-models-actions { display: flex; gap: var(--s-2); margin-top: var(--s-4); }
 
 
 </style>

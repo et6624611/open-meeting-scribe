@@ -61,6 +61,11 @@
         </div>
       </div>
     </div>
+    <!-- 本地模式降级声明：分段批处理（PRD-LOCAL-ENGINE 非目标节口径） / Local mode degradation notice: segmented batch processing -->
+    <div v-if="engineStore.status?.mode === 'local'" class="rec-local-batch-banner" role="status">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>{{ t('recording.transcript.local_batch_notice') }}</span>
+    </div>
     <!-- 章节条 / Chapter strip -->
     <div class="rec-chapter-strip" v-if="chapters.length > 0">
       <div class="rec-chapter-dots"><span v-for="(_, i) in chapters" :key="i" class="rec-ch-dot" :class="{ 'is-current': i === chapters.length - 1 }"></span></div>
@@ -150,17 +155,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import RecTimeline from './RecTimeline.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useEngineStore } from '@/stores/engine'
 import type { TranscriptLine } from '@/composables/useWebSocket'
 import type { SupportedLanguage } from '@/composables/useTranslation'
 
 const { t } = useI18n()
+
+// 本地模式降级横幅判定（R5 / PRD 非目标节） / Local-mode degradation banner (R5)
+const engineStore = useEngineStore()
+onMounted(() => { engineStore.load() })
 
 // ── 更多菜单 / More menu ──
 const moreBtn = ref<HTMLElement | null>(null)

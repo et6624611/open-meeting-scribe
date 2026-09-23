@@ -28,6 +28,7 @@
     "empty": "等待识别结果…",
     "empty_hint": "开始说话后，识别内容将实时显示在这里",
     "listening": "正在聆听…",
+    "local_batch_notice": "本地引擎模式：实时转写按分段批处理输出，逐字级流式识别不在本地模式目标范围内（见 PRD 非目标节）。",
     "connect_failed": "转写连接已断开",
     "reconnecting": "正在重新连接…（第 {attempt} 次）",
     "retry": "重新连接"
