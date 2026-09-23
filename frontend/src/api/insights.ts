@@ -14,11 +14,10 @@ export interface InsightAnalysisResult {
   has_finding: boolean
   /** Mermaid 图语法（可选） / Mermaid diagram syntax (optional) */
   diagram?: string
-  /** 结构化知识图谱（可选） / Structured knowledge graph (optional) */
-  graph?: InsightGraphData | null
 }
 
-/** 结构化知识图谱数据 / Structured knowledge graph data */
+/* 旧版结构化图谱类型：仅供 InsightGraph.vue 渲染历史会话消息使用
+   Legacy graph types: only used by InsightGraph.vue to render historical messages */
 export interface InsightGraphData {
   nodes: InsightGraphNode[]
   edges: InsightGraphEdge[]

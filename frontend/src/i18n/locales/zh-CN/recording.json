@@ -62,7 +62,14 @@
     "freq_off": "关",
     "freq_low": "低",
     "freq_normal": "中",
-    "freq_high": "高"
+    "freq_high": "高",
+    "flow_phase_no": "阶段 {no}",
+    "flow_step_owner": "讨论步骤",
+    "flow_fit": "适应画布",
+    "flow_zoom_in": "放大",
+    "flow_zoom_out": "缩小",
+    "flow_fullscreen": "全屏",
+    "flow_exit_fullscreen": "退出全屏"
   },
   "control": {
     "pause": "暂停",

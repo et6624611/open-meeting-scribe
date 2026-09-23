@@ -62,7 +62,14 @@
     "freq_off": "Off",
     "freq_low": "Low",
     "freq_normal": "Mid",
-    "freq_high": "High"
+    "freq_high": "High",
+    "flow_phase_no": "Phase {no}",
+    "flow_step_owner": "Discussion step",
+    "flow_fit": "Fit to canvas",
+    "flow_zoom_in": "Zoom in",
+    "flow_zoom_out": "Zoom out",
+    "flow_fullscreen": "Fullscreen",
+    "flow_exit_fullscreen": "Exit fullscreen"
   },
   "control": {
     "pause": "Pause",

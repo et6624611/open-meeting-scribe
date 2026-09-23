@@ -269,6 +269,10 @@ async def enforce_auth_middleware(request: Request, call_next):
     本地模式（REQUIRE_AUTH=false）直接放行，不做任何拦截 / Local mode (REQUIRE_AUTH=false) passes through without interception.
     """
     if _REQUIRE_AUTH:
+        # CORS 预检请求（OPTIONS）直接放行，由 CORSMiddleware 处理响应头 /
+        # Let CORS preflight (OPTIONS) pass through; CORSMiddleware handles response headers.
+        if request.method == "OPTIONS":
+            return await call_next(request)
         path = request.url.path
         if path.startswith("/api/") and not path.startswith(_AUTH_EXEMPT_PREFIXES):
             token = request.cookies.get(_SESSION_COOKIE)

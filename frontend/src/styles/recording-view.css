@@ -217,7 +217,10 @@
 .rec-insight-diagram { margin: var(--s-2) 0; padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-x: auto; }
 /* 图形主输出态：更强的视觉权重 / Primary diagram: stronger visual weight */
 .rec-insight-diagram-primary { margin-top: 0; margin-bottom: 0; border-color: var(--proactive-mid); box-shadow: 0 1px 3px oklch(62% 0.15 270 / 0.08); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-.rec-insight-diagram svg { max-width: 100%; height: auto; }
+/* 仅限 Mermaid 渲染体铺满宽度（精确命中 .mermaid-diagram-svg > svg，
+   避免波及画布内部图标/连线 SVG）
+   Full-width scaling targets the Mermaid render body only, so canvas icons/wires keep their own sizing */
+.mermaid-diagram-svg > svg { width: 100%; height: auto; }
 .mermaid-diagram { position: relative; }
 .mermaid-diagram-error { display: flex; align-items: center; gap: var(--s-1); font-size: var(--fs-11); color: var(--warn); padding: var(--s-2); }
 .mermaid-diagram-error svg { flex-shrink: 0; }
@@ -225,15 +228,60 @@
 .mermaid-diagram-loading svg { animation: spin 1s linear infinite; color: var(--proactive); }
 .mermaid-diagram-svg { display: flex; justify-content: center; }
 
-/* 洞察卡片内 G6 交互式知识图谱 / G6 interactive knowledge graph inside insight card */
-.insight-graph { position: relative; min-height: 200px; }
-.insight-graph-canvas { width: 100%; height: 280px; cursor: grab; }
-.insight-graph-canvas:active { cursor: grabbing; }
-.insight-graph-error { display: flex; align-items: center; gap: var(--s-1); font-size: var(--fs-11); color: var(--warn); padding: var(--s-2); }
-.insight-graph-error svg { flex-shrink: 0; }
-.insight-graph-loading { display: flex; align-items: center; justify-content: center; padding: var(--s-4); }
-.insight-graph-loading svg { animation: spin 1s linear infinite; color: var(--proactive); }
-.insight-graph-tooltip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; font-size: var(--fs-11); color: var(--fg); white-space: nowrap; box-shadow: 0 2px 6px oklch(0% 0 0 / 0.1); z-index: 10; }
+/* 洞察卡片内旧版知识图谱（历史会话兼容，静态 SVG） / Legacy knowledge graph (historical sessions, static SVG) */
+.insight-graph { position: relative; min-height: 200px; overflow: auto; }
+.insight-graph-svg { display: block; min-width: 100%; }
+.insight-graph-svg circle { fill: var(--surface-2); stroke: var(--proactive); }
+.insight-graph-svg path { stroke: var(--border-strong); stroke-width: 1; }
+.insight-graph-svg g.is-seekable { cursor: pointer; }
+.insight-graph-svg g.is-seekable:hover circle { stroke: var(--proactive); stroke-width: 2.5; }
+.insight-graph-node-label { font-size: 11px; fill: var(--fg); text-anchor: middle; }
+.insight-graph-edge-label { font-size: 9px; fill: var(--muted); text-anchor: middle; }
+.insight-graph-tooltip { position: absolute; transform: translateX(-50%); pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; font-size: var(--fs-11); color: var(--fg); white-space: nowrap; box-shadow: 0 2px 6px oklch(0% 0 0 / 0.1); z-index: 10; }
+
+/* 洞察台画布：workflow 阶段卡渲染器 / Insight Deck canvas: workflow phase-card renderer */
+.insight-flow { position: relative; display: block; width: 100%; height: 360px; border: 1px solid var(--proactive-mid); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.insight-flow.is-fullscreen { width: 100vw; height: 100vh; border: none; border-radius: 0; background: var(--bg); }
+.insight-flow-viewport { position: absolute; inset: 0; overflow: hidden;
+  background-image: radial-gradient(var(--border-strong) 1.2px, transparent 1.2px);
+  background-size: 22px 22px; touch-action: none; }
+.insight-flow-viewport.is-pannable { cursor: grab; }
+.insight-flow-viewport.is-pannable:active { cursor: grabbing; }
+.insight-flow-scene { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.insight-flow-wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.insight-flow-wires path { stroke: var(--muted); opacity: 0.7; }
+
+/* 阶段卡 / Phase card */
+.insight-flow-phase { position: absolute; width: 224px; box-sizing: border-box; padding: var(--s-3);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 4px 18px oklch(0% 0 0 / 0.12); }
+/* 画布内部 SVG 尺寸防御：图标固定 11px，控件图标不拉伸
+   Defensive sizing inside the canvas: chips' icon stays 11px, toolbar icons never stretch */
+.insight-flow .insight-flow-chip-ic { flex: 0 0 auto; width: 11px; height: 11px; color: var(--subtle); }
+.insight-flow .insight-flow-toolbar svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.insight-flow-phase-no { font-size: var(--fs-11); color: var(--muted); letter-spacing: 0.5px; }
+.insight-flow-phase-title { font-size: var(--fs-15); font-weight: 600; color: var(--fg); margin: 2px 0 var(--s-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insight-flow-phase-desc { font-size: var(--fs-12); color: var(--muted); line-height: 1.5; margin-bottom: var(--s-2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* 步骤芯片 / Step chip */
+.insight-flow-chip { display: block; width: 100%; box-sizing: border-box; text-align: left; margin-top: var(--s-2); padding: var(--s-2) 10px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: default;
+  transition: border-color 0.12s; font: inherit; color: var(--fg); }
+.insight-flow-chip:hover { border-color: var(--proactive); }
+.insight-flow-chip.is-seekable { cursor: pointer; }
+.insight-flow-chip-title { display: block; font-size: var(--fs-12); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insight-flow-chip-sub { display: flex; align-items: center; gap: 5px; margin-top: 3px; font-size: var(--fs-11); color: var(--muted); }
+.insight-flow-chip-ic { flex: 0 0 auto; width: 11px; height: 11px; color: var(--subtle); }
+.insight-flow-chip-owner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insight-flow-chip-time { margin-left: auto; color: var(--proactive); font-size: 10px; font-family: var(--font-mono); }
+
+/* 缩放控件（左下角） / Zoom toolbar (bottom-left) */
+.insight-flow-toolbar { position: absolute; left: var(--s-4); bottom: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); z-index: 5; }
+.insight-flow-toolbar button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--muted); cursor: pointer; transition: color 0.12s, border-color 0.12s; }
+.insight-flow-toolbar button:hover { color: var(--fg); border-color: var(--proactive); }
 
 /* 图操作工具栏 / Diagram action toolbar */
 .rec-insight-diagram-wrap { display: flex; flex-direction: column; gap: 0; }

@@ -70,7 +70,10 @@ async function renderDiagram() {
       theme: isDarkTheme() ? 'dark' : 'default',
       securityLevel: 'loose',
       flowchart: {
-        htmlLabels: true,
+        // 必须关闭 htmlLabels：开启时节点文字是 foreignObject 内 HTML，按临时容器（body 全宽）布局且不随 viewBox 缩放，
+        // 导致图放大后文字溢出裁切；关闭后文字为纯 SVG text，与图形同步等比缩放
+        // htmlLabels must stay off: HTML labels don't reflow with viewBox scaling and clip after enlargement; SVG text scales in lockstep with shapes
+        htmlLabels: false,
         curve: 'basis',
       },
       themeVariables: {
@@ -90,6 +93,12 @@ async function renderDiagram() {
     )
     const { svg, bindFunctions } = await Promise.race([renderPromise, timeoutPromise])
     target.innerHTML = svg
+    // 移除尺寸限制：mermaid 按文字自然尺寸输出固定高和内联 max-width，两者都会阻止图表随容器宽度等比放大（CSS 侧 width:100%; height:auto 依赖 viewBox 缩放） / Strip size constraints: intrinsic height and inline max-width both block proportional scaling to container width
+    const svgEl = target.querySelector('svg')
+    if (svgEl) {
+      svgEl.removeAttribute('height')
+      svgEl.style.maxWidth = ''
+    }
     bindFunctions?.(target)
   } catch (e) {
     // 渲染失败时显示错误信息 / Show error message on render failure

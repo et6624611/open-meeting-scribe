@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-17"
+updated_at: "2026-09-23"
 status: published
 ---
 
@@ -12,6 +12,23 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-23 — Insight Deck 画布改造（workflow 阶段卡样式）
+
+### 变更
+- **输入契约改为大模型原生的受约束 Mermaid**：洞察台提示词（`core/insights.py` + 两个角色 `insights.md`）删除「结构化知识图谱 graph 字段」节，新增「洞察台画布书写规范」（`flowchart LR` + subgraph 阶段 + `@@<毫秒>` 转写定位标记 + `---` 无箭头连线）；返回 JSON 不再含 graph。转写行携带 `mm:ss` 时间戳供模型提取 `@@` 标记。历史数据兼容：后端仍透传旧 graph 字段，仅旧会话重载时生效。
+- **画布渲染器替换 G6 圆点关系图**：新增 `frontend/src/utils/parseInsightFlow.ts`（受约束 Mermaid → 阶段卡结构，非法输入返回 null 触发降级；20 项 Node 单测覆盖验收项，`npm run test:parser`）与 `InsightFlow.vue`（点阵背景、阶段卡错行排布、SVG 直角无箭头连线、适应画布/缩放/全屏控件、芯片点击跳转转写与 hover tooltip、明暗主题）。
+- **降级路径**：解析失败 → 现有 `MermaidDiagram.vue` 直接渲染原始 Mermaid，用户永远有图看。
+- **@antv/g6 依赖移除**：`InsightGraph.vue` 重写为零依赖静态 SVG（历史消息降级展示，保留节点点击跳转）；锁文件 g6 相关条目清零。包体积说明：构建产物中 cytoscape/elk 等大 chunk 仍存留，系 mermaid 自身传递依赖，与 g6 无关。
+- **CSS 修复经验**：Mermaid 铺满规则 `.rec-insight-diagram svg` 会波及画布内部图标（11px 被拉伸至 176px），已收窄为 `.mermaid-diagram-svg > svg` 精确命中渲染体并加画布内尺寸防御。
+
+### 涉及文件
+- `core/insights.py`（prompt 重写、graph 透传兼容、用户消息时间戳）
+- `data/agent/_roles/_builtin/{meeting-minutes,learning-tutor}/insights.md`（同步规范，v2.0.0）
+- `frontend/src/utils/parseInsightFlow.ts`、`frontend/src/components/common/InsightFlow.vue`（新建）
+- `frontend/src/components/common/InsightGraph.vue`（重写为静态 SVG）
+- `frontend/src/views/recording/RecInsightsPanel.vue`、`composables/useAiInsights.ts`、`api/insights.ts`、`styles/recording-view.css`、i18n `{zh-CN,en}/recording.json`
+- `frontend/package.json`（移除 @antv/g6，新增 test:parser）
 
 ## [v7.4.5] - 2026-09-17
 

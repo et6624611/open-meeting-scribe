@@ -140,9 +140,9 @@ const { t } = useI18n()
 const panelMounted = ref(false)
 onMounted(() => { setTimeout(() => { panelMounted.value = true }, 200) })
 const sectionTitleChars = computed(() => ({
-  meeting: t('ai-panel.context.section_meeting').split(''),
-  files: t('ai-panel.context.section_files').split(''),
-  related: t('ai-panel.context.section_related').split(''),
+  meeting: t('ai-panel.context.section_meeting').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
+  files: t('ai-panel.context.section_files').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
+  related: t('ai-panel.context.section_related').split('').map(ch => ch === ' ' ? '\u00A0' : ch),
 }))
 
 defineProps<{

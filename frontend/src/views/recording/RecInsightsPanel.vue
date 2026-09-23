@@ -76,10 +76,11 @@
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
           </div>
           <div v-if="msg.expanded" class="rec-insight-card-body">
-            <!-- 结构化知识图谱（G6 交互式） / Structured knowledge graph (G6 interactive) -->
-            <div v-if="msg.graph" class="rec-insight-diagram-wrap">
+            <!-- 历史会话兼容：旧版结构化图谱（新分析不再产出 graph，仅旧消息重载时存在）
+                 Legacy session compat: old structured graph (new analyses never emit graph, only reloaded legacy messages carry it) -->
+            <div v-if="hasLegacyGraph(msg)" class="rec-insight-diagram-wrap">
               <InsightGraph
-                :data="msg.graph"
+                :data="legacyGraphOf(msg)"
                 class="rec-insight-diagram rec-insight-diagram-primary"
                 @seek-to="$emit('seekTo', $event)"
               />
@@ -91,7 +92,31 @@
                 </button>
               </div>
             </div>
-            <!-- Mermaid 图形化主输出（如有） / Visual diagram as primary output (if available) -->
+            <!-- 洞察台画布：受约束 Mermaid 解析成功时渲染 workflow 阶段卡 / Insight Deck canvas: workflow phase cards when constrained Mermaid parses -->
+            <div v-else-if="flowOf(msg)" class="rec-insight-diagram-wrap">
+              <InsightFlow
+                :data="flowOf(msg)!"
+                class="rec-insight-diagram rec-insight-diagram-primary"
+                @seek-to="$emit('seekTo', $event)"
+              />
+              <!-- 图操作工具栏 / Diagram action toolbar -->
+              <div class="rec-insight-diagram-toolbar">
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
+                </button>
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
+                </button>
+                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
+                </button>
+              </div>
+            </div>
+            <!-- 降级：不符合画布书写规范时用通用 Mermaid 渲染，用户永远有图看
+                 Fallback: non-conforming Mermaid rendered generically — the user always sees a diagram -->
             <div v-else-if="msg.diagram" class="rec-insight-diagram-wrap">
               <MermaidDiagram
                 :code="msg.diagram"
@@ -151,8 +176,12 @@ import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction, AutoFreq } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
+import type { InsightFlowData } from '@/utils/parseInsightFlow'
+import { parseInsightFlow, matchPhaseDescriptions } from '@/utils/parseInsightFlow'
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
-import InsightGraph from '@/components/common/InsightGraph.vue'
+import InsightFlow from '@/components/common/InsightFlow.vue'
+// eslint-disable-next-line vue/multi-word-component-names -- 历史兼容组件，仅旧会话 graph 消息使用
+import InsightGraph, { type InsightLegacyGraphData } from '@/components/common/InsightGraph.vue'
 
 const { t } = useI18n()
 const insights = useAiInsights()
@@ -186,6 +215,37 @@ function renderInsightMarkdown(md: string): string {
 
 const panelRef = ref<HTMLElement | null>(null)
 
+/* 画布解析结果缓存：按消息对象引用复用，避免列表重渲染时重复解析
+   Flow parse cache: keyed by message object identity, survives list re-renders */
+const flowCache = new WeakMap<object, InsightFlowData | null>()
+
+/** 消息是否携带旧版图谱数据 / Whether a message carries the legacy graph payload */
+function hasLegacyGraph(msg: InsightMessage): boolean {
+  const g = msg.graph as { nodes?: unknown } | undefined
+  return !!g && Array.isArray(g.nodes) && g.nodes.length > 0
+}
+
+/** 历史消息的旧版图谱数据（新分析不再产出 graph，仅旧会话重载时存在）
+    Legacy graph payload of a historical message (new analyses never emit graph) */
+function legacyGraphOf(msg: InsightMessage): InsightLegacyGraphData {
+  return msg.graph as InsightLegacyGraphData
+}
+
+/** 解析消息的 Mermaid 为画布结构；null = 不规范，降级通用渲染 / Parse message Mermaid into canvas flow; null = non-conforming, fall back */
+function flowOf(msg: InsightMessage): InsightFlowData | null {
+  if (!msg.diagram) return null
+  if (flowCache.has(msg)) return flowCache.get(msg) ?? null
+  let flow: InsightFlowData | null = null
+  try {
+    flow = parseInsightFlow(msg.diagram)
+    if (flow) matchPhaseDescriptions(flow.phases, msg.body)
+  } catch {
+    flow = null
+  }
+  flowCache.set(msg, flow)
+  return flow
+}
+
 defineProps<{
   messages: InsightMessage[]
   enabled: boolean
@@ -207,7 +267,7 @@ defineEmits<{
 }>()
 
 /** 复制图源码到剪贴板 / Copy diagram source to clipboard */
-async function onCopyDiagram(code: string) {
+async function onCopyDiagram(code: string | undefined) {
   if (!code) return
   try {
     await navigator.clipboard.writeText(code)
@@ -219,7 +279,7 @@ async function onCopyDiagram(code: string) {
 }
 
 /** 在 AI 对话中编辑图 / Edit diagram in AI chat */
-function onEditInChat(code: string) {
+function onEditInChat(code: string | undefined) {
   if (!code) return
   // 设置图编辑请求，AIPanel 监听后会预填输入框 / Set diagram edit request, AIPanel watches and pre-fills input
   insights.diagramEditPending.value = code

@@ -458,6 +458,51 @@ class TestSilenceDetectionConfig:
 
 
 # ============================================================
+# CORS 预检回归测试 / CORS preflight regression test
+# ============================================================
+
+
+class TestCorsPreflightWithAuth:
+    """CORS 预检请求在 REQUIRE_AUTH=true 时不被认证中间件拦截
+
+    回归背景：CORSMiddleware 注册顺序使其成为最内层中间件，enforce_auth_middleware
+    在最外层。REQUIRE_AUTH=true 时浏览器 OPTIONS 预检请求先经过认证中间件，
+    因无 JWT 被返回 401（且无 ACAO 头），跨域部署完全不可用。
+    """
+
+    def test_options_preflight_passes_auth(self, client, monkeypatch):
+        """REQUIRE_AUTH=true 时，带 Origin 的 OPTIONS /api/tasks 应返回 200/204 且含 ACAO 头"""
+        import app.server as server_mod
+
+        monkeypatch.setattr(server_mod, "_REQUIRE_AUTH", True)
+
+        resp = client.options(
+            "/api/tasks",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # 预检请求不应被认证拦截 / Preflight must not be blocked by auth
+        assert resp.status_code in (200, 204), (
+            f"OPTIONS preflight returned {resp.status_code}, expected 200 or 204"
+        )
+        # 响应必须包含 CORS 头 / Response must include CORS headers
+        assert "access-control-allow-origin" in resp.headers, (
+            "OPTIONS preflight response missing Access-Control-Allow-Origin header"
+        )
+
+    def test_non_preflight_still_requires_auth(self, client, monkeypatch):
+        """REQUIRE_AUTH=true 时，非 OPTIONS 的 GET 请求无 JWT 仍返回 401"""
+        import app.server as server_mod
+
+        monkeypatch.setattr(server_mod, "_REQUIRE_AUTH", True)
+
+        resp = client.get("/api/tasks")
+        assert resp.status_code == 401
+
+
+# ============================================================
 # 云端用户服务（cloud_client + cloud_api）
 # ============================================================
 

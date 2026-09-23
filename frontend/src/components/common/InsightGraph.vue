@@ -1,35 +1,60 @@
 <template>
-  <div class="insight-graph" ref="containerRef">
-    <div v-if="error" class="insight-graph-error">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span>{{ error }}</span>
-    </div>
-    <div v-if="loading && !error" class="insight-graph-loading">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-    </div>
-    <div v-show="!error && !loading" class="insight-graph-canvas" ref="canvasRef"></div>
+  <div class="insight-graph">
+    <svg class="insight-graph-svg" :viewBox="`0 0 ${width} ${height}`" fill="none" role="img">
+      <!-- 边：直角连线 + 关系标签 / Edges: right-angle wires with relation labels -->
+      <g v-for="(e, i) in edgeGeoms" :key="`e${i}`">
+        <path :d="e.d" />
+        <text v-if="e.label" :x="e.mx" :y="e.my - 4" class="insight-graph-edge-label">{{ e.label }}</text>
+      </g>
+      <!-- 节点：圆点 + 标签 / Nodes: dots with labels -->
+      <g
+        v-for="n in nodeGeoms" :key="n.id"
+        :class="{ 'is-seekable': n.beginTime > 0 }"
+        :transform="`translate(${n.x}, ${n.y})`"
+        @click="n.beginTime > 0 && emit('seekTo', n.beginTime)"
+        @mouseenter="hover = { text: n.tip, x: n.x, y: n.y }"
+        @mouseleave="hover = null"
+      >
+        <circle r="9" stroke-width="1.5" />
+        <text y="24" class="insight-graph-node-label">{{ n.label }}</text>
+      </g>
+    </svg>
     <!-- 节点信息 tooltip / Node info tooltip -->
-    <div v-if="tooltipVisible" class="insight-graph-tooltip" :style="tooltipStyle">
-      {{ tooltipText }}
+    <div v-if="hover" class="insight-graph-tooltip" :style="{ left: `${hover.x}px`, top: `${hover.y - 18}px` }">
+      {{ hover.text }}
     </div>
   </div>
 </template>
 
+<script lang="ts">
+/** 旧版图谱数据契约（供调用方历史消息转型使用） / Legacy graph contract (for callers casting historical messages) */
+export interface InsightLegacyGraphData {
+  nodes: Array<{ id: string; label?: string; begin_time?: number }>
+  edges: Array<{ from: string; to: string; label?: string }>
+}
+</script>
+
 <script setup lang="ts">
 /**
- * 交互式知识图谱组件 / Interactive knowledge graph component
+ * 旧版结构化知识图谱（历史会话兼容） / Legacy structured knowledge graph (historical session compatibility)
  *
- * 使用 AntV G6 渲染结构化节点-边图谱。 / Renders structured node-edge graph using AntV G6.
- * 节点携带 begin_time 时，点击可跳转到转写原文对应位置。 / When nodes carry begin_time, clicking seeks to the corresponding transcript position.
- * 支持力导向布局、拖拽、缩放、主题适配。 / Supports force layout, drag, zoom, theme adaptation.
+ * 原基于 AntV G6 的交互式图谱已随画布改造下线（@antv/g6 依赖移除）。
+ * 本组件重写为零依赖的静态 SVG 渲染：仅保留节点点击跳转转写（seekTo）
+ * 与 hover tooltip，不再支持力导向布局/拖拽/缩放。新分析不再产出 graph 数据，
+ * 仅历史会话消息重载时会命中本组件。
+ * The G6-based interactive graph was retired with the canvas restyle (@antv/g6 removed).
+ * This component is now a dependency-free static SVG render keeping only node click → seekTo
+ * and hover tooltips; no force layout/drag/zoom. New analyses never emit graph data —
+ * only reloaded historical messages reach this component.
  */
-import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
-import { useThemeStore } from '@/stores/theme'
-import type { InsightGraphData } from '@/api/insights'
+import { computed, ref } from 'vue'
+
+/** 图谱数据（与旧后端契约一致） / Graph data (aligned with the legacy backend contract) */
+type LegacyGraphData = InsightLegacyGraphData
 
 const props = defineProps<{
   /** 图谱数据 / Graph data */
-  data: InsightGraphData
+  data: LegacyGraphData
 }>()
 
 const emit = defineEmits<{
@@ -37,212 +62,78 @@ const emit = defineEmits<{
   (e: 'seekTo', ms: number): void
 }>()
 
-const containerRef = ref<HTMLElement | null>(null)
-const canvasRef = ref<HTMLElement | null>(null)
-const loading = ref(false)
-const error = ref('')
+const COL_W = 150
+const ROW_H = 64
+const PAD = 28
 
-const themeStore = useThemeStore()
+const hover = ref<{ text: string; x: number; y: number } | null>(null)
 
-/** 深色主题列表 / Dark theme IDs */
-const DARK_THEMES = new Set(['standard-dark', 'dark', 'forest', 'moonlight'])
+interface NodeGeom { id: string; x: number; y: number; label: string; beginTime: number; tip: string }
 
-function isDarkTheme(): boolean {
-  return DARK_THEMES.has(themeStore.current)
-}
-
-/** 节点 begin_time 索引（id → ms） / Node begin_time index (id → ms) */
-const beginTimeMap = computed(() => {
-  const map = new Map<string, number>()
-  for (const n of props.data.nodes) {
-    map.set(n.id, n.begin_time ?? 0)
+/** 按拓扑深度分层的节点坐标 / Node coordinates layered by topological depth */
+const nodeGeoms = computed<NodeGeom[]>(() => {
+  const nodes = props.data?.nodes ?? []
+  const edges = props.data?.edges ?? []
+  const ids = nodes.map(n => n.id)
+  const depth = new Map<string, number>()
+  ids.forEach(id => depth.set(id, 0))
+  // 松弛迭代求最长路径深度（限次防环） / Bellman-style relaxation, capped to survive cycles
+  for (let iter = 0; iter < ids.length; iter++) {
+    let changed = false
+    for (const e of edges) {
+      if (!depth.has(e.from) || !depth.has(e.to)) continue
+      if (depth.get(e.to)! < depth.get(e.from)! + 1) {
+        depth.set(e.to, depth.get(e.from)! + 1)
+        changed = true
+      }
+    }
+    if (!changed) break
   }
-  return map
+  const rows = new Map<number, number>()
+  return nodes.map(n => {
+    const d = depth.get(n.id) ?? 0
+    const row = rows.get(d) ?? 0
+    rows.set(d, row + 1)
+    const label = (n.label || n.id).slice(0, 10)
+    const bt = n.begin_time ?? 0
+    return {
+      id: n.id,
+      x: PAD + d * COL_W,
+      y: PAD + row * ROW_H,
+      label,
+      beginTime: bt,
+      tip: bt > 0 ? `${label} (${formatTime(bt)})` : label,
+    }
+  })
 })
 
-/** 节点标签索引 / Node label index */
-const labelMap = computed(() => {
-  const map = new Map<string, string>()
-  for (const n of props.data.nodes) {
-    map.set(n.id, n.label || n.id)
+const edgeGeoms = computed(() => {
+  const byId = new Map(nodeGeoms.value.map(n => [n.id, n]))
+  const out: Array<{ d: string; mx: number; my: number; label: string }> = []
+  for (const e of props.data?.edges ?? []) {
+    const a = byId.get(e.from)
+    const b = byId.get(e.to)
+    if (!a || !b) continue
+    const x1 = a.x + 12, x2 = b.x - 12
+    const xm = (x1 + x2) / 2
+    out.push({
+      d: `M ${x1} ${a.y} H ${xm} V ${b.y} H ${x2}`,
+      mx: xm,
+      my: (a.y + b.y) / 2,
+      label: e.label ?? '',
+    })
   }
-  return map
+  return out
 })
 
-/* ─── Tooltip 状态 / Tooltip state ─── */
-const tooltipVisible = ref(false)
-const tooltipStyle = ref<Record<string, string>>({})
-const tooltipText = ref('')
-
-let graph: any = null
-
-/**
- * 获取主题色 / Get theme colors
- */
-function getThemeColors() {
-  const dark = isDarkTheme()
-  return {
-    nodeFill: dark ? '#3b3f5a' : '#e8eaf6',
-    nodeStroke: dark ? '#7c83c4' : '#5c6bc0',
-    nodeLabel: dark ? '#e0e0e0' : '#333333',
-    edgeStroke: dark ? '#555' : '#bbb',
-    edgeLabel: dark ? '#999' : '#666',
-    hoverStroke: dark ? '#a0a8e0' : '#3949ab',
-    selectedFill: dark ? '#4a5080' : '#c5cae9',
-  }
-}
-
-/**
- * 初始化并渲染 G6 图谱 / Initialize and render G6 graph
- */
-async function renderGraph() {
-  if (!props.data?.nodes?.length || !canvasRef.value) return
-
-  loading.value = true
-  error.value = ''
-
-  try {
-    const { Graph } = await import('@antv/g6')
-    const colors = getThemeColors()
-
-    // 销毁旧实例 / Destroy old instance
-    if (graph) {
-      graph.destroy()
-      graph = null
-    }
-
-    // 构造 G6 数据 / Build G6 data
-    const g6Data = {
-      nodes: props.data.nodes.map(n => ({
-        id: n.id,
-        data: { begin_time: n.begin_time ?? 0, label: n.label },
-        style: {
-          labelText: n.label || n.id,
-          labelFill: colors.nodeLabel,
-          labelFontSize: 11,
-          labelPlacement: 'bottom' as const,
-          labelMaxWidth: 80,
-          size: 32,
-          fill: colors.nodeFill,
-          stroke: colors.nodeStroke,
-          lineWidth: 1.5,
-        },
-      })),
-      edges: props.data.edges.map((e, i) => ({
-        id: `e-${i}`,
-        source: e.from,
-        target: e.to,
-        data: { label: e.label },
-        style: {
-          stroke: colors.edgeStroke,
-          lineWidth: 1,
-          endArrow: true,
-          endArrowSize: 6,
-          labelText: e.label || '',
-          labelFill: colors.edgeLabel,
-          labelFontSize: 9,
-          labelBackground: true,
-          labelBackgroundFill: isDarkTheme() ? '#2a2d3e' : '#f5f5f5',
-          labelBackgroundPadding: [2, 4, 2, 4],
-        },
-      })),
-    }
-
-    graph = new Graph({
-      container: canvasRef.value,
-      data: g6Data,
-      autoFit: 'view',
-      node: {
-        style: {
-          lineWidth: 1.5,
-        },
-        state: {
-          active: {
-            stroke: colors.hoverStroke,
-            lineWidth: 2.5,
-          },
-          selected: {
-            fill: colors.selectedFill,
-            stroke: colors.hoverStroke,
-            lineWidth: 2,
-          },
-        },
-      },
-      edge: {
-        style: {
-          lineWidth: 1,
-        },
-        state: {
-          active: {
-            stroke: colors.hoverStroke,
-            lineWidth: 2,
-          },
-        },
-      },
-      layout: {
-        type: 'dagre',
-        rankdir: 'LR',
-        nodesep: 40,
-        ranksep: 80,
-      },
-      behaviors: [
-        'drag-canvas',
-        {
-          type: 'drag-element',
-          enable: () => true,
-        },
-        'zoom-canvas',
-        {
-          type: 'hover-activate',
-          state: 'active',
-        },
-      ],
-      animation: false,
-    })
-
-    // 节点点击 → 跳转 / Node click → seek
-    graph.on('node:click', (evt: any) => {
-      const nodeId = evt.target?.id
-      if (!nodeId) return
-      const bt = beginTimeMap.value.get(nodeId)
-      if (bt && bt > 0) {
-        emit('seekTo', bt)
-      }
-    })
-
-    // 节点 hover → tooltip / Node hover → tooltip
-    graph.on('node:pointerenter', (evt: any) => {
-      const nodeId = evt.target?.id
-      if (!nodeId) return
-      const label = labelMap.value.get(nodeId) || nodeId
-      const bt = beginTimeMap.value.get(nodeId) || 0
-      tooltipText.value = bt > 0
-        ? `${label} (${formatTime(bt)})`
-        : label
-      tooltipVisible.value = true
-      // 定位到鼠标附近 / Position near cursor
-      const { client } = evt
-      if (client && containerRef.value) {
-        const rect = containerRef.value.getBoundingClientRect()
-        tooltipStyle.value = {
-          left: `${client.x - rect.left + 12}px`,
-          top: `${client.y - rect.top - 8}px`,
-        }
-      }
-    })
-
-    graph.on('node:pointerleave', () => {
-      tooltipVisible.value = false
-    })
-
-    await graph.render()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Graph render failed'
-    console.warn('[InsightGraph] Render failed:', e)
-  } finally {
-    loading.value = false
-  }
-}
+const width = computed(() => {
+  const xs = nodeGeoms.value.map(n => n.x)
+  return Math.max(...xs, 0) + PAD * 2
+})
+const height = computed(() => {
+  const ys = nodeGeoms.value.map(n => n.y)
+  return Math.max(...ys, 0) + PAD * 2 + 14
+})
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -250,27 +141,4 @@ function formatTime(ms: number): string {
   const sec = totalSec % 60
   return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
-
-// 监听数据变化 / Watch data changes
-watch(() => props.data, () => {
-  renderGraph()
-}, { deep: true })
-
-// 监听主题变化 / Watch theme changes
-watch(() => themeStore.current, () => {
-  renderGraph()
-})
-
-onMounted(() => {
-  if (props.data?.nodes?.length) {
-    renderGraph()
-  }
-})
-
-onUnmounted(() => {
-  if (graph) {
-    graph.destroy()
-    graph = null
-  }
-})
 </script>
