@@ -181,8 +181,21 @@
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.llm_provider') }}</label>
           <select v-model="settings.llm!.provider" class="settings-input" @change="onLlmProviderChange">
-            <option v-for="p in llmPresets" :key="p.name" :value="p.name">{{ p.name }}</option>
+            <option
+              v-for="p in llmPresetsOrdered"
+              :key="p.name"
+              :value="p.name"
+              :disabled="isPresetDisabled(p)"
+            >{{ presetLabel(p) }}</option>
           </select>
+          <span v-if="probeLoading" class="api-proxy-hint">{{ t('settings.llm_probe_running') }}</span>
+          <a
+            v-else-if="selectedInstallUrl"
+            class="api-proxy-hint"
+            :href="selectedInstallUrl"
+            target="_blank"
+            rel="noopener"
+          >{{ t('settings.llm_install_guide') }}</a>
         </div>
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.llm_base_url') }}</label>
@@ -191,10 +204,15 @@
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.api_key') }}</label>
           <input v-model="settings.llm!.api_key" type="password" class="settings-input" :placeholder="t('settings.llm_api_key_placeholder')" />
+          <span v-if="selectedIsLocal" class="api-proxy-hint">{{ t('settings.llm_local_no_key') }}</span>
         </div>
         <div class="settings-field">
           <label class="settings-label">{{ t('settings.llm_model') }}</label>
-          <input v-model="settings.llm!.model" class="settings-input" placeholder="qwen-plus" />
+          <input v-model="settings.llm!.model" class="settings-input" list="llm-model-options" placeholder="qwen-plus" />
+          <datalist id="llm-model-options">
+            <option v-for="m in modelOptions" :key="m" :value="m" />
+          </datalist>
+          <span v-if="probeModelsLoaded" class="api-proxy-hint">{{ t('settings.llm_probe_models_hint') }}</span>
         </div>
       </div>
 
@@ -778,8 +796,8 @@ import { useTaskStore } from '@/stores/task'
 import { useEngineStore } from '@/stores/engine'
 import type { EngineBadgeState } from '@/stores/engine'
 import type { EngineMode } from '@/api/engine'
-import { fetchSettings, saveSettings, testApiConnection, fetchCliReference } from '@/api/settings'
-import type { Settings, FeatureFlags, ProviderPreset } from '@/api/settings'
+import { fetchSettings, saveSettings, testApiConnection, fetchCliReference, probeLocalEngine } from '@/api/settings'
+import type { Settings, FeatureFlags, ProviderPreset, LocalEngineProbe, LocalEngineProbeResult } from '@/api/settings'
 import { fetchUsageSummary, fetchUsageHistory, updateUserPrefs } from '@/api/usage'
 import type { UsageSummary, UsageHistoryItem } from '@/api/usage'
 import { fetchStorageUsage, cleanIntermediateFiles, cleanOrphanedFiles } from '@/api/storage'
@@ -948,11 +966,123 @@ const llmPresets = computed<ProviderPreset[]>(() => settings.llm_provider_preset
   { name: '自定义', base_url: '', models: [] },
 ])
 
-/** Provider 切换时自动填充 Base URL / Auto-fill Base URL on provider change */
+// ─── 本地引擎自动探测（§7.2-4） / Local engine auto-probe (§7.2-4) ───
+/** 探测结果；null 表示尚未探测 / Probe result; null means not probed yet */
+const localProbe = ref<LocalEngineProbeResult | null>(null)
+const probeLoading = ref(false)
+
+/** 本机地址判定（与后端 is_localhost_base_url 对齐） / Localhost check (mirrors backend) */
+function isLocalUrl(url?: string): boolean {
+  if (!url) return false
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url)
+}
+
+/** 按 base_url 匹配探测引擎记录 / Match a probed engine record by base_url */
+function engineForBase(base?: string): LocalEngineProbe | undefined {
+  if (!base || !localProbe.value) return undefined
+  return localProbe.value.engines.find(e => e.base_url === base)
+}
+
+const selectedPreset = computed<ProviderPreset | undefined>(
+  () => llmPresets.value.find(p => p.name === settings.llm?.provider)
+)
+
+/** 当前是否选中本机端点 / Whether a localhost endpoint is selected */
+const selectedIsLocal = computed<boolean>(
+  () => selectedPreset.value?.localhost === true || isLocalUrl(settings.llm?.base_url)
+)
+
+/** 探测到可达本地预设后置顶排序（稳定排序，保留其余原序） / Pin detected local presets to top (stable) */
+const llmPresetsOrdered = computed<ProviderPreset[]>(() => {
+  const list = [...llmPresets.value]
+  if (!localProbe.value) return list
+  const detected = new Set<string>()
+  for (const e of localProbe.value.engines) {
+    if (e.reachable) {
+      const p = list.find(pp => pp.base_url === e.base_url)
+      if (p) detected.add(p.name)
+    }
+  }
+  return list.sort((a, b) => (detected.has(a.name) ? 0 : 1) - (detected.has(b.name) ? 0 : 1))
+})
+
+/** 下拉标签：本地预设追加检测状态后缀 / Dropdown label with detection suffix for local presets */
+function presetLabel(p: ProviderPreset): string {
+  if (!p.localhost || !localProbe.value) return p.name
+  const e = engineForBase(p.base_url)
+  if (e?.reachable) return `${p.name} · ${t('settings.llm_probe_detected')}`
+  return `${p.name} · ${t('settings.llm_probe_unavailable')}`
+}
+
+/** 不可达本地预设置灰（保留当前已选项可选） / Grey out unreachable local presets (keep current selectable) */
+function isPresetDisabled(p: ProviderPreset): boolean {
+  if (!p.localhost || !localProbe.value) return false
+  if (p.name === settings.llm?.provider) return false
+  return !engineForBase(p.base_url)?.reachable
+}
+
+/** 不可达本地端点的安装指引链接 / Install-guide URL for an unreachable local endpoint */
+const selectedInstallUrl = computed<string>(() => {
+  if (!selectedIsLocal.value) return ''
+  const e = engineForBase(settings.llm?.base_url)
+  return e && !e.reachable ? e.install_url : ''
+})
+
+/** model 下拉候选：优先探测到的本地模型，其次预设建议模型 / Model options: probed local models first, then preset suggestions */
+const modelOptions = computed<string[]>(() => {
+  const e = engineForBase(settings.llm?.base_url)
+  if (e?.reachable && e.models.length) return e.models
+  return selectedPreset.value?.models || []
+})
+
+/** 是否已回填本地模型（用于提示文案） / Whether probed local models were loaded */
+const probeModelsLoaded = computed<boolean>(() => {
+  const e = engineForBase(settings.llm?.base_url)
+  return !!(e?.reachable && e.models.length)
+})
+
+/** 执行本地引擎探测（仅 localhost，失败静默） / Run local engine probe (localhost only, silent on failure) */
+async function runLocalProbe() {
+  probeLoading.value = true
+  try {
+    localProbe.value = await probeLocalEngine()
+  } catch (e) {
+    console.error('probe local engine failed:', e)
+    localProbe.value = null
+  } finally {
+    probeLoading.value = false
+  }
+}
+
+/** 本地端点占位 Key（无需真实密钥） / Placeholder key for local endpoints (no real key needed) */
+const LOCAL_PLACEHOLDER_KEYS = ['ollama', 'lm-studio']
+function placeholderKeyFor(p: ProviderPreset): string {
+  return p.name.includes('LM Studio') ? 'lm-studio' : 'ollama'
+}
+
+/**
+ * Provider 切换时自动填充 Base URL；本地预设无真实 Key 时自动填占位 Key（§7.2-5）。
+ * 切回云端预设时清除遗留占位，避免占位被误存为真实云端 Key。
+ * Auto-fill Base URL on provider change; fill a placeholder key for local presets when no real key
+ * exists (§7.2-5). Clear any leftover placeholder when switching back to a cloud preset so it is
+ * never persisted as a bogus cloud key.
+ */
 function onLlmProviderChange() {
   const preset = llmPresets.value.find(p => p.name === settings.llm?.provider)
-  if (preset && preset.base_url) {
+  if (!preset) return
+  if (preset.base_url) {
     settings.llm!.base_url = preset.base_url
+  }
+  const cur = settings.llm!.api_key || ''
+  const isPlaceholder = LOCAL_PLACEHOLDER_KEYS.includes(cur)
+  if (preset.localhost) {
+    // 本地端点无需真实密钥：无真实 Key（或已是占位）时填占位 / No real key (or already a placeholder): fill placeholder
+    if (!settings.llm!.api_key_set || isPlaceholder) {
+      settings.llm!.api_key = placeholderKeyFor(preset)
+    }
+  } else if (isPlaceholder) {
+    // 切回云端：清除遗留占位 / Switching to cloud: clear leftover placeholder
+    settings.llm!.api_key = ''
   }
 }
 
@@ -1228,6 +1358,12 @@ async function onCleanOrphaned() {
 }
 
 onMounted(async () => {
+  // 深链：?tab=xxx 直接定位设置分类（状态栏「计算引擎」三态点击跳转） / Deep-link: ?tab=xxx jumps straight to a category (status-bar click)
+  const tab = route.query.tab
+  if (typeof tab === 'string' && SETTINGS_CATEGORIES.includes(tab)) {
+    activeCategory.value = tab
+  }
+
   const s = await fetchSettings()
   // 确保嵌套对象存在，避免模板中 settings.llm!.xxx 报错 / Ensure nested objects exist, avoid template errors
   if (!s.llm) s.llm = {}
@@ -1289,6 +1425,7 @@ onMounted(async () => {
   updateLoadCurrentVersion()
   loadDevices()
   engineStore.load()
+  runLocalProbe()  // 探测本机 Ollama / LM Studio（§7.2-4） / Probe local Ollama / LM Studio
 })
 
 async function loadUsage() {
