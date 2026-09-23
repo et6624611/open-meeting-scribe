@@ -309,6 +309,15 @@ def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     logger.info("窗口已关闭，正在停止服务...")
     server.should_exit = True
 
+    # 停止本地引擎常驻子进程（若在运行） / Stop resident engine subprocess if running
+    try:
+        from core.engine_host import get_engine_host
+        engine = get_engine_host()
+        if engine.is_running():
+            engine.stop()
+    except Exception:
+        pass
+
     # 给服务一点时间完成清理 / Give server time to clean up
     time.sleep(0.5)
 
@@ -317,6 +326,16 @@ def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
 
 
 if __name__ == "__main__":
+    # Spike §3.2 / PRD R5 实施约束②：冻结包多进程必须显式 freeze_support，
+    # 且引擎子进程入口分派必须在 __main__ 保护内，防止冻结包被重复引导
+    import multiprocessing
+    multiprocessing.freeze_support()
+
+    # 引擎常驻子进程分派（冻结态由 core.engine_host 以 `<exe> --engine-worker` 拉起）
+    if "--engine-worker" in sys.argv:
+        from core.engine_worker import main as engine_worker_main
+        sys.exit(engine_worker_main())
+
     # 支持通过命令行参数覆盖默认配置 / Support overriding default config via CLI args
     import argparse
 

@@ -101,6 +101,7 @@ from app.routers import (
     hotwords,
     import_tasks,
     insights,
+    models,
     notes,
     philosophy,
     projects,
@@ -374,6 +375,7 @@ app.include_router(agent.router)
 app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
 app.include_router(import_tasks.router)
+app.include_router(models.router)
 
 # ============================================================
 # 软件下载分发（自建下载中转） / Software download distribution (self-hosted relay)
