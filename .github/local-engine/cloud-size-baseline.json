@@ -1,0 +1,6 @@
+{
+  "_comment": "AC-7 云精简主包体积基线 — 对象为 Windows PyInstaller onefile 产物 dist/OpenMeetingScribe.exe（不含 ffmpeg/启动器/安装器，与 build-windows.yml 的 PyInstaller 步骤一致）。baseline_mb=null 表示 bootstrap 模式：首次绿灯后把 CI 报告（cloud-size-report.json artifact）中的 suggested_baseline_mb 回填至此，此后按 baseline+容差回归；hard_cap_mb 为本地引擎组件侵入的兜底绊线（R8 Spike：云精简包现状约 200MB zip，torch/funasr 侵入至少再增数百 MB）。",
+  "baseline_mb": null,
+  "tolerance_pct": 10,
+  "hard_cap_mb": 300
+}
