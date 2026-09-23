@@ -191,7 +191,7 @@ def _decode_wav(wav_bytes: bytes, expected_sr: int = 16000) -> tuple[np.ndarray,
 
 
 def _extract_fbank(audio: np.ndarray, sample_rate: int) -> torch.Tensor:
-    """提取 80 维 fbank 特征"""
+    """提取 80 维 fbank 特征（含 CMN 倒谱均值归一化）"""
     # 重采样到 16kHz
     if sample_rate != 16000:
         ratio = 16000 / sample_rate
@@ -204,6 +204,10 @@ def _extract_fbank(audio: np.ndarray, sample_rate: int) -> torch.Tensor:
 
     x = torch.from_numpy(audio).unsqueeze(0)
     fbank = K.fbank(x, num_mel_bins=80, frame_length=25, frame_shift=10)
+    # CMN（倒谱均值归一化）：减去时间维均值，与本地 FunASR CAM++ 前处理口径统一，
+    # 使云端 cam++-v1-cloud 与本地 cam++-v1 嵌入落在同一空间（AC-6 跨端零迁移兼容）。
+    # 缺陷根因与 cos=1.0 双向复刻证据见 tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md §6.3。
+    fbank = fbank - fbank.mean(dim=0, keepdim=True)
     return fbank
 
 
