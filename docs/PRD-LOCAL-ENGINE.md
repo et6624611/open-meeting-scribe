@@ -4,8 +4,8 @@ description: 本地 ASR + 声纹离线化 + LLM 自接端点，实现断网全�
 tags: ["prd", "offline", "funasr", "camplus", "ollama"]
 author: 产品经理（AI 起草，待项目方评审）
 created_at: 2026-09-23
-version: "1.1.0"
-status: active (D-R1/D-R3 已按 Spike 证据采纳)
+version: "1.2.0"
+status: active (D-R1/D-R2/D-R3 均已裁决采纳)
 requirement: docs/REQUIREMENT_LOCAL_ENGINE.md (v0.3.0, approved-p0)
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
@@ -102,7 +102,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 ### 7.5 权限与角色
 
-- 无新增角色；本地引擎配置为**设备级**（settings.json），多用户 Web 部署下管理员配置、普通用户只读可见引擎状态（沿用现有 admin/user 划分，工程评审确认 D-R2）。
+- 无新增角色；本地引擎配置为**设备级**（settings.json），多用户 Web 部署下**管理员配置、普通用户只读可见引擎状态**（依既有 admin/user 划分）。**D-R2 已裁决（2026-09-23）：管理员级**。
 
 ### Demo/原型方向
 
@@ -216,7 +216,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 **Open Questions（决策点）**：
 - ~~D-R1~~ **已采纳（2026-09-23）**：全家桶四模型 ≈2.0GB，标点可选裁剪（Spike §2）。
-- D-R2：多用户 Web 部署下引擎配置的权限归属（管理员级 or 用户级）。**当前唯一阻塞决策点**——R5 存储位置与 R6 徽章交互依赖此答案。
+- ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。**无阻塞决策点残留，WP-A~D 全部解锁**（D-R4 让渡清单不阻塞实施，仅影响 ROADMAP 登记）。
 - ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定，进 ROADMAP v8 时登记）。
 - ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：初步证据 qwen3:8b 达可用档，正式结论随 WP-C 产出。
@@ -226,7 +226,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 | 包 | 内容 | PRD 契约 | 依赖 | 验收 |
 |---|---|---|---|---|
 | **WP-A** | R4 LLM 自接增强：Ollama/LM Studio 预设、`POST /api/settings/test-llm`、空 Key 容错、model_tier 保守档提示词 | R4 | 无（立即可开工） | R4 验收 + qwen3:8b/14b 双档实测记录 |
-| **WP-B** | R5 模型下载器 + R6 引擎徽章/流向矩阵（含 README/SECURITY 文档更新） | R5/R6 | D-R2 裁决；目录布局按 Spike §3.3 | R5/R6 验收；篡改拒载用例 |
+| **WP-B** | R5 模型下载器 + R6 引擎徽章/流向矩阵（含 README/SECURITY 文档更新） | R5/R6 | 无（D-R2 已裁决：管理员级）；目录布局按 Spike §3.3 | R5/R6 验收；篡改拒载用例 |
 | **WP-C** | AC-2 评测基准脚本（≥3 段 2/4/6 人样本 + paraformer-v2 云端参照 + WER 计算 + 多说话人分离准确性补测） | AC-2 | 无 | 输出可复跑报告；Spike 遗留 2.3/5.1/5.3 三项一并覆盖 |
 | **WP-D** | Windows PyInstaller+funasr 冻结 CI 冒烟（替身权重，禁真模型下载） | R8/AC-7 | **实施首任务** | Windows CI 绿灯；云包体积零增长回归 |
 
