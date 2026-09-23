@@ -145,6 +145,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 - **功能行为**：`PROVIDER_PRESETS` 增 Ollama/LM Studio；「测试连接」端点（`POST /api/settings/test-llm`）；Key 允许为空（localhost 端点）；小模型防幻觉提示词档（纪要/洞察管线按 `model_tier` 选择提示词模板，默认 auto：≤14B 走保守档）。
 - **边界**：非 localhost 端点要求 https 或显式警告；测试超时 10s；不影响云默认 qwen-plus。
 - **Spike 证据（[§4](SPIKE-R8-LOCAL-ENGINE.md)）**：Ollama qwen3:8b 对 2500 字本地转写 31s 产出结构正确、未见幻觉的纪要——**8B 即达可用档**，支持 `model_tier` auto（≤14B 保守档）设计；正式最低推荐规格实验随 AC-2 评测脚本一并出。
+- **WP-C 正式实验结论（2026-09-23，[EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5）**：5 档 × 2 段（SEG-2P/6P）实测，以 qwen3:14b 为幻觉裁判。**推荐默认 = qwen3:8b**（结构完整度 1.0/1.0、裁判判定幻觉 0/0、时延 42–47s）；**可用下限 = qwen3:4b**（结构 1.0/1.0、幻觉 0/1、时延偏慢 39–55s）；**qwen2.5:3b-instruct 及 1.5b 不达可用档**（各丢一个「议题归类」章节、裁判判定幻觉 2–3 条/段）。据此细化 `model_tier` auto 策略：判定应基于能力档而非纯参数量——推理型 qwen3 ≥8B 走标准档、4–7B 走保守档、非推理型 ≤3B（如 qwen2.5 instruct）触发「降级警示」提示用户纪要可靠性不足。
 - **验收**：本地 Ollama 出纪要；无 Key 保存不报错；错误端点有可行动提示。
 - **优先级**：P0
 
@@ -219,7 +220,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 - ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。**无阻塞决策点残留，WP-A~D 全部解锁**（D-R4 让渡清单不阻塞实施，仅影响 ROADMAP 登记）。
 - ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定，进 ROADMAP v8 时登记）。
-- ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：初步证据 qwen3:8b 达可用档，正式结论随 WP-C 产出。
+- ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：**WP-C 已产出正式结论**（2026-09-23）——推荐默认 qwen3:8b、可用下限 qwen3:4b、qwen2.5 ≤3B 不达档，详见 [EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5 与 R4。
 
 ## 13. 实施任务包（Spike 后移交拆解）
 

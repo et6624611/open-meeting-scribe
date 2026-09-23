@@ -16,7 +16,7 @@
 | `vp_extract_local.py` | 本地 CAM++ 声纹嵌入提取 | `.spike_local_engine/venv` |
 | `vp_compat.py` | AC-6 云/本地注册表兼容与误识率对比 + 零迁移模拟 | `venv`（项目） |
 | `vp_root_cause.py` | 跨端嵌入差异根因定位（CMN 前处理假设验证） | `.spike_local_engine/venv` |
-| `results/` | 评测结果 JSON（入库证据，从 `.eval_local_engine/results/` 归档） | — |
+| `results/` | 评测结果 JSON + `llm_outputs/*.md` 纪要样例（入库证据，从 `.eval_local_engine/results/` 归档） | — |
 | `refs/` | 共识参照与人工校对工作表（AC-2 正式化路径） | — |
 
 ## 复跑顺序
