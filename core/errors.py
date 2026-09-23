@@ -13,6 +13,31 @@ from core.i18n import _
 logger = logging.getLogger(__name__)
 
 
+class LocalEngineError(RuntimeError):
+    """本地引擎（离线 FunASR / CAM++）推理失败的结构化错误（R1/R3 / AC-4）。
+
+    携带机器可读 error_code 与「是否可回退云端」标志，供上层做显式确认后回退
+    （PRD R7：绝不静默上云）。error_code 取值：
+      - models_missing / models_tampered：模型未就绪或被篡改（前往设置下载/重下）
+      - engine_unhealthy：常驻子进程启动或健康检查失败
+      - engine_timeout：推理超时（子进程可能需重启）
+      - inference_failed：FunASR 推理返回错误
+      - audio_not_found：音频文件缺失
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "inference_failed",
+        can_fallback_cloud: bool = False,
+        detail: dict | None = None,
+    ):
+        super().__init__(message)
+        self.error_code = error_code
+        self.can_fallback_cloud = can_fallback_cloud
+        self.detail = detail or {}
+
+
 def is_transient_error(error: Exception) -> bool:
     """
     判断是否为瞬时错误（可自动重试） / Detect if error is transient (auto-retryable).
@@ -81,6 +106,23 @@ def classify_error(error: Exception) -> dict:
         }
     """
     error_str = str(error).lower()
+
+    # ── 本地引擎错误（R1/R3 / AC-4）：优先于通用分类，给出可行动出口 ──
+    if isinstance(error, LocalEngineError):
+        code = error.error_code
+        if code in ("models_missing", "models_tampered"):
+            suggestion = _("Local engine models are not ready. Please download them in Settings, or switch back to cloud.")
+        elif code == "engine_timeout":
+            suggestion = _("Local engine timed out. Please retry, or switch back to cloud.")
+        else:
+            suggestion = _("Local engine inference failed. You can switch back to cloud and retry; your task state is preserved.")
+        return {
+            "category": "local_engine",
+            "error_code": code,
+            "can_fallback_cloud": error.can_fallback_cloud,
+            "message": str(error),
+            "suggestion": suggestion,
+        }
 
     # ── 瞬时错误 / Transient errors ──
     if is_transient_error(error):

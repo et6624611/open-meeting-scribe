@@ -57,11 +57,21 @@ COMMON_BIGRAMS = {
 
 
 def _get_asr_mode() -> str:
-    """获取当前 ASR 接入模式（proxy / direct / cloud）。
+    """获取当前 ASR 接入模式（local / proxy / direct / cloud）。
 
+    local 模式（R1 / PRD-LOCAL-ENGINE）：settings.engine.mode == "local" 时，转写完全
+    在本机 FunASR 常驻子进程完成，音频永不出设备；此为最高优先级判定，先于 asr.mode。
     cloud 模式：桌面端无本地代理配置时，通过云端服务器中转。
     用户偏好 prefer_subscription：已登录且开启时，直连模式自动切换为云端代理以消耗订阅配额。
     """
+    # 本地引擎优先（R1）：engine.mode==local → ASR 走本地 FunASR 管线
+    try:
+        from app.settings_store import get_engine_config
+        if get_engine_config().get("mode") == "local":
+            return "local"
+    except Exception:
+        pass
+
     try:
         from app.store import get_asr_config
         mode = get_asr_config().get("mode", "proxy")
@@ -194,12 +204,95 @@ def transcribe_audio(
     mode = _get_asr_mode()
     logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}, mode={mode}")
 
-    if mode == "cloud":
+    if mode == "local":
+        # R1 边界：local 模式下绝不触达任何云端转写端点（防误配），全程本机 FunASR 子进程
+        return _transcribe_local(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+    elif mode == "cloud":
         return _transcribe_cloud(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
     elif mode == "direct":
         return _transcribe_direct(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
     else:
         return _transcribe_proxy(file_path, model, diarization_enabled, language_hints, vocabulary_id, speaker_count)
+
+
+def _local_sentence_info_to_transcription(
+    sentence_info: list[dict],
+    diarization_enabled: bool = True,
+) -> dict:
+    """将 FunASR sentence_info 映射为 DashScope 转写结构（严格对齐 docs/API_CONTRACTS.md §4）。
+
+    FunASR 原生字段 {start, end, spk, text}（时间单位 ms）→ 契约字段
+    {begin_time, end_time, speaker_id, text, sentence_id, words[]}，使本地与
+    proxy/direct/cloud 模式共用同一 assemble_dialogue 组装逻辑（R1 契约一致性）。
+
+    diarization_enabled=False 时统一 speaker_id=0（契约：speaker_id 仅分离开启时出现）。
+    words[] 本地管线不产出词级时间戳，置空列表（assemble_dialogue 对空 words 安全）。
+    """
+    sentences = []
+    max_end = 0
+    for i, s in enumerate(sentence_info):
+        begin = s.get("start")
+        end = s.get("end")
+        if isinstance(end, (int, float)):
+            max_end = max(max_end, int(end))
+        sentences.append({
+            "begin_time": begin,
+            "end_time": end,
+            "text": s.get("text", "") or "",
+            "sentence_id": i,
+            "speaker_id": int(s.get("spk", 0) or 0) if diarization_enabled else 0,
+            "words": [],
+        })
+
+    return {
+        "transcripts": [{"sentences": sentences}],
+        "properties": {
+            "audio_format": "wav",
+            "channels": 1,
+            "original_sampling_rate": 16000,
+            "original_duration_in_milliseconds": max_end,
+        },
+    }
+
+
+def _transcribe_local(
+    file_path: Path,
+    model: str,
+    diarization_enabled: bool,
+    language_hints: list[str] | None,
+    vocabulary_id: str | None,
+    speaker_count: int | None,
+) -> tuple[list[dict], dict]:
+    """本地模式（R1/R2）：经引擎常驻子进程跑 FunASR 离线全管线转写。
+
+    - 引擎选择/拉起/失败分类统一走 EngineHost.infer（失败抛 LocalEngineError，
+      携带 can_fallback_cloud 供 AC-4 显式确认后回退，绝不静默上云）。
+    - 实时链路在本地模式下降级为分段批处理（PRD Non-Goal，显性声明见 core/realtime_asr.py）；
+      本函数即批处理链路的本地实现。
+    - 已知差距（相对云端 paraformer-v2）：
+        * speaker_count 提示不强制（CAM++ 自动聚类，无法钉死人数）；
+        * language_hints 不适用（seaco-paraformer-zh 为中文模型）；
+        * 无词级时间戳（words[] 为空）。
+    - R2 热词：本地无云端识别期 vocabulary_id 加权；热词以「转写后替换」为必配项，
+      由 assemble_dialogue → apply_hotword_mappings 统一施加（详见该处文档）。
+    """
+    from core.engine_host import get_engine_host
+
+    start = time.perf_counter()
+    logger.info(f"本地 ASR 转写开始（FunASR 常驻子进程）: {file_path.name}")
+
+    resp = get_engine_host().infer("asr", {"audio_path": str(file_path)})
+
+    sentence_info = resp.get("sentence_info", []) or []
+    transcription = _local_sentence_info_to_transcription(sentence_info, diarization_enabled)
+    dialogue = assemble_dialogue(transcription)
+
+    elapsed = time.perf_counter() - start
+    logger.info(
+        f"[PERF] 本地 ASR 转写完成: {elapsed:.1f}s, engine={resp.get('engine')}, "
+        f"sentences={len(sentence_info)}, infer={resp.get('infer_seconds')}s"
+    )
+    return dialogue, transcription
 
 
 def _transcribe_cloud(

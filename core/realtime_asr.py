@@ -40,7 +40,19 @@ from .hotwords import apply_hotword_mappings
 logger = logging.getLogger(__name__)
 
 def _get_asr_mode() -> str:
-    """获取当前 ASR 接入模式（proxy / direct / cloud）"""
+    """获取当前 ASR 接入模式（local / proxy / direct / cloud）。
+
+    local 模式（R1 / PRD-LOCAL-ENGINE Non-Goal）：本地引擎不做云端同级实时流式转写，
+    实时链路显性降级为「分段批处理」——最终转写由 core/transcribe.py 的本地批管线
+    （FunASR 常驻子进程）在录音结束后完成；实时 WS 预览在本地模式下不启用，
+    且绝不触达任何云端转写端点（R1 边界：防误配 / 保证零出网）。
+    """
+    try:
+        from app.settings_store import get_engine_config
+        if get_engine_config().get("mode") == "local":
+            return "local"
+    except Exception:
+        pass
     try:
         from app.store import get_asr_config
         return get_asr_config().get("mode", "proxy")
@@ -206,6 +218,19 @@ class RealtimeTranscriber:
             raise RuntimeError("实时转写已在运行中")
 
         mode = _get_asr_mode()
+
+        if mode == "local":
+            # R1 显性声明：本地引擎实时链路降级为分段批处理，不启用云端 WS 预览。
+            # 录音本身不中断（数据落本地），最终转写由本地批管线（FunASR 子进程）完成。
+            # 抛分类错误以复用既有「实时启动失败」处理路径（与 direct 模式缺 Key 行为一致），
+            # 并保证 local 模式下绝不触达任何云端转写端点（零出网 / 防误配）。
+            from core.errors import LocalEngineError
+            raise LocalEngineError(
+                "本地引擎模式下实时预览降级为分段批处理：录音不受影响，"
+                "最终转写将在录音结束后由本机 FunASR 管线完成（不出网）。",
+                error_code="realtime_degraded_to_batch",
+                can_fallback_cloud=False,
+            )
 
         if mode == "direct":
             self._start_direct()

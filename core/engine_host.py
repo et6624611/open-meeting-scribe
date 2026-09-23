@@ -215,6 +215,69 @@ class EngineHost:
             "tampered_models": precheck["tampered"],
         }
 
+    # ── 本地推理（R1/R3 统一入口） / Local inference (unified entry for R1/R3) ──
+
+    def infer(self, task: str, params: dict | None = None, timeout: float = ENGINE_REQUEST_TIMEOUT) -> dict:
+        """确保常驻子进程运行并转发一次推理请求，失败统一归为 LocalEngineError。
+
+        Ensure the resident subprocess is up, forward one inference request, and
+        normalize any failure into a classified LocalEngineError (carries
+        can_fallback_cloud so callers can offer an explicit cloud retry — AC-4).
+
+        Args:
+            task: "asr" | "embedding"
+            params: 透传给 worker 的推理参数（如 audio_path）
+            timeout: 单请求超时（秒）
+
+        Returns:
+            worker 成功响应 dict（含 task 特定字段）
+
+        Raises:
+            LocalEngineError: 模型未就绪/子进程不健康/超时/推理失败
+        """
+        from core.errors import LocalEngineError
+
+        can_fallback = _cloud_fallback_available()
+
+        # 自动拉起常驻子进程（幂等）；启动失败按错误码分类
+        if not self.is_running():
+            start = self.start()
+            if not start.get("ok"):
+                code = start.get("error_code", "engine_unhealthy")
+                raise LocalEngineError(
+                    start.get("error", "本地引擎启动失败"),
+                    error_code=code,
+                    can_fallback_cloud=can_fallback,
+                    detail=start.get("detail", {}),
+                )
+
+        try:
+            resp = self.request("infer", {"task": task, **(params or {})}, timeout=timeout)
+        except TimeoutError as e:
+            # 超时视为子进程不健康：停掉以便下次请求重新拉起（PRD 7.3 错误分类）
+            self.stop()
+            raise LocalEngineError(str(e), error_code="engine_timeout", can_fallback_cloud=can_fallback)
+        except RuntimeError as e:
+            raise LocalEngineError(str(e), error_code="engine_unhealthy", can_fallback_cloud=can_fallback)
+
+        if not resp.get("ok"):
+            raise LocalEngineError(
+                resp.get("error", "本地推理失败"),
+                error_code=resp.get("error_code", "inference_failed"),
+                can_fallback_cloud=can_fallback,
+                detail={k: v for k, v in resp.items() if k not in ("id", "protocol")},
+            )
+        return resp
+
+
+def _cloud_fallback_available() -> bool:
+    """AC-4：本地失败时是否具备回退云端的条件（云端已启用）。"""
+    try:
+        from core.cloud_client import is_cloud_enabled
+        return bool(is_cloud_enabled())
+    except Exception:
+        return False
+
 
 # 进程内单例 / Process-wide singleton
 _engine_host: EngineHost | None = None
