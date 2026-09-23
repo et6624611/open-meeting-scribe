@@ -48,6 +48,9 @@ version: "2.1.0"
 | ffmpeg | Required for audio processing |
 | BlackHole | Required for system loopback ([Install](https://github.com/ExistentialAudio/BlackHole)) |
 
+> **Support scope**: This project is desktop-first (macOS); viewports under 768px are not guaranteed to be adapted.
+> **支持边界**：本项目桌面优先（macOS），<768px 视口不做适配保证。
+
 ## 🚀 Quick Start
 
 ### 1. Clone the repository

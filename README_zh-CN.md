@@ -45,6 +45,9 @@ version: "2.0.1"
 | ffmpeg | 音频处理必需 |
 | BlackHole | 系统内录需要（[安装指南](https://github.com/ExistentialAudio/BlackHole)） |
 
+> **支持边界 / Support scope**：本项目桌面优先（macOS），<768px 视口不做适配保证。
+> Desktop-first (macOS); viewports under 768px are not guaranteed to be adapted.
+
 ## 🚀 快速开始
 
 ### 1. 克隆仓库
