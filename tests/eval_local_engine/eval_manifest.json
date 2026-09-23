@@ -1,0 +1,110 @@
+{
+  "version": "1.0.0",
+  "created_at": "2026-09-23",
+  "description": "WP-C AC-2 评测样本清单。SEG-2P/SEG-4P 取自 samples/智达方通全面预算系统方案交流.mp3（118min，5 人会议，经云端 paraformer-v2 全量转写并人工绑定说话人姓名，任务 95f2e70a）；SEG-6P 为补充样本，取自 data/uploads/ 中真实 6 人会议（任务 e6cda37b，含真名映射）。samples/ 库存无法独立覆盖 6 人场景，偏差已在报告中披露。",
+  "eval_root": ".eval_local_engine",
+  "segments": [
+    {
+      "id": "SEG-2P",
+      "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav",
+      "origin": "samples/智达方通全面预算系统方案交流.mp3",
+      "task_json": "data/tasks/95f2e70a-7def-4160-a92b-8b25a564df17.json",
+      "offset_s": 1260,
+      "duration_s": 360,
+      "expected_speakers": 2,
+      "speaker_names": [
+        "廖书豪",
+        "说话人5"
+      ],
+      "per_speaker_seconds_cloud": {
+        "廖书豪": 217,
+        "说话人5": 140
+      }
+    },
+    {
+      "id": "SEG-4P",
+      "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav",
+      "origin": "samples/智达方通全面预算系统方案交流.mp3",
+      "task_json": "data/tasks/95f2e70a-7def-4160-a92b-8b25a564df17.json",
+      "offset_s": 2880,
+      "duration_s": 360,
+      "expected_speakers": 4,
+      "speaker_names": [
+        "廖书豪",
+        "说话人2",
+        "赵里海",
+        "说话人5"
+      ],
+      "per_speaker_seconds_cloud": {
+        "廖书豪": 194,
+        "说话人2": 39,
+        "赵里海": 22,
+        "说话人5": 20
+      }
+    },
+    {
+      "id": "SEG-6P",
+      "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav",
+      "origin": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论.mp3（补充样本，真实 6 人会议）",
+      "task_json": "data/tasks/e6cda37b-4879-416d-ad81-c3035ec7eb43.json",
+      "offset_s": 620,
+      "duration_s": 480,
+      "expected_speakers": 6,
+      "speaker_names": [
+        "王永亮",
+        "张天雷",
+        "郑思",
+        "任亚单",
+        "廖书豪",
+        "赵沂波"
+      ],
+      "per_speaker_seconds_cloud": {
+        "王永亮": 156,
+        "任亚单": 86,
+        "张天雷": 85,
+        "郑思": 37,
+        "廖书豪": 13,
+        "赵沂波": 4
+      },
+      "note": "廖书豪/赵沂波 在该窗口发言较少（13s/4s），分离难度偏高的边缘说话人"
+    }
+  ],
+  "voiceprint_clips": {
+    "description": "声纹兼容抽查用纯净单人片段：每名说话人 2 条（enroll/test），从对应会议中选取无他人语音重叠的连续区间",
+    "speakers": [
+      {
+        "name": "廖书豪",
+        "task_json": "data/tasks/95f2e70a-7def-4160-a92b-8b25a564df17.json",
+        "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+      },
+      {
+        "name": "赵里海",
+        "task_json": "data/tasks/95f2e70a-7def-4160-a92b-8b25a564df17.json",
+        "source_wav": "data/uploads/95f2e70a_智达方通全面预算系统方案交流_normalized.wav"
+      },
+      {
+        "name": "王永亮",
+        "task_json": "data/tasks/e6cda37b-4879-416d-ad81-c3035ec7eb43.json",
+        "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+      },
+      {
+        "name": "张天雷",
+        "task_json": "data/tasks/e6cda37b-4879-416d-ad81-c3035ec7eb43.json",
+        "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+      },
+      {
+        "name": "郑思",
+        "task_json": "data/tasks/e6cda37b-4879-416d-ad81-c3035ec7eb43.json",
+        "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+      },
+      {
+        "name": "任亚单",
+        "task_json": "data/tasks/e6cda37b-4879-416d-ad81-c3035ec7eb43.json",
+        "source_wav": "data/uploads/e6cda37b_预付退款流程与客商主数据治理讨论_normalized.wav"
+      }
+    ],
+    "min_clip_seconds": 20,
+    "target_clip_seconds": 30,
+    "clips_per_speaker": 2
+  }
+}
