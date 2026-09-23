@@ -173,6 +173,10 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
         tasks[task_id]["failed_stage"] = "transcribe"
         tasks[task_id]["error_category"] = err_info["category"]
         tasks[task_id]["error_suggestion"] = err_info["suggestion"]
+        # AC-4：本地引擎失败时携带回退标志与错误码，供 UI 在用户显式确认后
+        # 以 transcribe_audio(engine_override="cloud") 重跑（绝不静默上云，PRD R7）。
+        tasks[task_id]["error_code"] = err_info.get("error_code", "")
+        tasks[task_id]["can_fallback_cloud"] = err_info.get("can_fallback_cloud", False)
         joblog.append_event(
             task_id, joblog.STAGE_ERROR, f"转写阶段失败: {e}", level="error",
             detail={"category": err_info["category"], "suggestion": err_info["suggestion"]},

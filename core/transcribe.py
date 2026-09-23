@@ -176,9 +176,10 @@ def transcribe_audio(
     language_hints: list[str] | None = None,
     vocabulary_id: str | None = None,
     speaker_count: int | None = None,
+    engine_override: str | None = None,
 ) -> tuple[list[dict], dict]:
     """
-    一站式转写：根据 ASR 模式选择代理或直连路径。
+    一站式转写：根据 ASR 模式选择本地 / 代理 / 直连 / 云端路径。
 
     Args:
         file_path: 本地音频文件路径
@@ -187,6 +188,11 @@ def transcribe_audio(
         language_hints: 语言提示（如 ["zh", "en"]）
         vocabulary_id: 热词表 ID
         speaker_count: 说话人数量提示（2-100）
+        engine_override: 显式指定引擎模式（"local"/"cloud"/"proxy"/"direct"），覆盖
+            _get_asr_mode() 的自动判定。**AC-4 回退专用**：本地转写失败抛
+            LocalEngineError(can_fallback_cloud=True) 后，由上层在**用户显式确认**后
+            以 engine_override="cloud" 重跑该任务（PRD R7：绝不静默上云）。任务音频与
+            笔记状态由既有任务存储独立持久化，回退重跑不丢失（AC-4）。
 
     Returns:
         (dialogue, raw_transcription)
@@ -201,7 +207,7 @@ def transcribe_audio(
     if file_size > 1024 * 1024 * 1024:
         raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
 
-    mode = _get_asr_mode()
+    mode = engine_override or _get_asr_mode()
     logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}, mode={mode}")
 
     if mode == "local":
