@@ -431,10 +431,10 @@ class TestEngineHost:
             assert verify["ok"] is True
             assert isinstance(verify["models"], dict)
 
-            # 推理体属主干 R2：显式 not_implemented，而非静默成功
+            # WP-E R1 起推理体已落地：未知/缺失 task 显式 unsupported_task，而非静默成功
             infer = host.request("infer", {"audio": "x.wav"}, timeout=30)
             assert infer["ok"] is False
-            assert infer["error_code"] == "not_implemented"
+            assert infer["error_code"] == "unsupported_task"
         finally:
             stop = host.stop()
             assert stop["ok"] is True
