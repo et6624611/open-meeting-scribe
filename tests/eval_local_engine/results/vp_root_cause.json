@@ -1,0 +1,65 @@
+{
+ "hypothesis": "同一权重 campplus_cn_common.bin；云端=裸fbank(无CMN)，funasr=fbank+CMN",
+ "clips": [
+  {
+   "clip": "廖书豪/enroll",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.7944,
+   "cos_cloud_service_vs_funasr_local": 0.7944
+  },
+  {
+   "clip": "廖书豪/test",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.8083,
+   "cos_cloud_service_vs_funasr_local": 0.8083
+  },
+  {
+   "clip": "赵里海/enroll",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.6298,
+   "cos_cloud_service_vs_funasr_local": 0.6298
+  },
+  {
+   "clip": "赵里海/test",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.6045,
+   "cos_cloud_service_vs_funasr_local": 0.6045
+  },
+  {
+   "clip": "王永亮/enroll",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.5614,
+   "cos_cloud_service_vs_funasr_local": 0.5614
+  },
+  {
+   "clip": "王永亮/test",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.7095,
+   "cos_cloud_service_vs_funasr_local": 0.7095
+  },
+  {
+   "clip": "张天雷/enroll",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.71,
+   "cos_cloud_service_vs_funasr_local": 0.71
+  },
+  {
+   "clip": "张天雷/test",
+   "cos_repro_nocmn_vs_cloud_service": 1.0,
+   "cos_repro_cmn_vs_funasr_local": 1.0,
+   "cos_repro_nocmn_vs_repro_cmn": 0.6492,
+   "cos_cloud_service_vs_funasr_local": 0.6492
+  }
+ ],
+ "mean_cos_repro_nocmn_vs_cloud_service": 1.0,
+ "mean_cos_repro_cmn_vs_funasr_local": 1.0,
+ "mean_cos_repro_nocmn_vs_repro_cmn": 0.6834,
+ "mean_cos_cloud_service_vs_funasr_local": 0.6834
+}

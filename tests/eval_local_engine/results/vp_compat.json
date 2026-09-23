@@ -1,0 +1,485 @@
+{
+ "note": "AC-6 抽查：注册数据云/本地零迁移互用 + 误识率相对差异（阈值 0.50，margin 门槛走项目匹配器）",
+ "speakers_enrolled": [
+  "廖书豪",
+  "张天雷",
+  "王永亮",
+  "赵里海"
+ ],
+ "speakers_tested": [
+  "廖书豪",
+  "张天雷",
+  "王永亮",
+  "赵里海"
+ ],
+ "embedding_dims": {
+  "cloud": [
+   192
+  ],
+  "local": [
+   192
+  ]
+ },
+ "threshold": 0.5,
+ "combos": {
+  "ref_cloud_x_test_cloud": {
+   "same_speaker_pairs": 4,
+   "cross_speaker_pairs": 12,
+   "same_sim_mean": 0.9014,
+   "same_sim_min": 0.8308,
+   "cross_sim_mean": 0.6738,
+   "cross_sim_max": 0.846,
+   "fpr_at_0.50": 0.9167,
+   "tpr_at_0.50": 1.0,
+   "eer_analysis": {
+    "threshold": 0.785,
+    "fpr": 0.0833,
+    "tpr": 1.0,
+    "eer": 0.0417,
+    "d_prime": 3.023
+   },
+   "matrix": [
+    {
+     "enroll": "廖书豪",
+     "test": "廖书豪",
+     "sim": 0.9219
+    },
+    {
+     "enroll": "张天雷",
+     "test": "廖书豪",
+     "sim": 0.7013
+    },
+    {
+     "enroll": "王永亮",
+     "test": "廖书豪",
+     "sim": 0.5343
+    },
+    {
+     "enroll": "赵里海",
+     "test": "廖书豪",
+     "sim": 0.7804
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "张天雷",
+     "sim": 0.7635
+    },
+    {
+     "enroll": "张天雷",
+     "test": "张天雷",
+     "sim": 0.919
+    },
+    {
+     "enroll": "王永亮",
+     "test": "张天雷",
+     "sim": 0.6358
+    },
+    {
+     "enroll": "赵里海",
+     "test": "张天雷",
+     "sim": 0.7564
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "王永亮",
+     "sim": 0.5628
+    },
+    {
+     "enroll": "张天雷",
+     "test": "王永亮",
+     "sim": 0.6189
+    },
+    {
+     "enroll": "王永亮",
+     "test": "王永亮",
+     "sim": 0.8308
+    },
+    {
+     "enroll": "赵里海",
+     "test": "王永亮",
+     "sim": 0.4767
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "赵里海",
+     "sim": 0.846
+    },
+    {
+     "enroll": "张天雷",
+     "test": "赵里海",
+     "sim": 0.7757
+    },
+    {
+     "enroll": "王永亮",
+     "test": "赵里海",
+     "sim": 0.6342
+    },
+    {
+     "enroll": "赵里海",
+     "test": "赵里海",
+     "sim": 0.9341
+    }
+   ]
+  },
+  "ref_cloud_x_test_local": {
+   "same_speaker_pairs": 4,
+   "cross_speaker_pairs": 12,
+   "same_sim_mean": 0.6247,
+   "same_sim_min": 0.4947,
+   "cross_sim_mean": 0.4363,
+   "cross_sim_max": 0.6167,
+   "fpr_at_0.50": 0.4167,
+   "tpr_at_0.50": 0.75,
+   "eer_analysis": {
+    "threshold": 0.51,
+    "fpr": 0.3333,
+    "tpr": 0.75,
+    "eer": 0.2917,
+    "d_prime": 1.765
+   },
+   "matrix": [
+    {
+     "enroll": "廖书豪",
+     "test": "廖书豪",
+     "sim": 0.7086
+    },
+    {
+     "enroll": "张天雷",
+     "test": "廖书豪",
+     "sim": 0.4786
+    },
+    {
+     "enroll": "王永亮",
+     "test": "廖书豪",
+     "sim": 0.2406
+    },
+    {
+     "enroll": "赵里海",
+     "test": "廖书豪",
+     "sim": 0.5499
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "张天雷",
+     "sim": 0.5948
+    },
+    {
+     "enroll": "张天雷",
+     "test": "张天雷",
+     "sim": 0.6379
+    },
+    {
+     "enroll": "王永亮",
+     "test": "张天雷",
+     "sim": 0.4813
+    },
+    {
+     "enroll": "赵里海",
+     "test": "张天雷",
+     "sim": 0.5482
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "王永亮",
+     "sim": 0.302
+    },
+    {
+     "enroll": "张天雷",
+     "test": "王永亮",
+     "sim": 0.3668
+    },
+    {
+     "enroll": "王永亮",
+     "test": "王永亮",
+     "sim": 0.4947
+    },
+    {
+     "enroll": "赵里海",
+     "test": "王永亮",
+     "sim": 0.2028
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "赵里海",
+     "sim": 0.6167
+    },
+    {
+     "enroll": "张天雷",
+     "test": "赵里海",
+     "sim": 0.5075
+    },
+    {
+     "enroll": "王永亮",
+     "test": "赵里海",
+     "sim": 0.3462
+    },
+    {
+     "enroll": "赵里海",
+     "test": "赵里海",
+     "sim": 0.6576
+    }
+   ]
+  },
+  "ref_local_x_test_cloud": {
+   "same_speaker_pairs": 4,
+   "cross_speaker_pairs": 12,
+   "same_sim_mean": 0.6159,
+   "same_sim_min": 0.5229,
+   "cross_sim_mean": 0.4318,
+   "cross_sim_max": 0.5769,
+   "fpr_at_0.50": 0.4167,
+   "tpr_at_0.50": 1.0,
+   "eer_analysis": {
+    "threshold": 0.545,
+    "fpr": 0.3333,
+    "tpr": 0.75,
+    "eer": 0.2917,
+    "d_prime": 1.797
+   },
+   "matrix": [
+    {
+     "enroll": "廖书豪",
+     "test": "廖书豪",
+     "sim": 0.7412
+    },
+    {
+     "enroll": "张天雷",
+     "test": "廖书豪",
+     "sim": 0.5769
+    },
+    {
+     "enroll": "王永亮",
+     "test": "廖书豪",
+     "sim": 0.3323
+    },
+    {
+     "enroll": "赵里海",
+     "test": "廖书豪",
+     "sim": 0.5499
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "张天雷",
+     "sim": 0.4886
+    },
+    {
+     "enroll": "张天雷",
+     "test": "张天雷",
+     "sim": 0.6303
+    },
+    {
+     "enroll": "王永亮",
+     "test": "张天雷",
+     "sim": 0.3293
+    },
+    {
+     "enroll": "赵里海",
+     "test": "张天雷",
+     "sim": 0.4125
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "王永亮",
+     "sim": 0.3248
+    },
+    {
+     "enroll": "张天雷",
+     "test": "王永亮",
+     "sim": 0.5469
+    },
+    {
+     "enroll": "王永亮",
+     "test": "王永亮",
+     "sim": 0.5692
+    },
+    {
+     "enroll": "赵里海",
+     "test": "王永亮",
+     "sim": 0.3097
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "赵里海",
+     "sim": 0.5666
+    },
+    {
+     "enroll": "张天雷",
+     "test": "赵里海",
+     "sim": 0.5423
+    },
+    {
+     "enroll": "王永亮",
+     "test": "赵里海",
+     "sim": 0.2013
+    },
+    {
+     "enroll": "赵里海",
+     "test": "赵里海",
+     "sim": 0.5229
+    }
+   ]
+  },
+  "ref_local_x_test_local": {
+   "same_speaker_pairs": 4,
+   "cross_speaker_pairs": 12,
+   "same_sim_mean": 0.91,
+   "same_sim_min": 0.8664,
+   "cross_sim_mean": 0.5691,
+   "cross_sim_max": 0.7701,
+   "fpr_at_0.50": 0.6667,
+   "tpr_at_0.50": 1.0,
+   "eer_analysis": {
+    "threshold": 0.775,
+    "fpr": 0.0,
+    "tpr": 1.0,
+    "eer": 0.0,
+    "d_prime": 3.945
+   },
+   "matrix": [
+    {
+     "enroll": "廖书豪",
+     "test": "廖书豪",
+     "sim": 0.881
+    },
+    {
+     "enroll": "张天雷",
+     "test": "廖书豪",
+     "sim": 0.5767
+    },
+    {
+     "enroll": "王永亮",
+     "test": "廖书豪",
+     "sim": 0.3424
+    },
+    {
+     "enroll": "赵里海",
+     "test": "廖书豪",
+     "sim": 0.5771
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "张天雷",
+     "sim": 0.6175
+    },
+    {
+     "enroll": "张天雷",
+     "test": "张天雷",
+     "sim": 0.9384
+    },
+    {
+     "enroll": "王永亮",
+     "test": "张天雷",
+     "sim": 0.6092
+    },
+    {
+     "enroll": "赵里海",
+     "test": "张天雷",
+     "sim": 0.7597
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "王永亮",
+     "sim": 0.3506
+    },
+    {
+     "enroll": "张天雷",
+     "test": "王永亮",
+     "sim": 0.6064
+    },
+    {
+     "enroll": "王永亮",
+     "test": "王永亮",
+     "sim": 0.8664
+    },
+    {
+     "enroll": "赵里海",
+     "test": "王永亮",
+     "sim": 0.4426
+    },
+    {
+     "enroll": "廖书豪",
+     "test": "赵里海",
+     "sim": 0.6959
+    },
+    {
+     "enroll": "张天雷",
+     "test": "赵里海",
+     "sim": 0.7701
+    },
+    {
+     "enroll": "王永亮",
+     "test": "赵里海",
+     "sim": 0.4805
+    },
+    {
+     "enroll": "赵里海",
+     "test": "赵里海",
+     "sim": 0.9541
+    }
+   ]
+  }
+ },
+ "ac6_fpr_relative_diff": {
+  "ref_cloud_x_test_local": {
+   "fpr_at_0.50": 0.4167,
+   "eer": 0.2917,
+   "fpr_rel_diff_vs_cloud_baseline": -0.5454,
+   "eer_rel_diff_vs_cloud_baseline": 5.9952
+  },
+  "ref_local_x_test_cloud": {
+   "fpr_at_0.50": 0.4167,
+   "eer": 0.2917,
+   "fpr_rel_diff_vs_cloud_baseline": -0.5454,
+   "eer_rel_diff_vs_cloud_baseline": 5.9952
+  },
+  "ref_local_x_test_local": {
+   "fpr_at_0.50": 0.6667,
+   "eer": 0.0,
+   "fpr_rel_diff_vs_cloud_baseline": -0.2727,
+   "eer_rel_diff_vs_cloud_baseline": -1.0
+  }
+ },
+ "zero_migration_matches": [
+  {
+   "query_speaker": "廖书豪",
+   "query_embedding_provider": "local cam++-v1",
+   "registry_provider": "cloud cam++-v1-cloud",
+   "matched": "廖书豪",
+   "accepted": true,
+   "best_sim": 0.7086,
+   "margin": 0.1587,
+   "correct": true
+  },
+  {
+   "query_speaker": "张天雷",
+   "query_embedding_provider": "local cam++-v1",
+   "registry_provider": "cloud cam++-v1-cloud",
+   "matched": "张天雷",
+   "accepted": false,
+   "best_sim": 0.6379,
+   "margin": 0.043,
+   "correct": true
+  },
+  {
+   "query_speaker": "王永亮",
+   "query_embedding_provider": "local cam++-v1",
+   "registry_provider": "cloud cam++-v1-cloud",
+   "matched": "王永亮",
+   "accepted": false,
+   "best_sim": 0.4947,
+   "margin": 0.1279,
+   "correct": true
+  },
+  {
+   "query_speaker": "赵里海",
+   "query_embedding_provider": "local cam++-v1",
+   "registry_provider": "cloud cam++-v1-cloud",
+   "matched": "赵里海",
+   "accepted": false,
+   "best_sim": 0.6576,
+   "margin": 0.041,
+   "correct": true
+  }
+ ],
+ "zero_migration_all_correct": true
+}
