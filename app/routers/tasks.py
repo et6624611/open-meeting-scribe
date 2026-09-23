@@ -26,6 +26,7 @@ from app.store import (
     tasks,
 )
 from core.audio import get_stream_recording_info, is_stream_recording
+from core.fs_atomic import stream_save_upload
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -93,20 +94,13 @@ async def create_transcribe_task(
     except Exception as e:
         logger.warning(f"配额预检失败（不阻止上传）: {e}")
 
-    # 保存上传文件 / Save uploaded file
+    # 保存上传文件（流式分块读取，避免大文件 OOM） / Save uploaded file (stream chunked read, avoid OOM on large files)
     task_id = str(uuid.uuid4())
     safe_name = f"{task_id[:8]}_{file.filename}"
     audio_path = UPLOAD_DIR / safe_name
 
-    content = await file.read()
-
-    # 大小预检：防止超大文件耗尽磁盘空间 / Size pre-check: prevent large files from exhausting disk space
     MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
-    if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(413, _("File too large (max {max} GB)").format(max=2))
-
-    with open(audio_path, "wb") as f:
-        f.write(content)
+    await stream_save_upload(file, audio_path, max_size=MAX_UPLOAD_SIZE)
 
     # 解析 speaker_mapping / Parse speaker_mapping
     mapping = None

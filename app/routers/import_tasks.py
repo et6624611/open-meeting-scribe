@@ -28,6 +28,7 @@ from app.store import (
     save_task_to_disk,
     tasks,
 )
+from core.fs_atomic import stream_save_upload
 from core.i18n import _
 from core.import_parser import (
     AUDIO_EXTENSIONS,
@@ -144,22 +145,16 @@ async def _import_as_audio(
     """音频文件导入：复用现有转写管线 / Audio import: reuse existing transcription pipeline."""
     from app.routers.tasks import UPLOAD_DIR, run_pipeline_task
 
-    # 保存上传文件 / Save uploaded file
+    # 保存上传文件（流式分块读取，避免大文件 OOM） / Save uploaded file (stream chunked read, avoid OOM on large files)
     task_id = str(uuid.uuid4())
     safe_name = f"{task_id[:8]}_{file.filename}"
     audio_path = UPLOAD_DIR / safe_name
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(400, _("Empty file"))
-
-    # 大小预检 / Size pre-check
     MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
-    if len(content) > MAX_UPLOAD_SIZE:
-        raise HTTPException(413, _("File too large (max {max} GB)").format(max=2))
-
-    with open(audio_path, "wb") as f:
-        f.write(content)
+    file_size = await stream_save_upload(file, audio_path, max_size=MAX_UPLOAD_SIZE)
+    if file_size == 0:
+        audio_path.unlink(missing_ok=True)
+        raise HTTPException(400, _("Empty file"))
 
     # 创建任务记录 / Create task record
     now = datetime.now()
@@ -170,7 +165,7 @@ async def _import_as_audio(
         "progress": 0,
         "message": _("Awaiting processing"),
         "audio_name": file.filename,
-        "audio_size": len(content),
+        "audio_size": file_size,
         "audio_path": str(audio_path),
         "audio_duration": None,
         "speaker_count": None,
@@ -204,7 +199,22 @@ async def _import_as_document(
     background_tasks: BackgroundTasks,
 ) -> dict:
     """文档文件导入：解析内容并创建任务 / Document import: parse content and create task."""
-    content_bytes = await file.read()
+    # 流式分块读取并校验大小，避免超大文件 OOM / Stream chunked read with size check, avoid OOM on oversized files
+    MAX_DOC_SIZE = 100 * 1024 * 1024  # 100 MB — 文档文件合理上限 / Reasonable limit for document files
+    from core.fs_atomic import UPLOAD_CHUNK_SIZE
+
+    chunks: list[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(UPLOAD_CHUNK_SIZE)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_DOC_SIZE:
+            raise HTTPException(413, _("File too large (max {max} MB)").format(max=100))
+        chunks.append(chunk)
+
+    content_bytes = b"".join(chunks)
     if not content_bytes:
         raise HTTPException(400, _("Empty file"))
 

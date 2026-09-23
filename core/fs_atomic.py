@@ -18,6 +18,10 @@ import tempfile
 import threading
 from pathlib import Path
 
+from fastapi import HTTPException, UploadFile
+
+from core.i18n import _
+
 # 按文件绝对路径持有的写入锁，串行化同一文件的并发写 / Per-file write locks keyed by absolute path, serializing concurrent writes
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -67,3 +71,64 @@ def atomic_write_json(path, data, encoding: str = "utf-8", indent: int = 2) -> N
     """原子写入 JSON 文件（ensure_ascii=False，保留中文可读性） / Atomically write JSON file (ensure_ascii=False, preserve CJK readability)"""
     content = json.dumps(data, ensure_ascii=False, indent=indent)
     atomic_write_text(path, content, encoding=encoding)
+
+
+# ── 流式上传保存 / Streaming upload save ──────────────────────────
+
+# 分块读取大小：10 MB，避免大文件一次性载入内存导致 OOM / Chunk size: 10 MB, prevent OOM from loading large files entirely into memory
+UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+async def stream_save_upload(
+    file: UploadFile,
+    dest: Path,
+    max_size: int = 2 * 1024 * 1024 * 1024,  # 2 GB
+) -> int:
+    """分块读取上传文件并写入磁盘，提前校验大小 / Stream-read uploaded file in chunks and write to disk, validating size early.
+
+    替代 ``await file.read()`` 全量读入内存的做法：每次只保留一个 chunk（默认 10 MB），
+    累计字节超过 *max_size* 时立即返回 413 并清理已写入的不完整文件。
+    Replaces ``await file.read()`` which loads the entire file into memory:
+    only one chunk (default 10 MB) is held at a time.
+    Returns 413 and cleans up the partial file as soon as *max_size* is exceeded.
+
+    Args:
+        file: FastAPI UploadFile / FastAPI 上传文件
+        dest: 目标路径 / Destination path
+        max_size: 最大允许字节数 / Maximum allowed bytes
+
+    Returns:
+        写入的总字节数 / Total bytes written
+
+    Raises:
+        HTTPException(413): 文件超过大小限制 / File exceeds size limit
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    total_size = 0
+    fh = open(dest, "wb")
+    try:
+        while True:
+            chunk = await file.read(UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > max_size:
+                fh.close()
+                dest.unlink(missing_ok=True)
+                max_gb = max_size // (1024 * 1024 * 1024)
+                raise HTTPException(
+                    413,
+                    _("File too large (max {max} GB)").format(max=max_gb),
+                )
+            fh.write(chunk)
+    except BaseException:
+        # 任何异常（含 413）都清理不完整文件 / Clean up partial file on any exception (incl. 413)
+        fh.close()
+        dest.unlink(missing_ok=True)
+        raise
+    else:
+        fh.close()
+
+    return total_size

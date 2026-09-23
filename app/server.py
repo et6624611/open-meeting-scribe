@@ -42,6 +42,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -129,6 +130,38 @@ app = FastAPI(
     title="Open Meeting Scribe",
     description="会议纪要生成工具",
     version="0.1.0",
+)
+
+
+# ============================================================
+# CORS 中间件 / CORS Middleware
+# ============================================================
+
+# 允许的跨域来源列表，通过环境变量 CORS_ORIGINS 配置（逗号分隔） /
+# Allowed cross-origin sources, configurable via CORS_ORIGINS env var (comma-separated).
+# 未配置时默认允许 localhost 各端口（开发模式） / Defaults to localhost ports when unset (dev mode).
+_CORS_ORIGINS_RAW = os.getenv("CORS_ORIGINS", "")
+if _CORS_ORIGINS_RAW.strip():
+    _cors_origins = [o.strip() for o in _CORS_ORIGINS_RAW.split(",") if o.strip()]
+else:
+    # 开发模式默认允许 localhost 常见端口 / Dev-mode defaults: common localhost ports
+    _cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:8080",
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
