@@ -182,8 +182,8 @@ status: published
 
 **仍需项目方提供、产品与工程师都无法自行解决的外部前提**：
 
-1. **Apple Developer Program 账号与签名/公证凭据（D-G4 加码后的新增硬阻塞）**：约 $99/年 + `.p12` 证书 + notary API key，需托管为 GitHub Secrets。缺它则 mac 侧 L1 无法交付，用户必撞 Gatekeeper「已损坏/无法验证开发者」；**在凭据到位前，对外发布材料与 README 不得写「macOS 支持一键安装」**，只可写组件级一键安装（L2）。
-2. **真机断网验收时间窗**：AC-1 / AC-9 / AC-10 均需 mac + Win 全新环境各一轮（≥30 分钟样本，不得用 venv 冒替冻结包）。待项目方给时间窗后派 QA。
+1. ~~**Apple Developer Program 账号与签名/公证凭据**~~ → **2026-09-24 项目方裁决「暂时不考虑 Apple 开发者账号与凭据」，本条移出 v10**。后果：mac 侧 L1（`.dmg` + 签名 + 公证）与 WP-G 的 G-7 转 DEFERRED；**v10 对外口径固定为「macOS 支持应用内一键安装本地引擎组件」，不得写「macOS 一键安装」**（详见 AC-10 与 PRD §12）。
+2. **真机断网验收时间窗**：~~待项目方给时间窗后派 QA~~ → **项目方 2026-09-24 批准派发，已派至 QA 工程师（见下方派工执行记录）**。**仍需项目方指定人补两项 QA 无法替代的动作**：① AC-2 人工听校回填 `refs/SEG-*_human_ref.txt`（53/59/78 句不确定项，工作表已在 WP-C 交付）；② 提供可用于断网测试的 ≥30 分钟真实会议音频样本（现 `samples/` 仅 1 段）。
 3. **R9 判级复核**：现按 **P1**（不阻塞 v10 发布）。若改判 P0，会牵动 v10 里程碑与 AC-1 验收排期，且必须让 WP-G 的 D-G1 先落地。
 
 **派工执行记录（2026-09-24）**：已按上表 owner 通过 QoderWake 平台下发工作 Session，两条均已 `running`：
@@ -192,6 +192,16 @@ status: published
 |---|---|---|---|
 | WP-G + CI 缺陷 | DevOps 工程师 `78087de278c8` | `553f0b93-cff3-4aec-b096-82e3f33e1cbb` | 2026-09-24 02:03 UTC |
 | WP-H + WP-I | 后端工程师 `a4cdbd0ca795` | `c3d2ebf4-9935-4843-ab25-5b00d2a0a780` | 2026-09-24 02:03 UTC |
+| **QA-R1 真机断网验收（第一轮·现状形态）** | **QA 工程师** `365d21fa11a0`（proj_80ccedbb） | `b8ce872e-89b6-4dbb-aa22-3a58bcb8beba` | 2026-09-24 02:43 UTC |
+
+**QA-R1 范围口径**：本轮判 **AC-1（venv 形态）/ AC-2 / AC-3 / AC-4 / AC-5 / AC-6 真机复测**；**AC-7 / AC-9 / AC-10 本轮不判**（依赖 WP-G/WP-I 交付，留第二轮）。所有证据须标注「venv 形态，未经冻结包验证」，两轮结论不得混写；Windows 侧若无可用真机须标 `blocked-on-hardware`，禁止用 macOS 结论顶替。
+
+**CI 缺陷执行进展（2026-09-24 派发后 40 分钟内，DevOps 已推 main 三 commit，根因已定位）**：
+- `3ef7ce4` 按动作序①改名 `ci-local-engine.yml` → `ci-local-engine-v2.yml` 强制重注册（观察）
+- `fe8e41a` **真实根因（dispatch 422 实证）**：`jobs.windows-freeze-smoke.env` 里的 `${{ runner.temp }}` 在 job 级 env 位置不被表达式解析器接受（`Unrecognized named-value: 'runner'`）→ **整个 workflow 编译失败**。该单因完整解释全部存量症状：`gh workflow list` 显示路径而非 `name`、`on.push.paths` 过滤不生效、运行 0s / 0 jobs / 无 annotations。修复=改由首个 step 从 `RUNNER_TEMP` 写入 `GITHUB_ENV`，job 级 env 只留字面量
+- `39ee533` 冒烟首次真实运行（4m+）暴露的两个内容级缺陷：Windows cp1252 控制台中文 print 崩溃 → 三脚本显式 reconfigure UTF-8；AC-7 冻结图扫描误报（PowerShell 文本 grep 把 spec 的 `excludes=['torch',…]` 判为侵入）→ 改 `toc_scan.py` 结构化解析 TOC 条目
+- **验证状态（诚实标注）**：`gh workflow list` 已恢复显示 `CI Local Engine`（元数据层已解析），运行时长从 0s 变为 4m+，即**编译层已通**；但 `fe8e41a` 那次运行仍 `failure`，`39ee533` 触发的运行截至本条登记仍 `in_progress`。**AC-7 体积守护与 Windows 冻结冒烟尚无为绿灯证据，本条缺陷保持「已定位、修复待验证」，不提前关单。**
+- **§5 原三步排查计划已被实际根因取代**：无需再走最小 workflow 二分，也无需降级 macOS-only；`ci-local-engine.yml` 的旧文件名引用一律以 `ci-local-engine-v2.yml` 为准。
 
 本表与派工说明为唯一口径来源，工程师若判定建议值技术不可行须回报产品，不得静默变通。
 

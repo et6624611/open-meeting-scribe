@@ -126,6 +126,9 @@ Inno Setup 默认装到 `Program Files`（非管理员不可写）。而引擎�
 2. L1 新增为 **G-7**，owner 同为 DevOps，但**开工前置条件是拿到 Apple 开发者账号与签名凭据**；在凭据到位前，G-7 只能停在"链路写好、CI 里 dry-run 跳过签名"的状态，不得声称 mac 一键安装已支持。
 3. 真机断网验收（AC-1）在 L1 未达标期间，mac 侧允许用 venv→ 冻结包过渡，但**验收报告必须显式标注"未经公证包验证"**，不得与 Win 安装包混写成同一结论。
 
+> **2026-09-24 项目方追加裁决：「暂时不考虑 Apple 开发者账号与凭据。」** 据此 **G-7 转 DEFERRED（本里程碑不排期、不催凭据）**，L1 的 mac 层随之外移。WP-G 当前交付口径收敛为：**L2 双平台一键落位 + Windows L1（Inno）**；mac L1 保留为 v10 之后的独立待启动项（不废弃、不承诺时间点）。
+> **连带强制口径**：v10 发布材料、README、CHANGELOG **不得出现「macOS 一键安装」**任何表述，只可写「macOS 支持应用内一键安装本地引擎组件」；若需提及 mac 安装包，须标注「需 Apple 开发者签名与公证，暂未提供」。DevOps 侧仍可在 G-7 上把签名脚本写到 blocked-dry-run 状态，但**不占用主线排期，也不作为 AC-10 判定项**。
+
 **残留风险提示（需项目方知情）**：一键安装 ≠ 免下载。引擎权重 ≈2.0GB 仍需一次网络下载或政企离线包导入；若"一键安装"的用户预期是"装完立刻可断网使用"，需要额外定义离线全家桶形态（不在 WP-G 当前范围）。
 
 ### D-G5（产品要求，非决策）｜首启 86s 的体验契约
@@ -167,6 +170,9 @@ WP-G 全部产物依赖这条 workflow 做验证，不修就是"造了没秤称"
 3. 若确认账号侧 Windows metered/runner 限制：按 ROADMAP:151 走账号处置，并把 local 冒烟临时降级 macOS-only（Windows 侧留真机人工冒烟），同时更新 AC-7 的 CI 覆盖说明。
 
 **在根因定位前，WP-G 的 G-6 不应占用主线排期**：G-1~G-5 可先推进，G-6 与上述排查并行；真机验收阶段用人工冒烟兜住验证缺口。
+
+→ **2026-09-24 根因已定位（owner=DevOps，动作序①之后的 dispatch 422 实证）**：`jobs.windows-freeze-smoke.env` 中的 `${{ runner.temp }}` 在 **job 级 env 位置不被表达式解析器接受**（`Unrecognized named-value: 'runner'`）→ 整个 workflow 编译失败。单因完整解释全部症状（`name` 回退为路径、paths 过滤失效、0s / 0 jobs / 无 annotations）。修复：`FIXTURES` / `MODELSCOPE_CACHE` 改由首个 step 从 `RUNNER_TEMP` 写入 `GITHUB_ENV`，job 级 env 只留字面量（`fe8e41a`）；随后 `39ee533` 又修掉真实运行暴露的 Windows cp1252 中文 print 崩溃与 AC-7 扫描把 spec `excludes` 误判为侵入两个内容级缺陷。**上文第 2、3 步（最小 workflow 二分、macOS-only 降级）就此作废**；文件名以 `ci-local-engine-v2.yml` 为准。
+→ **仍未关单**：`fe8e41a` 对应运行 `failure`，`39ee533` 对应运行截至登记仍 `in_progress`。AC-7 体积守护与 Windows 冻结冒烟**尚无绿灯证据**，G-6 保持进行中。
 
 ---
 
