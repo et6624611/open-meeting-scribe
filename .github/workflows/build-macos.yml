@@ -113,6 +113,22 @@ jobs:
           "$FFMPEG_DIR/ffprobe" -version | head -1
         fi
 
+    - name: 签名 + 公证 + DMG 组装（WP-G G-7；凭据缺失自动 dry-run 跳过签名）
+      env:
+        APPLE_CERT_P12_B64: ${{ secrets.APPLE_CERT_P12_B64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+      run: |
+        chmod +x build/macos_sign_notarize.sh
+        build/macos_sign_notarize.sh dist/OpenMeetingScribe-macOS dist
+        # dry-run（凭据缺失）时显式标注：产物未签名，不得声称 mac 一键安装已支持
+        if [ "${SIGN_RESULT:-}" = "dry-run-unsigned" ]; then
+          echo "⚠️ 本次产物为未签名 dry-run（缺 Apple 凭据）——blocked-on-credentials"
+        fi
+
     - name: 创建 ZIP 包
       run: |
         cd dist/OpenMeetingScribe-macOS
@@ -125,13 +141,17 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: OpenMeetingScribe-macOS
-        path: OpenMeetingScribe-macOS.zip
+        path: |
+          OpenMeetingScribe-macOS.zip
+          dist/OpenMeetingScribe-macOS.dmg
         retention-days: 30
 
     - name: 发布 Release（仅 tag 触发）
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: OpenMeetingScribe-macOS.zip
+        files: |
+          OpenMeetingScribe-macOS.zip
+          dist/OpenMeetingScribe-macOS.dmg
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
