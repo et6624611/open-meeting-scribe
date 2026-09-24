@@ -33,6 +33,11 @@ ENGINE_START_TIMEOUT = 120
 ENGINE_REQUEST_TIMEOUT = 180
 ENGINE_STOP_TIMEOUT = 10
 
+# DEF-QA-R1-03（方案①引擎预热）：warmup 请求超时。留量声明：须覆盖
+# 「冻结态冷 import ≈86s + 四模型加载 ≈16s×2 + 慢速机型/杀软余量」，取 300s。
+# 预热仅在后台线程等待，不阻塞 start()/首请求；超时只记日志、不判进程不健康。
+ENGINE_WARMUP_TIMEOUT = 300
+
 # ── D-I1 两级健康语义（R9 分段增量，REQ-LOCAL-REALTIME-INCR §6）──
 # 单请求超时 = 请求级失败（丢该请求，保留引擎进程）；连续 N 次超时才判
 # 进程级不健康并重启子进程。进程死亡（stdout 关闭）仍即时判不健康。
@@ -139,6 +144,8 @@ class EngineHost:
         self._resp_queue: queue.Queue | None = None
         self._stale_ids: set[str] = set()
         self._consecutive_timeouts = 0
+        # DEF-QA-R1-03：预热状态（None=未开始 / running / done / failed），仅供观测
+        self._warmup_state: str | None = None
 
     # ── 生命周期 / Lifecycle ──
 
@@ -184,6 +191,7 @@ class EngineHost:
             self._resp_queue = queue.Queue()
             self._stale_ids = set()
             self._consecutive_timeouts = 0
+            self._warmup_state = None
             resp_queue = self._resp_queue
             proc = self._proc
 
@@ -210,7 +218,34 @@ class EngineHost:
         if not pong.get("ok"):
             self.stop()
             return {"ok": False, "error_code": "engine_unhealthy", "error": f"引擎健康检查失败: {pong}"}
+        # DEF-QA-R1-03（方案①预热）：健康检查通过后后台预热模型加载，把 ≈16s
+        # （冻结态含冷 import 可达 ≈102s）的加载从首个推理请求中移出；
+        # 预热失败/超时不影响启动——真实使用仍走请求级惰性加载与错误分类。
+        self._kick_warmup()
         return {"ok": True, "already_running": False, "pid": self._proc.pid}
+
+    def _kick_warmup(self) -> None:
+        """后台线程发送 warmup 请求（DEF-QA-R1-03）。不阻塞 start()，异常仅记日志。"""
+        self._warmup_state = "running"
+
+        def _warm():
+            try:
+                resp = self.request("warmup", timeout=ENGINE_WARMUP_TIMEOUT)
+                if resp.get("ok"):
+                    self._warmup_state = "done"
+                    logger.info(
+                        f"[引擎] 预热完成 ({resp.get('seconds')}s): {resp.get('warmed')}"
+                    )
+                else:
+                    self._warmup_state = "failed"
+                    logger.warning(
+                        f"[引擎] 预热失败（不阻塞按需加载）: {resp.get('error_code')} {resp.get('error')}"
+                    )
+            except Exception as e:
+                self._warmup_state = "failed"
+                logger.warning(f"[引擎] 预热异常（忽略，不影响主流程）: {e}")
+
+        threading.Thread(target=_warm, daemon=True, name="engine-warmup").start()
 
     def stop(self) -> dict:
         """停止常驻子进程（优雅 stop 命令，超时后 terminate）。"""
@@ -271,7 +306,13 @@ class EngineHost:
                     if item is None:
                         # 哨兵：stdout 关闭 → 进程死亡（OOM 等），即时判不健康
                         raise RuntimeError("引擎子进程意外退出（stdout 关闭）")
-                    resp = json.loads(item)
+                    try:
+                        resp = json.loads(item)
+                    except json.JSONDecodeError:
+                        # 协议重同步：丢弃非 JSON 行（第三方库偶发 print 污染 stdout），
+                        # 继续等待本请求的合法应答行；worker 侧已用 _quiet_stdout 屏蔽主源。
+                        logger.warning(f"[引擎] 丢弃非 JSON 输出行: {item[:120]!r}")
+                        continue
                     rid = resp.get("id")
                     if rid == req_id:
                         self._consecutive_timeouts = 0
@@ -320,6 +361,7 @@ class EngineHost:
             "models_ready": precheck["ready"],
             "missing_models": precheck["missing"],
             "tampered_models": precheck["tampered"],
+            "warmup_state": self._warmup_state,  # DEF-QA-R1-03：None/running/done/failed
         }
 
     # ── 本地推理（R1/R3 统一入口） / Local inference (unified entry for R1/R3) ──
