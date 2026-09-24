@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# build/macos_sign_notarize.sh — mac 主应用一键安装链路（WP-G G-7，D-G4 L1 层）
+# build/macos_sign_notarize.sh — mac 主应用签名/公证/DMG 链路（WP-G G-7，D-G4 L1 层）
+# 【状态：DEFERRED，已移出 v10】项目方 2026-09-24 裁决「暂时不考虑 Apple 开发者账号
+# 与凭据」。本脚本保留备查，不再推进、不催凭据。发布材料口径硬约束：不得出现
+# 「macOS 一键安装」字样，只可写「macOS 支持应用内一键安装本地引擎组件」。
 #
 # 职责：Developer ID codesign（hardened runtime）→ .dmg 组装 → notarytool 公证 → staple。
 #

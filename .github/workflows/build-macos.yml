@@ -124,7 +124,8 @@ jobs:
       run: |
         chmod +x build/macos_sign_notarize.sh
         build/macos_sign_notarize.sh dist/OpenMeetingScribe-macOS dist
-        # dry-run（凭据缺失）时显式标注：产物未签名，不得声称 mac 一键安装已支持
+        # 【G-7 DEFERRED，移出 v10】项目方 2026-09-24 裁决暂不考虑 Apple 凭据；
+        # dry-run（凭据缺失）时显式标注：产物未签名，发布材料不得出现「macOS 一键安装」字样
         if [ "${SIGN_RESULT:-}" = "dry-run-unsigned" ]; then
           echo "⚠️ 本次产物为未签名 dry-run（缺 Apple 凭据）——blocked-on-credentials"
         fi

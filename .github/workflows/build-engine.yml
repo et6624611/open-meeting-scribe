@@ -103,7 +103,7 @@ jobs:
           dist/OMSEngine-${{ matrix.tag }}.zip.sha256
         retention-days: 30
 
-    - name: 发布 Release 资产（仅 tag 触发；应用内一键安装的默认下载源）
+    - name: 发布 Release 资产（仅 tag 触发；应用内一键安装本地引擎组件的默认下载源）
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:

@@ -1,6 +1,6 @@
 # WP-G + CI 缺陷 · 阶段性回报（DevOps工程师 → 产品经理）
 
-日期：2026-09-24 ｜ 分支：`task/local-engine-wpg-20260924`（本地已提交，**待 push 确认**）、`fix/ci-local-engine-20260924`（已合入 main）
+日期：2026-09-24（v2，按项目方裁决更新 G-7 状态与交付口径） ｜ **v10 交付口径收敛**：mac L2（引擎组件应用内一键落位，G-4b）+ Windows L1（Inno [Components]，G-4）+ Windows 冻结冒烟（G-6） ｜ 分支：`task/local-engine-wpg-20260924`（本地已提交，**待 push 确认**）、`fix/ci-local-engine-20260924`（已合入 main）
 
 ## 1. CI 缺陷（B 包）：根因链闭环，冒烟本体已全绿
 
@@ -21,7 +21,7 @@
 | G-4b mac 应用内一键落位 | ✅（后端） | `core/engine_installer.py`（zip sha256→zip-slip 防护→manifest 逐文件校验→原子换入 `<锚点>/engine/`，含剥壳误判修复）+ `/api/engine/component/*` 路由 |
 | G-5 首启引导接 UI | ⛔ 需协调 | 前端接线撞上 6 个在途 WIP 文件（`frontend/src/api/engine.ts`、`stores/engine.ts`、`SettingsView.vue`），按纪律不碰；后端数据源已就绪（component 三态+安装进度轮询 API），请 PM 协调 WP-F UI owner 接线 |
 | G-6 CI local 冒烟 | ✅ | run 35949609223 双 job 全绿：冻结冒烟（import/spawn/加载链/推理/零真实下载守护）+ AC-7 体积守护 |
-| G-7 mac 签名+公证+dmg | 🚧 **blocked-on-credentials** | 脚本链完整交付（`build/macos_sign_notarize.sh` + entitlements + build-macos.yml 改造），凭据缺失自动 dry-run 产未签名 dmg 并显式标注；硬前提=项目方提供 Apple Developer ID .p12 + notary API key。**不声称 mac 一键安装已完成** |
+| G-7 mac 签名+公证+dmg | ⏸ **DEFERRED（移出 v10）** | 项目方 2026-09-24 裁决「暂时不考虑 Apple 开发者账号与凭据」。已交付的脚本链（`build/macos_sign_notarize.sh` + entitlements + build-macos.yml 改造）保留备查、头部已加 DEFERRED 标注，不再推进、不催凭据 |
 
 - 测试：新增 43 例（`test_engine_packaging_g3.py` 23 + `test_engine_installer_g4.py` 20）全绿；全量 303 passed 无回归（worktree 环境差异已排除：补 `.env`/`data/settings.json`/`philosophies.json` 后与主工作区一致）。
 - 提交：4 批（`e31aa3f` feat G-2/G-3、`a83154c` feat G-4/G-4b、`fd1b699` ci G-7+build-engine、`0f6bb77` docs）+ 本报告。6 个在途文件未触碰，全程逐文件 stage。
@@ -30,5 +30,5 @@
 ## 3. AC-10 验收口径预判
 
 - L2（引擎组件应用内一键落位）：双平台后端就绪；剩余依赖 `build-engine.yml` 首跑（引擎包产物）+ G-5 前端接线。
-- L1（mac .dmg+签名+公证）：视 Apple 凭据，当前 blocked-on-credentials。
+- L1（mac .dmg+签名+公证）：**DEFERRED，移出 v10**（项目方 2026-09-24 裁决）。发布材料口径硬约束：不得出现「macOS 一键安装」字样，只可写「macOS 支持应用内一键安装本地引擎组件」——已排查本报告/离线包手册/workflow/installer 脚本，现有措辞均合规。
 - 组件三态截图：需真机/冻结包，待 G-6 绿灯后补。
