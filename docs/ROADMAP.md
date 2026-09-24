@@ -146,10 +146,19 @@ status: published
 - **第二轮派工（2026-09-24，经项目方批准推送）**：
   - WP-E（R1/R2 主干接线 + R3 声纹离线化 + AC-4 分类化回退 `LocalEngineError(can_fallback_cloud)`）✅ `20dee6d..74a1281`：27 例契约/回退打桩，HEAD 全量回归 260 passed
   - WP-F（R5 模型管理前端 UI：清单/下载/引导弹窗/降级横幅）✅ `aaaaa958`
-- **WP-G 派工（2026-09-24）**：R8 打包首启引导——onedir 冻结代码包 + 外置引擎目录分离（D-R3）、Windows Inno Setup「本地引擎组件」可选安装、冻结应用内首启引导接 WP-F UI、CI 增 local 链路冒烟（替身权重，禁真实下载）。依赖：无新决策阻塞；Windows 侧 AC-1 真机验收依赖本包产物
-- **真机断网验收（与 WP-G 并行，macOS 先行）**：Spike venv + 真实权重，AC-1/2/3/6 清单见 WP-E 测试 docstring；重点 = 真实 WER/耗时（AC-2/3）、ct-punc 缺省下标点降级、AC-1 抓包白名单（顺带产出 AC-5 一致性证据）。若 ct-punc 降级不可接受 → 触发「可选转必装 ≈3.0GB 超 AC-3 预算需评审」或「接受降级 + 文档标注」决策，先实测后议
-- **已知缺陷（登记待查）**：`ci-local-engine.yml` 全部 4 次运行 0s 失败（"workflow file issue"，jobs 未创建；本地 YAML 解析无误），主 CI（ubuntu）不受影响。后果 = AC-7 体积守护与 Windows 冻结冒烟当前无 CI 覆盖，WP-D 验收项「Windows CI 绿灯」存疑待复核。疑似方向 = 私有仓库 Windows metered 额度 / 账号侧 runner 配额或 workflow 校验失败；派 WP-D owner 排查
-- **剩余范围**：R8 打包首启引导（WP-G）、AC-1 断网闭环 / AC-4 可回退真机验收（mac + Win）
+- **WP-G 派工（2026-09-24）→ 派工说明已入库** [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)：R8 打包首启引导——onedir 冻结代码包 + 外置引擎目录分离（D-R3）、Windows Inno Setup「本地引擎组件」可选安装、冻结应用内首启引导接 WP-F UI、CI 增 local 链路冒烟（替身权重，禁真实下载）。Windows 侧 AC-1 真机验收依赖本包产物
+  - ⚠️ **2026-09-24 更正：原登记「依赖：无新决策阻塞」不成立**。盘点打包链路时发现 3 个冻结态必踩缺陷 + 2 个阻塞性决策，**G-1 开工前需项目方拍板**：
+    - **D-G1 引擎可执行体形态（阻塞）**：`core/engine_host.py:55` 冻结态按「同主 exe 再入 `<exe> --engine-worker`」拉起（`desktop.py:335` 分派已就绪），但 `build/pyinstaller.spec:103` 显式 `excludes=['torch','torchaudio']` —— 主包内无 funasr/torch，**冻结态本地引擎必然启动失败**；而把 torch 放回主包直接违反 R8/AC-7「否决内置云精简主包」。建议采纳**独立引擎包**（新增 `pyinstaller_engine.spec`，主包 spec 不动），并否决「条件打包」
+    - **D-G3 Windows 组件可写锚点（阻塞政企离线路径）**：Inno 默认装 `Program Files`（非管理员不可写），但权重/日志/ModelScope 缓存均需可写；建议引擎运行时数据落 `%LOCALAPPDATA%`。连带 `core/model_registry.py:81-90` 相对路径 `data/models/` 在冻结态会指进只读 bundle（`engine_host.py:137` cwd 取 `__file__` 父级），须改平台锚点（对照 `core/audio.py:44` 的 ffmpeg 写法）
+    - **B-3 排障可见性**：`engine_host.py:133` `stderr=DEVNULL` 丢弃引擎侧错误输出，冻结首启（funasr import 最高 86s、spawn 重复引导 5–6 次）失败时用户只看到 `engine_unhealthy`。WP-G 期间必须收进任务日志（对齐 AC-8）
+- **WP-H 立项（2026-09-24，本地模式实时链路口径收口）**：范围严格限定三件，与 WP-G 解耦以免拖住打包排期——
+  1. **超时天花板**：`core/engine_host.py:31` `ENGINE_REQUEST_TIMEOUT=180s` 为单请求上限，按 Spike RTF≈0.081 反推音频 >~37 分钟必超时；本地模式 `can_fallback_cloud=False` → **整场转写失败、录音白录**。需按承诺的最长会议时长重算（长音频分片续跑或调上限 + 进度可见），并给出「云包不受影响」的验证
+  2. **降级语气错位**：`app/routers/record.py:466-477` 把设计内降级当异常兜住，推 `type:"error"` 消息，与同页降级横幅（`RecTranscriptPanel.vue:65`）自相矛盾，读起来像故障。应改为非错误的状态声明
+  3. **文案与行为不一致（待裁决）**：横幅与 PRD 非目标节写的是「实时转写按分段批处理输出」，实现是**录音期间完全不出稿、结束后一次性全量批处理**（`core/realtime_asr.py:222-233` 直接抛 `realtime_degraded_to_batch`）。建议**方案 A（改口径对齐实现）**：非目标与文案统一为「录音期间不显示实时文字，结束后一次性转写，约需 X 分钟」+ 批处理进度/预计等待；**方案 B（真做分段增量上屏）**属 PRD 外新增范围，另出 requirement 走评审，不在本轮承诺
+  - 判据：改后 PRD 非目标节、中英文案、`record.py` 消息类型、AC-2/AC-3 验收判据（含最长会议时长）四处口径一致且可测
+- **真机断网验收（与 WP-G 并行，macOS 先行）**：Spike venv + 真实权重，AC-1/2/3/6 清单见 WP-E 测试 docstring；重点 = 真实 WER/耗时（AC-2/3）、ct-punc 缺省下标点降级、AC-1 抓包白名单（顺带产出 AC-5 一致性证据）。若 ct-punc 降级不可接受 → 触发「可选转必装 ≈3.0GB 超 AC-3 预算需评审」或「接受降级 + 文档标注」决策，先实测后议。⚠️ 验收用例须含 ≥30 分钟样本（覆盖 WP-H 第 1 项）且**不得用 venv 冒替冻结包**
+- **已知缺陷（登记待查）**：`ci-local-engine.yml` 全部 5 次运行 0s 失败、0 jobs（主 CI ubuntu 不受影响）。2026-09-24 诊断已推进：本地 YAML 解析通过、无重复键、无 tab/CRLF/BOM、`name` 正常；`gh workflow list` 中**唯独此条显示文件路径而非 workflow name**（GitHub 未解析出元数据），`runs/<id>/jobs` 返回 `total_count: 0`，`error` 字段为 null，对应 commit 的 check-runs 无该 workflow 注解 → 根因未定位，**不再以「疑似 metered 额度」作为结论性猜测**。有界下一步 = 最小 workflow 二分提交（先砍 `concurrency.cancel-in-progress` 表达式 `:55-57` 与非 dispatch 事件下引用 `inputs.freeze_smoke` 的 job-level `if` `:63-66`），详见 [派工说明 §5](WP-G-R8-PACKAGING-DISPATCH.md)。后果 = AC-7 体积守护与 Windows 冻结冒烟当前无 CI 覆盖，WP-D 验收项「Windows CI 绿灯」复核未通过；派 WP-D owner 排查，WP-G G-6 与之并行
+- **剩余范围**：R8 打包首启引导（WP-G，待 D-G1/D-G3 拍板）、WP-H 本地模式口径收口、AC-1 断网闭环 / AC-4 可回退真机验收（mac + Win）
 - **D-R4 让渡清单（2026-09-24 项目方口头授权"听你的/继续"暂定采纳，待正式批准）**：建议让渡——v7 产品介绍页、v8 移动端消息流、BACKLOG 中期/长期分离优化项（M2/M3/L1-L3）；不让渡——进行中的笔记/决策流/知识库 WIP 与在途缺陷修复（与 v10 无资源冲突，可并行）
 
 ## 待定 / 想法池
