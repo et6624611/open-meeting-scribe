@@ -392,3 +392,168 @@ def get_engine_config() -> dict:
             },
         },
     }
+
+
+# ============================================================
+# 接入方式（REQ-ACCESS-MODE-CARDS · T1）/ Access mode
+# ============================================================
+# 用户侧统一字段：access_mode ∈ {local, hosted, byok} | None（未配置→null 触发引导）
+# 与 expert_mode（布尔）。旧字段（engine.mode / asr.mode / prefer_subscription /
+# provider / base_url / model / 各 api_key）降级为底层实现细节，兼容窗口一个版本（A2）：
+# 写路径继续同步旧字段以保持回滚能力。
+
+ACCESS_MODES = ("local", "hosted", "byok")
+
+# expert_mode 自动开启判定所用的「默认值」口径（与 get_llm_config / get_asr_config 默认一致）
+_DEFAULT_EXPERT_BASELINES = {
+    "llm": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+    "asr": {"base_url": "https://dashscope.aliyuncs.com", "model": "paraformer-v2"},
+}
+
+
+def _current_prefer_subscription() -> bool:
+    """读取当前登录用户的 prefer_subscription 偏好（无登录/异常 → False）。"""
+    try:
+        from core.users import get_current_user
+        user = get_current_user()
+        if user:
+            return bool(user.get("prefs", {}).get("prefer_subscription", False))
+    except Exception:
+        pass
+    return False
+
+
+def derive_access_mode(settings: dict, prefer_subscription: bool | None = None) -> str | None:
+    """需求书 §4 一次性迁移映射（纯函数，不落盘）。
+
+    | 存量组合                                   | 迁移为  |
+    | engine.mode=local                          | local   |
+    | engine.mode=proxy                          | hosted  |
+    | engine.mode=cloud（A-i1 延伸：同为云代理计费）| hosted  |
+    | engine.mode=direct 且 prefer_subscription=F | byok    |
+    | engine.mode=direct 且 prefer_subscription=T | hosted  |  ← A1 裁决
+    | 未配置                                     | None    |  → 触发引导
+
+    prefer_subscription=None 时读取当前登录用户偏好。
+    """
+    engine = settings.get("engine", {}) or {}
+    mode = engine.get("mode")
+    if mode == "local":
+        return "local"
+    if mode in ("proxy", "cloud"):
+        return "hosted"
+    if mode == "direct":
+        ps = _current_prefer_subscription() if prefer_subscription is None else bool(prefer_subscription)
+        return "hosted" if ps else "byok"
+    return None
+
+
+def derive_expert_mode(settings: dict) -> bool:
+    """存量配置含自定义 base_url/model 覆盖或非默认 Key 组合时自动置 True（§4，保证高级用户配置不被卡片化吞掉）。"""
+    for svc in ("llm", "asr"):
+        svc_cfg = settings.get(svc, {}) or {}
+        baseline = _DEFAULT_EXPERT_BASELINES[svc]
+        base_url = svc_cfg.get("base_url", "")
+        model = svc_cfg.get("model", "")
+        if base_url and base_url != baseline["base_url"]:
+            return True
+        if model and model != baseline["model"]:
+            return True
+    # 非默认 Key 组合：旧版 flat api_key、声纹云配置、以及代理模式下不应出现的自有 ASR Key
+    if settings.get("api_key"):
+        return True
+    vp = settings.get("voiceprint", {}) or {}
+    vp_cloud = vp.get("cloud", {}) or {}
+    if vp.get("provider") not in (None, "auto") or vp_cloud.get("base_url") or vp_cloud.get("api_key"):
+        return True
+    asr_cfg = settings.get("asr", {}) or {}
+    if asr_cfg.get("mode") != "direct" and asr_cfg.get("api_key"):
+        return True
+    return False
+
+
+def migrate_access_mode(settings: dict, prefer_subscription: bool | None = None) -> bool:
+    """就地执行一次性迁移：补充 access_mode / expert_mode / 迁移标记；旧字段原样保留（回滚用）。
+
+    已迁移（存在 `_access_mode_migrated` 标记）则不重复推导，返回 False。
+    """
+    if settings.get("_access_mode_migrated"):
+        return False
+    if "access_mode" not in settings:
+        settings["access_mode"] = derive_access_mode(settings, prefer_subscription)
+    if not isinstance(settings.get("expert_mode"), bool):
+        settings["expert_mode"] = derive_expert_mode(settings)
+    settings["_access_mode_migrated"] = True
+    return True
+
+
+def run_access_mode_migration() -> bool:
+    """启动时迁移入口：加载 settings.json，如需迁移则持久化。返回是否发生变更。"""
+    settings = load_settings()
+    if migrate_access_mode(settings):
+        save_settings_to_disk(settings)
+        logger.info(f"接入方式迁移完成: access_mode={settings.get('access_mode')}, expert_mode={settings.get('expert_mode')}")
+        return True
+    return False
+
+
+def get_access_mode() -> str | None:
+    """当前接入方式（路由判定唯一数据源，见 core/routing.py）。
+
+    已迁移 → 返回持久值（可能为 None=未配置，触发引导）；
+    未迁移（如 CLI 先于服务启动钩子读取）→ 按 §4 惰性推导，不写盘。
+    """
+    settings = load_settings()
+    if settings.get("_access_mode_migrated"):
+        mode = settings.get("access_mode")
+        return mode if mode in ACCESS_MODES else None
+    return derive_access_mode(settings)
+
+
+def get_expert_mode() -> bool:
+    """专家模式开关。已迁移 → 持久值优先；未迁移 → 按存量配置惰性推导。"""
+    settings = load_settings()
+    if settings.get("_access_mode_migrated"):
+        em = settings.get("expert_mode")
+        return bool(em) if isinstance(em, bool) else derive_expert_mode(settings)
+    return derive_expert_mode(settings)
+
+
+def apply_access_mode(settings: dict, mode: str | None) -> None:
+    """写入 access_mode 并同步旧字段（A2 兼容窗口：回滚后旧版本可直接读取生效）。
+
+    mode=None 表示未配置（触发引导），仅清除选择不动旧字段。
+    """
+    if mode is not None and mode not in ACCESS_MODES:
+        raise ValueError(f"非法 access_mode: {mode!r}，允许值: {ACCESS_MODES}")
+    settings["access_mode"] = mode
+    settings["_access_mode_migrated"] = True
+    if mode is None:
+        return
+    engine = dict(settings.get("engine", {}) or {})
+    asr = dict(settings.get("asr", {}) or {})
+    if mode == "local":
+        engine["mode"] = "local"
+    elif mode == "hosted":
+        engine["mode"] = "proxy"
+        asr["mode"] = "proxy"
+    elif mode == "byok":
+        engine["mode"] = "direct"
+        asr["mode"] = "direct"
+    settings["engine"] = engine
+    settings["asr"] = asr
+
+
+def set_access_mode(mode: str | None) -> None:
+    """持久化 access_mode（含旧字段同步）。非法值抛 ValueError，不落盘。"""
+    settings = load_settings()
+    apply_access_mode(settings, mode)
+    save_settings_to_disk(settings)
+
+
+def set_expert_mode(enabled: bool) -> None:
+    """持久化 expert_mode 开关。首次写入时顺带完成迁移，避免惰性推导覆盖显式选择。"""
+    settings = load_settings()
+    migrate_access_mode(settings)
+    settings["expert_mode"] = bool(enabled)
+    save_settings_to_disk(settings)

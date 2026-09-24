@@ -91,61 +91,22 @@ def _get_api_key() -> str:
 
 
 def _is_placeholder_key(key: str) -> bool:
-    """检测 API Key 是否为模板占位符值。
+    """检测 API Key 是否为模板占位符值（判定逻辑已收敛至 core/routing.py，此处保留兼容入口）。
     Detect whether an API key is a template placeholder value.
     """
-    if not key:
-        return True
-    k = key.lower()
-    return (
-        "xxxx" in k
-        or "sk-xxx" in k
-        or k.startswith("your-")
-        or "your_api_key" in k
-        or "your-api-key" in k
-        or len(k) < 20  # 真实 Key 通常较长 / Real keys are usually longer
-    )
+    from core.routing import is_placeholder_key
+    return is_placeholder_key(key)
 
 
 def _should_use_cloud() -> bool:
-    """判断是否应走云端代理（无本地 API Key 或 Key 为占位符，且云端可用）。
-    Check if cloud proxy should be used (no local API key or key is placeholder, and cloud is enabled).
+    """判断是否应走云端代理。
 
-    用户偏好 prefer_subscription 开启时，即使有本地 Key 也优先走云端代理消耗订阅配额。
-    When prefer_subscription is enabled, prefer cloud proxy to consume subscription quota.
+    T2 收口（REQ-ACCESS-MODE-CARDS AC-T2）：路由判定唯一入口为
+    `core/routing.get_routing_decision("llm")`，以 access_mode 为配置语义；
+    本函数不再独立读取 engine.mode / prefer_subscription 组合。
     """
-    # R4（WP-A）：localhost 自持端点显式本地直连，绝不回退云端 / Local endpoint: never cloud fallback
-    if is_localhost_base_url(_get_base_url()):
-        return False
-
-    # 用户偏好覆盖：优先使用订阅流量 / User preference override: prefer subscription quota
-    try:
-        from core.users import get_current_user
-        from core.metering import DEFAULT_QUOTA
-        user = get_current_user()
-        if user and user.get("prefs", {}).get("prefer_subscription", False):
-            if user.get("quota", DEFAULT_QUOTA) > 0:
-                try:
-                    from core.cloud_client import is_cloud_enabled
-                    if is_cloud_enabled():
-                        return True
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    try:
-        from app.store import get_active_api_key
-        key = get_active_api_key()
-        if key and not _is_placeholder_key(key):
-            return False  # 有有效本地 Key，用本地 / Have valid local key, use local
-    except Exception:
-        pass
-    try:
-        from core.cloud_client import is_cloud_enabled
-        return is_cloud_enabled()
-    except Exception:
-        return False
+    from core.routing import get_routing_decision
+    return get_routing_decision("llm")["route"] == "cloud"
 
 
 def _get_cloud_user_id() -> str:

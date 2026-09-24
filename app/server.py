@@ -557,6 +557,13 @@ async def startup():
     except Exception:
         pass
 
+    # REQ-ACCESS-MODE-CARDS T1：一次性接入方式迁移（旧字段原样保留，支持回滚窗口）
+    try:
+        from app.settings_store import run_access_mode_migration
+        run_access_mode_migration()
+    except Exception as e:
+        logger.warning(f"启动接入方式迁移失败（不影响服务，运行时按 §4 惰性推导兜底）: {e}")
+
     load_tasks_from_disk()
     recover_interrupted_tasks()
 
