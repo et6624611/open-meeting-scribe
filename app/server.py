@@ -98,6 +98,7 @@ from app.routers import (
     chat,
     cloud_api,
     config,
+    engine_component,
     hotwords,
     import_tasks,
     insights,
@@ -395,6 +396,7 @@ app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
 app.include_router(import_tasks.router)
 app.include_router(models.router)
+app.include_router(engine_component.router)
 
 # ============================================================
 # 软件下载分发（自建下载中转） / Software download distribution (self-hosted relay)
