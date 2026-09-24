@@ -318,6 +318,7 @@ def _transcribe_local(
       由 assemble_dialogue → apply_hotword_mappings 统一施加（详见该处文档）。
     """
     from core.engine_host import (
+        ENGINE_REQUEST_TIMEOUT,
         LOCAL_ASR_MAX_SUPPORTED_SECONDS,
         _cloud_fallback_available,
         estimate_local_asr_timeout,
@@ -330,7 +331,6 @@ def _transcribe_local(
     logger.info(f"本地 ASR 转写开始（FunASR 常驻子进程）: {file_path.name}")
 
     # WP-H：时长探测 → 动态超时；超支持上限直接分类报错（不发引擎请求，文件保留）
-    from core.engine_host import ENGINE_REQUEST_TIMEOUT
     timeout = float(ENGINE_REQUEST_TIMEOUT)
     try:
         from core.audio import get_audio_duration
