@@ -23,6 +23,8 @@ class LocalEngineError(RuntimeError):
       - engine_timeout：推理超时（子进程可能需重启）
       - inference_failed：FunASR 推理返回错误
       - audio_not_found：音频文件缺失
+      - audio_too_long：超过本地批转写支持上限（WP-H，切分文件或显式回退云端）
+      - realtime_degraded_to_batch：实时预览按设计降级为批处理（非故障，WP-H 状态声明）
     """
 
     def __init__(
@@ -114,6 +116,9 @@ def classify_error(error: Exception) -> dict:
             suggestion = _("Local engine models are not ready. Please download them in Settings, or switch back to cloud.")
         elif code == "engine_timeout":
             suggestion = _("Local engine timed out. Please retry, or switch back to cloud.")
+        elif code == "audio_too_long":
+            # WP-H：超过本地批转写支持上限（口径见 core/engine_host.LOCAL_ASR_MAX_SUPPORTED_SECONDS）
+            suggestion = _("Audio is longer than the local engine supports per file. Split the file, or switch back to cloud and retry; the original audio is kept.")
         else:
             suggestion = _("Local engine inference failed. You can switch back to cloud and retry; your task state is preserved.")
         return {

@@ -18,9 +18,11 @@ core/engine_host.py — 本地引擎常驻子进程宿主（R5 / WP-B）
 import json
 import logging
 import os
+import queue
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,43 @@ logger = logging.getLogger(__name__)
 ENGINE_START_TIMEOUT = 120
 ENGINE_REQUEST_TIMEOUT = 180
 ENGINE_STOP_TIMEOUT = 10
+
+# ── D-I1 两级健康语义（R9 分段增量，REQ-LOCAL-REALTIME-INCR §6）──
+# 单请求超时 = 请求级失败（丢该请求，保留引擎进程）；连续 N 次超时才判
+# 进程级不健康并重启子进程。进程死亡（stdout 关闭）仍即时判不健康。
+# N 可经环境变量覆盖，默认 3（待真机校准）。
+ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS = int(
+    os.environ.get("ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS", "3")
+)
+
+# ── 本地批转写时长感知超时（WP-H 第 1 项：导入音频 / 非实时长文件路径）──
+# Duration-aware timeout for local batch ASR on non-realtime long-file paths.
+# 固定 ENGINE_REQUEST_TIMEOUT=180s 会把 >~37 分钟音频（Spike RTF≈0.081 反推）
+# 整场判死；此处按音频时长重算单请求上限：
+#   timeout = clamp(duration × RTF 预算 + 固定余量, 下限 180s, 上限按支持时长封顶)
+# RTF 预算取 0.5 s/s ≈ Spike 实测 0.081 的 6 倍余量（覆盖慢速 4 核 Windows 机型、
+# ct-punc 标点与排队开销；待真机实测后可再收紧）。
+LOCAL_ASR_RTF_BUDGET = 0.5
+LOCAL_ASR_TIMEOUT_MARGIN = 60
+# 本地批转写支持的单文件时长上限（口径与 PRD 文案一致；超限报可分类错误，不发引擎请求）
+LOCAL_ASR_MAX_SUPPORTED_SECONDS = 4 * 3600
+
+
+def estimate_local_asr_timeout(duration_s: float | None) -> float:
+    """按音频时长估算本地批转写单请求超时（WP-H：超时口径与实际支持时长一致）。
+
+    Args:
+        duration_s: 音频时长（秒）；None/非正值时退回默认 ENGINE_REQUEST_TIMEOUT。
+
+    Returns:
+        单请求超时（秒），区间 [ENGINE_REQUEST_TIMEOUT, LOCAL_ASR_MAX_SUPPORTED_SECONDS
+        × RTF 预算 + 余量]。
+    """
+    if not duration_s or duration_s <= 0:
+        return float(ENGINE_REQUEST_TIMEOUT)
+    budget = duration_s * LOCAL_ASR_RTF_BUDGET + LOCAL_ASR_TIMEOUT_MARGIN
+    ceiling = LOCAL_ASR_MAX_SUPPORTED_SECONDS * LOCAL_ASR_RTF_BUDGET + LOCAL_ASR_TIMEOUT_MARGIN
+    return float(min(max(budget, ENGINE_REQUEST_TIMEOUT), ceiling))
 
 # 冻结态入口分派参数：desktop.py 的 __main__ 检测到该参数时进入引擎工作端
 # Frozen-mode dispatch flag handled by the desktop.py __main__ entry
@@ -95,6 +134,11 @@ class EngineHost:
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self._req_counter = 0
+        # D-I1：常驻读取线程把 stdout 行推入响应队列；请求级超时只丢该请求，
+        # 过期响应按 id 重同步丢弃；连续超时达阈值才重启子进程。
+        self._resp_queue: queue.Queue | None = None
+        self._stale_ids: set[str] = set()
+        self._consecutive_timeouts = 0
 
     # ── 生命周期 / Lifecycle ──
 
@@ -136,6 +180,26 @@ class EngineHost:
                 encoding="utf-8",
                 cwd=str(Path(__file__).resolve().parent.parent),
             )
+            # D-I1：为当前子进程建立响应队列 + 常驻读取线程（stdout 关闭时推 None 哨兵）
+            self._resp_queue = queue.Queue()
+            self._stale_ids = set()
+            self._consecutive_timeouts = 0
+            resp_queue = self._resp_queue
+            proc = self._proc
+
+            def _reader_loop():
+                try:
+                    while True:
+                        line = proc.stdout.readline()
+                        if not line:
+                            break
+                        resp_queue.put(line)
+                except Exception:
+                    pass
+                finally:
+                    resp_queue.put(None)  # 哨兵：stdout 关闭 / 进程死亡
+
+            threading.Thread(target=_reader_loop, daemon=True, name="engine-host-reader").start()
 
         # 健康检查 / Health check
         try:
@@ -152,6 +216,9 @@ class EngineHost:
         """停止常驻子进程（优雅 stop 命令，超时后 terminate）。"""
         with self._lock:
             proc, self._proc = self._proc, None
+            self._resp_queue = None
+            self._stale_ids = set()
+            self._consecutive_timeouts = 0
         if proc is None or proc.poll() is not None:
             return {"ok": True, "already_stopped": True}
         try:
@@ -170,35 +237,75 @@ class EngineHost:
     # ── 请求转发 / Request forwarding ──
 
     def request(self, cmd: str, params: dict | None = None, timeout: float = ENGINE_REQUEST_TIMEOUT) -> dict:
-        """向常驻子进程发送一条 JSON Lines 请求并等待响应（带超时）。"""
-        with self._lock:
-            if not self.is_running():
-                raise RuntimeError("引擎子进程未运行")
-            self._req_counter += 1
-            req_id = f"r{self._req_counter}"
-            payload = json.dumps({"id": req_id, "cmd": cmd, "params": params or {}}, ensure_ascii=False)
-            self._proc.stdin.write(payload + "\n")
-            self._proc.stdin.flush()
+        """向常驻子进程发送一条 JSON Lines 请求并等待响应（带超时）。
 
-            # 阻塞 readline 放入线程以支持超时（超时视为引擎不健康，调用方应 stop/重启）
-            # Blocking readline runs in a thread to honor timeout; timeout ⇒ unhealthy engine
-            box: dict = {}
+        D-I1 两级健康语义：
+          - 单请求超时 → 请求级失败（TimeoutError），进程保留；本次 req_id 记入
+            过期集合，迟到的响应在后续请求读取时按 id 重同步丢弃；
+          - 连续 ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS 次超时 → 进程级不健康，
+            stop() 重启（下次 infer 自动拉起）；
+          - stdout 关闭（None 哨兵 = 进程死亡/OOM）→ 仍即时 RuntimeError。
+        """
+        try:
+            with self._lock:
+                if not self.is_running():
+                    raise RuntimeError("引擎子进程未运行")
+                resp_queue = self._resp_queue
+                if resp_queue is None:
+                    raise RuntimeError("引擎响应队列未初始化")
+                self._req_counter += 1
+                req_id = f"r{self._req_counter}"
+                payload = json.dumps({"id": req_id, "cmd": cmd, "params": params or {}}, ensure_ascii=False)
+                self._proc.stdin.write(payload + "\n")
+                self._proc.stdin.flush()
 
-            def _read():
-                box["line"] = self._proc.stdout.readline()
-
-            reader = threading.Thread(target=_read, daemon=True)
-            reader.start()
-            reader.join(timeout)
-            if reader.is_alive():
-                raise TimeoutError(f"引擎响应超时（{timeout}s）: cmd={cmd}")
-            line = box.get("line", "")
-            if not line:
-                raise RuntimeError("引擎子进程意外退出（stdout 关闭）")
-            resp = json.loads(line)
-            if resp.get("id") != req_id:
-                raise RuntimeError(f"引擎响应 ID 不匹配: expected={req_id}, got={resp.get('id')}")
-            return resp
+                deadline = time.monotonic() + timeout
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(f"引擎响应超时（{timeout}s）: cmd={cmd}")
+                    try:
+                        item = resp_queue.get(timeout=remaining)
+                    except queue.Empty:
+                        raise TimeoutError(f"引擎响应超时（{timeout}s）: cmd={cmd}")
+                    if item is None:
+                        # 哨兵：stdout 关闭 → 进程死亡（OOM 等），即时判不健康
+                        raise RuntimeError("引擎子进程意外退出（stdout 关闭）")
+                    resp = json.loads(item)
+                    rid = resp.get("id")
+                    if rid == req_id:
+                        self._consecutive_timeouts = 0
+                        return resp
+                    if rid in self._stale_ids:
+                        # 过期响应（此前超时请求的迟到回包）：重同步丢弃，继续等本请求
+                        logger.debug(f"[引擎] 丢弃过期响应: id={rid}（等待 {req_id}）")
+                        continue
+                    raise RuntimeError(f"引擎响应 ID 不匹配: expected={req_id}, got={rid}")
+        except TimeoutError:
+            with self._lock:
+                self._stale_ids.add(req_id)
+                self._consecutive_timeouts += 1
+                hits = self._consecutive_timeouts
+                restart = hits >= ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS
+                if restart:
+                    self._consecutive_timeouts = 0
+                    self._stale_ids = set()
+            if restart:
+                logger.warning(
+                    f"[引擎] 连续 {hits} 次请求超时，判进程级不健康，重启子进程（D-I1）"
+                )
+                self.stop()
+            else:
+                logger.warning(
+                    f"[引擎] 请求超时（连续 {hits}/{ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS}），"
+                    f"保留进程: cmd={cmd}"
+                )
+            raise
+        except RuntimeError:
+            with self._lock:
+                self._consecutive_timeouts = 0
+                self._stale_ids = set()
+            raise
 
     def status(self) -> dict:
         from app.settings_store import get_engine_config
@@ -254,8 +361,8 @@ class EngineHost:
         try:
             resp = self.request("infer", {"task": task, **(params or {})}, timeout=timeout)
         except TimeoutError as e:
-            # 超时视为子进程不健康：停掉以便下次请求重新拉起（PRD 7.3 错误分类）
-            self.stop()
+            # D-I1 两级语义：单请求超时不立即杀进程（request() 内部按连续超时
+            # 阈值决定是否重启）；调用方只承担本次请求失败。
             raise LocalEngineError(str(e), error_code="engine_timeout", can_fallback_cloud=can_fallback)
         except RuntimeError as e:
             raise LocalEngineError(str(e), error_code="engine_unhealthy", can_fallback_cloud=can_fallback)

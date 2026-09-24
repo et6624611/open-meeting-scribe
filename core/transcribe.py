@@ -306,6 +306,10 @@ def _transcribe_local(
       携带 can_fallback_cloud 供 AC-4 显式确认后回退，绝不静默上云）。
     - 实时链路在本地模式下降级为分段批处理（PRD Non-Goal，显性声明见 core/realtime_asr.py）；
       本函数即批处理链路的本地实现。
+    - WP-H 超时口径：单请求超时按音频时长动态估算（estimate_local_asr_timeout，
+      RTF 预算 0.5 s/s），长文件不再被固定 180s 上限整场判死；超过支持上限
+      （LOCAL_ASR_MAX_SUPPORTED_SECONDS，4 小时）时报 audio_too_long 分类错误，
+      不发起引擎请求，音频文件保留（失败可恢复不丢录音）。
     - 已知差距（相对云端 paraformer-v2）：
         * speaker_count 提示不强制（CAM++ 自动聚类，无法钉死人数）；
         * language_hints 不适用（seaco-paraformer-zh 为中文模型）；
@@ -313,12 +317,43 @@ def _transcribe_local(
     - R2 热词：本地无云端识别期 vocabulary_id 加权；热词以「转写后替换」为必配项，
       由 assemble_dialogue → apply_hotword_mappings 统一施加（详见该处文档）。
     """
-    from core.engine_host import get_engine_host
+    from core.engine_host import (
+        ENGINE_REQUEST_TIMEOUT,
+        LOCAL_ASR_MAX_SUPPORTED_SECONDS,
+        _cloud_fallback_available,
+        estimate_local_asr_timeout,
+        get_engine_host,
+    )
+    from core.errors import LocalEngineError
+    from core.i18n import _
 
     start = time.perf_counter()
     logger.info(f"本地 ASR 转写开始（FunASR 常驻子进程）: {file_path.name}")
 
-    resp = get_engine_host().infer("asr", {"audio_path": str(file_path)})
+    # WP-H：时长探测 → 动态超时；超支持上限直接分类报错（不发引擎请求，文件保留）
+    timeout = float(ENGINE_REQUEST_TIMEOUT)
+    try:
+        from core.audio import get_audio_duration
+        duration_s = get_audio_duration(file_path)
+    except Exception as e:
+        duration_s = None
+        logger.warning(f"本地 ASR 时长探测失败（退回默认超时 {timeout:.0f}s）: {e}")
+    if duration_s:
+        if duration_s > LOCAL_ASR_MAX_SUPPORTED_SECONDS:
+            max_h = LOCAL_ASR_MAX_SUPPORTED_SECONDS / 3600
+            raise LocalEngineError(
+                _(
+                    "Audio duration {dur:.1f}h exceeds the local engine limit of {max:.0f}h "
+                    "per file. Split the file, or switch back to cloud and retry."
+                ).format(dur=duration_s / 3600, max=max_h),
+                error_code="audio_too_long",
+                can_fallback_cloud=_cloud_fallback_available(),
+                detail={"duration_s": duration_s, "max_supported_s": LOCAL_ASR_MAX_SUPPORTED_SECONDS},
+            )
+        timeout = estimate_local_asr_timeout(duration_s)
+        logger.info(f"本地 ASR 超时口径: 音频 {duration_s / 60:.1f}min → 单请求超时 {timeout:.0f}s")
+
+    resp = get_engine_host().infer("asr", {"audio_path": str(file_path)}, timeout=timeout)
 
     sentence_info = resp.get("sentence_info", []) or []
     transcription = _local_sentence_info_to_transcription(sentence_info, diarization_enabled)

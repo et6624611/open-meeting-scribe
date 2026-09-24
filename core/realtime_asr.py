@@ -224,6 +224,10 @@ class RealtimeTranscriber:
             # 录音本身不中断（数据落本地），最终转写由本地批管线（FunASR 子进程）完成。
             # 抛分类错误以复用既有「实时启动失败」处理路径（与 direct 模式缺 Key 行为一致），
             # 并保证 local 模式下绝不触达任何云端转写端点（零出网 / 防误配）。
+            # R9（WP-I）分支处置：engine.local.realtime_segments.enabled=true 时
+            # record.py 改用 core.realtime_local_asr.LocalSegmentTranscriber（分段增量
+            # 上屏），不会走到本分支；本降级声明仅在分段未开启（默认）时生效，
+            # record.py 侧按 WP-H 口径推非错误状态声明（type:"status"）。
             from core.errors import LocalEngineError
             raise LocalEngineError(
                 "本地引擎模式下实时预览降级为分段批处理：录音不受影响，"

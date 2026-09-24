@@ -355,24 +355,40 @@ def get_engine_config() -> dict:
     获取计算引擎配置（从 settings.json） / Get compute-engine config (from settings.json).
 
     R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier}。
+    R9/D-I3（REQ-LOCAL-REALTIME-INCR §6）：engine.local.realtime_segments 分段增量
+    上屏参数——段长不拍固定数值，全部可配置；默认值为临时口径（enabled=false，
+    待真机 20s/60s 各一场会带回延迟分布后由产品定默认值并开启）。
 
     返回格式 / Returns:
       {
         "mode": "cloud",            # cloud | proxy | direct | local（默认 cloud，本地引擎为显式选择）
         "local": {
           "model_dir": "data/models/",   # 模型权重存储目录 / Model weights directory
-          "model_tier": "auto"           # auto | conservative | standard（R4 小模型提示词档）
+          "model_tier": "auto",          # auto | conservative | standard（R4 小模型提示词档）
+          "realtime_segments": {         # R9 分段增量上屏（D-I3：可配置，默认值为临时口径）
+            "enabled": False,            # 默认关闭：未开启时本地模式保持 WP-H 降级状态声明
+            "min_segment_s": 5.0,        # 段最短时长（低于此值不闭合，等待更多音频）
+            "min_silence_s": 0.8,        # 判定段边界的静音时长（能量 VAD）
+            "max_segment_s": 30.0        # 段最长时长（到达即强制闭合）
+          }
         }
       }
     """
     settings = load_settings()
     engine = settings.get("engine", {}) or {}
     local = engine.get("local", {}) or {}
+    segments = local.get("realtime_segments", {}) or {}
     mode = os.getenv("ENGINE_MODE", "") or engine.get("mode", "cloud")
     return {
         "mode": mode,
         "local": {
             "model_dir": local.get("model_dir", DEFAULT_MODEL_DIR),
             "model_tier": local.get("model_tier", "auto"),
+            "realtime_segments": {
+                "enabled": bool(segments.get("enabled", False)),
+                "min_segment_s": float(segments.get("min_segment_s", 5.0)),
+                "min_silence_s": float(segments.get("min_silence_s", 0.8)),
+                "max_segment_s": float(segments.get("max_segment_s", 30.0)),
+            },
         },
     }

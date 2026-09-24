@@ -99,7 +99,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 - 空态：本地引擎未就绪时录音，转写队列挂起并提示「模型未就绪，前往设置」，录音本身不中断（数据落本地不变）。
 - 加载：转写任务显示本地推理进度（分段处理，逐段回填）。
-- 错误：模型文件损坏/内存不足 → 任务失败态 + 明确错误分类（复用 `core/errors.py`），提供「切回云端重试」出口。
+- 错误：模型文件损坏/内存不足/单文件超 4 小时支持上限（`audio_too_long`）→ 任务失败态 + 明确错误分类（复用 `core/errors.py`），提供「切回云端重试」出口；音频与任务状态保留（失败可恢复不丢录音）。本地模式录音启动时的实时预览降级为**设计内状态声明**（`type:"status"`，非红色报错），与录音页本地模式横幅口径统一（WP-H）。
 
 ### 7.4 回退与提质
 
@@ -124,6 +124,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 - **场景**：`ASR_MODE=local` / 设置页切换后生效。
 - **功能行为**：`core/transcribe.py` 与 `core/pipeline.py` 新增 local 分支，走 R2 本地管线；输出契约（时间戳、speaker_id、文本）与 proxy 模式逐字段对齐 `docs/API_CONTRACTS.md`。
 - **边界**：local 模式下所有云端转写端点必须拒绝调用（防误配）；配置项 `engine.mode ∈ {cloud, proxy, direct, local}`。
+- **边界（超时口径，WP-H 2026-09-24 落地）**：本地批转写单请求超时按音频时长动态估算（`core/engine_host.estimate_local_asr_timeout`：RTF 预算 0.5 s/s + 60s 余量，下限 180s），不再以固定 180s 上限整场判死长文件；单文件支持上限 **4 小时**（`LOCAL_ASR_MAX_SUPPORTED_SECONDS`），超限报 `audio_too_long` 分类错误——不发起引擎请求、音频保留、可显式回退云端（AC-4 语义不变）。实时链路的长会议超时问题由 R9 分段增量（D-I2「增量段拼接即定稿」）自然消解，不在本条范围。
 - **验收**：切换后发起转写，抓包无出网请求；契约字段一致性单测通过。
 - **优先级**：P0
 
@@ -196,6 +197,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 - **边界**：感知延迟目标段闭合 → 上屏 P50 ≤ 8s / P95 ≤ 20s（Spike RTF 0.081 外推，需真机证）；单段失败不得连带重启常驻引擎（D-I1，现状 `core/engine_host.py:174-201` 超时即判 unhealthy 须改）；AC-3 内存门槛不因本需求放松；云模式路径零改动（AC-7）。
 - **定稿一致性**：建议「增量段拼接即定稿」（D-I2 方案 B）——若采纳，长会议 `ENGINE_REQUEST_TIMEOUT=180s` 整场失败问题在实时链路自然消解，WP-H 第 1 项范围收窄至导入音频路径。
 - **验收**：AC-9。
+- **落地（WP-I 2026-09-24，引擎侧）**：`core/realtime_local_asr.LocalSegmentTranscriber` 分段转写器（能量 VAD 切段 + 有界队列背压 + 单段失败只丢该段并推非错误 `segment_skipped` 状态声明）；D-I1 落地为 `EngineHost.request` 两级语义（单请求超时=请求级失败、响应按 id 重同步丢弃过期回包、连续 N 次超时才重启子进程，N 默认 3 可经 `ENGINE_UNHEALTHY_CONSECUTIVE_TIMEOUTS` 覆盖；stdout 关闭仍即时判不健康）；D-I2 落地为 `pipeline_runner` 增量定稿路径（`transcript_finalized_incremental` 标记任务跳过 stage1 全量重跑，增量内容为空自动回退批转写兜底）；D-I3 落地为 `engine.local.realtime_segments.{enabled,min_segment_s,min_silence_s,max_segment_s}` 可配置项（**默认 enabled=false、临时默认 5/0.8/30s，待真机 20s/60s 各一场会延迟分布后由产品定默认值**）。会中上屏 UI 增量改动未做（派工单明令，等分段接口定稳后另行派工）；flag 关闭时行为与 WP-H 降级状态声明完全一致。
 - **优先级**：**P1（已代理裁决采纳）**，不阻塞 AC-1 断网闭环发布；若项目方改判 P0，需同步重排 v10 里程碑与验收排期，且强依赖 WP-G 的 D-G1 先落地。
 
 ## 9. Data and Permission Requirements

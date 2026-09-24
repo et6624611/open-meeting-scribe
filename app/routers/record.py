@@ -65,6 +65,7 @@ from core.audio import (
     stop_recording_with_stream,
 )
 from core.diarization import create_realtime_diarizer
+from core.errors import LocalEngineError
 from core.i18n import _
 from core import realtime_asr
 from core.realtime_asr import RealtimeTranscriber
@@ -431,7 +432,19 @@ def start_record(background_tasks: BackgroundTasks):
                     "end_time": s.get("end_time", 0),
                 })
 
-        transcriber = RealtimeTranscriber(
+        # R9（WP-I）：local 模式且分段增量上屏开启时用 LocalSegmentTranscriber；
+        # 其余模式保持 RealtimeTranscriber（local 未开启分段时其 start() 抛
+        # realtime_degraded_to_batch 降级声明，见 WP-H / core/realtime_asr.py）。
+        _asr_mode_now = realtime_asr._get_asr_mode()
+        _segments_cfg: dict = {}
+        if _asr_mode_now == "local":
+            try:
+                from app.settings_store import get_engine_config
+                _segments_cfg = get_engine_config()["local"].get("realtime_segments") or {}
+            except Exception as e:
+                logger.warning(f"[录制] 读取分段增量配置失败（按未开启处理）: {e}")
+
+        _transcriber_callbacks = dict(
             on_partial=lambda text: push_realtime_msg(task_id, {
                 "type": "partial",
                 "text": text,
@@ -446,6 +459,15 @@ def start_record(background_tasks: BackgroundTasks):
                 "type": "ended"
             }),
         )
+        if _asr_mode_now == "local" and _segments_cfg.get("enabled"):
+            from core.realtime_local_asr import LocalSegmentTranscriber
+            transcriber = LocalSegmentTranscriber(
+                segment_config=_segments_cfg,
+                on_status=lambda info: push_realtime_msg(task_id, {"type": "status", **info}),
+                **_transcriber_callbacks,
+            )
+        else:
+            transcriber = RealtimeTranscriber(**_transcriber_callbacks)
 
         def _start_transcriber_bg():
             """后台启动实时转写（含重试逻辑） / Background start realtime transcription (with retry logic)"""
@@ -468,6 +490,26 @@ def start_record(background_tasks: BackgroundTasks):
                 transcriber_ref["ref"] = transcriber
                 realtime_transcribers[task_id] = transcriber
                 logger.info(f"[录制] 实时转写已启动: task={task_id[:8]}")
+            except LocalEngineError as e:
+                if e.error_code == "realtime_degraded_to_batch":
+                    # WP-H 第 2 项：本地模式实时预览降级是设计内行为（非故障），
+                    # 推非错误状态声明，与录音页本地模式横幅口径统一；
+                    # 不得再推 type:"error" 红色报错（REQ-LOCAL-REALTIME-INCR AC 第 6 条）。
+                    logger.info(f"[录制] 本地模式按设计降级为批处理（状态声明，非错误）: task={task_id[:8]}")
+                    transcriber_ref["ref"] = None
+                    push_realtime_msg(task_id, {
+                        "type": "status",
+                        "status": "local_batch_mode",
+                        "message": str(e),
+                    })
+                    return
+                # 其余本地引擎错误（模型未就绪等）仍按失败处理
+                logger.warning(f"[录制] 本地引擎实时转写启动失败（仅录音模式）: {e}")
+                transcriber_ref["ref"] = None
+                push_realtime_msg(task_id, {
+                    "type": "error",
+                    "message": _("Realtime transcription unavailable: {err}, recording will continue normally").format(err=e)
+                })
             except Exception as e:
                 logger.warning(f"[录制] 实时转写启动失败（仅录音模式）: {e}")
                 transcriber_ref["ref"] = None
@@ -553,6 +595,9 @@ def stop_record(
 
         if task_id:
             transcriber = realtime_transcribers.pop(task_id, None)
+            # R9/D-I2：本地分段增量转写的实时全文即定稿（stop() 已排空末段），
+            # 会后不再重跑全量批转写；标记在下方保存 full_transcript 时一并落库。
+            _incremental_finalized = bool(getattr(transcriber, "is_local_incremental", False))
             if transcriber:
                 try:
                     transcriber.stop()
@@ -611,6 +656,11 @@ def stop_record(
             if full_transcript and task_id in tasks:
                 tasks[task_id]["realtime_full_transcript"] = full_transcript
                 logger.info(f"[录制] 全量实时转写已保存: {len(full_transcript)} 条句子")
+                # D-I2：增量段拼接即定稿——仅当增量转写器产出了内容才打标记；
+                # 空内容（全部段被丢/纯静音）不打标，回退 stage1 全量批转写兜底。
+                if _incremental_finalized:
+                    tasks[task_id]["transcript_finalized_incremental"] = True
+                    logger.info(f"[录制] 本地增量转写标记为定稿（会后不重跑全量，D-I2）: {len(full_transcript)} 句")
             # 停止静默监测协程，清理静默检测状态 / Stop silence monitoring coroutine; clean up silence detection state
             cleanup_silence_detection(task_id)
 
