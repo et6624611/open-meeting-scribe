@@ -563,6 +563,11 @@ ai_context: "确认了星瀚预算模块采用 RESTful API 对接，数据迁移
 - 编辑后的摘要可作为补充上下文参与后续纪要生成，提升纪要质量
 - 保留「原始 AI 生成」与「用户编辑后」两个版本，支持对比或回滚
 
+### 会议产出资料的 AI 原生渐进式存储结构（REQ-OUT-STRUCT-1）
+**目标**：将 `data/output/` 的 178 个平铺哈希命名文件改造为「知识库 → 会议 → 内容层」渐进式目录结构，配 JSON 分层索引，消费方以 Agent 为主。来源：2026-09-24 用户反馈 D1，访谈决策已确认（分目录方式/分层索引/Agent 优先）。
+
+完整方案骨架、非目标、AC-1~AC-5 与风险（含与 WP-G/WP-I 路径交叠）见 [REQUIREMENT-AI-NATIVE-OUTPUT-STRUCTURE.md](REQUIREMENT-AI-NATIVE-OUTPUT-STRUCTURE.md)。状态：**可排期**（R2 已裁决：目录用稳定 ID、显示名进索引，Agent 友好优先）。工程方案已派后端 `a4cdbd0ca795` Session `43e34ef2`（仅设计不动代码，2026-09-24 running）。
+
 ---
 
 ## 产品迭代规划（2026-09-09 结构化重构）
