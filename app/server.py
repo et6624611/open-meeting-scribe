@@ -98,6 +98,7 @@ from app.routers import (
     chat,
     cloud_api,
     config,
+    decisions,
     hotwords,
     import_tasks,
     insights,
@@ -401,6 +402,7 @@ app.include_router(user.router)
 app.include_router(hotwords.router)
 app.include_router(settings.router)
 app.include_router(notes.router)
+app.include_router(decisions.router)
 app.include_router(voiceprint.router)
 app.include_router(philosophy.router)
 app.include_router(auth.router)

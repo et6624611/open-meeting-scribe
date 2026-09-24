@@ -3,7 +3,7 @@ title: 外部接口契约
 description: DashScope / 通义千问 API 技术细节的唯一事实源
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-07
+updated_at: 2026-09-24
 status: published
 ---
 
@@ -268,3 +268,74 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 - `can_fallback_cloud=true` ⇒ 前端渲染「切云端重试」+ 显式确认；`false` ⇒ 按钮置灰 + 纯内网原因说明。
 - 前端仅在 `error_category === "local_engine"` 时展示回退 UI。
+
+---
+
+## 12. 决策中心 API（REQ-DECISION-CENTER B1 · DC-DEC-F1 前端派工依据）
+
+> 依据 `docs/REQUIREMENT-DECISION-CENTER.md` v0.2.0 §R1/§R2。后端分支 `feat/req-decision-center-b1`，合入前本节即为前端契约事实源。
+
+### 12.0 decision 数据对象（`task["decisions"]` 数组元素）
+
+```json
+{
+  "id": "uuid4 字符串，任务内唯一",
+  "text": "决策内容（转述文本，不含 [待确认] 前缀）",
+  "status": "active | superseded | revoked",
+  "pending_confirmation": false,
+  "source": "auto | backfill | manual | injection",
+  "created_at": "ISO 8601",
+  "updated_at": "ISO 8601",
+  "superseded_by": { "task_id": "…", "decision_id": "…" },
+  "related_todo_ids": ["同会议 todo id"]
+}
+```
+
+- 旧任务 JSON 无 `decisions` 字段 ⇒ 所有读写路径按 `[]` 处理，不报错。
+- 重新生成纪要仅替换 `source=auto` 条目；`manual` / `injection` / `backfill` 保留。
+- `superseded_by` 可为 `null`；来源会议被删除后引用悬空时读取不报错，前端按「引用已失效」降级显示。
+- `related_todo_ids` v1 由前端/手动维护，自动抽取恒为 `[]`。
+
+### 12.1 任务级 CRUD
+
+| 方法与路径 | 请求体 | 响应 | 错误 |
+|---|---|---|---|
+| `GET /api/tasks/{task_id}/decisions` | — | `{"decisions": [decision…]}` | 404 任务不存在 |
+| `POST /api/tasks/{task_id}/decisions` | `{text: str(1..2000), pending_confirmation?: bool=false, related_todo_ids?: str[]=}` | `{"decision": decision}`（`source=manual`、`status=active`） | 404 任务不存在；422 校验失败 |
+| `PUT /api/tasks/{task_id}/decisions/{decision_id}` | `{text?, status?: "active"\|"superseded"\|"revoked", pending_confirmation?, related_todo_ids?}`（均可选，仅更新携带字段） | `{"decision": decision}` | 404 任务/决策不存在；422 |
+| `DELETE /api/tasks/{task_id}/decisions/{decision_id}` | — | `{"ok": true}` | 404 任务/决策不存在 |
+| `PATCH /api/tasks/{task_id}/decisions/{decision_id}/supersede` | `{task_id: str, decision_id: str}`（取代方定位，可跨任务） | `{"decision": decision}`（被标记项 `status=superseded`、`superseded_by` 已写入） | 404 任务不存在；404 决策不存在；404 取代方 task/decision 不存在；422 |
+
+写操作（POST/PUT/DELETE/supersede）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
+
+### 12.2 聊天注入联动
+
+`POST /api/tasks/{task_id}/inject` 当 `type="decision"` 时，除注入记录外同步向 `task["decisions"]` 追加一项：`id` 与注入记录同值、`source="injection"`、`text=content`。删除该注入记录（`DELETE /api/tasks/{task_id}/injections/{injection_id}`）时级联删除对应决策项（与 todo 注入行为一致）。
+
+### 12.3 跨任务聚合 `GET /api/decisions`
+
+查询参数（全部可选，可叠加）：
+
+| 参数 | 语义 |
+|---|---|
+| `since` / `until` | 按会议日期过滤，`YYYY-MM-DD`，闭区间；任务无 `meeting_date` 时在给定日期过滤下被排除 |
+| `kb_id` | 按所属知识库（= `project_id`）过滤；未关联知识库的任务被排除 |
+| `status` | `active`\|`superseded`\|`revoked` 精确过滤；非法值 422 |
+| `q` | `text` 子串匹配（区分大小写） |
+| `group_by` | `meeting`\|`date`；缺省返回平铺列表 |
+
+响应：
+
+```jsonc
+// 缺省（平铺）
+{ "decisions": [ { …decision全部字段, "task_id": "…", "title": "会议标题",
+                 "meeting_date": "YYYY-MM-DD|null", "kb_id": "…|null", "kb_name": "…|null" } ] }
+// group_by=meeting → 按会议分组；group_by=date → 按会议日期分组
+{ "groups": [ { "key": "task_id 或 meeting_date", "label": "会议标题或日期",
+               "task_id": "…(仅 group_by=meeting)", "meeting_date": "…",
+               "decisions": [ 同平铺元素 ] } ] }
+```
+
+- 平铺与组内均按 `meeting_date` 倒序（无日期沉底）。
+- 决策中心「默认仅看生效中」由前端传 `status=active` 实现，后端不默认过滤。
+- 数据源为后端内存任务表（桌面单机量级），无分页契约；`total` 字段随列表长度给出。

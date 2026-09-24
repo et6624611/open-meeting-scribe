@@ -108,6 +108,12 @@ msgstr "Injection content not found"
 
 msgid "To-do not found"
 msgstr "To-do not found"
+msgid "Decision not found"
+msgstr "Decision not found"
+
+msgid "A decision cannot supersede itself"
+msgstr "A decision cannot supersede itself"
+
 
 msgid "Path not found: {path}"
 msgstr "Path not found: {path}"

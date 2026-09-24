@@ -355,6 +355,33 @@ def _create_import_task(
         except Exception as e:
             logger.warning(f"[导入] 待办提取失败（不影响导入）: {e}")
 
+        # REQ-DECISION-CENTER R1：从纪要中提取决策 / Extract decisions from summary
+        try:
+            from core import joblog
+            from core.summarize import merge_decisions_after_regen, parse_decisions_with_status
+            decisions, parse_status = parse_decisions_with_status(summary_text)
+            tasks[task_id]["decisions"] = merge_decisions_after_regen(
+                tasks[task_id].get("decisions") or [], decisions,
+            )
+            if decisions or parse_status:
+                save_task_to_disk(task_id)
+            if parse_status:
+                logger.warning(f"[导入] 决策解析降级（{parse_status}）: task={task_id[:8]}")
+                joblog.append_event(
+                    task_id, joblog.STAGE_SUMMARY,
+                    f"导入决策解析降级（{parse_status}）：决策置空，不影响导入", level="warn",
+                )
+        except Exception as e:
+            logger.warning(f"[导入] 决策提取失败（不影响导入）: {e}")
+            try:
+                from core import joblog
+                joblog.append_event(
+                    task_id, joblog.STAGE_SUMMARY,
+                    f"导入决策提取异常（不影响导入）: {e}", level="warn",
+                )
+            except Exception:
+                pass
+
         logger.info(f"[导入] 纪要导入: task={task_id[:8]}, file={filename}")
 
         return {
