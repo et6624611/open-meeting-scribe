@@ -3,8 +3,8 @@ title: 产品需求文档
 description: Open Meeting Scribe 产品需求与功能规划
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-17
-version: "1.2.0"
+updated_at: 2026-09-25
+version: "1.3.0"
 status: draft
 ---
 
@@ -28,8 +28,9 @@ status: draft
 - [x] 转写 + 说话人分离（云端 paraformer-v2，通过 ASR 代理中继保护 API Key）
 - [x] 实时转写预览（qwen-audio-3.0-asr-flash-streaming 流式 WebSocket）
 - [x] 热词增强（企业人名/术语）
-- [x] 结构化纪要：结论 + 决策（谁/做什么/截止）
-- [x] 决策流面板（方案 A 极简扫读设计，替代旧版待办列表）
+- [x] 结构化纪要：主要结论 + 决策 + 行动项（谁/做什么/截止；2026-09-25 术语拆分见 GLOSSARY）
+- [x] 行动项面板（原「决策流面板」，方案 A 极简扫读设计，替代旧版待办列表；纪要页 Tab 已更名「行动项」）
+- [x] 决策中心（`/decisions`）：跨会议全量决策查看 + 筛选 + 手动补录 + 取代/撤销（REQ-DECISION-CENTER，2026-09-25 合入）
 - [x] Vue 3 SPA 前端：左中右三栏布局（导航 / 主工作区 / AI 对话框）+ 10 主题
 - [x] AI 助手：对话驱动操作（录音、转写、查询、设置、热词管理）
 - [x] Agent 角色系统（5 个预定义角色 + 用户 fork 自定义 + 全局激活持久化）

@@ -3,8 +3,8 @@ title: "Vue 组件页面映射清单"
 description: "列出所有 Vue 组件与页面/区域的对应关系，方便快速定位需要修改的文件。"
 tags: ["vue", "frontend", "component_map", "ui"]
 created_at: "2026-09-12"
-updated_at: "2026-09-15"
-version: "1.5.0"
+updated_at: 2026-09-25
+version: "1.6.0"
 author: "wangyongliang"
 status: "published"
 category: "technical"
@@ -35,12 +35,13 @@ category: "technical"
 |------|------|----------|------|
 | `/` | `views/StartView.vue` | 快速启动 | 首页，录音按钮 + 上传入口 |
 | `/recording/:taskId?` | `views/RecordingView.vue` | 录音中 | 实时录音页：波形、实时转写、洞察台、底部控制栏 |
-| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/决策四 Tab + 说话人绑定 |
+| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/行动项四 Tab（原「决策」Tab 更名）+ 说话人绑定 |
 | `/library` | `views/LibraryView.vue` | 会议库 | 全部会议列表，表格 + 搜索 + 筛选 + 分页 |
 | `/projects` | `views/ProjectsView.vue` | 项目管理 | 项目列表与详情 |
 | `/speakers` | `views/SpeakersView.vue` | 说话人管理 | 说话人列表 → 详情两态切换 |
 | `/hotwords` | `views/HotwordsView.vue` | 热词管理 | 热词组 CRUD + 词条编辑 |
 | `/settings` | `views/SettingsView.vue` | 设置 | API Key、模型选择、语言等配置项 |
+| `/decisions` | `views/DecisionCenterView.vue` | 决策中心 | 跨会议全量决策：筛选（日期/知识库/状态/关键词）+ 补录 + 取代/撤销（REQ-DECISION-CENTER R3） |
 
 ## 二、全局布局组件（始终可见）
 
@@ -77,7 +78,7 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | 顶部工具栏（gen-toolbar） | 面包屑导航 + 复制/导出/全屏按钮 + 「更多」下拉菜单（编辑纪要/重新生成/重新转写/归档/删除） |
 | 元信息行（gen-meta） | 时长、说话人数、日期（可点击改日期）、项目绑定芯片（下拉切换项目） |
 | 说话人名单区（speaker-zone） | 各说话人名称 + 发言占比横条，按颜色区分 |
-| Tab 切换栏（gen-tabs） | 原文/随记/纪要/决策四 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
+| Tab 切换栏（gen-tabs） | 原文/随记/纪要/行动项四 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
 | 章节导航条（chapter-overview） | 仅原文 Tab 可见：章节圆点导航 + 当前章节索引 + 原文显隐切换按钮 |
 | 划词工具栏（SelectionToolbar） | 浮动选中条：引用到 AI / 改写 / 总结 / 提取待办 |
 | 行间改写输入（InlineEditInput） | 划词改写后弹出的指令输入框（快捷指令 chips + 自定义指令） |
@@ -89,8 +90,11 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | `generating/TranscriptPanel.vue` | 原文 Tab | 转写全文 + 章节分隔卡片 + 说话人侧面板 + 聚焦模式 + 播放跟随高亮 |
 | `generating/SummaryPanel.vue` | 纪要 Tab | Markdown 纪要 + 章节回顾卡片 + 行动项入口 + 生成中状态展示 |
 | `generating/NotesPanel.vue` | 随记 Tab | Markdown 编辑器 + 工具栏（加粗/斜体/代码/标题/列表/引用） |
-| `generating/DecisionFlowPanel.vue` | 决策 Tab | 决策流面板：点阵图进度可视化 + 文字摘要 + 添加决策按钮 + 已完成沉底分组 |
-| `generating/DecisionNode.vue` | 决策节点 | 单个决策卡片：两行布局（标题 + 元信息）+ 左侧 40px rail 状态圆点 + 展开详情（why/how/outcome）+ 状态菜单 + 负责人轮转 |
+| `generating/DecisionFlowPanel.vue` | 行动项 Tab（原「决策」Tab，2026-09-25 更名） | 行动项面板：点阵图进度可视化 + 文字摘要 + 添加按钮 + 已完成沉底分组；含结构化决策只读区（展示层剥除成对强调符号，RF-F1） |
+| `generating/DecisionNode.vue` | 行动项节点 | 单个行动项卡片：两行布局（标题 + 元信息）+ 左侧 40px rail 状态圆点 + 展开详情（why/how/outcome）+ 状态菜单 + 负责人轮转 |
+| `decisions/DecisionCard.vue` | 决策中心卡片 | 单条决策：剥除符号后的纯文本展示（stripDecisionEmphasis）+ 来源会议跳转（dq 携带原始文本）+ pending/superseded/revoked 态 |
+| `decisions/AddDecisionDialog.vue` | 决策中心·补录 | 手动补录决策（text 1..2000 前端前置校验 + 待确认开关） |
+| `decisions/SupersedeDialog.vue` | 决策中心·取代 | 跨会议 supersede 选择：检索双命中原始/剥除文本，结果行剥除后展示 |
 | `generating/GeneratingSpeakerZone.vue` | 说话人区（三态合并） | 只读名单 / 绑定提示 / 绑定完成三态一体，名字+占比条+身份关联横幅 + Teleport 下拉框（搜索/新建/键盘导航） |
 | `generating/OnboardingDialog.vue` | 引导弹窗 | 首次进入时的说话人绑定功能演示动画 |
 | `generating/ArchiveDialog.vue` | 归档弹窗 | 归档确认对话框 |
@@ -199,7 +203,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | `api/projects.ts` | 项目管理 |
 | `api/speakers.ts` | 说话人管理 |
 | `api/hotwords.ts` | 热词管理 |
-| `api/notes.ts` | 随记/决策 |
+| `api/notes.ts` | 随记/决策注入 |
 | `api/storage.ts` | 存储管理（用量查询/磁盘清理） |
 | `api/settings.ts` | 设置读写 |
 | `api/chat.ts` | AI 对话 |
@@ -207,6 +211,8 @@ AIPanel 内部按职责拆分为以下子组件：
 | `api/usage.ts` | 用量查询 |
 | `api/insights.ts` | 洞察台分析与消息持久化 |
 | `api/voiceprint.ts` | 声纹相关 |
+| `api/decisions.ts` | 决策中心 CRUD + 跨会议聚合（契约 API_CONTRACTS §12；status 单值过滤，多状态 fetchDecisionsMulti 拆分合并） |
+| `api/decisionsMock.ts` | 决策 mock 通道（仅 VITE_DECISIONS_MOCK=1 启用，默认走真实接口） |
 | `api/types.ts` | 共享 TypeScript 类型定义 |
 
 ## 十、样式文件（styles/ + 组件 scoped）
@@ -294,7 +300,7 @@ AIPanel 内部按职责拆分为以下子组件：
 | 会议纪要 — 原文区域 | [TranscriptPanel.vue](../frontend/src/views/generating/TranscriptPanel.vue) |
 | 会议纪要 — 纪要区域 | [SummaryPanel.vue](../frontend/src/views/generating/SummaryPanel.vue) |
 | 会议纪要 — 随记区域 | [NotesPanel.vue](../frontend/src/views/generating/NotesPanel.vue) |
-| 会议纪要 — 决策流区域 | [DecisionFlowPanel.vue](../frontend/src/views/generating/DecisionFlowPanel.vue) |
+| 会议纪要 — 行动项区域（原决策流） | [DecisionFlowPanel.vue](../frontend/src/views/generating/DecisionFlowPanel.vue) |
 | 会议纪要 — 决策节点卡片 | [DecisionNode.vue](../frontend/src/views/generating/DecisionNode.vue) |
 | 会议纪要 — 说话人区（名单/绑定） | [GeneratingSpeakerZone.vue](../frontend/src/views/generating/GeneratingSpeakerZone.vue) |
 | 会议纪要 — 工具栏/面包屑/Tab 切换 | [GeneratingView.vue](../frontend/src/views/GeneratingView.vue) |
@@ -336,4 +342,4 @@ AIPanel 内部按职责拆分为以下子组件：
 | 状态管理（Pinia stores） | [stores/](../frontend/src/stores/) |
 | API 请求层 | [api/](../frontend/src/api/) |
 | 国际化配置 | [i18n/index.ts](../frontend/src/i18n/index.ts) |
-| 工具函数 | [utils/](../frontend/src/utils/)（platform / sanitize / search / speakerColors） |
+| 工具函数 | [utils/](../frontend/src/utils/)（platform / sanitize / search / speakerColors / decisionText 决策文本展示剥除） |

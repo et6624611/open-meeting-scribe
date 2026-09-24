@@ -481,7 +481,7 @@ class DrilldownAgent:
 
 | # | 问题 | 冲突/缺口陈述 | 工程建议（供裁决参考） |
 |---|---|---|---|
-| Q1 | `decisions.md`（决策与待办）内容源 | 需求书 §3 要求独立 decisions.md，但现状纪要为单一 md，「决策」无独立段落标记；非目标 §4.1 禁改生成链路。`parse_todos_from_summary`（`core/summarize.py:329`）只能提取**待办**，决策项无结构化源 | A. `decisions.md` = 待办清单（todos 字段渲染），改名「待办与决策（待办部分）」，接受语义缩水；B. 纪要 prompt 输出格式增加决策节（**属改生成链路，需产品显式豁免非目标**）；C. 定稿时一次额外 LLM 抽取（同上）。工程倾向 A 先行、B 随下个内容需求 |
+| Q1 | `decisions.md`（决策与待办）内容源 | 需求书 §3 要求独立 decisions.md，但现状纪要为单一 md，「决策」无独立段落标记；非目标 §4.1 禁改生成链路。`parse_todos_from_summary`（`core/summarize.py:329`）只能提取**待办**，决策项无结构化源 | A. `decisions.md` = 待办清单（todos 字段渲染），改名「待办与决策（待办部分）」，接受语义缩水；B. 纪要 prompt 输出格式增加决策节（**属改生成链路，需产品显式豁免非目标**）；C. 定稿时一次额外 LLM 抽取（同上）。工程倾向 A 先行、B 随下个内容需求。**2026-09-25 产品裁决（R5 收尾）**：REQ-DECISION-CENTER 已合入（B1@586d141 / F1@714f6cf），`task["decisions"]` 成为结构化决策事实源（source=auto|backfill|manual|injection，含 status/superseded_by）。`decisions.md` 渲染源裁决为 `task["decisions"]`（决策节）+ `task["todos"]`（行动项节），A/B/C 三选项均作废，无需改生成链路。契约见 docs/API_CONTRACTS.md §12 |
 | Q2 | `one_line_summary` 与 `attendee_count` 数据源 | 两字段现状均不存在。one_line_summary 任何取法都撞非目标 §4.1；attendee_count 可用 speakers 具名数近似（声纹未绑定时偏小） | one_line_summary 允许 `null`（schema 已如此设计），UI/Agent 判据降级为 title+date；attendee_count 用具名说话人数并在 manifest 注明口径。若产品坚持真摘要 → 豁免生成链路另立单 |
 | Q3 | 洞察产物**是否实移**入 `insights/` | 需求书 §3 把洞察画进 output 树，但现状落 `data/tasks/*.insights.json` 且读 API 依赖该路径（`insights.py:73-75`）；实移=AC-5 回归面扩大（洞察台读写 API 迁移） | 双写副本方案（§4.3）：Agent 拿到树内文件，UI API 零改动；真相源仍在 tasks/。若产品要求单一位置 → 升级为 API 迁移子需求 |
 | Q4 | 知识库删除/改名后目录处置 | project 删除（`core/projects.py:108`）时其 L1 目录去向：删（丢产出）/ 移 `_unassigned/` / 原样保留成孤儿 | 建议移 `_unassigned/`（与会议未关联语义一致、可逆、Agent 树不腐坏）；需产品确认「删除知识库不应静默删会议产出」 |

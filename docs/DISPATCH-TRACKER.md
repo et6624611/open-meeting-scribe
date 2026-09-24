@@ -14,7 +14,6 @@ status: active
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
 | REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.3.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:40 产品已向会话追发补证要求（4 项自测证据）；PRD 升 v0.3.0：Q5 裁决关闭，AC-8 降级为角标+toast，系统通知转 P1 | 工程师补自测证据 → 转 awaiting-acceptance → 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 等待工程师补证回报 |
-| DC-DEC-F1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 前端开发工程师（d1b77737cde5） | session 1af94412-472c-4c9d-be9a-19ddb330502d / 分支 feat/req-decision-center-f1（worktree 隔离） | in-progress | 2026-09-25 01:50 增量 d181ed2（§12 契约对齐五项）验收通过，与 main 后端逐点核对一致；01:20 修复单两项仍未落地（commit 00:36 早于修复单，判定队列交错）：RF-F1 **剥除展示 helper + rebase b6709a7。已追发：B1 已合入 main，交付标准升为「b6709a7 + RF-F1 修复 + 一次真实后端冒烟（非 mock 实际调 /api/decisions+CRUD）」，联调不得再推迟 | F1 回报修复轮 → 产品复验（构建/** 剥除截图/dq 跳转命中/真实冒烟）→ squash 合入 → 同步 R5 文档收尾 | ⚠️ 同工程师已有 REQ-PROGRESS-P0 在途，两分支都动 router/导航，合并顺序 P0 优先、本单后 rebase |
 | AM-B1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md v0.1.0（main@f2445a1） | 后端工程师（a4cdbd0ca795） | session c95528c3-7941-4527-8648-ee0275c885d6 / 分支 feat/req-access-mode-b1（worktree 隔离） | dispatched | 2026-09-25 派工（T1 数据层 access_mode/expert_mode+迁移、T2 后端行为收口+路由变化可感知契约）；含推模式回报条款 | 工程师交付契约/完工回报 → awaiting-acceptance → 产品验收 AC-T1/AC-T2 → 合入 | ⚠️ 同工程师两单并行；AM-B1 禁改 frontend/，与 decisions 相关文件冲突需回报协调（DC-DEC-B1 已合入 main@586d141） |
 
 ## 待派工队列
@@ -29,6 +28,7 @@ status: active
 | 单号 | 关闭时间 | 结果 |
 |---|---|---|
 | DC-DEC-B1 | 2026-09-25 00:40 | 两轮验收：首轮 RF-1 打回（模板「三、决策」节漏采），23dc21d 修复复验通过（33/33 新用例+84/84 相邻回归本侧独立复跑）。PR #7 squash 合入 main@586d141。R4 已执行（项目方批准 00:24）：382 扫描/56 回填/359 条决策/9 空标记；47 失败经抽查 46 场为旧版格式纪要（无结论/决策章节）、1 场混合节，属真实历史边界非解析缺陷，留决策中心手动补录兜底；报告 data/_backfill_report.json。遗留：AC-1 真实 LLM dogfooding 随后续 5 场真实会议自然验证 |
+| DC-DEC-F1 | 2026-09-25 02:20 | 三轮验收：首轮（86c33fd）构建/代码过，RF-F1（** 剥除）+rebase 修复单下达；增量 d181ed2 §12 契约对齐五项通过；修复轮 07aea76 复验通过——stripDecisionEmphasis 仅剥成对 **/__（dq 保留原文、后端不回改、检索双命中），DecisionCard/SupersedeDialog/DecisionFlowPanel 三面接入，本侧独立 worktree 构建全绿，真实后端冒烟证据 dc-f1-20~27（359 条零符号泄漏、补录/取代/撤销/检索/锚点跳转全链路、临时数据清理）。squash 合入 main@714f6cf。备注：分支 merge 实际锚点为 e2c8142（回报写 07d83f7，勘误不影响代码）；反引号剥除未实现（修复单含 ` 项，决策文本罕见内联代码，记 P2 不阻塞）。R5 文档收尾已同步落：GLOSSARY 术语拆分 / VUE_COMPONENT_MAP 路由+组件+api 行 / PRD v1.3.0 / OUTPUT-STRUCT §Q1 裁决注记 / BACKLOG 全量拉取 5s 性能跟进项。解锁：AM-F1 派工前置仅剩 REQ-PROGRESS-P0 合入 |
 
 ## 巡检说明
 

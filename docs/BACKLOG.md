@@ -571,7 +571,9 @@ ai_context: "确认了星瀚预算模块采用 RESTful API 对接，数据迁移
 ### 跨会议决策中心：Decision 结构化与全量查看（REQ-DECISION-CENTER）
 **目标**：把"会议最终产生的决策"从纪要 markdown 里的一段文字升级为结构化数据对象（`task["decisions"]`），提供跨会议「决策中心」页面（检索/筛选/生效状态管理/取代链），并回填存量会议。解决"无全量视角 + 决策无结构化源（OUTPUT-STRUCT 计划 §Q1）"两个叠加缺口。
 
-完整数据模型、抽取契约、API、UI、回填方案、AC-1~10 与派工拆单见 [REQUIREMENT-DECISION-CENTER.md](REQUIREMENT-DECISION-CENTER.md)。状态：**approved v0.2.0**（项目方 2026-09-24 四项裁决：P1 根治、`[待确认]` 默认可见、不做纪要重同步、议题维度 v1 不做）。本需求同时落定 OUTPUT-STRUCT §Q1 渲染源改判（`task["decisions"]` + todos 共同渲染 `decisions.md`）。
+完整数据模型、抽取契约、API、UI、回填方案、AC-1~10 与派工拆单见 [REQUIREMENT-DECISION-CENTER.md](REQUIREMENT-DECISION-CENTER.md)。状态：**已交付合入**（B1@586d141 复验关闭、R4 回填 56 场/359 条、F1@714f6cf 验收合入，2026-09-25；AC-1 抽取质量转 dogfooding 观察）。本需求同时落定 OUTPUT-STRUCT §Q1 渲染源改判（`task["decisions"]` + todos 共同渲染 `decisions.md`）。
+
+**遗留跟进（源自 F1 验收观察项，待排期）**：`GET /api/decisions` 全量首拉约 5s（359 条规模，后端遍历内存任务表 + 磁盘加载），前端骨架屏已覆盖观感；建议 B 侧独立小单评估：任务表增量缓存或分页/游标。优先级低——单机数据量增长到千条级前不阻塞。关联候选：REQ-DECISION-CENTER P2（议题维度）同列表评审。
 
 ---
 
