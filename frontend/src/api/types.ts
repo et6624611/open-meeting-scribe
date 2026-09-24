@@ -84,6 +84,10 @@ export interface Task {
   error_category: string | null
   error_suggestion: string | null
   failed_stage: string | null
+  /** AC-4（QA-R1 DEF-04）：本地引擎失败时后端落盘的错误码与云端回退标志；
+   *  旧任务 JSON 无此字段，故为可选 / Local-engine failure error code & cloud-fallback flag (absent in legacy task JSON) */
+  error_code?: string | null
+  can_fallback_cloud?: boolean | null
   retry_count: number
   speaker_mapping: Record<string, string>
   dialogue: DialogueLine[]

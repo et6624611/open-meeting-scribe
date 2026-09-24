@@ -34,6 +34,7 @@
     "rerecord_action": "Re-record",
     "no_speech": "No valid speech detected",
     "no_speech_hint": "The recording may be silent or at very low volume. Please check your microphone or audio input device.",
+    "local_engine": "Local engine transcription failed",
     "default_action": "View Details"
   },
   "rename_prompt": "Enter new title:",

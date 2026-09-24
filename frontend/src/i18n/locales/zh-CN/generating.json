@@ -240,7 +240,15 @@
   "failure": {
     "title": "会议处理失败",
     "show_raw": "查看原始错误信息",
-    "back_to_library": "返回会议库"
+    "back_to_library": "返回会议库",
+    "cloud_retry": "切云端重试",
+    "cloud_retry_confirm_title": "切换到云端引擎重试",
+    "cloud_retry_confirm_message": "本地引擎转写失败。继续操作将把本次会议的录音与转写数据上传至云端服务（阿里云百炼 DashScope）处理，数据将离开本设备；任务与随记状态会保留、不会丢失。确认切换到云端重试吗？",
+    "cloud_retry_confirm_action": "确认上云重试",
+    "cloud_retry_confirm_cancel": "取消",
+    "cloud_retry_started": "已切换到云端引擎，重新转写中…",
+    "cloud_retry_failed": "切云端重试失败，请稍后再试",
+    "cloud_retry_blocked_reason": "云端重试不可用：当前为纯内网部署，会议数据不允许出设备。请检查本地引擎后重试，或联系管理员。"
   },
   "roster": {
     "title": "参会人",

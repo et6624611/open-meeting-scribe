@@ -533,7 +533,14 @@
 .gen-failure-raw summary { cursor: pointer; color: var(--subtle); user-select: none; padding: 4px 0; }
 .gen-failure-raw summary:hover { color: var(--muted); }
 .gen-failure-raw code { display: block; margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; word-break: break-all; white-space: pre-wrap; max-height: 160px; overflow-y: auto; }
-.gen-failure-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; }
+.gen-failure-actions { display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
+
+/* AC-4 云端回退（QA-R1 DEF-04）：切云端重试按钮 + 纯内网置灰说明
+   AC-4 cloud fallback: retry button + greyed-out state with intranet-only reason */
+.gen-fallback-cloud-btn { display: inline-flex; align-items: center; gap: 6px; }
+.gen-fallback-cloud-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+.gen-fallback-cloud-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.gen-fallback-blocked-reason { flex-basis: 100%; margin: -4px 0 0; font-size: var(--fs-12, 12px); color: var(--subtle); line-height: 1.5; }
 
 /* ═══════════════════════════════════════════════════════════
    紧凑态人员栏 / Compact personnel bar

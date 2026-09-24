@@ -22,6 +22,29 @@
         </details>
         <div class="gen-failure-actions">
           <button class="btn btn-primary" @click="onRetryFromFailure">{{ t('task.failure.transient_action') }}</button>
+          <!-- AC-4（QA-R1 DEF-04）：本地引擎失败时按 can_fallback_cloud 渲染云端回退。
+               True ⇒ 「切云端重试」+ 显式确认（数据上云告知）；False ⇒ 置灰 + 纯内网原因。
+               AC-4: cloud fallback gated on can_fallback_cloud; explicit confirm dialog before uploading data. -->
+          <button
+            v-if="canFallbackCloud"
+            class="btn btn-secondary gen-fallback-cloud-btn"
+            @click="showCloudFallbackConfirm = true"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            {{ t('generating.failure.cloud_retry') }}
+          </button>
+          <template v-else-if="cloudFallbackBlocked">
+            <button
+              class="btn btn-secondary gen-fallback-cloud-btn"
+              disabled
+              :aria-disabled="true"
+              :title="t('generating.failure.cloud_retry_blocked_reason')"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+              {{ t('generating.failure.cloud_retry') }}
+            </button>
+            <p class="gen-fallback-blocked-reason">{{ t('generating.failure.cloud_retry_blocked_reason') }}</p>
+          </template>
           <button class="btn btn-secondary" @click="router.push('/library')">{{ t('generating.failure.back_to_library') }}</button>
         </div>
       </div>
@@ -384,6 +407,19 @@
       @confirm="onDeleteConfirm"
     />
     </template>
+
+    <!-- AC-4 显式确认（QA-R1 DEF-04）：切云端重试前告知数据上云，绝不静默上云（PRD R7）。
+         置于根层级（v-if/v-else 之外），失败态下同样可用；ConfirmDialog 内部 Teleport 到 body。
+         AC-4 explicit confirmation before cloud retry; placed at root so it mounts in the failed branch too. -->
+    <ConfirmDialog
+      v-model="showCloudFallbackConfirm"
+      :title="t('generating.failure.cloud_retry_confirm_title')"
+      :message="t('generating.failure.cloud_retry_confirm_message')"
+      :confirm-text="t('generating.failure.cloud_retry_confirm_action')"
+      :cancel-text="t('generating.failure.cloud_retry_confirm_cancel')"
+      :danger="false"
+      @confirm="onCloudFallbackConfirm"
+    />
   </div>
 </template>
 
@@ -407,6 +443,8 @@ import OnboardingDialog from './generating/OnboardingDialog.vue'
 import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import { showToast } from '@/composables/useToast'
 import { useGeneratingData } from '@/composables/useGeneratingData'
 import { useSpeakerBinding } from '@/composables/useSpeakerBinding'
 import { useSpeakerPanel } from '@/composables/useSpeakerPanel'
@@ -471,6 +509,7 @@ const {
   player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
   isFailed, failureInfo,
+  canFallbackCloud, cloudFallbackBlocked,
 } = data
 const {
   showBindingBar, bindingLegend, unboundCount, currentBindingMapping,
@@ -606,6 +645,26 @@ async function onRetryFromFailure() {
     data.startPolling()
   } catch (e) {
     console.error('retry from failure page failed:', e)
+  }
+}
+
+// ─── AC-4 切云端重试（QA-R1 DEF-04）：仅在用户显式确认「数据上云」后调用 engine_override=cloud
+//     AC-4 cloud fallback: only invoked with engine_override=cloud after explicit user confirmation ───
+const showCloudFallbackConfirm = ref(false)
+
+async function onCloudFallbackConfirm() {
+  try {
+    await retranscribe(data.taskId, { engineOverride: 'cloud' })
+    taskStore.patchTaskLocal(data.taskId, {
+      status: 'transcribing',
+      error: undefined, error_category: undefined, error_suggestion: undefined,
+      error_code: undefined, can_fallback_cloud: undefined,
+    })
+    showToast(t('generating.failure.cloud_retry_started'), 'success')
+    data.startPolling()
+  } catch (e) {
+    console.error('cloud fallback retry failed:', e)
+    showToast(t('generating.failure.cloud_retry_failed'), 'error')
   }
 }
 async function onDelete() {

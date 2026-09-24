@@ -37,6 +37,14 @@ export function useGeneratingData(
   const audioUrl = computed(() => (task.value && !isFailed.value) ? `/api/audio/${task.value.task_id}` : '')
   const chapters = computed<Chapter[]>(() => task.value?.chapters ?? [])
 
+  // ─── AC-4 云端回退标志（QA-R1 DEF-04） / AC-4 cloud-fallback flags ───
+  // can_fallback_cloud 仅在本地引擎失败路径由后端落盘；其他失败类别不渲染回退 UI。
+  // can_fallback_cloud is persisted by backend only on the local-engine failure path; no fallback UI otherwise.
+  const isLocalEngineFailure = computed(() => isFailed.value && task.value?.error_category === 'local_engine')
+  /** True ⇒ 渲染「切云端重试」+ 显式确认；False ⇒ 置灰 + 纯内网原因说明 */
+  const canFallbackCloud = computed(() => isLocalEngineFailure.value && task.value?.can_fallback_cloud === true)
+  const cloudFallbackBlocked = computed(() => isLocalEngineFailure.value && task.value?.can_fallback_cloud !== true)
+
   // ─── 失败信息分类（与 TaskCard.vue 保持一致） / Failure info categorization (consistent with TaskCard.vue) ───
   // 注：纪要页失败态仅提供「重试转写 + 返回会议库」两个通用操作，不按 source 区分「重新录制/重新上传」，
   // 与侧边栏 TaskCard 的差异化操作按钮保持语义分工（侧边栏快捷操作 vs 纪要页详细展示）。
@@ -61,6 +69,14 @@ export function useGeneratingData(
           icon: 'settings' as const,
           iconClass: 'is-api-config',
           message: t('task.failure.api_config'),
+          suggestion,
+          rawError: errorText,
+        }
+      case 'local_engine':
+        return {
+          icon: 'settings' as const,
+          iconClass: 'is-api-config',
+          message: t('task.failure.local_engine'),
           suggestion,
           rawError: errorText,
         }
@@ -476,6 +492,8 @@ export function useGeneratingData(
     getChapterIdxAtTime,
     // 失败态 / Failed state
     isFailed, failureInfo,
+    // AC-4 云端回退（QA-R1 DEF-04） / AC-4 cloud fallback
+    isLocalEngineFailure, canFallbackCloud, cloudFallbackBlocked,
     // 章节 / Chapters
     visibleChapterIndices, activeChapterIdx, expandedChapters, summaryExpandedChapters,
     toggleChapterExpand, toggleSummaryChapter, scrollToChapter, toggleChapterTranscript,

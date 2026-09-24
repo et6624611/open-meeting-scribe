@@ -239,7 +239,15 @@
   "failure": {
     "title": "Meeting processing failed",
     "show_raw": "Show raw error",
-    "back_to_library": "Back to library"
+    "back_to_library": "Back to library",
+    "cloud_retry": "Retry via cloud",
+    "cloud_retry_confirm_title": "Switch to cloud engine and retry",
+    "cloud_retry_confirm_message": "The local engine failed to transcribe. Continuing will upload this meeting's audio and transcription data to the cloud service (Alibaba Cloud DashScope) for processing, so the data will leave this device. Task and notes state will be preserved. Switch to cloud and retry?",
+    "cloud_retry_confirm_action": "Confirm cloud retry",
+    "cloud_retry_confirm_cancel": "Cancel",
+    "cloud_retry_started": "Switched to cloud engine, re-transcribing…",
+    "cloud_retry_failed": "Cloud retry failed, please try again later",
+    "cloud_retry_blocked_reason": "Cloud retry unavailable: this is an intranet-only deployment and meeting data must not leave the device. Check the local engine and retry, or contact your administrator."
   },
   "roster": {
     "title": "Attendees",

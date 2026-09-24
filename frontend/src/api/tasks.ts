@@ -30,9 +30,24 @@ export async function deleteTask(taskId: string): Promise<void> {
   await client.delete(`/api/tasks/${taskId}`)
 }
 
-/** 重新转写 / Re-transcribe */
-export async function retranscribe(taskId: string): Promise<void> {
-  await client.post(`/api/tasks/${taskId}/retranscribe`)
+/** 重新转写 / Re-transcribe
+ *  AC-4（QA-R1 DEF-04）：engineOverride='cloud' 时显式请求切云端重跑，
+ *  仅在用户对「数据上云」显式确认后调用，绝不静默上云（PRD R7）。
+ *  AC-4: engineOverride='cloud' explicitly re-runs via cloud, only after user confirmation. */
+export async function retranscribe(taskId: string, options?: { engineOverride?: 'cloud' }): Promise<void> {
+  await client.post(
+    `/api/tasks/${taskId}/retranscribe`,
+    options?.engineOverride ? { engine_override: options.engineOverride } : undefined,
+  )
+}
+
+/** 纪要下载格式 / Summary export formats */
+export type SummaryFormat = 'docx' | 'md'
+
+/** 构造纪要下载 URL（带格式参数，DEF-QA-R1-02）；用于 <a download> 触发浏览器下载
+ *  Build summary download URL with format param (DEF-QA-R1-02), for browser download via <a download>. */
+export function downloadSummaryUrl(taskId: string, format: SummaryFormat = 'md'): string {
+  return `/api/download/${taskId}?format=${format}`
 }
 
 /** 重新生成纪要 / Retry summary generation */
