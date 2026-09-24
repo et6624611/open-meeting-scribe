@@ -98,3 +98,10 @@ B1 契约交付后（`docs/API_CONTRACTS.md` §12 @ origin/feat/req-decision-cen
 
 - `vue-tsc -b && vite build` 全绿；改动文件 eslint 0 error。
 - 观察项（非本单缺陷）：真实后端 `GET /api/decisions` 全量首拉 ~5s（慢请求告警 5011ms/6080ms），前端骨架屏已覆盖等待态；如后续量级增长建议后端加缓存或分页，属 B 侧议题。
+
+## 追加：首轮验收修复轮（2026-09-25，验收单要求含反引号剥除）
+
+- 合入 origin/main 最新 `07d83f7`（仅差 1 个 tracker 文档提交；采用 merge 而非 rebase——分支已推送且处于验收流，rebase 需 force-push 重写远端历史，风险大于收益，内容等价）。
+- `stripDecisionEmphasis` 按验收口径扩展：新增成对反引号 `` `x` `` 剥除，置于 `**`/`__` 之后以支持 `**\`x\`**` 嵌套；单星/单下划线/无配对反引号不动（snake_case、乘法记号安全）。用例：`**粗体**文本→粗体文本`、``含 `code` 反引号→含 code 反引号``、`**嵌套 \`内联码\` 剥除**→嵌套 内联码 剥除`、`snake_case 不动`、`a*b 不动`。
+- 真实后端复拍（非 mock）：dc-f1-28 总览 359 卡、dc-f1-29 含 `**` 原文卡片纯文本渲染、dc-f1-30 dq 跳转 textarea 选区 325–431 仍精确命中纪要原文行（dq 保留原始含符号文本，符合验收要求）。DOM 全文 `**`=0、反引号=0。
+- 真实数据 359 条中反引号 0 命中，属防御性剥除；`vue-tsc -b && vite build` 全绿。
