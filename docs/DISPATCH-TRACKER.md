@@ -14,7 +14,7 @@ status: active
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
 | REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.3.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:40 产品已向会话追发补证要求（4 项自测证据）；PRD 升 v0.3.0：Q5 裁决关闭，AC-8 降级为角标+toast，系统通知转 P1 | 工程师补自测证据 → 转 awaiting-acceptance → 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 等待工程师补证回报 |
-| AM-B1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md v0.1.0（main@f2445a1） | 后端工程师（a4cdbd0ca795） | session c95528c3-7941-4527-8648-ee0275c885d6 / 分支 feat/req-access-mode-b1（worktree 隔离） | dispatched | 2026-09-25 派工（T1 数据层 access_mode/expert_mode+迁移、T2 后端行为收口+路由变化可感知契约）；含推模式回报条款 | 工程师交付契约/完工回报 → awaiting-acceptance → 产品验收 AC-T1/AC-T2 → 合入 | ⚠️ 同工程师两单并行；AM-B1 禁改 frontend/，与 decisions 相关文件冲突需回报协调（DC-DEC-B1 已合入 main@586d141） |
+| AM-B1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md v0.1.0（main@f2445a1） | 后端工程师（a4cdbd0ca795） | session c95528c3-7941-4527-8648-ee0275c885d6 / 分支 feat/req-access-mode-b1（worktree 隔离） | in-progress | 2026-09-25 01:00 巡检：分支现实现 commit bc261e6（T1 数据层+T2 路由收口，含迁移/路由决策两套测试）+ 9b829b5（localhost 守卫修复 ASR 行为回归）；会话 waiting_input 已停，尚未收到完工回报 | 等待工程师按推模式条款完工回报 → awaiting-acceptance → 产品验收 AC-T1/AC-T2 → 合入 | ⚠️ 同工程师两单并行；AM-B1 禁改 frontend/，与 decisions 相关文件冲突需回报协调（DC-DEC-B1 已合入 main@586d141）。巡检注：分支实现基于 39d8b47，未含 main@d92e598（反引号剥除 P2），合入前需 rebase 核验 |
 
 ## 待派工队列
 
