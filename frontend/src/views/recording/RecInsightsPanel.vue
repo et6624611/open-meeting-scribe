@@ -5,21 +5,25 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
         {{ t('recording.insights.title') }}
         <span v-if="enabled && unreadCount > 0" class="rec-insights-badge">{{ unreadCount }}</span>
-        <span v-else-if="enabled" class="rec-insights-status">{{ t('recording.insights.enabled') }}</span>
-        <span v-else class="rec-insights-status is-off">{{ t('recording.insights.disabled') }}</span>
       </div>
       <div class="rec-insights-actions">
+        <!-- 开关承载动作语义（点击切换，tooltip 提示动作）；旁边文本如实显示当前状态 -->
         <div
           class="toggle-switch"
           :class="{ 'is-on': enabled }"
-          :title="enabled ? t('ai-panel.insights.disable') : t('ai-panel.insights.enable')"
-          :aria-label="enabled ? t('ai-panel.insights.disable') : t('ai-panel.insights.enable')"
+          role="switch"
+          tabindex="0"
+          :aria-checked="enabled"
+          :title="enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off')"
+          :aria-label="enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off')"
           @click="$emit('toggleEnabled')"
+          @keydown.enter.prevent="$emit('toggleEnabled')"
+          @keydown.space.prevent="$emit('toggleEnabled')"
         >
           <div class="toggle-switch-track">
             <div class="toggle-switch-knob"></div>
           </div>
-          <span class="toggle-switch-label">{{ enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off') }}</span>
+          <span class="toggle-switch-label">{{ enabled ? t('recording.insights.enabled') : t('recording.insights.disabled') }}</span>
         </div>
         <!-- 自动频率选择（仅开启时显示）：唯一暴露给用户的旋钮 / Auto frequency selector (only when enabled): the single user-facing knob -->
         <div v-if="enabled" class="rec-insights-freq" :title="t('recording.insights.freq_tip')">

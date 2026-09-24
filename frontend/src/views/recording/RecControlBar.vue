@@ -14,7 +14,7 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <span>{{ t('recording.roster.count', { count: rosterCount }) }}</span>
         </button>
-        <div v-if="showRosterDropdown" class="rec-roster-dropdown" @click.stop>
+        <div v-if="showRosterDropdown" ref="rosterDropdownRef" class="rec-roster-dropdown" @click.stop>
           <div class="rec-roster-search">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input
@@ -62,13 +62,13 @@
           <svg v-if="!projectId" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </span>
-        <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
+        <div ref="projDropdownRef" class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
           <template v-if="projects.length > 0">
-            <button v-for="p in projects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': projectId === p.id }" @click="$emit('selectProject', p.id)">{{ p.name }}</button>
+            <button v-for="p in projects" :key="p.id" data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': projectId === p.id }" @click="$emit('selectProject', p.id)">{{ p.name }}</button>
             <div class="gen-meta-proj-divider"></div>
-            <button class="gen-meta-proj-item" :class="{ 'is-selected': !projectId }" @click="$emit('selectProject', '')">{{ t('generating.meta.no_project') }}</button>
+            <button data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': !projectId }" @click="$emit('selectProject', '')">{{ t('generating.meta.no_project') }}</button>
           </template>
-          <button v-else class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
+          <button v-else data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="$router.push({ name: 'projects' })">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             {{ t('generating.meta.create_kb') }}
           </button>
@@ -88,14 +88,16 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Project } from '@/api/projects'
 import type { Speaker } from '@/api/speakers'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { useDropdownPopup } from '@/composables/useDropdownPopup'
 
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   paused: boolean
   displaySpeakerCount: number
   speakerCountUpdated: boolean
@@ -113,9 +115,10 @@ defineProps<{
   rosterFocusIdx: number
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'toggleProjectDropdown'): void
   (e: 'selectProject', id: string): void
+  (e: 'closeProjectDropdown'): void
   (e: 'toggleFocus'): void
   // 参会人 / Roster
   (e: 'toggleRoster'): void
@@ -124,5 +127,24 @@ defineEmits<{
   (e: 'rosterRemove', index: number): void
   (e: 'rosterSelect', speaker: Speaker): void
   (e: 'rosterCreate'): void
+  (e: 'closeRoster'): void
 }>()
+
+// ── 弹出交互统一规范（useDropdownPopup）：点击外部关闭 + 键盘导航 / Unified popup spec: click-outside + keyboard nav ──
+const projDropdownRef = ref<HTMLElement | null>(null)
+useDropdownPopup({
+  isOpen: () => props.showProjectDropdown,
+  close: () => emit('closeProjectDropdown'),
+  root: projDropdownRef,
+})
+
+// 参会人下拉已有完整键盘导航（父级 onRosterKeydown），此处仅补「点击外部关闭」与焦点保持
+// Roster dropdown already has full keyboard nav (parent onRosterKeydown); add click-outside + focus-keeping only
+const rosterDropdownRef = ref<HTMLElement | null>(null)
+useDropdownPopup({
+  isOpen: () => props.showRosterDropdown,
+  close: () => emit('closeRoster'),
+  root: rosterDropdownRef,
+  keyboard: false,
+})
 </script>

@@ -111,6 +111,24 @@ async function persistMessages(taskId: string) {
   }
 }
 
+/** 已从后端加载过消息的会议集合：区分「加载为空」与「未加载」，避免重复拉取
+    Tasks whose messages were loaded from backend: distinguishes "loaded empty" vs "not loaded" */
+const loadedTasks = new Set<string>()
+
+/** 确保指定会议的洞察消息已从后端加载（未加载时拉取一次）
+    Ensure insight messages for a task are loaded from backend (fetch once if missing) */
+async function ensureTaskLoaded(taskId: string) {
+  if (!taskId || loadedTasks.has(taskId)) return
+  loadedTasks.add(taskId)
+  try {
+    const result = await loadInsightMessages(taskId)
+    messagesByTask.value[taskId] = result.messages || []
+  } catch {
+    loadedTasks.delete(taskId)
+    messagesByTask.value[taskId] = []
+  }
+}
+
 /** 设置当前会议 ID（切换会议时调用，加载对应洞察消息） / Set current meeting ID (called when switching meetings; loads corresponding insight messages) */
 async function setCurrentTask(taskId: string) {
   // 先保存当前会议的消息（如果有） / Save current meeting messages first (if any)
@@ -122,14 +140,7 @@ async function setCurrentTask(taskId: string) {
   lastAnalyzedAt = 0
   lastAnalyzedLineCount = 0
   // 从后端加载该会议的洞察消息 / Load insight messages for this meeting from backend
-  if (taskId && !messagesByTask.value[taskId]) {
-    try {
-      const result = await loadInsightMessages(taskId)
-      messagesByTask.value[taskId] = result.messages || []
-    } catch {
-      messagesByTask.value[taskId] = []
-    }
-  }
+  await ensureTaskLoaded(taskId)
 }
 
 /* ─── 消息管理 / Message management ─── */
@@ -306,20 +317,17 @@ export function useAiInsights() {
 
   /** 切换功能开关 / Toggle feature on/off */
   function toggleEnabled() {
-    insightsEnabled.value = !insightsEnabled.value
-    localStorage.setItem(STORAGE_KEY, insightsEnabled.value ? '1' : '0')
-    if (!insightsEnabled.value) {
-      if (currentTaskId.value) messagesByTask.value[currentTaskId.value] = []
-    }
+    setEnabled(!insightsEnabled.value)
   }
 
-  /** 设置功能开关 / Set feature on/off */
+  /** 设置功能开关：停用仅隐藏不清数据，重新启用后历史洞察原样恢复；
+      内存缺失时从后端兜底重拉（B2 修复：停用→启用内容丢失）。
+      Set feature on/off: disabling only hides (never clears); re-enabling restores
+      history, with a backend reload as safety net when memory is missing. */
   function setEnabled(val: boolean) {
     insightsEnabled.value = val
     localStorage.setItem(STORAGE_KEY, val ? '1' : '0')
-    if (!val) {
-      if (currentTaskId.value) messagesByTask.value[currentTaskId.value] = []
-    }
+    if (val && currentTaskId.value) void ensureTaskLoaded(currentTaskId.value)
   }
 
   /** 设置自动分析频率 / Set auto-analysis frequency */

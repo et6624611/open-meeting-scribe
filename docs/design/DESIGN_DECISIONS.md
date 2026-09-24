@@ -200,6 +200,28 @@ const { visible, toggle, close } = usePopMenu(menuEl, btnEl, { align: 'end' })
 - 禁止只处理"向下弹出"而不检测视口边界。
 - 禁止遗漏点击空白关闭（菜单打开后遮住内容却无法点掉，等于功能故障）。
 
+### 8.5 交互规范 · 选择类弹层（DropdownPopup）统一标准
+
+来源：2026-09-24 用户反馈 C1（点击其他区域弹窗不收起）、C2（检索后方向键无法导航候选项）。
+
+`usePopMenu` 服务 **动作菜单**（role="menu"，自带定位）；一切 **选择类弹层**（从候选列表中挑一项：知识库关联下拉、项目下拉、说话人绑定弹窗、参会人下拉等，通常带检索输入框）统一复用 `useDropdownPopup`（`frontend/src/composables/useDropdownPopup.ts`），它不接管定位（选择类弹层多为触发元素下方的绝对定位容器）。
+
+| 原则 | 要求 |
+|------|------|
+| 点击外部关闭 | 弹层与触发元素以外的点击自动关闭；同一时刻只允许一个选择类弹层打开 |
+| 键盘导航 | ↑↓ 循环高亮候选项，Enter 激活高亮项（无高亮时激活第一项），Esc 关闭 |
+| 焦点保持在检索框 | 高亮用 class（`is-nav-active`）而非焦点迁移；弹层内非输入元素 `mousedown` 不抢焦点；检索过滤后无需重新聚焦 |
+| 过滤自适应 | 候选项被检索过滤后高亮索引自动失效重算（按键时对活 DOM 重新校验） |
+
+接入约定：
+
+- 弹层容器绑定 `root` ref，候选项统一加 `data-dd-item` 属性；高亮样式为全局 `[data-dd-item].is-nav-active`（`shared-list.css`）。
+- 自带 Enter 语义的输入框（如就地新建）加 `data-dd-enter="native"`，composable 不劫持其 Enter。
+- 已有完整自有键盘导航的弹层（如参会人下拉的 `onRosterKeydown`、说话人绑定下拉的 `onDropdownKeydown`）传 `keyboard: false`，仅补点击外部关闭与焦点保持，避免双重导航。
+- 状态仍由消费方持有（`isOpen` getter + `close` 回调），composable 只附加行为规范。
+
+已接入：知识库关联下拉（GeneratingView）、录音页项目下拉与参会人下拉（RecControlBar）、录音页说话人绑定弹窗（RecSpeakerBind）。**新增选择类弹层禁止手写 document 点击监听与键盘导航**，一律走 `useDropdownPopup`。
+
 ## 9. 交互规范 · 控件作用域与显隐开关
 
 ### 9.1 控件作用域 = 影响范围
