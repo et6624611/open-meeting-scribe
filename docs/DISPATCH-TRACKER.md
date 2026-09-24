@@ -13,7 +13,7 @@ status: active
 
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
-| REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.2.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:30 手动核查：commit 51d8e85（643 行，R1/R2/R4-简 全覆盖；Q5 实证 pywebview 通知不可用→按预案降级，系统通知转 P1；i18n 双语 17 keys）；会话已 stopped | 工程师补自测证据（≥60 分钟音频实测截图）→ 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 完成未声明即停会话，缺自测证据；AC-8 系统通知项需按 Q5 降级结论修订为「角标+toast」 |
+| REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.3.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:40 产品已向会话追发补证要求（4 项自测证据）；PRD 升 v0.3.0：Q5 裁决关闭，AC-8 降级为角标+toast，系统通知转 P1 | 工程师补自测证据 → 转 awaiting-acceptance → 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 等待工程师补证回报 |
 
 ## 已关闭派工
 
