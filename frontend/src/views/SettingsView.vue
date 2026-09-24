@@ -313,7 +313,7 @@
           <span class="engine-status-value" :class="engineStore.status?.process_running ? 'is-ok' : ''">
             {{ engineStore.status?.process_running ? t('settings.engine_process_running', { pid: engineStore.status?.pid ?? '-' }) : t('settings.engine_process_stopped') }}
           </span>
-          <template v-if="userStore.isAdmin">
+          <template v-if="(userStore.isAdmin || engineStore.canManage)">
             <button v-if="!engineStore.status?.process_running" class="btn btn-primary btn-sm" :disabled="engineBusy" @click="onStartEngine">{{ t('settings.engine_action_start') }}</button>
             <button v-else class="btn btn-secondary btn-sm" :disabled="engineBusy" @click="onStopEngine">{{ t('settings.engine_action_stop') }}</button>
           </template>
@@ -321,7 +321,7 @@
         <p v-if="engineStore.status?.mode === 'local' && engineStore.status.local_ready && !engineStore.status.process_running" class="engine-ready-hint">{{ t('settings.engine_ready_not_running') }}</p>
 
         <!-- D-R2：管理员可编辑引擎模式；普通用户只读 / D-R2: admin can edit engine mode; regular users read-only -->
-        <template v-if="userStore.isAdmin">
+        <template v-if="(userStore.isAdmin || engineStore.canManage)">
           <div class="engine-status-row">
             <span class="engine-status-label">{{ t('settings.engine_mode_switch') }}</span>
             <select v-model="engineModeDraft" class="settings-input engine-mode-select">
@@ -361,8 +361,8 @@
         <div class="engine-storage-block">
           <label class="settings-label">{{ t('settings.engine_storage') }}</label>
           <div class="engine-storage-controls">
-            <input v-model="storageDraft" class="settings-input" :disabled="!userStore.isAdmin" />
-            <button v-if="userStore.isAdmin" class="btn btn-secondary btn-sm" :disabled="storageSaving || storageDraft === engineStore.overview.model_dir" @click="onSaveStorage">{{ t('settings.engine_storage_save') }}</button>
+            <input v-model="storageDraft" class="settings-input" :disabled="!(userStore.isAdmin || engineStore.canManage)" />
+            <button v-if="(userStore.isAdmin || engineStore.canManage)" class="btn btn-secondary btn-sm" :disabled="storageSaving || storageDraft === engineStore.overview.model_dir" @click="onSaveStorage">{{ t('settings.engine_storage_save') }}</button>
           </div>
           <div class="engine-disk-hint" :class="{ 'is-short': diskShort }">
             <span>{{ t('settings.engine_disk_free', { size: fmtBytes(engineStore.overview.disk_free_bytes) }) }}</span>
@@ -390,9 +390,9 @@
               <span class="engine-progress-pct">{{ m.job.percent }}%</span>
               <span class="engine-progress-meta">{{ fmtSpeed(m.job.speed_bps) }}</span>
               <span v-if="m.job.eta_seconds != null" class="engine-progress-meta">{{ t('settings.engine_progress_eta', { eta: fmtDuration(m.job.eta_seconds) }) }}</span>
-              <button v-if="userStore.isAdmin" class="btn btn-sm btn-secondary" :disabled="busyKey === m.job.id" @click="onCancel(m.job.id)">{{ t('settings.engine_action_cancel') }}</button>
+              <button v-if="(userStore.isAdmin || engineStore.canManage)" class="btn btn-sm btn-secondary" :disabled="busyKey === m.job.id" @click="onCancel(m.job.id)">{{ t('settings.engine_action_cancel') }}</button>
             </div>
-            <div v-if="userStore.isAdmin && m.status !== 'downloading'" class="engine-model-actions">
+            <div v-if="(userStore.isAdmin || engineStore.canManage) && m.status !== 'downloading'" class="engine-model-actions">
               <button v-if="m.status === 'not_downloaded' || m.status === 'missing'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onDownload(m.key)">{{ t('settings.engine_action_download') }}</button>
               <button v-else-if="m.status === 'partial'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onDownload(m.key)">{{ t('settings.engine_action_resume') }}</button>
               <button v-else-if="m.status === 'ready'" class="btn btn-sm btn-secondary" :disabled="busyKey === m.key" @click="onVerify(m.key)">{{ t('settings.engine_action_verify') }}</button>
@@ -408,7 +408,7 @@
         </div>
 
         <div class="engine-models-actions">
-          <button v-if="userStore.isAdmin" class="btn btn-primary btn-sm" :disabled="busyKey === 'all' || engineStore.isDownloading" @click="onDownload('all')">{{ t('settings.engine_download_all') }}</button>
+          <button v-if="(userStore.isAdmin || engineStore.canManage)" class="btn btn-primary btn-sm" :disabled="busyKey === 'all' || engineStore.isDownloading" @click="onDownload('all')">{{ t('settings.engine_download_all') }}</button>
           <button class="btn btn-secondary btn-sm" :disabled="engineStore.overviewLoading" @click="engineStore.loadOverview(true)">{{ t('settings.engine_refresh') }}</button>
         </div>
       </template>

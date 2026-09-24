@@ -1,9 +1,9 @@
 """
 app/routers/models.py — 本地引擎模型资产管理路由（R5 / WP-B）
 
-权限（D-R2 已裁决：管理员级，普通用户只读）：
+权限（D-R2 已裁决：管理员级变更，普通用户只读；本地单机部署默认视为管理员）：
   - 只读：模型清单/状态、下载进度、引擎状态、存储信息 —— 所有用户可访问
-  - 变更：启动/取消下载、校验、引擎启停、存储位置配置 —— require_admin
+  - 变更：启动/取消下载、校验、引擎启停、存储位置配置 —— require_admin_or_local
 
 下载执行体见 core/model_downloader.py；常驻引擎子进程见 core/engine_host.py。
 """
@@ -11,9 +11,9 @@ app/routers/models.py — 本地引擎模型资产管理路由（R5 / WP-B）
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
-from app.routers.admin import require_admin
+from app.routers.admin import is_local_single_user, require_admin_or_local
 from app.settings_store import load_settings, save_settings_to_disk
 from core.engine_host import get_engine_host
 from core.model_downloader import (
@@ -55,9 +55,21 @@ def get_downloads():
 
 
 @router.get("/api/engine/status")
-def get_engine_status():
-    """引擎状态（模式/进程/模型就绪/篡改）——普通用户只读可见（D-R2）。"""
-    return {"ok": True, **get_engine_host().status()}
+def get_engine_status(request: Request):
+    """引擎状态（模式/进程/模型就绪/篡改）——普通用户只读可见（D-R2）。
+
+    can_manage 告知前端当前身份是否可操作变更面（本地单机模式或管理员 cookie），
+    与 POST 变更面的 require_admin_or_local 判定保持一致，避免“看得到按钮却调不动”。
+    """
+    can_manage = is_local_single_user() or _admin_cookie_valid(request)
+    return {"ok": True, "can_manage": can_manage, **get_engine_host().status()}
+
+
+def _admin_cookie_valid(request: Request) -> bool:
+    """不抛异常地判断请求是否携带有效管理员 cookie / Non-raising check for a valid admin cookie."""
+    from app.routers.admin import ADMIN_COOKIE, _verify_admin_token
+    token = request.cookies.get(ADMIN_COOKIE)
+    return bool(token and _verify_admin_token(token))
 
 
 @router.get("/api/engine/storage")
@@ -77,7 +89,7 @@ def get_storage():
 
 
 @router.post("/api/engine/download")
-def post_download(data: dict = None, _: dict = Depends(require_admin)):
+def post_download(data: dict = None, _: dict = Depends(require_admin_or_local)):
     """引导下载（model_key 或 "all"），后台执行；先做磁盘空间同步预检。"""
     data = data or {}
     model_key = (data.get("model_key") or "").strip()
@@ -108,7 +120,7 @@ def post_download(data: dict = None, _: dict = Depends(require_admin)):
 
 
 @router.post("/api/engine/download/{job_id}/cancel")
-def post_cancel_download(job_id: str, _: dict = Depends(require_admin)):
+def post_cancel_download(job_id: str, _: dict = Depends(require_admin_or_local)):
     """取消下载（保留 .part 分片，可续传）。"""
     result = cancel_download(job_id)
     if result.get("ok"):
@@ -117,7 +129,7 @@ def post_cancel_download(job_id: str, _: dict = Depends(require_admin)):
 
 
 @router.post("/api/engine/verify")
-def post_verify(data: dict = None, _: dict = Depends(require_admin)):
+def post_verify(data: dict = None, _: dict = Depends(require_admin_or_local)):
     """完整性校验（篡改检测） / Integrity verification (tamper detection)."""
     data = data or {}
     model_key = (data.get("model_key") or "").strip()
@@ -128,7 +140,7 @@ def post_verify(data: dict = None, _: dict = Depends(require_admin)):
 
 
 @router.post("/api/engine/start")
-def post_engine_start(_: dict = Depends(require_admin)):
+def post_engine_start(_: dict = Depends(require_admin_or_local)):
     """启动常驻引擎子进程（含模型完整性预检，篡改拒载）。"""
     result = get_engine_host().start()
     logger.info(f"[引擎] 管理员启动引擎: ok={result.get('ok')} code={result.get('error_code', '')}")
@@ -136,13 +148,13 @@ def post_engine_start(_: dict = Depends(require_admin)):
 
 
 @router.post("/api/engine/stop")
-def post_engine_stop(_: dict = Depends(require_admin)):
+def post_engine_stop(_: dict = Depends(require_admin_or_local)):
     """停止常驻引擎子进程。"""
     return get_engine_host().stop()
 
 
 @router.post("/api/engine/storage")
-def post_storage(data: dict = None, _: dict = Depends(require_admin)):
+def post_storage(data: dict = None, _: dict = Depends(require_admin_or_local)):
     """配置模型存储位置（settings engine.local.model_dir，默认 data/models/）。"""
     data = data or {}
     model_dir = (data.get("model_dir") or "").strip()

@@ -57,6 +57,12 @@ export const useEngineStore = defineStore('engine', () => {
   })
 
   const jobs = computed<DownloadJob[]>(() => overview.value?.downloads ?? [])
+  /**
+   * 是否可操作变更面（下载/引擎启停/存储/模式切换）。
+   * 两来源任一成立即可：后端状态接口的 can_manage（本地单机模式或管理员 cookie），
+   * 或登录用户 role==='admin'。与后端 require_admin_or_local 判定对齐。
+   */
+  const canManage = computed(() => status.value?.can_manage === true)
   const activeJobs = computed(() => jobs.value.filter(j => ACTIVE_JOB_STATES.includes(j.state)))
   const isDownloading = computed(() => activeJobs.value.length > 0)
   /** 必装模型中未就绪者（启用本地引擎的前置条件） / Required models not ready (precondition for local engine) */
@@ -167,6 +173,7 @@ export const useEngineStore = defineStore('engine', () => {
       pid: status.value?.pid ?? null,
       missing_models: status.value?.missing_models ?? [],
       tampered_models: status.value?.tampered_models ?? [],
+      can_manage: status.value?.can_manage ?? false,
       source: status.value?.source ?? 'settings',
     }
   }
@@ -180,7 +187,7 @@ export const useEngineStore = defineStore('engine', () => {
   }
 
   return {
-    status, loading, loaded, badge, devOverride, load, applyMode, setDevOverride,
+    status, loading, loaded, badge, devOverride, load, applyMode, setDevOverride, canManage,
     overview, overviewLoading, jobs, activeJobs, isDownloading, requiredNotReady, tamperedModels,
     loadOverview, stopPolling, download, cancel, verify, start, stop, saveStorage,
   }

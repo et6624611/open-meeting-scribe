@@ -88,6 +88,8 @@ export interface EngineStatus {
   pid: number | null
   missing_models: string[]
   tampered_models: string[]
+  /** 当前身份是否可操作变更面（本地单机模式或管理员） / Whether the current identity may perform mutations (local single-user or admin) */
+  can_manage: boolean
   /** 数据来源：api=后端状态接口 / settings=占位回退 / Data source: api=status endpoint / settings=placeholder fallback */
   source: 'api' | 'settings'
 }
@@ -95,6 +97,7 @@ export interface EngineStatus {
 interface EngineStatusResponse extends Partial<EngineHostStatus> {
   mode?: EngineMode
   local?: { ready?: boolean; model_dir?: string }
+  can_manage?: boolean
 }
 
 /**
@@ -112,6 +115,7 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
         pid: data.pid ?? null,
         missing_models: data.missing_models || [],
         tampered_models: data.tampered_models || [],
+        can_manage: data.can_manage === true,
         source: 'api',
       }
     }
@@ -132,6 +136,7 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
     pid: null,
     missing_models: [],
     tampered_models: [],
+    can_manage: false,
     source: 'settings',
   }
 }

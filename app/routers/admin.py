@@ -119,6 +119,31 @@ def require_admin(request: Request):
     return payload
 
 
+# 认证网关开关：与 app/server.py 的 enforce_auth_middleware 读取同一环境变量。 / Auth gateway flag: same env var as enforce_auth_middleware.
+_REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
+
+
+def is_local_single_user() -> bool:
+    """是否本地单机部署（REQUIRE_AUTH 非 true）/ Whether this is a local single-user deployment.
+
+    动态读取环境变量（而非缓存的模块常量），以便测试用 monkeypatch.setenv 切换。
+    """
+    return os.getenv("REQUIRE_AUTH", "false").lower() != "true"
+
+
+def require_admin_or_local(request: Request):
+    """依赖注入：管理员或本地单机模式放行 / Dependency: admin session OR local single-user mode.
+
+    单机桌面部署（REQUIRE_AUTH=false，默认）下操作者即机器所有者，直接视为管理员；
+    多用户服务器部署仍要求管理后台签发的 oms_admin_session cookie（D-R2 不变）。
+    仅用于 /api/engine/* 等客户端可触发的变更面；/api/admin/*（用户/配额治理）
+    维持 require_admin 严格校验，不受本地模式影响。
+    """
+    if is_local_single_user():
+        return {"sub": "local", "role": "admin", "source": "local_mode"}
+    return require_admin(request)
+
+
 # ============================================================
 # 登录/登出 / Login/Logout
 # ============================================================

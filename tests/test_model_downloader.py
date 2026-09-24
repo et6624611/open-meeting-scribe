@@ -313,6 +313,19 @@ def admin_client(client):
 
 
 class TestModelsRouter:
+    @pytest.fixture(autouse=True)
+    def _multi_user_mode(self, monkeypatch):
+        """本类校验 D-R2 多用户契约：变更面需管理员 cookie。
+
+        动态读取的 is_local_single_user() 受 REQUIRE_AUTH 环境变量控制；server.py 中间件的
+        导入期常量显式钉为 False（否则本类若最先导入 app.server，网关会随环境变量定格
+        开启，只读 GET 面被 401 拦截），使本类聚焦 D-R2 路由级权限判定。
+        """
+        monkeypatch.setenv("REQUIRE_AUTH", "true")
+        import app.server as _server
+
+        monkeypatch.setattr(_server, "_REQUIRE_AUTH", False)
+
     def test_list_open_to_all_users(self, client, model_env):
         resp = client.get("/api/engine/models")
         assert resp.status_code == 200
@@ -342,6 +355,8 @@ class TestModelsRouter:
         assert data["ok"] is True
         assert data["mode"] == "cloud"
         assert data["modelscope_cache"]
+        # 多用户模式下无管理员 cookie → can_manage 为假（与变更面一致）
+        assert data["can_manage"] is False
 
     def test_admin_download_disk_precheck_sync(self, admin_client, model_env, monkeypatch):
         monkeypatch.setattr(downloader, "get_disk_free_bytes", lambda p=None: 0)
