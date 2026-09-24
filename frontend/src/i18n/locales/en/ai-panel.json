@@ -120,8 +120,8 @@
   "insights": {
     "enable": "Enable Insight Deck",
     "disable": "Disable Insight Deck",
-    "toggle_on": "Disable",
-    "toggle_off": "Enable",
+    "toggle_on": "Click to disable",
+    "toggle_off": "Click to enable",
     "badge": "Insight Deck",
     "meta_auto": "Auto",
     "meta_manual": "Manual",

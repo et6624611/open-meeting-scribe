@@ -120,8 +120,8 @@
   "insights": {
     "enable": "启用洞察台",
     "disable": "停用洞察台",
-    "toggle_on": "停用",
-    "toggle_off": "启用",
+    "toggle_on": "点击停用",
+    "toggle_off": "点击启用",
     "badge": "洞察台",
     "meta_auto": "自动",
     "meta_manual": "手动",
