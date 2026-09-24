@@ -108,6 +108,48 @@ def _build_dialogue_from_realtime(full_transcript: list[dict]) -> list[dict]:
     return dialogue
 
 
+def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
+    """D-I2（R9）：本地分段增量转写的定稿路径——增量段拼接即定稿，会后不重跑全量。
+
+    record.stop_record 对 LocalSegmentTranscriber 产出的任务打
+    transcript_finalized_incremental 标记；本函数据此跳过 stage1 全量批转写，
+    直接用实时全量记录拼装对话稿并进入 stage2（纪要/章节等）。
+
+    Returns:
+        True: 定稿成功并已触发 stage2；False: 增量内容为空（应回退 stage1 兜底）。
+    """
+    full_transcript = tasks[task_id].get("realtime_full_transcript")
+    dialogue = _build_dialogue_from_realtime(full_transcript) if full_transcript else []
+    if not dialogue:
+        return False
+
+    tasks[task_id]["dialogue"] = dialogue
+    tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+    tasks[task_id]["transcript_source"] = "local_incremental"
+    logger.info(
+        f"[{task_id[:8]}] 本地增量转写定稿（D-I2，跳过 stage1 全量重跑）: "
+        f"{len(full_transcript)} 句 → {len(dialogue)} 条对话"
+    )
+    joblog.append_event(
+        task_id, joblog.STAGE_TRANSCRIBE,
+        f"本地增量转写定稿（{len(full_transcript)} 句，未重跑全量）",
+    )
+
+    # 复用实时阶段的说话人绑定作为姓名映射（键转 int） / Reuse realtime speaker binding (keys to int)
+    speaker_mapping = None
+    binding = tasks[task_id].get("realtime_speaker_binding")
+    if binding:
+        try:
+            speaker_mapping = {int(k): v for k, v in binding.items()}
+        except (ValueError, TypeError):
+            speaker_mapping = None
+
+    save_task_to_disk(task_id)
+    _cleanup_normalized_intermediate(task_id)
+    _run_stage2_for_task(task_id, audio_path, speaker_mapping)
+    return True
+
+
 def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
     """批转写失败/为空时，降级使用实时转写结果生成纪要。
     When batch transcription fails/yields empty, fall back to realtime transcript to generate the summary.
@@ -187,6 +229,20 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
     tasks[task_id]["progress"] = 0
     tasks[task_id]["retry_count"] = 0
     task_start = time.perf_counter()
+
+    # D-I2（R9）：本地分段增量转写已在会中逐段定稿 → 跳过 stage1 全量重跑，
+    # 直接拼接定稿并进 stage2；增量内容为空时撤销标记，回退下方 stage1 兜底。
+    if tasks[task_id].get("transcript_finalized_incremental"):
+        joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "本地增量定稿路径（D-I2，跳过全量转写）")
+        if _finalize_incremental_transcript(task_id, audio_path):
+            return
+        tasks[task_id]["transcript_finalized_incremental"] = False
+        logger.warning(f"[{task_id[:8]}] 增量定稿内容为空，回退 stage1 全量转写兜底")
+        joblog.append_event(
+            task_id, joblog.STAGE_TRANSCRIBE,
+            "增量定稿内容为空，回退全量转写兜底", level="warn",
+        )
+
     joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "开始转写（stage1）")
 
     # 自动重试循环（仅针对瞬时错误）
