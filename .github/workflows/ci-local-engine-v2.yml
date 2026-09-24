@@ -38,7 +38,7 @@ on:
       - build/pyinstaller.spec
       - core/**
       - app/**
-      - .github/workflows/ci-local-engine.yml
+      - .github/workflows/ci-local-engine-v2.yml
       - .github/local-engine/**
   pull_request:
     branches: [main]
@@ -47,7 +47,7 @@ on:
       - build/pyinstaller.spec
       - core/**
       - app/**
-      - .github/workflows/ci-local-engine.yml
+      - .github/workflows/ci-local-engine-v2.yml
       - .github/local-engine/**
   schedule:
     - cron: '30 18 * * 0'  # 每周日 18:30 UTC（北京时间周一凌晨）

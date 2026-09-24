@@ -1,6 +1,6 @@
 # CI 合入指引 — 本地引擎 workflow（WP-D）
 
-对象：`.github/workflows/ci-local-engine.yml`（PRD-LOCAL-ENGINE §13 WP-D / R8 / AC-7）。
+对象：`.github/workflows/ci-local-engine-v2.yml（原 ci-local-engine.yml，因 GitHub 元数据注册异常改名重注册）`（PRD-LOCAL-ENGINE §13 WP-D / R8 / AC-7）。
 
 ## Job ↔ AC 对照
 
