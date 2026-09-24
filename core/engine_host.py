@@ -31,6 +31,35 @@ ENGINE_START_TIMEOUT = 120
 ENGINE_REQUEST_TIMEOUT = 180
 ENGINE_STOP_TIMEOUT = 10
 
+# ── 本地批转写时长感知超时（WP-H 第 1 项：导入音频 / 非实时长文件路径）──
+# Duration-aware timeout for local batch ASR on non-realtime long-file paths.
+# 固定 ENGINE_REQUEST_TIMEOUT=180s 会把 >~37 分钟音频（Spike RTF≈0.081 反推）
+# 整场判死；此处按音频时长重算单请求上限：
+#   timeout = clamp(duration × RTF 预算 + 固定余量, 下限 180s, 上限按支持时长封顶)
+# RTF 预算取 0.5 s/s ≈ Spike 实测 0.081 的 6 倍余量（覆盖慢速 4 核 Windows 机型、
+# ct-punc 标点与排队开销；待真机实测后可再收紧）。
+LOCAL_ASR_RTF_BUDGET = 0.5
+LOCAL_ASR_TIMEOUT_MARGIN = 60
+# 本地批转写支持的单文件时长上限（口径与 PRD 文案一致；超限报可分类错误，不发引擎请求）
+LOCAL_ASR_MAX_SUPPORTED_SECONDS = 4 * 3600
+
+
+def estimate_local_asr_timeout(duration_s: float | None) -> float:
+    """按音频时长估算本地批转写单请求超时（WP-H：超时口径与实际支持时长一致）。
+
+    Args:
+        duration_s: 音频时长（秒）；None/非正值时退回默认 ENGINE_REQUEST_TIMEOUT。
+
+    Returns:
+        单请求超时（秒），区间 [ENGINE_REQUEST_TIMEOUT, LOCAL_ASR_MAX_SUPPORTED_SECONDS
+        × RTF 预算 + 余量]。
+    """
+    if not duration_s or duration_s <= 0:
+        return float(ENGINE_REQUEST_TIMEOUT)
+    budget = duration_s * LOCAL_ASR_RTF_BUDGET + LOCAL_ASR_TIMEOUT_MARGIN
+    ceiling = LOCAL_ASR_MAX_SUPPORTED_SECONDS * LOCAL_ASR_RTF_BUDGET + LOCAL_ASR_TIMEOUT_MARGIN
+    return float(min(max(budget, ENGINE_REQUEST_TIMEOUT), ceiling))
+
 # 冻结态入口分派参数：desktop.py 的 __main__ 检测到该参数时进入引擎工作端
 # Frozen-mode dispatch flag handled by the desktop.py __main__ entry
 FROZEN_WORKER_FLAG = "--engine-worker"

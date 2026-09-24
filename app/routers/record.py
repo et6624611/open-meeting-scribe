@@ -65,6 +65,7 @@ from core.audio import (
     stop_recording_with_stream,
 )
 from core.diarization import create_realtime_diarizer
+from core.errors import LocalEngineError
 from core.i18n import _
 from core import realtime_asr
 from core.realtime_asr import RealtimeTranscriber
@@ -468,6 +469,26 @@ def start_record(background_tasks: BackgroundTasks):
                 transcriber_ref["ref"] = transcriber
                 realtime_transcribers[task_id] = transcriber
                 logger.info(f"[录制] 实时转写已启动: task={task_id[:8]}")
+            except LocalEngineError as e:
+                if e.error_code == "realtime_degraded_to_batch":
+                    # WP-H 第 2 项：本地模式实时预览降级是设计内行为（非故障），
+                    # 推非错误状态声明，与录音页本地模式横幅口径统一；
+                    # 不得再推 type:"error" 红色报错（REQ-LOCAL-REALTIME-INCR AC 第 6 条）。
+                    logger.info(f"[录制] 本地模式按设计降级为批处理（状态声明，非错误）: task={task_id[:8]}")
+                    transcriber_ref["ref"] = None
+                    push_realtime_msg(task_id, {
+                        "type": "status",
+                        "status": "local_batch_mode",
+                        "message": str(e),
+                    })
+                    return
+                # 其余本地引擎错误（模型未就绪等）仍按失败处理
+                logger.warning(f"[录制] 本地引擎实时转写启动失败（仅录音模式）: {e}")
+                transcriber_ref["ref"] = None
+                push_realtime_msg(task_id, {
+                    "type": "error",
+                    "message": _("Realtime transcription unavailable: {err}, recording will continue normally").format(err=e)
+                })
             except Exception as e:
                 logger.warning(f"[录制] 实时转写启动失败（仅录音模式）: {e}")
                 transcriber_ref["ref"] = None
