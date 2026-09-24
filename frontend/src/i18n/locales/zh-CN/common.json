@@ -121,7 +121,9 @@
     "engine_local": "本地引擎",
     "engine_cloud": "云端服务",
     "engine_unconfigured": "未配置 · 点击进入设置",
-    "engine_hint": "点击查看计算引擎设置"
+    "engine_hint": "点击查看计算引擎设置",
+    "local_asr": "FunASR 本地模型",
+    "local_model": "本地模型"
   },
   "playing": "播放中",
   "paused": "已暂停",

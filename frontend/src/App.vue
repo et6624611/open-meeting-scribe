@@ -184,7 +184,9 @@ if (typeof window !== 'undefined') {
   }
 }
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
-const statusModels = ref('paraformer-v2 + qwen-plus')  // 默认值，加载设置后更新
+// DEF-FE-05：默认值不得暗示云端模型（local 模式下曾误导显示 paraformer-v2 + qwen-plus）
+// DEF-FE-05: neutral placeholder; must not imply cloud models before settings load
+const statusModels = ref('…')
 
 // ─── 底部状态栏路由三态（BACKLOG v1.6.0 / R4） / Status-bar routing tri-state ───
 // local: 本机端点（Ollama/LM Studio）；cloud: 远端服务；unconfigured: 未配置
@@ -210,17 +212,44 @@ function goToEngineSettings() {
   router.push({ name: 'settings', query: { tab: 'services' } })
 }
 
+// DEF-FE-05: 识别本地 LLM 运行时名（Ollama / LM Studio），判定源与后端本地引擎探测口径一致
+function detectLocalLlmRuntime(llm: Record<string, any>): string {
+  const provider = String(llm?.provider || '').toLowerCase()
+  const baseUrl = String(llm?.base_url || '')
+  if (provider.includes('ollama') || baseUrl.includes(':11434')) return 'Ollama'
+  if (provider.includes('lm studio') || provider.includes('lmstudio') || baseUrl.includes(':1234')) return 'LM Studio'
+  return ''
+}
+
+// DEF-FE-05: local-mode status text. Local components only; never any cloud model name.
+function buildLocalStatusModels(llm: Record<string, any>): string {
+  const asrLabel = t('common.usage.local_asr')
+  const modelLabel = llm?.model || t('common.usage.local_model')
+  const runtime = detectLocalLlmRuntime(llm)
+  const llmLabel = runtime ? `${runtime} + ${modelLabel}` : modelLabel
+  return `${asrLabel} + ${llmLabel}`
+}
+
 // 加载设置以获取实际模型名与功能开关 / Load settings to get actual model names and feature flags
 async function loadStatusModels() {
   try {
     const client = (await import('@/api/client')).default
     const { data } = await client.get('/api/settings')
-    const asrModel = data?.asr?.model || 'paraformer-v2'
-    const llmModel = data?.llm?.model || 'qwen-plus'
-    statusModels.value = `${asrModel} + ${llmModel}`
-    // 三态路由判定：数据源为 llm 配置 + 登录态，不新增业务接口 / Tri-state from llm config + login state; no new endpoint
     const llm = data?.llm || {}
     const baseUrl = llm.base_url || ''
+    const engineMode = data?.engine?.mode || ''
+    // DEF-FE-05: local engine mode -> show real local components; never leak cloud model names
+    if (engineMode === 'local') {
+      statusModels.value = buildLocalStatusModels(llm)
+      statusEngine.value = 'local'
+      const updateCheckEnabledLocal = data?.feature_flags?.update_check !== false
+      updateStartupCheck(updateCheckEnabledLocal)
+      return
+    }
+    const asrModel = data?.asr?.model || 'paraformer-v2'
+    const llmModel = llm.model || 'qwen-plus'
+    statusModels.value = `${asrModel} + ${llmModel}`
+    // 三态路由判定：数据源为 llm 配置 + 登录态，不新增业务接口 / Tri-state from llm config + login state; no new endpoint
     if (isLocalhostUrl(baseUrl)) {
       statusEngine.value = 'local'
     } else if (baseUrl && (llm.api_key_set || userStore.isLoggedIn)) {
