@@ -14,7 +14,7 @@ status: active
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
 | REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.3.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:40 产品已向会话追发补证要求（4 项自测证据）；PRD 升 v0.3.0：Q5 裁决关闭，AC-8 降级为角标+toast，系统通知转 P1 | 工程师补自测证据 → 转 awaiting-acceptance → 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 等待工程师补证回报 |
-| DC-DEC-B1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 后端工程师（a4cdbd0ca795） | session c7ddd206-a797-4291-9a23-99b1bf491b00 / 分支 feat/req-decision-center-b1（worktree 隔离） | dispatched | 2026-09-24 23:26 派出（R1 模型抽取 / R2 API / R4 回填）；23:40 追发回报条款（群 @产品经理 主动回报为主，session send 兜底） | 契约交付/完工/卡点应主动群回报；等回报后产品验收 AC-1~7/10 → 合入 | 与 F1 同仓并行，公共文档冲突由产品协调 |
+| DC-DEC-B1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 后端工程师（a4cdbd0ca795） | session c7ddd206-a797-4291-9a23-99b1bf491b00 / 分支 feat/req-decision-center-b1（worktree 隔离） | in-progress | 2026-09-25 00:01 巡检发现 commit 7e1a328（23:59 +0800）：R1/R2/R4 实现落地（16 文件 +1257 行，含 test_decision_center.py 505 行、backfill_decisions.py 157 行、decisions.py 262 行、summarize.py 解析、API_CONTRACTS 同步）；分支已 push 远端。工程师尚未回报完工 | 等工程师回报完工 → 转 awaiting-acceptance → 巡检/产品验收 AC-1~7/10 → 合入 | 与 F1 同仓并行，公共文档冲突由产品协调 |
 | DC-DEC-F1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 前端开发工程师（d1b77737cde5） | session 1af94412-472c-4c9d-be9a-19ddb330502d / 分支 feat/req-decision-center-f1（worktree 隔离） | dispatched | 2026-09-24 23:26 派出（R3 决策中心页 + 决策Tab更名行动项）；23:40 追发同款回报条款 | mock 先行开发；主动群回报后产品验收 AC-8/9 → 与 B1 联调 → 合入 | ⚠️ 同工程师已有 REQ-PROGRESS-P0 在途，两分支都动 router/导航，合并顺序 P0 优先、本单后 rebase |
 
 ## 已关闭派工
