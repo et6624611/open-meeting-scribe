@@ -78,3 +78,33 @@ approvers: 项目方（2026-09-24 裁决：可以派工；先跑通 macOS，Wind
 ## 4. 回报要求
 
 各 owner 完成后在本文件追加「执行进展」小节（commit 链接 + 回归证据路径）；判定建议值技术不可行的，回报产品，不得静默变通。
+
+---
+
+## 5. 执行进展（后端工程师 a4cdbd0ca795，2026-09-24）
+
+**分支**：`fix/qa-r1-def01-offline-model-load`（worktree `../oms-wt-def01`；按项目方裁决本轮仅本地提交、暂不 push）
+**代码 commit**：`23b6da6` fix(qa-r1): 断网模型加载/引擎预热/云端显式回退重试/docx 导出（DEF-01/02/03/04 后端）
+
+### 各缺陷处置与 Done 判据对照
+
+| 缺陷 | 处置 | 判据证据 |
+|------|------|----------|
+| DEF-01(P0) | `engine_worker` 模型入参改经 `model_registry` 解析的本地绝对路径（相对 `model_dir` 锚定绝对化 `MODELSCOPE_CACHE`，同时承接 WP-G B-2 冻结态形态）；权重缺失→`models_missing` 可行动错误（校验先于 funasr import），运行期零隐式出网 | ① 死端口代理（`HTTP(S)_PROXY=http://127.0.0.1:9`）活体探针全过：`RESULT=QA_R1_FIX_OFFLINE_PASS`，日志 `.eval_local_engine/qa_r1_fix/ac1_offline_probe_after_fix.log`（探针脚本 `tests/eval_local_engine/qa_r1fix_offline_probe.py`，走 EngineHost 项目代码路径，强于裸 AutoModel 探针）；② 断网回归 17 项已入 ci-local-engine-v2 新 job `offline-load-guard`；③ grep 复核本地运行期无新增非 localhost 出网；④ 首次联网下载路径未改动 |
+| DEF-03(P1) | 采派工单推荐方案①：协议新增 `warmup` 命令，宿主健康检查通过后后台预热；`ENGINE_WARMUP_TIMEOUT=300`（留量声明覆盖冻结态冷 import ≈86s + 双模型加载 ≈32s + 余量，测试钉死）；WP-H 时长感知超时口径不变 | macOS 实测（离线代理下）：warmup 22.9s done；首个 ASR 仅 1.9s（加载已移出）；30min 整场 infer 157.4s < 预算 960s，零 `engine_timeout`。**口径申报（非静默变通）**：30min 证据为引擎路径（EngineHost 子进程）活体，未含完整 FastAPI 上传链路，全 app 真机演示留待 QA-R2；协议守护双防线（worker `_quiet_stdout` fd 级屏蔽 + 宿主非 JSON 行重同步）系 QA 未列的实证必要修复（funasr 加载 print 污染 stdout 曾致预热响应被打断） |
+| DEF-04 后端 | `POST /api/tasks/{id}/retranscribe` 支持可选 body `{"engine_override":"cloud"}`：白名单仅 cloud（其余 400，防误配静默上云）+ `is_cloud_enabled` 预检 400；透传至 `transcribe_audio`；仅重置失败语义字段（新增清 `error_code`/`can_fallback_cloud`），音频/笔记/绑定状态不动；无 body 旧调用完全兼容 | `tests/test_qa_r1_defects.py::TestEngineOverride` 5 项（含笔记保留断言）。**给前端的契约**：失败任务读 `task.error_code` + `task.can_fallback_cloud`；`True`⇒渲染「切云端重试」按钮，显式确认后 `POST …/retranscribe` body `{"engine_override":"cloud"}`；`False`⇒置灰说明。UI 消费与浏览器 E2E 归前端 d1b77737cde5 |
+| DEF-02 后端 | 新增 `core/docx_export.py`（md→docx：标题 1–6/有序无序列表/段内粗斜体/说话人段落原文保留；`w:eastAsia` 宋体防乱码）；`GET /api/download/{task_id}?format=md|docx`（默认 md 向后兼容，其余格式 400）；删除任务连带清理 `.docx` 伴生文件。python-docx 为既有依赖无新增 | `TestDocxExport` 3 项 + 真实 QA 样张经 macOS `textutil` 解析通过（中文正常、结构完整）：`.eval_local_engine/qa_r1_fix/real_summary_sample.docx`。已知外观口径：Word List Number 全局连续编号（跨列表接续），批量导出入口归前端 |
+
+### 验证账目
+
+- 新增测试 17 passed；本地引擎既有套件 40 passed 复跑通过；CI ruff（`--select F821,F811,F402`）通过。
+- 全量后端套件 3 失败（test_chat×2 缺 `.env` key、TestPhilosophyRandom×1 缺 gitignored 数据）经 `git stash` roundtrip 证明为预存在环境项，与本轮改动无关。
+- code-review 门禁：Approve，报告 `docs/code-review-open-meeting-scribe-qa-r1-fix.md`（两处提交前修复：spk import 移出静默块残留、测试落盘泄漏打桩）。
+
+### 未尽事项（移交/后续）
+
+1. **Windows 冻结形态**：按项目方裁决顺延下一环节；`offline-load-guard` job 已在 linux 纯打桩层先行守护。
+2. **QA-R2 复判**：DEF-01 Done 判据 1 的正式复判建议 QA 按 §3.5 死端口代理法在本修复分支上重跑（本方活体证据见上，属自证需他验）。
+3. **前端依赖项**：DEF-04 失败态 UI（can_fallback_cloud 消费/显式确认/置灰）与 DEF-02 批量导出真实现，契约见上表。
+4. **冻结包相对路径锚点（WP-G B-2）**：已由 `MODELSCOPE_CACHE` 绝对化锚点统一承接，WP-G 合入后建议冒烟复认一次。
+5. **本轮仅本地提交**：4 项修复齐备后按裁决 push + PR；合入为 QA-R2 启动门 §3.1 前置。
