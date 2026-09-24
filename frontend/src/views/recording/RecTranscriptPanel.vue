@@ -83,6 +83,7 @@
         :min-item-size="48"
         key-field="key"
         @scroll="onScrollerScroll"
+        @wheel="onUserWheel"
       >
         <template #default="{ item, index, active }">
           <DynamicScrollerItem
@@ -297,7 +298,12 @@ const mixedItems = computed<MixedItem[]>(() => {
 })
 
 // ── 清理 / Cleanup ──
-onUnmounted(() => { autoFollow.value = false })
+onUnmounted(() => {
+  autoFollow.value = false
+  cancelAnimationFrame(settleRaf1)
+  cancelAnimationFrame(settleRaf2)
+  clearTimeout(settleTimer)
+})
 
 // 追踪上一次 expandedChapters 的快照，用于检测变化并强制 remeasure / Track previous expandedChapters snapshot to detect changes and force remeasure
 let prevExpandedKeys = new Set<number>()
@@ -315,52 +321,99 @@ watch(() => [...props.expandedChapters], (newKeys: number[]) => {
   prevExpandedKeys = new Set(newKeys)
 }, { deep: true })
 
-// ── 自动滚动 / Auto-scroll ──
+// ── 自动滚动（会中实时跟随） / Auto-scroll (live in-meeting follow) ──
 const autoFollow = ref(true)
 const showJumpBtn = ref(false)
 const NEAR_BOTTOM_PX = 80
 
+/* 程序性滚动窗口：scrollToBottom 及其高度校正会触发 scroll 事件，
+   窗口内不把它们误判为「用户上滑」而中断跟随（A2 缺陷根因之一）。
+   Programmatic-scroll window: scroll events fired by scrollToBottom and its
+   size-correction passes must not be misread as user scroll-up. */
+let programmaticUntil = 0
+function markProgrammatic() { programmaticUntil = performance.now() + 300 }
+
+function scrollerEl(): HTMLElement | null {
+  return (scrollerRef.value?.$el as HTMLElement) ?? null
+}
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX
+}
+
+let settleRaf1 = 0
+let settleRaf2 = 0
+let settleTimer = 0
+
+/** 滚到真实底部：虚拟列表行高「先估算后实测」，scrollTop 会被低估的 scrollHeight 截断，
+    故用 双帧 + 250ms 三段校正，高度收敛后视口仍钉在底部（替代 scrollToItem(len-1)，
+    后者把末项对齐到视口顶部而非底部）。
+    Scroll to the true bottom with a 3-pass correction (double rAF + 250ms timeout),
+    because virtual-scroller estimated heights truncate the first scrollTop assignment. */
+function scrollToBottom() {
+  const el = scrollerEl()
+  if (!el) return
+  markProgrammatic()
+  el.scrollTop = el.scrollHeight
+  cancelAnimationFrame(settleRaf1)
+  cancelAnimationFrame(settleRaf2)
+  settleRaf1 = requestAnimationFrame(() => {
+    settleRaf2 = requestAnimationFrame(() => {
+      const e2 = scrollerEl()
+      if (!e2 || !autoFollow.value) return
+      markProgrammatic()
+      e2.scrollTop = e2.scrollHeight
+    })
+  })
+  clearTimeout(settleTimer)
+  settleTimer = window.setTimeout(() => {
+    const e3 = scrollerEl()
+    if (!e3 || !autoFollow.value || isNearBottom(e3)) return
+    markProgrammatic()
+    e3.scrollTop = e3.scrollHeight
+  }, 250)
+}
+
 function onScrollerScroll(e: Event) {
   const el = e.target as HTMLElement
   if (!el) return
-  const dist = el.scrollHeight - el.scrollTop - el.clientHeight
-  if (dist < NEAR_BOTTOM_PX) {
+  if (isNearBottom(el)) {
+    // 回到底部即恢复跟随（含用户手动下滑回底） / Near bottom → resume follow
     autoFollow.value = true
     showJumpBtn.value = false
-  } else {
+  } else if (performance.now() >= programmaticUntil) {
+    // 仅用户滚动可中断跟随；程序性校正窗口内不中断 / Only user scrolls break follow
     autoFollow.value = false
     showJumpBtn.value = true
   }
 }
 
-function jumpToLatest() {
-  const len = mixedItems.value.length
-  if (len > 0) (scrollerRef.value as any)?.scrollToItem(len - 1)
-  autoFollow.value = true
-  showJumpBtn.value = false
+/** 用户滚轮上滑 → 立即暂停跟随（不等 scroll 事件，避免与自动滚底竞争）
+    Wheel-up → pause follow immediately, no race with auto-scroll */
+function onUserWheel(e: WheelEvent) {
+  if (e.deltaY < 0 && autoFollow.value) {
+    autoFollow.value = false
+    showJumpBtn.value = mixedItems.value.length > 0
+  }
 }
 
-// 新行到达 → 自动滚动到底部 / New line arrives → auto-scroll to bottom
-watch(() => props.lines.length, () => {
-  if (!autoFollow.value) return
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      const len = mixedItems.value.length
-      if (len > 0) (scrollerRef.value as any)?.scrollToItem(len - 1)
-    })
-  })
-})
+function jumpToLatest() {
+  autoFollow.value = true
+  showJumpBtn.value = false
+  scrollToBottom()
+}
 
-// 聆听状态更新 → 自动滚动到底部（listening 作为列表末尾 item） / Listening state update → auto-scroll to bottom (listening as last item)
-watch(() => props.listening, (val) => {
-  if (!val || !autoFollow.value) return
-  nextTick(() => {
-    requestAnimationFrame(() => {
-      const len = mixedItems.value.length
-      if (len > 0) (scrollerRef.value as any)?.scrollToItem(len - 1)
-    })
-  })
-})
+// 列表增长（新行到达 / 末行原地合并变长 / 聆听指示器出现）→ 自动滚底。
+// 只看 props，不触碰 realtime 上屏链路（WP-I 在途区）。
+// List growth (new line / tail-line merge growth / listening indicator) → follow bottom.
+// Reads props only; does not touch the realtime ingestion chain (WP-I in-flight area).
+watch(
+  () => [props.lines.length, props.lines[props.lines.length - 1]?.text.length ?? 0, props.listening] as const,
+  () => {
+    if (!autoFollow.value) return
+    nextTick(() => scrollToBottom())
+  }
+)
 
 // ── 辅助函数 / Helper functions ──
 function lineOf(item: MixedItem): TranscriptLine {
@@ -406,10 +459,7 @@ defineExpose({
   scrollerRef,
   scrollToLineIndex,
   scrollToItem: (pos: number) => { (scrollerRef.value as any)?.scrollToItem(pos); autoFollow.value = false },
-  scrollToEnd: () => {
-    const len = mixedItems.value.length
-    if (len > 0) (scrollerRef.value as any)?.scrollToItem(len - 1)
-  },
+  scrollToEnd: () => { scrollToBottom() },
   jumpToLatest,
 })
 </script>
