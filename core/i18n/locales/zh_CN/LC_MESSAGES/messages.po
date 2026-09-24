@@ -126,6 +126,12 @@ msgstr "注入内容不存在"
 
 msgid "To-do not found"
 msgstr "待办不存在"
+msgid "Decision not found"
+msgstr "决策不存在"
+
+msgid "A decision cannot supersede itself"
+msgstr "决策不能取代其自身"
+
 
 msgid "Path not found: {path}"
 msgstr "路径不存在: {path}"

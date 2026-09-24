@@ -26,7 +26,7 @@ from core.errors import classify_error, is_transient_error
 from core.i18n import _
 from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
 from core.speaker_count import estimate_speaker_count
-from core.summarize import parse_todos_from_summary
+from core.summarize import merge_decisions_after_regen, parse_decisions_with_status, parse_todos_from_summary
 
 logger = logging.getLogger(__name__)
 
@@ -596,6 +596,29 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                 if parsed_todos:
                     tasks[task_id]["todos"] = parsed_todos
                     logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_todos)} 条待办")
+
+                # REQ-DECISION-CENTER R1：决策抽取（重新生成只覆盖 auto，保留 manual/injection/backfill）
+                try:
+                    parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
+                    tasks[task_id]["decisions"] = merge_decisions_after_regen(
+                        tasks[task_id].get("decisions") or [], parsed_decisions,
+                    )
+                    if parsed_decisions:
+                        logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_decisions)} 条决策")
+                    if parse_status:
+                        logger.warning(f"[{task_id[:8]}] 决策解析降级（{parse_status}），本轮 auto 决策置空")
+                        joblog.append_event(
+                            task_id, joblog.STAGE_SUMMARY,
+                            f"决策解析降级（{parse_status}）：本轮 auto 决策置空，不影响任务状态", level="warn",
+                        )
+                except Exception as e:
+                    kept = [d for d in (tasks[task_id].get("decisions") or []) if d.get("source") != "auto"]
+                    tasks[task_id]["decisions"] = kept
+                    logger.warning(f"[{task_id[:8]}] 决策抽取异常（不阻断流水线）: {e}")
+                    joblog.append_event(
+                        task_id, joblog.STAGE_SUMMARY,
+                        f"决策抽取异常，auto 决策置空（不阻断流水线）: {e}", level="warn",
+                    )
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
             save_task_to_disk(task_id)

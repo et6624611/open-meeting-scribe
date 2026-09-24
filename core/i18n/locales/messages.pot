@@ -164,6 +164,14 @@ msgstr ""
 msgid "To-do not found"
 msgstr ""
 
+#: app/routers/decisions.py:54 app/routers/decisions.py:152
+msgid "Decision not found"
+msgstr ""
+
+#: app/routers/decisions.py:144
+msgid "A decision cannot supersede itself"
+msgstr ""
+
 #: app/routers/projects.py:60
 #, python-brace-format
 msgid "Path not found: {path}"

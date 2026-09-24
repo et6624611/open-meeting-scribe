@@ -125,6 +125,22 @@ def inject_content(task_id: str, req: InjectRequest):
             "injection_id": item["id"],
         }
         todos.append(todo_item)
+    # REQ-DECISION-CENTER R1：decision 类型注入同步生成结构化决策项 / Decision injection also adds a decision item
+    elif req.type == "decision":
+        decisions = task.setdefault("decisions", [])
+        decision_item = {
+            "id": item["id"],
+            "text": req.content,
+            "status": "active",
+            "pending_confirmation": False,
+            "source": "injection",
+            "created_at": item["injected_at"],
+            "updated_at": item["injected_at"],
+            "superseded_by": None,
+            "related_todo_ids": [],
+            "injection_id": item["id"],
+        }
+        decisions.append(decision_item)
 
     _mark_modified(task_id)
     save_task_to_disk(task_id)
@@ -156,6 +172,9 @@ def delete_injection(task_id: str, injection_id: str):
     # 同步删除关联的 todo / Also delete associated todo
     todos = task.get("todos", [])
     task["todos"] = [t for t in todos if t.get("injection_id") != injection_id]
+    # 同步删除关联的决策项（REQ-DECISION-CENTER R1） / Also delete associated decision item
+    decisions = task.get("decisions", [])
+    task["decisions"] = [d for d in decisions if d.get("injection_id") != injection_id]
     _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
