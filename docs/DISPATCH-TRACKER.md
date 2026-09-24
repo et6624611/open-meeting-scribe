@@ -16,6 +16,14 @@ status: active
 | REQ-PROGRESS-P0 | docs/REQUIREMENT-TRANSCRIBE-PROGRESS-DISPLAY.md v0.3.0（main@7f13a8d） | 前端开发工程师（d1b77737cde5） | session 7ff67e75-b66d-41dc-bcc9-7fcd7375148f / 分支 feat/req-progress-p0（worktree 隔离） | in-progress | 2026-09-24 21:40 产品已向会话追发补证要求（4 项自测证据）；PRD 升 v0.3.0：Q5 裁决关闭，AC-8 降级为角标+toast，系统通知转 P1 | 工程师补自测证据 → 转 awaiting-acceptance → 产品验收 AC-1~6/8/9 → 合入 | ⚠️ 等待工程师补证回报 |
 | DC-DEC-B1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 后端工程师（a4cdbd0ca795） | session c7ddd206-a797-4291-9a23-99b1bf491b00 / 分支 feat/req-decision-center-b1 @ 7e1a328+b2fb8da / PR #7 | in-progress | 2026-09-25 00:10 产品首轮验收：29 用例独立复跑过，R2 API/注入级联/回填幂等/契约 §12 全过；唯 RF-1 阻塞——模板运行时覆盖 SYSTEM_PROMPT，但抽取只读「二、主要结论」，模板真正的决策来源「三、决策」节不被解析（§Q1 缺口未堵上），修复单已下达 | 工程师修 RF-1（双章节抽取+去重+新增用例）→ 复验 → 合入 PR #7 → 产品侧 dogfooding 验 AC-1 + 执行 R4 真实回填 | ⚠️ RF-1 修复中；群回报无发送身份，暂走 session send 兜底 |
 | DC-DEC-F1 | docs/REQUIREMENT-DECISION-CENTER.md v0.2.0（main@bf875ff） | 前端开发工程师（d1b77737cde5） | session 1af94412-472c-4c9d-be9a-19ddb330502d / 分支 feat/req-decision-center-f1（worktree 隔离） | dispatched | 2026-09-24 23:26 派出（R3 决策中心页 + 决策Tab更名行动项）；23:40 追发同款回报条款 | mock 先行开发；主动群回报后产品验收 AC-8/9 → 与 B1 联调 → 合入 | ⚠️ 同工程师已有 REQ-PROGRESS-P0 在途，两分支都动 router/导航，合并顺序 P0 优先、本单后 rebase |
+| AM-B1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md v0.1.0（main@f2445a1） | 后端工程师（a4cdbd0ca795） | session c95528c3-7941-4527-8648-ee0275c885d6 / 分支 feat/req-access-mode-b1（worktree 隔离） | dispatched | 2026-09-25 派工（T1 数据层 access_mode/expert_mode+迁移、T2 后端行为收口+路由变化可感知契约）；含推模式回报条款 | 工程师交付契约/完工回报 → awaiting-acceptance → 产品验收 AC-T1/AC-T2 → 合入 | ⚠️ 同工程师 DC-DEC-B1 在途，两单并行；AM-B1 禁改 frontend/，与 decisions 相关文件冲突需回报协调 |
+
+## 待派工队列
+
+| 单号 | 派工依据 | 拟 Owner | 触发条件 |
+|---|---|---|---|
+| AM-F1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md v0.1.0（T3 三卡片组件 / T4 引导与专家模式 / T5 状态栏统一） | 前端开发工程师（d1b77737cde5） | 项目方裁决 2026-09-25：等 REQ-PROGRESS-P0 与 DC-DEC-F1 两单合入后再派（冲突面最小），届时基于新 main 开 worktree |
+| AM-Q1 | 同上（T6 回归验证，含存量组合迁移用例=发版门禁） | QA | AM-B1 与 AM-F1 均转 awaiting-acceptance 后触发 |
 
 ## 已关闭派工
 
