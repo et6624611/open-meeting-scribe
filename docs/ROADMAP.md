@@ -193,6 +193,10 @@ status: published
 | WP-G + CI 缺陷 | DevOps 工程师 `78087de278c8` | `553f0b93-cff3-4aec-b096-82e3f33e1cbb` | 2026-09-24 02:03 UTC |
 | WP-H + WP-I | 后端工程师 `a4cdbd0ca795` | `c3d2ebf4-9935-4843-ab25-5b00d2a0a780` | 2026-09-24 02:03 UTC |
 | **QA-R1 真机断网验收（第一轮·现状形态）** | **QA 工程师** `365d21fa11a0`（proj_80ccedbb） | `b8ce872e-89b6-4dbb-aa22-3a58bcb8beba` | 2026-09-24 02:43 UTC |
+| **QA-R1 缺陷修复（后端：DEF-01 P0 / DEF-03 / DEF-04 端点 / DEF-02 生成）** | **后端工程师** `a4cdbd0ca795`（proj_282b7189） | `4bf68bed-cdc4-41e4-9c19-2056c5c0c9ab` | 2026-09-24 07:40 UTC |
+| **QA-R1 缺陷修复（前端：DEF-04 回退 UI 与置灰 / DEF-02 导出入口）** | **前端开发工程师** `d1b77737cde5`（proj_f492f6c0） | `df6f3571-6993-4e80-b77a-9074a9de5024` | 2026-09-24 07:40 UTC |
+
+**QA-R1 第一轮结论与派工裁决（2026-09-24，产品确认）**：QA-R1 总判定 **FAIL**（AC-3/AC-6 通过；AC-1/AC-4/AC-5 不达标；AC-2 blocked-on-human），报告已入库（分支 `qa/local-engine-r1-20260924` @ `854be3a`，按项目方指令**修复后再 push**）。缺陷修复任务书见 `docs/QA-R1-DEFECTS-DISPATCH.md`。项目方裁决：①可以派工（已下发上表两条 Session）；②**本轮以 macOS 跑通为准，Windows 真机项顺延下一环节**；③修复完成前不 push。产品裁决：docx 保留在 v10 范围（不收敛 AC-1 口径）；AC-5 承诺口径收敛为「运行期零非 localhost 出网（含加载期），模型首次获取需联网」；**AC-2 人工听校人仍待项目方指定**（移交单：`tests/eval_local_engine/QA-R1-AC2-HUMAN-PROOFREAD-HANDOFF.md`）。
 
 **QA-R1 范围口径**：本轮判 **AC-1（venv 形态）/ AC-2 / AC-3 / AC-4 / AC-5 / AC-6 真机复测**；**AC-7 / AC-9 / AC-10 本轮不判**（依赖 WP-G/WP-I 交付，留第二轮）。所有证据须标注「venv 形态，未经冻结包验证」，两轮结论不得混写；Windows 侧若无可用真机须标 `blocked-on-hardware`，禁止用 macOS 结论顶替。
 

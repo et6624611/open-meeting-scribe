@@ -1,0 +1,80 @@
+---
+id: QA-R1-DEFECTS
+title: QA-R1 验收缺陷修复派工说明（DEF-QA-R1-01/02/03/04）
+version: 1.0.0
+status: dispatched（项目方 2026-09-24 批准派工；Windows 项按项目方裁决顺延至下一环节）
+date: 2026-09-24
+source: docs/QA-R1-LOCAL-ENGINE-ACCEPTANCE.md（commit `854be3a`，分支 `qa/local-engine-r1-20260924`）
+prd: docs/PRD-LOCAL-ENGINE.md §10（AC-1 / AC-4 / AC-5）
+related:
+  - docs/WP-G-R8-PACKAGING-DISPATCH.md
+  - docs/ROADMAP.md v10「派工执行记录」
+owners:
+  - 后端工程师 `a4cdbd0ca795`（DEF-01 / DEF-02 生成侧 / DEF-03 并入 WP-H / DEF-04 端点侧）
+  - 前端开发工程师 `d1b77737cde5`（DEF-02 导出入口 / DEF-04 回退 UI 与置灰）
+approvers: 项目方（2026-09-24 裁决：可以派工；先跑通 macOS，Windows 放下一环节；修复后再 push）
+---
+
+# QA-R1 缺陷修复派工说明
+
+## 0. 总口径（产品裁决，不得静默变通）
+
+1. **基线 FAIL 已确认**：QA-R1 第一轮（venv 形态 · macOS · `fc5c72f`）总判定 FAIL，本报告接受、不复议。
+2. **修复顺序**：DEF-01（P0）先行 → DEF-03（与其同引擎域，合并处置）→ DEF-04 / DEF-02。DEF-01 未修复前，**禁止**任何对外材料强化「数据永不出设备 / 断网闭环已成立」表述（README 现有 🚧 开发中标注保留）。
+3. **docx 裁决**：DEF-02 选择**实现 docx**，AC-1 口径**不收敛**为 md-only。理由：docx 是企业会议纪要的主流交付格式，属目标用户真实交付物；`python-docx` 已在依赖（requirements.txt:38），边际成本低。
+4. **AC-5 承诺口径**：不降级文字，收敛定义为「**运行期**零非 localhost 出网（含模型加载期）；模型首次获取（下载）需联网，属获取期行为」。DEF-01 修复后由 QA 复跑死端口代理抓包正式判 AC-5。
+5. **平台范围**：本轮修复与回归验证**以 macOS 为准**（项目方裁决）；Windows 真机项（含 AC-10 Win L1）顺延至下一环节，随 WP-G 冻结包与第二轮验收处理。
+6. **入库纪律**：各项目在独立 worktree 内提交（同 WP-G/WP-H 已下发纪律）；**修复完成前不 push origin 合并**——QA 产物 commit `854be3a` 也按项目方指令保持本地待推，随本轮修复一起入库。
+
+## 1. 交付物索引（证据已入库）
+
+- 验收报告：`docs/QA-R1-LOCAL-ENGINE-ACCEPTANCE.md`（worktree 分支 `qa/local-engine-r1-20260924` @ `854be3a`）
+- 复现脚本：`tests/eval_local_engine/qa_r1_{offline_probe,asr_mem,downstream}.py`（同 commit）
+- 证据目录（gitignored）：`.eval_local_engine/qa_r1/`（T1/T2 失败日志、T3 修复方向验证日志等）
+
+## 2. 逐单任务书
+
+### DEF-QA-R1-01｜P0｜断网下模型加载失败（ModelScope ID 强制出网）
+
+- **归属**：后端工程师 `a4cdbd0ca795`
+- **建议分支**：`fix/qa-r1-def01-offline-model-load`
+- **现象/根因**：`core/engine_worker.py:88`（`_get_asr_model`）与 `:105`（`_get_spk_model`）以 ModelScope ID 调 `funasr.AutoModel(disable_update=True)`；`disable_update=True` 不阻止 modelscope 的 `GET modelscope.cn/api/v1/models/<id>/repo/files` 元数据请求，断网下 5 次重试全失败 → 模型未注册 → 断网闭环第一步即断裂（`core/engine_worker.py:93-106` 同源影响声纹姓名化）。
+- **修复方向（QA probe T3 已验证可行）**：`AutoModel` 入参改为**本地文件系统路径**，经 `core.model_registry.get_model_root(key)` 解析到 `data/models/hub/iic/<model>`；模型缺失时给可行动错误（引导下载），不得隐式回连。
+- **Done 判据**：
+  1. 死端口代理（`HTTP(S)_PROXY=http://127.0.0.1:9`）+ 完整本地缓存下，ASR 与 CAM++ 均加载成功并出真实结果（复现入口：`qa_r1_offline_probe.py` 的 T1 场景改后须 PASS）。
+  2. 新增回归测试：「断网（modelscope.cn 不可达）下引擎可加载并推理」，纳入 `ci-local-engine` 链路。
+  3. 全仓 grep 确认 local 运行期无新增非 localhost 出网点；有网首下链路（项目下载器）行为不变。
+- **风险提示**：冻结包形态（WP-G）下路径解析另受相对路径缺陷 B-2 影响（见 WP-G 派工单 §2），修复时用绝对路径锚点，勿留 `Path("data/models")` 相对写法。
+
+### DEF-QA-R1-03｜P1｜30 分钟首请求 ≈190s 超 ENGINE_REQUEST_TIMEOUT=180s
+
+- **归属**：后端工程师 `a4cdbd0ca795`，**并入 WP-H 超时口径一并处置**
+- **依据**：模型惰性加载 ⇒ 首个 ASR 请求 = 加载 15.7s + 推理 174.3s ≈ 190s > `core/engine_host.py:31` 的 180s ⇒ 预计整场 `engine_timeout`（推导值，置信中高，未活体观测，因被 DEF-01 前置阻断）。
+- **修复方向（三选一或组合，回报产品后定）**：① 引擎启动**预热**（加载移出首请求，推荐）；② 分段送推理；③ 上调/可配置 `ENGINE_REQUEST_TIMEOUT`。
+- **Done 判据**：macOS 真机 30 分钟会议在 app 路径整场成功、无 `engine_timeout`；补 30/60 分钟不整场失败回归（对齐第二轮 AC-9）。冻结态冷 import 可达 86s，预热须覆盖该形态裕量声明。
+
+### DEF-QA-R1-04｜P1｜AC-4 回退「切云端重跑」通路与内网置灰缺失
+
+- **归属**：后端（端点）+ 前端 `d1b77737cde5`（UI）
+- **现状缺口**（报告 §2.4）：`can_fallback_cloud` 落盘但前端零引用、无 router 消费；无 `engine_override=cloud` 重试端点（`/api/tasks/{id}/retranscribe` 只按当前设置重跑）；引擎下拉无云端置灰逻辑（现有置灰是「本地 LLM 预设不可达」，非 AC-4 要求）。
+- **修复方向**：后端新增/改造重试端点支持显式 `engine_override=cloud`（保持任务与笔记状态不丢失，复用 `pipeline_runner.on_failure` 落盘语义）；前端在失败态消费 `can_fallback_cloud`：`True` ⇒ 渲染「切云端重试」按钮 + **显式确认**（含数据上云告知）；`False` ⇒ 置灰 + 说明原因（纯内网不可用云端）。
+- **Done 判据**：AC-4 两子项（切云端重跑引导 / 纯内网置灰）在 macOS 真机浏览器 E2E 可演示；回归不得破坏「任务状态不丢失」现有通过项。
+
+### DEF-QA-R1-02｜P1｜docx 导出未实现
+
+- **归属**：后端（生成）+ 前端（入口）
+- **现状**：`/api/download/{task_id}` 仅回 `.md`（`app/routers/tasks.py:200-220`）；`python-docx` 仅用于知识库读取（`core/project_index.py`）；`LibraryView.vue:461` `batchExport()` 为 alert 占位。
+- **修复方向**：新增 md→docx 导出（标题/说话人段落/时间戳映射为 Word 结构，中文不乱码）；下载端点支持格式参数；前端批量导出接真实现。
+- **Done 判据**：真实会议纪要导出的 docx 可被 Word/WPS 正常打开、结构完整；批量导出无 alert 占位残留；AC-1 导出子项在第二轮复测 PASS。
+
+## 3. 第二轮验收前置条件（QA-R2 启动门）
+
+1. DEF-01/02/03/04 修复合入并 push；
+2. AC-2 人工听校 `refs/SEG-*_human_ref.txt` 回填（**仍待项目方指定听校人**）；
+3. WP-G 冻结包产物可用（AC-7/9/10 与冻结包形态依赖）；
+4. OBS-QA-R1-01：云端 voiceprint-service 重部署 + `scripts/backfill_voiceprints.py` 注册表回填，第二轮做线上跨网络复测。
+5. 流程教训（产品侧已登记）：WP-C 早前「全程离线」结论疑在有网环境得出——**第二轮所有离线判定强制使用死端口代理法**，不接受无抓包佐证的离线声明。
+
+## 4. 回报要求
+
+各 owner 完成后在本文件追加「执行进展」小节（commit 链接 + 回归证据路径）；判定建议值技术不可行的，回报产品，不得静默变通。
