@@ -14,7 +14,8 @@
     "hotwords": "热词",
     "settings": "设置",
     "projects": "知识库",
-    "library": "会议库"
+    "library": "会议库",
+    "decisions": "决策中心"
   },
   "tab_chat": "对话",
   "tab_context": "上下文",

@@ -354,6 +354,7 @@
 
       <DecisionFlowPanel
         :visible="activeTab === 'todos'"
+        :task-id="data.taskId"
         :todos="todos"
         :show-add-form="showAddForm"
         v-model:new-todo-text="newTodoText"
@@ -425,7 +426,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject } from '@/api/tasks'
@@ -457,6 +458,7 @@ import { useMeetingRoster } from '@/composables/useMeetingRoster'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const taskStore = useTaskStore()
 
 // ─── 模板 refs / Template refs ───
@@ -627,6 +629,36 @@ const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore, trigg
 
 // ─── 工具栏操作 / Toolbar actions ───
 function onEditSummary() { closeGenMore(); data.switchTab('summary') }
+
+/**
+ * 决策中心跳转锚点：?tab=summary&dq=<决策文本> → 切到纪要页并在正文中定位选区高亮。
+ * 文本可能因纪要编辑而对不上：匹配失败后静默停留在纪要页，不报错、不白屏。
+ * Anchor flow from the Decision Center: switch to the minutes tab and select the
+ * quoted decision text; a failed match degrades silently to the plain minutes view.
+ */
+function anchorFromDecisionCenter() {
+  const tab = typeof route.query.tab === 'string' ? route.query.tab : ''
+  if (tab && data.TABS.value.some(x => x.id === tab)) data.switchTab(tab)
+  const dq = typeof route.query.dq === 'string' ? route.query.dq.trim() : ''
+  if (!dq) return
+  let attempts = 0
+  const tick = () => {
+    attempts += 1
+    const md = data.summaryMd.value
+    const el = summaryPanelRef.value?.textareaEl as HTMLTextAreaElement | undefined | null
+    if (md && el) {
+      let idx = md.indexOf(dq)
+      if (idx < 0) idx = md.indexOf(dq.slice(0, 10))
+      if (idx >= 0) {
+        el.focus({ preventScroll: false })
+        el.setSelectionRange(idx, Math.min(idx + dq.length, md.length))
+        return
+      }
+    }
+    if (attempts < 15) window.setTimeout(tick, 250)
+  }
+  window.setTimeout(tick, 100)
+}
 async function onRetrySummary() {
   closeGenMore()
   await retrySummary(data.taskId)
@@ -815,6 +847,9 @@ onMounted(async () => {
   }
   document.addEventListener('click', panel.onDocClickCloseSearch)
   document.addEventListener('click', binding.onDocClickForDropdown)
+
+  // 决策中心跳转锚点 / Anchor positioning when coming from the Decision Center
+  anchorFromDecisionCenter()
 
   // 章节滚动追踪 + 用户主动滚动时停止播放跟随 / Chapter scroll tracking + stop playback follow on user scroll
   nextTick(() => {

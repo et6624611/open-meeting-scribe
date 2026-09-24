@@ -217,7 +217,7 @@
     "transcript": "原文",
     "notes": "随记",
     "summary": "纪要",
-    "todos": "决策"
+    "todos": "行动项"
   },
   "ai_actions": {
     "rewrite": "请帮我改写以下内容，保持原意但更精炼",
@@ -264,5 +264,11 @@
   },
   "pipeline": {
     "completed": "纪要已生成"
-  }
+  },
+  "decisions_panel_title": "本会议决策",
+  "decisions_panel_link": "去决策中心",
+  "decisions_panel_none": "本次会议还没有结构化决策",
+  "decisions_panel_pending": "待确认",
+  "decisions_panel_superseded": "已被取代",
+  "decisions_panel_revoked": "已撤销"
 }

@@ -1,6 +1,27 @@
 <template>
-  <!-- 决策流面板 / Decision flow panel -->
+  <!-- 行动项面板（原「决策」Tab，REQ-DECISION-CENTER R5 术语消歧） / Action-items panel (formerly "Decisions" tab) -->
   <div class="gen-panel" :class="{ hidden: !visible }">
+    <!-- 本会议决策只读区：决策对象归决策中心管理，此处只读展示 + 入口
+         Read-only section of this meeting's structured decisions, with a link to the Decision Center -->
+    <section class="fp-decisions" :aria-label="t('generating.decisions_panel_title')">
+      <div class="fp-decisions-head">
+        <span class="fp-decisions-title">{{ t('generating.decisions_panel_title') }}</span>
+        <RouterLink class="fp-decisions-link" :to="{ name: 'decisions' }">
+          {{ t('generating.decisions_panel_link') }}
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </RouterLink>
+      </div>
+      <ul class="fp-decisions-list" v-if="meetingDecisions.length">
+        <li v-for="d in meetingDecisions" :key="d.id" class="fp-decision-item" :class="'fp-st-' + d.status">
+          <span class="fp-decision-dot"></span>
+          <span class="fp-decision-text" :title="stripDecisionEmphasis(d.text)">{{ stripDecisionEmphasis(d.text) }}</span>
+          <span v-if="d.pending_confirmation && d.status === 'active'" class="fp-decision-badge">{{ t('generating.decisions_panel_pending') }}</span>
+          <span v-else-if="d.status !== 'active'" class="fp-decision-badge fp-decision-badge-muted">{{ t('generating.decisions_panel_' + d.status) }}</span>
+        </li>
+      </ul>
+      <div class="fp-decisions-none" v-else>{{ t('generating.decisions_panel_none') }}</div>
+    </section>
+
     <!-- 顶部：进度摘要 + 添加 / Top: progress summary + add -->
     <div class="db-toolbar" v-if="todos.length">
       <div class="db-toolbar-left">
@@ -72,16 +93,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TodoItem, DecisionStatus } from '@/api/types'
 import type { TodoPatch } from '@/api/notes'
+import type { DecisionRecord } from '@/api/decisions'
+import { fetchTaskDecisions } from '@/api/decisions'
+import { stripDecisionEmphasis } from '@/utils/decisionText'
 import DecisionNode from './DecisionNode.vue'
 
 const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean
+  taskId: string
   todos: TodoItem[]
   showAddForm: boolean
 }>()
@@ -111,6 +136,20 @@ const mainNodes = computed(() => activeNodes.value)
 
 const showCompleted = ref(false)
 
+// ── 本会议决策（只读，首次展开面板时拉取；后端 DC-DEC-B1 未就绪时静默降级） ──
+// This meeting's decisions: fetched lazily on first open, failures degrade to the empty hint
+const meetingDecisions = ref<DecisionRecord[]>([])
+let decisionsLoaded = false
+watch(() => props.visible, async (v) => {
+  if (!v || decisionsLoaded) return
+  decisionsLoaded = true
+  try {
+    meetingDecisions.value = await fetchTaskDecisions(props.taskId)
+  } catch {
+    meetingDecisions.value = []
+  }
+}, { immediate: true })
+
 // ── 进度摘要 / Progress summary ──
 const counts = computed(() => {
   const c: Record<string, number> = { to_decide: 0, to_start: 0, in_progress: 0, to_confirm: 0, done: 0 }
@@ -131,3 +170,22 @@ const summaryText = computed(() => {
 })
 
 </script>
+
+<style scoped>
+/* 只读决策区：紧凑列表 + 状态点/徽标复用决策流基元色 / Read-only decisions section */
+.fp-decisions { margin-bottom: var(--s-4); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.fp-decisions-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.fp-decisions-title { font-size: var(--fs-12); color: var(--muted); font-weight: 600; }
+.fp-decisions-link { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-12); color: var(--accent); text-decoration: none; }
+.fp-decisions-link:hover { text-decoration: underline; }
+.fp-decisions-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.fp-decision-item { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-13); color: var(--fg); min-width: 0; }
+.fp-decision-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--st-done); }
+.fp-decision-item.fp-st-superseded .fp-decision-dot { background: var(--st-decide); }
+.fp-decision-item.fp-st-revoked .fp-decision-dot { background: var(--error); }
+.fp-decision-item.fp-st-superseded .fp-decision-text, .fp-decision-item.fp-st-revoked .fp-decision-text { color: var(--subtle); text-decoration: line-through; }
+.fp-decision-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-decision-badge { flex-shrink: 0; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 999px; background: oklch(0.94 0.04 70); color: var(--st-confirm); }
+.fp-decision-badge-muted { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.fp-decisions-none { margin-top: 4px; font-size: var(--fs-12); color: var(--subtle); }
+</style>

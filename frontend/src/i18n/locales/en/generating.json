@@ -216,7 +216,7 @@
     "transcript": "Transcript",
     "notes": "Notes",
     "summary": "Minutes",
-    "todos": "Decisions"
+    "todos": "Action Items"
   },
   "ai_actions": {
     "rewrite": "Please rewrite the following, keeping the original meaning but more concise",
@@ -263,5 +263,11 @@
   },
   "pipeline": {
     "completed": "Minutes ready"
-  }
+  },
+  "decisions_panel_title": "Decisions from this meeting",
+  "decisions_panel_link": "Open Decision Center",
+  "decisions_panel_none": "No structured decisions for this meeting yet",
+  "decisions_panel_pending": "Pending",
+  "decisions_panel_superseded": "Superseded",
+  "decisions_panel_revoked": "Revoked"
 }

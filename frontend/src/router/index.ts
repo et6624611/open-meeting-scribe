@@ -48,6 +48,11 @@ const router = createRouter({
       name: 'library',
       component: () => import('@/views/LibraryView.vue'),
     },
+    {
+      path: '/decisions',
+      name: 'decisions',
+      component: () => import('@/views/DecisionCenterView.vue'),
+    },
   ],
 })
 

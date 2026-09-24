@@ -26,7 +26,7 @@
   "rail_projects": "Knowledge Base",
   "rail_speakers": "Speakers",
   "rail_hotwords": "Hotwords",
-    "rail_agents": "AI Assistants",
+  "rail_agents": "AI Assistants",
   "rail_settings": "Settings",
   "rail_settings_version": "Settings · {version}",
   "rail_toggle_sidebar": "Toggle Sidebar",
@@ -36,5 +36,6 @@
   "date_last_week": "Last Week",
   "date_this_month": "This Month",
   "date_last_month": "Last Month",
-  "date_earlier": "Earlier"
+  "date_earlier": "Earlier",
+  "rail_decisions": "Decision Center"
 }

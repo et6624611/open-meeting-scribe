@@ -14,7 +14,8 @@
     "hotwords": "Hotwords",
     "settings": "Settings",
     "projects": "Knowledge Base",
-    "library": "Meeting Library"
+    "library": "Meeting Library",
+    "decisions": "Decision Center"
   },
   "tab_chat": "Chat",
   "tab_context": "Context",
