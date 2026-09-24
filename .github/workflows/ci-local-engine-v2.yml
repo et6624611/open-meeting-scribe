@@ -149,7 +149,7 @@ jobs:
         path: |
           wp-d-pyinstaller.log
           wp-d-frozen-smoke.log
-        retention-days: 14
+        retention-days: 7
         if-no-files-found: ignore
 
   cloud-package-size-guard:
@@ -239,5 +239,5 @@ jobs:
       with:
         name: cloud-size-report
         path: cloud-size-report.json
-        retention-days: 30
+        retention-days: 14
         if-no-files-found: ignore
