@@ -64,6 +64,9 @@
 .gen-meta-proj-item { display: flex; align-items: center; width: 100%; padding: 6px 10px; border: none; background: none; color: var(--fg); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); transition: background 0.12s; text-align: left; }
 .gen-meta-proj-item:hover { background: var(--surface-2); }
 .gen-meta-proj-item.is-selected { color: var(--accent); font-weight: 500; }
+/* 键盘导航高亮（useDropdownPopup 统一规范）：与 :hover 同级视觉 + 焦点描边
+   Keyboard nav highlight (useDropdownPopup spec): hover-level background + focus outline */
+[data-dd-item].is-nav-active { background: var(--surface-2); outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
 .gen-meta-proj-divider { height: 1px; background: var(--border); margin: 4px 0; }
 .gen-meta-proj-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); margin: -4px -4px 4px; border-radius: var(--radius) var(--radius) 0 0; }
 .gen-meta-proj-search svg { width: 14px; height: 14px; color: var(--subtle); flex-shrink: 0; }

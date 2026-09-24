@@ -135,8 +135,8 @@
             <svg v-if="!task?.project_id" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </span>
-          <div class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-            <!-- 检索输入框 / Search input -->
+          <div ref="kbDropdownRef" class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
+            <!-- 检索输入框（焦点保持在输入框；Esc 由 useDropdownPopup 统一处理） / Search input (keeps focus; Esc handled by useDropdownPopup) -->
             <div class="gen-meta-proj-search">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input
@@ -144,18 +144,17 @@
                 v-model="kbSearchQuery"
                 class="gen-meta-proj-search-input"
                 :placeholder="t('generating.meta.kb_search_placeholder')"
-                @keydown.escape="showProjectDropdown = false"
               />
             </div>
             <!-- 过滤后的知识库列表 / Filtered project list -->
             <template v-if="filteredProjects.length > 0">
-              <button v-for="p in filteredProjects" :key="p.id" class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
+              <button v-for="p in filteredProjects" :key="p.id" data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
                 {{ p.name }}
               </button>
             </template>
             <!-- 不关联知识库 / No knowledge base linked -->
             <div class="gen-meta-proj-divider"></div>
-            <button class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
+            <button data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
               {{ t('generating.meta.no_project') }}
             </button>
             <!-- 新建知识库区域 / Create KB area -->
@@ -167,15 +166,16 @@
                   v-model="kbCreateName"
                   class="gen-meta-proj-create-input"
                   :placeholder="t('generating.meta.create_kb')"
+                  data-dd-enter="native"
                   @keydown.enter="createAndLinkKb"
-                  @keydown.escape="showKbCreateInput = false; kbCreateName = ''"
+                  @keydown.escape.stop="showKbCreateInput = false; kbCreateName = ''"
                 />
               </div>
             </template>
             <template v-else-if="filteredProjects.length === 0 && projects.length > 0">
               <!-- 检索无匹配但总列表非空 / Search no match but total list non-empty -->
               <div class="gen-meta-proj-divider"></div>
-              <button class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+              <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
                 <span v-else>{{ t('generating.meta.create_kb') }}</span>
@@ -184,7 +184,7 @@
             <template v-else-if="projects.length === 0">
               <!-- 知识库总数为 0 / Total projects is 0 -->
               <div class="gen-meta-proj-divider"></div>
-              <button class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+              <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
                 <span v-else>{{ t('generating.meta.create_kb') }}</span>
@@ -395,6 +395,7 @@ import { useTaskStore } from '@/stores/task'
 import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject } from '@/api/tasks'
 import type { SyncStatus } from '@/api/tasks'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useDropdownPopup } from '@/composables/useDropdownPopup'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
@@ -426,6 +427,7 @@ const summaryPanelRef = ref<InstanceType<typeof SummaryPanel> | null>(null)
 const notesPanelRef = ref<InstanceType<typeof NotesPanel> | null>(null)
 const kbSearchInputRef = ref<HTMLInputElement | null>(null)
 const kbCreateInputRef = ref<HTMLInputElement | null>(null)
+const kbDropdownRef = ref<HTMLElement | null>(null)
 
 // ─── Composable 编排 / Composable orchestration ───
 const data = useGeneratingData(transcriptPanelRef, summaryPanelRef, notesPanelRef)
@@ -557,17 +559,27 @@ watch(boundNames, (names) => {
   if (changed) rosterComposable.persist()
 })
 
-// ─── 知识库下拉打开时自动聚焦检索框 / Auto-focus search input when KB dropdown opens ───
+// ─── 知识库下拉：统一弹出交互规范（点击外部关闭 + ↑↓/Enter 键盘导航 + 焦点保持在检索框）
+//     KB dropdown: unified popup spec (click-outside close + ↑↓/Enter nav + focus stays in search input) ───
+const { resetNav: resetKbNav } = useDropdownPopup({
+  isOpen: () => data.showProjectDropdown.value,
+  close: () => { data.showProjectDropdown.value = false },
+  root: kbDropdownRef,
+  autoFocus: kbSearchInputRef,
+})
+
+// ─── 知识库下拉打开时聚焦检索框；关闭时清理状态 / Focus search on open; clean up state on close ───
 watch(() => data.showProjectDropdown.value, (open) => {
-  if (open) {
-    nextTick(() => { kbSearchInputRef.value?.focus() })
-  } else {
+  if (!open) {
     // 关闭时清理检索与新建状态 / Clean up search & create state on close
     data.kbSearchQuery.value = ''
     data.showKbCreateInput.value = false
     data.kbCreateName.value = ''
   }
 })
+
+// 检索词或就地新建状态变化 → 候选项集合已变，重置键盘高亮 / Filter or create-state change → reset nav highlight
+watch([data.kbSearchQuery, data.showKbCreateInput], () => resetKbNav())
 
 // ─── 更多菜单 / More menu ──
 const genMoreBtn = ref<HTMLElement | null>(null)

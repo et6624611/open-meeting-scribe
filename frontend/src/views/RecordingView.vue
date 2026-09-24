@@ -16,8 +16,9 @@
       :roster-search="rosterSearch"
       :filtered-roster-speakers="filteredRosterSpeakers"
       :roster-focus-idx="rosterFocusIdx"
-      @toggle-project-dropdown="showProjectDropdown = !showProjectDropdown"
+      @toggle-project-dropdown="showProjectDropdown = !showProjectDropdown; showRosterDropdown = false"
       @select-project="onSelectProject"
+      @close-project-dropdown="showProjectDropdown = false"
       @toggle-focus="onFocusMode"
       @toggle-roster="toggleRosterDropdown"
       @update:roster-search="rosterSearch = $event"
@@ -25,6 +26,7 @@
       @roster-remove="rosterComposable.removeMember($event)"
       @roster-select="onRosterSelect"
       @roster-create="onRosterCreate"
+      @close-roster="showRosterDropdown = false"
     />
 
     <!-- 内容区 / Content area -->
@@ -188,6 +190,7 @@
       v-model="bindSearch"
       @bind="onBindSpeaker"
       @create-and-bind="onCreateAndBind"
+      @close="closeBindPopover"
     />
 
     <!-- 放弃录音确认弹窗 / Abandon recording confirmation dialog -->
@@ -293,6 +296,7 @@ const filteredRosterSpeakers = computed(() => {
 
 function toggleRosterDropdown() {
   showRosterDropdown.value = !showRosterDropdown.value
+  showProjectDropdown.value = false
   if (showRosterDropdown.value) {
     rosterSearch.value = ''
     rosterFocusIdx.value = -1
@@ -528,7 +532,6 @@ onMounted(async () => {
   presence.start()
   const tid = taskId.value
   if (tid) { recorder.taskId.value = tid; await recorder.checkStatus(); ws.connect(tid); try { speakers.value = await fetchSpeakers() } catch {}; notes.restoreFromStorage() }
-  document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKeydown)
   // 绑定当前会议，加载已有洞察消息 / Bind current task, load existing insights
   await insights.setCurrentTask(taskId.value)
@@ -544,10 +547,11 @@ onMounted(async () => {
 onUnmounted(() => {
   presence.stop(); ws.disconnect()
   if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer)
-  document.removeEventListener('click', onDocClick); document.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('keydown', onKeydown)
 })
 
-function onDocClick(e: Event) { if (bindPopover.value.visible && !(e.target as HTMLElement).closest('.rec-bind-popover')) closeBindPopover() }
+// 说话人绑定弹窗的「点击外部关闭」已由 RecSpeakerBind 内 useDropdownPopup 统一接管
+// Click-outside close for the speaker-bind popover is handled by useDropdownPopup inside RecSpeakerBind
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && isFocusMode.value) onFocusMode() }
 
 </script>
