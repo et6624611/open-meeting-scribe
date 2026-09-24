@@ -7,7 +7,7 @@
 - 根因三层全部修复：①workflow 元数据注册（改名重注册）→ ②job 级 `env:` 使用 `runner` 上下文导致整个 workflow 编译失败（HTTP 422，解释了 0s/0 jobs/name 不解析/paths 失效全部症状）→ ③内容级缺陷（cp1252 中文崩溃、TOC 扫描误报、`[STUB] PASS` 契约断言不匹配、诊断性上传被账号 artifact 配额误杀）。
 - **历史性进展**：run 35948224216 首次真实执行两个 job。Windows 冻结冒烟本体全部通过：torch 2.14.0+cpu import → funasr import → multiprocessing spawn 冻结子进程 → AutoModel 替身权重加载链 → generate 推理产出文本 → MODELSCOPE_CACHE 零文件守护（未触发任何真实下载）。AC-7 体积守护 `[SIZE] PASS`。
 - 末段两个非本体失败已修（commit `1366a5c`，已合 main）：stub 末行补契约字面 `[STUB] PASS`；冒烟日志/体积报告两处 `upload-artifact` 加 `continue-on-error: true`。
-- 验证 run：**35949609223 in_progress**（main@a7aac5d）。绿灯后 G-6 补 local 链路冒烟。
+- ✅ **验证 run 35949609223 首次双 job 全绿**（main@a7aac5d）：「Windows 冻结引擎替身冒烟（WP-D）」success + 「AC-7 云精简包体积守护」success。G-6 local 链路冒烟（替身权重）随本 run 达成。
 - ⚠️ **需项目方决策**：GitHub 账号级 artifact 存储配额已满（`Failed to CreateArtifact: Artifact storage quota has been hit`）。删除历史 artifacts 属共享资源操作，我不擅自执行；请项目方选择：清理历史 artifacts 或升级存储配额。
 
 ## 2. WP-G 交付状态（A 包）
@@ -20,7 +20,7 @@
 | G-4 Win Inno 组件 | ✅ | `[Types] standard/full/custom` + `[Components] engine`；standard 云模式体积不变；`docs/ENGINE-COMPONENT-OFFLINE-PACK.md` 离线包手册 |
 | G-4b mac 应用内一键落位 | ✅（后端） | `core/engine_installer.py`（zip sha256→zip-slip 防护→manifest 逐文件校验→原子换入 `<锚点>/engine/`，含剥壳误判修复）+ `/api/engine/component/*` 路由 |
 | G-5 首启引导接 UI | ⛔ 需协调 | 前端接线撞上 6 个在途 WIP 文件（`frontend/src/api/engine.ts`、`stores/engine.ts`、`SettingsView.vue`），按纪律不碰；后端数据源已就绪（component 三态+安装进度轮询 API），请 PM 协调 WP-F UI owner 接线 |
-| G-6 CI local 冒烟 | 🕐 blocked by CI 绿灯 | run 35949609223 观察中 |
+| G-6 CI local 冒烟 | ✅ | run 35949609223 双 job 全绿：冻结冒烟（import/spawn/加载链/推理/零真实下载守护）+ AC-7 体积守护 |
 | G-7 mac 签名+公证+dmg | 🚧 **blocked-on-credentials** | 脚本链完整交付（`build/macos_sign_notarize.sh` + entitlements + build-macos.yml 改造），凭据缺失自动 dry-run 产未签名 dmg 并显式标注；硬前提=项目方提供 Apple Developer ID .p12 + notary API key。**不声称 mac 一键安装已完成** |
 
 - 测试：新增 43 例（`test_engine_packaging_g3.py` 23 + `test_engine_installer_g4.py` 20）全绿；全量 303 passed 无回归（worktree 环境差异已排除：补 `.env`/`data/settings.json`/`philosophies.json` 后与主工作区一致）。
@@ -29,6 +29,6 @@
 
 ## 3. AC-10 验收口径预判
 
-- L2（引擎组件应用内一键落位）：双平台后端就绪；绿灯依赖 CI 引擎包构建（`build-engine.yml` 首跑）+ 前端接线。
+- L2（引擎组件应用内一键落位）：双平台后端就绪；剩余依赖 `build-engine.yml` 首跑（引擎包产物）+ G-5 前端接线。
 - L1（mac .dmg+签名+公证）：视 Apple 凭据，当前 blocked-on-credentials。
 - 组件三态截图：需真机/冻结包，待 G-6 绿灯后补。
