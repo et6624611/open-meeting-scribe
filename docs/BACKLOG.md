@@ -4,8 +4,8 @@ description: 零散缺陷与体验优化条目，从版本主线中剥离独立�
 tags: ["backlog", "requirements", "bugfix", "ux"]
 author: Yongliang Wang
 created_at: 2026-09-07
-updated_at: 2026-09-23
-version: "1.6.0"
+updated_at: 2026-09-24
+version: "1.7.0"
 status: published
 ---
 
@@ -567,6 +567,11 @@ ai_context: "确认了星瀚预算模块采用 RESTful API 对接，数据迁移
 **目标**：将 `data/output/` 的 178 个平铺哈希命名文件改造为「知识库 → 会议 → 内容层」渐进式目录结构，配 JSON 分层索引，消费方以 Agent 为主。来源：2026-09-24 用户反馈 D1，访谈决策已确认（分目录方式/分层索引/Agent 优先）。
 
 完整方案骨架、非目标、AC-1~AC-5 与风险（含与 WP-G/WP-I 路径交叠）见 [REQUIREMENT-AI-NATIVE-OUTPUT-STRUCTURE.md](REQUIREMENT-AI-NATIVE-OUTPUT-STRUCTURE.md)。状态：**可排期**（R2 已裁决：目录用稳定 ID、显示名进索引，Agent 友好优先）。工程方案已派后端 `a4cdbd0ca795` Session `43e34ef2`（仅设计不动代码，2026-09-24 running）。
+
+### 跨会议决策中心：Decision 结构化与全量查看（REQ-DECISION-CENTER）
+**目标**：把"会议最终产生的决策"从纪要 markdown 里的一段文字升级为结构化数据对象（`task["decisions"]`），提供跨会议「决策中心」页面（检索/筛选/生效状态管理/取代链），并回填存量会议。解决"无全量视角 + 决策无结构化源（OUTPUT-STRUCT 计划 §Q1）"两个叠加缺口。
+
+完整数据模型、抽取契约、API、UI、回填方案、AC-1~10 与派工拆单见 [REQUIREMENT-DECISION-CENTER.md](REQUIREMENT-DECISION-CENTER.md)。状态：**approved v0.2.0**（项目方 2026-09-24 四项裁决：P1 根治、`[待确认]` 默认可见、不做纪要重同步、议题维度 v1 不做）。本需求同时落定 OUTPUT-STRUCT §Q1 渲染源改判（`task["decisions"]` + todos 共同渲染 `decisions.md`）。
 
 ---
 
