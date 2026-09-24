@@ -7,6 +7,12 @@ tests/test_routing_decision.py — REQ-ACCESS-MODE-CARDS T2 路由判定收口�
 
 import pytest
 
+# 预导入（收集期、桩未激活时）：app.routers.settings / app.server 顶层以
+# `from app.store import ...` 绑定函数引用。若在 app.store 被 monkeypatch 之后
+# 才首次导入，桩会被永久绑定进路由模块，污染后续测试（跨文件顺序依赖）。
+import app.routers.settings  # noqa: F401
+import app.server  # noqa: F401
+
 import app.settings_store as ss
 import core.routing as rt
 
@@ -179,6 +185,18 @@ class TestRouteOverride:
         user_state(prefer_subscription=True, quota=100)
         d = rt.get_routing_decision("llm")
         assert d["route"] == "direct" and d["route_override"] is False
+
+    def test_localhost_guard_is_llm_only_asr_still_switches(self, access, keys, cloud, user_state):
+        """升级前口径：localhost 守卫仅在 LLM；ASR 的订阅切换不受 LLM base_url 影响。"""
+        access("byok")
+        keys(llm_key="", llm_base_url="http://localhost:11434/v1",
+             asr_mode="direct", asr_key=VALID_KEY)
+        cloud(True)
+        user_state(prefer_subscription=True, quota=100)
+        d = rt.get_routing_decision("asr")
+        assert d["route"] == "cloud"
+        assert d["route_override"] is True
+        assert d["reason"] == "prefer_subscription"
 
     def test_byok_missing_key_falls_back_with_reason(self, access, keys, cloud, user_state):
         access("byok")

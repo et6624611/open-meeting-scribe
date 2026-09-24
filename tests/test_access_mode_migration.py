@@ -9,6 +9,10 @@ import json
 
 import pytest
 
+# 预导入：防 app.store 桩在首次导入时被永久绑定进路由模块（见 test_routing_decision 注释）
+import app.routers.settings  # noqa: F401
+import app.server  # noqa: F401
+
 import app.settings_store as ss
 
 

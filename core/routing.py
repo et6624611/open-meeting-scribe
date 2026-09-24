@@ -140,7 +140,9 @@ def get_routing_decision(context: str = "asr") -> dict:
     #   1) D2：prefer_subscription 开启且配额>0 且云端可用 → 走云代理消耗配额；
     #   2) Key 缺失/占位 → 升级前即有的云代理回退（若云端可用），避免直接不可用。
     # localhost 自持端点（Ollama/LM Studio）永不切云（R4 绝不回退云端，先于一切 override）。
-    if _is_localhost_base_url(_llm_base_url()):
+    # 守卫仅作用于 LLM 传输（与升级前 _should_use_cloud 口径一致）；升级前 _get_asr_mode
+    # 无此守卫，ASR 的 prefer_subscription 切换不受 LLM base_url 影响（避免回归）。
+    if context == "llm" and _is_localhost_base_url(_llm_base_url()):
         return _decision(access, expert, "direct")
 
     ps, quota = _user_subscription_state()
