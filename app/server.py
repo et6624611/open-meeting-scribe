@@ -196,11 +196,26 @@ async def http_exception_handler(request: Request, exc: Exception):
 # ============================================================
 
 @app.get("/api/health")
-async def health_check():
+async def health_check(request: Request):
     """健康检查端点，供前端和监控探测服务存活状态。
     Health check endpoint for frontend and monitoring liveness probe.
+
+    DEF-01: 附带会话探测结果（auth.logged_in），前端据此决定是否调用
+    /auth/me，避免本地/匿名模式下每页产生一次 401 控制台噪音。
+    判定逻辑与 /auth/me 保持一致：有效 JWT cookie 或本地 current_user_id。
+    auth.logged_in mirrors /auth/me's success condition so the frontend can
+    skip the /auth/me probe (and its 401 console noise) when no session exists.
     """
-    return {"status": "ok"}
+    logged_in = False
+    token = request.cookies.get(_SESSION_COOKIE)
+    if token:
+        payload = verify_jwt(token)
+        if payload and payload.get("sub"):
+            logged_in = True
+    if not logged_in:
+        from core.users import _load_user_data
+        logged_in = bool(_load_user_data().get("current_user_id"))
+    return {"status": "ok", "auth": {"logged_in": logged_in}}
 
 
 # ============================================================
@@ -250,12 +265,15 @@ _REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
 #   - /api/admin/  管理后台，有独立的 require_admin 认证 / Admin backend; has independent require_admin auth
 #   - /api/config/ 公告、版本等公开配置 / Announcements, version, and public config
 #   - /api/models  可用模型列表（公开只读） / Available model list (public read-only)
+#   - /api/health  存活/会话探测（DEF-01：前端据此决定是否调用 /auth/me） /
+#                  Liveness & session probe (DEF-01: frontend gates /auth/me on it)
 _AUTH_EXEMPT_PREFIXES = (
     "/auth/",
     "/api/admin/",
     "/api/cloud/",
     "/api/config/",
     "/api/download/",
+    "/api/health",
     "/api/models",
 )
 
@@ -581,7 +599,11 @@ if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
     # 挂载 Vite 构建的静态资源（带 hash 的文件） / Mount Vite build static assets (hashed files)
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="frontend_assets")
 
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    # OBS-01: 显式注册 HEAD，使 HEAD / 与 GET / 返回相同 content-type
+    # （FastAPI 的 @app.get 不像 Starlette Route 那样自动附带 HEAD）/
+    # Register HEAD explicitly so HEAD / matches this route with the same
+    # content-type as GET (FastAPI's @app.get does not auto-add HEAD).
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def frontend_catch_all(full_path: str):
         """Vue Router history 模式：所有非 API 路由返回 index.html / Vue Router history mode: all non-API routes return index.html."""
         # 跳过 API 和 WebSocket 路径 / Skip API and WebSocket paths
@@ -612,7 +634,8 @@ else:
     # ensuring F5 refresh on subpages like /settings, /library does not hit the 404 JSON.
     _LEGACY_INDEX = STATIC_DIR / "index.html"
 
-    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    # OBS-01: 同上，显式注册 HEAD / Same as above: register HEAD explicitly
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], response_class=HTMLResponse)
     async def legacy_frontend_catch_all(full_path: str):
         """旧版 SPA catch-all：非 API 路径返回 app/static/index.html。
         Legacy SPA catch-all: non-API paths return app/static/index.html.

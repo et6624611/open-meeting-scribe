@@ -1201,7 +1201,9 @@ function onWmOpacityInput(e: Event) {
   const val = Number((e.target as HTMLInputElement).value)
   watermarkStore.setOpacity(val / 100)
 }
-const settings = reactive<Settings>({})
+// DEF-02: 补全嵌套空对象，避免 fetchSettings() 返回前模板非空断言触发 TypeError
+// DEF-02: Pre-fill nested objects so template non-null assertions are safe before async load
+const settings = reactive<Settings>({ llm: {}, asr: {}, voiceprint: {} })
 const testing = ref(false)
 const testResult = ref('')
 const testIsError = ref(false)
