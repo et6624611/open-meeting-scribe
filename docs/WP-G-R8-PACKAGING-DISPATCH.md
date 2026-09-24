@@ -36,7 +36,7 @@ approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点）
 | onedir 冻结代码包 + 外置引擎目录（D-R3） | 未做，且被现有 spec 反向阻塞 | `build/pyinstaller.spec:101-109`、`build/pyinstaller_macos.spec:82-90` 显式 `excludes=['torch','torchaudio']`；无任何 engine 专用 spec |
 | Windows Inno Setup「本地引擎组件」可选安装 | 未做 | `build/installer.iss` 无 `[Components]` 段，仅 `[Tasks]`（桌面图标，:78/:99）。installer 本身可编译（`05356fe`、`55feea5` 两次修复为证） |
 | 冻结应用内首启引导接 WP-F UI | 未做（依赖已就绪） | WP-F UI 已落 `aaaaa958`，仅在 web/dev 态可达；冻结态首启未接线 |
-| CI local 链路冒烟（替身权重，禁真实下载） | 被存量缺陷卡住 | `.github/workflows/ci-local-engine.yml` 5 次运行全部 0s 失败、0 jobs（见 §5 诊断） |
+| CI local 链路冒烟（替身权重，禁真实下载） | 被存量缺陷卡住 | `.github/workflows/ci-local-engine.yml` 6 次运行全部 0s 失败、0 jobs，且 paths 过滤未生效（见 §5 诊断） |
 | 引擎子进程再入分派 | 代码已在，但冻结态不成立 | `core/engine_host.py:48-56` 冻结态返回 `[sys.executable, "--engine-worker"]`；`desktop.py:329-337` 已有 `freeze_support()` + 标志分派 |
 
 ---
@@ -143,7 +143,14 @@ WP-G 全部产物依赖这条 workflow 做验证，不修就是"造了没秤称"
 - `gh api runs/<id>`：`conclusion=failure`、`/jobs` 返回 `total_count: 0`、`error` 字段为 null、对应 commit 的 check-runs 里**没有**该 workflow 的注解。
 - 本地已排除：YAML 解析通过、**无重复键**、无 tab、无 CRLF、UTF-8 无 BOM、`name: CI Local Engine`、jobs 两个键正常（`runs-on: windows-latest`，timeout 150/75）。
 
-→ 尚未定位到根因，**不再靠猜**。给 owner 的有界下一步：用一次只含 `cloud-package-size-guard` 单 job、去掉 `concurrency` 段（`:55-57`）与中文 job name 的最小 workflow 做二分提交；重点验证两个可疑点——`concurrency.cancel-in-progress` 里的 `${{ github.event_name == 'pull_request' }}` 表达式，以及 job-level `if`（`:63-66`）在非 dispatch 事件下引用 `inputs.freeze_smoke`。若确认是私有仓库 Windows metered 额度问题，则按 ROADMAP:151 走账号侧处置，并把 local 冒烟临时降级为 macOS-only（Windows 侧留真机验收人工冒烟）。
+→ **2026-09-24 新增关键证据（本包派工提交推送后观测到）**：该 workflow 在**仅触及 `docs/**` + `frontend/**`** 的 push 上仍然触发并 0s 失败（其 `on.push.paths` 白名单不含这两类目录）。即**触发器 paths 过滤也未被执行**——与 `name` 回退为文件路径同属「workflow 元数据层未被读取」的症状，问题不在 jobs/steps 层。已另排除编码异常：无 BOM、无非换行控制字符、UTF-8 解码干净。
+
+→ 据此给 owner 的**修正后动作序**（由低成本到高成本）：
+1. **先试强制重注册**：改文件名（`ci-local-engine.yml` → `ci-local-engine-v2.yml`）或删除后重新添加，推一次观察 `gh workflow list` 是否恢复显示 `name`。这是「workflow 显示为文件路径 + 无视 paths 反复触发」这一症状最常见的处置，成本一次提交。
+2. 若仍 0 jobs：再做最小 workflow 二分（单 job、砍 `concurrency.cancel-in-progress` 表达式 `:55-57` 与非 dispatch 事件下引用 `inputs.freeze_smoke` 的 job-level `if` `:63-66`、job name 改 ASCII）。
+3. 若确认账号侧 Windows metered/runner 限制：按 ROADMAP:151 走账号处置，并把 local 冒烟临时降级 macOS-only（Windows 侧留真机人工冒烟），同时更新 AC-7 的 CI 覆盖说明。
+
+**在根因定位前，WP-G 的 G-6 不应占用主线排期**：G-1~G-5 可先推进，G-6 与上述排查并行；真机验收阶段用人工冒烟兜住验证缺口。
 
 ---
 
