@@ -1,8 +1,8 @@
 ---
 id: WP-G
 title: R8 分发与构建 · 打包路线派工说明（含决策点）
-version: 0.1.0
-status: draft-for-decision (D-G1/D-G3 未裁决，阻塞开工)
+version: 0.2.0
+status: dispatch-ready（D-G1~D-G4 已按产品建议值代理裁决，见 §3 顶部；项目方 blanket 授权 2026-09-24）
 date: 2026-09-24
 source: docs/ROADMAP.md v10「WP-G 派工（2026-09-24）」
 prd: docs/PRD-LOCAL-ENGINE.md §R8 / §13 WP-D
@@ -66,7 +66,21 @@ approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点）
 
 ---
 
-## 3. 决策点（需项目方/工程 owner 拍板）
+## 3. 决策点（裁决结果）
+
+> **授权性质（诚实标注）**：项目方 2026-09-24 给出 blanket 授权「我没答复的都按你给出的建议执行」，以下取值均为**产品经理按本包建议值代理裁决**，不是项目方逐项亲口拍板。各项的原始取舍表保留在下文，推翻任一只需回退本节取值 + 对应子任务返工。技术上做不到建议值时**必须回报**，不得静默变通。
+>
+> - **D-G1 → 采纳方案 A：独立引擎包**（新增 `build/pyinstaller_engine.spec`，主包 spec 一字不动；`build_worker_command()` 改为定位外置引擎可执行体 + 协议版本握手）。理由：AC-7「云包零增长」必须留在构建期静态可判，不接受靠 CI 环境变量正确性兜底。**方案 C 条件打包就此否决。**
+> - **D-G1 子项①：三条安装通道共用同一目录布局 + `engine-manifest.json`**（版本 / 协议版本 / 文件 SHA256）。
+> - **D-G1 子项②：`--engine-worker` 再入保留为开发态路径**，冻结态正式走独立引擎包。
+> - **D-G1 子项③：主包 ↔ 引擎包协议版本不匹配 → 拒绝启动并提示升级引擎组件**，不得静默回退云端。
+> - **D-G2 → 沿用现状**：ct-punc 保持可选项，`check_required_models()` 按 `optional` 跳过；「可选转必装」仍按 ROADMAP「真机实测后议」，本包不提前裁决。
+> - **D-G3 → 采纳 (a)**：引擎运行时数据（权重、日志、ModelScope 缓存）锚 `%LOCALAPPDATA%\OpenMeetingScribe\`，安装目录只放只读代码包；`model_dir` 默认值按平台改（Win → `%LOCALAPPDATA%`，macOS → `~/Library/Application Support/OpenMeetingScribe/models/`，开发态仍 `data/models/`）。**Per-user install (b) 与管理员运行 (c) 均否决。**
+> - **D-G4 → 采纳**：macOS 引擎组件以 **zip 形态 onedir 目录包**经应用内引导下载落位，**不做 pkg/dmg 组件安装**（省公证与签名成本）；Inno 组件路径仅服务 Windows 政企离线场景。若项目方要求 macOS 一键安装承诺，本条作废并重估签名/公证排期。
+> - **D-G5 → 采纳为产品要求**（非决策）：冻结态引擎拉起期间必须有进度态与超时可行动提示，禁止把 `engine_unhealthy` 原文丢给用户。
+
+### 原始取舍依据（保留备查）
+
 
 ### D-G1｜引擎可执行体的包形态 —— 阻塞，先定这个
 

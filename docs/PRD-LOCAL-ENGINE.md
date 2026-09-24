@@ -181,20 +181,20 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 ### R8: 分发与构建
 
 - **用户故事**：云模式老用户升级后包体与构建产物零变化。
-- **功能行为**：**D-R3 已采纳**——应用内引导下载 + 外置引擎目录（onedir 冻结代码包 ~975MB + 权重 ≈2.0GB 分离，合计 ≈3GB），**否决内置云精简主包**（保 AC-7）；macOS 冻结 PASS，Windows 侧 Inno Setup 组件形态；本地引擎组件独立可选安装，CI 增 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。**实施首任务 = Windows PyInstaller+funasr 冻结冒烟**（Spike 未覆盖 Windows，为残余风险最高点）。
+- **功能行为**：**D-R3 已采纳**——应用内引导下载 + 外置引擎目录（onedir 冻结代码包 ~975MB + 权重 ≈2.0GB 分离，合计 ≈3GB），**否决内置云精简主包**（保 AC-7）；macOS 组件以 **zip 形态 onedir 目录包**经引导下载落位（**不做** pkg/dmg 一键安装，D-G4 代理裁决；如需该承诺须重估签名/公证排期），Windows 侧 Inno Setup 组件形态；本地引擎组件独立可选安装，CI 增 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。**实施首任务 = Windows PyInstaller+funasr 冻结冒烟**（Spike 未覆盖 Windows，为残余风险最高点）。
 - **验收**：双平台本地组件安装 → AC-1 全流程；云包体积回归无增长。
 - **优先级**：P0
 
 ### R9: 本地模式分段增量上屏（2026-09-24 新增，方案 B 裁决）
 
-> 完整问题定义、技术前提与待裁决点见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)（v0.1.0）。此处仅登记契约边界，避免规格双写。
+> 完整问题定义、技术前提与待裁决点见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)（v0.2.0）。此处仅登记契约边界，避免规格双写。
 
 - **用户故事**：作为在断网/内网环境开会的主持人，我要在会中看到已经说过的话落在屏幕上，而不是等散会才有一篇稿。
 - **功能行为**：录音进行中按语音段闭合（VAD 静音驱动 + 最长时长兜底，段长待 D-I3 实测）将音频切片送本机 FunASR 推理，段结果经既有 `push_realtime_msg` 以 `sentence` 事件上屏；**不产生 `partial` 事件**（逐字级流式仍非目标）。段间说话人身份以既有增量聚类为唯一事实源（`core/diarization_cluster.py`），**不得**跨段使用 FunASR 每次 `generate` 独立编号的局部 `spk`（`core/engine_worker.py:148-156`）。热词映射（R2 必配项）逐段应用。
 - **边界**：感知延迟目标段闭合 → 上屏 P50 ≤ 8s / P95 ≤ 20s（Spike RTF 0.081 外推，需真机证）；单段失败不得连带重启常驻引擎（D-I1，现状 `core/engine_host.py:174-201` 超时即判 unhealthy 须改）；AC-3 内存门槛不因本需求放松；云模式路径零改动（AC-7）。
 - **定稿一致性**：建议「增量段拼接即定稿」（D-I2 方案 B）——若采纳，长会议 `ENGINE_REQUEST_TIMEOUT=180s` 整场失败问题在实时链路自然消解，WP-H 第 1 项范围收窄至导入音频路径。
 - **验收**：AC-9。
-- **优先级**：**建议 P1**（不阻塞 AC-1 断网闭环发布）；改判 P0 需同步重排 v10 里程碑与验收排期，且强依赖 WP-G 的 D-G1 先拍板。
+- **优先级**：**P1（已代理裁决采纳）**，不阻塞 AC-1 断网闭环发布；若项目方改判 P0，需同步重排 v10 里程碑与验收排期，且强依赖 WP-G 的 D-G1 先落地。
 
 ## 9. Data and Permission Requirements
 
@@ -233,10 +233,9 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 **Open Questions（决策点）**：
 - ~~D-R1~~ **已采纳（2026-09-23）**：全家桶四模型 ≈2.0GB，标点可选裁剪（Spike §2）。
-- ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。~~无阻塞决策点残留，WP-A~D 全部解锁~~ **2026-09-24 更正：该结论仅对 WP-A~D 成立**。盘点 R8/R9 后新增阻塞性决策：D-G1（引擎可执行体形态）、D-G3（Windows 组件可写锚点）、D-I1~D-I4（分段增量的故障域/定稿策略/段长/P0-P1 判级）。WP-A~F 不受影响，**WP-G 与 WP-I 未解锁**。
-- **D-G1（阻塞 WP-G）**：引擎子进程形态——现状 `core/engine_host.py:55` 冻结态按「同主 exe 再入 `--engine-worker`」拉起，而 `build/pyinstaller.spec:103` 显式 `excludes=['torch','torchaudio']`，冻结包内无 funasr/torch → 本地引擎必然启动失败；放回主包又违反 R8/AC-7。建议独立引擎包，否决条件打包。详见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md) §3。
-- **D-G3（阻塞政企离线路径）**：Inno 默认 `Program Files` 非管理员不可写，而权重/日志需可写；`core/model_registry.py:81-90` 默认相对路径 `data/models/` 在冻结态会指进只读 bundle。建议引擎运行时数据锚 `%LOCALAPPDATA%`。
-- **D-I1~D-I4（阻塞 WP-I）**：单段故障是否连带重启引擎、定稿是否重跑全量（建议不重跑）、段长闭合策略（建议先实测）、R9 判 P0 还是 P1（建议 P1）。详见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md) §6。
+- ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。~~无阻塞决策点残留，WP-A~D 全部解锁~~ **2026-09-24 更正：该结论仅对 WP-A~D 成立**——盘点 R8/R9 后新增 D-G1/D-G3/D-I1~I4（下条）。
+- **2026-09-24 决策解锁（授权性质须留意）**：项目方给出 blanket 授权「我没答复的都按你给出的建议执行」，故 D-G1~D-G4、D-I1~D-I4 **全部由产品经理按建议值代理裁决采纳**，**不是项目方逐项亲口拍板**。WP-G / WP-I 就此解锁开工；取值依据与回退方式见 [WP-G 派工说明 §3](WP-G-R8-PACKAGING-DISPATCH.md) 与 [R9 需求记录 §6](REQUIREMENT-LOCAL-REALTIME-INCR.md)。实施中判定建议值技术不可行 → 回报产品，不得静默变通。
+- **macOS 组件分发承诺（待项目方确认）**：本包按「macOS 引擎组件走 zip 引导下载、**不做** pkg/dmg 一键安装」代理裁决（省公证与签名成本，Inno 组件仅服务 Windows 政企离线路径）。若需向 macOS 用户承诺一键安装，D-G4 作废并须重估签名/公证排期 —— 这是**产品口径而非技术细节**，需项目方明确。
 - ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定；已随 ROADMAP v10 登记给出建议口径——因 v8/v9 被占用，本需求登记为 v10）。
 - ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：**WP-C 已产出正式结论**（2026-09-23）——推荐默认 qwen3:8b、可用下限 qwen3:4b、qwen2.5 ≤3B 不达档，详见 [EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5 与 R4。
@@ -252,4 +251,4 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 主干 R1/R2/R3（本地 ASR 挂线、管线集成、CAM++ 回归）按既定分工仍由 QoderIDE 侧推进；WP-A~D 与主干接口点少，可并行派发。
 
-**第二轮及后续派工（登记于 ROADMAP v10，本表不双写细节）**：WP-E（R1/R2/R3 主干接线 + AC-4 回退）、WP-F（R5 前端 UI）已验收；**WP-G**（R8 打包，派工说明见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)，待 D-G1/D-G3）、**WP-H**（超时天花板 + 降级消息语气收口）、**WP-I**（R9 分段增量上屏，需求见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，待 D-I1~D-I4）。
+**第二轮及后续派工（登记于 ROADMAP v10，本表不双写细节）**：WP-E（R1/R2/R3 主干接线 + AC-4 回退）、WP-F（R5 前端 UI）已验收；**WP-G**（R8 打包，派工说明见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)，D-G1~D-G4 已采纳 · **开工中**）、**WP-H**（超时天花板 + 降级消息语气收口）、**WP-I**（R9 分段增量上屏，需求见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，D-I1~D-I4 已采纳 · **开工中，优先级 P1**）。三包决策取值均为**产品代理裁决**（项目方 blanket 授权 2026-09-24），派工单与开工序见 ROADMAP v10。
