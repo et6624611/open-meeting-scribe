@@ -219,10 +219,13 @@ def _handle_infer(params: dict) -> dict:
 
 def main():
     """子进程主循环：逐行读取 stdin JSON 请求并应答。"""
-    # 引擎子进程内设置 MODELSCOPE_CACHE，使 modelscope/funasr 按外置权重目录定位模型
-    from core.engine_host import build_engine_env
-    for k, v in build_engine_env().items():
-        os.environ[k] = v
+    # MODELSCOPE_CACHE：宿主（core/engine_host.py build_worker_env）已注入则直接沿用——
+    # 独立引擎包（D-G1 方案 A）内没有主应用 settings 可读，不得再走 build_engine_env 推导；
+    # 开发态（python -m core.engine_worker 直跑）无该环境变量时才回退推导。
+    if not os.environ.get("MODELSCOPE_CACHE"):
+        from core.engine_host import build_engine_env
+        for k, v in build_engine_env().items():
+            os.environ[k] = v
 
     inp = sys.stdin
     out = sys.stdout

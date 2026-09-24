@@ -199,8 +199,9 @@ def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_
     """合并计算引擎配置（R4/R5，PRD §9），带白名单校验 / Merge engine config with whitelist validation.
 
     非法 mode / model_tier 值回退到既有值或默认值，防止脏配置写入 settings.json。
+    model_dir 默认值平台感知（D-G3 (a)）：冻结态不再持久化相对路径（B-2）。
     """
-    from app.settings_store import DEFAULT_MODEL_DIR
+    from app.settings_store import default_model_dir
 
     incoming = incoming or {}
     incoming_local = incoming.get("local", {}) or {}
@@ -209,19 +210,31 @@ def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_
     if mode not in _VALID_ENGINE_MODES:
         mode = existing_engine.get("mode", "cloud")
 
-    model_dir = incoming_local.get("model_dir", existing_local.get("model_dir", DEFAULT_MODEL_DIR))
+    model_dir = incoming_local.get("model_dir", existing_local.get("model_dir", ""))
     if not isinstance(model_dir, str) or not model_dir.strip():
-        model_dir = existing_local.get("model_dir", DEFAULT_MODEL_DIR)
+        model_dir = existing_local.get("model_dir") or default_model_dir()
 
     model_tier = incoming_local.get("model_tier", existing_local.get("model_tier", "auto"))
     if model_tier not in _VALID_MODEL_TIERS:
         model_tier = existing_local.get("model_tier", "auto")
+
+    # 引擎组件目录显式覆盖（D-G1 搜索序②；空串=自动定位，非法类型回退空）
+    engine_dir = incoming_local.get("engine_dir", existing_local.get("engine_dir", ""))
+    if not isinstance(engine_dir, str):
+        engine_dir = ""
+
+    # 引擎组件包下载 URL 覆盖（政企内网源；空串=默认 GitHub Release 约定，G-4b）
+    component_url = incoming_local.get("component_url", existing_local.get("component_url", ""))
+    if not isinstance(component_url, str):
+        component_url = ""
 
     return {
         "mode": mode,
         "local": {
             "model_dir": model_dir,
             "model_tier": model_tier,
+            "engine_dir": engine_dir.strip(),
+            "component_url": component_url.strip(),
         },
     }
 

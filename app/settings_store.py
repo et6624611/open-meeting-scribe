@@ -345,23 +345,41 @@ def get_storage_config() -> dict:
     }
 
 
-# 本地引擎默认模型存储目录（gitignored，见 .gitignore data/models/）
-# Default local-engine model storage directory
+# 本地引擎默认模型存储目录（开发态；gitignored，见 .gitignore data/models/）
+# 冻结态按平台锚点（D-G3 (a)，B-2 修复：相对路径会解析进只读 bundle）——见 default_model_dir()
 DEFAULT_MODEL_DIR = "data/models/"
+
+
+def default_model_dir() -> str:
+    """平台感知默认模型目录 / Platform-aware default model directory.
+
+    开发态 → ``data/models/``；冻结态 → ``core.engine_paths.get_default_model_dir()``
+    （Win ``%LOCALAPPDATA%\\OpenMeetingScribe\\models``、mac
+    ``~/Library/Application Support/OpenMeetingScribe/models``）。
+    """
+    try:
+        from core.engine_paths import get_default_model_dir, is_frozen
+        if is_frozen():
+            return str(get_default_model_dir())
+    except Exception:
+        pass
+    # 开发态保持历史字面量（含尾部斜杠，settings.json 持久化值与旧版一致）
+    return DEFAULT_MODEL_DIR
 
 
 def get_engine_config() -> dict:
     """
     获取计算引擎配置（从 settings.json） / Get compute-engine config (from settings.json).
 
-    R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier}。
+    R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier, engine_dir}。
 
     返回格式 / Returns:
       {
         "mode": "cloud",            # cloud | proxy | direct | local（默认 cloud，本地引擎为显式选择）
         "local": {
-          "model_dir": "data/models/",   # 模型权重存储目录 / Model weights directory
-          "model_tier": "auto"           # auto | conservative | standard（R4 小模型提示词档）
+          "model_dir": "<平台默认锚点>",  # 模型权重存储目录（未配置→default_model_dir()）
+          "model_tier": "auto",          # auto | conservative | standard（R4 小模型提示词档）
+          "engine_dir": ""               # 引擎组件目录显式覆盖（D-G1 搜索序②，空=自动定位）
         }
       }
     """
@@ -372,7 +390,11 @@ def get_engine_config() -> dict:
     return {
         "mode": mode,
         "local": {
-            "model_dir": local.get("model_dir", DEFAULT_MODEL_DIR),
+            # 未配置/空值 → 平台默认锚点（冻结态禁止相对路径，B-2 / D-G3）
+            "model_dir": local.get("model_dir") or default_model_dir(),
             "model_tier": local.get("model_tier", "auto"),
+            "engine_dir": local.get("engine_dir", ""),
+            # 引擎组件包下载 URL 覆盖（政企内网源；空=GitHub Release 约定，G-4b）
+            "component_url": local.get("component_url", ""),
         },
     }
