@@ -8,7 +8,7 @@ core/engine_worker.py — 本地引擎常驻子进程工作端（R5 / WP-B）
      防止冻结包被子进程重复引导（Spike 观察到 import 重复 5–6 次）。
 
 协议：stdin/stdout JSON Lines（每行一个 JSON 对象）。
-  请求:  {"id": <any>, "cmd": "ping" | "verify_models" | "infer" | "stop", ...}
+  请求:  {"id": <any>, "cmd": "ping" | "verify_models" | "warmup" | "infer" | "stop", ...}
   响应:  {"id": <any>, "ok": true/false, ...}
 
 推理命令（cmd="infer"）由主干 R1/R2/R3（WP-E）接入 FunASR 离线管线：
@@ -21,21 +21,85 @@ FunASR AutoModel 进程内惰性加载并缓存为单例（常驻复用，禁每
 保证云端精简包（无 torch）下本模块可被安全引用。
 """
 
+import contextlib
 import json
 import logging
 import multiprocessing
 import os
 import sys
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = 1
 
+
+@contextlib.contextmanager
+def _quiet_stdout():
+    """模型加载期把 fd 1 指到 stderr（宿主以 DEVNULL 丢弃），保护 JSON Lines 协议。
+
+    funasr/modelscope 加载路径存在向 stdout 的直接 print（QA-R1 修复回归实证：
+    预热响应被非 JSON 行打断 → 'Expecting value'）。仅包住惰性加载段，
+    正常请求应答仍走 main() 捕获的 out 句柄。
+    """
+    sys.stdout.flush()
+    saved = os.dup(1)
+    try:
+        os.dup2(2, 1)
+        yield
+    finally:
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        os.dup2(saved, 1)
+        os.close(saved)
+
 # ── FunASR 模型进程内单例（常驻复用，R5 约束①：禁每任务冷启动）──
 # Resident in-process FunASR model singletons (reuse across requests; never cold-start per task)
 _ASR_MODEL = None
 _SPK_MODEL = None
+
+
+class ModelsNotReadyError(RuntimeError):
+    """DEF-QA-R1-01：本地权重缺失时的可行动错误（引导下载，绝不隐式回连网络）。"""
+
+
+def _local_model_path(model_key: str) -> str:
+    """解析模型权重的本地文件系统绝对路径（DEF-QA-R1-01 核心修复）。
+
+    ModelScope ID 直传 AutoModel 会强制出网取元数据（disable_update=True 并不能阻止
+    GET modelscope.cn/api/v1/models/<id>/repo/files），断网下加载即失败（QA-R1 T1 实证）。
+    此处经 core.model_registry 同源解析到本地目录 {model_dir}/hub/{modelscope_id}，
+    并以绝对路径锚点返回（QA probe T3 验证本地路径加载全程零网络）。
+
+    相对 model_dir 的绝对化锚定到 MODELSCOPE_CACHE（engine_host.build_engine_env 已
+    resolve 为绝对路径）；冻结包形态的相对路径缺陷（WP-G B-2）由该锚点统一承接。
+    """
+    from core.model_registry import MODEL_BY_KEY, get_model_dir
+
+    meta = MODEL_BY_KEY[model_key]
+    model_dir = Path(get_model_dir()).expanduser()
+    if not model_dir.is_absolute():
+        cache = os.environ.get("MODELSCOPE_CACHE")
+        if cache:
+            model_dir = Path(cache).expanduser()
+    root = (model_dir / "hub" / meta["modelscope_id"]).resolve()
+    if not (root / "config.yaml").is_file():
+        raise ModelsNotReadyError(
+            f"本地模型权重缺失或损坏: {model_key}（预期目录 {root}）。"
+            "请在 设置 → 本地引擎 中下载模型（仅首次获取需联网；运行期不隐式回连）。"
+        )
+    return str(root)
+
+
+def _optional_local_model_path(model_key: str) -> str | None:
+    """可选模型（ct-punc）：本地权重存在才返回路径，缺失静默跳过（裁剪档语义不变）。"""
+    try:
+        return _local_model_path(model_key)
+    except ModelsNotReadyError:
+        return None
 
 
 def _reply(out, req_id, ok: bool, **payload):
@@ -65,45 +129,82 @@ def _get_asr_model():
 
     ct-punc（1.0GB）为唯一可裁剪大件（model_registry optional=True）：仅当本地权重
     已存在时挂入 punc_model，避免离线态触发 ModelScope 下载（PRD R5「不内置分发」）。
-    模型 ID 统一取自 core.model_registry，与下载器/完整性校验同源。
+    DEF-QA-R1-01：AutoModel 入参一律为本地文件系统绝对路径（经 model_registry 同源解析），
+    禁止直传 ModelScope ID——后者会强制出网取仓库元数据，断网闭环第一步即断裂。
     """
     global _ASR_MODEL
     if _ASR_MODEL is not None:
         return _ASR_MODEL
 
-    from funasr import AutoModel
+    from core.model_registry import MODEL_BY_KEY
 
-    from core.model_registry import MODEL_BY_KEY, get_model_root
-
+    # 权重校验先行：缺失 → models_missing 可行动错误（早于任何 funasr 触达）
     models = {
-        "model": MODEL_BY_KEY["seaco-paraformer-zh"]["modelscope_id"],
-        "vad_model": MODEL_BY_KEY["fsmn-vad"]["modelscope_id"],
-        "spk_model": MODEL_BY_KEY["cam-plus"]["modelscope_id"],
+        "model": _local_model_path("seaco-paraformer-zh"),
+        "vad_model": _local_model_path("fsmn-vad"),
+        "spk_model": _local_model_path("cam-plus"),
     }
     # 标点可选：本地权重存在才挂入（省 1.0GB 的裁剪档不带标点）
-    if get_model_root("ct-punc").exists():
-        models["punc_model"] = MODEL_BY_KEY["ct-punc"]["modelscope_id"]
+    punc_path = _optional_local_model_path("ct-punc")
+    if punc_path:
+        models["punc_model"] = punc_path
 
     logger.info(f"[引擎] 加载 ASR 管线: {sorted(models.keys())}")
-    _ASR_MODEL = AutoModel(**models, disable_update=True, disable_pbar=True, log_level="ERROR")
-    _ASR_MODEL._oms_model_ids = models  # 观测：记录实际挂载的模型 ID（PRD §9 任务日志）
+    with _quiet_stdout():
+        # 冷 import 本身也可能向 stdout 输出（冻结态首启）→ 一并包住
+        from funasr import AutoModel
+
+        _ASR_MODEL = AutoModel(**models, disable_update=True, disable_pbar=True, log_level="ERROR")
+    # 观测：记录实际挂载的模型（PRD §9 任务日志）。键保持 ModelScope ID（人类可读），
+    # 实际入参路径仅在本函数内使用，不外泄为观测值。
+    mounted_keys = {
+        "model": "seaco-paraformer-zh",
+        "vad_model": "fsmn-vad",
+        "spk_model": "cam-plus",
+    }
+    if "punc_model" in models:
+        mounted_keys["punc_model"] = "ct-punc"
+    _ASR_MODEL._oms_model_ids = {
+        role: MODEL_BY_KEY[key]["modelscope_id"] for role, key in mounted_keys.items()
+    }
     return _ASR_MODEL
 
 
 def _get_spk_model():
-    """惰性加载并缓存 CAM++ 声纹模型（R3，与说话人分离共用同一份权重）。"""
+    """惰性加载并缓存 CAM++ 声纹模型（R3，与说话人分离共用同一份权重）。
+
+    DEF-QA-R1-01：同 _get_asr_model，入参为本地绝对路径，杜绝运行期出网。
+    """
     global _SPK_MODEL
     if _SPK_MODEL is not None:
         return _SPK_MODEL
 
-    from funasr import AutoModel
+    model_path = _local_model_path("cam-plus")
 
-    from core.model_registry import MODEL_BY_KEY
+    logger.info(f"[引擎] 加载 CAM++ 声纹模型: {model_path}")
+    with _quiet_stdout():
+        # 冷 import 同样包进静默段（与 _get_asr_model 对齐，防冻结态首启污染 stdout）
+        from funasr import AutoModel
 
-    model_id = MODEL_BY_KEY["cam-plus"]["modelscope_id"]
-    logger.info(f"[引擎] 加载 CAM++ 声纹模型: {model_id}")
-    _SPK_MODEL = AutoModel(model=model_id, disable_update=True, disable_pbar=True, log_level="ERROR")
+        _SPK_MODEL = AutoModel(model=model_path, disable_update=True, disable_pbar=True, log_level="ERROR")
     return _SPK_MODEL
+
+
+def _handle_warmup() -> dict:
+    """引擎预热（DEF-QA-R1-03 方案①）：把模型惰性加载移出首个推理请求。
+
+    在常驻子进程事件循环内同步执行——预热期间后续请求按序排队（stdin 缓冲），
+    首个业务请求不再叠加「冷加载 ≈16s（冻结态冷 import 另可达 86s）」的耗时。
+    失败不杀进程：回包给宿主仅记日志，真正使用仍走请求级错误分类。
+    """
+    t0 = time.time()
+    _get_asr_model()
+    _get_spk_model()
+    return {
+        "ok": True,
+        "warmed": ["asr", "spk"],
+        "seconds": round(time.time() - t0, 2),
+    }
 
 
 def _infer_asr(params: dict) -> dict:
@@ -243,6 +344,10 @@ def main():
                 _reply(out, req_id, True, engine="local-stub", pid=__import__("os").getpid())
             elif cmd == "verify_models":
                 _reply(out, req_id, True, **_handle_verify_models())
+            elif cmd == "warmup":
+                result = _handle_warmup()
+                ok = bool(result.pop("ok", False))
+                _reply(out, req_id, ok, **result)
             elif cmd == "infer":
                 result = _handle_infer(req.get("params", {}) or {})
                 ok = bool(result.pop("ok", False))
@@ -252,6 +357,8 @@ def main():
                 break
             else:
                 _reply(out, req_id, False, error_code="unknown_cmd", error=f"unknown cmd: {cmd}")
+        except ModelsNotReadyError as e:  # DEF-QA-R1-01：权重缺失 → 可行动错误，不隐式回连
+            _reply(out, req_id, False, error_code="models_missing", error=str(e)[:300])
         except Exception as e:  # 单请求失败不拖垮常驻进程
             logger.exception("engine worker 请求处理失败")
             _reply(out, req_id, False, error_code="worker_error", error=str(e)[:300])

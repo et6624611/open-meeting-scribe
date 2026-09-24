@@ -198,8 +198,20 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
 # ============================================================
 
 
-def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_mapping: dict = None, speaker_count: int = None):
-    """后台执行管线第一阶段（转写），完成后等待说话人绑定。含瞬时错误自动重试。"""
+def run_pipeline_task(
+    task_id: str,
+    audio_path: Path,
+    audio_name: str,
+    speaker_mapping: dict = None,
+    speaker_count: int = None,
+    engine_override: str = None,
+):
+    """后台执行管线第一阶段（转写），完成后等待说话人绑定。含瞬时错误自动重试。
+
+    engine_override（DEF-QA-R1-04 / AC-4）：显式引擎模式（如 "cloud"），仅在用户
+    于本地失败后**显式确认**切云端重试时由端点传入；None 维持设置自动判定。
+    任务音频与笔记状态由既有任务存储独立持久化，回退重跑不丢失（AC-4）。
+    """
     def on_progress(p: PipelineProgress):
         tasks[task_id]["progress"] = p.percent
         tasks[task_id]["message"] = p.message
@@ -263,6 +275,7 @@ def run_pipeline_task(task_id: str, audio_path: Path, audio_name: str, speaker_m
                 audio_path=pre_normalized or audio_path,
                 on_progress=on_progress,
                 speaker_count=speaker_count,
+                engine_override=engine_override,
             )
 
             # 存储转写结果

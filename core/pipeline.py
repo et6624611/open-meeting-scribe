@@ -67,6 +67,7 @@ def run_pipeline_stage1(
     config: dict | None = None,
     on_progress: Callable[[PipelineProgress], None] | None = None,
     speaker_count: int | None = None,
+    engine_override: str | None = None,
 ) -> dict:
     """
     管线第一阶段：音频 → 对话稿 / Pipeline stage 1: audio → dialogue.
@@ -76,6 +77,7 @@ def run_pipeline_stage1(
 
     Args:
         speaker_count: 说话人数量提示（来自实时声纹聚类估算），传给转写 API 辅助分离 / Speaker count hint (from realtime voiceprint clustering), passed to transcription API
+        engine_override: 显式指定转写引擎模式（AC-4 云端回退用，如 "cloud"）；None 维持设置自动判定 / Explicit engine mode (AC-4 cloud fallback); None keeps settings-based selection
 
     Returns:
         {
@@ -152,6 +154,7 @@ def run_pipeline_stage1(
             language_hints=cfg["language_hints"],
             vocabulary_id=vocabulary_id,
             speaker_count=speaker_count,
+            engine_override=engine_override,
         )
     progress("transcribe", "转写完成", 70)
     result["dialogue"] = dialogue

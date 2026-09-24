@@ -55,6 +55,12 @@ class BatchArchiveRequest(BaseModel):
     task_ids: list[str]
 
 
+class RetranscribeRequest(BaseModel):
+    """重新识别请求体（全部字段可选，向后兼容无 body 调用）。"""
+
+    engine_override: Optional[str] = None  # DEF-QA-R1-04（AC-4）：显式 "cloud"=切云端重跑；None=按当前设置
+
+
 @router.post("/api/transcribe")
 async def create_transcribe_task(
     background_tasks: BackgroundTasks,
@@ -198,13 +204,18 @@ def get_task(task_id: str):
 
 
 @router.get("/api/download/{task_id}")
-def download_summary(task_id: str):
+def download_summary(task_id: str, format: str = "md"):
     """下载纪要文件 / Download summary file
+
+    format=md（默认，向后兼容）→ Markdown 原文；format=docx → Word 纪要
+    （DEF-QA-R1-02：标题/说话人段落/列表映射为 Word 结构，中文不乱码）。
 
     注意：用 def（非 async def），FileResponse 涉及文件 I/O，
     Note: uses def (not async def); FileResponse involves file I/O,
     FastAPI 自动在线程池中运行，避免阻塞事件循环。 / FastAPI auto-runs in thread pool to avoid blocking event loop.
     """
+    if format not in ("md", "docx"):
+        raise HTTPException(400, _("Unsupported download format: {format}").format(format=format))
     if task_id not in tasks:
         raise HTTPException(404, _("Task not found"))
 
@@ -213,10 +224,27 @@ def download_summary(task_id: str):
     if not output_path or not Path(output_path).exists():
         raise HTTPException(404, _("Minutes file not found"))
 
+    if format == "md":
+        return FileResponse(
+            output_path,
+            media_type="text/markdown",
+            filename=Path(output_path).name,
+        )
+
+    from core.docx_export import export_task_docx
+
+    stem = Path(output_path).stem
+    docx_path = Path(output_path).parent / f"{stem}.docx"
+    try:
+        export_task_docx(task, docx_path)
+    except Exception as e:
+        logger.exception(f"[{task_id[:8]}] docx 导出失败")
+        raise HTTPException(500, _("Failed to generate docx: {error}").format(error=e))
+
     return FileResponse(
-        output_path,
-        media_type="text/markdown",
-        filename=Path(output_path).name,
+        str(docx_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=docx_path.name,
     )
 
 
@@ -291,6 +319,9 @@ def delete_task(task_id: str):
     output_path = task.get("output_path")
     if output_path and Path(output_path).exists():
         Path(output_path).unlink()
+    # 清理按需生成的 docx 伴生文件（DEF-QA-R1-02：下载时写入同目录同名 .docx）
+    if output_path:
+        Path(output_path).with_suffix(".docx").unlink(missing_ok=True)
 
     # 删除持久化文件：任务 JSON、作业日志、AI 洞察消息 / Delete persisted files: task JSON, job log, AI insights
     for suffix in [".json", ".joblog.jsonl", ".insights.json"]:
@@ -302,11 +333,19 @@ def delete_task(task_id: str):
 
 
 @router.post("/api/tasks/{task_id}/retranscribe")
-def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
+def retranscribe_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    data: Optional[RetranscribeRequest] = None,
+):
     """重新识别录音文件（含文件检查 + 写 tasks JSON） / Re-transcribe recording (incl. file check + write tasks JSON).
 
     重置任务状态并重新执行转写管线（归一化 → 上传 → ASR → 说话人分离 → 纪要）。 / Reset task state and re-run pipeline (normalize -> upload -> ASR -> diarization -> summary).
     保留原始音频文件，清除旧的转写结果。 / Keep original audio, clear old transcription results.
+
+    DEF-QA-R1-04（AC-4 回退）：body.engine_override 传显式 "cloud" 时，本次重跑强制走
+    云端转写（用于本地引擎失败后用户显式确认「切云端重跑」；绝不静默上云——必须由调用方
+    显式声明）。任务音频与笔记状态不丢失（引擎选择不改变上方字段重置范围）。
     """
     if task_id not in tasks:
         raise HTTPException(404, _("Task not found"))
@@ -316,6 +355,18 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
     if not audio_path or not Path(audio_path).exists():
         raise HTTPException(404, _("Recording file not found, cannot re-transcribe"))
 
+    # engine_override 白名单：仅显式 "cloud"（当前缺陷范围）；其余值拒绝，防误配静默改道
+    engine_override = (data.engine_override or "").strip().lower() if data and data.engine_override else None
+    if engine_override is not None and engine_override != "cloud":
+        raise HTTPException(
+            400,
+            _("Unsupported engine_override: {value} (only \"cloud\" is allowed)").format(value=engine_override),
+        )
+    if engine_override == "cloud":
+        from core.cloud_client import is_cloud_enabled
+        if not is_cloud_enabled():
+            raise HTTPException(400, _("Cloud service is not configured. Connect to cloud or configure an API Key before retrying in the cloud."))
+
     # 重置任务状态 / Reset task state
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 0
@@ -323,6 +374,8 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
     tasks[task_id]["error"] = None
     tasks[task_id]["error_category"] = None
     tasks[task_id]["error_suggestion"] = None
+    tasks[task_id]["error_code"] = None
+    tasks[task_id]["can_fallback_cloud"] = None
     tasks[task_id]["failed_stage"] = None
     tasks[task_id]["retry_count"] = 0
     tasks[task_id]["summary"] = None
@@ -339,7 +392,16 @@ def retranscribe_task(task_id: str, background_tasks: BackgroundTasks):
 
     # 后台重新执行管线（speaker_count 为 None 时自动估算） / Re-run pipeline in background (speaker_count auto-estimated when None)
     audio_name = task.get("audio_name", Path(audio_path).name)
-    background_tasks.add_task(run_pipeline_task, task_id, Path(audio_path), audio_name, None, None)
+    if engine_override == "cloud":
+        from core import joblog
+        joblog.append_event(
+            task_id, joblog.STAGE_TRANSCRIBE,
+            "用户显式确认切云端重跑（AC-4 engine_override=cloud）",
+        )
+        logger.info(f"[重新识别] task={task_id[:8]} 显式切换云端引擎重跑（AC-4）")
+    background_tasks.add_task(
+        run_pipeline_task, task_id, Path(audio_path), audio_name, None, None, engine_override
+    )
 
     logger.info(f"[重新识别] task={task_id[:8]}, audio={audio_name}")
     return {"status": "processing", "message": _("Re-transcription task submitted")}

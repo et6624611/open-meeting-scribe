@@ -3,7 +3,9 @@
 # 背景：R8 Spike 已验证 macOS 冻结 PASS（docs/SPIKE-R8-LOCAL-ENGINE.md §3），
 # Windows 为残余风险最高点，本 workflow 为 PRD §13 WP-D「实施首个 CI 任务」。
 #
-# 两个 job：
+# 三个 job：
+#   0. offline-load-guard —— QA-R1 缺陷修复回归（断网加载/预热/engine_override/docx，
+#      纯打桩，PR + push 均跑）；
 #   1. windows-freeze-smoke —— windows-latest 上 PyInstaller --onedir 冻结含
 #      torch+funasr 的引擎替身包并冒烟：import → AutoModel 加载链（替身权重）→
 #      spawn 子进程（freeze_support 验证）→ generate 推理代码路径。
@@ -57,6 +59,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  offline-load-guard:
+    name: 断网加载守护（QA-R1 DEF-01/02/03/04 后端回归）
+    # 纯打桩单元回归（主 venv 无 funasr/torch，零真实模型下载、非 Windows runner），
+    # PR 与 push main 都跑；「断网下引擎可加载并推理」的 macOS 活体证据见
+    # tests/eval_local_engine/qa_r1fix_offline_probe.py（派工单 §2 DEF-01 Done 判据 2）。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: 安装依赖（与主 CI 后端测试同源）
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: QA-R1 修复回归 + 本地引擎既有套件
+      run: |
+        python -m pytest tests/test_qa_r1_defects.py tests/test_local_engine_r1r2r3.py tests/test_local_engine_wph.py -v
+
   windows-freeze-smoke:
     name: Windows 冻结引擎替身冒烟（WP-D）
     # PR 不跑（成本）；schedule/dispatch/push main 跑
