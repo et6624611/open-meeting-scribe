@@ -138,3 +138,26 @@ approvers: 项目方（2026-09-24 裁决：可以派工；先跑通 macOS，Wind
 
 - §6 残余风险 1（后端端点未实现）**已闭环**：后端 `23b6da6` 已实现 `engine_override=cloud` 与 `download?format=docx`，合并前产品侧代码级抽查确认前后端字段名与端点一致（`tasks.py:61/207` ↔ `api/tasks.ts:40/50`），并在修复分支独立复跑 `tests/test_qa_r1_defects.py` **17/17 passed**；后端活体证据（断网探针 PASS、30min infer 157.4s、docx 样张、9 张前端 E2E 截图）已核验归档。
 - QA-R2 启动门 §3.1（四缺陷合入并 push）随本次合并满足；正式复判仍须 QA 按死端口代理法在他验路径重跑。
+
+---
+
+## 8. 执行进展（DEF-FE-05，前端工程师 d1b77737cde5，2026-09-24）
+
+**任务**：本地模式下状态栏模型名误导显示修复（产品经理派工单 DEF-FE-05）
+
+- **分支 / worktree**：`fix/def-fe05-statusbar-local-models-20260924`（独立 worktree `../oms-wt-def-fe05`，基于 main `da47a03`；未在主工作区切分支）
+- **代码 commit**：`8c4fd82b7faf45dc1e8fe1fd88cd93cdf26a6e66`（本地提交，**未 push**，待产品复核合入）
+- **改动面**：3 文件 +39/−6。`App.vue`：`loadStatusModels` 感知 `engine.mode`——`local` 时状态栏 = 「FunASR 本地模型」+ LLM 段（按 `llm.provider`/`base_url` 判定 Ollama / LM Studio，显示实际 `llm.model`；model 为空兜底「本地模型」，跳转设置入口保留于引擎徽标点击）；云端/代理/直连分支维持原逻辑逐字不变；默认占位 `'paraformer-v2 + qwen-plus'` 改为中性 `'…'`（根因项）。i18n `common.usage.local_asr` / `local_model` zh-CN/en 双语同步。
+- **契约核对（派工要求 3）**：判定数据源全部为 `/api/settings` 既有字段（`engine.mode`、`llm.provider`、`llm.base_url`、`llm.model`，见 `app/routers/settings.py:161-184` + `get_engine_config`），**无后端补字段需求，API_CONTRACTS.md 无变更**。
+- **验证账目**：`vue-tsc -b` 通过；`eslint src/App.vue` 0 错；`vite build` 成功。
+- **macOS 真机浏览器证据**（`/tmp/def-fe05-e2e/`；worktree 后端 8010 + vite 5174 临时代理配置，验证后已删除、进程已停）：
+  - `02_local_zh_named.png` — zh-CN · local + Ollama（model=qwen3:8b）：状态栏「本地引擎 · FunASR 本地模型 + Ollama + qwen3:8b」；
+  - `01_local_ollama_named.png` — 同上 en 态（"FunASR local model + Ollama + qwen3:8b"）；
+  - `03_local_zh_empty_model.png` — local + model 为空：「FunASR 本地模型 + Ollama + 本地模型」（兜底 + 引擎徽标跳转入口在位）；
+  - `04_cloud_regression_zh.png` / `05_cloud_regression_en.png` — 切回 cloud 模式：仍显示「paraformer-v2 + qwen-plus」，与修复前行为一致（回归不变）。
+  - DOM 级断言（local 态）：`footer.status` 文本 `paraformer` 出现=False、`qwen-plus` 出现=False；console 错误探针 0 条、`window.alert` 调用 0 次（Done 判据 ①④）。
+- **Done 判据对照**：① local 态无云端模型名（截图+DOM 断言）✔；② 云端显示回归不变（双态截图）✔；③ zh-CN/en 双语齐备 ✔；④ 无新增 alert/console 错误 ✔。
+- **残余风险 / 说明**：
+  1. 真机证据采自本机 macOS Chrome（QA 实例 :9333，项目内既有验证通道），非用户日常标签页；用户主实例（8000/5173）全程未触碰。
+  2. LM Studio 判定（`:1234` / provider 文本）为按同一口径的对称实现，截图证据仅覆盖 Ollama 场景。
+  3. local 模式下若 `llm.base_url` 误配为非 localhost 地址，LLM 段仅显示「本地模型」不显示任何模型名（防云端模型名泄漏的保守口径）。
