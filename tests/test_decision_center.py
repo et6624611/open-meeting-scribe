@@ -152,6 +152,60 @@ class TestParseDecisions:
         assert len(parse_decisions_from_summary(summary)) == 1
 
 
+class TestRF1DualSection:
+    """RF-1：决策抽取须覆盖「主要结论」与「决策」双章节（默认模板决策栏数据来源）。"""
+
+    def test_template_style_dual_section_merged_and_deduped(self):
+        """模板式纪要（两节内容不同+一条逐字重复）→ 两节全收、跨节去重、[待确认] 正确。"""
+        summary = (
+            "# 会议纪要\n\n"
+            "## 一、会议概要\n讨论了结算方案。\n\n"
+            "## 二、主要结论\n"
+            "1. 结算周期改为月结\n"
+            "2. 供应商白名单由采购部维护\n\n"
+            "## 三、决策\n"
+            "1. **结算周期改为月结**\n"
+            "2. [待确认] **二期范围回去敲定**\n\n"
+            "## 四、议题归类\n### 议题1：结算\n略\n"
+        )
+        decisions, status = parse_decisions_with_status(summary)
+        assert status is None
+        texts = [d["text"] for d in decisions]
+        # 「结算周期改为月结」跨节去重后保留首次出现（主要结论节的裸文本）
+        assert texts == [
+            "结算周期改为月结",
+            "供应商白名单由采购部维护",
+            "**二期范围回去敲定**",
+        ]
+        assert decisions[2]["pending_confirmation"] is True
+        assert all(d["source"] == "auto" for d in decisions)
+
+    def test_both_sections_negative_is_clean_empty_no_warn(self):
+        """两节均为阴性说明 → 正常空结果（status=None），不触发降级。"""
+        summary = (
+            "## 二、主要结论\n本次会议未形成明确结论\n\n"
+            "## 三、决策\n本次会议未形成明确决策\n\n"
+            "## 四、议题归类\n略\n"
+        )
+        decisions, status = parse_decisions_with_status(summary)
+        assert decisions == []
+        assert status is None
+
+    def test_decisions_section_only_without_conclusions(self):
+        """仅有「决策」章节（主要结论节缺失）→ 正常抽取，不降级为 missing_section。"""
+        summary = "## 三、决策\n1. 采用灰度发布\n2. 【待确认】回滚阈值\n"
+        decisions, status = parse_decisions_with_status(summary)
+        assert status is None
+        assert [d["text"] for d in decisions] == ["采用灰度发布", "回滚阈值"]
+        assert decisions[1]["pending_confirmation"] is True
+
+    def test_both_sections_missing_still_degrades(self):
+        """两章节均缺失 → 仍按 missing_section 降级（AC-3 语义不变）。"""
+        decisions, status = parse_decisions_with_status("## 一、会议概要\n只有概要。")
+        assert decisions == []
+        assert status == "missing_section"
+
+
 class TestRegenMerge:
     def test_only_auto_replaced(self):
         """AC-4：merge 只覆盖 auto，manual/injection/backfill 保留。"""

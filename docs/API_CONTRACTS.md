@@ -295,6 +295,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 - 重新生成纪要仅替换 `source=auto` 条目；`manual` / `injection` / `backfill` 保留。
 - `superseded_by` 可为 `null`；来源会议被删除后引用悬空时读取不报错，前端按「引用已失效」降级显示。
 - `related_todo_ids` v1 由前端/手动维护，自动抽取恒为 `[]`。
+- `source=auto` 抽取源（RF-1 起）：纪要「主要结论」与「决策」两章节的条目按出现顺序合并去重；两节的阴性说明（"本次会议未形成明确结论/决策"）均视为正常空结果。
 
 ### 12.1 任务级 CRUD
 

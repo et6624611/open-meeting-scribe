@@ -3,8 +3,8 @@
 一次性脚本：为存量会议纪要回填决策项。 / One-off script: backfill decisions for existing meeting minutes.
 
 遍历 data/tasks/ 下所有任务 JSON，解析 user_summary（优先）或 summary 的
-「主要结论」章节 → 写入 task["decisions"]（source=backfill）。
-Iterate all task JSONs under data/tasks/, parse the "主要结论" section of
+「主要结论」/「决策」章节（RF-1 双章节合并去重）→ 写入 task["decisions"]（source=backfill）。
+Iterate all task JSONs under data/tasks/, parse the "主要结论" / "决策" sections of
 user_summary (preferred) or summary into task["decisions"] with source=backfill.
 
 幂等：任务已有非空 decisions 或存在 decisions_backfilled_at 标记则跳过；
@@ -32,8 +32,8 @@ TASKS_DIR = ROOT / "data" / "tasks"
 REPORT_FILE = ROOT / "data" / "_backfill_report.json"
 
 _REASON_BY_STATUS = {
-    "missing_section": "纪要缺少「主要结论」章节",
-    "no_items": "「主要结论」章节未解析出任何条目（格式异常）",
+    "missing_section": "纪要缺少「主要结论」/「决策」章节",
+    "no_items": "「主要结论」/「决策」章节未解析出任何条目（格式异常）",
 }
 
 

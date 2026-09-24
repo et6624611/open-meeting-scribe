@@ -412,7 +412,9 @@ def parse_todos_from_summary(summary: str) -> list[dict]:
 import re as _re
 
 # 「主要结论」章节标题（兼容 "## 二、主要结论"、"## 主要结论" 等写法）
-_DECISIONS_HEADING_RE = _re.compile(r"^\s{0,3}#{1,6}\s*\S{0,6}[、.．]?\s*主要结论")
+_CONCLUSIONS_HEADING_RE = _re.compile(r"^\s{0,3}#{1,6}\s*\S{0,6}[、.．]?\s*主要结论")
+# 「决策」章节标题（RF-1：内置模板 v1.1 定义 "## 三、决策" 为决策栏数据来源，须整行精确匹配）
+_DECISION_SECTION_HEADING_RE = _re.compile(r"^\s{0,3}#{1,6}\s*\S{0,6}[、.．]?\s*决策\s*$")
 # 任意 Markdown 标题行 / 水平分隔线（章节终止符）；兼容 "##三、" 无空格写法
 _SECTION_STOP_RE = _re.compile(r"^\s{0,3}(#{1,6}|-{3,}\s*$|\*{3,}\s*$)")
 # 无序列表前缀（裸行宽容采集时剥除，含 checkbox 写法）
@@ -421,8 +423,8 @@ _BULLET_PREFIX_RE = _re.compile(r"^[-*•]\s+(?:\[[ xX]\]\s*)?")
 _ORDERED_ITEM_RE = _re.compile(r"^\s*(\d{1,2})[.、．]\s+(\S.*)$")
 # [待确认] 前缀（兼容全角括号与加粗包裹）
 _PENDING_PREFIX_RE = _re.compile(r"^\s*(?:\*\*)?[\[【]\s*待确认\s*[\]】](?:\*\*)?\s*[:：]?\s*")
-# 阴性说明语句（"本次会议未形成明确结论"等）→ 空结果但非解析失败
-_NEGATIVE_CONCLUSION_RE = _re.compile(r"(未形成|没有|无|暂无)[^。\n]{0,8}(明确|有效)?[^。\n]{0,4}(结论|决议)")
+# 阴性说明语句（"本次会议未形成明确结论/决策"等）→ 空结果但非解析失败
+_NEGATIVE_CONCLUSION_RE = _re.compile(r"(未形成|没有|无|暂无)[^。\n]{0,8}(明确|有效)?[^。\n]{0,4}(结论|决议|决策)")
 # 整行阴性说明（裸行采集时须跳过，避免把"未形成结论"本身收成决策）
 _NEGATIVE_LINE_RE = _re.compile(
     r"^(?:本次|本轮)?(?:会议|纪要)?[\s，,]*"
@@ -433,19 +435,14 @@ _NEGATIVE_LINE_RE = _re.compile(
 _TEMPLATE_PLACEHOLDER_RE = _re.compile(r"^\[[^\[\]]*\]$")
 
 
-def extract_conclusions_section(summary: str) -> str | None:
-    """
-    提取纪要 Markdown 中「主要结论」章节正文。
-
-    Returns:
-        章节正文（不含标题行），章节缺失时返回 None
-    """
+def _extract_section(summary: str, heading_re: _re.Pattern) -> str | None:
+    """按标题正则提取单个章节正文（不含标题行），章节缺失时返回 None。"""
     if not summary:
         return None
     lines = summary.splitlines()
     start = -1
     for i, line in enumerate(lines):
-        if _DECISIONS_HEADING_RE.match(line):
+        if heading_re.match(line):
             start = i + 1
             break
     if start < 0:
@@ -458,76 +455,103 @@ def extract_conclusions_section(summary: str) -> str | None:
     return "\n".join(body)
 
 
+def extract_conclusions_section(summary: str) -> str | None:
+    """
+    提取纪要 Markdown 中「主要结论」章节正文。
+
+    Returns:
+        章节正文（不含标题行），章节缺失时返回 None
+    """
+    return _extract_section(summary, _CONCLUSIONS_HEADING_RE)
+
+
+def extract_decisions_section(summary: str) -> str | None:
+    """
+    提取纪要 Markdown 中「决策」章节正文（RF-1：内置模板的决策栏数据来源章节）。
+
+    Returns:
+        章节正文（不含标题行），章节缺失时返回 None
+    """
+    return _extract_section(summary, _DECISION_SECTION_HEADING_RE)
+
+
 def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
     """
-    从纪要「主要结论」章节解析决策项，并返回降级状态。
+    从纪要「主要结论」与「决策」两个章节解析决策项（RF-1），并返回降级状态。
+
+    内置默认模板下两节分工不同（结论清单 vs 可跟进决策点），两节结果按出现顺序
+    合并去重（同一表述保留「主要结论」中的先见项）。
 
     与 parse_todos_from_summary() 并列的确定性解析（不引入第二次 LLM 调用）。
     宽容解析：优先有序列表项（"1. " 起），兼容裸行条目（存量回填写法多样）。
 
     Returns:
         (decisions, degrade_status)
-        degrade_status: None=正常（含"无结论"阴性说明）；
-                        "missing_section"=章节缺失；
+        degrade_status: None=正常（含"无结论/无决策"阴性说明）；
+                        "missing_section"=两章节均缺失；
                         "no_items"=章节存在但既无条目也非阴性说明（格式异常）
     """
     import uuid
     from datetime import datetime
 
-    section = extract_conclusions_section(summary)
-    if section is None:
-        logger.info("决策解析降级：纪要缺少「主要结论」章节")
+    sections = [s for s in (
+        extract_conclusions_section(summary),
+        extract_decisions_section(summary),
+    ) if s is not None]
+    if not sections:
+        logger.info("决策解析降级：纪要缺少「主要结论」/「决策」章节")
         return [], "missing_section"
 
     decisions: list[dict] = []
     seen_texts: set[str] = set()
     now_iso = datetime.now().isoformat()
 
-    for raw_line in section.splitlines():
-        line = raw_line.strip()
-        if not line or len(line) < 2:
-            continue
-        if _TEMPLATE_PLACEHOLDER_RE.match(line):
-            continue
-        if _NEGATIVE_LINE_RE.match(line):
-            continue
+    for section in sections:
+        for raw_line in section.splitlines():
+            line = raw_line.strip()
+            if not line or len(line) < 2:
+                continue
+            if _TEMPLATE_PLACEHOLDER_RE.match(line):
+                continue
+            if _NEGATIVE_LINE_RE.match(line):
+                continue
 
-        m = _ORDERED_ITEM_RE.match(raw_line)
-        text = m.group(2).strip() if m else _BULLET_PREFIX_RE.sub("", line).strip()
-        if not text or len(text) < 2:
-            continue
+            m = _ORDERED_ITEM_RE.match(raw_line)
+            text = m.group(2).strip() if m else _BULLET_PREFIX_RE.sub("", line).strip()
+            if not text or len(text) < 2:
+                continue
 
-        pending = False
-        pm = _PENDING_PREFIX_RE.match(text)
-        if pm:
-            pending = True
-            text = text[pm.end():].strip()
-        if not text or len(text) < 2:
-            continue
+            pending = False
+            pm = _PENDING_PREFIX_RE.match(text)
+            if pm:
+                pending = True
+                text = text[pm.end():].strip()
+            if not text or len(text) < 2:
+                continue
 
-        # 去除 markdown 强调符号后查重与空文本判定（文本本体保留原格式）
-        dedup_key = _re.sub(r"[*_`]", "", text).strip()
-        if not dedup_key or dedup_key in seen_texts:
-            continue
-        seen_texts.add(dedup_key)
+            # 去除 markdown 强调符号后跨章节查重与空文本判定（文本本体保留原格式）
+            dedup_key = _re.sub(r"[*_`]", "", text).strip()
+            if not dedup_key or dedup_key in seen_texts:
+                continue
+            seen_texts.add(dedup_key)
 
-        decisions.append({
-            "id": str(uuid.uuid4()),
-            "text": text,
-            "status": "active",
-            "pending_confirmation": pending,
-            "source": "auto",
-            "created_at": now_iso,
-            "updated_at": now_iso,
-            "superseded_by": None,
-            "related_todo_ids": [],
-        })
+            decisions.append({
+                "id": str(uuid.uuid4()),
+                "text": text,
+                "status": "active",
+                "pending_confirmation": pending,
+                "source": "auto",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "superseded_by": None,
+                "related_todo_ids": [],
+            })
 
     if not decisions:
-        if _NEGATIVE_CONCLUSION_RE.search(section):
-            # 阴性说明（"本次会议未形成明确结论"）→ 正常空结果，不算降级
+        if any(_NEGATIVE_CONCLUSION_RE.search(s) for s in sections):
+            # 阴性说明（"本次会议未形成明确结论/决策"）→ 正常空结果，不算降级
             return [], None
-        logger.info("决策解析降级：「主要结论」章节未解析出任何条目")
+        logger.info("决策解析降级：「主要结论」/「决策」章节未解析出任何条目")
         return [], "no_items"
 
     logger.info(f"从纪要中解析出 {len(decisions)} 条决策")
@@ -536,7 +560,7 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
 
 def parse_decisions_from_summary(summary: str) -> list[dict]:
     """
-    从纪要「主要结论」章节解析决策项（简化签名，与 parse_todos_from_summary 并列）。
+    从纪要「主要结论」/「决策」章节解析决策项（简化签名，与 parse_todos_from_summary 并列）。
 
     Returns:
         [{"id", "text", "status", "pending_confirmation", "source", "created_at",
