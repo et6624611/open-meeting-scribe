@@ -142,6 +142,8 @@ jobs:
     - name: 上传冒烟日志
       if: always()
       uses: actions/upload-artifact@v4
+      # 诊断性上传：账号 artifact 存储配额满时不得把冒烟绿灯 job 判死
+      continue-on-error: true
       with:
         name: wp-d-freeze-smoke-logs
         path: |
@@ -232,6 +234,8 @@ jobs:
     - name: 上传体积报告（bootstrap 期用于回填基线）
       if: always()
       uses: actions/upload-artifact@v4
+      # 诊断性上传：账号 artifact 存储配额满时不得把体积守护绿灯 job 判死
+      continue-on-error: true
       with:
         name: cloud-size-report
         path: cloud-size-report.json

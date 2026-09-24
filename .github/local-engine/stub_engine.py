@@ -194,6 +194,8 @@ def main() -> int:
     _phase(f"generate 推理路径 ok ({time.time() - t0:.1f}s) text={text!r}")
 
     _phase("PASS")
+    # 契约末行（workflow 以字面 '[STUB] PASS' 断言；_phase 前缀含耗时不满足字面匹配）
+    print("[STUB] PASS", flush=True)
     return 0
 
 
