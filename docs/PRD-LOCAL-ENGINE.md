@@ -4,8 +4,9 @@ description: 本地 ASR + 声纹离线化 + LLM 自接端点，实现断网全�
 tags: ["prd", "offline", "funasr", "camplus", "ollama"]
 author: 产品经理（AI 起草，待项目方评审）
 created_at: 2026-09-23
-version: "1.4.0"
-status: active (D-R1/D-R2/D-R3 已裁决采纳；2026-09-24 方案 B 裁决 → 新增 R9/AC-9；D-G1/D-G3/D-I1~I4 待裁决)
+version: "1.5.0"
+status: active (D-R1/D-R2/D-R3 已裁决采纳；2026-09-24 方案 B 裁决 → 新增 R9/AC-9；D-G4 项目方推翻 → 双平台一键安装，新增 AC-10；四包已派工)
+changes_1_5_0: "D-G4 反转：macOS 与 Windows 均须一键安装，R8 拆 L1/L2 两层；新增 AC-10 与 Apple 签名/公证外部成本；§12/§13 记录指派工程师授权与具名 owner"
 changes_1_4_0: "R9 分段增量上屏入范围（非目标节 §6 拆分改写）；更正 §12「无阻塞决策点残留」旧结论；登记 WP-G/H/I 前置决策"
 requirement: docs/REQUIREMENT_LOCAL_ENGINE.md (v0.3.0, approved-p0)
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
@@ -181,7 +182,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 ### R8: 分发与构建
 
 - **用户故事**：云模式老用户升级后包体与构建产物零变化。
-- **功能行为**：**D-R3 已采纳**——应用内引导下载 + 外置引擎目录（onedir 冻结代码包 ~975MB + 权重 ≈2.0GB 分离，合计 ≈3GB），**否决内置云精简主包**（保 AC-7）；macOS 组件以 **zip 形态 onedir 目录包**经引导下载落位（**不做** pkg/dmg 一键安装，D-G4 代理裁决；如需该承诺须重估签名/公证排期），Windows 侧 Inno Setup 组件形态；本地引擎组件独立可选安装，CI 增 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。**实施首任务 = Windows PyInstaller+funasr 冻结冒烟**（Spike 未覆盖 Windows，为残余风险最高点）。
+- **功能行为**：**D-R3 已采纳**——应用内引导下载 + 外置引擎目录（onedir 冻结代码包 ~975MB + 权重 ≈2.0GB 分离，合计 ≈3GB），**否决内置云精简主包**（保 AC-7）；**分发承诺（2026-09-24 项目方裁决）：macOS 与 Windows 均须支持一键安装**，故 ~~macOS zip 形态、不做 pkg/dmg~~ 原代理裁决作废，拆为两层——**L1 主应用安装包**（mac `.dmg` + Developer ID 签名 + 公证；Win Inno）与 **L2 引擎组件一键落位**（mac 应用内下载解包到 `~/Library/Application Support/OpenMeetingScribe/`；Win Inno `[Components]`），详见 [WP-G 派工说明 §3 D-G4](WP-G-R8-PACKAGING-DISPATCH.md)。**L1 的唯一硬阻塞是外部成本**：需项目方提供 Apple 开发者账号（约 $99/年）与签名/公证凭据并托管为 GitHub Secrets；未到位前 mac 侧只能声明 L2 已支持。本地引擎组件独立可选安装，CI 增 local 链路冒烟（模型用最小/量化替身，禁真实大模型下载）。**实施首任务 = Windows PyInstaller+funasr 冻结冒烟**（Spike 未覆盖 Windows，为残余风险最高点）。
 - **验收**：双平台本地组件安装 → AC-1 全流程；云包体积回归无增长。
 - **优先级**：P0
 
@@ -216,6 +217,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 | AC-7 | 存量无损：云模式默认行为、包体、CI 全绿回归 | CI |
 | AC-8 | 可观测：任务日志含引擎与模型版本；敏感信息过滤规则覆盖本地路径（复用 server.py 脱敏） | 代码评审 + 日志抽查 |
 | AC-9 | 分段增量上屏（R9）：≥3 段 10/30/60 分钟真机会议会中均出现分段文字，段闭合→上屏 P95 ≤20s；同一说话人整场编号不跳变；会中上屏文本＝会后定稿；30/60 分钟不因单请求超时整场失败；单段失败不刷屏红色报错；AC-3 内存门槛与 AC-7 云侧零变化复测通过 | QA 真机 + 埋点统计（macOS + Windows 各一轮） |
+| **AC-10** | **双平台一键安装（2026-09-24 项目方裁决新增）**：<br>**L2 引擎组件**——Win 与 mac 均须做到"应用内点一次『安装本地引擎』即到权重可下载态"，全程无需用户手找目录或手动解压；<br>**L1 主应用包**——Win Inno 安装包双击装完；mac `.dmg` 经 Developer ID 签名 + 公证，全新机器下载后双击安装首启**不出现 Gatekeeper「已损坏/无法打开」弹窗**。<br>未过 L1 前，发布材料与 README **不得**写「macOS 支持一键安装」，只可写组件级一键安装 | QA 全新虚拟机/真机各一轮 + CI 签名公证步骤绿灯 |
 
 ## 11. Rollout and Changelog Notes
 
@@ -234,8 +236,8 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 **Open Questions（决策点）**：
 - ~~D-R1~~ **已采纳（2026-09-23）**：全家桶四模型 ≈2.0GB，标点可选裁剪（Spike §2）。
 - ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。~~无阻塞决策点残留，WP-A~D 全部解锁~~ **2026-09-24 更正：该结论仅对 WP-A~D 成立**——盘点 R8/R9 后新增 D-G1/D-G3/D-I1~I4（下条）。
-- **2026-09-24 决策解锁（授权性质须留意）**：项目方给出 blanket 授权「我没答复的都按你给出的建议执行」，故 D-G1~D-G4、D-I1~D-I4 **全部由产品经理按建议值代理裁决采纳**，**不是项目方逐项亲口拍板**。WP-G / WP-I 就此解锁开工；取值依据与回退方式见 [WP-G 派工说明 §3](WP-G-R8-PACKAGING-DISPATCH.md) 与 [R9 需求记录 §6](REQUIREMENT-LOCAL-REALTIME-INCR.md)。实施中判定建议值技术不可行 → 回报产品，不得静默变通。
-- **macOS 组件分发承诺（待项目方确认）**：本包按「macOS 引擎组件走 zip 引导下载、**不做** pkg/dmg 一键安装」代理裁决（省公证与签名成本，Inno 组件仅服务 Windows 政企离线路径）。若需向 macOS 用户承诺一键安装，D-G4 作废并须重估签名/公证排期 —— 这是**产品口径而非技术细节**，需项目方明确。
+- **2026-09-24 决策解锁（授权性质须留意）**：项目方给出 blanket 授权「我没答复的都按你给出的建议执行」，并于同轮**明确补充「包括指派工程师」**，故 D-G1~D-G5、D-I1~D-I4 **全部由产品经理按建议值代理裁决采纳**，三包 + CI 缺陷已派至具名工程师（见 ROADMAP v10 第三轮派工单 owner 列）。代理裁决**不等于项目方逐项亲口拍板**：取值依据与回退方式见 [WP-G 派工说明 §3](WP-G-R8-PACKAGING-DISPATCH.md) 与 [R9 需求记录 §6](REQUIREMENT-LOCAL-REALTIME-INCR.md)。实施中判定建议值技术不可行 → 回报产品，不得静默变通。**唯一被项目方亲口推翻的取值：D-G4**（原「macOS 不做一键安装」→ 改为双平台一键安装）。
+- **macOS 一键安装的外部成本（待项目方提供，2026-09-24 新增）**：D-G4 加码后，mac 侧 L1（`.dmg` + Developer ID 签名 + 公证）**必须**有 Apple Developer Program 账号与签名/公证凭据，否则用户必撞 Gatekeeper，"一键安装"承诺不成立。当前 `build-macos.yml` 只产出未签名裸 zip（`:116` 创建 ZIP 包、`:124` 上传产物，全链无 codesign/notarize 步骤）。凭据到位前，对外口径只能写「macOS 支持应用内一键安装本地引擎组件」，不得写「macOS 一键安装」。
 - ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定；已随 ROADMAP v10 登记给出建议口径——因 v8/v9 被占用，本需求登记为 v10）。
 - ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：**WP-C 已产出正式结论**（2026-09-23）——推荐默认 qwen3:8b、可用下限 qwen3:4b、qwen2.5 ≤3B 不达档，详见 [EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5 与 R4。
@@ -251,4 +253,4 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 主干 R1/R2/R3（本地 ASR 挂线、管线集成、CAM++ 回归）按既定分工仍由 QoderIDE 侧推进；WP-A~D 与主干接口点少，可并行派发。
 
-**第二轮及后续派工（登记于 ROADMAP v10，本表不双写细节）**：WP-E（R1/R2/R3 主干接线 + AC-4 回退）、WP-F（R5 前端 UI）已验收；**WP-G**（R8 打包，派工说明见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)，D-G1~D-G4 已采纳 · **开工中**）、**WP-H**（超时天花板 + 降级消息语气收口）、**WP-I**（R9 分段增量上屏，需求见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，D-I1~D-I4 已采纳 · **开工中，优先级 P1**）。三包决策取值均为**产品代理裁决**（项目方 blanket 授权 2026-09-24），派工单与开工序见 ROADMAP v10。
+**第二轮及后续派工（登记于 ROADMAP v10，本表不双写细节）**：WP-E（R1/R2/R3 主干接线 + AC-4 回退）、WP-F（R5 前端 UI）已验收；**WP-G**（R8 打包 + **双平台一键安装**，派工说明见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)，owner=DevOps 工程师，D-G1~D-G5 已裁决 · **已派工**）、**WP-H**（超时天花板 + 降级消息语气收口，owner=后端工程师 · **已派工**）、**WP-I**（R9 分段增量上屏，需求见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，owner=后端工程师，D-I1~D-I4 已采纳 · **已派工，优先级 P1**）、**CI 缺陷**（`ci-local-engine.yml` 0s 失败，owner=DevOps 工程师 · **已派工**）。除 D-G4 由项目方亲口推翻加码外，其余决策取值均为**产品代理裁决**（项目方 blanket 授权 2026-09-24，含指派工程师），派工单与开工序见 ROADMAP v10。

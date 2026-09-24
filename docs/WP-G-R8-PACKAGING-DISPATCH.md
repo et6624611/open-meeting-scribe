@@ -1,15 +1,15 @@
 ---
 id: WP-G
 title: R8 分发与构建 · 打包路线派工说明（含决策点）
-version: 0.2.0
-status: dispatch-ready（D-G1~D-G4 已按产品建议值代理裁决，见 §3 顶部；项目方 blanket 授权 2026-09-24）
+version: 0.3.0
+status: dispatch-ready（D-G1~D-G5 已裁决并**派工至 DevOps 工程师 78087de278c8**；D-G4 于 2026-09-24 被项目方推翻并加码，见 §3 顶部）
 date: 2026-09-24
 source: docs/ROADMAP.md v10「WP-G 派工（2026-09-24）」
 prd: docs/PRD-LOCAL-ENGINE.md §R8 / §13 WP-D
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (D-R3 已采纳)
 spike: docs/SPIKE-R8-LOCAL-ENGINE.md §3
-owner: 待指派（建议工程侧打包/客户端 owner）
-approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点）
+owner: DevOps 工程师（waker `78087de278c8`，project `proj_dfdc01e7`）——项目方 2026-09-24 授权「按建议执行，包括指派工程师」
+approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点、**D-G4 双平台一键安装承诺**）
 ---
 
 # WP-G · R8 打包路线派工说明
@@ -68,7 +68,7 @@ approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点）
 
 ## 3. 决策点（裁决结果）
 
-> **授权性质（诚实标注）**：项目方 2026-09-24 给出 blanket 授权「我没答复的都按你给出的建议执行」，以下取值均为**产品经理按本包建议值代理裁决**，不是项目方逐项亲口拍板。各项的原始取舍表保留在下文，推翻任一只需回退本节取值 + 对应子任务返工。技术上做不到建议值时**必须回报**，不得静默变通。
+> **授权性质（诚实标注）**：项目方 2026-09-24 给出 blanket 授权「我没答复的都按你给出的建议执行」，并于同轮明确「包括指派工程师」。以下取值均为**产品经理按本包建议值代理裁决**，不是项目方逐项亲口拍板（**唯一例外：D-G4 由项目方亲口推翻并加码为双平台一键安装**）。各项的原始取舍表保留在下文，推翻任一只需回退本节取值 + 对应子任务返工。技术上做不到建议值时**必须回报**，不得静默变通。
 >
 > - **D-G1 → 采纳方案 A：独立引擎包**（新增 `build/pyinstaller_engine.spec`，主包 spec 一字不动；`build_worker_command()` 改为定位外置引擎可执行体 + 协议版本握手）。理由：AC-7「云包零增长」必须留在构建期静态可判，不接受靠 CI 环境变量正确性兜底。**方案 C 条件打包就此否决。**
 > - **D-G1 子项①：三条安装通道共用同一目录布局 + `engine-manifest.json`**（版本 / 协议版本 / 文件 SHA256）。
@@ -76,7 +76,7 @@ approvers: 项目方（D-G1 引擎包形态、D-G3 Windows 可写目录锚点）
 > - **D-G1 子项③：主包 ↔ 引擎包协议版本不匹配 → 拒绝启动并提示升级引擎组件**，不得静默回退云端。
 > - **D-G2 → 沿用现状**：ct-punc 保持可选项，`check_required_models()` 按 `optional` 跳过；「可选转必装」仍按 ROADMAP「真机实测后议」，本包不提前裁决。
 > - **D-G3 → 采纳 (a)**：引擎运行时数据（权重、日志、ModelScope 缓存）锚 `%LOCALAPPDATA%\OpenMeetingScribe\`，安装目录只放只读代码包；`model_dir` 默认值按平台改（Win → `%LOCALAPPDATA%`，macOS → `~/Library/Application Support/OpenMeetingScribe/models/`，开发态仍 `data/models/`）。**Per-user install (b) 与管理员运行 (c) 均否决。**
-> - **D-G4 → 采纳**：macOS 引擎组件以 **zip 形态 onedir 目录包**经应用内引导下载落位，**不做 pkg/dmg 组件安装**（省公证与签名成本）；Inno 组件路径仅服务 Windows 政企离线场景。若项目方要求 macOS 一键安装承诺，本条作废并重估签名/公证排期。
+> - **D-G4 → ~~采纳 zip 形态~~ 已被项目方推翻（2026-09-24 加码）**：原建议「macOS 只出 zip、不做 pkg/dmg 组件安装」作废。项目方口径：**macOS 与 Windows 均需支持一键安装**。mac 侧最新口径拆成两层，见 §3.1。
 > - **D-G5 → 采纳为产品要求**（非决策）：冻结态引擎拉起期间必须有进度态与超时可行动提示，禁止把 `engine_unhealthy` 原文丢给用户。
 
 ### 原始取舍依据（保留备查）
@@ -110,9 +110,23 @@ Inno Setup 默认装到 `Program Files`（非管理员不可写）。而引擎�
 
 选定后 D-G2 的 `model_dir` 默认值需按平台改（现为 `app/settings_store.py:350` 的 `data/models/`），并同步 WP-F UI 的存储位置展示与磁盘预检。
 
-### D-G4｜macOS 引擎组件的分发形态
+### D-G4｜双平台一键安装（~~原「macOS 分发形态」~~ 已被项目方推翻并加码，2026-09-24）
 
-Spike §3 只在 macOS 验证过冻结**构建与运行**，没有 mac 安装包方案（现 `build-macos.yml` + `build_macos.py` 是云包链路）。建议：引擎组件以 **zip 形态 onedir 目录包**由应用内引导下载落位，macOS 不做 pkg/dmg 组件安装（省公证与签名成本），Inno 组件路径仅服务 Windows 政企离线场景。需项目方确认"是否对用户承诺 macOS 一键安装"。
+**项目方口径**：「macOS 与 Windows 均要支持一键安装。」原建议（mac 只出 zip、不做 pkg/dmg）作废。
+
+拆开看，"一键安装"在 mac 侧其实是**两件不同的事**，成本差一个量级，需分别验收：
+
+| 层 | 现状 | 达标形态 | 真实阻塞 |
+|---|---|---|---|
+| **L1 主应用安装** | `build-macos.yml` 只 `创建 ZIP 包`（`:116`）+ 上传 artifact（`:124`），**无 codesign、无 notarization** | 双击即装：`.dmg`（或 `.pkg`）+ Developer ID 签名 + 公证 | Apple Developer Program 账号（约 $99/年）+ 证书 `.p12` + notary API key 需项目方提供并托管为 GitHub Secrets。**这是硬前提，不签字则 mac 用户必撞 Gatekeeper「已损坏/无法验证开发者」，等于没有一键安装。** |
+| **L2 本地引擎组件安装** | 无方案（本包未做） | 应用内「安装本地引擎」按钮 → 下载 → 解包 → 校验 → 落位 `~/Library/Application Support/OpenMeetingScribe/`（D-G3 已采纳）→ 就绪 | **不依赖 pkg/公证**：由已签名的主程序自行下载落位的文件不会被打 quarantine 标记，因此 L2 可在 L1 之前先行交付。仍需 D-G1 引擎包（G-2）。 |
+
+**派工结论（产品侧）**：
+1. L2 与 Windows 的 Inno `[Components]`（G-4）同批做，二者共同构成"点一下就装好引擎"的承诺，**不新增外部成本**。
+2. L1 新增为 **G-7**，owner 同为 DevOps，但**开工前置条件是拿到 Apple 开发者账号与签名凭据**；在凭据到位前，G-7 只能停在"链路写好、CI 里 dry-run 跳过签名"的状态，不得声称 mac 一键安装已支持。
+3. 真机断网验收（AC-1）在 L1 未达标期间，mac 侧允许用 venv→ 冻结包过渡，但**验收报告必须显式标注"未经公证包验证"**，不得与 Win 安装包混写成同一结论。
+
+**残留风险提示（需项目方知情）**：一键安装 ≠ 免下载。引擎权重 ≈2.0GB 仍需一次网络下载或政企离线包导入；若"一键安装"的用户预期是"装完立刻可断网使用"，需要额外定义离线全家桶形态（不在 WP-G 当前范围）。
 
 ### D-G5（产品要求，非决策）｜首启 86s 的体验契约
 
@@ -128,10 +142,12 @@ Spike §3 只在 macOS 验证过冻结**构建与运行**，没有 mac 安装包
 | G-2 | 新增 `build/pyinstaller_engine.spec`（mac+Win onedir）+ 引擎包 manifest/协议版本 | 可运行引擎包（替身权重下） | G-1 |
 | G-3 | `core/engine_host.py` 改造：引擎可执行体定位、`model_dir` 平台锚点、stderr 入日志 | 单测 + 开发态回归不红 | G-1/G-2 |
 | G-4 | `build/installer.iss` 新增 `[Components]` 本地引擎组件（含可选件开关）+ 内网离线包目录/校验文档 | Win 安装包：不装组件=云包体积不变 | D-G3、G-2 |
+| **G-4b** | **mac 侧引擎组件一键落位**（D-G4 L2，与 G-4 对等，非可选）：应用内「安装本地引擎」→ 下载 G-2 引擎包 → 解包校验 → 落位 `~/Library/Application Support/OpenMeetingScribe/` | mac 真机：点一次「安装本地引擎」即到"权重可下载"态，无需用户手动拖 zip | D-G3、D-G4、G-2 |
 | G-5 | 冻结态首启引导接 WP-F UI（组件未装/未就绪/不匹配三态） | mac+Win 真机首启走通到"下载权重" | G-2、D-G5 |
 | G-6 | CI：修好 `ci-local-engine.yml` 后补 local 链路冒烟（替身权重，禁真实下载） | Windows 冻结冒烟绿灯 + AC-7 体积守护绿灯 | §5 |
+| **G-7** | **mac 主应用一键安装包链路**：`build-macos.yml` 增 Developer ID codesign + notarization + `.dmg` 组装（替现有裸 ZIP） | 公证通过的 `.dmg`，全新 mac 双击安装后首启不弹 Gatekeeper 报错 | **项目方提供 Apple 开发者账号 + 签名凭据 + GitHub Secrets**、G-2 |
 
-可并行：G-4 与 G-5 在 G-2 完成后并行；G-6 由 WP-D owner 与 G-2 并行启动。
+可并行：G-4 与 G-5 在 G-2 完成后并行；G-6 与 G-2 并行启动；G-7 的脚本改造可与 G-2 并行，但**无凭据不得声称完成**。
 
 ---
 
@@ -181,4 +197,5 @@ WP-G 全部产物依赖这条 workflow 做验证，不修就是"造了没秤称"
 
 **合理假设（需真机证）**：`excludes torch` 是主包零增长的**唯一**屏障（不排除还有间接引用路径）；RTF 0.081 可外推到 30–60 分钟会议（仅 1 段 10 分钟样本、单机 CPU）。
 
-**未知（需拍板/实测）**：D-G1 最终形态、D-G3 Windows 可写锚点、D-G4 macOS 是否承诺一键安装、`ci-local-engine.yml` 失败根因、Windows Defender 场景下引擎包首启真实耗时、多说话人分离准确性。
+**未知（需拍板/实测）**：D-G1 最终形态、D-G3 Windows 可写锚点、`ci-local-engine.yml` 失败根因、Windows Defender 场景下引擎包首启真实耗时、多说话人分离准确性。
+**已裁决、但需补外部成本（2026-09-24）**：D-G4 改为「双平台一键安装」→ **Apple 开发者账号与签名凭据需项目方提供**（G-7 唯一硬阻塞）；未到位前 mac 侧只能交付 L2（引擎组件一键落位），不能交付 L1（公证安装包）。
