@@ -71,15 +71,22 @@ jobs:
     permissions:
       contents: read
     env:
-      FIXTURES: ${{ runner.temp }}\local-engine-fixtures
+      # 注意：job 级 env 不可用 runner 上下文（会导致整个 workflow 编译失败 →
+      # 0s failure / 0 jobs / name 与 paths 元数据全部失效）。动态路径由下方
+      # 「导出动态路径」step 写入 GITHUB_ENV。
       # 硬性禁令：禁真实模型下载 —— 缓存指向 fixture 空目录，全链路离线
-      MODELSCOPE_CACHE: ${{ runner.temp }}\local-engine-fixtures\ms_cache
       HF_HUB_OFFLINE: '1'
       TRANSFORMERS_OFFLINE: '1'
 
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
+
+    - name: 导出动态路径（FIXTURES / MODELSCOPE_CACHE）
+      shell: pwsh
+      run: |
+        "FIXTURES=$env:RUNNER_TEMP\local-engine-fixtures" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        "MODELSCOPE_CACHE=$env:RUNNER_TEMP\local-engine-fixtures\ms_cache" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
     - name: 安装 Python
       uses: actions/setup-python@v5
