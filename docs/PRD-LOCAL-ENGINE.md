@@ -4,8 +4,9 @@ description: 本地 ASR + 声纹离线化 + LLM 自接端点，实现断网全�
 tags: ["prd", "offline", "funasr", "camplus", "ollama"]
 author: 产品经理（AI 起草，待项目方评审）
 created_at: 2026-09-23
-version: "1.3.0"
-status: active (D-R1/D-R2/D-R3 均已裁决采纳)
+version: "1.4.0"
+status: active (D-R1/D-R2/D-R3 已裁决采纳；2026-09-24 方案 B 裁决 → 新增 R9/AC-9；D-G1/D-G3/D-I1~I4 待裁决)
+changes_1_4_0: "R9 分段增量上屏入范围（非目标节 §6 拆分改写）；更正 §12「无阻塞决策点残留」旧结论；登记 WP-G/H/I 前置决策"
 requirement: docs/REQUIREMENT_LOCAL_ENGINE.md (v0.3.0, approved-p0)
 adr: docs/adr/0018-本地可选计算引擎与声纹离线化.md (Proposed)
 spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
@@ -50,7 +51,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 ## 5. Scope
 
-### In Scope（对应 R1–R8，见 §8）
+### In Scope（对应 R1–R9，见 §8）
 
 1. ASR 模式扩展 `local`（批处理链路）+ 本地分离。
 2. 声纹本地化：`LocalCamPlusProvider`（CAM++ 28MB）回归，注册表双向零迁移。
@@ -59,6 +60,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 5. 引擎状态透明：全局引擎标识 + 数据流向矩阵（README/SECURITY 同步）。
 6. 失败回退 + 云端提质重转写。
 7. 分发：云精简包维持现状；本地引擎为可选组件；CI 增本地链路冒烟。
+8. 本地模式分段增量上屏（R9，2026-09-24 方案 B 裁决入范围；逐字级流式仍为非目标）。
 
 ### 依赖
 
@@ -69,7 +71,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 ## 6. Non-Goals
 
 - 不做端侧训练/微调；不内置大模型（Ollama 用户自装）。
-- 本地模式实时流式转写不做云端同级体验：实时链路降级为分段批处理（显性声明），实时聚类维持 MFCC 本地降级，不为实时侧恢复 torch。
+- ~~本地模式实时流式转写不做云端同级体验：实时链路降级为分段批处理（显性声明），实时聚类维持 MFCC 本地降级，不为实时侧恢复 torch。~~ **2026-09-24 修订（项目方裁决方案 B）**：本条中捆在一起的两件事拆开——① **逐字级流式识别仍为非目标**（不承诺、不排期）；② 「分段增量上屏」**不再是降级、升格为 In Scope**（见 R9 / [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)）。实时聚类维持 MFCC 本地降级、不为实时侧恢复 torch 两条约束**不变**。
 - 云模式声纹架构不动（voiceprint-service 维持 ADR-0009）。
 - 不做 CUDA/多硬件加速矩阵（基线：Apple Silicon + CPU；CUDA 为机会性支持不承诺）。
 - 不改默认引擎、不改 AGPL 许可证、不做订阅化。
@@ -183,6 +185,17 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 - **验收**：双平台本地组件安装 → AC-1 全流程；云包体积回归无增长。
 - **优先级**：P0
 
+### R9: 本地模式分段增量上屏（2026-09-24 新增，方案 B 裁决）
+
+> 完整问题定义、技术前提与待裁决点见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)（v0.1.0）。此处仅登记契约边界，避免规格双写。
+
+- **用户故事**：作为在断网/内网环境开会的主持人，我要在会中看到已经说过的话落在屏幕上，而不是等散会才有一篇稿。
+- **功能行为**：录音进行中按语音段闭合（VAD 静音驱动 + 最长时长兜底，段长待 D-I3 实测）将音频切片送本机 FunASR 推理，段结果经既有 `push_realtime_msg` 以 `sentence` 事件上屏；**不产生 `partial` 事件**（逐字级流式仍非目标）。段间说话人身份以既有增量聚类为唯一事实源（`core/diarization_cluster.py`），**不得**跨段使用 FunASR 每次 `generate` 独立编号的局部 `spk`（`core/engine_worker.py:148-156`）。热词映射（R2 必配项）逐段应用。
+- **边界**：感知延迟目标段闭合 → 上屏 P50 ≤ 8s / P95 ≤ 20s（Spike RTF 0.081 外推，需真机证）；单段失败不得连带重启常驻引擎（D-I1，现状 `core/engine_host.py:174-201` 超时即判 unhealthy 须改）；AC-3 内存门槛不因本需求放松；云模式路径零改动（AC-7）。
+- **定稿一致性**：建议「增量段拼接即定稿」（D-I2 方案 B）——若采纳，长会议 `ENGINE_REQUEST_TIMEOUT=180s` 整场失败问题在实时链路自然消解，WP-H 第 1 项范围收窄至导入音频路径。
+- **验收**：AC-9。
+- **优先级**：**建议 P1**（不阻塞 AC-1 断网闭环发布）；改判 P0 需同步重排 v10 里程碑与验收排期，且强依赖 WP-G 的 D-G1 先拍板。
+
 ## 9. Data and Permission Requirements
 
 - `data/settings.json`（gitignored）新增：`engine.mode`、`engine.local.{model_dir, model_tier}`、`llm.provider_presets 扩展`；全部变更走既有 settings 读写与脱敏逻辑（Key 不回显明文）。
@@ -202,6 +215,7 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 | AC-6 | 声纹：云/本地注册表零迁移互用；同组说话人匹配结果一致（FPR 相对差 ≤5%） | 自动化对比测试 |
 | AC-7 | 存量无损：云模式默认行为、包体、CI 全绿回归 | CI |
 | AC-8 | 可观测：任务日志含引擎与模型版本；敏感信息过滤规则覆盖本地路径（复用 server.py 脱敏） | 代码评审 + 日志抽查 |
+| AC-9 | 分段增量上屏（R9）：≥3 段 10/30/60 分钟真机会议会中均出现分段文字，段闭合→上屏 P95 ≤20s；同一说话人整场编号不跳变；会中上屏文本＝会后定稿；30/60 分钟不因单请求超时整场失败；单段失败不刷屏红色报错；AC-3 内存门槛与 AC-7 云侧零变化复测通过 | QA 真机 + 埋点统计（macOS + Windows 各一轮） |
 
 ## 11. Rollout and Changelog Notes
 
@@ -219,7 +233,10 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 
 **Open Questions（决策点）**：
 - ~~D-R1~~ **已采纳（2026-09-23）**：全家桶四模型 ≈2.0GB，标点可选裁剪（Spike §2）。
-- ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。**无阻塞决策点残留，WP-A~D 全部解锁**（D-R4 让渡清单不阻塞实施，仅影响 ROADMAP 登记）。
+- ~~D-R2~~ **已裁决（2026-09-23）**：管理员级配置，全员只读引擎状态。~~无阻塞决策点残留，WP-A~D 全部解锁~~ **2026-09-24 更正：该结论仅对 WP-A~D 成立**。盘点 R8/R9 后新增阻塞性决策：D-G1（引擎可执行体形态）、D-G3（Windows 组件可写锚点）、D-I1~D-I4（分段增量的故障域/定稿策略/段长/P0-P1 判级）。WP-A~F 不受影响，**WP-G 与 WP-I 未解锁**。
+- **D-G1（阻塞 WP-G）**：引擎子进程形态——现状 `core/engine_host.py:55` 冻结态按「同主 exe 再入 `--engine-worker`」拉起，而 `build/pyinstaller.spec:103` 显式 `excludes=['torch','torchaudio']`，冻结包内无 funasr/torch → 本地引擎必然启动失败；放回主包又违反 R8/AC-7。建议独立引擎包，否决条件打包。详见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md) §3。
+- **D-G3（阻塞政企离线路径）**：Inno 默认 `Program Files` 非管理员不可写，而权重/日志需可写；`core/model_registry.py:81-90` 默认相对路径 `data/models/` 在冻结态会指进只读 bundle。建议引擎运行时数据锚 `%LOCALAPPDATA%`。
+- **D-I1~D-I4（阻塞 WP-I）**：单段故障是否连带重启引擎、定稿是否重跑全量（建议不重跑）、段长闭合策略（建议先实测）、R9 判 P0 还是 P1（建议 P1）。详见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md) §6。
 - ~~D-R3~~ **已采纳（2026-09-23）**：应用内引导下载 + 外置引擎目录；Windows Inno 组件承载政企离线路径（Spike §3）。
 - D-R4：被 P0 让渡的当前迭代功能清单（项目方圈定；已随 ROADMAP v10 登记给出建议口径——因 v8/v9 被占用，本需求登记为 v10）。
 - ~~离线模型包政企 SKU~~：由 D-R3 结论覆盖（Inno 组件即离线路径），需求记录未决 1 就此关闭；~~最低推荐 LLM 规格~~：**WP-C 已产出正式结论**（2026-09-23）——推荐默认 qwen3:8b、可用下限 qwen3:4b、qwen2.5 ≤3B 不达档，详见 [EVAL-AC2-LOCAL-ENGINE.md](../tests/eval_local_engine/EVAL-AC2-LOCAL-ENGINE.md) §5 与 R4。
@@ -234,3 +251,5 @@ spike: docs/SPIKE-R8-LOCAL-ENGINE.md (v1.0.0, 2026-09-23)
 | **WP-D** | Windows PyInstaller+funasr 冻结 CI 冒烟（替身权重，禁真模型下载） | R8/AC-7 | **实施首任务** | Windows CI 绿灯；云包体积零增长回归 |
 
 主干 R1/R2/R3（本地 ASR 挂线、管线集成、CAM++ 回归）按既定分工仍由 QoderIDE 侧推进；WP-A~D 与主干接口点少，可并行派发。
+
+**第二轮及后续派工（登记于 ROADMAP v10，本表不双写细节）**：WP-E（R1/R2/R3 主干接线 + AC-4 回退）、WP-F（R5 前端 UI）已验收；**WP-G**（R8 打包，派工说明见 [WP-G-R8-PACKAGING-DISPATCH.md](WP-G-R8-PACKAGING-DISPATCH.md)，待 D-G1/D-G3）、**WP-H**（超时天花板 + 降级消息语气收口）、**WP-I**（R9 分段增量上屏，需求见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，待 D-I1~D-I4）。

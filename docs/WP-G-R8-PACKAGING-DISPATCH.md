@@ -149,7 +149,7 @@ WP-G 全部产物依赖这条 workflow 做验证，不修就是"造了没秤称"
 - **本地模式两个已知硬坑**（另立 WP-H，勿塞进本包，否则 G-2/G-4 排期会被拖）：
   1. `core/engine_host.py:31` `ENGINE_REQUEST_TIMEOUT=180s` 是单请求上限，按 Spike RTF≈0.081 反推音频超过约 37 分钟必超时；本地模式 `can_fallback_cloud=False` → 超时即**整场转写失败、录音白录**。
   2. `app/routers/record.py:466-477` 把设计内的"本地降级"当异常兜住并推 `type:"error"` 消息，用户每次开始录音都看到一条红色报错，与同页降级横幅（`RecTranscriptPanel.vue:65`）自相矛盾。
-  3. 连带口径问题：横幅与 PRD 写的是"实时转写按分段批处理输出"，而实现是**录音期间完全不出稿、结束后一次性全量批处理**（`core/realtime_asr.py:222-233` 直接抛 `realtime_degraded_to_batch`）——文案承诺与行为不一致，收口方案见 WP-H。
+  3. 连带口径问题：横幅与 PRD 写的是"实时转写按分段批处理输出"，而实现是**录音期间完全不出稿、结束后一次性全量批处理**（`core/realtime_asr.py:222-233` 直接抛 `realtime_degraded_to_batch`）。→ **2026-09-24 项目方已裁决取方案 B（真做分段增量上屏）**，落地定义见 [REQUIREMENT-LOCAL-REALTIME-INCR.md](REQUIREMENT-LOCAL-REALTIME-INCR.md)，实施包为 ROADMAP **WP-I**（其强前置即本包的 D-G1）。本包不含 B 的实现，但 G-3/G-5 的接口设计**不得把"单请求全量"写死**，否则 WP-I 返工。
 - CUDA / 多硬件加速矩阵、端侧训练微调、订阅化：均为 PRD 非目标。
 
 ---
