@@ -11,6 +11,8 @@
       <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
       <span v-if="searchQuery" v-html="highlightedTitle"></span>
       <span v-else>{{ displayTitle }}</span>
+      <!-- 完成待查看角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒）；置于标题行以兼容窄栏 meta 隐藏态 -->
+      <span v-if="isUnseenDone" class="sb-tl-new">{{ t('processing.badge_new') }}</span>
     </div>
 
     <!-- 元数据：时间 + 状态 + 时长 / Metadata: time + status + duration -->
@@ -109,6 +111,7 @@ import { useI18n } from 'vue-i18n'
 import type { Task } from '@/api/types'
 import { STATUS_CONFIG } from '@/api/types'
 import { usePlayerStore } from '@/stores/player'
+import { useTaskStore } from '@/stores/task'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -118,6 +121,7 @@ import { getSpeakerColor } from '@/utils/speakerColors'
 
 const { t } = useI18n()
 const player = usePlayerStore()
+const taskStore = useTaskStore()
 
 const props = defineProps<{
   task: Task
@@ -137,6 +141,11 @@ const emit = defineEmits<{
   rerecord: [taskId: string]
   viewDetails: [taskId: string]
 }>()
+
+/** 后台完成但用户尚未查看（角标） / Finished in background, not yet opened (badge) */
+const isUnseenDone = computed(() =>
+  taskStore.completedUnseen.includes(props.task.task_id),
+)
 
 const showContextMenu = ref(false)
 const showHoverCard = ref(false)

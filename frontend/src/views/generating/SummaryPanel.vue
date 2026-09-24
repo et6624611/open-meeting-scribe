@@ -1,9 +1,10 @@
 <template>
   <!-- 纪要面板 / Summary panel -->
   <div class="gen-panel" :class="{ hidden: !visible }">
+    <!-- 统一进度面板（REQ-TRANSCRIBE-PROGRESS R1）：与原文面板消费同一 task 数据源 / Unified panel sharing the same task source -->
     <div class="gen-loading" v-if="loading">
-      <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>{{ t('generating.summary.loading') }}</div>
-      <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
+      <div v-if="task?.status === 'recording'" class="gen-loading-hint"><div class="gen-loading-spinner"></div>{{ t('generating.summary.loading') }}</div>
+      <ProgressDialog v-else :task="task" />
     </div>
     <div class="gen-empty" v-else-if="pending">
       <div class="gen-empty-hint">{{ t('generating.summary.pending') }}</div>
@@ -80,7 +81,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Chapter } from '@/api/types'
+import ProgressDialog from './ProgressDialog.vue'
+import type { Chapter, Task } from '@/api/types'
 
 const { t } = useI18n()
 
@@ -89,6 +91,8 @@ const props = defineProps<{
   summaryMd: string
   chapters: Chapter[]
   expandedChapters: Set<number>
+  /** 完整任务对象：统一进度面板数据源 / Full task for the unified progress panel */
+  task: Task | null | undefined
   /** 任务状态是否在处理中（loading 态） / Whether task status is processing (loading state) */
   processing: boolean
   /** 任务状态是否为 pending / Whether task status is pending */
