@@ -12,8 +12,15 @@
 import argparse
 import math
 import struct
+import sys
 import wave
 from pathlib import Path
+
+# Windows CI 控制台默认 cp1252：中文输出显式切 UTF-8
+#（实测缺陷：UnicodeEncodeError 'charmap' codec can't encode）
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 CONFIG_YAML = """\
 # WP-D 替身模型配置：结构与 ModelScope 真实模型目录一致（config.yaml + model.pt），

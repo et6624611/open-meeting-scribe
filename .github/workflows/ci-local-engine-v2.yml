@@ -219,18 +219,8 @@ jobs:
 
     - name: 冻结图侵入扫描（Analysis TOC 不得含 torch/funasr/modelscope）
       run: |
-        $tocs = Get-ChildItem build -Recurse -Filter "Analysis-*.toc" -ErrorAction SilentlyContinue
-        if (-not $tocs) {
-          Write-Host "[GUARD] WARN: 未找到 Analysis TOC，跳过冻结图扫描（体积阈值仍会兜底）"
-        } else {
-          $intrusions = $tocs | Select-String -Pattern "'(funasr|modelscope|torch|torchaudio)[.']"
-          if ($intrusions) {
-            Write-Host "[GUARD] FAIL: 本地引擎组件侵入云包冻结图（前 20 条）:"
-            $intrusions | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.Line.Trim())" }
-            exit 1
-          }
-          Write-Host "[GUARD] 冻结图侵入扫描 PASS"
-        }
+        # 结构化解析 TOC 条目（历史缺陷：文本 grep 把 spec excludes 列表误报为侵入）
+        python .github/local-engine/toc_scan.py --build-dir build
 
     - name: 主包体积回归检查（对比基线，超出即 fail）
       run: |

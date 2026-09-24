@@ -16,6 +16,11 @@ import math
 import sys
 from pathlib import Path
 
+# Windows CI 控制台默认 cp1252：中文输出显式切 UTF-8（防 UnicodeEncodeError）
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
