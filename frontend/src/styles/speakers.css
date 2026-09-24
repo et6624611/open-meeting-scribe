@@ -338,7 +338,7 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* 本地模式「分段批处理」降级声明横幅（R5 / PRD 非目标节口径） */
+/* 本地模式声明横幅（R5；文案口径见 REQUIREMENT-LOCAL-REALTIME-INCR.md §8.1 空窗期收敛） */
 .rec-local-batch-banner {
   display: flex; align-items: center; gap: 6px;
   padding: 5px var(--s-3); margin: 0 var(--s-2);

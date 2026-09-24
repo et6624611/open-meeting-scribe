@@ -28,7 +28,7 @@
     "empty": "Waiting for recognition results...",
     "empty_hint": "Start speaking and the recognized content will appear here in real time",
     "listening": "Listening…",
-    "local_batch_notice": "Local engine mode: live transcription is delivered in segmented batches; word-level streaming is out of scope for local mode (see PRD non-goals).",
+    "local_batch_notice": "Local engine mode: live text is not shown during recording; transcription completes on this device after you stop recording (no network involved). Word-level streaming is out of scope for local mode.",
     "connect_failed": "Transcription connection lost",
     "reconnecting": "Reconnecting... (attempt {attempt})",
     "retry": "Reconnect"
