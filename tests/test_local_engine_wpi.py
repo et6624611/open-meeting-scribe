@@ -500,7 +500,10 @@ class TestConfigAndWiring:
         import core.realtime_local_asr as rla
         import core.users
         from tests.test_local_engine_wph import (
-            _FakeBG, _FakeDiarizer, _Flags, _cleanup_record_state,
+            _cleanup_record_state,
+            _FakeBG,
+            _FakeDiarizer,
+            _Flags,
         )
 
         constructed = {"realtime": 0, "local": 0}

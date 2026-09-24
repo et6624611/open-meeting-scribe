@@ -17,12 +17,12 @@ from pathlib import Path
 
 import pytest
 
-from core.errors import LocalEngineError, classify_error
 from core.engine_host import (
     ENGINE_REQUEST_TIMEOUT,
     LOCAL_ASR_MAX_SUPPORTED_SECONDS,
     estimate_local_asr_timeout,
 )
+from core.errors import LocalEngineError, classify_error
 
 
 def _write_wav(path, seconds=1.0, sample_rate=16000):
@@ -219,9 +219,9 @@ def _run_start_record(monkeypatch, tmp_path, start_exc):
 
     只打桩到能安全走到 _start_transcriber_bg 的程度；不触发真实录音/ffmpeg。
     """
+    import app.routers.record as rec
     import core.realtime_asr as ra
     import core.users
-    import app.routers.record as rec
 
     _RaisingTranscriber.exc = start_exc
     _RaisingTranscriber.instances = []
