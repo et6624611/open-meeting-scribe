@@ -121,7 +121,9 @@
     "engine_local": "Local Engine",
     "engine_cloud": "Cloud Service",
     "engine_unconfigured": "Not configured · click to open settings",
-    "engine_hint": "Click to view compute engine settings"
+    "engine_hint": "Click to view compute engine settings",
+    "local_asr": "FunASR local model",
+    "local_model": "local model"
   },
   "playing": "Playing",
   "paused": "Paused",
