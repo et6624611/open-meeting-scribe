@@ -196,6 +196,43 @@
       :message="t('library.confirm_delete', { count: selectedIds.size })"
       @confirm="onConfirmBatchDelete"
     />
+
+    <!-- 批量导出格式选择弹窗（DEF-QA-R1-02，替换 alert 占位） / Batch export format dialog (replaces alert placeholder) -->
+    <Teleport to="body">
+      <div v-show="showExportDialog" class="export-overlay" data-vue-overlay :class="{ 'is-open': showExportDialog }" @click.self="showExportDialog = false">
+        <div ref="exportDialogRef" class="export-dialog" role="dialog" aria-modal="true" aria-labelledby="libExportTitle">
+          <div class="export-header">
+            <h3 id="libExportTitle">{{ t('library.export_dialog_title') }}</h3>
+            <button class="export-close" :aria-label="t('common.action.close')" @click="showExportDialog = false">
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+            </button>
+          </div>
+          <div class="export-body">
+            <p class="export-desc">{{ t('library.export_dialog_desc', { count: exportableSelected.length }) }}</p>
+            <div class="export-formats" role="radiogroup" :aria-label="t('library.export_format_label')">
+              <label class="export-format" :class="{ 'is-active': exportFormat === 'docx' }">
+                <input type="radio" value="docx" v-model="exportFormat" />
+                <span class="export-format-text">
+                  <span class="export-format-name">{{ t('library.export_format_docx') }}</span>
+                  <span class="export-format-desc">{{ t('library.export_format_docx_desc') }}</span>
+                </span>
+              </label>
+              <label class="export-format" :class="{ 'is-active': exportFormat === 'md' }">
+                <input type="radio" value="md" v-model="exportFormat" />
+                <span class="export-format-text">
+                  <span class="export-format-name">{{ t('library.export_format_md') }}</span>
+                  <span class="export-format-desc">{{ t('library.export_format_md_desc') }}</span>
+                </span>
+              </label>
+            </div>
+          </div>
+          <div class="export-footer">
+            <button class="export-cancel" @click="showExportDialog = false">{{ t('library.export_cancel') }} <kbd>ESC</kbd></button>
+            <button class="export-confirm" @click="onConfirmExport">{{ t('library.export_confirm', { count: exportableSelected.length }) }}</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -211,6 +248,9 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { usePageBack } from '@/composables/usePageBack'
+import { useDialog } from '@/composables/useDialog'
+import { showToast } from '@/composables/useToast'
+import { downloadSummaryUrl, type SummaryFormat } from '@/api/tasks'
 import { matchTask, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
@@ -458,8 +498,51 @@ function sortGroupTasks(tasks: Task[]): Task[] {
 }
 
 // ─── 批量操作 / Batch operations ───
+// 批量导出（DEF-QA-R1-02）：弹窗选择 docx/md 格式后逐个触发浏览器下载，替换原 alert 占位。
+// Batch export: pick docx/md in a dialog, then trigger sequential browser downloads (was an alert placeholder).
+const showExportDialog = ref(false)
+const exportFormat = ref<SummaryFormat>('docx')
+const { dialogRef: exportDialogRef } = useDialog(showExportDialog, () => { showExportDialog.value = false })
+
+/** 已选中且已完成、有纪要文件的任务（其余状态无 output_path，后端会 404，直接跳过）
+ *  Selected tasks that are completed with a summary file; other states have no output_path and would 404, so skip them. */
+const exportableSelected = computed(() =>
+  taskStore.tasks.filter(tk => selectedIds.value.has(tk.task_id) && tk.status === 'completed' && !!tk.output_path)
+)
+
 function batchExport() {
-  alert(t('library.export_todo', { count: selectedIds.value.size }))
+  if (!selectedIds.value.size) return
+  if (!exportableSelected.value.length) {
+    showToast(t('library.export_none'), 'warn')
+    return
+  }
+  exportFormat.value = 'docx'
+  showExportDialog.value = true
+}
+
+/** 隐藏 <a download> 触发浏览器下载 / Trigger a browser download via a hidden <a download> */
+function triggerDownload(url: string) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = ''
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
+async function onConfirmExport() {
+  const targets = exportableSelected.value
+  const format = exportFormat.value
+  showExportDialog.value = false
+  for (let i = 0; i < targets.length; i++) {
+    triggerDownload(downloadSummaryUrl(targets[i].task_id, format))
+    // 错峰触发，规避浏览器对连续自动下载的拦截 / Stagger to avoid the browser's automatic-download blocking
+    if (i < targets.length - 1) await new Promise(r => setTimeout(r, 400))
+  }
+  const skipped = selectedIds.value.size - targets.length
+  if (skipped > 0) showToast(t('library.export_skipped', { exported: targets.length, skipped }), 'info')
+  else showToast(t('library.export_started', { count: targets.length }), 'success')
 }
 
 function batchArchive() {
@@ -1074,5 +1157,185 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .lib-page.is-xnarrow .cell-title {
   font-size: 13px;
+}
+
+/* ─── 批量导出格式选择弹窗（DEF-QA-R1-02） / Batch export format dialog ───
+   视觉语言与 ConfirmDialog 保持一致（同 overlay/dialog/footer 结构），仅 body 换成格式单选组。
+   Mirrors ConfirmDialog's visual language; body swapped for a format radio group. */
+.export-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--overlay-bg);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.export-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.export-dialog {
+  min-width: 420px;
+  max-width: 500px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05);
+  transform: translateY(8px);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.2s ease;
+}
+
+.export-overlay.is-open .export-dialog {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.export-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.export-header h3 {
+  margin: 0;
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+
+.export-close {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  border-radius: var(--radius-sm);
+}
+
+.export-close:hover {
+  opacity: 1;
+  background: var(--surface-2);
+}
+
+.export-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.export-body {
+  padding: var(--s-5);
+}
+
+.export-desc {
+  margin: 0 0 var(--s-4);
+  color: var(--muted);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+
+.export-formats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.export-format {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.export-format:hover {
+  background: var(--surface-2);
+}
+
+.export-format.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.export-format input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.export-format-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.export-format-name {
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+
+.export-format-desc {
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.export-footer {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.export-cancel,
+.export-confirm {
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-14);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+.export-cancel:hover {
+  background: var(--surface-2);
+}
+
+.export-cancel kbd {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--subtle);
+  line-height: 1.3;
+  margin-left: 4px;
+}
+
+.export-confirm {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+}
+
+.export-confirm:hover {
+  background: oklch(from var(--accent) calc(l - 0.06) c h);
 }
 </style>

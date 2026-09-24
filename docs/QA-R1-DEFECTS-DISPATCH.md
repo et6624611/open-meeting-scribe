@@ -108,3 +108,33 @@ approvers: 项目方（2026-09-24 裁决：可以派工；先跑通 macOS，Wind
 3. **前端依赖项**：DEF-04 失败态 UI（can_fallback_cloud 消费/显式确认/置灰）与 DEF-02 批量导出真实现，契约见上表。
 4. **冻结包相对路径锚点（WP-G B-2）**：已由 `MODELSCOPE_CACHE` 绝对化锚点统一承接，WP-G 合入后建议冒烟复认一次。
 5. **本轮仅本地提交**：4 项修复齐备后按裁决 push + PR；合入为 QA-R2 启动门 §3.1 前置。
+
+---
+
+## 6. 执行进展（前端工程师 d1b77737cde5，2026-09-24）
+
+### 前端｜DEF-QA-R1-04（AC-4 回退 UI）+ DEF-QA-R1-02（批量导出）
+
+- **分支 / worktree**：`fix/qa-r1-def04-def02-frontend-20260924`（独立 worktree `../oms-wt-def04-fe`，未在主工作区切分支）
+- **commit**：`cf480daa4f7c89b817d35068341f19c11ffaf82c`（本地提交，**未 push origin**，待后端对齐后统一合入）
+- **改动面**：13 文件 +448/−9。核心：`api/types.ts`（Task 增 `error_code`/`can_fallback_cloud` 可选字段）、`api/tasks.ts`（`retranscribe` 支持 `engineOverride:'cloud'`、新增 `downloadSummaryUrl(format)`）、`composables/useGeneratingData.ts`（`isLocalEngineFailure`/`canFallbackCloud`/`cloudFallbackBlocked` 计算 + `local_engine` 失败态文案）、`views/GeneratingView.vue`（失败卡片：可回退⇒「切云端重试」按钮 + 显式确认弹窗含数据上云告知；不可回退⇒置灰 + 原因说明）、`views/LibraryView.vue`（`batchExport()` alert 占位替换为 docx/md 格式选择弹窗 + 真实下载）、i18n（zh-CN/en）、`styles/meeting-view.css`。
+- **契约登记**：`docs/API_CONTRACTS.md` 新增 §11「本地应用内部端点（QA-R1 缺陷修复批次·先行登记）」，登记 `POST /api/tasks/{id}/retranscribe`（可选 body `{"engine_override":"cloud"}`）、`GET /api/download/{id}?format=docx|md`（默认 md）、任务 JSON 失败字段；标注前端已实现、后端 `a4cdbd0ca795` 合入前确认。
+- **macOS 真机浏览器 E2E 证据**（`/tmp/qa-r1-def04-fe-e2e/`）：
+  - `02_failure_cloud_true.png` — `can_fallback_cloud=True` 失败态渲染可用「Retry via cloud」按钮；
+  - `03b_cloud_confirm_dialog.png` — 点击后弹出显式确认弹窗（含数据上云告知文案）；
+  - `04_dialog_cancelled.png` — 取消关闭弹窗、不触发重试；
+  - `05_intranet_greyed.png` — `can_fallback_cloud=False`（纯内网）按钮 `disabled`/`aria-disabled=true` + 置灰原因说明；
+  - `06_library_page.png`/`07_export_dialog.png`/`08_export_confirmed.png` — 批量选择 2 个已完成会议→导出弹窗（docx/md 单选）→确认后触发 2 个 `/api/download/{id}?format=docx` 下载、toast「Export started for 2 meeting(s)」、`window.alert` 调用计数为 0（无 alert 残留）；md 格式路径同样验证通过（`?format=md`）。
+- **验证环境**：worktree 后端 8010 + vite dev 5173（临时 `vite.config.e2e.ts`，验证后已删除），种子任务落 `data/tasks`（gitignored）；用户主工作区 8000 后端与浏览器标签未受影响。
+- **未尽事项 / 残余风险**：
+  1. 后端 `engine_override=cloud` 重试端点与 `download?format=docx` 尚未由 `a4cdbd0ca795` 实现；契约已在 API_CONTRACTS.md §11 登记，**合入前须与后端对齐**。在后端就绪前：`retranscribe` 的 override 会被现有端点忽略、`download` 回退为 md。
+  2. E2E 未真实点击「确认切云端重试」以免触发真实 pipeline / 数据上云；确认弹窗→调用 `retranscribe(engineOverride:'cloud')` 的代码路径经静态走查与取消路径验证，真机云端重跑回归待后端端点就绪后补。
+  3. Windows 验证按项目方裁决顺延下一环节。
+  4. `GeneratingView.vue` 2 处 eslint icon-button label 报错经核对为 main 基线既有（行号位移），非本轮引入，未改动。
+
+---
+
+## 7. 产品复核批注（合并时，2026-09-24，产品经理）
+
+- §6 残余风险 1（后端端点未实现）**已闭环**：后端 `23b6da6` 已实现 `engine_override=cloud` 与 `download?format=docx`，合并前产品侧代码级抽查确认前后端字段名与端点一致（`tasks.py:61/207` ↔ `api/tasks.ts:40/50`），并在修复分支独立复跑 `tests/test_qa_r1_defects.py` **17/17 passed**；后端活体证据（断网探针 PASS、30min infer 157.4s、docx 样张、9 张前端 E2E 截图）已核验归档。
+- QA-R2 启动门 §3.1（四缺陷合入并 push）随本次合并满足；正式复判仍须 QA 按死端口代理法在他验路径重跑。

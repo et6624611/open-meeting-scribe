@@ -34,6 +34,7 @@
     "rerecord_action": "重新录制",
     "no_speech": "未检测到有效语音",
     "no_speech_hint": "录音可能为静音或音量极低，请检查麦克风或音频输入设备",
+    "local_engine": "本地引擎转写失败",
     "default_action": "查看详情"
   },
   "rename_prompt": "输入新标题：",

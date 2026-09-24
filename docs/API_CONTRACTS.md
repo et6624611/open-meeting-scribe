@@ -235,3 +235,36 @@ recognition.stop()  # 阻塞直到所有结果返回
 ### GET /health
 
 健康检查，返回 `{"status": "ok", "service": "asr-proxy", "dashscope_configured": true/false}`
+
+---
+
+## 11. 本地应用内部端点（QA-R1 缺陷修复批次 · 先行登记）
+
+> 状态：**前端已按本节实现**（分支 `fix/qa-r1-def04-def02-frontend-20260924`）；后端由 `a4cdbd0ca795` 同批实现，合入前须双方核对确认。依据：`docs/QA-R1-DEFECTS-DISPATCH.md` §2 DEF-QA-R1-04 / DEF-QA-R1-02。
+
+### POST /api/tasks/{task_id}/retranscribe（DEF-QA-R1-04 改造）
+
+- 请求体（JSON，可选）：`{"engine_override": "cloud"}`
+  - 缺省（无请求体）：按当前引擎设置重跑，行为与现状完全一致（向后兼容）。
+  - `engine_override="cloud"`：显式切云端引擎重跑；保持任务与笔记状态不丢失，复用 `pipeline_runner.on_failure` 落盘语义。
+- 约束：**仅**在用户对「数据上云」显式确认后由前端调用，绝不静默上云（PRD R7）。
+- 响应：`{"status": "processing", "message": "..."}`（与现状一致）。
+- 消费方：`frontend/src/api/tasks.ts retranscribe(taskId, { engineOverride: 'cloud' })` → GeneratingView 失败卡片「切云端重试」。
+
+### GET /api/download/{task_id}?format=docx|md（DEF-QA-R1-02 改造）
+
+- 查询参数 `format`：`docx` | `md`；**缺省 `md`**（与现状行为一致，向后兼容）。
+- `format=docx`：由 md 纪要生成 Word 文档（标题/说话人段落/时间戳映射为 Word 结构，中文不乱码），`Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`。
+- 任务无 `output_path` 时返回 404（现状不变）。
+- 消费方：`frontend/src/api/tasks.ts downloadSummaryUrl(taskId, format)` → LibraryView 批量导出弹窗。
+
+### 任务 JSON 失败字段（已有落盘语义，前端自本批次开始消费）
+
+`GET /api/tasks/{id}` 失败任务附带（`core/pipeline_runner.on_failure` 落盘）：
+
+```json
+{ "error_code": "engine_timeout", "can_fallback_cloud": true, "error_category": "local_engine" }
+```
+
+- `can_fallback_cloud=true` ⇒ 前端渲染「切云端重试」+ 显式确认；`false` ⇒ 按钮置灰 + 纯内网原因说明。
+- 前端仅在 `error_category === "local_engine"` 时展示回退 UI。
