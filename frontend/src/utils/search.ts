@@ -10,6 +10,10 @@
  *   6. 转写全文（dialogue） / Full transcript (dialogue)
  */
 import type { Task } from '@/api/types'
+import { isPlaceholderName } from '@/utils/speakerDisplay'
+
+/** 「未识别」搜索词（中英）命中含占位/空名任务的行为口径（设计稿 §4-L9） */
+const UNID_QUERY_RE = /^\s*(未识别| unidentified|unid)\s*$/i
 
 /**
  * 判断单个 Task 是否匹配搜索词。 / Check if a single Task matches the search query.
@@ -26,10 +30,17 @@ export function matchTask(task: Task, q: string): boolean {
   if ((task.summary || '').toLowerCase().includes(lower)) return true
 
   // 3. 说话人名称 / 3. Speaker names
+  // L9：占位串不作为可搜索文本（搜 Speaker/说话人N 不再命中占位任务）；
+  // 搜「未识别」命中含任意占位/空名的任务。
   const mapping = task.speaker_mapping
   if (mapping) {
-    for (const name of Object.values(mapping)) {
-      if (name && name.toLowerCase().includes(lower)) return true
+    const values = Object.values(mapping)
+    if (UNID_QUERY_RE.test(lower)) {
+      if (values.some(isPlaceholderName)) return true
+    }
+    for (const name of values) {
+      if (isPlaceholderName(name)) continue
+      if (name.toLowerCase().includes(lower)) return true
     }
   }
 

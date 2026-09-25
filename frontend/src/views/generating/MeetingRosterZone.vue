@@ -13,11 +13,11 @@
       <span v-if="roster.length" class="roster-count">{{ roster.length }}</span>
     </div>
 
-    <!-- 名单 chips / Roster chips -->
+    <!-- 名单 chips / Roster chips（REQ-SPK-RN L4：存量占位名渲染前收敛为「未识别」，去重后只现一枚） -->
     <div class="roster-chips" v-if="roster.length > 0">
-      <span v-for="(name, idx) in roster" :key="idx" class="roster-chip">
-        <span class="roster-chip-name">{{ name }}</span>
-        <button class="roster-chip-x" :title="t('generating.roster.remove')" @click="emit('remove', idx)">
+      <span v-for="item in rosterView" :key="item.idx" class="roster-chip">
+        <span class="roster-chip-name">{{ item.display }}</span>
+        <button class="roster-chip-x" :title="t('generating.roster.remove')" @click="emit('remove', item.idx)">
           <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l6 6M9 3l-6 6"/></svg>
         </button>
       </span>
@@ -39,12 +39,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isPlaceholderName } from '@/utils/speakerDisplay'
 
 const { t } = useI18n()
 
-defineProps<{
+const props = defineProps<{
   roster: string[]
 }>()
 
@@ -52,6 +53,22 @@ const emit = defineEmits<{
   (e: 'add', name: string): void
   (e: 'remove', index: number): void
 }>()
+
+/** 占位名→中性「未识别」且全名单仅保留一枚（idx 对齐原数组，删除行为不变） */
+const rosterView = computed(() => {
+  let unidKept = false
+  const out: { display: string; idx: number }[] = []
+  props.roster.forEach((name, idx) => {
+    if (isPlaceholderName(name)) {
+      if (unidKept) return
+      unidKept = true
+      out.push({ display: t('generating.speaker_default'), idx })
+    } else {
+      out.push({ display: name, idx })
+    }
+  })
+  return out
+})
 
 const localInput = ref('')
 

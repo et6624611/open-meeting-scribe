@@ -423,10 +423,10 @@ function lineOf(item: MixedItem): TranscriptLine {
 
 function speakerColor(sid: string | number): string { return getSpeakerColor(sid) }
 
-/** 头像首字：取名称首字符，无名则用编号 / Avatar initial: first char of name, fallback to ID */
-function avatarInitial(name: string, speakerId: number): string {
+/** 头像首字：真名取首字符；未识别取中性符（REQ-SPK-RN D5：禁用编号数字） */
+function avatarInitial(name: string, _speakerId: number): string {
   if (name && name.trim()) return name.trim()[0]
-  return String(speakerId + 1)
+  return t('recording.speaker.unid_initial')
 }
 
 function formatTime(ms: number): string {

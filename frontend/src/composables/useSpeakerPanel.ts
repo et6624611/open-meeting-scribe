@@ -5,6 +5,7 @@ import { ref, computed, reactive, nextTick, type ComputedRef, type Ref } from 'v
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
 import type { FlatTranscriptLine, Task } from '@/api/types'
 import type { Speaker } from '@/api/speakers'
 
@@ -53,7 +54,7 @@ export function useSpeakerPanel(
       .map(([sid, stats]) => {
         const uuid = currentBindingMapping[sid] || task.value?.speaker_uuid_mapping?.[String(sid)]
         const spk = uuid ? speakers.value.find(s => s.id === uuid) : null
-        const name = spk?.name || t('generating.speaker_default', { id: sid + 1 })
+        const name = normalizeSpeakerName(spk?.name) || t('generating.speaker_default')
         const role = spk?.role || ''
         const isMe = spk?.linked_user_id ? spk.linked_user_id === userStore.user?.id : false
         const m = Math.floor(stats.durMs / 60000)

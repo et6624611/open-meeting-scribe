@@ -41,7 +41,7 @@
           <div class="spk-info">
             <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
             <div class="spk-text">
-              <span class="spk-name" :style="{ color: getTextColor(spk.id) }">{{ spk.name }}</span>
+              <span class="spk-name" :class="{ 'is-unid': isPlaceholderName(spk.name) }" :style="{ color: getTextColor(spk.id) }">{{ spkDisplayName(spk.name) }}</span>
               <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
             </div>
           </div>
@@ -80,7 +80,7 @@
         <div class="spk-detail-left">
           <div class="spk-detail-info">
             <div class="spk-detail-name" @click="startRename">
-              <span v-if="!isRenaming" class="spk-name-clickable" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ selectedSpeaker.name }}</span>
+              <span v-if="!isRenaming" class="spk-name-clickable" :class="{ 'is-unid': isPlaceholderName(selectedSpeaker.name) }" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ spkDisplayName(selectedSpeaker.name) }}</span>
               <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
               <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
             </div>
@@ -234,6 +234,7 @@ import { fetchSpeakers, createSpeaker, deleteSpeaker, setSpeakerAsMe, updateSpea
 import type { Speaker } from '@/api/speakers'
 import { loadSpeakerStats, useSpeakerStat } from '@/composables/useSpeakerStats'
 import { getSpeakerColor, getSpeakerTextColor } from '@/utils/speakerColors'
+import { isPlaceholderName } from '@/utils/speakerDisplay'
 import { useRouter } from 'vue-router'
 import { showToast } from '@/composables/useToast'
 import { getVoiceprintStatus, rebuildVoiceprint, deleteVoiceprint, fetchVoiceprintRegistry, type VoiceprintStatus } from '@/api/voiceprint'
@@ -244,6 +245,11 @@ import { usePageBack } from '@/composables/usePageBack'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
+
+/** REQ-SPK-RN L5：占位档案名展示位收敛为中性「未识别」（数据本体不动 H4，改名走既有编辑） */
+function spkDisplayName(name: string): string {
+  return isPlaceholderName(name) ? t('speakers.unidentified') : name
+}
 const speakers = ref<Speaker[]>([])
 const inputText = ref('')
 const unifiedInputRef = ref<HTMLInputElement | null>(null)
@@ -572,6 +578,8 @@ onMounted(load)
 .spk-vp-dot.vp-no { background: var(--border); }
 .spk-text { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
 .spk-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* REQ-SPK-RN L5：存量占位档案仍列出（H4 数据本体不动），名字位灰标中性文案，改名走既有编辑 */
+.spk-name.is-unid, .spk-name-clickable.is-unid { color: var(--subtle) !important; font-style: italic; font-weight: 400; }
 .spk-badge-me { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: 500; flex-shrink: 0; }
 .spk-meta-row { display: flex; align-items: center; gap: var(--s-3); flex-shrink: 0; }
 .spk-meta { font-size: 12px; color: var(--muted); }

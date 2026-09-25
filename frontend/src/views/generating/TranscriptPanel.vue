@@ -146,7 +146,7 @@
                       :style="{ color: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }"
                       @click="emit('speaker-label-click', $event, flatTranscript[item.lineIdx].speaker_id)"
                     >
-                      {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || t('generating.speaker_default', { id: flatTranscript[item.lineIdx].speaker_id + 1 }) }}
+                      {{ getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id) || t('generating.speaker_default') }}
                     </span>
                     <button
                       class="spk-locate-btn"
@@ -278,6 +278,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
 import ProgressDialog from './ProgressDialog.vue'
 import type { FlatTranscriptLine, Chapter, Task } from '@/api/types'
 import type { Speaker } from '@/api/speakers'
@@ -397,13 +398,14 @@ function getBindingSpeakerName(speakerId: number): string {
   const uuid = props.currentBindingMapping[speakerId]
   if (!uuid) return ''
   const spk = props.speakers.find(s => s.id === uuid)
-  return spk?.name || ''
+  // REQ-SPK-RN：存量占位档案名（speakers.json 污染）同样收敛为空，行首走未识别态
+  return normalizeSpeakerName(spk?.name)
 }
 
-/** 头像首字：取名称首字符，无名则用编号 / Avatar initial: first char of name, fallback to ID */
-function avatarInitial(name: string, speakerId: number): string {
+/** 头像首字：真名取首字符；未识别取中性符（D5：禁用编号数字） */
+function avatarInitial(name: string, _speakerId: number): string {
   if (name && name.trim()) return name.trim()[0]
-  return String(speakerId + 1)
+  return t('generating.speaker_unid_initial')
 }
 
 function isMeSpeakerId(speakerId: number): boolean {

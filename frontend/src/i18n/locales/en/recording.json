@@ -13,7 +13,8 @@
     "create_and_bind": "Create \"{name}\" and bind",
     "locate": "Locate this speaker",
     "me_suffix": " (Me)",
-    "default_name": "Speaker {id}"
+    "default_name": "Unidentified",
+    "unid_initial": "?"
   },
   "tab": {
     "transcript": "Transcript",

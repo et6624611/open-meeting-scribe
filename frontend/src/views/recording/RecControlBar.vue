@@ -29,7 +29,7 @@
           <!-- 当前参会人列表 / Current roster -->
           <div class="rec-roster-list" v-if="roster.length > 0">
             <div v-for="(name, idx) in roster" :key="'r'+idx" class="rec-roster-item">
-              <span class="rec-roster-name">{{ name }}</span>
+              <span class="rec-roster-name">{{ normalizeSpeakerName(name) || t('recording.speaker.default_name') }}</span>
               <button class="rec-roster-remove" :title="t('recording.roster.remove')" @click="$emit('rosterRemove', idx)">
                 <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>
               </button>
@@ -45,7 +45,7 @@
               @click="$emit('rosterSelect', s)"
             >
               <span class="rec-roster-dot" :style="{ background: getSpeakerColor(s.id) }"></span>
-              <span>{{ s.name }}</span>
+              <span>{{ normalizeSpeakerName(s.name) || t('recording.speaker.default_name') }}</span>
             </div>
           </div>
           <!-- 新建入口 / Create entry -->
@@ -93,6 +93,7 @@ import { useI18n } from 'vue-i18n'
 import type { Project } from '@/api/projects'
 import type { Speaker } from '@/api/speakers'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
 import { useDropdownPopup } from '@/composables/useDropdownPopup'
 
 const { t } = useI18n()

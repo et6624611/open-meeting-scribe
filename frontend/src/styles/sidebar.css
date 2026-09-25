@@ -127,6 +127,8 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-tl-spk-bar-fill { height: 100%; border-radius: 1.5px; min-width: 2px; transition: width 0.3s ease; }
 .sb-tl-spk-more { font-size: 10px; color: var(--subtle); white-space: nowrap; align-self: center; }
 .sb-tl-spk-total { font-size: 10px; color: var(--subtle); white-space: nowrap; align-self: center; }
+/* REQ-SPK-RN D5：未绑定聚合 chip（中性灰调，无编号无颜色条） */
+.sb-tl-spk-unid { font-size: 10px; color: var(--muted, var(--subtle)); background: var(--surface-2); border-radius: 8px; padding: 1px 7px; white-space: nowrap; align-self: center; }
 
 /* ─── 失败详情区域 ─── */
 .sb-tl-failure { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; margin-top: 4px; border-top: 1px dashed var(--border); animation: fadeIn 0.2s ease; }

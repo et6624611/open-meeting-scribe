@@ -7,6 +7,7 @@
   "create_hint": "Create \"{name}\"",
   "add": "Add",
   "badge_me": "Me",
+  "unidentified": "Unidentified",
   "meetings_count": "{count} meeting(s)",
   "set_me": "Set as Me",
   "empty": "No speakers yet",

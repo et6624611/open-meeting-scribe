@@ -12,7 +12,7 @@
         class="bind-option" :class="{ 'is-selected': asrId !== null && currentBinding(spk.id) === String(asrId) }"
         @click="$emit('bind', spk)"
       >
-        <span class="bind-name" :style="{ color: speakerColor(spk.id) }">{{ spk.name }}{{ spk.is_me ? t('recording.speaker.me_suffix') : '' }}</span>
+        <span class="bind-name" :style="{ color: speakerColor(spk.id) }">{{ normalizeSpeakerName(spk.name) || t('recording.speaker.default_name') }}{{ spk.is_me ? t('recording.speaker.me_suffix') : '' }}</span>
       </div>
       <div v-if="filteredSpeakers.length === 0" class="bind-empty">{{ t('recording.speaker.no_match') }}</div>
     </div>
@@ -30,6 +30,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
 import { useDropdownPopup } from '@/composables/useDropdownPopup'
 import type { Speaker } from '@/api/speakers'
 

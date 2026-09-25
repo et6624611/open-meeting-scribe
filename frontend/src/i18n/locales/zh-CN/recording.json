@@ -13,7 +13,8 @@
     "create_and_bind": "新建「{name}」并绑定",
     "locate": "定位此说话人",
     "me_suffix": "（我）",
-    "default_name": "说话人{id}"
+    "default_name": "未识别",
+    "unid_initial": "未"
   },
   "tab": {
     "transcript": "原文",

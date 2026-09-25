@@ -41,6 +41,7 @@
     "detected": "Detected {count} speaker(s)",
     "unbound_hint": ", {count} unlinked",
     "locate": "Locate this speaker's utterances",
+    "name_required": "Please enter a name before creating a speaker",
     "skip": "Skip for now",
     "confirm": "Confirm Linking",
     "close": "Close",
@@ -96,7 +97,8 @@
     "me_label": "● Me",
     "total": "Total {duration} · {turns} utterance(s)"
   },
-  "speaker_default": "Speaker {id}",
+  "speaker_default": "Unidentified",
+  "speaker_unid_initial": "?",
   "summary": {
     "loading": "Generating minutes...",
     "action_items": "Decisions",
@@ -180,8 +182,8 @@
     "title": "Link Speaker Identities",
     "got_it": "Got it",
     "info_icon_tip": "What is speaker linking?",
-    "demo_label_1": "Speaker 1",
-    "demo_label_2": "Speaker 2",
+    "demo_label_1": "Sam",
+    "demo_label_2": "Alex",
     "demo_name_1": "Alex",
     "demo_name_2": "Jamie"
   },

@@ -8,6 +8,8 @@ import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { createSpeaker, submitSpeakerMapping, saveSpeakerMapping, applySpeakerNames, type Speaker } from '@/api/speakers'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
+import { showToast } from '@/composables/useToast'
 import type { FlatTranscriptLine, Task } from '@/api/types'
 
 export function useSpeakerBinding(
@@ -58,8 +60,9 @@ export function useSpeakerBinding(
         const uuid = currentBindingMapping[sid]
         const bound = uuid ? speakers.value.find(s => s.id === uuid) : null
         const pct = totalMs > 0 ? Math.round((durMs / totalMs) * 100) : 0
-        const displayName = bound?.name || mapping?.[String(sid)] || t('generating.speaker_default', { id: sid + 1 })
-        return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: bound?.name || '', displayName, bound: !!bound }
+        // REQ-SPK-RN H1/D5：存量占位名（mapping 直存 Speaker N）经判定器收敛，未绑定态统一中性文案
+        const displayName = normalizeSpeakerName(bound?.name) || normalizeSpeakerName(mapping?.[String(sid)]) || t('generating.speaker_default')
+        return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: normalizeSpeakerName(bound?.name), displayName, bound: !!bound }
       })
   })
 
@@ -124,7 +127,12 @@ export function useSpeakerBinding(
   }
 
   async function createAndBind(speakerId: number, suggestedName: string) {
-    const name = suggestedName || t('generating.speaker_default', { id: speakerId + 1 })
+    // L2 写库源头（AC-7）：空名不再落占位档案，改必填引导；确保新档案永不写入编号占位名
+    const name = (suggestedName || '').trim()
+    if (!name || normalizeSpeakerName(name) === '') {
+      showToast(t('generating.binding.name_required'), 'error')
+      return
+    }
     try {
       const newSpk = await createSpeaker(name)
       currentBindingMapping[speakerId] = newSpk.id
