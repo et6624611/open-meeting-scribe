@@ -287,3 +287,9 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-search-toolbar .sb-collapse-all-btn:hover { color: var(--fg); background: var(--surface-2); }
 .sb-search-toolbar .sb-collapse-all-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sb-search-toolbar .sb-collapse-all-btn.is-collapsed { transform: rotate(-90deg); }
+
+/* 完成待查看角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒） / Unseen-completion badge */
+.sb-tl-new { font-size: 10px; line-height: 1; font-weight: 700; color: #fff; background: var(--accent); border-radius: 999px; padding: 3px 6px; flex-shrink: 0; letter-spacing: 0.02em; }
+/* 角标存在时标题行转 flex：标题可省略号截断，角标不被裁掉 / Title row becomes flex when badge present */
+.sb-tl-title:has(.sb-tl-new) { display: flex; align-items: center; gap: 6px; }
+.sb-tl-title:has(.sb-tl-new) > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

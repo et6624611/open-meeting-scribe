@@ -30,6 +30,35 @@ export const useTaskStore = defineStore('task', () => {
   const sidebarSearchQuery = ref('')
   /** 是否查看已归档任务（会议库 Tab 切换用） / Whether viewing archived tasks (for library tab toggle) */
   const showArchived = ref(false)
+  /**
+   * 「处理完成待查看」角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒）。
+   * 后台检测到任务完成且用户不在该会议页时打标；进入会议页即清除。localStorage 持久化跨刷新。
+   * In-app completion badges: marked when a task finishes while the user is away
+   * from that meeting page; cleared on visit. Persisted across refreshes.
+   */
+  const COMPLETED_UNSEEN_KEY = 'oms_completed_unseen'
+  const completedUnseen = ref<string[]>(loadCompletedUnseen())
+
+  function loadCompletedUnseen(): string[] {
+    try {
+      const raw = localStorage.getItem(COMPLETED_UNSEEN_KEY)
+      const arr = raw ? JSON.parse(raw) : []
+      return Array.isArray(arr) ? arr.filter(x => typeof x === 'string') : []
+    } catch { return [] }
+  }
+  function persistCompletedUnseen() {
+    try { localStorage.setItem(COMPLETED_UNSEEN_KEY, JSON.stringify(completedUnseen.value)) } catch { /* 存储满时静默 */ }
+  }
+  function markCompletedUnseen(taskId: string) {
+    if (completedUnseen.value.includes(taskId)) return
+    completedUnseen.value = [...completedUnseen.value, taskId]
+    persistCompletedUnseen()
+  }
+  function clearCompletedUnseen(taskId: string) {
+    if (!completedUnseen.value.includes(taskId)) return
+    completedUnseen.value = completedUnseen.value.filter(id => id !== taskId)
+    persistCompletedUnseen()
+  }
   /** 防抖后的搜索词（300ms），避免每次按键都触发全量过滤 / Debounced search query (300ms) to avoid full filter on every keystroke */
   const debouncedQuery = ref('')
   /** 侧边栏专用防抖搜索词 / Sidebar-only debounced search query */
@@ -162,6 +191,7 @@ export const useTaskStore = defineStore('task', () => {
     try {
       await apiDeleteTask(taskId)
       tasks.value = tasks.value.filter(t => t.task_id !== taskId)
+      clearCompletedUnseen(taskId)
       if (currentTaskId.value === taskId) {
         currentTaskId.value = null
       }
@@ -261,6 +291,7 @@ export const useTaskStore = defineStore('task', () => {
 
   return {
     tasks, currentTaskId, loading, loadError, searchQuery, sidebarSearchQuery, showArchived,
+    completedUnseen, markCompletedUnseen, clearCompletedUnseen,
     currentTask, filteredTasks, groupedTasks, activeTasks, archivedTasks,
     loadTasks, selectTask, removeTask, patchTaskLocal, archiveTask, unarchiveTask,
     pauseRecording, resumeRecording, abandonRecording, stopRecording, getStatusLabel,

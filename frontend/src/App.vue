@@ -154,6 +154,7 @@ import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
 import { usePhilosophy } from '@/composables/usePhilosophy'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
+import { useCompletionWatch } from '@/composables/useCompletionWatch'
 import { escapeHtml } from '@/utils/sanitize'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
@@ -287,6 +288,9 @@ useDivider()
 
 // 全局键盘快捷键 / Global keyboard shortcuts
 useKeyboardShortcuts()
+
+// 后台任务完成侦测：站内角标/toast + 系统通知（有则发）——REQ-TRANSCRIBE-PROGRESS R2
+useCompletionWatch()
 
 const frameClasses = computed(() => ({
   'is-start-mode': themeStore.isStartMode,

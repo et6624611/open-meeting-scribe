@@ -16,6 +16,9 @@
         <h2 class="gen-failure-title">{{ t('generating.failure.title') }}</h2>
         <p class="gen-failure-message">{{ failureInfo.message }}</p>
         <p v-if="failureInfo.suggestion" class="gen-failure-suggestion">{{ failureInfo.suggestion }}</p>
+        <!-- R4-简（REQ-TRANSCRIBE-PROGRESS）：失败阶段标红 + 已处理百分比；重试入口沿用卡片按钮 -->
+        <!-- Failed stage highlighted red with processed percent; retry actions stay on the card buttons -->
+        <ProgressDialog :task="task" compact hide-retry class="gen-failure-progress" />
         <details v-if="failureInfo.rawError" class="gen-failure-raw">
           <summary>{{ t('generating.failure.show_raw') }}</summary>
           <code>{{ failureInfo.rawError }}</code>
@@ -280,6 +283,7 @@
         :active-chapter-idx="activeChapterIdx"
         :flat-transcript="flatTranscript"
         :task-status="task?.status"
+        :task="task"
         :can-bind="canBind"
         :speaker-filter-set="speakerFilterSet"
         :focus-speaker="focusSpeaker"
@@ -334,6 +338,7 @@
         :summary-md="summaryMd"
         :chapters="chapters"
         :expanded-chapters="summaryExpandedChapters"
+        :task="task"
         :processing="!!task?.status && ['recording', 'processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(task.status)"
         :pending="task?.status === 'pending'"
         :has-summary="!!task?.summary"
@@ -437,6 +442,7 @@ import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
 import SummaryPanel from './generating/SummaryPanel.vue'
+import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'

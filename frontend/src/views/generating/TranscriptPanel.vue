@@ -21,10 +21,9 @@
           </button>
         </div>
         <div class="spk-transcript-scroll" ref="transcriptAreaEl">
-        <!-- 章节生成中提示（有转写内容但章节未生成） / Chapter generation hint (transcript exists, chapters pending) -->
+        <!-- 章节生成中提示（有转写内容但章节未生成）：统一进度面板 backfill 态 / Chapter generation hint — unified progress panel (backfill variant) -->
         <div class="chapter-loading" v-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length > 0">
-          <div class="chapter-loading-spinner"></div>
-          <span>{{ t('generating.chapter.dividing') }}</span>
+          <ProgressDialog :task="task" backfill />
         </div>
         <!-- 空转写提示（completed 但无任何转写内容） / Empty transcript hint (completed but no transcript) -->
         <div class="chapter-loading is-empty" v-else-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length === 0">
@@ -63,9 +62,12 @@
           <button class="gen-hidden-show-btn" @click="emit('show-all-chapters')">{{ t('generating.transcript.show') }}</button>
         </div>
 
-        <div class="gen-loading" v-if="!flatTranscript.length && taskStatus && ['recording', 'processing', 'transcribing', 'summarizing'].includes(taskStatus)">
+        <!-- 统一进度面板（REQ-TRANSCRIBE-PROGRESS R1）：替代静态 spinner；录音态沿用轻量加载提示 / Unified progress panel replaces static spinner; recording keeps light hint -->
+        <div class="gen-loading" v-if="!flatTranscript.length && taskStatus && ['processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(taskStatus)">
+          <ProgressDialog :task="task" />
+        </div>
+        <div class="gen-loading" v-else-if="!flatTranscript.length && taskStatus === 'recording'">
           <div class="gen-loading-hint"><div class="gen-loading-spinner"></div>{{ t('generating.transcript.loading') }}</div>
-          <div class="gen-skeleton"><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div><div class="gen-skeleton-bar"></div></div>
         </div>
         <div class="gen-empty" v-else-if="!flatTranscript.length && taskStatus === 'pending'">
           <div class="gen-empty-hint">{{ t('generating.transcript.pending') }}</div>
@@ -276,7 +278,8 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { getSpeakerColor } from '@/utils/speakerColors'
-import type { FlatTranscriptLine, Chapter } from '@/api/types'
+import ProgressDialog from './ProgressDialog.vue'
+import type { FlatTranscriptLine, Chapter, Task } from '@/api/types'
 import type { Speaker } from '@/api/speakers'
 
 const { t } = useI18n()
@@ -293,6 +296,8 @@ const props = defineProps<{
   activeChapterIdx: number
   flatTranscript: FlatTranscriptLine[]
   taskStatus: string | undefined
+  /** 完整任务对象：统一进度面板的唯一数据源（progress/failed_stage/…） / Full task for the unified progress panel */
+  task: Task | null | undefined
   canBind: boolean
   speakerFilterSet: Set<number>
   focusSpeaker: { speakerId: number; name: string; color: string; turns: number } | null

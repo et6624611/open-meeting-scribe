@@ -455,6 +455,8 @@ export function useGeneratingData(
 
   // ─── 生命周期 / Lifecycle ───
   onMounted(async () => {
+    // 进入会议页即清除「已完成待查看」角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒闭环）
+    taskStore.clearCompletedUnseen(taskId)
     const saved = localStorage.getItem('oms_gen_active_tab')
     if (saved && (TAB_IDS as readonly string[]).includes(saved)) activeTab.value = saved
 
