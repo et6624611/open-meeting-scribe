@@ -4,38 +4,73 @@
   <div class="db-node dc-card" :class="{ 'is-ineffective': decision.status !== 'active' }">
     <div class="db-row1">
       <span class="db-dot dc-dot" :class="'st-' + decision.status" :title="t('decisions.badge_' + decision.status)"></span>
-      <span class="db-title dc-text" :title="displayText">{{ displayText }}</span>
-      <!-- 状态徽标：待确认默认可见带徽标（REQ-DECISION-CENTER §11-2 裁决） -->
-      <!-- Status badges: pending-confirmation is visible by default with a badge -->
-      <span v-if="decision.pending_confirmation && decision.status === 'active'" class="dc-badge dc-badge-pending">{{ t('decisions.badge_pending') }}</span>
-      <span v-if="decision.status !== 'active'" class="dc-badge" :class="'dc-badge-' + decision.status">{{ t('decisions.badge_' + decision.status) }}</span>
-      <!-- 行内操作菜单 / Inline action menu -->
-      <div class="dc-action-wrap" ref="menuWrapRef">
-        <button class="dc-action-btn" :aria-expanded="menuOpen" aria-haspopup="menu" :title="t('decisions.action_more')" @click.stop="menuOpen = !menuOpen">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
-        </button>
-        <div class="db-dropdown dc-menu" :class="{ 'is-open': menuOpen }">
-          <button class="db-dd-item" :disabled="decision.status === 'superseded'" @click.stop="emit('supersede')">
-            <span class="db-dd-dot dc-dot st-superseded"></span>{{ t('decisions.action_supersede') }}
-          </button>
-          <button class="db-dd-item" :disabled="decision.status === 'revoked'" @click.stop="emit('revoke')">
-            <span class="db-dd-dot dc-dot st-revoked"></span>{{ t('decisions.action_revoke') }}
-          </button>
+      <!-- 行内编辑态：文本域替换标题行（F3），保存/取消走父层 API -->
+      <div v-if="editing" class="dc-edit">
+        <textarea
+          ref="editAreaRef"
+          v-model="editText"
+          class="dc-edit-area"
+          rows="3"
+          maxlength="2000"
+          :aria-label="t('decisions.action_edit')"
+        ></textarea>
+        <div class="dc-edit-actions">
+          <button type="button" class="dc-edit-btn" @click="cancelEdit">{{ t('decisions.add_cancel') }}</button>
+          <button type="button" class="dc-edit-btn is-primary" :disabled="!editText.trim()" @click="saveEdit">{{ t('decisions.add_submit') }}</button>
         </div>
       </div>
+      <template v-else>
+        <span class="db-title dc-text" :title="displayText">{{ displayText }}</span>
+        <!-- 状态徽标：待确认默认可见带徽标（REQ-DECISION-CENTER §11-2 裁决） -->
+        <!-- Status badges: pending-confirmation is visible by default with a badge -->
+        <span v-if="decision.pending_confirmation && decision.status === 'active'" class="dc-badge dc-badge-pending">{{ t('decisions.badge_pending') }}</span>
+        <span v-if="decision.status !== 'active'" class="dc-badge" :class="'dc-badge-' + decision.status">{{ t('decisions.badge_' + decision.status) }}</span>
+        <!-- 行内操作菜单 / Inline action menu -->
+        <div class="dc-action-wrap" ref="menuWrapRef">
+          <button class="dc-action-btn" :aria-expanded="menuOpen" aria-haspopup="menu" :title="t('decisions.action_more')" @click.stop="menuOpen = !menuOpen">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+          </button>
+          <div class="db-dropdown dc-menu" :class="{ 'is-open': menuOpen }">
+            <template v-if="!confirmDelete">
+              <button class="db-dd-item" @click.stop="startEdit">
+                <svg class="db-dd-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                {{ t('decisions.action_edit') }}
+              </button>
+              <button class="db-dd-item is-danger" @click.stop="confirmDelete = true">
+                <svg class="db-dd-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                {{ t('decisions.action_delete') }}
+              </button>
+              <div class="dc-menu-sep"></div>
+              <button class="db-dd-item" :disabled="decision.status === 'superseded'" @click.stop="emit('supersede')">
+                <span class="db-dd-dot dc-dot st-superseded"></span>{{ t('decisions.action_supersede') }}
+              </button>
+              <button class="db-dd-item" :disabled="decision.status === 'revoked'" @click.stop="emit('revoke')">
+                <span class="db-dd-dot dc-dot st-revoked"></span>{{ t('decisions.action_revoke') }}
+              </button>
+            </template>
+            <!-- 删除二次确认（不可恢复操作不做静默删除） / Delete needs an in-menu confirm -->
+            <div v-else class="dc-del-confirm" @click.stop>
+              <p>{{ t('decisions.delete_confirm_desc') }}</p>
+              <div class="dc-del-actions">
+                <button type="button" class="dc-edit-btn" @click.stop="confirmDelete = false">{{ t('decisions.add_cancel') }}</button>
+                <button type="button" class="dc-edit-btn is-danger-solid" @click.stop="remove">{{ t('decisions.delete_confirm_btn') }}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
 
-    <!-- 第二行：来源会议 + 日期 / Row 2: source meeting + date -->
-    <div class="dc-meta">
+    <!-- 第二行（F1 去冗余）：组头已含会议标题与日期，卡片只留跳转纪要图标 + 知识库徽标 -->
+    <!-- Row 2 (F1 de-dup): group head already carries title+date; keep jump icon + KB badge only -->
+    <div v-if="!editing" class="dc-meta">
       <template v-if="decision.task_deleted">
         <span class="dc-meta-deleted">{{ t('decisions.meeting_deleted') }}</span>
       </template>
       <template v-else>
-        <button class="dc-meta-link" @click="gotoMeeting" :title="t('decisions.goto_meeting')">
+        <button class="dc-meta-jump" @click="gotoMeeting" :title="t('decisions.goto_meeting')" :aria-label="t('decisions.goto_meeting')">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          {{ decision.title || decision.task_id }}
         </button>
-        <span v-if="decision.meeting_date" class="dc-meta-date">{{ decision.meeting_date }}</span>
         <span v-if="decision.kb_name" class="dc-meta-kb">{{ decision.kb_name }}</span>
       </template>
     </div>
@@ -52,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import type { AggregatedDecision } from '@/api/decisions'
@@ -71,6 +106,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'supersede'): void
   (e: 'revoke'): void
+  (e: 'edit-save', text: string): void
+  (e: 'remove'): void
 }>()
 
 const superseder = computed(() => {
@@ -106,6 +143,36 @@ function gotoSuperseder() {
 // ── 行内菜单：点击外部/ESC 关闭 / Inline menu: close on outside-click / ESC ──
 const menuOpen = ref(false)
 const menuWrapRef = ref<HTMLElement | null>(null)
+
+// ── F3 行内编辑与删除（DC-R2-a）/ Inline edit & delete ──
+const editing = ref(false)
+const editText = ref('')
+const editAreaRef = ref<HTMLTextAreaElement | null>(null)
+const confirmDelete = ref(false)
+
+function startEdit() {
+  menuOpen.value = false
+  editText.value = props.decision.text
+  editing.value = true
+  nextTick(() => editAreaRef.value?.focus())
+}
+function cancelEdit() {
+  editing.value = false
+}
+function saveEdit() {
+  const text = editText.value.trim()
+  if (!text) return
+  editing.value = false
+  emit('edit-save', text)
+}
+function remove() {
+  menuOpen.value = false
+  confirmDelete.value = false
+  emit('remove')
+}
+// 菜单收起即复位删除确认，避免下次打开停在危险态
+watch(menuOpen, (open) => { if (!open) confirmDelete.value = false })
+
 function onDocClick(e: MouseEvent) {
   if (menuWrapRef.value && !menuWrapRef.value.contains(e.target as Node)) menuOpen.value = false
 }
@@ -153,14 +220,43 @@ onBeforeUnmount(() => {
 .dc-menu { right: 0; left: auto; min-width: 168px; }
 .dc-menu .db-dd-item:disabled { opacity: 0.4; cursor: not-allowed; }
 .dc-menu .db-dd-item:disabled:hover { background: transparent; }
+.dc-menu .db-dd-item.is-danger { color: var(--error); }
+.dc-menu .db-dd-item.is-danger:hover { background: oklch(0.94 0.03 25); }
+.db-dd-icon { flex-shrink: 0; color: var(--muted); }
+.db-dd-item.is-danger .db-dd-icon { color: var(--error); }
+.dc-menu-sep { height: 1px; margin: 4px 0; background: var(--border); }
+.dc-del-confirm { padding: var(--s-2) var(--s-3); }
+.dc-del-confirm p { margin: 0 0 var(--s-2); font-size: var(--fs-12, 12px); color: var(--error); line-height: 1.5; }
+.dc-del-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* F3 行内编辑 / Inline editor */
+.dc-edit { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.dc-edit-area {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: var(--fs-13, 13px); line-height: 1.5;
+  font-family: inherit; border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  background: var(--surface-1, transparent); color: var(--fg); resize: vertical;
+}
+.dc-edit-area:focus { outline: none; }
+.dc-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.dc-edit-btn { padding: 3px 10px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; }
+.dc-edit-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+.dc-edit-btn.is-primary { border: none; background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+.dc-edit-btn.is-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.dc-edit-btn.is-danger-solid { border: none; background: var(--error); color: #fff; font-weight: 500; }
 
 .dc-meta { display: flex; align-items: center; gap: var(--s-2); margin-top: 6px; font-size: var(--fs-12, 12px); color: var(--muted); flex-wrap: wrap; }
+.dc-meta-jump {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border: none; background: transparent; color: var(--muted); border-radius: var(--radius-sm); cursor: pointer;
+  opacity: 0.7; transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.dc-card:hover .dc-meta-jump, .dc-meta-jump:focus-visible { opacity: 1; }
+.dc-meta-jump:hover { background: var(--surface-2); color: var(--accent); }
 .dc-meta-link {
   display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; padding: 0;
   color: var(--accent); font-size: inherit; cursor: pointer; min-width: 0;
 }
 .dc-meta-link:hover { text-decoration: underline; }
-.dc-meta-date, .dc-meta-kb { color: var(--subtle); }
 .dc-meta-kb { padding: 1px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .dc-meta-deleted { color: var(--subtle); font-style: italic; }
 .dc-superseded-by { margin-top: var(--s-1); font-size: var(--fs-12, 12px); }
