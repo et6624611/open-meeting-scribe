@@ -16,6 +16,7 @@ app/settings_store.py — 设置管理 / Settings management
 import json
 import logging
 import os
+import platform
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -343,6 +344,36 @@ def get_storage_config() -> dict:
         "auto_clean_intermediate": sc.get("auto_clean_intermediate", True),
         "auto_archive_days": sc.get("auto_archive_days", 0),
     }
+
+
+# ============================================================
+# 录音设备持久化（DEFECT-PROXY-TEST §2 根因 B 裁决，DEF-DEVICE-01-BE）
+# ============================================================
+
+def get_record_device() -> tuple[str, str]:
+    """解析录音设备：优先级 settings.json record.device > 环境变量 RECORD_DEVICE > 平台默认。
+
+    项目方 09-25 裁决口径（缺陷单 §2 根因 B）：用户显式选择（含空串「自动检测」合法持久值）
+    优先于部署级环境变量；返回 (device, source)，source ∈ {settings, env, platform-default}。
+    """
+    settings = load_settings()
+    rec = settings.get("record")
+    if isinstance(rec, dict) and "device" in rec:
+        return str(rec.get("device") or ""), "settings"
+    env_val = os.getenv("RECORD_DEVICE")
+    if env_val is not None:
+        return env_val, "env"
+    default_device = "" if platform.system() == "Windows" else "MacBook Pro麦克风"
+    return default_device, "platform-default"
+
+
+def save_record_device(device: str) -> None:
+    """持久化录音设备到 settings.json（原子写；空串=自动检测，同样合法落盘）。"""
+    settings = load_settings()
+    rec = settings.get("record") if isinstance(settings.get("record"), dict) else {}
+    rec["device"] = device
+    settings["record"] = rec
+    save_settings_to_disk(settings)
 
 
 # 本地引擎默认模型存储目录（gitignored，见 .gitignore data/models/）

@@ -50,18 +50,35 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 RECORDINGS_DIR = Path("data/recordings")
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# 录制设备名（默认麦克风，可通过环境变量覆盖；线上会议戴耳机场景可改为 "BlackHole 2ch"） / Recording device name (default mic; override via env var; for online meetings with earphones, try "BlackHole 2ch")
-# Windows 上默认留空，由 audio_recording.py 自动检测可用设备 / On Windows, default to empty; audio_recording.py auto-detects available device
-_default_device = "" if platform.system() == "Windows" else "MacBook Pro麦克风"
-RECORD_DEVICE = os.getenv("RECORD_DEVICE", _default_device)
+# 录制设备名（DEF-DEVICE-01-BE 持久化：settings.json record.device > 环境变量 RECORD_DEVICE > 平台默认）
+# Recording device (persisted per DEF-DEVICE-01-BE; priority settings > env > platform default)
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+
+def _resolve_record_device() -> str:
+    from app.settings_store import get_record_device
+    device, source = get_record_device()
+    # 验收④（按项目方裁决口径修订）：优先级判定结果落启动日志留痕
+    _logger.info(f"[录制] 设备解析: '{device or '自动检测'}' 来源={source}（优先级 settings>env>平台默认，项目方 09-25 裁决）")
+    return device
+
+
+RECORD_DEVICE = _resolve_record_device()
 
 
 def set_record_device(device: str) -> None:
-    """运行时更新录音设备（不持久化，重启后恢复默认）。
-    Update recording device at runtime (not persisted; resets on restart).
+    """更新录音设备并持久化到 settings.json（重启后恢复；空串=自动检测合法持久值）。
+    Update recording device and persist to settings.json (restored on restart; empty = auto-detect is a valid persisted value).
     """
     global RECORD_DEVICE
     RECORD_DEVICE = device
+    try:
+        from app.settings_store import save_record_device
+        save_record_device(device)
+    except Exception as e:  # 持久化失败不阻断运行时生效（降级为升级前行为）
+        _logger.error(f"[录制] 设备持久化失败（运行时值仍生效，重启后将丢失）: {e}")
 
 # ============================================================
 # 兼容 re-export：设置管理 / Compat re-export: Settings management
