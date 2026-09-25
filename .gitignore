@@ -97,3 +97,6 @@ CODEX.md
 
 # 会话验证截图目录（verify 产物，不入库）
 .verify_shots/
+
+# 本地 git worktree 隔离目录（内容由 git 元数据可恢复，不入库）
+.worktrees/
