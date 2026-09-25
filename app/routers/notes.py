@@ -128,9 +128,15 @@ def inject_content(task_id: str, req: InjectRequest):
     # REQ-DECISION-CENTER R1：decision 类型注入同步生成结构化决策项 / Decision injection also adds a decision item
     elif req.type == "decision":
         decisions = task.setdefault("decisions", [])
+        # DC-R2-b：注入内容同样走两要素拆分（「**标题**：正文」写法时标题入库）
+        from core.summarize import split_decision_title
+        inject_title, inject_text = split_decision_title(req.content)
         decision_item = {
             "id": item["id"],
-            "text": req.content,
+            "title": inject_title,
+            "text": inject_text or req.content,
+            "owner_id": None,
+            "owner_name": "",
             "status": "active",
             "pending_confirmation": False,
             "source": "injection",

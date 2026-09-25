@@ -52,14 +52,19 @@ function newId(): string {
   return `mock-dec-${Date.now().toString(36)}-${seq}`
 }
 
-interface SeedRow extends Omit<DecisionRecord, 'id' | 'created_at' | 'updated_at'> {
+interface SeedRow extends Omit<DecisionRecord, 'id' | 'created_at' | 'updated_at' | 'title' | 'owner_id' | 'owner_name'> {
   task_id: string
   daysAgo: number
+  /** 三要素（DC-R2-b）：缺省即空标题/未指派，部分种子带值以演示卡片降级两形态 */
+  title?: string
+  owner_id?: string | null
+  owner_name?: string
 }
 
 const seeds: SeedRow[] = [
   {
-    task_id: 'mock-task-1', daysAgo: 1, text: 'Q4 市场预算维持 120 万，其中 40% 用于行业展会。',
+    task_id: 'mock-task-1', daysAgo: 1, title: 'Q4 市场预算冻结', text: 'Q4 市场预算维持 120 万，其中 40% 用于行业展会。',
+    owner_id: 'mock-spk-1', owner_name: '王永亮',
     status: 'active', pending_confirmation: false, source: 'auto', superseded_by: null, related_todo_ids: [],
   },
   {
@@ -67,7 +72,8 @@ const seeds: SeedRow[] = [
     status: 'active', pending_confirmation: true, source: 'auto', superseded_by: null, related_todo_ids: [],
   },
   {
-    task_id: 'mock-task-2', daysAgo: 3, text: 'v2.1 迭代范围冻结为转写进度与决策中心两条主线。',
+    task_id: 'mock-task-2', daysAgo: 3, title: '迭代范围收敛', text: 'v2.1 迭代范围冻结为转写进度与决策中心两条主线。',
+    owner_id: 'mock-spk-2', owner_name: '张天雷',
     status: 'active', pending_confirmation: false, source: 'auto', superseded_by: null, related_todo_ids: [],
   },
   {
@@ -106,7 +112,10 @@ function initStore() {
   for (const s of seeds) {
     const rec: DecisionRecord = {
       id: newId(),
+      title: s.title ?? '',
       text: s.text,
+      owner_id: s.owner_id ?? null,
+      owner_name: s.owner_name ?? '',
       status: s.status,
       pending_confirmation: s.pending_confirmation,
       source: s.source,
@@ -156,7 +165,7 @@ function toAggregated(taskId: string, rec: DecisionRecord): AggregatedDecision {
     ...rec,
     task_id: taskId,
     task_deleted: !meeting || meeting.deleted === true,
-    title: meeting && !meeting.deleted ? meeting.title : '',
+    meeting_title: meeting && !meeting.deleted ? meeting.title : '',
     meeting_date: meeting && !meeting.deleted ? meeting.meeting_date : null,
     kb_id: meeting?.kb_id ?? null,
     kb_name: meeting && !meeting.deleted ? meeting.kb_name : null,
@@ -184,7 +193,8 @@ export const mockApi = {
     }
     if (query.q) {
       const kw = query.q.toLowerCase()
-      rows = rows.filter(r => r.text.toLowerCase().includes(kw))
+      // 与真实契约一致：标题与内容都参与关键词命中
+      rows = rows.filter(r => `${r.text}\n${r.title}`.toLowerCase().includes(kw))
     }
     rows.sort((a, b) => (b.meeting_date || '').localeCompare(a.meeting_date || '') || b.created_at.localeCompare(a.created_at))
     return latency(rows)
@@ -202,7 +212,10 @@ export const mockApi = {
     const now = new Date().toISOString()
     const rec: DecisionRecord = {
       id: newId(),
+      title: payload.title ?? '',
       text: payload.text,
+      owner_id: payload.owner_id || null,
+      owner_name: payload.owner_name || '',
       status: 'active',
       pending_confirmation: payload.pending_confirmation ?? false,
       source: 'manual' as DecisionSource,
@@ -220,6 +233,9 @@ export const mockApi = {
     const rec = list?.find(r => r.id === decisionId)
     if (!rec) return notFound()
     if (patch.text !== undefined) rec.text = patch.text
+    if (patch.title !== undefined) rec.title = patch.title
+    if (patch.owner_id !== undefined) rec.owner_id = patch.owner_id || null
+    if (patch.owner_name !== undefined) rec.owner_name = patch.owner_name || ''
     if (patch.status !== undefined) rec.status = patch.status
     if (patch.pending_confirmation !== undefined) rec.pending_confirmation = patch.pending_confirmation
     rec.updated_at = new Date().toISOString()

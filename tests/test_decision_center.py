@@ -435,7 +435,9 @@ class TestAggregation:
         rows = [r for r in body["decisions"] if r["task_id"] in seeded]
         assert body["total"] >= len(rows)
         sample = next(r for r in rows if r["id"] == "a1")
-        assert sample["title"] == "会议A" and sample["meeting_date"] == "2026-09-22"
+        # DC-R2-b 契约修正：行内 `title` 改为决策自身标题，会议标题走 `meeting_title`
+        assert sample["meeting_title"] == "会议A" and sample["meeting_date"] == "2026-09-22"
+        assert sample["title"] == ""  # 存量决策无自身标题 → 空串降级
         assert sample["kb_id"] == "kb-1"  # kb_name 允许为 None（无该项目记录）
         # meeting_date 倒序：a* 在 b* 前
         dates = [r["meeting_date"] for r in rows]

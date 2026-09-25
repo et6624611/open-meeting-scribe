@@ -81,7 +81,7 @@
             :pool="pool"
             @supersede="openSupersede(d)"
             @revoke="revoke(d)"
-            @edit-save="saveDecisionText(d, $event)"
+            @edit-save="saveDecision(d, $event)"
             @remove="removeDecision(d)"
           />
           <!-- 组内失效沉底折叠 / Ineffective items sink to the group footer -->
@@ -91,7 +91,7 @@
               {{ t('decisions.collapsed_title', { count: g.ineffective.length }) }}
             </button>
             <div v-show="openIneff.has('g:' + g.taskId)" class="db-flow dc-flow">
-              <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" @edit-save="saveDecisionText(d, $event)" @remove="removeDecision(d)" />
+              <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" @edit-save="saveDecision(d, $event)" @remove="removeDecision(d)" />
             </div>
           </div>
         </div>
@@ -110,7 +110,7 @@ import { useI18n } from 'vue-i18n'
 import { extractErrorMessage } from '@/api/client'
 import { fetchDecisions, fetchDecisionsMulti, supersedeTaskDecision, updateTaskDecision, createTaskDecision, deleteTaskDecision } from '@/api/decisions'
 import { isMockEnabled } from '@/api/decisionsMock'
-import type { AggregatedDecision, DecisionLifecycle, SupersedeRef } from '@/api/decisions'
+import type { AggregatedDecision, DecisionCreatePayload, DecisionLifecycle, DecisionPatchPayload, SupersedeRef } from '@/api/decisions'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useTaskStore } from '@/stores/task'
 import { showToast } from '@/composables/useToast'
@@ -225,13 +225,14 @@ const filtered = computed(() => {
 const effectiveRows = computed(() => filtered.value.filter(d => d.status === 'active'))
 const ineffectiveRows = computed(() => filtered.value.filter(d => d.status !== 'active'))
 
+/** 组头标题取会议标题（DC-R2-b 契约修正：`title` 已为决策自身标题） */
 interface MeetingGroup { taskId: string; title: string; date: string; rows: AggregatedDecision[]; ineffective: AggregatedDecision[] }
 const visibleGroups = computed<MeetingGroup[]>(() => {
   const map = new Map<string, MeetingGroup>()
   for (const d of effectiveRows.value) {
     let g = map.get(d.task_id)
     if (!g) {
-      g = { taskId: d.task_id, title: d.title || d.task_id, date: d.meeting_date || '', rows: [], ineffective: [] }
+      g = { taskId: d.task_id, title: d.meeting_title || d.task_id, date: d.meeting_date || '', rows: [], ineffective: [] }
       map.set(d.task_id, g)
     }
     g.rows.push(d)
@@ -241,7 +242,7 @@ const visibleGroups = computed<MeetingGroup[]>(() => {
     if (g) g.ineffective.push(d)
     else {
       // 该会议只剩失效条目时也要成组，保证筛选 superseded 时可见
-      const ng: MeetingGroup = { taskId: d.task_id, title: d.title || d.task_id, date: d.meeting_date || '', rows: [], ineffective: [d] }
+      const ng: MeetingGroup = { taskId: d.task_id, title: d.meeting_title || d.task_id, date: d.meeting_date || '', rows: [], ineffective: [d] }
       map.set(d.task_id, ng)
     }
   }
@@ -298,9 +299,10 @@ async function revoke(d: AggregatedDecision) {
 }
 
 // ─── F3 行内编辑/删除（DC-R2-a）：走既有 PUT/DELETE 任务级 CRUD，不回写纪要正文 ───
-async function saveDecisionText(d: AggregatedDecision, text: string) {
+// DC-R2-b：入参升级为三字段 patch（title / text / owner）
+async function saveDecision(d: AggregatedDecision, patch: DecisionPatchPayload) {
   try {
-    await updateTaskDecision(d.task_id, d.id, { text })
+    await updateTaskDecision(d.task_id, d.id, patch)
     showToast(t('decisions.toast_edit_ok'), 'success')
     await Promise.all([load(), loadPool()])
   } catch (e) {
@@ -320,7 +322,7 @@ async function removeDecision(d: AggregatedDecision) {
 
 const showAdd = ref(false)
 const addDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
-async function onAddSubmit(taskId: string, payload: { text: string; pending_confirmation?: boolean }) {
+async function onAddSubmit(taskId: string, payload: DecisionCreatePayload) {
   try {
     await createTaskDecision(taskId, payload)
     showToast(t('decisions.toast_add_ok'), 'success')

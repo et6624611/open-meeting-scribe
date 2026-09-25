@@ -36,7 +36,7 @@
             <span class="ss-item-main">
               <span class="ss-item-text">{{ stripDecisionEmphasis(d.text) }}</span>
               <span class="ss-item-meta">
-                {{ d.title || d.task_id }} · {{ d.meeting_date }}
+                {{ d.meeting_title || d.task_id }} · {{ d.meeting_date }}
                 <span v-if="pendingFlags.includes(d.id)" class="ss-item-tag">{{ t('decisions.badge_pending') }}</span>
               </span>
             </span>
@@ -93,7 +93,7 @@ const candidates = computed(() => {
   return props.pool
     .filter(d => d.id !== props.target?.id)
     // 检索同时命中原始与剥除符号后的文本，保证所见即可搜
-    .filter(d => !kw || d.text.toLowerCase().includes(kw) || stripDecisionEmphasis(d.text).toLowerCase().includes(kw) || (d.title || '').toLowerCase().includes(kw))
+    .filter(d => !kw || d.text.toLowerCase().includes(kw) || stripDecisionEmphasis(d.text).toLowerCase().includes(kw) || (d.meeting_title || '').toLowerCase().includes(kw))
     .slice(0, 50)
 })
 
