@@ -56,5 +56,7 @@
   "source_record": "Recording",
   "source_upload": "Upload",
   "speakers_more": "{count} more",
-  "speakers_total": "{count} participants"
+  "speakers_total": "{count} participants",
+  "speakers_unidentified": "{count} unidentified",
+  "speakers_unid_title": "{count} speaker(s) not yet linked to an identity"
 }

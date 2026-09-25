@@ -213,6 +213,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { normalizeSpeakerName } from '@/utils/speakerDisplay'
 import { useRecorder } from '@/composables/useRecorder'
 import { useWebSocketTranscript, type TranscriptLine } from '@/composables/useWebSocket'
 import { useTaskStore } from '@/stores/task'
@@ -380,9 +381,14 @@ function hasNoteAt(idx: number): boolean { return notes.notesByLine.value[idx] !
 
 function getSpeakerDisplayName(line: TranscriptLine): string {
   const binding = realtimeSpeakerBindings.value[line.speaker_id]
-  if (binding) { const spk = speakers.value.find(s => s.id === binding); if (spk) return spk.name }
-  if (line.speaker_name) return line.speaker_name
-  return t('recording.speaker.default_name', { id: line.speaker_id + 1 })
+  if (binding) {
+    const spk = speakers.value.find(s => s.id === binding)
+    // REQ-SPK-RN：存量占位档案名同样收敛（H1），未绑定态走中性文案无编号
+    if (spk) return normalizeSpeakerName(spk.name) || t('recording.speaker.default_name')
+  }
+  const ln = normalizeSpeakerName(line.speaker_name)
+  if (ln) return ln
+  return t('recording.speaker.default_name')
 }
 
 function isMeSpeaker(speakerId: number): boolean {

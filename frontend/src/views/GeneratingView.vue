@@ -434,6 +434,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
+import { isPlaceholderName } from '@/utils/speakerDisplay'
 import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject } from '@/api/tasks'
 import type { SyncStatus } from '@/api/tasks'
 import { usePopMenu } from '@/composables/usePopMenu'
@@ -583,8 +584,9 @@ watch(() => data.task.value, (t) => {
 }, { immediate: true })
 
 // ─── 说话人绑定 → 参会人自动同步 / Speaker binding → roster auto-sync ───
+// L3：占位名不入 roster（判定器命中即跳过同步，设计稿 §3.2）
 const boundNames = computed(() =>
-  bindingLegend.value.filter(b => b.bound).map(b => b.displayName)
+  bindingLegend.value.filter(b => b.bound && !isPlaceholderName(b.displayName)).map(b => b.displayName)
 )
 
 watch(boundNames, (names) => {

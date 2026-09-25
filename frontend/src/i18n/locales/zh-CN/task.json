@@ -56,5 +56,7 @@
   "source_record": "录音",
   "source_upload": "上传",
   "speakers_more": "更多{count}人",
-  "speakers_total": "{count}人参会"
+  "speakers_total": "{count}人参会",
+  "speakers_unidentified": "未识别 {count}",
+  "speakers_unid_title": "{count} 位发言人尚未关联身份"
 }

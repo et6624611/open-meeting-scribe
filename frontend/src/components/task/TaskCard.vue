@@ -23,8 +23,8 @@
       <DurationDial v-if="task.audio_duration" class="sb-tl-dur" :seconds="task.audio_duration" />
     </div>
 
-    <!-- 主要讲话人 / Main speakers -->
-    <div v-if="topSpeakers.length > 0" class="sb-tl-speakers">
+    <!-- 主要讲话人 / Main speakers（D5：仅真名逐个，未绑定聚合为中性计数 chip，不露编号） -->
+    <div v-if="topSpeakers.length > 0 || unidentifiedCount > 0" class="sb-tl-speakers">
       <div
         v-for="sp in topSpeakers"
         :key="sp.id"
@@ -34,6 +34,11 @@
         <span class="sb-tl-spk-name" :style="{ color: sp.color }">{{ sp.name }}</span>
         <div class="sb-tl-spk-bar"><div class="sb-tl-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></div></div>
       </div>
+      <span
+        v-if="unidentifiedCount > 0"
+        class="sb-tl-spk-unid"
+        :title="t('task.speakers_unid_title', { count: unidentifiedCount })"
+      >{{ t('task.speakers_unidentified', { count: unidentifiedCount }) }}</span>
       <span v-if="extraSpeakerCount > 0" class="sb-tl-spk-more">
         …{{ t('task.speakers_more', { count: extraSpeakerCount }) }} · {{ t('task.speakers_total', { count: task.speaker_count || 0 }) }}
       </span>
@@ -110,6 +115,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Task } from '@/api/types'
 import { STATUS_CONFIG } from '@/api/types'
+import { isPlaceholderName, countUnidentified } from '@/utils/speakerDisplay'
 import { usePlayerStore } from '@/stores/player'
 import { useTaskStore } from '@/stores/task'
 import PlayingEq from '@/components/common/PlayingEq.vue'
@@ -196,6 +202,9 @@ const statusLabel = computed(() => {
 /** 主要讲话人：从 dialogue 计算时长，取前 3 / Main speakers: calculate duration from dialogue, take top 3 */
 interface CardSpeakerInfo { id: string; name: string; color: string; pct: number }
 
+/** 未绑定说话人聚合计数（REQ-SPK-RN D5：占位/空名一律计入，不逐个露出） */
+const unidentifiedCount = computed(() => countUnidentified(props.task.speaker_mapping))
+
 const topSpeakers = computed((): CardSpeakerInfo[] => {
   const mapping = props.task.speaker_mapping
   if (!mapping || Object.keys(mapping).length === 0) return []
@@ -214,10 +223,10 @@ const topSpeakers = computed((): CardSpeakerInfo[] => {
   if (total === 0) return []
 
   return Object.entries(mapping)
-    .filter(([, name]) => name)
+    .filter(([, name]) => !isPlaceholderName(name))  // D5/H1：占位名不逐个展示
     .map(([id, name]) => ({
       id,
-      name,
+      name: (name as string).trim(),
       color: getSpeakerColor(id),
       pct: Math.round((durMap[id] || 0) / total * 100),
     }))

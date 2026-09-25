@@ -5,6 +5,7 @@
   "filter_date_from": "起始日期",
   "filter_date_to": "结束日期",
   "filter_speaker_all": "全部说话人",
+  "filter_speaker_unidentified": "未识别",
   "filter_clear": "清除筛选",
   "filter_week": "本周",
   "filter_month": "本月",

@@ -41,6 +41,7 @@
     "detected": "系统识别到 {count} 位说话人",
     "unbound_hint": "，{count} 位待关联",
     "locate": "定位到该说话人的发言",
+    "name_required": "请先输入姓名再创建说话人",
     "skip": "暂不关联",
     "confirm": "确认关联",
     "close": "关闭",
@@ -97,7 +98,8 @@
     "me_label": "● 我",
     "total": "合计 {duration} · {turns} 条发言"
   },
-  "speaker_default": "说话人{id}",
+  "speaker_default": "未识别",
+  "speaker_unid_initial": "未",
   "summary": {
     "loading": "纪要生成中...",
     "action_items": "决策",
@@ -181,8 +183,8 @@
     "title": "关联说话人身份",
     "got_it": "我知道了",
     "info_icon_tip": "什么是说话人关联？",
-    "demo_label_1": "说话人 1",
-    "demo_label_2": "说话人 2",
+    "demo_label_1": "小李",
+    "demo_label_2": "小王",
     "demo_name_1": "张明",
     "demo_name_2": "李婷"
   },

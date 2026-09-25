@@ -5,6 +5,7 @@
   "filter_date_from": "From",
   "filter_date_to": "To",
   "filter_speaker_all": "All Speakers",
+  "filter_speaker_unidentified": "Unidentified",
   "filter_clear": "Clear filters",
   "filter_week": "This Week",
   "filter_month": "This Month",

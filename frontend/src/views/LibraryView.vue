@@ -49,6 +49,7 @@
         <select v-model="filterSpeakerId" class="lib-speaker-select">
           <option value="">{{ t('library.filter_speaker_all') }}</option>
           <option v-for="name in allSpeakerNames" :key="name" :value="name">{{ name }}</option>
+          <option v-if="libraryHasUnidentified" :value="UNID_FILTER">{{ t('library.filter_speaker_unidentified') }}</option>
         </select>
       </div>
       <div v-if="hasActiveFilter" class="lib-filter-actions">
@@ -246,6 +247,7 @@ import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { isPlaceholderName, hasUnidentified, normalizeSpeakerName } from '@/utils/speakerDisplay'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { usePageBack } from '@/composables/usePageBack'
 import { useDialog } from '@/composables/useDialog'
@@ -273,19 +275,24 @@ const dateTo = ref('')
 // ─── 说话人筛选 / Speaker filter ───
 const filterSpeakerId = ref('')
 
-/** 从全部任务中收集去重的说话人名称列表 / Collect deduplicated speaker names from all tasks */
+/** 从全部任务中收集去重的说话人名称列表 / Collect deduplicated speaker names from all tasks
+ *  REQ-SPK-RN Q2/D6：仅枚举真名，占位名一律不入选项；未绑定走「未识别」特殊项（设计稿 §4） */
 const allSpeakerNames = computed(() => {
   const names = new Set<string>()
   for (const task of taskStore.tasks) {
     const mapping = task.speaker_mapping
     if (mapping) {
       for (const name of Object.values(mapping)) {
-        if (name) names.add(name)
+        if (!isPlaceholderName(name)) names.add((name as string).trim())
       }
     }
   }
   return Array.from(names).sort((a, b) => a.localeCompare(b))
 })
+
+/** 「未识别」布尔聚合筛选项（库级不加总人数，设计稿 §3.1） */
+const UNID_FILTER = '__unidentified__'
+const libraryHasUnidentified = computed(() => taskStore.tasks.some(tk => hasUnidentified(tk.speaker_mapping)))
 
 /** 是否有任意筛选条件激活 / Whether any filter is active */
 const hasActiveFilter = computed(() => !!dateFrom.value || !!dateTo.value || !!filterSpeakerId.value)
@@ -344,7 +351,9 @@ const libGroupedTasks = computed(() => {
     filtered = filtered.filter(t => {
       const mapping = t.speaker_mapping
       if (!mapping) return false
-      return Object.values(mapping).some(name => name === spk)
+      // D5/Q2：「未识别」特殊项命中含任意占位/空名的任务；真名按归一后等值匹配
+      if (spk === UNID_FILTER) return hasUnidentified(mapping)
+      return Object.values(mapping).some(name => normalizeSpeakerName(name) === spk)
     })
   }
 
@@ -665,18 +674,32 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
     }
   }
 
-  return Object.entries(mapping)
-    .filter(([, name]) => name) // 过滤空名称 / Filter out empty names
+  const list: SpeakerInfo[] = Object.entries(mapping)
+    .filter(([, name]) => !isPlaceholderName(name)) // D5/H1：占位/空名不逐个展示
     .map(([id, name]) => {
       const dur = durMap[id] || 0
       return {
         id,
-        name,
+        name: (name as string).trim(),
         color: getSpeakerColor(id),
         duration: dur,
         pct: total > 0 ? Math.round((dur / total) * 100) : 0,
       }
     })
+
+  // 尾聚合项：未识别作为一个项计入（含折叠计数），不展开 N 个、不带编号
+  const unidEntries = Object.entries(mapping).filter(([, name]) => isPlaceholderName(name))
+  if (unidEntries.length > 0) {
+    const unidDur = unidEntries.reduce((acc, [id]) => acc + (durMap[id] || 0), 0)
+    list.push({
+      id: UNID_FILTER,
+      name: t('library.filter_speaker_unidentified'),
+      color: 'var(--muted, var(--subtle))',
+      duration: unidDur,
+      pct: total > 0 ? Math.round((unidDur / total) * 100) : 0,
+    })
+  }
+  return list
 }
 </script>
 
