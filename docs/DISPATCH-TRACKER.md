@@ -44,8 +44,8 @@ status: active
 | DEF-PROXY-02 | 2026-09-25 18:15 | **IDE 承接第二轮关单**。根因=stop 竞态：pop 全量转写后 SDK 线程迟到定稿经 setdefault 落孤儿列表丢失→兑底静默跳过整单失败。修复=stop 时空列表也绑定引用+登记 realtime_full_sealed，迟到句 append 进 task 持有的同一列表；僵尸/放弃路径同步清封存。验收命中：静音+有实时句→transcript_source=realtime_fallback 降级出纪要（用例钉死）+stop 竞态用例。merge 合入 main@59bcba1 |
 | DEF-PROXY-03 | 2026-09-25 18:15 | **代码部分交付，终判转观察项**（与 02 同单合入 59bcba1）。定性实验（qa-evidence/def-proxy-0203/proxy03-qualification.md）：lavfi 已知输入证明 aresample+asplit 链时长忠实；真机复采未见 3.17x 结构性欠采（差值≈启停固定开销）；avfoundation 不接受 rate 声明参数——排除代码层，原缺陷与权限静音时钟异常同根可能性高。交付观测：WAV 时长 vs 墙钟偏差>15% 自动留痕 wav_wallclock_gap_sec+WARNING，待项目方样音复测终判 |
 | AM-Q1 | 2026-09-25 18:25 | **IDE 承接第二轮执行完毕**。报告 qa-evidence/AM-Q1/REPORT.md：②迁移 41 用例全绿；① hosted 实测 completed、byok 实测 byok_key_missing→cloud 契约回退路径端到端（direct 分支无用户 Key 由用例矩阵覆盖）、local 本机模型未部署 NOT RUN 披露（替代：DEF-FE-05 已验收 UI+WP-C 评测管线）；③④沿用已验收项。**门禁判定：可发版**（无阻塞性缺陷，两项环境限制已披露） |
-| DC-R2-b | 2026-09-25 21:10 | **IDE 承接第三轮关单**（项目方二轮裁决 D4/D5 后直派）。三要素落库：`decisions[]` 新增 title / owner_id / owner_name，text 语义收窄为内容；**执行人选人不选文本**（OwnerSelectCombobox：可搜档案 + 无同名手打即时建档 + 不指派出口），owner_id 为权威、改名全局跟随且不批量重写存量 JSON；占位档案名 Speaker N 不入候选。纪要「主要结论」prompt 改「**短标题**：正文」条目式（D5：AI 只要标题+正文，owner 合法留空）；split_decision_title 宽容拆分不丢条目。聚合契约修正：行内 title=决策标题、会议标题改发 meeting_title（分组 label/组头同步）；q 命中标题；PUT 下 owner 空串=清空指派。30 新用例 + Playwright 24 断言 ALL PASSED（qa-evidence/req-decision-r2b/）。merge 合入 main@0b5eb18 |
-| DC-R2-c | 2026-09-25 21:40 | **IDE 承接第三轮关单**（D6/D7 裁决后直派）。新增 `core/decision_status.py` + `/api/decision-statuses` CRUD/reorder（`data/decision_statuses.json` 已 gitignore，首次读取即迁移）；**系统锚点收敛为生效中+完成**（不可改名不可删，后端强校验 + 前端输入只读/删除禁用）；取代/撤销下线（菜单两项入口移除、SupersedeDialog 删除、PATCH supersede 端点摘除，superseded_by 停写、存量只读降级）。**存量零改写**：历史 superseded/revoked 迁移为两个可编辑普通状态（默认闭档）。D7：`closing` 逐状态勾选，默认视图=非闭档全集（前端本地筛选）+「查看全部」一键放宽；`pending_confirmation` 维持标志位。删状态时引用决策当场回落 active 并逐任务落盘。聚合行随行下发 status_name/name_en/color/closing，徽标·色点·沉底全配置驱动。12 新用例 + Playwright 30 断言 ALL PASSED（qa-evidence/req-decision-r2c/）。merge 合入 main@333cbf9 |
+| DC-R2-b | 2026-09-25 19:12 | **IDE 承接第三轮关单**（项目方二轮裁决 D4/D5 后直派）。三要素落库：`decisions[]` 新增 title / owner_id / owner_name，text 语义收窄为内容；**执行人选人不选文本**（OwnerSelectCombobox：可搜档案 + 无同名手打即时建档 + 不指派出口），owner_id 为权威、改名全局跟随且不批量重写存量 JSON；占位档案名 Speaker N 不入候选。纪要「主要结论」prompt 改「**短标题**：正文」条目式（D5：AI 只要标题+正文，owner 合法留空）；split_decision_title 宽容拆分不丢条目。聚合契约修正：行内 title=决策标题、会议标题改发 meeting_title（分组 label/组头同步）；q 命中标题；PUT 下 owner 空串=清空指派。30 新用例 + Playwright 24 断言 ALL PASSED（qa-evidence/req-decision-r2b/）。merge 合入 main@0b5eb18 |
+| DC-R2-c | 2026-09-25 19:54 | **IDE 承接第三轮关单**（D6/D7 裁决后直派）。新增 `core/decision_status.py` + `/api/decision-statuses` CRUD/reorder（`data/decision_statuses.json` 已 gitignore，首次读取即迁移）；**系统锚点收敛为生效中+完成**（不可改名不可删，后端强校验 + 前端输入只读/删除禁用）；取代/撤销下线（菜单两项入口移除、SupersedeDialog 删除、PATCH supersede 端点摘除，superseded_by 停写、存量只读降级）。**存量零改写**：历史 superseded/revoked 迁移为两个可编辑普通状态（默认闭档）。D7：`closing` 逐状态勾选，默认视图=非闭档全集（前端本地筛选）+「查看全部」一键放宽；`pending_confirmation` 维持标志位。删状态时引用决策当场回落 active 并逐任务落盘。聚合行随行下发 status_name/name_en/color/closing，徽标·色点·沉底全配置驱动。12 新用例 + Playwright 30 断言 ALL PASSED（qa-evidence/req-decision-r2c/）。merge 合入 main@333cbf9 |
 
 ## 派工体系收口留痕（2026-09-25 12:07，项目方指令）
 
@@ -83,7 +83,7 @@ status: active
 - **网络抖动手记**：GitHub SSH 22 端口两次超时，改用 ssh.github.com:443 通道完成推送（T2/DC-R2-BE 两笔）；known_hosts 已自动登记 443 指纹（与 github.com 官方 ED25519 一致）。
 - **剩余待决**：仅 DC-R2-b/c（需项目方先关 O4/O5 设计问题）与 DEF-PROXY-03 样音终判（项目方日常录制即自动留痕，无需专门复测动作）。
 
-## IDE 承接第三轮留痕（2026-09-25 20:30-21:45，项目方给出 O4/O5 二轮裁决 D4-D7）
+## IDE 承接第三轮留痕（2026-09-25 18:45-19:59，项目方给出 O4/O5 二轮裁决 D4-D7）
 
 - **裁决内容**：D4 执行人改为选说话人档案（可手打即时建档）；D5 AI 生成决策只要标题+正文（纪要主要结论接受条目式模板）；D6 **只固定「完成」为系统保底，其余全由用户定义**，并明确选择「砍掉取代/撤销两项」（知情：属删除已点验上线的能力）；D7 默认视图只看非完成类、新状态逐项勾选「算完成类」、`[待确认]` 维持标志位。裁决已回写需求单 v0.3.0（§4 O4/O5 转 closed、§5 验收定稿、§11 二轮裁决）。
 - **两单均已执行合入 main**，链：0b5eb18（DC-R2-b）→ 333cbf9（DC-R2-c）；新用例 +42（30+12），浏览器断言 +54（24+30），每单合入前全量 pytest 绿（475→487）+ vue-tsc 构建绿 + Ruff CI 口径（F821,F811,F402）绿。
@@ -92,6 +92,7 @@ status: active
 - **现场安全（延续第二轮口径）**：主工作区仍有另一活跃会话的未提交 WIP（Qoder CLI 引擎 + 洞察台会后化：chat.py/server.py/settings.py/settings_store.py/.gitignore/API_CONTRACTS §14/CHANGELOG 等）。DC-R2-c 合入时 stash 让路 server.py + .gitignore + API_CONTRACTS.md 三个交集文件，merge 后即时 pop 还原（auto-merge 成功，双方改动共存已核对：§12.4 与 §14 均在位、两条 gitignore 条目均在位），全程未提交未丢弃他人现场。
 - **已知环内噪声（非本轮引入）**：全量 pytest 唯一红 `test_misc.py::TestPhilosophyRandom` 为 worktree 缺 gitignored 数据文件的预存环境项；主工作区 `npm run build` 因他人 WIP 中 AIPanel/AiChatPanel 的 `hasAgentSession` 必填 prop 未传而 typecheck 失败，与本轮两单无关（两单各在自有干净 worktree 构建全绿）。
 - **台账现状**：在途 0；待派工队列仅剩 DEF-PROXY-03 样音终判（观察项，无需专门动作）。REQ-DECISION-CENTER-R2 六条反馈全部闭环。
+- **上线部署（19:59）**：确认 `/api/record.status=false`（无进行中录音）后重启本地服务（旧 PID 31128 → 新 PID 48373）；新构建产物以干净 worktree（feat/dc-r2-c，等于 main 已提交前端）拷入 `frontend/dist` 部署——**未使用主工作区构建**，因其 typecheck 被他人未提交 WIP 阻断，不得把他人半成品打进生产包。启动后核对：`/api/decision-statuses` 返回四态且锚点位正确（首次读取已生成 `data/decision_statuses.json`）、首页指纹已切到新 bundle `index-CzSjW1b4.js`。
 
 ## 巡检说明
 
