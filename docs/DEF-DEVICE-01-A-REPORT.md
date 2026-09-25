@@ -2,7 +2,7 @@
 title: 完工回报 — DEF-DEVICE-01-A 录音设备选择保存死循环（前端修复）
 id: DEF-DEVICE-01-A-REPORT
 branch: feat/def-device-01a
-base: main@819542f（开单时 main；合入前若 main 前进需 rebase+复验构建）
+base: main@819542f（开单时 main）→ rebase 至 origin/main@d755b58（docs-only 前进，无冲突，rebase 后构建复验全绿）
 date: 2026-09-25
 owner: 前端开发工程师
 ---
