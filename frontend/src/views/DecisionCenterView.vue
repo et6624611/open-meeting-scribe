@@ -29,14 +29,31 @@
       </div>
       <div class="dc-filter-group" role="group" :aria-label="t('decisions.filter_status')">
         <span class="dc-filter-label">{{ t('decisions.filter_status') }}</span>
+        <!-- 状态 chips 由状态字典驱动（含用户新增项）；「待确认」仍为标志位维度（D7） -->
         <button
-          v-for="s in STATUS_OPTIONS"
-          :key="s"
+          v-for="s in statuses"
+          :key="s.id"
           class="dc-chip"
-          :class="{ on: statusFilter.has(s) }"
-          :aria-pressed="statusFilter.has(s)"
-          @click="toggleStatus(s)"
-        >{{ t('decisions.st_' + s) }}</button>
+          :class="{ on: visibleStatusIds.has(s.id) }"
+          :aria-pressed="visibleStatusIds.has(s.id)"
+          @click="toggleStatus(s.id)"
+        >
+          <span class="dc-chip-dot" :style="{ background: s.color }"></span>{{ labelOf(s) }}
+        </button>
+        <button
+          class="dc-chip"
+          :class="{ on: selected.has(PENDING_KEY) }"
+          :aria-pressed="selected.has(PENDING_KEY)"
+          @click="toggleStatus(PENDING_KEY)"
+        >{{ t('decisions.st_pending') }}</button>
+        <!-- D7：默认只看非闭档（未完成）类，可一键查看全部 -->
+        <button
+          class="dc-chip dc-chip-all"
+          :class="{ on: showAll }"
+          :aria-pressed="showAll"
+          @click="toggleShowAll"
+        >{{ t('decisions.filter_view_all') }}</button>
+        <button type="button" class="dc-manage-btn" @click="showStatusMgr = true">{{ t('decisions.sm_open') }}</button>
       </div>
       <div class="dc-filter-group dc-grow">
         <label class="sr-only" for="dcKeyword">{{ t('decisions.search_placeholder') }}</label>
@@ -79,8 +96,6 @@
             :key="d.id"
             :decision="d"
             :pool="pool"
-            @supersede="openSupersede(d)"
-            @revoke="revoke(d)"
             @edit-save="saveDecision(d, $event)"
             @remove="removeDecision(d)"
           />
@@ -91,7 +106,7 @@
               {{ t('decisions.collapsed_title', { count: g.ineffective.length }) }}
             </button>
             <div v-show="openIneff.has('g:' + g.taskId)" class="db-flow dc-flow">
-              <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" @edit-save="saveDecision(d, $event)" @remove="removeDecision(d)" />
+              <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @edit-save="saveDecision(d, $event)" @remove="removeDecision(d)" />
             </div>
           </div>
         </div>
@@ -99,7 +114,7 @@
     </section>
 
     <!-- 弹层 / Dialogs -->
-    <SupersedeDialog v-model="showSupersede" :target="supersedeTarget" :pool="activePool" @confirm="onSupersedeConfirm" />
+    <StatusManagerDialog v-model="showStatusMgr" :statuses="statuses" @changed="onStatusesChanged" />
     <AddDecisionDialog ref="addDialogRef" v-model="showAdd" @submit="onAddSubmit" />
   </div>
 </template>
@@ -108,18 +123,19 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractErrorMessage } from '@/api/client'
-import { fetchDecisions, fetchDecisionsMulti, supersedeTaskDecision, updateTaskDecision, createTaskDecision, deleteTaskDecision } from '@/api/decisions'
+import { fetchDecisions, updateTaskDecision, createTaskDecision, deleteTaskDecision } from '@/api/decisions'
 import { isMockEnabled } from '@/api/decisionsMock'
-import type { AggregatedDecision, DecisionCreatePayload, DecisionLifecycle, DecisionPatchPayload, SupersedeRef } from '@/api/decisions'
+import type { AggregatedDecision, DecisionCreatePayload, DecisionPatchPayload } from '@/api/decisions'
+import { fetchStatuses, statusLabel, type DecisionStatusItem } from '@/api/decisionStatuses'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useTaskStore } from '@/stores/task'
 import { showToast } from '@/composables/useToast'
 import DecisionCard from './decisions/DecisionCard.vue'
 import KbFilterCombobox from './decisions/KbFilterCombobox.vue'
-import SupersedeDialog from './decisions/SupersedeDialog.vue'
+import StatusManagerDialog from './decisions/StatusManagerDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const taskStore = useTaskStore()
 
 // ─── 数据 / Data ───
@@ -130,22 +146,71 @@ const projects = ref<Project[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-// ─── 筛选器：默认「生效中 + 待确认」可见（项目方裁决），失效类默认隐藏 ───
+// ─── 筛选器：状态字典驱动（DC-R2-c D6/D7） ───
+// 默认选中 = 全部非闭档（未完成）状态 + 待确认位；「查看全部」一键放宽。
 const TIME_OPTIONS = ['7d', '30d', 'all'] as const
 type TimeRange = typeof TIME_OPTIONS[number]
-type StatusKey = 'active' | 'pending' | 'superseded' | 'revoked'
-const STATUS_OPTIONS: StatusKey[] = ['active', 'pending', 'superseded', 'revoked']
+/** 「待确认」伪筛选项：它是标志位而非状态（D7），与状态 chips 并列 */
+const PENDING_KEY = 'pending'
 
+const statuses = ref<DecisionStatusItem[]>([])
 const timeRange = ref<TimeRange>('all')
 const kbId = ref('')
-const statusFilter = ref<Set<StatusKey>>(new Set(['active', 'pending']))
+const selected = ref<Set<string>>(new Set())
 const keyword = ref('')
+const showStatusMgr = ref(false)
 
-function toggleStatus(s: StatusKey) {
-  const next = new Set(statusFilter.value)
-  if (next.has(s)) next.delete(s)
-  else next.add(s)
-  statusFilter.value = next
+function labelOf(s: DecisionStatusItem): string {
+  return statusLabel(s, String(locale.value || 'zh-CN'))
+}
+
+/** 默认选中集 = 非闭档状态全集 + 待确认位 */
+function defaultSelection(): Set<string> {
+  const next = new Set(statuses.value.filter(s => !s.closing).map(s => s.id))
+  next.add(PENDING_KEY)
+  return next
+}
+
+/** 当前可见的状态 id（selected 去掉伪筛选项） */
+const visibleStatusIds = computed(() => {
+  const ids = new Set<string>()
+  for (const k of selected.value) if (k !== PENDING_KEY) ids.add(k)
+  return ids
+})
+
+/** 「查看全部」呈现为按下态：选中集已覆盖所有状态 */
+const showAll = computed(() =>
+  statuses.value.length > 0 && statuses.value.every(s => selected.value.has(s.id)),
+)
+
+/** 默认筛选下「待确认」只影响是否露出带标志位的条目 */
+const hasPendingOnlyFilter = computed(() => !selected.value.has(PENDING_KEY))
+
+function toggleStatus(key: string) {
+  const next = new Set(selected.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selected.value = next
+}
+
+function toggleShowAll() {
+  selected.value = showAll.value
+    ? defaultSelection()
+    : new Set([...statuses.value.map(s => s.id), PENDING_KEY])
+}
+
+/** 上一次状态字典的 id 集，用于区分「新新增」与「用户手动取消勾选」 */
+const selectedBefore = ref<Set<string>>(new Set())
+
+/** 状态字典变更后的选中集修正：删掉已不存在的项、新增的非闭档项自动露出（D7 默认可见） */
+function syncSelection(nextList: DecisionStatusItem[]) {
+  const ids = new Set(nextList.map(s => s.id))
+  const next = new Set<string>()
+  for (const k of selected.value) if (k === PENDING_KEY || ids.has(k)) next.add(k)
+  const before = selectedBefore.value
+  for (const s of nextList) if (!s.closing && !before.has(s.id)) next.add(s.id)
+  selected.value = next
+  selectedBefore.value = ids
 }
 
 function sinceDate(): string | undefined {
@@ -154,19 +219,15 @@ function sinceDate(): string | undefined {
   return new Date(Date.now() - days * 24 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-/** 状态筛选 → 契约单值 status 的多选拆分（§12.3）；pending 是标志位，客户端二次过滤 */
-function statusQuery(): DecisionLifecycle[] {
-  const lifecycles: DecisionLifecycle[] = (['active', 'superseded', 'revoked'] as DecisionLifecycle[]).filter(s => statusFilter.value.has(s))
-  // 「待确认」徽标只出现在生效中条目上：若 active 未选而 pending 选中，等效 active
-  if (statusFilter.value.has('pending') && !lifecycles.includes('active')) lifecycles.push('active')
-  return lifecycles
-}
-
-const hasPendingOnlyFilter = computed(() => !statusFilter.value.has('pending'))
 /** 空态文案分流：存在非默认筛选且全量池有数据 → 「筛选无结果」，否则 → 「暂无决策」 */
+const isDefaultFilter = computed(() => {
+  if (!statuses.value.length) return true
+  const def = defaultSelection()
+  if (def.size !== selected.value.size) return false
+  return [...def].every(k => selected.value.has(k))
+})
 const showFilteredEmpty = computed(() =>
-  (timeRange.value !== 'all' || kbId.value !== '' || keyword.value !== '' ||
-    statusFilter.value.size !== 2 || !statusFilter.value.has('active') || !statusFilter.value.has('pending')) &&
+  (timeRange.value !== 'all' || kbId.value !== '' || keyword.value !== '' || !isDefaultFilter.value) &&
   pool.value.length > 0
 )
 
@@ -176,7 +237,8 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    rows.value = await fetchDecisionsMulti({ since: sinceDate(), kb_id: kbId.value || undefined, statuses: statusQuery(), q: keyword.value || undefined })
+    // 状态字典可自定义后不再按状态多次往返：一次拉全量，状态筛选在客户端完成
+    rows.value = await fetchDecisions({ since: sinceDate(), kb_id: kbId.value || undefined, q: keyword.value || undefined })
     if (!pool.value.length) pool.value = await fetchDecisions()
   } catch (e) {
     error.value = extractErrorMessage(e, t('decisions.error_load'))
@@ -189,7 +251,7 @@ async function loadPool() {
   try { pool.value = await fetchDecisions() } catch { /* 池加载失败不阻断主列表 / pool failure never blocks the list */ }
 }
 
-watch([timeRange, kbId, statusFilter], () => { void load() })
+watch([timeRange, kbId], () => { void load() })
 watch(keyword, () => {
   window.clearTimeout(debounceTimer)
   debounceTimer = window.setTimeout(() => { void load() }, 300)
@@ -198,6 +260,11 @@ onBeforeUnmount(() => window.clearTimeout(debounceTimer))
 
 onMounted(async () => {
   void load()
+  try {
+    statuses.value = await fetchStatuses()
+    selected.value = defaultSelection()
+    selectedBefore.value = new Set(statuses.value.map(s => s.id))
+  } catch { /* 状态字典加载失败时降级为不过滤（列表仍可读） */ selected.value = new Set([PENDING_KEY]) }
   try { projects.value = await fetchProjects() } catch { /* 知识库筛选降级为“全部” / KB filter degrades to all */ }
   if (!taskStore.tasks.length) { try { await taskStore.loadTasks() } catch { /* 补录弹层会议列表降级 / add-dialog options degrade */ } }
   // mock 通道下把真实任务注册为会议，供补录/跳转/取代链路演示（生产构建永不触发）
@@ -216,14 +283,15 @@ onMounted(async () => {
   }
 })
 
-// ─── 派生列表：pending 客户端过滤 → 生效/失效分层 → 分组 ───
+// ─── 派生列表：状态可见集 + pending 客户端过滤 → 有/闭档分层 → 分组 ───
 const filtered = computed(() => {
-  let list = rows.value
+  const visible = visibleStatusIds.value
+  let list = rows.value.filter(d => visible.has(d.status))
   if (hasPendingOnlyFilter.value) list = list.filter(d => !d.pending_confirmation)
   return list
 })
-const effectiveRows = computed(() => filtered.value.filter(d => d.status === 'active'))
-const ineffectiveRows = computed(() => filtered.value.filter(d => d.status !== 'active'))
+const effectiveRows = computed(() => filtered.value.filter(d => !d.status_closing))
+const ineffectiveRows = computed(() => filtered.value.filter(d => d.status_closing))
 
 /** 组头标题取会议标题（DC-R2-b 契约修正：`title` 已为决策自身标题） */
 interface MeetingGroup { taskId: string; title: string; date: string; rows: AggregatedDecision[]; ineffective: AggregatedDecision[] }
@@ -266,36 +334,12 @@ function toggleIneff(key: string) {
   openIneff.value = next
 }
 
-// ─── 行内操作：取代 / 撤销 / 补录 / Inline ops ───
-const showSupersede = ref(false)
-const supersedeTarget = ref<AggregatedDecision | null>(null)
-const activePool = computed(() => pool.value.filter(d => d.status === 'active'))
-
-function openSupersede(d: AggregatedDecision) {
-  supersedeTarget.value = d
-  showSupersede.value = true
-}
-
-async function onSupersedeConfirm(by: SupersedeRef) {
-  const target = supersedeTarget.value
-  if (!target) return
-  try {
-    await supersedeTaskDecision(target.task_id, target.id, by)
-    showToast(t('decisions.toast_superseded'), 'success')
-    await Promise.all([load(), loadPool()])
-  } catch (e) {
-    showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
-  }
-}
-
-async function revoke(d: AggregatedDecision) {
-  try {
-    await updateTaskDecision(d.task_id, d.id, { status: 'revoked' })
-    showToast(t('decisions.toast_revoked'), 'success')
-    await load()
-  } catch (e) {
-    showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
-  }
+// ─── 行内操作：补录 / 状态字典管理 / Inline ops ───
+// DC-R2-c（D6）：取代与撤销不再是系统行为，相关弹层与处理函数已下线。
+async function onStatusesChanged(next: DecisionStatusItem[]) {
+  statuses.value = next
+  syncSelection(next)
+  await Promise.all([load(), loadPool()])
 }
 
 // ─── F3 行内编辑/删除（DC-R2-a）：走既有 PUT/DELETE 任务级 CRUD，不回写纪要正文 ───
@@ -361,6 +405,13 @@ async function onAddSubmit(taskId: string, payload: DecisionCreatePayload) {
 .dc-filter-label { font-size: var(--fs-12, 12px); color: var(--muted); white-space: nowrap; }
 .dc-chip { padding: 3px 10px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.12s; }
 .dc-chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+/* DC-R2-c：状态 chips 由字典驱动，带色点；「查看全部」为放宽筛选的虚线项；管理入口靠右 */
+.dc-chip { display: inline-flex; align-items: center; gap: 5px; }
+.dc-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dc-chip-all { border-style: dashed; }
+.dc-chip-all.on { border-style: solid; }
+.dc-manage-btn { margin-left: auto; padding: 3px 10px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.dc-manage-btn:hover { color: var(--accent); border-color: var(--accent); }
 .dc-kw-wrap { position: relative; display: flex; align-items: center; flex: 1; }
 .dc-kw-icon { position: absolute; left: 9px; color: var(--muted); pointer-events: none; }
 .dc-kw-input { width: 100%; box-sizing: border-box; padding: 5px 10px 5px 28px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--fg); }

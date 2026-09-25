@@ -6,12 +6,15 @@ app/routers/decisions.py — 决策 CRUD + 跨会议聚合 / Decision CRUD + cro
 版本：1.0.0
 
 职责（REQ-DECISION-CENTER R2）：
-  1. 任务级决策 CRUD 与 supersede 标记
+  1. 任务级决策 CRUD
   2. 跨任务决策聚合查询（决策中心数据源）
 
 契约事实源：docs/API_CONTRACTS.md §12。
 旧任务 JSON 无 decisions 字段一律按空数组读取（兼容性硬约束）。
 DC-R2-b（D4/D5）：决策引入三要素 title / text(内容) / owner（执行人以说话人档案为权威）。
+DC-R2-c（D6/D7）：status 从封闭枚举改为状态字典（core/decision_status）；
+supersede/revoke 写回端点下线（项目方选择「只留完成为系统锚点，砍掉取代/撤销」），
+存量 `superseded_by` 保留只读展示不再写入。
 """
 
 import uuid
@@ -22,13 +25,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.store import save_task_to_disk, tasks
+from core.decision_status import StatusError, known_ids, load_statuses, validate_status_id
 from core.i18n import _
 from core.speakers import get_speaker_name_map, normalize_speaker_name
 
 router = APIRouter(tags=["decisions"])
-
-# 决策生效状态 / Decision effect status
-DecisionStatus = Literal["active", "superseded", "revoked"]
 
 
 def _resolve_owner(owner_id: object, owner_name: object) -> tuple[str | None, str]:
@@ -93,14 +94,10 @@ class DecisionUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     owner_id: str | None = Field(default=None, max_length=100)
     owner_name: str | None = Field(default=None, max_length=100)
-    status: DecisionStatus | None = None
+    # DC-R2-c：状态不再是封闭枚举，合法性由状态字典校验（非法值 422）
+    status: str | None = Field(default=None, max_length=32)
     pending_confirmation: bool | None = None
     related_todo_ids: list[str] | None = Field(default=None, max_length=100)
-
-
-class SupersedeRequest(BaseModel):
-    task_id: str = Field(..., min_length=1, max_length=100)
-    decision_id: str = Field(..., min_length=1, max_length=100)
 
 
 @router.get("/api/tasks/{task_id}/decisions")
@@ -158,7 +155,10 @@ def update_task_decision(task_id: str, decision_id: str, req: DecisionUpdateRequ
         decision["owner_id"] = owner_id
         decision["owner_name"] = owner_name
     if req.status is not None:
-        decision["status"] = req.status
+        try:
+            decision["status"] = validate_status_id(req.status)
+        except StatusError as exc:
+            raise HTTPException(422, str(exc))
     if req.pending_confirmation is not None:
         decision["pending_confirmation"] = req.pending_confirmation
     if req.related_todo_ids is not None:
@@ -191,27 +191,8 @@ def delete_task_decision(task_id: str, decision_id: str):
     return {"ok": True}
 
 
-@router.patch("/api/tasks/{task_id}/decisions/{decision_id}/supersede")
-def supersede_task_decision(task_id: str, decision_id: str, req: SupersedeRequest):
-    """标记决策已被取代 / Mark a decision as superseded by another (cross-meeting)."""
-    task = _require_task(task_id)
-    decision = _require_decision(task, decision_id)
-    if req.task_id == task_id and req.decision_id == decision_id:
-        raise HTTPException(400, _("A decision cannot supersede itself"))
-    ref_task = tasks.get(req.task_id)
-    if ref_task is None:
-        raise HTTPException(404, _("Task not found"))
-    ref_found = any(
-        d.get("id") == req.decision_id for d in _get_decisions(ref_task)
-    )
-    if not ref_found:
-        raise HTTPException(404, _("Decision not found"))
-    decision["status"] = "superseded"
-    decision["superseded_by"] = {"task_id": req.task_id, "decision_id": req.decision_id}
-    decision["updated_at"] = datetime.now().isoformat()
-    _mark_modified(task_id)
-    save_task_to_disk(task_id)
-    return {"decision": decision}
+# DC-R2-c（D6）：supersede 写回端点已下线（取代/撤销不再是系统行为）；
+# 存量 superseded_by 仍随决策对象透出，由前端只读展示（见 §12.0）。
 
 
 # ============================================================
@@ -258,17 +239,21 @@ def list_all_decisions(
     since: str | None = Query(default=None, max_length=10),
     until: str | None = Query(default=None, max_length=10),
     kb_id: str | None = Query(default=None, max_length=100),
-    status: DecisionStatus | None = Query(default=None),
+    status: str | None = Query(default=None, max_length=32),
     q: str | None = Query(default=None, max_length=500),
     group_by: Literal["meeting", "date"] | None = Query(default=None),
 ):
     """跨会议决策聚合（决策中心数据源）/ Cross-meeting decision aggregation for the Decision Center.
 
     遍历内存任务表聚合（桌面单机数据量可承受，不引入数据库）。
+    DC-R2-c：`status` 取值为状态字典 id（非封闭枚举）；每行附 status_name/color/closing 元信息。
     """
     since = _validate_date(since, "since")
     until = _validate_date(until, "until")
+    if status is not None and status not in known_ids():
+        raise HTTPException(422, f"unknown status: {status}")
 
+    status_meta = {s["id"]: s for s in load_statuses()}
     kb_cache: dict[str, str | None] = {}
     try:
         owner_map = get_speaker_name_map()
@@ -293,12 +278,19 @@ def list_all_decisions(
                 continue
             if q is not None and q not in f"{d.get('text') or ''}\n{d.get('title') or ''}":
                 continue
+            sid = str(d.get("status") or "active")
+            meta = status_meta.get(sid)
             rows.append({
                 **d,
                 # 决策自身标题（三要素，存量无此键→""）；会议标题改用 meeting_title 下发（旧 `title` 语义冲突修正）
                 "title": d.get("title") or "",
                 "owner_id": d.get("owner_id") or None,
                 "owner_name": _owner_display(d, owner_map),
+                # DC-R2-c：状态字典元信息随行下发，前端不再写死枚举（徽标/颜色/沉底均配置驱动）
+                "status_name": (meta or {}).get("name") or sid,
+                "status_name_en": (meta or {}).get("name_en") or sid,
+                "status_color": (meta or {}).get("color") or "var(--muted)",
+                "status_closing": bool((meta or {}).get("closing", sid != "active")),
                 "task_id": task_id,
                 "meeting_title": task.get("title") or task.get("audio_name") or task_id,
                 "meeting_date": meeting_date,
