@@ -233,16 +233,18 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
             project_name = project.get("name", "")
 
     # 提取参与者（从 speaker_mapping 或 dialogue） / Extract participants (from speaker_mapping or dialogue)
+    # BE-R3：占位名（含历史存量 Speaker N/说话人N）不入参与者，知识库 .md 成品不露编号名
+    from core.speakers import is_unnamed_speaker
     participants = []
     speaker_map = task.get("speaker_mapping", {}) or {}
     for _spk_id, name in speaker_map.items():
-        if name and name not in participants:
+        if name and not is_unnamed_speaker(name) and name not in participants:
             participants.append(name)
     if not participants:
         dialogue = task.get("dialogue", []) or []
         for seg in dialogue:
             spk = seg.get("speaker")
-            if spk and spk not in participants:
+            if spk and not is_unnamed_speaker(spk) and spk not in participants:
                 participants.append(spk)
             if len(participants) >= 10:
                 break

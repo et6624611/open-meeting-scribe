@@ -17,6 +17,7 @@ core/summarize.py — 纪要提示词与解析
 import logging
 
 from core.i18n import _
+from core.speakers import normalize_speaker_name
 
 from .llm import chat_completion
 
@@ -61,7 +62,8 @@ def generate_title(
     # 构造对话文本（截取前 2000 字符以控制 token 消耗）
     dialogue_text = ""
     for item in dialogue:
-        speaker_name = item.get("speaker_name", f"Speaker {item.get('speaker_id', 0) + 1}")
+        # BE-R3 读取侧归一：存量占位名收敛为空后仅以结构标签入 prompt（不进成品标题）
+        speaker_name = normalize_speaker_name(item.get("speaker_name")) or f"Speaker {item.get('speaker_id', 0) + 1}"
         text = item.get("text", "").strip()
         if text:
             dialogue_text += f"{speaker_name}：{text}\n"
@@ -210,8 +212,9 @@ def generate_summary(
         if sid in seen_sids:
             continue
         seen_sids.add(sid)
-        name = item.get("speaker_name", f"Speaker {sid + 1}")
-        speaker_names.append(f"Speaker {sid + 1} = {name}")
+        # BE-R3：姓名归一，未命名以中性措辞占位（O3 保守口径，序号仅结构定位不进正文）
+        name = normalize_speaker_name(item.get("speaker_name"))
+        speaker_names.append(f"Speaker {sid + 1} = {name or '（未命名）'}")
     unique_speaker_count = len(speaker_names)
     speaker_info = "，".join(speaker_names)
 
@@ -243,9 +246,10 @@ def generate_summary(
         merged_texts[sid].append(text)
 
     for sid in speaker_order:
+        # BE-R3：取首个归一后非空真名；存量占位名视同未命名，降级为结构标签
         name = next(
-            (item.get("speaker_name", f"Speaker {sid + 1}")
-             for item in dialogue if item.get("speaker_id") == sid and item.get("speaker_name")),
+            (n for n in (normalize_speaker_name(item.get("speaker_name"))
+                         for item in dialogue if item.get("speaker_id") == sid) if n),
             f"Speaker {sid + 1}"
         )
         combined = "\n".join(merged_texts[sid])
@@ -288,7 +292,7 @@ def format_dialogue_for_display(dialogue: list[dict]) -> str:
     lines = []
     for item in dialogue:
         speaker_id = item.get("speaker_id", 0)
-        speaker_name = item.get("speaker_name", f"Speaker {speaker_id + 1}")
+        speaker_name = normalize_speaker_name(item.get("speaker_name")) or f"Speaker {speaker_id + 1}"
         text = item.get("text", "").strip()
         if text:
             lines.append(f"【{speaker_name}】{text}")

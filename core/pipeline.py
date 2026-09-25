@@ -167,6 +167,21 @@ def run_pipeline_stage1(
     return result
 
 
+def _collect_speaker_names(dialogue: list[dict]) -> dict[int, str]:
+    """采集 {speaker_id: 归一后姓名}（BE-R1：不落 Speaker 编号默认名，空串=未命名）。
+
+    键保留可枚举（供 D5「未识别 N 人」聚合），姓名经读取侧归一化入口收敛。
+    Collect {speaker_id: normalized_name}; empty string means unnamed (aggregated per D5).
+    """
+    from core.speakers import normalize_speaker_name
+    names: dict[int, str] = {}
+    for item in dialogue:
+        sid = item.get("speaker_id", 0)
+        if sid not in names:
+            names[sid] = normalize_speaker_name(item.get("speaker_name"))
+    return names
+
+
 def run_pipeline_stage2(
     dialogue: list[dict],
     speaker_mapping: dict[int, str] | None = None,
@@ -221,24 +236,16 @@ def run_pipeline_stage2(
     progress("speakers", "应用说话人姓名...", 75)
     if speaker_mapping:
         dialogue = speakers.apply_speaker_names(dialogue, speaker_mapping)
-        speaker_name_map = {}
-        for item in dialogue:
-            sid = item.get("speaker_id", 0)
-            name = item.get("speaker_name", f"Speaker {sid + 1}")
-            speaker_name_map[sid] = name
-        result["speaker_mapping"] = speaker_name_map
+        result["speaker_mapping"] = _collect_speaker_names(dialogue)
         result["speaker_uuid_mapping"] = {str(k): v for k, v in speaker_mapping.items()}
         progress("speakers", f"已应用 {len(speaker_mapping)} 个姓名", 80)
     else:
-        # 无绑定映射时，仍从 dialogue 构建默认姓名映射（确保前端说话人视图始终可显示） / No binding mapping; still build default name map from dialogue (ensure frontend speaker view is always displayable)
-        speaker_name_map = {}
-        for item in dialogue:
-            sid = item.get("speaker_id", 0)
-            if sid not in speaker_name_map:
-                speaker_name_map[sid] = item.get("speaker_name", f"Speaker {sid + 1}")
+        # 无绑定映射：键保留、姓名留空（可枚举可计数），展示层按 D5「未识别 N 人」聚合 /
+        # No binding mapping; keep keys enumerable with empty names, frontend aggregates per D5
+        speaker_name_map = _collect_speaker_names(dialogue)
         result["speaker_mapping"] = speaker_name_map
         result["speaker_uuid_mapping"] = {}
-        progress("speakers", f"未配置姓名映射，使用默认名称（{len(speaker_name_map)} 位说话人）", 80)
+        progress("speakers", f"未配置姓名映射，{len(speaker_name_map)} 位说话人待命名", 80)
 
     result["dialogue"] = dialogue
 

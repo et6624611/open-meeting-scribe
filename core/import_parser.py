@@ -274,7 +274,7 @@ def parse_markdown_transcript(text: str) -> list[dict]:
         # 模式 3: 说话人N：内容 / Pattern 3: Speaker N: content
         m = re.match(r"^(?:说话人|Speaker)\s*(\d+)\s*[：:]\s*(.+)$", line, re.IGNORECASE)
         if m:
-            name = f"Speaker {m.group(1)}"
+            # BE-R1：占位编号仅用于 sid 归组，不再作为姓名落盘（id_to_name 不收录）
             content = m.group(2).strip()
             sid = int(m.group(1)) - 1  # 转为 0-based / Convert to 0-based
             entries.append({"text": content, "speaker_id": max(0, sid), "begin_time": 0, "end_time": 0})
@@ -343,11 +343,14 @@ def _group_entries_into_dialogue(
 
     # 构建 dialogue 结构 / Build dialogue structure
     dialogue = []
-    # 反向映射：id → name / Reverse mapping: id → name
+    # 反向映射：id → name / Reverse mapping: id → name（仅收录非占位真名，BE-R1）
+    from core.speakers import normalize_speaker_name
     id_to_name: dict[int, str] = {}
     if speaker_names:
         for name, sid in speaker_names.items():
-            id_to_name[sid] = name
+            real = normalize_speaker_name(name)
+            if real:
+                id_to_name[sid] = real
 
     for sid in sorted(speaker_groups.keys()):
         group = speaker_groups[sid]
@@ -365,7 +368,7 @@ def _group_entries_into_dialogue(
 
         dialogue.append({
             "speaker_id": sid,
-            "speaker_name": id_to_name.get(sid, f"Speaker {sid + 1}"),
+            "speaker_name": id_to_name.get(sid, ""),
             "text": "\n".join(texts),
             "sentences": sentences,
         })

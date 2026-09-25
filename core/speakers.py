@@ -34,6 +34,46 @@ MAPPINGS_FILE = DATA_DIR / "meeting_mappings.json"
 
 
 # ============================================================
+# 未命名说话人归一化公共入口（REQ-SPK-RN-BE BE-R3）
+# ============================================================
+#
+# 约定：「空字符串 = 未命名」为数据层形态；历史存量占位名（Speaker N /
+# Speaker One…Ten / 说话人N / 发言人N）在**读取侧**一律收敛为空串参与
+# D5「未识别 N 人」聚合，存量 task JSON 不改写（H4/BE-R4）。
+# 正则为需求口径超集（初审意见书 D6 裁决，与前端 T2 判定器同源）；
+# 锚定整串避免误伤「Speaker 3 张工」这类含编号的真实名。
+
+_PLACEHOLDER_WORDS = "One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten"
+PLACEHOLDER_NAME_RE = re.compile(
+    rf"^\s*(?:Speaker\s+\d+|Speaker\s+(?:{_PLACEHOLDER_WORDS})|说话人\s*\d+|发言人\s*\d+)\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_unnamed_speaker(name: object) -> bool:
+    """姓名无效=未命名：空/空白/非字符串，或整串命中编号占位模式（含历史存量变体）。"""
+    if not isinstance(name, str):
+        return True
+    stripped = name.strip()
+    return not stripped or bool(PLACEHOLDER_NAME_RE.match(stripped))
+
+
+def normalize_speaker_name(name: object) -> str:
+    """单值归一：占位/空白收敛为 ""，真实姓名去首尾空白后原样返回。"""
+    if is_unnamed_speaker(name):
+        return ""
+    return name.strip()
+
+
+def normalize_speaker_mapping(mapping: dict | None) -> dict:
+    """读取侧归一化：供 summarize / chapters / projects / chat / text_bridge 等
+    全部下游唯一复用。键结构不变（可枚举、可计数），占位/空白值收敛为 ""。"""
+    if not mapping:
+        return {}
+    return {k: normalize_speaker_name(v) for k, v in mapping.items()}
+
+
+# ============================================================
 # 数据模型 / Data models
 # ============================================================
 
@@ -341,7 +381,9 @@ def apply_speaker_names(
     for item in dialogue:
         sid = item.get("speaker_id", 0)
         speaker_uuid = mapping.get(sid)
-        speaker_name = name_map.get(speaker_uuid, f"Speaker {sid + 1}") if speaker_uuid else f"Speaker {sid + 1}"
+        # BE-R1：查不到档案→空串（未命名），不再持久化 Speaker 编号默认名；
+        # 展示层按 D5「未识别」口径聚合（前端 T2 / 读取侧归一化）。
+        speaker_name = normalize_speaker_name(name_map.get(speaker_uuid)) if speaker_uuid else ""
 
         new_item = dict(item)
         new_item["speaker_name"] = speaker_name
@@ -402,6 +444,7 @@ def build_speaker_prompt(dialogue: list[dict]) -> str:
         if sid in seen_sids:
             continue
         seen_sids.add(sid)
-        name = item.get("speaker_name", f"Speaker {sid + 1}")
+        # Speaker N 仅作 prompt 内结构定位标签；姓名读取侧归一，未命名以中性措辞占位（O3 保守口径）。
+        name = normalize_speaker_name(item.get("speaker_name")) or "（未命名）"
         parts.append(f"Speaker {sid + 1} = {name}")
     return ", ".join(parts)
