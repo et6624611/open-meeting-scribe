@@ -602,6 +602,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
                     tasks[task_id]["decisions"] = merge_decisions_after_regen(
                         tasks[task_id].get("decisions") or [], parsed_decisions,
+                        tasks[task_id].get("decision_deletions"),  # DC-R2-BE 墓碑：删过的 auto 不复活
                     )
                     if parsed_decisions:
                         logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_decisions)} 条决策")

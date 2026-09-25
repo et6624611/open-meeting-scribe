@@ -132,9 +132,20 @@ def update_task_decision(task_id: str, decision_id: str, req: DecisionUpdateRequ
 
 @router.delete("/api/tasks/{task_id}/decisions/{decision_id}")
 def delete_task_decision(task_id: str, decision_id: str):
-    """删除一条决策 / Delete a decision."""
+    """删除一条决策；被删的 auto 决策落 task 级墓碑，防重生成复活（DC-R2-BE）。"""
     task = _require_task(task_id)
-    _require_decision(task, decision_id)
+    decision = _require_decision(task, decision_id)
+    # 墓碑：仅 auto 需建（manual/injection/backfill 本就不被重生成覆盖）
+    from core.summarize import build_decision_tombstone
+    tombstone = build_decision_tombstone(decision)
+    if tombstone is not None:
+        deletions = task.get("decision_deletions")
+        if not isinstance(deletions, list):
+            deletions = []
+        existing_keys = {t.get("text_key") for t in deletions if isinstance(t, dict)}
+        if tombstone["text_key"] not in existing_keys:
+            deletions.append(tombstone)
+        task["decision_deletions"] = deletions
     task["decisions"] = [d for d in _get_decisions(task) if d.get("id") != decision_id]
     _mark_modified(task_id)
     save_task_to_disk(task_id)

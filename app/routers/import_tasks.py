@@ -362,6 +362,7 @@ def _create_import_task(
             decisions, parse_status = parse_decisions_with_status(summary_text)
             tasks[task_id]["decisions"] = merge_decisions_after_regen(
                 tasks[task_id].get("decisions") or [], decisions,
+                tasks[task_id].get("decision_deletions"),  # DC-R2-BE 墓碑：导入重解析同样不复活已删 auto
             )
             if decisions or parse_status:
                 save_task_to_disk(task_id)
