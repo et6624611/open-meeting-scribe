@@ -196,18 +196,23 @@ class TestLocalTranscriptionContract:
 # ============================================================
 
 class TestLocalRouting:
-    def test_get_asr_mode_returns_local_when_engine_local(self, monkeypatch):
+    def test_get_asr_mode_returns_local_when_engine_local(self, tmp_path, monkeypatch):
         import core.transcribe as t
         import app.settings_store as ss
 
+        # 自包含夹具（同 test_llm_selfhost 口径）：隔离真实 data/settings.json。
+        # AM-B1 后 _get_asr_mode 经 core/routing 先读 access_mode；已迁移机器上
+        # 会短路进 hosted 分支、绕过本用例要验的 legacy engine.mode 判定。
+        monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "local", "local": {}})
         assert t._get_asr_mode() == "local"
 
-    def test_get_asr_mode_not_local_when_engine_cloud(self, monkeypatch):
+    def test_get_asr_mode_not_local_when_engine_cloud(self, tmp_path, monkeypatch):
         import core.transcribe as t
         import app.settings_store as ss
         import app.store as store
 
+        monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "cloud", "local": {}})
         monkeypatch.setattr(store, "get_asr_config", lambda: {"mode": "proxy", "proxy_url": "http://x"})
         assert t._get_asr_mode() == "proxy"
