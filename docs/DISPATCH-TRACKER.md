@@ -51,3 +51,4 @@ status: active
 - 巡检动作：读本表在途行 → `qoderwake session list/detail` 查会话态 → `git fetch` 比对分支 commit → 有变化才更新本行并 commit+push（前缀 `docs(tracker):`）→ 异常（完成未回报 / 运行报错 / 无进展超 4 小时）标 ⚠️ 并在 IM channel 可用时提醒项目方。
 - 无变化时静默退出，不产生 commit、不打扰。
 - 叫醒通道现状（09-25 07:00 巡检核实）：QoderWake 已接 IM channel 仅「企业微信机器人」`global-tdceqy-wecom-bot`（connected），非钉钉/飞书/Lark 通道，巡检工具链无法向其发消息；钉钉侧 `chat search` 未命中开发群（派工/OpenMeetingScribe 均 0 结果）。故阻塞性异常实际仍只能靠台账留痕，需项目方手工查看或补接可用叫醒通道。
+- 项目方授权收口（09-25 09:10，会话内批复「1.同意归档 2.自行推进」）：① **归档已完成**（commit 61871ff）——QA 证据全量入库（12MB）、`data/_backfill_report.json` 入库、`.worktrees/` 加入 gitignore；主工作区 `core/pipeline.py` 一份未归属的工程师 WIP 改动**未合入未切分支**，以 patch + README 存档于 `qa-evidence/wip-archive/`，现场改动保持原样待工程师自处。② **REQ-PROGRESS-P0 卡点询问已发**（09:13 `session send` 至 7ff67e75，项目方预授权由管理员跟进）：限 1 小时内三选一应答（完工待验收/报卡点/无法继续），超时未响应按「重新派工」建议上报项目方。③ RT-P0-FIX 观察窗维持 10:00 巡检轮，无需项目方动作。
