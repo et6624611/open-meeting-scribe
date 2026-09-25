@@ -25,6 +25,7 @@ status: active
 
 | 单号 | 派工依据 | 拟 Owner | 触发条件 |
 |---|---|---|---|
+| DEF-PROXY-02/03 | docs/DEFECT-PROXY-TEST-20260925.md v0.1.0（09-25 项目方实测 464af449：主因=采集静音-91dB 属环境项，先由项目方自查麦克风权限+样音复测；代码项=实时兜底字段未落盘致整单失败 + WAV 落盘时长仅墙钟 1/3） | 后端工程师（a4cdbd0ca795） | 待项目方样音复测结论：仍静音→02/03 即刻派；恢复有声→DEF-PROXY-03 降级为观察项、仅派 02。与 RT-P0-FIX 同域同人，排 RT-P0-FIX 之后同会话串行 |
 | REQ-DECISION-CENTER-R2-b/c（剩余子单） | docs/REQUIREMENT-DECISION-CENTER-R2.md v0.2.0（DC-R2-a 已派，见在途表；剩 F4/F6） | 前端/后端按子单（见需求单 §6） | **DC-R2-b**（F4 三要素，动模型+prompt+API）等 O4（执行人可否留空、纪要主要结论是否改三要素模板）关闭；**DC-R2-c**（F6 状态字典全量自定义）等 O5（新增状态与沉底/取代/默认筛选绑定规则，管理员可先出设计稿圈选）关闭。两单均涉模型层，须与 DC-R2-a / RT-P0-FIX 合入顺序联排，分支 rebase 届时 main |
 | AM-Q1 | 同上（T6 回归验证，含存量组合迁移用例=发版门禁） | QA | AM-B1 与 AM-F1 均转 awaiting-acceptance 后触发 |
 | RT-P0-FIX | docs/P0-RETEST-20260925.md「缺陷发现」（基线 HEAD=fa42d2d，pytest 4 failed / 338 passed） | 后端工程师（a4cdbd0ca795，与 AM-B1 同人） | **已派（09-25 并入 AM-B1 原会话 c95528c3 注入，不另开会话）**：① 修复 DEF-RETEST-03/04（`/api/settings/test-llm` 空 Key 带头 + `missing_key` 错误码回归，确认改代码还是改测试预期）；② 定性 DEF-RETEST-01/02（在自身 worktree 切 cloud provider 单跑 tests/test_chat.py，区分环境噪声 vs mock/代码回归；主工作区 data/settings.json 禁动）；③ 门禁全绿后重跑 P0-RETEST T1~T5 手工实测。归属以 AM-B1 行勘误为准（守卫为 WP-A 早期既有实现，非 AM-B1 分支回归）。验收标准=pytest 全绿 + 清单结果列回填完毕 |
