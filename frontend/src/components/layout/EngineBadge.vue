@@ -33,8 +33,12 @@ const labelText = computed(() => t(`topbar.engine_badge_${engine.badge}`))
 const tipText = computed(() => t(`topbar.engine_badge_tip_${engine.badge}`))
 
 function goEngineSettings() {
-  router.push({ name: 'settings', query: { cat: 'engine' } })
+  // A3：与底部状态栏统一跳转接入方式入口（?cat=access）
+  router.push({ name: 'settings', query: { cat: 'access' } })
 }
 
-onMounted(() => { engine.load() })
+onMounted(() => {
+  engine.load()
+  void engine.loadRouting()  // 徽章第一因子=access_mode（stores/engine.ts 单源收敛）
+})
 </script>

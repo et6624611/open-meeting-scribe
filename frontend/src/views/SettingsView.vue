@@ -8,15 +8,19 @@
         <kbd>ESC</kbd>
       </button>
       <h1 class="settings-nav-title">{{ t('settings.title') }}</h1>
-      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'access' }" @click="activeCategory = 'access'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+        {{ t('settings.cat_access') }}
+      </button>
+      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         {{ t('settings.cat_account') }}
       </button>
-      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'services' }" @click="activeCategory = 'services'">
+      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'services' }" @click="activeCategory = 'services'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
         {{ t('settings.cat_services') }}
       </button>
-      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'engine' }" @click="activeCategory = 'engine'">
+      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'engine' }" @click="activeCategory = 'engine'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
         {{ t('settings.cat_engine') }}
       </button>
@@ -48,8 +52,17 @@
       <a class="settings-privacy-link" href="https://github.com/et6624611/open-meeting-scribe/blob/main/SECURITY.md" target="_blank" rel="noopener">{{ t('settings.privacy_notice.learn_more') }}</a>
     </div>
 
+    <!-- ═══ 接入方式 / Access mode（REQ-ACCESS-MODE-CARDS · AM-F1 T3/T4） ═══ -->
+    <div v-show="activeCategory === 'access'">
+      <AccessModeCards
+        :settings="settings"
+        @local-selected="onAccessLocalSelected"
+        @expert-changed="onExpertChanged"
+      />
+    </div>
+
     <!-- ═══ 账户 / Account ═══ -->
-    <div v-show="activeCategory === 'account'">
+    <div v-show="expertMode && activeCategory === 'account'">
     <!-- 账户信息 / Account info -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.account') }}</h2>
@@ -170,7 +183,7 @@
     </div>
 
     <!-- ═══ 服务 / Services ═══ -->
-    <div v-show="activeCategory === 'services'">
+    <div v-show="expertMode && activeCategory === 'services'">
     <!-- API 配置 / API configuration -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.api_config') }}</h2>
@@ -287,8 +300,8 @@
     </div>
     </div>
 
-    <!-- ═══ 计算引擎 / Compute engine（R6：引擎状态透明 + 数据流向矩阵；D-R2：管理员级配置） ═══ -->
-    <div v-show="activeCategory === 'engine'">
+    <!-- ═══ 计算引擎 / Compute engine（R6：引擎状态透明 + 数据流向矩阵；D-R2：管理员级配置；D4：仅专家模式） ═══ -->
+    <div v-show="expertMode && activeCategory === 'engine'">
     <!-- 引擎状态 / Engine status -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.engine_status') }}</h2>
@@ -884,6 +897,7 @@ import { useEngineStore } from '@/stores/engine'
 import type { EngineBadgeState } from '@/stores/engine'
 import type { EngineMode, DownloadJob } from '@/api/engine'
 import LocalEngineGuideDialog from '@/components/modals/LocalEngineGuideDialog.vue'
+import AccessModeCards from '@/components/settings/AccessModeCards.vue'
 import { showToast } from '@/composables/useToast'
 import { fetchSettings, saveSettings, testApiConnection, fetchCliReference, probeLocalEngine } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset, LocalEngineProbe, LocalEngineProbeResult } from '@/api/settings'
@@ -983,10 +997,36 @@ watch(selectedDevice, async (newVal) => {
   }
 })
 
-/** 当前选中的设置类别（支持 ?cat= 深链，如顶栏引擎徽章跳转） / Active settings category (supports ?cat= deep link, e.g. from top bar engine badge) */
-const SETTINGS_CATEGORIES = ['account', 'services', 'engine', 'transcription', 'appearance', 'features', 'system']
+/** 当前选中的设置类别（支持 ?cat= 深链；A3：状态栏/徽章统一跳 ?cat=access） / Active settings category (deep link) */
+const SETTINGS_CATEGORIES = ['access', 'account', 'services', 'engine', 'transcription', 'appearance', 'features', 'system']
+/** D4：账户/服务/引擎三个旧分类仅专家模式可见 */
+const EXPERT_CATEGORIES = ['account', 'services', 'engine']
 const queryCat = typeof route.query.cat === 'string' ? route.query.cat : ''
-const activeCategory = ref<string>(SETTINGS_CATEGORIES.includes(queryCat) ? queryCat : 'account')
+const queryTab = typeof route.query.tab === 'string' ? route.query.tab : ''
+const deepLinkCat = SETTINGS_CATEGORIES.includes(queryCat) ? queryCat : (SETTINGS_CATEGORIES.includes(queryTab) ? queryTab : '')
+const activeCategory = ref<string>(deepLinkCat || 'access')
+
+/** D4 专家模式：开关态来自主 store（单一来源） */
+const expertMode = computed(() => engineStore.expertMode)
+
+// 非专家态兜底：旧分类深链或开关关闭后的当前分类 → 回「接入方式」
+watch(expertMode, (on) => {
+  if (!on && EXPERT_CATEGORIES.includes(activeCategory.value)) activeCategory.value = 'access'
+}, { immediate: true })
+
+/** 卡片选中离线：与引擎模式切换同款前置检查（磁盘/权重/校验 → 引导弹窗；全就绪 → 启动引擎） */
+async function onAccessLocalSelected() {
+  await engineStore.loadOverview(true)
+  if (diskShort.value || engineStore.requiredNotReady.length || engineStore.tamperedModels.length) {
+    guideOpen.value = true
+  } else if (!engineStore.status?.process_running) {
+    await onStartEngine()
+  }
+}
+
+function onExpertChanged(on: boolean) {
+  if (on) showToast(t('settings.access.expert_on_hint'), 'info')
+}
 
 // ─── 计算引擎（R6 / D-R2） / Compute engine (R6 / D-R2) ───
 const isDev = import.meta.env.DEV
@@ -1608,12 +1648,7 @@ async function onCleanOrphaned() {
 }
 
 onMounted(async () => {
-  // 深链：?tab=xxx 直接定位设置分类（状态栏「计算引擎」三态点击跳转） / Deep-link: ?tab=xxx jumps straight to a category (status-bar click)
-  const tab = route.query.tab
-  if (typeof tab === 'string' && SETTINGS_CATEGORIES.includes(tab)) {
-    activeCategory.value = tab
-  }
-
+  // 深链 ?cat=/?tab= 已在 setup 期解析（deepLinkCat），此处不再重复处理
   const s = await fetchSettings()
   // 确保嵌套对象存在，避免模板中 settings.llm!.xxx 报错 / Ensure nested objects exist, avoid template errors
   if (!s.llm) s.llm = {}
@@ -1675,6 +1710,7 @@ onMounted(async () => {
   updateLoadCurrentVersion()
   loadDevices()
   engineStore.load()
+  engineStore.loadRouting(true)  // AM-F1：接入方式派生态（含专家模式/引导判定）
   engineStore.loadOverview()  // R5：模型清单 + 下载任务（有活动下载会自动轮询） / Model manifest + jobs (auto-polls if active)
   runLocalProbe()  // 探测本机 Ollama / LM Studio（§7.2-4） / Probe local Ollama / LM Studio
 })
