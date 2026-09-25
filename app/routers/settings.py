@@ -31,6 +31,14 @@ import requests
 from fastapi import APIRouter
 
 from app.routers.chat import CHAT_SYSTEM_PROMPT
+from app.settings_store import (
+    ACCESS_MODES,
+    apply_access_mode,
+    derive_access_mode,
+    get_access_mode,
+    get_expert_mode,
+    migrate_access_mode,
+)
 from app.store import (
     get_active_api_key,
     get_asr_config,
@@ -180,6 +188,8 @@ def get_settings():
             "can_toggle": tier != "free",
         },
         "prefer_subscription": prefer_subscription,
+        "access_mode": get_access_mode(),
+        "expert_mode": get_expert_mode(),
         "output_dir": settings.get("output_dir", "data/output/"),
         "engine": get_engine_config(),
         "feature_flags": feature_flags,
@@ -337,6 +347,28 @@ def save_settings(data: dict):
         },
     }
 
+    # ── 接入方式（REQ-ACCESS-MODE-CARDS T1/T2）/ Access mode handling ──
+    # 1) 新客户端显式提交 access_mode：写入并同步旧字段（A2 回滚窗口）。
+    # 2) 旧客户端继续只写 engine.mode/asr.mode：兼容窗口内重对齐 access_mode，
+    #    保证路由唯一判定源（core/routing）与最新旧字段写入不漂移。
+    # 3) expert_mode 仅接受布尔显式值；其余场景由迁移规则推导。
+    if isinstance(data.get("expert_mode"), bool):
+        merged["expert_mode"] = data["expert_mode"]
+    if "access_mode" in data:
+        incoming_access = data.get("access_mode")
+        if incoming_access is None or incoming_access in ACCESS_MODES:
+            apply_access_mode(merged, incoming_access)
+        else:
+            logger.warning(f"忽略非法 access_mode 值: {incoming_access!r}（允许 {ACCESS_MODES} 或 null）")
+            if not merged.get("_access_mode_migrated"):
+                migrate_access_mode(merged)
+    elif not merged.get("_access_mode_migrated"):
+        migrate_access_mode(merged)
+    elif "engine" in data or "asr" in data:
+        derived = derive_access_mode(merged)
+        if derived is not None:
+            merged["access_mode"] = derived
+
     save_settings_to_disk(merged)
 
     # 声纹配置变更后重置 provider 缓存，使下次调用重新选择 / Reset provider cache after voiceprint config change
@@ -386,6 +418,44 @@ def save_settings(data: dict):
             "cloud_api_key": mask_api_key(final_vp_key),
             "cloud_api_key_set": bool(final_vp_key),
         },
+    }
+
+
+@router.get("/api/settings/routing")
+def get_routing_status():
+    """
+    查询当前接入方式路由结论（REQ-ACCESS-MODE-CARDS AC-T2③ / D2）.
+
+    路由判定唯一入口 core/routing.get_routing_decision 的只读投影，供前端：
+      - 状态栏播报「结论 + 原因」（AM-F1 / R2）；
+      - byok→cloud 等跨模式隐式路由变化（route_override=true）的一次性 toast 显性告知（D2/R3）；
+      - access_mode=null 时触发首次引导（R4）。
+    计费口径（与 core/metering 一致）：hosted 消耗配额 / byok 走自有 Key / local 不计量。
+    """
+    from core.routing import get_routing_decision
+
+    llm_decision = get_routing_decision("llm")
+    asr_decision = get_routing_decision("asr")
+    access_mode = llm_decision["configured_access_mode"]
+
+    quota = None
+    try:
+        from core.metering import check_quota, is_metered
+        from core.users import get_current_user
+        user = get_current_user()
+        if user and is_metered():
+            quota = check_quota(user.get("id", ""))
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "access_mode": access_mode,
+        "expert_mode": llm_decision["expert_mode"],
+        "onboarding_required": access_mode is None,
+        "llm": llm_decision,
+        "asr": asr_decision,
+        "quota": quota,
     }
 
 
@@ -573,9 +643,15 @@ def test_llm_connection(data: dict = None):
 
     base_url = (incoming.get("base_url") or cfg.get("base_url") or "").strip()
     model = (incoming.get("model") or cfg.get("model") or "").strip()
-    api_key = incoming.get("api_key") or ""
-    if not api_key or "****" in api_key:
+    # PRD R4 口径：显式传入空串 = 本次测试「无 Key」，不回填存量 Key（DEF-RETEST-03/04）；
+    # 仅字段缺失或为脱敏占位（含 ****）时才沿用已存配置。
+    # Explicit empty string means "test without a key" (PRD R4); only a missing or
+    # masked (****) field falls back to the stored config.
+    raw_key = incoming.get("api_key")
+    if raw_key is None or "****" in raw_key:
         api_key = cfg.get("api_key") or ""
+    else:
+        api_key = raw_key.strip()
 
     if not base_url:
         return {
@@ -585,7 +661,8 @@ def test_llm_connection(data: dict = None):
         }
 
     localhost = is_localhost_base_url(base_url)
-    if not localhost and not api_key:
+    if not localhost and not api_key and raw_key is None:
+        # 未显式传 Key 时才兜底旧版全局 Key；显式空串按「无 Key」处理返回 missing_key
         api_key = get_active_api_key()
     if not api_key and not localhost:
         return {

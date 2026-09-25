@@ -11,7 +11,21 @@ tests/test_chat.py — AI 对话域冒烟测试
 import pytest
 from fastapi.testclient import TestClient
 
+import app.settings_store as settings_store
 from app.server import app
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_file(tmp_path, monkeypatch):
+    """DEF-RETEST-01/02 加固：chat 端点下沉调用 core.llm，其 provider/base_url/key
+    来自 settings.json 回填（优先级高于环境变量）。本机 data/settings.json 若残留
+    localhost 配置（如 Ollama 占位 Key），未 mock 的 async_chat_completion_full
+    会真实触网并 404 → 503，使用例结果依赖实测机配置而非被测逻辑。此处把
+    SETTINGS_FILE 指向不存在的临时路径并前置清除环境变量（先于 client fixture
+    的 app 启动），使本域用例与本机配置彻底解耦；走默认云端代理（离线桩链路）。
+    """
+    monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
 
 
 @pytest.fixture

@@ -59,55 +59,13 @@ COMMON_BIGRAMS = {
 def _get_asr_mode() -> str:
     """获取当前 ASR 接入模式（local / proxy / direct / cloud）。
 
-    local 模式（R1 / PRD-LOCAL-ENGINE）：settings.engine.mode == "local" 时，转写完全
-    在本机 FunASR 常驻子进程完成，音频永不出设备；此为最高优先级判定，先于 asr.mode。
-    cloud 模式：桌面端无本地代理配置时，通过云端服务器中转。
-    用户偏好 prefer_subscription：已登录且开启时，直连模式自动切换为云端代理以消耗订阅配额。
+    T2 收口（REQ-ACCESS-MODE-CARDS AC-T2）：路由判定唯一入口为
+    `core/routing.get_routing_decision("asr")`，以 access_mode 为配置语义；
+    本函数不再独立读取 engine.mode / prefer_subscription 组合。
+    未配置（access_mode=null）时由 core/routing 按升级前逻辑等价兜底。
     """
-    # 本地引擎优先（R1）：engine.mode==local → ASR 走本地 FunASR 管线
-    try:
-        from app.settings_store import get_engine_config
-        if get_engine_config().get("mode") == "local":
-            return "local"
-    except Exception:
-        pass
-
-    try:
-        from app.store import get_asr_config
-        mode = get_asr_config().get("mode", "proxy")
-
-        # 用户偏好覆盖：prefer_subscription 开启且直连模式 → 切换为云端代理
-        if mode == "direct":
-            try:
-                from core.metering import DEFAULT_QUOTA
-                from core.users import get_current_user
-                user = get_current_user()
-                if user and user.get("prefs", {}).get("prefer_subscription", False):
-                    if user.get("quota", DEFAULT_QUOTA) > 0:
-                        try:
-                            from core.cloud_client import is_cloud_enabled
-                            if is_cloud_enabled():
-                                logger.info("用户开启优先使用订阅流量，ASR 从 direct 切换为 cloud 模式")
-                                return "cloud"
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-        # 自动回退：proxy 模式无 URL 且云端可用 → 自动切换 cloud
-        if mode == "proxy":
-            proxy_url = get_asr_config().get("proxy_url", "")
-            if not proxy_url:
-                try:
-                    from core.cloud_client import is_cloud_enabled
-                    if is_cloud_enabled():
-                        logger.info("ASR proxy URL 为空且云端可用，自动切换到 cloud 模式")
-                        return "cloud"
-                except Exception:
-                    pass
-        return mode
-    except Exception:
-        return "proxy"
+    from core.routing import get_routing_decision
+    return get_routing_decision("asr")["route"]
 
 
 def _make_sign(timestamp: str) -> str:

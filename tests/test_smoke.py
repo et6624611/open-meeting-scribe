@@ -447,6 +447,22 @@ class TestTodosNotFound:
 class TestInsightAnalyzeEmpty:
     """POST /api/insights/analyze 空输入时返回安全默认值"""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_llm_offline(self, tmp_path, monkeypatch):
+        """RT-P0-FIX 门禁加固：本类用例断言「安全默认值」（has_finding=False），
+        但 analyze 端点下沉 core.llm 后，settings.json / .env 残留配置会让用例
+        真实调用在线大模型——同输入非确定性输出（有时 has_finding=True），门禁
+        结果取决于实测机环境。此处对齐套件既有打桩约定（SETTINGS_FILE 隔离 +
+        core.cloud_client 打桩）强制离线链路：无本地 Key 且云端未启用 →
+        RuntimeError → insights 捕获 → 确定性安全默认值。
+        """
+        import app.settings_store as settings_store
+        import core.cloud_client as cloud_client
+        monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+        monkeypatch.setattr(cloud_client, "CLOUD_API_URL", "")
+        monkeypatch.setattr(cloud_client, "CLOUD_API_TOKEN", "")
+
     def test_analyze_empty_lines(self, client):
         resp = client.post("/api/insights/analyze", json={
             "recent_lines": [],

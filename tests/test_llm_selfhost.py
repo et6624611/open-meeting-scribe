@@ -127,6 +127,18 @@ def client():
 
 
 class TestTestLlmEndpoint:
+    @pytest.fixture(autouse=True)
+    def _isolate_settings_file(self, tmp_path, monkeypatch):
+        """DEF-RETEST-03/04 加固：test-llm 的空 Key 语义依赖 get_llm_config /
+        get_active_api_key 的 settings.json 回填（优先级高于环境变量），本机
+        data/settings.json 若存有真实 Key（如 Ollama 占位）会泄漏进「自包含」用例，
+        使 localhost 空 Key 发出 Authorization 头、missing_key 变 auth_failed。
+        此处把 SETTINGS_FILE 指向不存在的临时路径并前置清除环境变量（先于
+        client fixture 的 app 启动），使本类用例与本机配置彻底解耦。
+        """
+        monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+        monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+
     def test_success_localhost_empty_key(self, client, monkeypatch):
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         captured = {}

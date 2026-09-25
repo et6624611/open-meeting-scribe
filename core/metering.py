@@ -45,7 +45,18 @@ def is_metered() -> bool:
     Returns:
         True = 需要计量（SMS 注册用户，消耗体验期配额） / Needs metering (SMS user, consumes trial quota)
         False = 未登录 / 非 SMS 用户（需自持 Key） / Not logged in / non-SMS user (must use own key)
+
+    REQ-ACCESS-MODE-CARDS AC-T2②：local（离线接入）不计量——离线模式数据不出本机、
+    不触达任何计费通道，即使 SMS 注册用户处于 local 路由也不扣配额。
     """
+    # local 不计量（判定唯一入口 core/routing，不额外读 engine.mode/prefer_subscription）
+    try:
+        from core.routing import get_routing_decision
+        if get_routing_decision("asr")["route"] == "local":
+            return False
+    except Exception:
+        pass
+
     from core.users import get_current_user
 
     user = get_current_user()

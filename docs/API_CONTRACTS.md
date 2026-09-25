@@ -340,3 +340,73 @@ recognition.stop()  # 阻塞直到所有结果返回
 - 平铺与组内均按 `meeting_date` 倒序（无日期沉底）。
 - 决策中心「默认仅看生效中」由前端传 `status=active` 实现，后端不默认过滤。
 - 数据源为后端内存任务表（桌面单机量级），无分页契约；`total` 字段随列表长度给出。
+
+---
+## 13. 接入方式路由契约（REQ-ACCESS-MODE-CARDS · AM-B1 后端交付 · AM-F1 前端派工依据）
+
+> 依据：`docs/REQUIREMENT-ACCESS-MODE-CARDS.md` v0.1.0 §3–§6。后端实现在分支 `feat/req-access-mode-b1`。
+> 本契约合入前须与 §12（DC-DEC-B1 同文件追加）做顺序核对——两节无内容交集，仅同文件尾追加。
+
+### 13.1 新增用户侧字段（`data/settings.json`，`app/settings_store.py`）
+
+| 字段 | 类型 | 取值 | 说明 |
+| --- | --- | --- | --- |
+| `access_mode` | str \| null | `local` \| `hosted` \| `byok` \| `null` | 唯一路由判定数据源；`null`=未配置，触发 R4 引导 |
+| `expert_mode` | bool | — | true 时前端展示旧版分类视图（D4）；存量自定义 base_url/model 覆盖或非默认 Key 组合自动置 true |
+| `_access_mode_migrated` | bool | — | 一次性迁移标记；迁移后旧字段原样保留（A2 兼容窗口一个版本，写路径继续同步旧字段支持回滚） |
+
+### 13.2 §4 一次性迁移映射（启动钩子 `run_access_mode_migration()`；未落盘时读取侧按同表惰性推导）
+
+| 存量组合 | 迁移为 |
+| --- | --- |
+| `engine.mode=local` | `local` |
+| `engine.mode=proxy`（含 `cloud`，同为云代理计费，A-i1） | `hosted` |
+| `engine.mode=direct` 且 `prefer_subscription=false` | `byok` |
+| `engine.mode=direct` 且 `prefer_subscription=true` | `hosted`（A1 裁决） |
+| 未配置 | `null`（触发引导） |
+
+### 13.3 `GET /api/settings` 响应扩展
+
+新增顶层字段（其余字段不变，向后兼容）：
+
+```json
+{ "access_mode": "local|hosted|byok|null", "expert_mode": true }
+```
+
+### 13.4 `POST /api/settings` 请求扩展
+
+- 可选 `access_mode`：`"local"|"hosted"|"byok"|null`。非法值忽略并记日志（与 engine.mode 白名单口径一致）。写入时后端同步旧字段：local→`engine.mode=local`；hosted→`engine.mode=proxy`+`asr.mode=proxy`；byok→`engine.mode=direct`+`asr.mode=direct`（A2 回滚窗口）。
+- 可选 `expert_mode`：仅接受布尔。
+- 兼容窗口：旧客户端只写 `engine`/`asr` 时，后端按 13.2 映射**重对齐** `access_mode`，保证判定单源不漂移。
+
+### 13.5 新端点 `GET /api/settings/routing`（路由结论查询，D2/AC-T2③）
+
+前端（AM-F1 状态栏/引导/toast）唯一路由感知入口；后端判定实现于 `core/routing.get_routing_decision`。
+
+```json
+{
+  "ok": true,
+  "access_mode": "byok",
+  "expert_mode": false,
+  "onboarding_required": false,
+  "llm": { "configured_access_mode": "byok", "expert_mode": false, "route": "cloud",
+           "route_override": true, "reason": "prefer_subscription" },
+  "asr": { "configured_access_mode": "byok", "expert_mode": false, "route": "cloud",
+           "route_override": true, "reason": "prefer_subscription" },
+  "quota": { "allowed": true, "remaining": 280.0, "quota": 300, "used": 20.0, "warning": null }
+}
+```
+
+- `route ∈ {local, cloud, proxy, direct}`：`local`=离线引擎；`cloud`/`proxy`=托管计费路径（proxy 仅 ASR 传输细节）；`direct`=自有 Key 直连。
+- `route_override=true` ⇒ 实际路由**偏离**所配置 access_mode 语义，前端须显性告知（D2 toast「本次起走平台额度」，一次且仅一次的判重由前端负责）。`reason` 枚举：
+  - `prefer_subscription` — byok 用户开启「优先使用订阅流量」且配额>0、云端可用；
+  - `byok_key_missing` — byok 配置但无有效 Key，回退云代理（与升级前行为等价）；
+  - `byok_key_missing_cloud_unavailable` — 无 Key 且云端不可用，维持直连（调用将显式报错，不静默换计费路径）；
+  - `legacy_unconfigured` — access_mode=null 未配置兜底（行为与升级前逐项等价）。
+- `onboarding_required=true`（即 `access_mode=null`）⇒ 前端展示三卡片引导（R4）。
+- `quota` 仅在 `core/metering.is_metered()=true` 时非 null（口径：hosted 消耗配额 / byok 走自有 Key / **local 恒不计量**，`route=local` 时 `is_metered()` 直接返回 false）。
+- localhost 自持端点（Ollama/LM Studio）永不切云：`route_override` 判定在 localhost 守卫之后（PRD R4 绝不回退云端）。
+
+### 13.6 路由判定唯一入口（消歧）
+
+`_should_use_cloud`（`core/llm.py`）与 `_get_asr_mode`（`core/transcribe.py`）为薄适配层，仅调用 `core/routing.get_routing_decision(context)`；对 `engine.mode`/`prefer_subscription` 组合的读取只存在于 `core/routing.py`。旧字段读取兼容一个版本（A2），窗口结束后专家模式下只读写新字段。
