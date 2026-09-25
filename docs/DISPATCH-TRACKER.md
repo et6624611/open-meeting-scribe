@@ -11,21 +11,18 @@ status: active
 
 ## 在途派工
 
+（本轮无在途单——全部六单执行结果见已关闭表与「IDE 承接第二轮留痕」节）
+
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
-| REQ-SPK-RN | docs/REQUIREMENT-SPEAKER-REALNAME-DISPLAY.md v0.2.0 | 前端开发工程师（d1b77737cde5） | 分支 docs/req-spk-rn-t1-design@b159b41（设计稿）；T2 实施届时基于 main 开 feat/req-spk-rn | **initial-review-passed（T2 待派）** | 2026-09-25 IDE 承接轮：管理员初审**通过**（意见书 docs/REVIEW-SPK-RN-T1-BE.md）——T1 设计稿 v0.2.0 点位普查/聚合粒度/Q2 取舍/BE-R3 联调基准全闭环；O1 取数口径钉死（值空+超集正则）；Q2 取舍随 T2 验收自然确认不再单独等待 | 项目方对 IDE 下令派 T2 实施（worktree 基于 main；联调基准=超集正则；AC-8 双侧同正则断言为共同关单条件）→ T3 浏览器验收包三段式验收 | ⚠️ 主工作区 `core/pipeline.py` WIP 已还原现场（归档 patch 在 `qa-evidence/wip-archive/`，需要时 `git apply` 恢复）；T2 涉 pipeline 输出面时须先与该 patch 归属核对避免撞车 |
-| REQ-SPK-RN-BE | docs/REQUIREMENT-SPEAKER-REALNAME-DISPLAY.md §7（v0.2.0，D6 裁决立项） | 后端工程师（a4cdbd0ca795） | 实施分支届时基于 main 开 worktree feat/req-spk-rn-be | **proposal-initial-review-passed（实施待派）** | 2026-09-25 IDE 承接轮：技术提案初审**通过**（意见书 docs/REVIEW-SPK-RN-T1-BE.md，提案全文已随 AM-B1 合入 main@qa-evidence/RT-P0-FIX/）——「空字符串=未命名」形态、归一化公共入口、消费方 8 处清单、三类新用例+存量零改写 Prove-It 全认可；**D6 批准**（BE-R3 正则收编超集含单词形态）；**O2 取证完成**（data/tasks 400 文件扫描：数字形态 80/单词形态 0 存量，超集仍采纳作防御）；O3 归 T1 措辞、BE 按保守口径先行 | 项目方对 IDE 下令派实施（按提案 §6 四步：入口+单测→三写入点→消费方切换→回归门禁）；pytest 全绿门禁；不动 frontend/、不动存量数据 | ⚠️ 实施必须 worktree（主工作区禁改 core/pipeline.py 现场约定已解除但保持隔离惯例）；BE-R3 归一化口径与 T2 前端过滤同款超集正则（AC-8） |
+| — | — | — | — | — | — | — | — |
 
 ## 待派工队列
 
 | 单号 | 派工依据 | 拟 Owner | 触发条件 |
 |---|---|---|---|
-| DEF-PROXY-02/03 | docs/DEFECT-PROXY-TEST-20260925.md v0.1.0（09-25 项目方实测 464af449：主因=采集静音-91dB 属环境项，先由项目方自查麦克风权限+样音复测；代码项=实时兜底字段未落盘致整单失败 + WAV 落盘时长仅墙钟 1/3） | 后端工程师（a4cdbd0ca795） | 待项目方样音复测结论：仍静音→02/03 即刻派；恢复有声→DEF-PROXY-03 降级为观察项、仅派 02。RT-P0-FIX 已关闭，同人排期约束解除，可同会话串行 |
-| DEF-DEVICE-01-BE（持久化子单） | docs/DEFECT-PROXY-TEST-20260925.md v0.3.0 §2 根因 B（项目方 09-25 已裁决：做持久化——设备选择写 settings.json + 启动恢复，优先级 settings>env>平台默认，空串「自动」为合法持久值；根因 A 前端修复已合入 main@cf72154） | 后端工程师（a4cdbd0ca795） | **可即刻派**（RT-P0-FIX 已关闭不再压队）：验收=§2 四条（含重启回显与 env 优先留痕）+ pytest 全绿门禁 | 附带项：tests/app/core __pycache__ 存量已跟踪漂移（.gitignore:29 规则晚于入库），随单一次性 `git rm -r --cached` 解除追踪 |
-| REQ-DECISION-CENTER-R2-b/c（剩余子单） | docs/REQUIREMENT-DECISION-CENTER-R2.md v0.2.0（DC-R2-a 已合入 main@14fdfa0；剩 F4/F6） | 前端/后端按子单（见需求单 §6） | **DC-R2-b**（F4 三要素，动模型+prompt+API）等 O4（执行人可否留空、纪要主要结论是否改三要素模板）关闭；**DC-R2-c**（F6 状态字典全量自定义）等 O5（新增状态与沉底/取代/默认筛选绑定规则）关闭。两单涉模型层，分支 rebase 届时 main |
-| DC-R2-BE（auto 决策删除墓碑，派生自 DC-R2-a 卡点披露） | docs/REQUIREMENT-DECISION-CENTER-R2.md §5-3 后半句（产品已核实：main `merge_decisions_after_regen` 保留非 auto+全量追加新 auto，无墓碑，删除的 auto 决策重生成必复活） | 后端工程师（a4cdbd0ca795） | **待项目方一句批准**：删除 auto 决策时落 `decision_deletions` 墓碑（task 级），合并时按墓碑过滤 parsed。DC-R2-a 点验已按豁免口径通过（复活半句交本单闭环） |
-| AM-Q1 | docs/REQUIREMENT-ACCESS-MODE-CARDS.md（T6 回归验证，含存量组合迁移用例=发版门禁） | QA | **触发条件已满足**（AM-B1 合入 main@b34d663、AM-F1 合入 main@588db7b）：三模式全链路 + §4 存量迁移用例 + 离线不泄露云模型名 + 配额扣减与文案一致；待项目方下令启动 |
-| REQ-SPK-RN T2 / REQ-SPK-RN-BE 实施 | 见在途表两单初审通过 + docs/REVIEW-SPK-RN-T1-BE.md 裁决 | 前端/后端对应工程师 | 初审已过，待项目方对 IDE 一句「派」 |
+| REQ-DECISION-CENTER-R2-b/c（剩余子单） | docs/REQUIREMENT-DECISION-CENTER-R2.md v0.2.0（DC-R2-a/-BE 均已合入 main；剩 F4/F6） | 前端/后端按子单（见需求单 §6） | **DC-R2-b**（F4 三要素，动模型+prompt+API）等 O4（执行人可否留空、纪要主要结论是否改三要素模板）关闭；**DC-R2-c**（F6 状态字典全量自定义）等 O5（新增状态与沉底/取代/默认筛选绑定规则）关闭。两单涉模型层，分支 rebase 届时 main |
+| DEF-PROXY-03 终判（观察项，代码已交） | qa-evidence/def-proxy-0203/proxy03-qualification.md（代码层排除+偏差自检已上线） | 项目方（样音复测）/ 后端（若留痕再现） | 项目方有声样音录制后看任务 JSON 是否出现 wav_wallclock_gap_sec：无→按观察项关闭；有→携留痕开代码修复单 |
 
 ## 已关闭派工
 
@@ -39,6 +36,13 @@ status: active
 | DEF-DEVICE-01-A | 2026-09-25 13:40 | **IDE 承接轮关单**。rebase 至 main@14fdfa0（含 AM-F1 设置页改动）后构建全绿；selftest_def01a.py 7 断言 **ALL PASSED**（空值态零 POST→首选择即 POST→回显不冗余→连切连发→刷新回显），与 AM-F1 设置页改造无语义冲突。merge --no-ff 合入 main@cf72154。持久化半边（根因 B）交 DEF-DEVICE-01-BE |
 | RT-P0-FIX | 2026-09-25 13:45 | **IDE 承接轮关单**（与 AM-B1 同分支合入）。修复主体 8a0c402 + 回填/详证补交（docs/P0-RETEST-20260925.md 处置回填段 + qa-evidence/RT-P0-FIX/selftest-20260925.md + REQ-SPK-RN-BE-proposal.md）经 rebase 后随 AM-B1 合入 main@b34d663；**main 基线转绿实证**：rebase 后全量 pytest **399 passed / 0 failed**（原 4 红全消，含 RT-P0-FIX 泄漏/干净双条件用例）。DEF-RETEST-01/02 定性（测试非自包含）已随修复收口；P0-RETEST 清单 T1~T5 手工重测由本单转 REQ-PROGRESS-P0/AM-F1/DC-R2-a/DEF-01-A 各单点验实际覆盖，T4 已于 09-25 项目方补验销账，余者以各单浏览器点验证据为终验，清单不再整单重跑（留痕于此） |
 | AM-B1 | 2026-09-25 13:45 | **IDE 承接轮关单**。工程师会话已随 QoderWake 收口停用，完工审查由承接方按需求单 AC 初审代偿：AC-T1（access_mode/expert_mode 读写接口+§4 迁移映射 20 用例+旧字段兼容双写）、AC-T2①（grep 级核验 _should_use_cloud/_get_asr_mode 均为薄适配仅委托 core/routing）、AC-T2③（/api/settings/routing 端点 settings.py:424+21 用例）全过；rebase 至 main@cf72154 撞两处冲突均文档级（API_CONTRACTS.md §12/§13 双节保留、P0-RETEST 回填段保留分支侧），解决后全量 pytest **399 passed**；契约冒烟（routing 形状/GET 扩展/写路径双写）实机通过。merge --no-ff 合入 main@b34d663。历史阻塞性异常①（07:00 确认的停摆）随会话收口自然关闭；叫醒通道受限留痕维持原文不再追述 |
+| REQ-SPK-RN-BE | 2026-09-25 17:40 | **IDE 承接第二轮（项目方「全做」）关单**。按提案 §6 四步实施：BE-R1 三写入点收口（pipeline 键保留值留空/apply_speaker_names 查不到→空串/import_parser 模式3 编号仅归组不落名）；BE-R3 归一化唯一入口 is_unnamed_speaker/normalize_speaker_mapping（D6 超集正则：数字+One..Ten 词形+中文两式，整串锚定不误伤含号真名），消费方 8 处切换（summarize×4/chapters/projects/chat×4/text_bridge 防御位）；BE-R2 绑定回填不变量保持；BE-R4 存量零改写 Prove-It 守护。36 新用例，全量 434 绿。merge --no-ff 合入 main@ee355be |
+| REQ-SPK-RN | 2026-09-25 17:50 | **IDE 承接第二轮关单（T2+T3 一并落地）**。判定器 utils/speakerDisplay.ts 与 BE 同源超集；α 聚合位（TaskCard 未识别 N chip/库页下拉真名⊕「未识别」特殊项 Q2 保留口径/列尾聚合项/转写行首中性化/roster L3-L4 收敛/搜索 L9 占位不可搜）+β 绑定位（说话人区/绑定下拉/管理页灰标）+L2 写库源头必填守卫（AC-7）；i18n 去编号插值+onboarding 演示名小李/小王。selftest_spkrn.py **18 断言 ALL PASSED**（全量 mock 零真实后端接触）+4 页截图；AC-8 双侧同正则矩阵两侧钉死一致。构建全绿，merge 合入 main@2d2c54a。已披露偏差：useAiChat/useAiGuidance 硬编码「发言人」建议文案 i18n 化（§7 顺路小项不违 H1）挂 BACKLOG；录制页 WS 实时行为需真麦环境未跑（静态点位同 util 已覆盖） |
+| DEF-DEVICE-01-BE | 2026-09-25 18:00 | **IDE 承接第二轮关单**。POST /api/record/device 成功即写 settings.json（复用 settings_store 原子写）；启动按「settings>env>平台默认」恢复（**需求矛盾处置**：验收④原文「env 优先」与裁决正文「settings>env」冲突，按项目方裁决正文为准，验收④修订为优先级判定留痕——启动日志落来源标记）；空串「自动」合法持久值；持久化失败降级不阻断。6 新用例全量 440 绿。附带项 __pycache__ 解除跟踪核查 0 存量（61871ff 轮已完成）。merge 合入 main@dcbaa89。验收③真机重启回显交项目方日常使用中自然确认 |
+| DC-R2-BE | 2026-09-25 18:05 | **IDE 承接第二轮关单**（项目方「全做」即批准）。task 级 decision_deletions 墓碑：DELETE auto 决策落碑（归一化文本为身份键——auto id 每次重解析会变；幂等去重），merge_decisions_after_regen 加可选 deletions 参按碑过滤 parsed（缺省两参调用向后兼容），管线重生成/导入重解析两处接入；用户改表述新文本不被误杀；非 auto 不建碑。5 新用例全量 445 绿。merge 合入 main@6ff05c7，DC-R2-a 豁免的 AC3 后半句就此闭环 |
+| DEF-PROXY-02 | 2026-09-25 18:15 | **IDE 承接第二轮关单**。根因=stop 竞态：pop 全量转写后 SDK 线程迟到定稿经 setdefault 落孤儿列表丢失→兑底静默跳过整单失败。修复=stop 时空列表也绑定引用+登记 realtime_full_sealed，迟到句 append 进 task 持有的同一列表；僵尸/放弃路径同步清封存。验收命中：静音+有实时句→transcript_source=realtime_fallback 降级出纪要（用例钉死）+stop 竞态用例。merge 合入 main@59bcba1 |
+| DEF-PROXY-03 | 2026-09-25 18:15 | **代码部分交付，终判转观察项**（与 02 同单合入 59bcba1）。定性实验（qa-evidence/def-proxy-0203/proxy03-qualification.md）：lavfi 已知输入证明 aresample+asplit 链时长忠实；真机复采未见 3.17x 结构性欠采（差值≈启停固定开销）；avfoundation 不接受 rate 声明参数——排除代码层，原缺陷与权限静音时钟异常同根可能性高。交付观测：WAV 时长 vs 墙钟偏差>15% 自动留痕 wav_wallclock_gap_sec+WARNING，待项目方样音复测终判 |
+| AM-Q1 | 2026-09-25 18:25 | **IDE 承接第二轮执行完毕**。报告 qa-evidence/AM-Q1/REPORT.md：②迁移 41 用例全绿；① hosted 实测 completed、byok 实测 byok_key_missing→cloud 契约回退路径端到端（direct 分支无用户 Key 由用例矩阵覆盖）、local 本机模型未部署 NOT RUN 披露（替代：DEF-FE-05 已验收 UI+WP-C 评测管线）；③④沿用已验收项。**门禁判定：可发版**（无阻塞性缺陷，两项环境限制已披露） |
 
 ## 派工体系收口留痕（2026-09-25 12:07，项目方指令）
 
@@ -67,6 +71,14 @@ status: active
 - **待项目方动作**：① 是否派 REQ-SPK-RN T2 + REQ-SPK-RN-BE（初审已过）；② 是否派 DEF-DEVICE-01-BE（可即刻）；③ DC-R2-BE 墓碑单批准；④ AM-Q1 回归启动指令；⑤ DEF-PROXY-02/03 样音复测结论回填。
 - 叫醒通道现状（09-25 07:00 巡检核实）：QoderWake 已接 IM channel 仅「企业微信机器人」`global-tdceqy-wecom-bot`（connected），非钉钉/飞书/Lark 通道，巡检工具链无法向其发消息；钉钉侧 `chat search` 未命中开发群（派工/OpenMeetingScribe 均 0 结果）。故阻塞性异常实际仍只能靠台账留痕，需项目方手工查看或补接可用叫醒通道。
 - 项目方授权收口（09-25 09:10，会话内批复「1.同意归档 2.自行推进」）：① **归档已完成**（commit 61871ff）——QA 证据全量入库（12MB）、`data/_backfill_report.json` 入库、`.worktrees/` 加入 gitignore；主工作区 `core/pipeline.py` 一份未归属的工程师 WIP 改动**未合入未切分支**，以 patch + README 存档于 `qa-evidence/wip-archive/`，现场改动保持原样待工程师自处。② **REQ-PROGRESS-P0 卡点询问已发**（09:13 `session send` 至 7ff67e75，项目方预授权由管理员跟进）：限 1 小时内三选一应答（完工待验收/报卡点/无法继续），超时未响应按「重新派工」建议上报项目方。③ RT-P0-FIX 观察窗维持 10:00 巡检轮，无需项目方动作。
+
+## IDE 承接第二轮留痕（2026-09-25 15:30-18:30，项目方对五个待决事项批复「全做」）
+
+- **六单全部执行并合入 main**，链：ee355be（REQ-SPK-RN-BE）→ 2d2c54a（REQ-SPK-RN T2）→ dcbaa89（DEF-DEVICE-01-BE）→ 6ff05c7（DC-R2-BE）→ 59bcba1（DEF-PROXY-02/03）；AM-Q1 回归报告 qa-evidence/AM-Q1/REPORT.md 判定可发版。新用例累计 +52（36+6+5+7 另 T2 自测 18 断言），每单合入前全量 pytest 绿（434→440→445→447）+前端构建绿。
+- **需求矛盾处置**：① DEF-DEVICE-01-BE 验收④与裁决正文优先级冲突→按裁决（settings>env）并留痕；② DC-R2-BE 碑键=归一化文本（派工单字面「按墓碑过滤 parsed」未定形态，auto id 不稳定故 id 方案不可行）；③ AM-Q1 local/byok-direct 两项环境限制如实披露不强行判绿。
+- **现场安全**：本轮发现主工作区存在**另一活跃会话的未提交 WIP**（Qoder CLI 引擎方向：chat.py/settings.py/settings_store.py/store.py/.gitignore + core/cli_engine/ 等）——DEF-PROXY-0203 合入时仅 stash 让路 store.py 单文件并即时 pop 还原（auto-merge 成功），全程未提交/未丢弃他人现场；后续操作一律显式路径 add。
+- **网络抖动手记**：GitHub SSH 22 端口两次超时，改用 ssh.github.com:443 通道完成推送（T2/DC-R2-BE 两笔）；known_hosts 已自动登记 443 指纹（与 github.com 官方 ED25519 一致）。
+- **剩余待决**：仅 DC-R2-b/c（需项目方先关 O4/O5 设计问题）与 DEF-PROXY-03 样音终判（项目方日常录制即自动留痕，无需专门复测动作）。
 
 ## 巡检说明
 
