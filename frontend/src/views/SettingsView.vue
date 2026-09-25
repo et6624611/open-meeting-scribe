@@ -972,6 +972,8 @@ async function loadDevices() {
     // 如果后端已有配置的设备，回显到下拉框
     // If backend has a configured device, reflect it in the dropdown
     if (result.current_device) {
+      // 回显赋值前置位显式标志：watch 仅放行这一次赋值，其余变更一律 POST（DEF-DEVICE-01-A）
+      echoDeviceValue = result.current_device
       selectedDevice.value = result.current_device
     }
     devicesLoaded.value = true
@@ -984,11 +986,13 @@ async function loadDevices() {
 }
 
 // 设备选择变更时立即应用到后端 / Apply device selection to backend immediately on change
-let _deviceInitialized = false
+// 旧「首次触发=回显」守卫在 current_device 为空时会吞掉用户第一次真实选择（DEF-DEVICE-01），
+// 改为显式标志：仅当本次变更正是 loadDevices 刚写入的回显值时跳过一次 POST。
+let echoDeviceValue: string | null = null
 watch(selectedDevice, async (newVal) => {
-  if (!_deviceInitialized) {
-    _deviceInitialized = true
-    return // 跳过初始化时的回显赋值
+  if (newVal === echoDeviceValue) {
+    echoDeviceValue = null
+    return
   }
   try {
     await setRecordDevice(newVal)
