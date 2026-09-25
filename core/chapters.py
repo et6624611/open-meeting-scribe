@@ -19,6 +19,8 @@ import json
 import logging
 import re
 
+from core.speakers import normalize_speaker_name
+
 from .llm import chat_completion
 
 logger = logging.getLogger(__name__)
@@ -97,7 +99,8 @@ def generate_chapters(
     all_sentences = []
     for speaker in dialogue:
         sid = speaker.get("speaker_id", 0)
-        speaker_name = speaker.get("speaker_name", f"Speaker {sid + 1}")
+        # BE-R3 读取侧归一：存量占位名收敛为空后以结构标签入 prompt（不进章节成品）
+        speaker_name = normalize_speaker_name(speaker.get("speaker_name")) or f"Speaker {sid + 1}"
         for sent in (speaker.get("sentences") or []):
             all_sentences.append({
                 "speaker_id": sid,

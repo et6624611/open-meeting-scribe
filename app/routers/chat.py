@@ -29,6 +29,7 @@ from app.store import (  # noqa: F401
     tasks,
 )
 from core import joblog
+from core.speakers import normalize_speaker_name
 from core.agent_workspace import resolve_agent_role
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import build_page_context, build_speaker_name_map, extract_injectable_items, is_joblog_intent
@@ -390,7 +391,8 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
         lines = []
         for entry in realtime_entries[-10:]:
             sid = entry.get("speaker_id")
-            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
+            # BE-R3：删除 Speaker N 兑底字面量，未命名走中性措辞（聊天回复不复读编号）
+            name = normalize_speaker_name(speaker_name_map.get(sid)) or "未识别发言人"
             text = entry.get("text", "").strip()
             ts = _format_time_ms(entry.get("begin_time", 0))
             if text:
@@ -428,7 +430,8 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
             all_lines = []
             idx = 0
             for item in task["dialogue"]:
-                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
+                # BE-R3：同上，归一后空名走中性措辞
+                name = normalize_speaker_name(item.get("speaker_name")) or "未识别发言人"
                 sents = item.get("sentences") or []
                 for s in sents:
                     text = s.get("text", "").strip()
@@ -696,7 +699,8 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
         lines = []
         for entry in realtime_entries[-10:]:
             sid = entry.get("speaker_id")
-            name = speaker_name_map.get(sid, f"Speaker {sid + 1}" if sid else "Unknown")
+            # BE-R3：删除 Speaker N 兑底字面量，未命名走中性措辞（聊天回复不复读编号）
+            name = normalize_speaker_name(speaker_name_map.get(sid)) or "未识别发言人"
             text = entry.get("text", "").strip()
             ts = _format_time_ms(entry.get("begin_time", 0))
             if text:
@@ -734,7 +738,8 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
             all_lines = []
             idx = 0
             for item in task["dialogue"]:
-                name = item.get("speaker_name") or f"Speaker {item.get('speaker_id', 0) + 1}"
+                # BE-R3：同上，归一后空名走中性措辞
+                name = normalize_speaker_name(item.get("speaker_name")) or "未识别发言人"
                 sents = item.get("sentences") or []
                 for s in sents:
                     text = s.get("text", "").strip()

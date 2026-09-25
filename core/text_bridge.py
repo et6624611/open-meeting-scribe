@@ -181,7 +181,9 @@ def text_bridge_match(
 
     for old_sid, speaker_uuid in bound_sids.items():
         texts = realtime_texts[old_sid]
-        speaker_name = speaker_names.get(speaker_uuid, f"Speaker {old_sid + 1}")
+        # BE-R1/R3：不落 Speaker 编号兑底；档案名读取侧归一（绑定位正常路径必有真名，此为防御）
+        from core.speakers import normalize_speaker_name
+        speaker_name = normalize_speaker_name(speaker_names.get(speaker_uuid))
 
         # {new_speaker_id: {"hits": count, "best_sim": float}}
         hit_stats: dict[int, dict] = {}
