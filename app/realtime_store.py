@@ -39,6 +39,8 @@ realtime_translators: dict[str, RealtimeTranslator] = {}  # 实时翻译器（�
 realtime_translations: dict[str, list[dict]] = {}  # 全量翻译结果（task_id → 翻译条目列表，供 WebSocket 回放） / Full translation results (task_id → translation entries; for WebSocket replay)
 realtime_transcript_buffers: dict[str, list[dict]] = {}  # 实时转写缓冲（task_id → 最近 N 条句子） / Realtime transcript buffer (task_id → last N sentences)
 realtime_full_transcripts: dict[str, list[dict]] = {}  # 全量实时转写（task_id → 所有句子，供文本桥接匹配） / Full realtime transcript (task_id → all sentences; for text bridge matching)
+# DEF-PROXY-02：stop 后封存表（task_id → 已交棒给 task 的列表引用），吸收 SDK 线程迟到定稿
+realtime_full_sealed: dict[str, list[dict]] = {}
 realtime_speaker_maps: dict[str, dict[int, str]] = {}  # 实时说话人绑定（task_id → {speaker_id: speaker_uuid}） / Realtime speaker binding (task_id → {speaker_id: speaker_uuid})
 event_loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用 / Main event loop reference
 
@@ -88,8 +90,13 @@ def push_realtime_msg(task_id: str, msg: dict) -> None:
         if len(buf) > REALTIME_BUFFER_MAX:
             realtime_transcript_buffers[task_id] = buf[-REALTIME_BUFFER_MAX:]
         # 同步写入全量转写（无上限，供文本桥接匹配） / Sync write to full transcript (unlimited; for text bridge matching)
-        full = realtime_full_transcripts.setdefault(task_id, [])
-        full.append(sentence_entry)
+        # DEF-PROXY-02 stop 竞态修复：若 stop 已封存（列表已交棒给 task），迟到的句尾定稿
+        # 直接 append 到同一列表对象（task 持引用），不再落入孤儿新列表而丢失。
+        full = realtime_full_transcripts.get(task_id)
+        if full is None:
+            full = realtime_full_sealed.get(task_id)
+        if full is not None:
+            full.append(sentence_entry)
 
 
 def resolve_realtime_speaker_name(task_id: str, speaker_id: int) -> str:

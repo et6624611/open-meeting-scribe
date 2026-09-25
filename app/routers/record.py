@@ -39,6 +39,7 @@ from app.store import (
     realtime_chapter_generators,
     realtime_diarizers,
     realtime_full_transcripts,
+    realtime_full_sealed,
     realtime_last_heartbeat,
     realtime_last_sentence,
     realtime_presence_scores,
@@ -192,6 +193,7 @@ def _cleanup_zombie_recording() -> None:
     realtime_translators.pop(zombie_task_id, None)
     realtime_speaker_maps.pop(zombie_task_id, None)
     realtime_full_transcripts.pop(zombie_task_id, None)
+    realtime_full_sealed.pop(zombie_task_id, None)
     realtime_queues.pop(zombie_task_id, None)
     cleanup_silence_detection(zombie_task_id)
 
@@ -653,8 +655,12 @@ def stop_record(
                 logger.info(f"[录制] 实时说话人绑定: {len(realtime_binding)} 条")
             # 保存全量实时转写记录（供文本桥接匹配，持久化到 task） / Save full realtime transcript (for text bridge matching; persist to task)
             full_transcript = realtime_full_transcripts.pop(task_id, [])
-            if full_transcript and task_id in tasks:
+            if task_id in tasks:
+                # DEF-PROXY-02：空列表也绑定引用 + 登记封存——SDK 线程迟到的句尾定稿
+                # 经 realtime_full_sealed 同一列表对象落地，stop 竞态不再丢失实时句子
                 tasks[task_id]["realtime_full_transcript"] = full_transcript
+                realtime_full_sealed[task_id] = full_transcript
+            if full_transcript and task_id in tasks:
                 logger.info(f"[录制] 全量实时转写已保存: {len(full_transcript)} 条句子")
                 # D-I2：增量段拼接即定稿——仅当增量转写器产出了内容才打标记；
                 # 空内容（全部段被丢/纯静音）不打标，回退 stage1 全量批转写兜底。
@@ -680,6 +686,18 @@ def stop_record(
         # 4. 更新任务信息 / 4. Update task info
         tasks[task_id]["audio_name"] = f"录音 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         tasks[task_id]["audio_duration"] = duration
+        # DEF-PROXY-03 观测项：WAV 数据时长 vs 墙钟偏差自检（>15% 留痕，最终定性待有声样音复测）
+        try:
+            from core.audio import get_audio_duration
+            _wav_dur = get_audio_duration(audio_path)
+            if duration and duration > 5 and _wav_dur and abs(_wav_dur - duration) / duration > 0.15:
+                tasks[task_id]["wav_wallclock_gap_sec"] = round(duration - _wav_dur, 1)
+                logger.warning(
+                    f"[录制] WAV 时长 {_wav_dur:.1f}s 与墙钟 {duration:.1f}s 偏差 >15%"
+                    f"（DEF-PROXY-03 观测留痕，待样音复测定性）: task={task_id[:8]}"
+                )
+        except Exception as _e:
+            logger.debug(f"[录制] WAV 时长自检失败（不阻断）: {_e}")
         if user_notes:
             tasks[task_id]["user_notes"] = user_notes
 
@@ -829,6 +847,7 @@ def abandon_record():
 
             realtime_speaker_maps.pop(task_id, None)
             realtime_full_transcripts.pop(task_id, None)
+            realtime_full_sealed.pop(task_id, None)
             realtime_queues.pop(task_id, None)
             # 停止静默监测协程，清理静默检测状态 / Stop silence monitoring coroutine; clean up silence detection state
             cleanup_silence_detection(task_id)

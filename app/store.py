@@ -93,6 +93,7 @@ from app.realtime_store import (  # noqa: E402, F401
     realtime_chapter_generators,
     realtime_diarizers,
     realtime_full_transcripts,
+    realtime_full_sealed,
     realtime_last_heartbeat,
     realtime_last_sentence,
     realtime_presence_scores,
