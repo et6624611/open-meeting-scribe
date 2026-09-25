@@ -574,16 +574,42 @@ def parse_decisions_from_summary(summary: str) -> list[dict]:
     return decisions
 
 
-def merge_decisions_after_regen(existing: list[dict], parsed: list[dict]) -> list[dict]:
+def decision_text_key(text: object) -> str:
+    """决策文本归一键：去首尾空白 + 内部连续空白压单（墓碑匹配用）。
+    auto 决策 id 每次重解析会变，故以归一化文本为身份键。"""
+    import re as _re_key
+    if not isinstance(text, str):
+        return ""
+    return _re_key.sub(r"\s+", " ", text.strip())
+
+
+def build_decision_tombstone(decision: dict) -> dict | None:
+    """为被删的 auto 决策生成墓碑条目；非 auto 不建（merge 本就不覆盖，无复活风险）。"""
+    from datetime import datetime as _dt
+    if not isinstance(decision, dict) or decision.get("source") != "auto":
+        return None
+    key = decision_text_key(decision.get("text"))
+    if not key:
+        return None
+    return {"text_key": key, "deleted_at": _dt.now().isoformat()}
+
+
+def merge_decisions_after_regen(existing: list[dict], parsed: list[dict], deletions: list[dict] | None = None) -> list[dict]:
     """
-    重新生成纪要后的决策合并：只覆盖 source=auto，保留 manual/injection/backfill。
+    重新生成纪要后的决策合并：只覆盖 source=auto，保留 manual/injection/backfill；
+    并按 task 级墓碑（decision_deletions）过滤被用户删过的 auto 决策，防重生成复活（DC-R2-BE）。
 
     Args:
         existing: 任务当前 decisions（可能缺字段，调用方负责给出列表）
         parsed: 本次解析出的 auto 决策
+        deletions: 墓碑列表 [{"text_key": str, "deleted_at": str}]；None/缺省保持既有行为（向后兼容）
 
     Returns:
-        合并后的新列表（保留项在前，新 auto 在后）
+        合并后的新列表（保留项在前，新 auto 在后，墓碑命中项已筛除）
     """
     kept = [d for d in (existing or []) if d.get("source") != "auto"]
-    return kept + (parsed or [])
+    tombstones = {
+        t.get("text_key") for t in (deletions or []) if isinstance(t, dict) and t.get("text_key")
+    }
+    fresh = [d for d in (parsed or []) if not tombstones or decision_text_key(d.get("text")) not in tombstones]
+    return kept + fresh
