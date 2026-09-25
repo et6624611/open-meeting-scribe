@@ -643,9 +643,15 @@ def test_llm_connection(data: dict = None):
 
     base_url = (incoming.get("base_url") or cfg.get("base_url") or "").strip()
     model = (incoming.get("model") or cfg.get("model") or "").strip()
-    api_key = incoming.get("api_key") or ""
-    if not api_key or "****" in api_key:
+    # PRD R4 口径：显式传入空串 = 本次测试「无 Key」，不回填存量 Key（DEF-RETEST-03/04）；
+    # 仅字段缺失或为脱敏占位（含 ****）时才沿用已存配置。
+    # Explicit empty string means "test without a key" (PRD R4); only a missing or
+    # masked (****) field falls back to the stored config.
+    raw_key = incoming.get("api_key")
+    if raw_key is None or "****" in raw_key:
         api_key = cfg.get("api_key") or ""
+    else:
+        api_key = raw_key.strip()
 
     if not base_url:
         return {
@@ -655,7 +661,8 @@ def test_llm_connection(data: dict = None):
         }
 
     localhost = is_localhost_base_url(base_url)
-    if not localhost and not api_key:
+    if not localhost and not api_key and raw_key is None:
+        # 未显式传 Key 时才兜底旧版全局 Key；显式空串按「无 Key」处理返回 missing_key
         api_key = get_active_api_key()
     if not api_key and not localhost:
         return {
