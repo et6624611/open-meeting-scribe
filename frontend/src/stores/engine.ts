@@ -14,9 +14,25 @@ import {
   startEngine, stopEngine, setEngineStorage,
   type EngineStatus, type EngineMode, type EngineModelsOverview, type DownloadJob, type EngineActionResult,
 } from '@/api/engine'
+import { fetchRouting, saveAccess, type AccessMode, type RoutingResponse } from '@/api/access'
+import { fetchSettings, type Settings } from '@/api/settings'
 
 /** 徽章四态 / Four badge states */
 export type EngineBadgeState = 'local' | 'proxy' | 'selfkey' | 'unready'
+
+/**
+ * 状态栏单一结论态（REQ-ACCESS-MODE-CARDS T5 / AC-T5①）。
+ * 主文案 = 结论(+原因/剩余量)，模型串与延迟降级到 hover（statusDetail）。
+ * Single-source status-bar conclusion; model string & latency move to hover.
+ */
+export type AccessStatusState =
+  | 'local_ready'      // 离线就绪
+  | 'local_pending'    // 离线未就绪（本地模型未装齐）
+  | 'hosted_ready'     // 托管就绪（剩余 n）
+  | 'hosted_needs_login' // 还需登录
+  | 'byok_ready'       // 自带 Key 就绪
+  | 'byok_needs_key'   // 还需配置 Key
+  | 'unconfigured'     // 未配置（触发引导）
 
 /** 下载进行中的任务状态 / Job states that count as in-flight */
 const ACTIVE_JOB_STATES = ['pending', 'downloading', 'verifying']
@@ -34,20 +50,42 @@ function readDevOverride(): EngineBadgeState | null {
   return v === 'local' || v === 'proxy' || v === 'selfkey' || v === 'unready' ? v : null
 }
 
+/** 识别本地 LLM 运行时名（Ollama / LM Studio）；原 App.vue DEF-FE-05 逻辑收敛至此 */
+function detectLocalLlmRuntime(llm: Record<string, any>): string {
+  const provider = String(llm?.provider || '').toLowerCase()
+  const baseUrl = String(llm?.base_url || '')
+  if (provider.includes('ollama') || baseUrl.includes(':11434')) return 'Ollama'
+  if (provider.includes('lm studio') || provider.includes('lmstudio') || baseUrl.includes(':1234')) return 'LM Studio'
+  return ''
+}
+
 export const useEngineStore = defineStore('engine', () => {
   const status = ref<EngineStatus | null>(null)
   const loading = ref(false)
   const loaded = ref(false)
   const devOverride = ref<EngineBadgeState | null>(readDevOverride())
 
-  // ─── R5 模型资产面 / R5 model asset surface ───
-  const overview = ref<EngineModelsOverview | null>(null)
-  const overviewLoading = ref(false)
-  let pollTimer: ReturnType<typeof setInterval> | null = null
+  // ─── 接入方式单一来源（AM-F1 T5 收敛） / Access-mode single source of truth ───
+  const routing = ref<RoutingResponse | null>(null)
+  const routingLoading = ref(false)
+  /** 状态栏 hover 详情所需的原始设置快照（模型串），不驱动表单 / Snapshot for the hover detail only */
+  const accessSettings = ref<Settings | null>(null)
 
-  /** 双因子派生徽章态 / Derive badge state from the two factors */
+  const accessMode = computed<AccessMode | null>(() => routing.value?.access_mode ?? null)
+  const expertMode = computed(() => routing.value?.expert_mode === true)
+  const onboardingRequired = computed(() => routing.value?.onboarding_required === true)
+
+  /**
+   * 双因子徽章态；合入 access_mode 后以接入方式为第一因子（契约 §13.5 单源判定），
+   * routing 未就绪时回退旧 engine.mode 推导。
+   * Badge state; access_mode is the primary factor once routing is loaded.
+   */
   const badge = computed<EngineBadgeState>(() => {
     if (devOverride.value) return devOverride.value
+    const mode = routing.value?.access_mode
+    if (mode === 'local') return status.value?.local_ready ? 'local' : 'unready'
+    if (mode === 'hosted') return 'proxy'
+    if (mode === 'byok') return 'selfkey'
     const s = status.value
     if (!s) return 'unready'
     if (s.mode === 'local') return s.local_ready ? 'local' : 'unready'
@@ -55,6 +93,98 @@ export const useEngineStore = defineStore('engine', () => {
     // cloud / proxy 均为项目方共享代理链路（体验代理） / cloud & proxy both route through the shared trial proxy
     return 'proxy'
   })
+
+  /** 状态栏主结论 / Status-bar conclusion (AC-T5①) */
+  const statusState = computed<AccessStatusState>(() => {
+    const r = routing.value
+    if (!r) return 'unconfigured'
+    switch (r.access_mode) {
+      case 'local':
+        return status.value?.local_ready ? 'local_ready' : 'local_pending'
+      case 'hosted':
+        return userLoggedIn.value ? 'hosted_ready' : 'hosted_needs_login'
+      case 'byok':
+        // 无 Key 被回退云代理（byok_key_missing）不算就绪 / missing key falling back is not "ready"
+        return r.llm.reason === 'byok_key_missing' ? 'byok_needs_key' : 'byok_ready'
+      default:
+        return 'unconfigured'
+    }
+  })
+
+  /** 登录态由 App 启动注入（store 不直接依赖 user store，避免环形引用） / Login flag injected by the app shell */
+  const userLoggedIn = ref(false)
+  function setUserLoggedIn(v: boolean) {
+    userLoggedIn.value = v
+    if (loaded.value) void loadRouting(true)
+  }
+
+  /** hover/详情文本：模型串（本地模式绝不泄露云模型名，沿 AC-T6③ 约束） / Hover detail: model string */
+  const statusDetail = computed(() => {
+    const s = accessSettings.value
+    if (!s) return ''
+    if (accessMode.value === 'local') {
+      const llm = s.llm as Record<string, any> | undefined
+      const runtime = detectLocalLlmRuntime(llm || {})
+      const model = llm?.model || '本地模型'
+      return `ASR: FunASR 本地模型 · LLM: ${runtime ? `${runtime} + ${model}` : model}`
+    }
+    const asrModel = (s.asr as Record<string, any> | undefined)?.model || '—'
+    const llmModel = (s.llm as Record<string, any> | undefined)?.model || '—'
+    return `ASR: ${asrModel} · LLM: ${llmModel}`
+  })
+
+  /** 托管剩余量（供「托管就绪（剩余 n）」插值） / Remaining quota for the hosted label */
+  const quotaRemaining = computed<number | null>(() => routing.value?.quota?.remaining ?? null)
+
+  /** 跨模式路由是否偏离（D2 toast 判定的数据源） / Route override flag (D2 toast source) */
+  const routeOverride = computed(() => {
+    const r = routing.value
+    if (!r) return null
+    if (r.llm.route_override) return r.llm.reason
+    if (r.asr.route_override) return r.asr.reason
+    return null
+  })
+
+  async function loadRouting(force = false) {
+    if (routingLoading.value || (routing.value && !force)) return
+    routingLoading.value = true
+    try {
+      routing.value = await fetchRouting(userLoggedIn.value)
+    } catch (e) {
+      console.error('[engine] load routing failed:', e)
+    } finally {
+      routingLoading.value = false
+    }
+  }
+
+  async function loadAccessSettings() {
+    try {
+      accessSettings.value = await fetchSettings()
+    } catch {
+      /* 静默：仅影响 hover 详情 */
+    }
+  }
+
+  /** 切换接入方式 / 专家模式并刷新派生态（乐观本地 → 后端权威回读） */
+  async function applyAccess(patch: { access_mode?: AccessMode | null; expert_mode?: boolean }) {
+    await saveAccess(patch)
+    if (patch.access_mode !== undefined) {
+      routing.value = routing.value
+        ? { ...routing.value, access_mode: patch.access_mode, onboarding_required: patch.access_mode === null }
+        : routing.value
+    }
+    if (patch.expert_mode !== undefined) {
+      routing.value = routing.value
+        ? { ...routing.value, expert_mode: patch.expert_mode }
+        : routing.value
+    }
+    await Promise.all([loadRouting(true), load(true), loadAccessSettings()].map(p => p.catch(() => undefined)))
+  }
+
+  // ─── R5 模型资产面 / R5 model asset surface ───
+  const overview = ref<EngineModelsOverview | null>(null)
+  const overviewLoading = ref(false)
+  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   const jobs = computed<DownloadJob[]>(() => overview.value?.downloads ?? [])
   /**
@@ -164,7 +294,7 @@ export const useEngineStore = defineStore('engine', () => {
     return result
   }
 
-  /** 设置引擎模式（管理员，D-R2）后本地同步，避免等待后端刷新 / Sync mode locally after admin save (D-R2) */
+  /** 设置引擎模式（管理员，D-R2）后本地同步并回读路由（专家改旧字段 → access_mode 重对齐，§13.4 兼容窗口） */
   function applyMode(mode: EngineMode) {
     status.value = {
       mode,
@@ -176,6 +306,7 @@ export const useEngineStore = defineStore('engine', () => {
       can_manage: status.value?.can_manage ?? false,
       source: status.value?.source ?? 'settings',
     }
+    void loadRouting(true)
   }
 
   /** dev 验证用：手工切换徽章态（传 null 恢复真实判定） / Dev verification: override badge state (null restores real derivation) */
@@ -190,5 +321,8 @@ export const useEngineStore = defineStore('engine', () => {
     status, loading, loaded, badge, devOverride, load, applyMode, setDevOverride, canManage,
     overview, overviewLoading, jobs, activeJobs, isDownloading, requiredNotReady, tamperedModels,
     loadOverview, stopPolling, download, cancel, verify, start, stop, saveStorage,
+    // 接入方式（AM-F1） / Access mode (AM-F1)
+    routing, accessSettings, accessMode, expertMode, onboardingRequired, statusState, statusDetail,
+    quotaRemaining, routeOverride, loadRouting, loadAccessSettings, applyAccess, setUserLoggedIn,
   }
 })

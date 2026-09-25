@@ -112,16 +112,15 @@
       <div class="left">
         <div
           class="item status-engine"
-          :class="`is-${statusEngine}`"
+          :class="statusPipClass"
           role="button"
           tabindex="0"
-          :title="t('common.usage.engine_hint')"
-          @click="goToEngineSettings"
-          @keydown.enter="goToEngineSettings"
-          @keydown.space.prevent="goToEngineSettings"
+          :title="statusHoverDetail"
+          :aria-label="engineStatusLabel"
+          @click="goToAccessSettings"
+          @keydown.enter="goToAccessSettings"
+          @keydown.space.prevent="goToAccessSettings"
         ><span class="pip"></span> {{ engineStatusLabel }}</div>
-        <div class="item status-models">{{ statusModels }}</div>
-        <div v-if="perfMetrics.apiLatency !== null" class="item perf-indicator">API: {{ perfMetrics.apiLatency }}ms</div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
           <span class="usage-text" id="usageText"></span>
@@ -139,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
@@ -148,8 +147,9 @@ import { useUserStore } from '@/stores/user'
 import { useLayoutStore } from '@/stores/layout'
 import { useWatermarkStore } from '@/stores/watermark'
 import { useAgentStore } from '@/stores/agent'
+import { useEngineStore, type AccessStatusState } from '@/stores/engine'
 import { useDivider } from '@/composables/useDivider'
-import { useToast } from '@/composables/useToast'
+import { useToast, showToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useAnnouncements } from '@/composables/useAnnouncements'
 import { usePhilosophy } from '@/composables/usePhilosophy'
@@ -172,6 +172,7 @@ const userStore = useUserStore()
 const layout = useLayoutStore()
 const watermark = useWatermarkStore()
 const agentStore = useAgentStore()
+const engineStore = useEngineStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
@@ -185,86 +186,64 @@ if (typeof window !== 'undefined') {
   }
 }
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
-// DEF-FE-05：默认值不得暗示云端模型（local 模式下曾误导显示 paraformer-v2 + qwen-plus）
-// DEF-FE-05: neutral placeholder; must not imply cloud models before settings load
-const statusModels = ref('…')
 
-// ─── 底部状态栏路由三态（BACKLOG v1.6.0 / R4） / Status-bar routing tri-state ───
-// local: 本机端点（Ollama/LM Studio）；cloud: 远端服务；unconfigured: 未配置
-type EngineRoute = 'local' | 'cloud' | 'unconfigured'
-const statusEngine = ref<EngineRoute>('unconfigured')
+// ─── 底部状态栏：结论 + 原因 + 动作（REQ-ACCESS-MODE-CARDS T5 / AC-T5①） ───
+// 状态推导全部收敛在 stores/engine.ts（单一来源）；模型串与延迟降级到 hover 详情。
+const STATUS_LABEL_KEYS: Record<AccessStatusState, string> = {
+  local_ready: 'engine_status_local_ready',
+  local_pending: 'engine_status_local_pending',
+  hosted_ready: 'engine_status_hosted_ready',
+  hosted_needs_login: 'engine_status_hosted_login',
+  byok_ready: 'engine_status_byok_ready',
+  byok_needs_key: 'engine_status_byok_key',
+  unconfigured: 'engine_status_unconfigured',
+}
 
 const engineStatusLabel = computed(() => {
-  switch (statusEngine.value) {
-    case 'local': return t('common.usage.engine_local')
-    case 'cloud': return t('common.usage.engine_cloud')
-    default: return t('common.usage.engine_unconfigured')
+  const st = engineStore.statusState
+  if (st === 'hosted_ready') {
+    return t('common.usage.engine_status_hosted_ready', { n: fmtQuotaMinutes(engineStore.quotaRemaining) })
   }
+  return t(`common.usage.${STATUS_LABEL_KEYS[st]}`)
 })
 
-/** 本机地址判定（与后端 is_localhost_base_url 对齐） / Localhost check (mirrors backend) */
-function isLocalhostUrl(url?: string): boolean {
-  if (!url) return false
-  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url)
-}
+const statusPipClass = computed(() =>
+  engineStore.statusState.endsWith('ready') ? 'is-ok' : 'is-warn')
 
-/** 点击状态栏跳转到 设置 → 计算引擎（服务分类） / Click navigates to Settings → compute engine (services tab) */
-function goToEngineSettings() {
-  router.push({ name: 'settings', query: { tab: 'services' } })
-}
+/** hover 详情：模型串 + API 延迟（不再占主文案） / Hover detail: model string + latency */
+const statusHoverDetail = computed(() => {
+  const parts: string[] = []
+  if (engineStore.statusDetail) parts.push(engineStore.statusDetail)
+  if (perfMetrics.value.apiLatency !== null) parts.push(`API ${perfMetrics.value.apiLatency}ms`)
+  parts.push(t('common.usage.engine_hint'))
+  return parts.join(' · ')
+})
 
-// DEF-FE-05: 识别本地 LLM 运行时名（Ollama / LM Studio），判定源与后端本地引擎探测口径一致
-function detectLocalLlmRuntime(llm: Record<string, any>): string {
-  const provider = String(llm?.provider || '').toLowerCase()
-  const baseUrl = String(llm?.base_url || '')
-  if (provider.includes('ollama') || baseUrl.includes(':11434')) return 'Ollama'
-  if (provider.includes('lm studio') || provider.includes('lmstudio') || baseUrl.includes(':1234')) return 'LM Studio'
-  return ''
-}
-
-// DEF-FE-05: local-mode status text. Local components only; never any cloud model name.
-function buildLocalStatusModels(llm: Record<string, any>): string {
-  const asrLabel = t('common.usage.local_asr')
-  const modelLabel = llm?.model || t('common.usage.local_model')
-  const runtime = detectLocalLlmRuntime(llm)
-  const llmLabel = runtime ? `${runtime} + ${modelLabel}` : modelLabel
-  return `${asrLabel} + ${llmLabel}`
-}
-
-// 加载设置以获取实际模型名与功能开关 / Load settings to get actual model names and feature flags
-async function loadStatusModels() {
-  try {
-    const client = (await import('@/api/client')).default
-    const { data } = await client.get('/api/settings')
-    const llm = data?.llm || {}
-    const baseUrl = llm.base_url || ''
-    const engineMode = data?.engine?.mode || ''
-    // DEF-FE-05: local engine mode -> show real local components; never leak cloud model names
-    if (engineMode === 'local') {
-      statusModels.value = buildLocalStatusModels(llm)
-      statusEngine.value = 'local'
-      const updateCheckEnabledLocal = data?.feature_flags?.update_check !== false
-      updateStartupCheck(updateCheckEnabledLocal)
-      return
-    }
-    const asrModel = data?.asr?.model || 'paraformer-v2'
-    const llmModel = llm.model || 'qwen-plus'
-    statusModels.value = `${asrModel} + ${llmModel}`
-    // 三态路由判定：数据源为 llm 配置 + 登录态，不新增业务接口 / Tri-state from llm config + login state; no new endpoint
-    if (isLocalhostUrl(baseUrl)) {
-      statusEngine.value = 'local'
-    } else if (baseUrl && (llm.api_key_set || userStore.isLoggedIn)) {
-      statusEngine.value = 'cloud'
-    } else {
-      statusEngine.value = 'unconfigured'
-    }
-    // 启动时版本检查（受 update_check 开关控制） / Startup version check (controlled by update_check flag)
-    const updateCheckEnabled = data?.feature_flags?.update_check !== false
-    updateStartupCheck(updateCheckEnabled)
-  } catch {
-    // 静默失败，使用默认值 / Silent failure, use defaults
+function fmtQuotaMinutes(min: number | null): string {
+  if (min == null) return '—'
+  if (min >= 60) {
+    const h = Math.floor(min / 60)
+    const m = Math.round(min % 60)
+    return m > 0 ? `${h}h${m}m` : `${h}h`
   }
+  return `${Math.round(min)}m`
 }
+
+/** A3：与顶栏 EngineBadge 统一跳转同一接入方式入口 */
+function goToAccessSettings() {
+  router.push({ name: 'settings', query: { cat: 'access' } })
+}
+
+// ─── D2：跨模式路由切换显性告知（每会话每原因仅一次；事件源=契约 §13.5 route_override，mock 先行） ───
+watch(() => engineStore.routeOverride, (reason) => {
+  if (!reason) return
+  const key = `oms.routeOverrideToast.${reason}`
+  try {
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, '1')
+  } catch { /* 存储不可用时仍提示，仅失去判重 */ }
+  showToast(t(`common.usage.route_override_${reason}`), 'warn')
+})
 
 // 公告横幅 / Announcement banner
 const { visible: annVisible, currentMessage: annMessage, load: loadAnnouncements, dismiss: annDismiss, getCtaUrl: annCtaUrl } = useAnnouncements()
@@ -313,7 +292,15 @@ onMounted(async () => {
   checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
-  loadStatusModels()  // 加载状态栏模型名
+  // ─── 状态栏/接入方式单一来源启动链（AM-F1 T5）：登录态注入 → 引擎态 + 路由推导 + hover 详情 ───
+  engineStore.setUserLoggedIn(userStore.isLoggedIn)
+  engineStore.load()
+  void engineStore.loadRouting()
+  void engineStore.loadAccessSettings().then(() => {
+    // 启动时版本检查（受 update_check 开关控制，原 loadStatusModels 职责并入）
+    const ff = engineStore.accessSettings?.feature_flags
+    updateStartupCheck(ff?.update_check !== false)
+  })
   agentStore.load()  // 加载全局 AI 助手状态
 
   // ─── 路由变化时刷新理念 / Refresh philosophy on route change ───
@@ -408,11 +395,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 底部状态栏「计算引擎」三态 / Status-bar compute-engine tri-state */
+/* 底部状态栏接入结论态（T5）：就绪=ok / 待办=warn */
 .status-engine { cursor: pointer; user-select: none; }
 .status-engine:hover { text-decoration: underline; }
 .status-engine:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.status-engine.is-local .pip { background: var(--ok); }
-.status-engine.is-cloud .pip { background: var(--accent); }
-.status-engine.is-unconfigured .pip { background: var(--warn); }
+.status-engine.is-ok .pip { background: var(--ok); }
+.status-engine.is-warn .pip { background: var(--warn); }
 </style>
