@@ -145,8 +145,8 @@ class RecordDeviceRequest(BaseModel):
 
 @router.post("/api/record/device")
 def set_record_device(req: RecordDeviceRequest):
-    """设置录音设备（运行时生效，重启后恢复默认）。
-    Set recording device (takes effect at runtime; resets on restart).
+    """设置录音设备（运行时生效并持久化到 settings.json，重启后按 settings>env>平台默认恢复；DEF-DEVICE-01-BE）。
+    Set recording device (runtime effect + persisted to settings.json; restored on restart per settings > env > platform default).
     """
     from app.store import set_record_device as _set_device
     # 清除 Windows 设备缓存，使下次录音使用新设备
