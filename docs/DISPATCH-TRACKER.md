@@ -24,6 +24,7 @@ status: active
 
 | 单号 | 派工依据 | 拟 Owner | 触发条件 |
 |---|---|---|---|
+| REQ-DECISION-CENTER-R2 | docs/REQUIREMENT-DECISION-CENTER-R2.md v0.1.0（**draft**，项目方 09-25 五条反馈+冗余观察，全部对照 main 代码核实落行号） | 前端开发工程师（d1b77737cde5） | 项目方关闭 O1（补录弹框不一致点澄清）/O2（决策中心内操作边界）/O3（状态自定义采甲/乙/先甲后乙）裁决、需求单转 approved 后派工；无争议项 F1（去冗余）/F2（删平铺切换）/F5（知识库检索）获项目方点头即可先行，不等 O1-O3 全关。分支须 rebase 至届时 main，避开 REQ-PROGRESS-P0/AM-F1 并行改动面 |
 | AM-Q1 | 同上（T6 回归验证，含存量组合迁移用例=发版门禁） | QA | AM-B1 与 AM-F1 均转 awaiting-acceptance 后触发 |
 | RT-P0-FIX | docs/P0-RETEST-20260925.md「缺陷发现」（基线 HEAD=fa42d2d，pytest 4 failed / 338 passed） | 后端工程师（a4cdbd0ca795，与 AM-B1 同人） | **已派（09-25 并入 AM-B1 原会话 c95528c3 注入，不另开会话）**：① 修复 DEF-RETEST-03/04（`/api/settings/test-llm` 空 Key 带头 + `missing_key` 错误码回归，确认改代码还是改测试预期）；② 定性 DEF-RETEST-01/02（在自身 worktree 切 cloud provider 单跑 tests/test_chat.py，区分环境噪声 vs mock/代码回归；主工作区 data/settings.json 禁动）；③ 门禁全绿后重跑 P0-RETEST T1~T5 手工实测。归属以 AM-B1 行勘误为准（守卫为 WP-A 早期既有实现，非 AM-B1 分支回归）。验收标准=pytest 全绿 + 清单结果列回填完毕 |
 
