@@ -330,50 +330,34 @@ class TestTaskDecisionCRUD:
         assert client.delete(f"/api/tasks/{task_id}/decisions/no-such").status_code == 404
         assert client.post(f"/api/tasks/{task_id}/decisions", json={"text": ""}).status_code == 422
         assert client.post(f"/api/tasks/{task_id}/decisions", json={"text": "   "}).status_code == 422
-        assert client.put(f"/api/tasks/{task_id}/decisions/x", json={"status": "bogus"}).status_code == 422
+        # DC-R2-c：status 合法性改由状态字典在 handler 内校验，因此 decision 不存在的 404 优先于 422；
+        # 非法状态码对存在的决策仍返回 422。
+        did = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "用于状态校验"}).json()["decision"]["id"]
+        assert client.put(f"/api/tasks/{task_id}/decisions/{did}", json={"status": "bogus"}).status_code == 422
+        assert client.put(f"/api/tasks/{task_id}/decisions/no-such", json={"status": "bogus"}).status_code == 404
 
-    def test_supersede_cross_task_and_errors(self, client, task_factory):
-        """AC-6：跨任务 supersede 写入 status/superseded_by；取代方不存在 404；自指 400。"""
+    def test_supersede_endpoint_retired(self, client, task_factory):
+        """DC-R2-c（D6）：取代/撤销不再是系统行为，supersede 写回端点已下线。"""
         t1 = task_factory(title="会议一")
-        t2 = task_factory(title="会议二")
-        r1 = client.post(f"/api/tasks/{t1}/decisions", json={"text": "旧方案"})
-        r2 = client.post(f"/api/tasks/{t2}/decisions", json={"text": "新方案"})
-        d1, d2 = r1.json()["decision"], r2.json()["decision"]
-
-        resp = client.patch(
-            f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
-            json={"task_id": t2, "decision_id": d2["id"]},
-        )
-        assert resp.status_code == 200
-        marked = resp.json()["decision"]
-        assert marked["status"] == "superseded"
-        assert marked["superseded_by"] == {"task_id": t2, "decision_id": d2["id"]}
-
-        assert client.patch(
-            f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
-            json={"task_id": t2, "decision_id": "ghost"},
-        ).status_code == 404
-        assert client.patch(
-            f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
-            json={"task_id": "ghost-task", "decision_id": d2["id"]},
-        ).status_code == 404
-        assert client.patch(
-            f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
-            json={"task_id": t1, "decision_id": d1["id"]},
-        ).status_code == 400
+        d1 = client.post(f"/api/tasks/{t1}/decisions", json={"text": "旧方案"}).json()["decision"]
+        resp = client.patch(f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
+                            json={"task_id": t1, "decision_id": d1["id"]})
+        assert resp.status_code in (404, 405)
+        # 状态仍可通过 PUT + 状态字典赋值（superseded 现为可改名的普通状态）
+        assert client.put(f"/api/tasks/{t1}/decisions/{d1['id']}", json={"status": "superseded"}).status_code == 200
 
     def test_dangling_supersede_ref_still_readable(self, client, task_factory):
-        """AC-6（降级）：取代方任务被删后读取不报错（引用悬空由前端降级显示）。"""
-        t1 = task_factory()
-        t2 = task_factory()
-        d1 = client.post(f"/api/tasks/{t1}/decisions", json={"text": "旧"}).json()["decision"]
-        d2 = client.post(f"/api/tasks/{t2}/decisions", json={"text": "新"}).json()["decision"]
-        client.patch(f"/api/tasks/{t1}/decisions/{d1['id']}/supersede",
-                     json={"task_id": t2, "decision_id": d2["id"]})
-        tasks.pop(t2)
+        """降级保留：存量 superseded_by 悬空引用（取代方任务已删）读取不报错，由前端降级显示。"""
+        t1 = task_factory(decisions=[{
+            "id": "d-legacy", "text": "旧", "status": "superseded",
+            "pending_confirmation": False, "source": "manual",
+            "created_at": "2026-09-20T09:00:00", "updated_at": "2026-09-20T09:00:00",
+            "superseded_by": {"task_id": "gone-task", "decision_id": "gone-decision"},
+            "related_todo_ids": [],
+        }])
         resp = client.get(f"/api/tasks/{t1}/decisions")
         assert resp.status_code == 200
-        assert resp.json()["decisions"][0]["superseded_by"]["task_id"] == t2
+        assert resp.json()["decisions"][0]["superseded_by"]["task_id"] == "gone-task"
 
 
 class TestDecisionInjection:

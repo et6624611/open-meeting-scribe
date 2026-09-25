@@ -1,9 +1,11 @@
 <template>
   <!-- 决策卡片：复用 DecisionNode 的样式基元（db-node/db-dot/db-title），不含行动项状态机逻辑
        Decision card: reuses DecisionNode style primitives without the action-item state machine -->
-  <div class="db-node dc-card" :class="{ 'is-ineffective': decision.status !== 'active' }">
+  <!-- 决策卡片：复用 DecisionNode 的样式基元（db-node/db-dot/db-title），不含行动项状态机逻辑
+       状态视觉（色点/徽标/沉底）全部由状态字典随行字段驱动（DC-R2-c D6/D7） -->
+  <div class="db-node dc-card" :class="{ 'is-ineffective': decision.status_closing }">
     <div class="db-row1">
-      <span class="db-dot dc-dot" :class="'st-' + decision.status" :title="t('decisions.badge_' + decision.status)"></span>
+      <span class="db-dot dc-dot" :style="{ background: decision.status_color }" :title="statusLabel"></span>
       <!-- 行内编辑态（F3 + DC-R2-b）：标题 / 内容 / 执行人 三字段就地编辑 -->
       <div v-if="editing" class="dc-edit">
         <input
@@ -34,8 +36,8 @@
         <span class="db-title dc-text" :class="{ 'is-title': hasTitle }" :title="rowHead">{{ rowHead }}</span>
         <!-- 状态徽标：待确认默认可见带徽标（REQ-DECISION-CENTER §11-2 裁决） -->
         <!-- Status badges: pending-confirmation is visible by default with a badge -->
-        <span v-if="decision.pending_confirmation && decision.status === 'active'" class="dc-badge dc-badge-pending">{{ t('decisions.badge_pending') }}</span>
-        <span v-if="decision.status !== 'active'" class="dc-badge" :class="'dc-badge-' + decision.status">{{ t('decisions.badge_' + decision.status) }}</span>
+        <span v-if="decision.pending_confirmation && !decision.status_closing" class="dc-badge dc-badge-pending">{{ t('decisions.badge_pending') }}</span>
+        <span v-if="decision.status_closing" class="dc-badge" :style="{ color: decision.status_color, borderColor: decision.status_color }">{{ statusLabel }}</span>
         <!-- 行内操作菜单 / Inline action menu -->
         <div class="dc-action-wrap" ref="menuWrapRef">
           <button class="dc-action-btn" :aria-expanded="menuOpen" aria-haspopup="menu" :title="t('decisions.action_more')" @click.stop="menuOpen = !menuOpen">
@@ -51,13 +53,7 @@
                 <svg class="db-dd-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 {{ t('decisions.action_delete') }}
               </button>
-              <div class="dc-menu-sep"></div>
-              <button class="db-dd-item" :disabled="decision.status === 'superseded'" @click.stop="emit('supersede')">
-                <span class="db-dd-dot dc-dot st-superseded"></span>{{ t('decisions.action_supersede') }}
-              </button>
-              <button class="db-dd-item" :disabled="decision.status === 'revoked'" @click.stop="emit('revoke')">
-                <span class="db-dd-dot dc-dot st-revoked"></span>{{ t('decisions.action_revoke') }}
-              </button>
+              <!-- DC-R2-c（D6）：「已被取代 / 已撤销」两个入口随系统锚点收敛下线 -->
             </template>
             <!-- 删除二次确认（不可恢复操作不做静默删除） / Delete needs an in-menu confirm -->
             <div v-else class="dc-del-confirm" @click.stop>
@@ -94,9 +90,8 @@
       </span>
     </div>
 
-    <!-- 取代关系：有效 → 可跳转链接；引用悬空（取代方会议被删）→ 降级文本，不白屏 -->
-    <!-- Supersede link: jumpable when resolvable, degraded text when the ref is dangling -->
-    <div v-if="decision.status === 'superseded' && decision.superseded_by" class="dc-superseded-by">
+    <!-- 取代关系（存量只读）：写入入口已下线，历史引用仍可跳转，引用悬空降级不白屏 -->
+    <div v-if="decision.superseded_by" class="dc-superseded-by">
       <button v-if="superseder" class="dc-meta-link" @click="gotoSuperseder">
         {{ t('decisions.superseded_by', { text: truncate(superseder.text) }) }}
       </button>
@@ -113,7 +108,7 @@ import type { AggregatedDecision, DecisionPatchPayload, OwnerValue } from '@/api
 import { stripDecisionEmphasis } from '@/utils/decisionText'
 import OwnerSelectCombobox from './OwnerSelectCombobox.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 
 const props = defineProps<{
@@ -124,8 +119,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'supersede'): void
-  (e: 'revoke'): void
   (e: 'edit-save', patch: DecisionPatchPayload): void
   (e: 'remove'): void
 }>()
@@ -141,6 +134,12 @@ const displayText = computed(() => stripDecisionEmphasis(props.decision.text))
 /** 三要素标题（D5）：有则行首现标题，无则行首降级为内容（存量/auto 不堆空行） */
 const hasTitle = computed(() => !!stripDecisionEmphasis(props.decision.title || '').trim())
 const rowHead = computed(() => (hasTitle.value ? stripDecisionEmphasis(props.decision.title).trim() : displayText.value))
+/** 状态名：内置状态走双语字段，自定义状态一律用本体名（DC-R2-c） */
+const statusLabel = computed(() => (
+  locale.value?.toString().startsWith('en')
+    ? (props.decision.status_name_en || props.decision.status_name)
+    : props.decision.status_name
+))
 
 function truncate(text: string): string {
   const plain = stripDecisionEmphasis(text)
@@ -239,18 +238,15 @@ onBeforeUnmount(() => {
 .dc-card.is-ineffective { opacity: 0.55; }
 .dc-card.is-ineffective .dc-text, .dc-card.is-ineffective .dc-content { text-decoration: line-through; color: var(--subtle); }
 
-/* 状态点颜色沿用决策流基元色（--st-*）/ Dots reuse the decision-flow token palette */
-.dc-dot.st-active { background: var(--st-done); }
-.dc-dot.st-superseded { background: var(--st-decide); }
-.dc-dot.st-revoked { background: var(--error); }
+/* 状态色点颜色由状态字典随行下发（内联 style），不再依赖写死的 st-* 类 */
+.dc-dot { flex-shrink: 0; }
 
 .dc-badge {
   flex-shrink: 0; font-size: var(--fs-11, 11px); line-height: 1; padding: 4px 7px;
   border-radius: 999px; font-weight: 500; white-space: nowrap;
 }
 .dc-badge-pending { background: oklch(0.94 0.04 70); color: var(--st-confirm); }
-.dc-badge-superseded { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
-.dc-badge-revoked { background: oklch(0.94 0.03 25); color: var(--error); }
+.dc-badge { border: 1px solid currentColor; background: transparent; }
 
 .dc-action-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
 .dc-action-btn {

@@ -14,6 +14,7 @@ data/meeting_mappings.json
 data/hotword_mappings.txt
 data/voiceprint_registry.json
 data/settings.json
+data/decision_statuses.json
 data/philosophies.json
 data/hotwords.txt
 data/usage/

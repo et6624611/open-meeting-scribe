@@ -8,8 +8,20 @@
  */
 import type {
   AggregatedDecision, DecisionCreatePayload, DecisionMockQuery, DecisionPatchPayload,
-  DecisionRecord, DecisionSource, SupersedeRef,
+  DecisionRecord, DecisionSource,
 } from './decisions'
+import type { DecisionStatusItem } from './decisionStatuses'
+
+/**
+ * mock 通道下的状态字典（与后端默认集同构）。
+ * 状态管理界面本身走真实 `/api/decision-statuses`，mock 通道不覆盖其写操作（仅 dev 演示用）。
+ */
+const STATUS_DICT: DecisionStatusItem[] = [
+  { id: 'active', name: '生效中', name_en: 'Active', color: 'var(--st-done)', closing: false, system: true },
+  { id: 'done', name: '完成', name_en: 'Done', color: 'var(--accent)', closing: true, system: true },
+  { id: 'superseded', name: '已被取代', name_en: 'Superseded', color: 'var(--st-decide)', closing: true, system: false },
+  { id: 'revoked', name: '已撤销', name_en: 'Revoked', color: 'var(--error)', closing: true, system: false },
+]
 
 /** mock 仅在此开关下被引用；api/decisions.ts 通过同名函数消费 */
 export function isMockEnabled(): boolean {
@@ -151,16 +163,10 @@ function notFound(): Promise<never> {
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))
 }
-function findRecord(decisionId: string): { taskId: string; rec: DecisionRecord } | null {
-  for (const [taskId, list] of store) {
-    const rec = list.find(r => r.id === decisionId)
-    if (rec) return { taskId, rec }
-  }
-  return null
-}
 
 function toAggregated(taskId: string, rec: DecisionRecord): AggregatedDecision {
   const meeting = meetings.find(m => m.task_id === taskId)
+  const st = STATUS_DICT.find(s => s.id === rec.status)
   return clone({
     ...rec,
     task_id: taskId,
@@ -169,6 +175,10 @@ function toAggregated(taskId: string, rec: DecisionRecord): AggregatedDecision {
     meeting_date: meeting && !meeting.deleted ? meeting.meeting_date : null,
     kb_id: meeting?.kb_id ?? null,
     kb_name: meeting && !meeting.deleted ? meeting.kb_name : null,
+    status_name: st?.name ?? rec.status,
+    status_name_en: st?.name_en ?? rec.status,
+    status_color: st?.color ?? 'var(--muted)',
+    status_closing: st?.closing ?? rec.status !== 'active',
   })
 }
 
@@ -250,21 +260,5 @@ export const mockApi = {
     return latency(undefined)
   },
 
-  async supersedeTaskDecision(taskId: string, decisionId: string, by: SupersedeRef): Promise<DecisionRecord> {
-    const list = store.get(taskId)
-    const rec = list?.find(r => r.id === decisionId)
-    if (!rec) return notFound()
-    const superseder = findRecord(by.decision_id)
-    if (!superseder) return notFound()
-    rec.status = 'superseded'
-    rec.superseded_by = { task_id: superseder.taskId, decision_id: by.decision_id }
-    rec.updated_at = new Date().toISOString()
-    return latency(clone(rec))
-  },
-
-  /** 供 supersede 检索弹层取「取代方候选」：全量有效决策（active 优先） */
-  async searchDecisions(q: string): Promise<AggregatedDecision[]> {
-    const all = await this.fetchDecisions({ q: q || undefined })
-    return all.filter(r => r.status === 'active')
-  },
+  // DC-R2-c（D6）：supersedeTaskDecision / searchDecisions 随取代弹层一同下线（mock 同步移除）。
 }
