@@ -9,10 +9,6 @@
         <span class="dc-count" v-if="!loading && !error">{{ t('decisions.count', { count: effectiveRows.length + ineffectiveRows.length }) }}</span>
       </div>
       <div class="dc-header-actions">
-        <div class="dc-seg" role="group" :aria-label="t('decisions.view_group')">
-          <button class="dc-seg-btn" :class="{ active: viewMode === 'group' }" @click="viewMode = 'group'">{{ t('decisions.view_group') }}</button>
-          <button class="dc-seg-btn" :class="{ active: viewMode === 'flat' }" @click="viewMode = 'flat'">{{ t('decisions.view_flat') }}</button>
-        </div>
         <button class="dc-add-btn" @click="showAdd = true">+ {{ t('decisions.add_manual') }}</button>
       </div>
     </div>
@@ -27,14 +23,10 @@
           </button>
         </div>
       </div>
-      <label class="dc-filter-group">
+      <div class="dc-filter-group">
         <span class="dc-filter-label">{{ t('decisions.filter_kb') }}</span>
-        <select v-model="kbId" class="dc-select">
-          <option value="">{{ t('decisions.kb_all') }}</option>
-          <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-          <option value="__none__">{{ t('decisions.kb_none') }}</option>
-        </select>
-      </label>
+        <KbFilterCombobox v-model="kbId" :projects="projects" :label="t('decisions.filter_kb')" />
+      </div>
       <div class="dc-filter-group" role="group" :aria-label="t('decisions.filter_status')">
         <span class="dc-filter-label">{{ t('decisions.filter_status') }}</span>
         <button
@@ -72,61 +64,39 @@
       <p>{{ showFilteredEmpty ? t('decisions.empty_filtered') : t('decisions.empty_all') }}</p>
     </div>
 
-    <!-- 列表主体 / Body -->
-    <template v-else>
-      <!-- 分组模式：会议日期倒序，组可折叠 / Grouped: meetings desc by date -->
-      <section v-if="viewMode === 'group'" class="dc-groups">
-        <div v-for="g in visibleGroups" :key="g.taskId" class="dc-group">
-          <button class="dc-group-head" :title="g.title" :aria-expanded="!collapsed.has(g.taskId)" @click="toggleGroup(g.taskId)">
-            <svg class="dc-chev" :class="{ open: !collapsed.has(g.taskId) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            <span class="dc-group-title">{{ g.title }}</span>
-            <span class="dc-group-date">{{ g.date }}</span>
-            <span class="dc-group-count">{{ t('decisions.group_meeting_count', { count: g.rows.length }) }}</span>
-          </button>
-          <div v-show="!collapsed.has(g.taskId)" class="db-flow dc-flow">
-            <DecisionCard
-              v-for="d in g.rows"
-              :key="d.id"
-              :decision="d"
-              :pool="pool"
-              @supersede="openSupersede(d)"
-              @revoke="revoke(d)"
-            />
-            <!-- 组内失效沉底折叠 / Ineffective items sink to the group footer -->
-            <div v-if="g.ineffective.length" class="dc-ineffective">
-              <button class="flow-completed-toggle dc-ineff-toggle" :aria-expanded="openIneff.has('g:' + g.taskId)" @click="toggleIneff('g:' + g.taskId)">
-                <svg class="chev" :class="{ open: openIneff.has('g:' + g.taskId) }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-                {{ t('decisions.collapsed_title', { count: g.ineffective.length }) }}
-              </button>
-              <div v-show="openIneff.has('g:' + g.taskId)" class="db-flow dc-flow">
-                <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" />
-              </div>
+    <!-- 列表主体：固定按会议分组（F2 移除平铺切换，DC-R2-a） / Body: always grouped by meeting -->
+    <section v-else class="dc-groups">
+      <div v-for="g in visibleGroups" :key="g.taskId" class="dc-group">
+        <button class="dc-group-head" :title="g.title" :aria-expanded="!collapsed.has(g.taskId)" @click="toggleGroup(g.taskId)">
+          <svg class="dc-chev" :class="{ open: !collapsed.has(g.taskId) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <span class="dc-group-title">{{ g.title }}</span>
+          <span class="dc-group-date">{{ g.date }}</span>
+          <span class="dc-group-count">{{ t('decisions.group_meeting_count', { count: g.rows.length }) }}</span>
+        </button>
+        <div v-show="!collapsed.has(g.taskId)" class="db-flow dc-flow">
+          <DecisionCard
+            v-for="d in g.rows"
+            :key="d.id"
+            :decision="d"
+            :pool="pool"
+            @supersede="openSupersede(d)"
+            @revoke="revoke(d)"
+            @edit-save="saveDecisionText(d, $event)"
+            @remove="removeDecision(d)"
+          />
+          <!-- 组内失效沉底折叠 / Ineffective items sink to the group footer -->
+          <div v-if="g.ineffective.length" class="dc-ineffective">
+            <button class="flow-completed-toggle dc-ineff-toggle" :aria-expanded="openIneff.has('g:' + g.taskId)" @click="toggleIneff('g:' + g.taskId)">
+              <svg class="chev" :class="{ open: openIneff.has('g:' + g.taskId) }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              {{ t('decisions.collapsed_title', { count: g.ineffective.length }) }}
+            </button>
+            <div v-show="openIneff.has('g:' + g.taskId)" class="db-flow dc-flow">
+              <DecisionCard v-for="d in g.ineffective" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" @edit-save="saveDecisionText(d, $event)" @remove="removeDecision(d)" />
             </div>
           </div>
         </div>
-      </section>
-
-      <!-- 平铺模式：日期倒序单列表，失效整体沉底 / Flat: single list, ineffective sunk -->
-      <div v-else class="db-flow dc-flow">
-        <DecisionCard
-          v-for="d in effectiveRows"
-          :key="d.id"
-          :decision="d"
-          :pool="pool"
-          @supersede="openSupersede(d)"
-          @revoke="revoke(d)"
-        />
-        <div v-if="ineffectiveRows.length" class="dc-ineffective">
-          <button class="flow-completed-toggle dc-ineff-toggle" :aria-expanded="openIneff.has('flat')" @click="toggleIneff('flat')">
-            <svg class="chev" :class="{ open: openIneff.has('flat') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            {{ t('decisions.collapsed_title', { count: ineffectiveRows.length }) }}
-          </button>
-          <div v-show="openIneff.has('flat')" class="db-flow dc-flow">
-            <DecisionCard v-for="d in ineffectiveRows" :key="d.id" :decision="d" :pool="pool" @supersede="openSupersede(d)" @revoke="revoke(d)" />
-          </div>
-        </div>
       </div>
-    </template>
+    </section>
 
     <!-- 弹层 / Dialogs -->
     <SupersedeDialog v-model="showSupersede" :target="supersedeTarget" :pool="activePool" @confirm="onSupersedeConfirm" />
@@ -138,13 +108,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractErrorMessage } from '@/api/client'
-import { fetchDecisions, fetchDecisionsMulti, supersedeTaskDecision, updateTaskDecision, createTaskDecision } from '@/api/decisions'
+import { fetchDecisions, fetchDecisionsMulti, supersedeTaskDecision, updateTaskDecision, createTaskDecision, deleteTaskDecision } from '@/api/decisions'
 import { isMockEnabled } from '@/api/decisionsMock'
 import type { AggregatedDecision, DecisionLifecycle, SupersedeRef } from '@/api/decisions'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useTaskStore } from '@/stores/task'
 import { showToast } from '@/composables/useToast'
 import DecisionCard from './decisions/DecisionCard.vue'
+import KbFilterCombobox from './decisions/KbFilterCombobox.vue'
 import SupersedeDialog from './decisions/SupersedeDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
 
@@ -169,7 +140,6 @@ const timeRange = ref<TimeRange>('all')
 const kbId = ref('')
 const statusFilter = ref<Set<StatusKey>>(new Set(['active', 'pending']))
 const keyword = ref('')
-const viewMode = ref<'group' | 'flat'>('group')
 
 function toggleStatus(s: StatusKey) {
   const next = new Set(statusFilter.value)
@@ -327,6 +297,27 @@ async function revoke(d: AggregatedDecision) {
   }
 }
 
+// ─── F3 行内编辑/删除（DC-R2-a）：走既有 PUT/DELETE 任务级 CRUD，不回写纪要正文 ───
+async function saveDecisionText(d: AggregatedDecision, text: string) {
+  try {
+    await updateTaskDecision(d.task_id, d.id, { text })
+    showToast(t('decisions.toast_edit_ok'), 'success')
+    await Promise.all([load(), loadPool()])
+  } catch (e) {
+    showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
+  }
+}
+
+async function removeDecision(d: AggregatedDecision) {
+  try {
+    await deleteTaskDecision(d.task_id, d.id)
+    showToast(t('decisions.toast_delete_ok'), 'success')
+    await Promise.all([load(), loadPool()])
+  } catch (e) {
+    showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
+  }
+}
+
 const showAdd = ref(false)
 const addDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
 async function onAddSubmit(taskId: string, payload: { text: string; pending_confirmation?: boolean }) {
@@ -366,8 +357,6 @@ async function onAddSubmit(taskId: string, payload: { text: string; pending_conf
 .dc-filter-group { display: flex; align-items: center; gap: var(--s-2); }
 .dc-grow { flex: 1; min-width: 180px; }
 .dc-filter-label { font-size: var(--fs-12, 12px); color: var(--muted); white-space: nowrap; }
-.dc-select { padding: 4px 8px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--fg); cursor: pointer; }
-.dc-select:focus { outline: none; border-color: var(--accent); }
 .dc-chip { padding: 3px 10px; font-size: var(--fs-12, 12px); border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.12s; }
 .dc-chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 500; }
 .dc-kw-wrap { position: relative; display: flex; align-items: center; flex: 1; }
