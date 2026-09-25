@@ -11,6 +11,7 @@ app/routers/decisions.py — 决策 CRUD + 跨会议聚合 / Decision CRUD + cro
 
 契约事实源：docs/API_CONTRACTS.md §12。
 旧任务 JSON 无 decisions 字段一律按空数组读取（兼容性硬约束）。
+DC-R2-b（D4/D5）：决策引入三要素 title / text(内容) / owner（执行人以说话人档案为权威）。
 """
 
 import uuid
@@ -22,11 +23,31 @@ from pydantic import BaseModel, Field
 
 from app.store import save_task_to_disk, tasks
 from core.i18n import _
+from core.speakers import get_speaker_name_map, normalize_speaker_name
 
 router = APIRouter(tags=["decisions"])
 
 # 决策生效状态 / Decision effect status
 DecisionStatus = Literal["active", "superseded", "revoked"]
+
+
+def _resolve_owner(owner_id: object, owner_name: object) -> tuple[str | None, str]:
+    """执行人以说话人档案为权威（D4）：id 可解析则跟随档案名（改名全局生效）。
+
+    档案不存在/被删时宽容回退写入库的快照名，不报 422——建档与提交之间的并发
+    删除不应阻断补录。返回 (owner_id 或 None, owner_name 快照)。
+    """
+    oid = (owner_id or "").strip() if isinstance(owner_id, str) else ""
+    snapshot = (owner_name or "").strip() if isinstance(owner_name, str) else ""
+    if oid:
+        try:
+            archived = get_speaker_name_map().get(oid)
+        except Exception:
+            archived = None
+        if archived:
+            # 占位档案名（Speaker N 等）不当执行人（REQ-SPK-RN 口径同源）
+            return oid, normalize_speaker_name(archived) or snapshot
+    return (oid or None), snapshot
 
 
 def _mark_modified(task_id: str) -> None:
@@ -60,12 +81,18 @@ def _require_decision(task: dict, decision_id: str) -> dict:
 
 class DecisionCreateRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
+    title: str = Field(default="", max_length=200)
+    owner_id: str | None = Field(default=None, max_length=100)
+    owner_name: str | None = Field(default=None, max_length=100)
     pending_confirmation: bool = False
     related_todo_ids: list[str] = Field(default_factory=list, max_length=100)
 
 
 class DecisionUpdateRequest(BaseModel):
     text: str | None = Field(default=None, min_length=1, max_length=2000)
+    title: str | None = Field(default=None, max_length=200)
+    owner_id: str | None = Field(default=None, max_length=100)
+    owner_name: str | None = Field(default=None, max_length=100)
     status: DecisionStatus | None = None
     pending_confirmation: bool | None = None
     related_todo_ids: list[str] | None = Field(default=None, max_length=100)
@@ -91,9 +118,14 @@ def create_task_decision(task_id: str, req: DecisionCreateRequest):
     if not text:
         raise HTTPException(422, "text cannot be blank")
     now_iso = datetime.now().isoformat()
+    owner_id, owner_name = _resolve_owner(req.owner_id, req.owner_name)
     decision = {
         "id": str(uuid.uuid4()),
+        # 三要素（D4/D5）：title 可空（存量与 auto 决策都为空，展示侧降级），text = 内容
+        "title": req.title.strip(),
         "text": text,
+        "owner_id": owner_id,
+        "owner_name": owner_name,
         "status": "active",
         "pending_confirmation": req.pending_confirmation,
         "source": "manual",
@@ -118,6 +150,13 @@ def update_task_decision(task_id: str, decision_id: str, req: DecisionUpdateRequ
         if not stripped:
             raise HTTPException(422, "text cannot be blank")
         decision["text"] = stripped
+    if req.title is not None:
+        decision["title"] = req.title.strip()
+    # 执行人：仅当请求显式携带 owner 字段时重写（空串 = 清空指派，区别于未传）
+    if req.owner_id is not None or req.owner_name is not None:
+        owner_id, owner_name = _resolve_owner(req.owner_id, req.owner_name)
+        decision["owner_id"] = owner_id
+        decision["owner_name"] = owner_name
     if req.status is not None:
         decision["status"] = req.status
     if req.pending_confirmation is not None:
@@ -203,6 +242,17 @@ def _validate_date(value: str | None, name: str) -> str | None:
     return value
 
 
+def _owner_display(decision: dict, name_map: dict[str, str]) -> str:
+    """读侧执行人展示名：有档案 id 则取档案名（改名全局跟随），否则回退快照。"""
+    oid = decision.get("owner_id")
+    if isinstance(oid, str) and oid:
+        archived = name_map.get(oid)
+        if archived:
+            return normalize_speaker_name(archived) or str(decision.get("owner_name") or "")
+    snapshot = decision.get("owner_name")
+    return str(snapshot) if isinstance(snapshot, str) else ""
+
+
 @router.get("/api/decisions")
 def list_all_decisions(
     since: str | None = Query(default=None, max_length=10),
@@ -220,6 +270,10 @@ def list_all_decisions(
     until = _validate_date(until, "until")
 
     kb_cache: dict[str, str | None] = {}
+    try:
+        owner_map = get_speaker_name_map()
+    except Exception:
+        owner_map = {}
     rows: list[dict] = []
     for task_id, task in tasks.items():
         meeting_date = task.get("meeting_date")
@@ -237,12 +291,16 @@ def list_all_decisions(
         for d in _get_decisions(task):
             if status and d.get("status") != status:
                 continue
-            if q is not None and q not in (d.get("text") or ""):
+            if q is not None and q not in f"{d.get('text') or ''}\n{d.get('title') or ''}":
                 continue
             rows.append({
                 **d,
+                # 决策自身标题（三要素，存量无此键→""）；会议标题改用 meeting_title 下发（旧 `title` 语义冲突修正）
+                "title": d.get("title") or "",
+                "owner_id": d.get("owner_id") or None,
+                "owner_name": _owner_display(d, owner_map),
                 "task_id": task_id,
-                "title": task.get("title"),
+                "meeting_title": task.get("title") or task.get("audio_name") or task_id,
                 "meeting_date": meeting_date,
                 "kb_id": project_id,
                 "kb_name": _kb_name(project_id, kb_cache),
@@ -258,7 +316,7 @@ def list_all_decisions(
     for row in rows:
         if group_by == "meeting":
             key = row["task_id"]
-            label = row.get("title")
+            label = row.get("meeting_title")
             meta = {"task_id": key, "meeting_date": row.get("meeting_date")}
         else:  # date
             key = row.get("meeting_date") or ""

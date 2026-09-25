@@ -280,7 +280,10 @@ recognition.stop()  # 阻塞直到所有结果返回
 ```json
 {
   "id": "uuid4 字符串，任务内唯一",
+  "title": "决策短标题（三要素之一，可为空串）",
   "text": "决策内容（转述文本，不含 [待确认] 前缀）",
+  "owner_id": "执行人说话人档案 uuid，未指派为 null",
+  "owner_name": "执行人展示名（读侧以档案为权威解析，档案缺失时回退写入快照）",
   "status": "active | superseded | revoked",
   "pending_confirmation": false,
   "source": "auto | backfill | manual | injection",
@@ -291,6 +294,9 @@ recognition.stop()  # 阻塞直到所有结果返回
 }
 ```
 
+- **三要素化（DC-R2-b，项目方裁决 D4/D5）**：`title` / `text`（内容）/ `owner`（执行人）；执行人以说话人档案为权威存 `owner_id`，因此档案改名全局跟随无需批量重写任务 JSON；`owner_name` 仅作展示快照与兜底。
+- **存量兼容**：旧数据无 `title` / `owner_id` / `owner_name` 三键 ⇒ 读侧按 `""` / `null` 给出（不报错），展示层按「内容首行」降级为行首文本；存量任务文件**不做批量改写**。
+- **auto 决策不指派执行人**（D5：AI 只要求标题+正文），抽取源为纪要「主要结论」/「决策」章节的 `**短标题**：正文` 条目式写法；不符合该写法的条目 `title` 为空串，`text` 保留整句（不丢条目）。
 - 旧任务 JSON 无 `decisions` 字段 ⇒ 所有读写路径按 `[]` 处理，不报错。
 - 重新生成纪要仅替换 `source=auto` 条目；`manual` / `injection` / `backfill` 保留。
 - `superseded_by` 可为 `null`；来源会议被删除后引用悬空时读取不报错，前端按「引用已失效」降级显示。
@@ -302,12 +308,17 @@ recognition.stop()  # 阻塞直到所有结果返回
 | 方法与路径 | 请求体 | 响应 | 错误 |
 |---|---|---|---|
 | `GET /api/tasks/{task_id}/decisions` | — | `{"decisions": [decision…]}` | 404 任务不存在 |
-| `POST /api/tasks/{task_id}/decisions` | `{text: str(1..2000), pending_confirmation?: bool=false, related_todo_ids?: str[]=}` | `{"decision": decision}`（`source=manual`、`status=active`） | 404 任务不存在；422 校验失败 |
-| `PUT /api/tasks/{task_id}/decisions/{decision_id}` | `{text?, status?: "active"\|"superseded"\|"revoked", pending_confirmation?, related_todo_ids?}`（均可选，仅更新携带字段） | `{"decision": decision}` | 404 任务/决策不存在；422 |
+| `POST /api/tasks/{task_id}/decisions` | `{text: str(1..2000), title?: str(0..200)="", owner_id?: str|""=null, owner_name?: str|""=null, pending_confirmation?: bool=false, related_todo_ids?: str[]=}` | `{"decision": decision}`（`source=manual`、`status=active`） | 404 任务不存在；422 校验失败 |
+| `PUT /api/tasks/{task_id}/decisions/{decision_id}` | `{text?, title?, owner_id?, owner_name?, status?: "active"\|"superseded"\|"revoked", pending_confirmation?, related_todo_ids?}`（均可选，仅更新携带字段） | `{"decision": decision}` | 404 任务/决策不存在；422 |
 | `DELETE /api/tasks/{task_id}/decisions/{decision_id}` | — | `{"ok": true}` | 404 任务/决策不存在 |
 | `PATCH /api/tasks/{task_id}/decisions/{decision_id}/supersede` | `{task_id: str, decision_id: str}`（取代方定位，可跨任务） | `{"decision": decision}`（被标记项 `status=superseded`、`superseded_by` 已写入） | 404 任务不存在；404 决策不存在；404 取代方 task/decision 不存在；422 |
 
 写操作（POST/PUT/DELETE/supersede）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
+
+**owner 字段写入口径（DC-R2-b）**：
+- `owner_id` 能在说话人档案中解析且档案名非占位串 ⇒ `owner_name` 以**档案名为准**（覆盖传入快照）。
+- 档案不存在/已删除 ⇒ 宽容回退传入的 `owner_name` 快照（**不报 422**，建档与提交之间的并发删除不应阻断补录）。
+- PUT 下 `owner_id` / `owner_name` 的 **空串 = 清空指派**，**未传 = 保持原指派**（前端清空时显式下发空串）。
 
 ### 12.2 聊天注入联动
 
@@ -322,20 +333,24 @@ recognition.stop()  # 阻塞直到所有结果返回
 | `since` / `until` | 按会议日期过滤，`YYYY-MM-DD`，闭区间；任务无 `meeting_date` 时在给定日期过滤下被排除 |
 | `kb_id` | 按所属知识库（= `project_id`）过滤；未关联知识库的任务被排除 |
 | `status` | `active`\|`superseded`\|`revoked` 精确过滤；非法值 422 |
-| `q` | `text` 子串匹配（区分大小写） |
+| `q` | `text` 与 `title` 子串匹配（区分大小写，DC-R2-b 扩展至标题） |
 | `group_by` | `meeting`\|`date`；缺省返回平铺列表 |
 
 响应：
 
 ```jsonc
 // 缺省（平铺）
-{ "decisions": [ { …decision全部字段, "task_id": "…", "title": "会议标题",
+{ "decisions": [ { …decision全部字段, "title": "决策自身标题（存量无键时为 ""）",
+                 "owner_name": "执行人展示名（读侧解析）",
+                 "task_id": "…", "meeting_title": "来源会议标题",
                  "meeting_date": "YYYY-MM-DD|null", "kb_id": "…|null", "kb_name": "…|null" } ] }
 // group_by=meeting → 按会议分组；group_by=date → 按会议日期分组
 { "groups": [ { "key": "task_id 或 meeting_date", "label": "会议标题或日期",
                "task_id": "…(仅 group_by=meeting)", "meeting_date": "…",
                "decisions": [ 同平铺元素 ] } ] }
 ```
+
+- **键位修正（DC-R2-b）**：行内 `title` 从「会议标题」改为「决策自身标题」，来源会议标题另下发 `meeting_title`（无会议标题时回退 `audio_name` 再回退 `task_id`）；`group_by=meeting` 的 `label` 取 `meeting_title`。前端分组头与跳转链路必须读 `meeting_title`。
 
 - 平铺与组内均按 `meeting_date` 倒序（无日期沉底）。
 - 决策中心「默认仅看生效中」由前端传 `status=active` 实现，后端不默认过滤。

@@ -121,15 +121,17 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 [2-3句话概括会议主题和核心讨论内容。如内容不足，写"本次对话内容较短，主要涉及..."]
 
 ## 二、主要结论
-[列出会议明确达成的结论或决策，每条用序号标注]
+[列出会议明确达成的结论或决策，每条用序号标注，采用「标题：正文」两要素写法]
 [如无明显结论，写"本次会议未形成明确结论"]
 
-1. ...
-2. ...
+1. **决策短标题**：该条决策的完整内容
+2. **决策短标题**：该条决策的完整内容
 
 **格式硬约束（决策结构化抽取依赖）**：
 - 每条结论必须是独立的有序列表项（以 "1. "、"2. " 起头），一条一行
-- 未敲定条目（见核心原则「区分已定结论与待确认提案」）必须以 `[待确认]` 前缀开头
+- 每一项采 `**短标题**：正文` 两段式——短标题 6-20 字只概括要点，完整内容写在冒号后
+- 未敲定条目（见核心原则「区分已定结论与待确认提案」）必须以 `[待确认]` 前缀开头（置于加粗标题之前）
+- 本节不要求写执行人/负责人（负责人归「待办事项」章节），无执行人不构成格式错误
 - 本节除有序列表项外禁止出现其他文本；无结论时仅输出一行"本次会议未形成明确结论"
 
 ## 三、待办事项
@@ -437,6 +439,25 @@ _NEGATIVE_LINE_RE = _re.compile(
 )
 # 模板占位行（整行被方括号包裹）
 _TEMPLATE_PLACEHOLDER_RE = _re.compile(r"^\[[^\[\]]*\]$")
+# 「**标题**：正文」两要素条目（DC-R2-b D5）：仅在加粗短标题后接冒号时拆分，
+# 其余写法（裸行/叙述句）title 留空，展示侧按「内容首句」降级——不丢条目为第一原则
+_DECISION_TITLE_RE = _re.compile(r"^\*\*\s*([^*：:]{1,40}?)\s*\*\*\s*[：:]\s*(\S.*)$")
+
+
+def split_decision_title(text: str) -> tuple[str, str]:
+    """把条目文本拆为 (title, content)；不符合两要素写法时返回 ("", 原文)。
+
+    Split a conclusion item into (title, content); tolerant — no match yields ("", text).
+    """
+    m = _DECISION_TITLE_RE.match((text or "").strip())
+    if not m:
+        return "", (text or "").strip()
+    title = m.group(1).strip()
+    content = m.group(2).strip()
+    if not content or len(content) < 2:
+        # 只有标题没有正文：整体归入内容，不丢弃该条
+        return "", (text or "").strip()
+    return title, content
 
 
 def _extract_section(summary: str, heading_re: _re.Pattern) -> str | None:
@@ -533,6 +554,11 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
             if not text or len(text) < 2:
                 continue
 
+            # DC-R2-b D5：两要素条目拆标题/正文；拆完的 content 参与查重与空条目判定
+            title, content = split_decision_title(text)
+            if content:
+                text = content
+
             # 去除 markdown 强调符号后跨章节查重与空文本判定（文本本体保留原格式）
             dedup_key = _re.sub(r"[*_`]", "", text).strip()
             if not dedup_key or dedup_key in seen_texts:
@@ -541,7 +567,11 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
 
             decisions.append({
                 "id": str(uuid.uuid4()),
+                "title": title,
                 "text": text,
+                # 执行人对 auto 决策不作要求（D4/D5）：留空合法，仅手工补录可指派
+                "owner_id": None,
+                "owner_name": "",
                 "status": "active",
                 "pending_confirmation": pending,
                 "source": "auto",
@@ -567,8 +597,8 @@ def parse_decisions_from_summary(summary: str) -> list[dict]:
     从纪要「主要结论」/「决策」章节解析决策项（简化签名，与 parse_todos_from_summary 并列）。
 
     Returns:
-        [{"id", "text", "status", "pending_confirmation", "source", "created_at",
-          "updated_at", "superseded_by", "related_todo_ids"}, ...]
+        [{"id", "title", "text", "owner_id", "owner_name", "status", "pending_confirmation",
+          "source", "created_at", "updated_at", "superseded_by", "related_todo_ids"}, ...]
     """
     decisions, _ = parse_decisions_with_status(summary)
     return decisions

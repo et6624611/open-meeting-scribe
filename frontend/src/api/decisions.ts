@@ -22,10 +22,20 @@ export interface SupersedeRef {
   decision_id: string
 }
 
+/** 决策执行人选人值：null = 未指派（DC-R2-b D4，合法态） */
+export type OwnerValue = { id: string; name: string } | null
+
 /** 单会议作用域内的决策对象 / A decision within its source task */
 export interface DecisionRecord {
   id: string
+  /** 决策自身标题（三要素之一，DC-R2-b）；auto/存量可为空串，展示侧降级 */
+  title: string
+  /** 决策内容（原单字段语义收窄） */
   text: string
+  /** 执行人：说话人档案 id（D4，未指派为 null） */
+  owner_id: string | null
+  /** 执行人展示名：后端以档案为权威解析，档案缺失时回退写入时的快照 */
+  owner_name: string
   status: DecisionLifecycle
   pending_confirmation: boolean
   source: DecisionSource
@@ -38,8 +48,8 @@ export interface DecisionRecord {
 /** 聚合视图条目：决策全部字段 + 来源会议元信息（§12.3 平铺元素） */
 export interface AggregatedDecision extends DecisionRecord {
   task_id: string
-  /** 会议标题 */
-  title: string
+  /** 来源会议标题（DC-R2-b 契约修正：`title` 已让位给决策自身标题） */
+  meeting_title: string
   meeting_date: string | null
   /** 所属知识库（= project_id），未关联为 null */
   kb_id: string | null
@@ -64,9 +74,13 @@ export interface DecisionQuery {
 /** mock 通道放宽 status 为逗号多值，便于 fetchDecisionsMulti 一次内存过滤 */
 export type DecisionMockQuery = Omit<DecisionQuery, 'status'> & { status?: string }
 
-/** 创建决策入参（§12.1：text 1..2000） / Payload for manual decision creation */
+/** 创建决策入参（§12.1：text 1..2000；三要素 title/owner 可空） */
 export interface DecisionCreatePayload {
   text: string
+  title?: string
+  /** 执行人档案 id；空串 = 不指派 */
+  owner_id?: string | null
+  owner_name?: string | null
   pending_confirmation?: boolean
   related_todo_ids?: string[]
 }
@@ -74,6 +88,10 @@ export interface DecisionCreatePayload {
 /** 更新决策入参 / Payload for decision update */
 export interface DecisionPatchPayload {
   text?: string
+  title?: string
+  /** 传空串 = 清空指派；未传 = 保持原指派（后端语义） */
+  owner_id?: string | null
+  owner_name?: string | null
   status?: DecisionLifecycle
   pending_confirmation?: boolean
 }
