@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-23"
+updated_at: "2026-09-25"
 status: published
 ---
 
@@ -12,6 +12,23 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-25 — 洞察台会后化（REQ-INSIGHT-DECK-POSTMEETING）
+
+### 新增
+- **纪要页「洞察」第 5 个 Tab**（只读回看）：`RecInsightsPanel` 新增 `mode: 'live' | 'readonly'`（live 默认行为不变），只读态隐藏开关/频率/扩展控件、消息无视能开关始终可见；空态与图工具栏提供「分析本场会议」入口；进入 Tab 即已读，跳转时间戳联动原文与音频。
+- **会后补分析端点** `POST /api/insights/analyze/task/{task_id}`（契约见 API_CONTRACTS §14）：服务端从任务读完整 dialogue + 章节，取最近 40 句（可配置）跑一轮角色感知洞察分析；同任务进行中 409、超时 60s（可配置）→504 不写盘；有发现时后端追加快照落盘（`phase="post_meeting"`，卡片带「会后」徽标），前端重拉刷新。
+- **洞察注入 AI 会话上下文**：chat qa/stream 两路径新增「会议洞察台」块（≤ 5 条 / 1200 字符，diagram 不整段注入）；`generating` 页面上下文上线；CLI 智能体引擎工作区导出 `context/insights.md`（全量）。会后用户可直接和洞察台的内容对话。
+- 侧栏洞察指示器放宽：会后态也可达（静态展示不脉动）；洞察消息新增可选 `phase` 字段，存量文件缺字段按 `meeting` 读取，零迁移。
+
+### 修复
+- 启动孤儿清理遗漏 `.insights.json` 伴生文件（`app/task_store.py` 两处），删除级联现已覆盖三件套。
+
+### 涉及文件
+- 后端：`app/routers/insights.py`、`app/routers/chat.py`、`core/chat_context.py`、`core/cli_engine/context_export.py`、`app/task_store.py`
+- 前端：`useAiInsights.ts`、`useGeneratingData.ts`、`GeneratingView.vue`、`RecInsightsPanel.vue`、`ActivityRail.vue`、`api/insights.ts`、i18n、`meeting-view.css`、`activity-rail.css`
+- 测试：`test_smoke.py`（+4）、`test_chat.py`（+4，1 改写）、`test_cli_engine.py`（+2）；文档：`docs/REQUIREMENT-INSIGHT-DECK-POSTMEETING.md`、`API_CONTRACTS.md` §14、`VUE_COMPONENT_MAP.md`
+
 
 ## [未发布] - 2026-09-23 — Insight Deck 画布改造（workflow 阶段卡样式）
 

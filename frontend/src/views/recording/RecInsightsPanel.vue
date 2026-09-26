@@ -7,8 +7,9 @@
         <span v-if="enabled && unreadCount > 0" class="rec-insights-badge">{{ unreadCount }}</span>
       </div>
       <div class="rec-insights-actions">
-        <!-- 开关承载动作语义（点击切换，tooltip 提示动作）；旁边文本如实显示当前状态 -->
+        <!-- 开关承载动作语义（点击切换，tooltip 提示动作）；旁边文本如实显示当前状态；会后只读态隐藏 -->
         <div
+          v-if="!readonly"
           class="toggle-switch"
           :class="{ 'is-on': enabled }"
           role="switch"
@@ -25,8 +26,8 @@
           </div>
           <span class="toggle-switch-label">{{ enabled ? t('recording.insights.enabled') : t('recording.insights.disabled') }}</span>
         </div>
-        <!-- 自动频率选择（仅开启时显示）：唯一暴露给用户的旋钮 / Auto frequency selector (only when enabled): the single user-facing knob -->
-        <div v-if="enabled" class="rec-insights-freq" :title="t('recording.insights.freq_tip')">
+        <!-- 自动频率选择（仅开启时显示）：唯一暴露给用户的旋钮；会后只读态无会中自动分析，隐藏 -->
+        <div v-if="!readonly && enabled" class="rec-insights-freq" :title="t('recording.insights.freq_tip')">
           <button
             v-for="opt in FREQ_OPTIONS" :key="opt"
             class="rec-insights-freq-opt"
@@ -36,19 +37,20 @@
           >{{ t('recording.insights.freq_' + opt) }}</button>
         </div>
         <button
-          v-if="enabled"
+          v-if="enabled || readonly"
           class="rec-insights-btn rec-insights-analyze-btn"
           :class="{ 'is-loading': analyzing }"
           :disabled="analyzing"
-          :title="t('ai-panel.insights.manual_analysis')"
-          :aria-label="t('ai-panel.insights.manual_analysis')"
+          :title="readonly ? t('generating.insights.analyze_tip') : t('ai-panel.insights.manual_analysis')"
+          :aria-label="readonly ? t('generating.insights.analyze') : t('ai-panel.insights.manual_analysis')"
           @click="$emit('manualCheck')"
         >
           <svg v-if="!analyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
           <svg v-else class="rec-insights-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
         </button>
-        <!-- 扩展/收起按钮：扩展后洞察台占满内容区域 / Expand button: insight deck takes over content area -->
+        <!-- 扩展/收起按钮：扩展后洞察台占满内容区域；会后只读态整页即洞察，隐藏 -->
         <button
+          v-if="!readonly"
           class="rec-insights-btn rec-insights-expand-btn"
           :class="{ 'is-expanded': expanded }"
           :title="expanded ? t('recording.insights.collapse') : t('recording.insights.expand')"
@@ -60,12 +62,16 @@
         </button>
       </div>
     </div>
-    <!-- 消息流 / Message stream -->
-    <div class="rec-insights-body" v-if="enabled">
+    <!-- 消息流 / Message stream（只读态无视能开关，始终展示历史） -->
+    <div class="rec-insights-body" v-if="readonly || enabled">
       <div v-if="messages.length === 0" class="rec-insights-empty">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <div class="rec-insights-empty-text">{{ t('recording.insights.empty') }}</div>
-        <div class="rec-insights-empty-hint">{{ t('recording.insights.empty_hint') }}</div>
+        <div class="rec-insights-empty-text">{{ readonly ? t('generating.insights.empty_title') : t('recording.insights.empty') }}</div>
+        <div class="rec-insights-empty-hint">{{ readonly ? t('generating.insights.empty_desc') : t('recording.insights.empty_hint') }}</div>
+        <!-- 会后空态：补分析入口 / Post-meeting empty state: supplement CTA -->
+        <button v-if="readonly" class="insights-cta-btn" :disabled="analyzing" @click="$emit('manualCheck')">
+          {{ analyzing ? t('generating.insights.analyzing') : t('generating.insights.analyze') }}
+        </button>
       </div>
       <div v-else class="rec-insights-list">
         <div
@@ -74,7 +80,8 @@
           :class="{ 'is-expanded': msg.expanded, 'is-unread': !msg.read, 'is-acknowledged': msg.acknowledged }"
         >
           <div class="rec-insight-card-header" @click="$emit('toggleMessage', msg.id)">
-            <span class="rec-insight-cat">{{ msg.category }}</span>
+            <span class="rec-insight-cat">{{ msg.category || t('ai-panel.insights.cat_insight') }}</span>
+            <span v-if="msg.phase === 'post_meeting'" class="insights-phase-badge">{{ t('generating.insights.phase_post') }}</span>
             <span class="rec-insight-card-title">{{ msg.title }}</span>
             <svg v-if="!msg.expanded" class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
@@ -175,7 +182,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction, AutoFreq } from '@/composables/useAiInsights'
@@ -250,7 +257,7 @@ function flowOf(msg: InsightMessage): InsightFlowData | null {
   return flow
 }
 
-defineProps<{
+const props = defineProps<{
   messages: InsightMessage[]
   enabled: boolean
   unreadCount: number
@@ -258,7 +265,14 @@ defineProps<{
   analyzing: boolean
   expanded: boolean
   autoFreq: AutoFreq
+  /** 面板模式（REQ-INSIGHT-DECK-POSTMEETING R1 v0.2.0 契约）：
+      live = 录音页会中态（默认，行为与改造前一致）；readonly = 纪要页会后只读态
+      live = in-meeting (default, unchanged); readonly = post-meeting review mode */
+  mode?: 'live' | 'readonly'
 }>()
+
+/** 只读态判定（模板内沿用 readonly 语义名） / Read-only flag derived from mode */
+const readonly = computed(() => props.mode === 'readonly')
 
 defineEmits<{
   (e: 'toggleEnabled'): void
@@ -294,3 +308,36 @@ function formatTime(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 </script>
+
+<style scoped>
+/* 会后只读态专属元素（其余样式沿用 recording-view.css 全局 .rec-insights-* 体系）
+   Post-meeting read-only extras; base styles live in recording-view.css (global) */
+.insights-cta-btn {
+  margin-top: 12px;
+  padding: 6px 16px;
+  border: 1px solid var(--accent, #6366f1);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent, #6366f1);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.insights-cta-btn:hover:not(:disabled) {
+  background: var(--accent, #6366f1);
+  color: var(--on-accent, #fff);
+}
+.insights-cta-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.insights-phase-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--proactive, #a78bfa);
+  background: var(--proactive-soft, rgba(167, 139, 250, 0.12));
+}
+</style>

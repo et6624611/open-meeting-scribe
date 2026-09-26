@@ -15,6 +15,7 @@ import { fetchNotes, fetchTodos } from '@/api/notes'
 import { fetchSpeakers, type Speaker } from '@/api/speakers'
 import { fetchProjects, createProject, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
+import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
 import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
 
@@ -27,6 +28,7 @@ export function useGeneratingData(
   const route = useRoute()
   const taskStore = useTaskStore()
   const player = usePlayerStore()
+  const insightsStore = useAiInsights()
   const taskId = route.params.taskId as string
 
   // ─── 任务核心 / Task core ───
@@ -199,12 +201,13 @@ export function useGeneratingData(
   })
 
   // ─── Tab 切换 / Tab switching ───
-  const TAB_IDS = ['transcript', 'notes', 'summary', 'todos'] as const
+  const TAB_IDS = ['transcript', 'notes', 'summary', 'todos', 'insights'] as const
   const TABS = computed(() => [
     { id: 'transcript', label: t('generating.tabs.transcript'), icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
     { id: 'notes', label: t('generating.tabs.notes'), icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
     { id: 'summary', label: t('generating.tabs.summary'), icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
     { id: 'todos', label: t('generating.tabs.todos'), icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
+    { id: 'insights', label: t('generating.tabs.insights'), icon: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 11.3c.6.5 1 1.3 1 2.2h6c0-.9.4-1.7 1-2.2A7 7 0 0012 2z"/>' },
   ])
 
   const activeTab = ref('transcript')
@@ -215,20 +218,25 @@ export function useGeneratingData(
     ;(window as any).__omsUpdatePhilosophy?.(tabId)
   }
 
-  // ─── 消费 AI 面板的 Tab 切换信号 / Consume AI panel tab switch signal ───
+  // ─── 消费 AI 面板/侧栏的 Tab 切换信号（immediate：跨页导航时新挂载也能消费到预先置入的信号）
+  // Consume AI panel / sidebar tab-switch signal; immediate so a pre-set signal survives fresh mounts
   const layoutStore = useLayoutStore()
   watch(() => layoutStore.pendingGenTab, (tab) => {
     if (tab) {
       switchTab(tab)
       layoutStore.pendingGenTab = null
     }
-  })
+  }, { immediate: true })
 
   function dotClass(tabId: string): string {
     if (!task.value) return ''
     if (tabId === 'transcript' && flatTranscript.value.length > 0) return 'is-done'
     if (tabId === 'summary' && task.value.summary) return 'is-done'
     if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
+    if (tabId === 'insights') {
+      const msgs = insightsStore.insightMessages.value
+      if (msgs && msgs.length > 0) return 'is-done'
+    }
     return ''
   }
 
@@ -457,6 +465,9 @@ export function useGeneratingData(
   onMounted(async () => {
     // 进入会议页即清除「已完成待查看」角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒闭环）
     taskStore.clearCompletedUnseen(taskId)
+    // 洞察台：绑定当前会议并加载历史洞察（REQ-INSIGHT-DECK-POSTMEETING R1 会后回看）
+    // Insight Deck: bind this meeting and load persisted insights (post-meeting review)
+    void insightsStore.setCurrentTask(taskId)
     const saved = localStorage.getItem('oms_gen_active_tab')
     if (saved && (TAB_IDS as readonly string[]).includes(saved)) activeTab.value = saved
 

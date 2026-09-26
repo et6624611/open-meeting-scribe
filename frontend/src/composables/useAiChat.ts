@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { sendMessageStream, injectItems } from '@/api/chat'
+import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -60,6 +60,23 @@ export function useAiChat() {
   const thinkingStartTime = ref(0)
   const stages = ref<AgentStage[]>([])
 
+  // ── 智能体模式（本地 CLI 引擎）/ Agent mode ──
+  // 与“角色”正交：角色=人格/提示词，模式=执行引擎（方案 §3.9-8 术语消歧）
+  // 三态：qa=内置问答、agent=强制智能体、auto=规则分流（默认建议，路由结果可见回显）
+  type ChatMode = 'qa' | 'agent' | 'auto'
+  const VALID_MODES: ChatMode[] = ['qa', 'agent', 'auto']
+  const storedMode = localStorage.getItem('ai_chat_mode') as ChatMode | null
+  const chatMode = ref<ChatMode>(storedMode && VALID_MODES.includes(storedMode) ? storedMode : 'auto')
+  /** 当前活跃流 id，供真取消 */
+  const currentStreamId = ref<string>('')
+  /** 本次回复实际使用的引擎回显（§3.9-1 路由可见） */
+  const activeEngine = ref<{ display_name: string; auth_tier: string; auto_selected: boolean } | null>(null)
+
+  function setChatMode(mode: ChatMode) {
+    chatMode.value = mode
+    localStorage.setItem('ai_chat_mode', mode)
+  }
+
   /** 思考耗时（秒），流式期间实时更新，完成后归零 / Thinking elapsed seconds; live during streaming, resets after done */
   const thinkingElapsed = computed(() => {
     if (!thinkingStartTime.value) return 0
@@ -76,6 +93,13 @@ export function useAiChat() {
   const verifiedChanges = ref<VerifiedChange[]>([])
 
   const messages = computed(() => aiSessions.activeMessages)
+
+  /** 当前面板会话是否已建立过智能体（CLI）会话 → 后续智能体轮次自动延续多轮上下文（方案 §3.6） */
+  const hasAgentSession = computed(() =>
+    aiSessions.activeMessages.some(
+      (m: ChatMessage) => m.role === 'assistant' && m.metadata?.engine,
+    ),
+  )
 
   watch(() => taskStore.currentTaskId, (taskId) => {
     aiSessions.setChatKey(taskId)
@@ -101,9 +125,13 @@ export function useAiChat() {
     followUps.value = []
     injectPrompt.value = null
     stages.value = []
+    activeEngine.value = null
 
     const ctrl = new AbortController()
     abortController.value = ctrl
+    // 本轮流标识（智能体模式真取消用）/ per-turn stream id for hard cancel
+    const streamId = (globalThis.crypto?.randomUUID?.() ?? `s-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    currentStreamId.value = streamId
 
     const loadingIdx = aiSessions.activeMessages.length
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString() }
@@ -119,6 +147,10 @@ export function useAiChat() {
         current_page: (route.name as string) || undefined,
         role: agentStore.activeAgent || undefined,
         current_diagram: insights.lastViewedDiagram.value || undefined,
+        engine: chatMode.value === 'qa' ? undefined : chatMode.value,
+        stream_id: streamId,
+        chat_session_id: aiSessions.currentBucket.activeSessionId || undefined,
+        resume_session: chatMode.value !== 'qa' && hasAgentSession.value,
         signal: ctrl.signal,
       }, {
         onToken(token: string) {
@@ -153,18 +185,23 @@ export function useAiChat() {
             label: tool.label,
             icon: tool.icon,
             status: 'running',
+            id: tool.id,
             detail: Object.values(tool.args || {}).join(', '),
           })
         },
         onToolResult(result) {
-          // 找到对应的 tool_call 并更新状态 / Find matching tool_call and update status
-          const toolStage = [...stages.value].reverse().find(
-            s => s.type === 'tool_call' && s.label === stages.value.find(st => st.type === 'tool_call')?.label
-          )
+          // 按 id 精确配对（并行工具结果乱序回传，不可靠数组下标/label）
+          const toolStage = result.tool_use_id
+            ? [...stages.value].reverse().find(s => s.type === 'tool_call' && s.id === result.tool_use_id)
+            : [...stages.value].reverse().find(s => s.type === 'tool_call' && s.status === 'running')
           if (toolStage) {
             toolStage.status = result.success ? 'done' : 'error'
             toolStage.detail = result.summary
           }
+        },
+        onEngineRoute(info) {
+          // §3.9-1 路由回显：本次由智能体引擎执行（含 auto 自动选中），静默分流摧毁信任
+          activeEngine.value = { display_name: info.display_name, auth_tier: info.auth_tier, auto_selected: !!info.auto_selected }
         },
         onDone(data) {
           assistantMsg.timestamp = new Date().toISOString()
@@ -245,6 +282,7 @@ export function useAiChat() {
       isStreaming.value = false
       thinkingStartTime.value = 0
       abortController.value = null
+      currentStreamId.value = ''
       // 延迟清空 stages，让 UI 有时间看到最终状态 / Delay clearing stages for UI
       setTimeout(() => { stages.value = [] }, 300)
     }
@@ -265,6 +303,10 @@ export function useAiChat() {
 
   /** 停止生成 / Stop generation */
   function stopGeneration() {
+    // 智能体模式：fetch abort 不足以杀本机 CLI 子进程，必须真取消（§3.9-5）
+    if (chatMode.value === 'agent' && currentStreamId.value) {
+      void cancelStream(currentStreamId.value)
+    }
     abortController.value?.abort()
   }
 
@@ -416,5 +458,6 @@ export function useAiChat() {
     messages, isLoading, isStreaming, thinkingElapsed, stages, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast,
+    chatMode, setChatMode, activeEngine, hasAgentSession,
   }
 }

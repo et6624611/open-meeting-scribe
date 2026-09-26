@@ -523,6 +523,103 @@ class TestInsightMessagesPersistence:
         assert loaded[0]["title"] == "测试洞察"
 
 
+class TestInsightPostMeeting:
+    """会后补分析端点 POST /api/insights/analyze/task/{task_id}（REQ-INSIGHT-DECK-POSTMEETING R2）"""
+
+    def _seed_task(self, monkeypatch, insights_router, task_id, status="completed"):
+        task = {
+            "task_id": task_id,
+            "status": status,
+            "dialogue": [
+                {"speaker_id": 0, "speaker_name": "张三", "sentences": [
+                    {"text": f"第{i}句讨论内容", "begin_time": i * 1000} for i in range(10)
+                ]},
+            ],
+            "chapters": [{"title": "进度回顾"}, {"title": "风险讨论"}],
+        }
+        fake = {task_id: task}
+        monkeypatch.setattr(insights_router, "tasks", fake)
+        return task
+
+    def test_not_found(self, client):
+        resp = client.post("/api/insights/analyze/task/does-not-exist")
+        assert resp.status_code == 404
+
+    def test_rejects_incomplete_task(self, client, monkeypatch):
+        import app.routers.insights as insights_router
+        self._seed_task(monkeypatch, insights_router, "t-run", status="processing")
+        resp = client.post("/api/insights/analyze/task/t-run")
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "task_not_completed"
+
+    def test_appends_and_persists_on_finding(self, client, tmp_path, monkeypatch):
+        import app.routers.insights as insights_router
+        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        self._seed_task(monkeypatch, insights_router, "t-done")
+
+        async def fake_run_analysis(recent_lines, chapter_titles, role_name=None):
+            assert len(recent_lines) <= insights_router.POST_ANALYSIS_MAX_LINES
+            assert chapter_titles == ["进度回顾", "风险讨论"]
+            return {"title": "资源冲突未解", "body": "图注", "solution": "建议排期",
+                    "has_finding": True, "diagram": "flowchart LR", "graph": None}
+
+        monkeypatch.setattr(insights_router, "core_run_analysis", fake_run_analysis)
+        resp = client.post("/api/insights/analyze/task/t-done")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["result"]["has_finding"] is True
+        assert len(body["messages"]) == 1
+        msg = body["messages"][0]
+        assert msg["phase"] == "post_meeting"
+        assert msg["title"] == "资源冲突未解"
+        # 已落盘：重新读取文件一致
+        loaded = client.get("/api/insights/messages/t-done").json()["messages"]
+        assert len(loaded) == 1 and loaded[0]["phase"] == "post_meeting"
+
+    def test_no_finding_does_not_persist(self, client, tmp_path, monkeypatch):
+        import app.routers.insights as insights_router
+        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        self._seed_task(monkeypatch, insights_router, "t-empty")
+
+        async def fake_none(recent_lines, chapter_titles, role_name=None):
+            return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
+
+        monkeypatch.setattr(insights_router, "core_run_analysis", fake_none)
+        resp = client.post("/api/insights/analyze/task/t-empty")
+        assert resp.status_code == 200
+        assert resp.json()["messages"] == []
+        assert not (tmp_path / "t-empty.insights.json").exists()
+
+    def test_conflict_when_in_flight(self, client, monkeypatch):
+        """同任务分析进行中再调 → 409（v0.2.0 幂等契约）"""
+        import app.routers.insights as insights_router
+        self._seed_task(monkeypatch, insights_router, "t-busy")
+        monkeypatch.setattr(insights_router, "_post_analysis_running", {"t-busy"})
+        resp = client.post("/api/insights/analyze/task/t-busy")
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["error"] == "analysis_in_flight"
+
+    def test_timeout_returns_504_and_never_persists(self, client, tmp_path, monkeypatch):
+        """超时守护 → 504 且不写盘；守卫释放后同任务可重试"""
+        import asyncio
+        import app.routers.insights as insights_router
+        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(insights_router, "POST_ANALYSIS_TIMEOUT_SECONDS", 0.05)
+        self._seed_task(monkeypatch, insights_router, "t-slow")
+
+        async def fake_slow(recent_lines, chapter_titles, role_name=None):
+            await asyncio.sleep(1)
+            return {"title": "不该出现", "body": "", "solution": "", "has_finding": True, "diagram": "", "graph": None}
+
+        monkeypatch.setattr(insights_router, "core_run_analysis", fake_slow)
+        resp = client.post("/api/insights/analyze/task/t-slow")
+        assert resp.status_code == 504
+        assert resp.json()["detail"]["error"] == "analysis_timeout"
+        assert not (tmp_path / "t-slow.insights.json").exists()
+        # 并发守卫已释放：超时后集合不应残留 task_id
+        assert "t-slow" not in insights_router._post_analysis_running
+
+
 # ============================================================
 # 实时翻译
 # ============================================================

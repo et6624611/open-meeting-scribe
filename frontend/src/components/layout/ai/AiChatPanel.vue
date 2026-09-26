@@ -118,6 +118,23 @@
       </template>
       <div v-else-if="inputText.startsWith('/')" class="ai-cmd-empty">无匹配指令</div>
     </div>
+    <!-- 引擎路由回显（§3.9-1：本次由智能体执行必须可见） -->
+    <div v-if="activeEngine" class="ai-engine-echo">
+      <span class="ee-icon">🤖</span>
+      <span>{{ t('ai-panel.engine_echo', { name: activeEngine.display_name }) }}</span>
+      <span v-if="activeEngine.auto_selected" class="ee-auto">{{ t('ai-panel.engine_echo_auto') }}</span>
+      <span class="ee-tier">{{ t('ai-panel.auth_tier.' + activeEngine.auth_tier) }}</span>
+    </div>
+    <!-- 模式选择器（会话级，与“角色”正交）/ Mode selector (session-level, orthogonal to role) -->
+    <div class="ai-mode-row">
+      <div class="ai-mode-pill" role="group" :aria-label="t('ai-panel.mode_label')">
+        <button class="mp-opt" :class="{ 'is-active': chatMode === 'qa' }" @click="$emit('update:chatMode', 'qa')" :title="t('ai-panel.mode_qa_hint')">⚡ {{ t('ai-panel.mode_qa') }}</button>
+        <button class="mp-opt" :class="{ 'is-active': chatMode === 'auto' }" @click="$emit('update:chatMode', 'auto')" :title="t('ai-panel.mode_auto_hint')">🧭 {{ t('ai-panel.mode_auto') }}</button>
+        <button class="mp-opt" :class="{ 'is-active': chatMode === 'agent' }" @click="$emit('update:chatMode', 'agent')" :title="t('ai-panel.mode_agent_hint')">🤖 {{ t('ai-panel.mode_agent') }}</button>
+      </div>
+      <span v-if="chatMode !== 'qa'" class="ai-mode-cost">{{ t('ai-panel.mode_agent_cost_hint') }}</span>
+      <span v-if="chatMode !== 'qa' && hasAgentSession" class="ai-mode-continue">🔗 {{ t('ai-panel.session_continue') }}</span>
+    </div>
     <div class="ai-input-box">
       <textarea :value="inputText" @input="$emit('update:inputText', ($event.target as HTMLTextAreaElement).value); $emit('inputChange')" :placeholder="t('ai-panel.input_placeholder')" rows="1" ref="inputRef" @keydown="$emit('inputKey', $event)" :aria-label="t('ai-panel.input_aria')"></textarea>
       <button class="ai-send-btn" :disabled="!inputText.trim() || isLoading" @click="$emit('send')" :title="t('ai-panel.send')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
@@ -153,6 +170,12 @@ defineProps<{
   filteredCmds: AiCommand[]
   inputText: string
   formatChange: (change: any) => string
+  /** 当前会话模式：qa=问答、agent=智能体、auto=自动分流 */
+  chatMode: 'qa' | 'agent' | 'auto'
+  /** 本次回复实际使用的引擎回显 */
+  activeEngine: { display_name: string; auth_tier: string; auto_selected: boolean } | null
+  /** 当前面板会话已建立智能体会话 → 下一轮自动延续（方案 §3.6） */
+  hasAgentSession: boolean
 }>()
 
 defineEmits<{
@@ -170,6 +193,7 @@ defineEmits<{
   (e: 'inputKey', ev: KeyboardEvent): void
   (e: 'inputChange'): void
   (e: 'update:inputText', val: string): void
+  (e: 'update:chatMode', val: 'qa' | 'agent' | 'auto'): void
 }>()
 
 const inputRef = ref<HTMLTextAreaElement | null>(null)
@@ -406,4 +430,78 @@ function shortText(text: string): string {
 .vc-status { font-size: var(--fs-11); color: var(--muted); white-space: nowrap; padding: 2px var(--s-2); border-radius: var(--radius-xs); background: var(--surface-3); }
 .vc-item.is-verified .vc-status { color: var(--ok); background: var(--ok-soft); }
 .vc-item:not(.is-verified) .vc-status { color: var(--warn); background: var(--warn-soft); }
+
+/* ── 模式选择器（问答/智能体）/ Mode selector ── */
+.ai-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 6px;
+}
+.ai-mode-pill {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-3, rgba(0,0,0,0.05));
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+}
+.mp-opt {
+  border: none;
+  background: transparent;
+  color: var(--muted, #888);
+  font-size: var(--fs-12, 12px);
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.14s;
+  white-space: nowrap;
+}
+.mp-opt:hover { color: var(--text, #333); }
+.mp-opt.is-active {
+  background: var(--accent, #6b5bff);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(107,91,255,0.35);
+}
+.ai-mode-cost {
+  font-size: var(--fs-11, 11px);
+  color: var(--muted, #999);
+  line-height: 1.3;
+}
+.ai-mode-continue {
+  font-size: var(--fs-11, 11px);
+  color: var(--accent, #6b5bff);
+  background: var(--accent-soft, rgba(107,91,255,0.10));
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+/* ── 引擎路由回显 chip / Engine route echo chip ── */
+.ai-engine-echo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-11, 11px);
+  color: var(--accent, #6b5bff);
+  background: var(--accent-soft, rgba(107,91,255,0.10));
+  border: 1px solid var(--accent-border, rgba(107,91,255,0.25));
+}
+.ai-engine-echo .ee-icon { font-size: 12px; }
+.ai-engine-echo .ee-auto {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--ok-soft, rgba(46,160,67,0.12));
+  color: var(--ok, #2ea043);
+  font-size: var(--fs-11, 11px);
+}
+.ai-engine-echo .ee-tier {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs, 4px);
+  background: var(--surface-3, rgba(0,0,0,0.06));
+  color: var(--muted, #888);
+}
 </style>

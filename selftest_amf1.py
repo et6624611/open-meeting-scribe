@@ -103,11 +103,12 @@ def shot(page, name):
 def footer_text(page):
     return page.inner_text(".status-engine").strip()
 
-def ensure_advanced_open(page):
-    """details 折叠区可能因 reload 关闭，确保展开后再操作内部控件"""
-    if not page.eval_on_selector(".amc-advanced", "el => el.open"):
-        page.locator(".amc-advanced > summary").click()
-        page.wait_for_timeout(250)
+def ensure_expert_on(page):
+    """高级配置面板仅在选中「高级模式」卡片后渲染：读权威 mock 态避免 DOM 时序竞态"""
+    st = page.evaluate("() => JSON.parse(localStorage.getItem('oms_access_mode') || 'null')")
+    if not (st and st.get('expert_mode')):
+        page.locator(".amc-expert-card").click()
+        page.wait_for_timeout(500)
 
 def set_mock_state(page, access=None, expert=False):
     val = {"access_mode": access, "expert_mode": expert, "chosen": access is not None}
@@ -122,7 +123,7 @@ with sync_playwright() as pw:
     page.add_init_script("localStorage.setItem('locale', 'zh-CN')")
     page.goto(BASE + "/settings", wait_until="networkidle")
 
-    # ═══ A. AC-T4① 引导头 + 三卡片 + AC-T5① 未配置文案 ═══
+    # ═══ A. AC-T4① 引导头 + 四卡片（3 接入模式 + 1 高级模式）+ AC-T5① 未配置文案 ═══
     page.wait_for_selector(".amc-card", timeout=8000)
     assert page.locator(".access-guide").is_visible(), "引导头未出现"
     shot(page, "AC-T4-01_guide_onboarding")
@@ -139,11 +140,11 @@ with sync_playwright() as pw:
     log(f"[B2 after-reload] footer={footer_text(page)}")
     shot(page, "e1-02_hosted_persisted_after_reload")
 
-    # ═══ C. AC-T3② 离线选中 → 服务区块灰化（evidence ②）+ 离线文案 ═══
+    # ═══ C. AC-T3② 高级模式 + 离线选中 → 服务区块灰化（evidence ②）+ 离线文案 ═══
+    ensure_expert_on(page)  # 高级配置面板仅在选中「高级模式」后渲染
+    page.wait_for_timeout(300)
     page.get_by_text("离线模式", exact=False).first.click()
     page.wait_for_timeout(700)
-    ensure_advanced_open(page)
-    page.wait_for_timeout(300)
     assert page.locator(".amc-services.is-takeover").is_visible()
     assert "由离线模式接管" in page.inner_text(".amc-services")
     log(f"[C] footer={footer_text(page)} (预期: 离线未就绪 · 原因文案)")
@@ -155,12 +156,11 @@ with sync_playwright() as pw:
     shot(page, "AC-T5-01_local_ready_status")
     assert "离线就绪" in footer_text(page)
 
-    # ═══ D. AC-T4② 专家模式开/关两态（evidence ③） ═══
-    ensure_advanced_open(page)
-    page.locator(".amc-advanced").locator(".wm-toggle").first.click()
-    page.wait_for_timeout(600)
+    # ═══ D. AC-T4② 高级模式开/关两态（evidence ③）—— C 已开启，先校验开态再关闭 ═══
+    ensure_expert_on(page)  # 幂等：确保处于开启态
+    page.wait_for_timeout(300)
     nav_items = page.locator(".settings-nav-item").all_inner_texts()
-    assert any("账户" in x for x in nav_items) and any("服务" in x for x in nav_items) and any("计算引擎" in x for x in nav_items), f"专家开启后旧分类未出现: {nav_items}"
+    assert any("账户" in x for x in nav_items) and any("服务" in x for x in nav_items) and any("计算引擎" in x for x in nav_items), f"高级模式开启后旧分类未出现: {nav_items}"
     shot(page, "e3a_expert_on_old_categories")
     log(f"[D-on] nav={nav_items}")
     # 旧「服务」分类完整可用
@@ -168,11 +168,11 @@ with sync_playwright() as pw:
     shot(page, "e3a2_expert_services_view")
     page.get_by_role("button", name="接入方式").click()
     page.wait_for_timeout(200)
-    ensure_advanced_open(page)
-    page.locator(".amc-advanced").locator(".wm-toggle").first.click()
+    # 点击「高级模式」卡片 → 关闭高级配置，旧分类隐藏
+    page.locator(".amc-expert-card").click()
     page.wait_for_timeout(600)
     nav_items2 = page.locator(".settings-nav-item").all_inner_texts()
-    assert not any("服务" == x.strip() for x in nav_items2), f"专家关闭后旧分类未隐藏: {nav_items2}"
+    assert not any("服务" == x.strip() for x in nav_items2), f"高级模式关闭后旧分类未隐藏: {nav_items2}"
     shot(page, "e3b_expert_off")
     log(f"[D-off] nav={nav_items2}")
 

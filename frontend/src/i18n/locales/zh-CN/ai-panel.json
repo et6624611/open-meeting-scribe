@@ -39,6 +39,22 @@
   "thinking": "思考中…",
   "thinking_elapsed": "思考中 · {sec}秒",
   "stop_generating": "停止生成",
+  "mode_label": "对话模式",
+  "mode_qa": "问答",
+  "mode_agent": "智能体",
+  "mode_auto": "自动",
+  "mode_auto_hint": "按请求内容自动选择问答或智能体，结果会回显",
+  "engine_echo_auto": "自动选中",
+  "mode_qa_hint": "内置轻量问答，快速响应",
+  "mode_agent_hint": "调用本机 Qoder CLI，工程化多步任务",
+  "mode_agent_cost_hint": "消耗你个人的 Qoder 额度，不经本软件计费",
+  "engine_echo": "本次由 {name} 执行",
+  "session_continue": "延续上次深度会话",
+  "auth_tier": {
+    "readonly": "只读",
+    "workspace_write": "可写工作区",
+    "full_task": "可执行任务"
+  },
   "quote": {
     "source": "来源：{source}",
     "source_block": "来源：{source} · 第 {index} 块",

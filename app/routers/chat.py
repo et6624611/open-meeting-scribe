@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -32,7 +32,7 @@ from core import joblog
 from core.speakers import normalize_speaker_name
 from core.agent_workspace import resolve_agent_role
 from core.chat_actions import detect_action, execute_action
-from core.chat_context import build_page_context, build_speaker_name_map, extract_injectable_items, is_joblog_intent
+from core.chat_context import build_page_context, build_speaker_name_map, build_insights_context_block, extract_injectable_items, is_joblog_intent
 from core.chat_edits import (  # noqa: F401
     _sanitize_edit_ops,
     audit_reply_claims,
@@ -51,6 +51,19 @@ _build_page_context = build_page_context
 _execute_and_verify_edits = execute_and_verify_edits
 _audit_reply_claims = audit_reply_claims
 from core.i18n import _
+
+# ── 智能体模式（本地 CLI 引擎，可选接入）/ Agent mode (local CLI engine, optional) ──
+from app.store import get_chat_engine_config  # noqa: E402
+from core.cli_engine import (  # noqa: E402
+    CliAgentError,
+    cancel_stream,
+    export_context,
+    load_manifest,
+    probe_engine,
+    run_cli_agent,
+)
+from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge  # noqa: E402
+from core.cli_engine.intent import classify_engine_intent  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +215,12 @@ class ChatRequest(BaseModel):
     current_page: Optional[str] = None
     role: Optional[str] = None  # Agent 角色标识 / Agent role identifier
     current_diagram: Optional[str] = None  # 当前可见的 Mermaid 图源码（用于图修改） / Current visible Mermaid diagram source (for diagram modification)
+    # ── 智能体模式（本地 CLI 引擎，方案 §3.5/§3.9-1）/ Agent mode via local CLI engine ──
+    engine: Optional[str] = None            # None/qa=内置链路；"agent"=本地 CLI 工程化引擎；"auto"=规则分流
+    stream_id: Optional[str] = None         # 本轮流标识，供 /api/chat/cancel 真取消
+    auth_tier: Optional[str] = None         # 本轮授权档覆盖（可选，缺省取设置）
+    resume_session: Optional[bool] = None   # 是否恢复上一 CLI 会话（多轮深度对话）
+    chat_session_id: Optional[str] = None   # 面板会话标签 id，令 CLI 会话与面板会话对齐（方案 §3.6）
 
 
 class OptimizeRequest(BaseModel):
@@ -482,6 +501,11 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
                 assignee = t.get("assignee", "未分配")
                 todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
             context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
+
+        # 洞察台观察结论（持久化文件，供参考非事实源） / Insight Deck observations (persisted; advisory, not source of truth)
+        insights_block = build_insights_context_block(data.task_id)
+        if insights_block:
+            context_blocks.append(insights_block)
 
         if is_joblog_intent(user_message):
             joblog_ctx = joblog.build_context(data.task_id, user_message)
@@ -791,6 +815,11 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
                 todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
             context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
 
+        # 洞察台观察结论（与 _build_chat_context_blocks 对等） / Insight Deck observations (parity with shared builder)
+        insights_block = build_insights_context_block(data.task_id)
+        if insights_block:
+            context_blocks.append(insights_block)
+
     # ── 关联项目资料 / Linked project materials ──
     source_files: list[dict] = []
     resolved_project_id = data.project_id
@@ -832,8 +861,127 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
     return messages, chat_model, source_files
 
 
+# ============================================================
+# 智能体模式（本地 CLI 引擎）/ Agent mode (local CLI engine)
+# ============================================================
+
+def _deterministic_session_id(task_id: str | None, project_id: str | None,
+                              chat_session_id: str | None = None) -> str:
+    """由 chat_session_id（优先）/task_id/project_id 派生稳定会话 id，与面板会话对齐（方案 §3.6）。"""
+    import uuid
+    seed = chat_session_id or task_id or project_id or "general"
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "oms-agent:" + seed))
+
+
+def _resolve_project_path(project_id: str | None) -> str | None:
+    """解析项目关联文件夹首个存在的目录，供 --add-dir 挂载（不复制）。"""
+    if not project_id:
+        return None
+    try:
+        from core import projects
+        proj = projects.get_project(project_id)
+        for f in (proj or {}).get("folders") or []:
+            p = f.get("path")
+            if p and Path(p).is_dir():
+                return p
+    except Exception as e:  # noqa: BLE001
+        logger.debug("[智能体模式] 项目路径解析失败 project=%s: %s", project_id, e)
+    return None
+
+
+async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_project_id: str | None,
+                               base_url: str = "http://127.0.0.1:8000", auto_selected: bool = False):
+    """
+    智能体模式事件生成器：探针 → 上下文导出 → CLI 流式事件。
+    引擎不可用/启动失败时 yield ``{"type":"__fallback__"}`` 哨兵，由外层回退内置链路。
+    """
+    cfg = get_chat_engine_config()
+    loop = asyncio.get_running_loop()
+
+    # ① 可用性探针（同步 subprocess → 线程池，避免阻塞事件循环）
+    probe_result: dict
+    try:
+        manifest = load_manifest(cfg["engine_id"])
+        probe_result = await loop.run_in_executor(
+            None, lambda: probe_engine(manifest, cfg.get("cli_path_override")))
+    except FileNotFoundError:
+        probe_result = {"available": False, "reason": "not_installed",
+                        "display_name": cfg["engine_id"], "hint": "chatEngine.notInstalled"}
+    if not probe_result.get("available"):
+        name = probe_result.get("display_name", "CLI")
+        hint = probe_result.get("hint", "chatEngine.probeError")
+        logger.info("[智能体模式] 引擎不可用 reason=%s，回退内置", probe_result.get("reason"))
+        yield {"type": "stage", "stage": "thinking", "label": f"⚠️ 智能体引擎（{name}）不可用，已回退内置问答"}
+        yield {"type": "__fallback__", "hint": hint}
+        return
+
+    # ② 上下文导出到工作区（物理隔离于 data/，M3）
+    task = dict(tasks[data.task_id]) if (data.task_id and data.task_id in tasks) else None
+    if task is not None and resolved_project_id and not task.get("project_path"):
+        ppath = _resolve_project_path(resolved_project_id)
+        if ppath:
+            task["project_path"] = ppath
+    speaker_map = build_speaker_name_map(data.task_id) if data.task_id else {}
+    role = resolve_agent_role(data.role)
+    role_prompt = role["agent_md"] if role else ""
+    page_ctx = build_page_context(data.current_page) if data.current_page else ""
+
+    export = await loop.run_in_executor(None, lambda: export_context(
+        engine_id=cfg["engine_id"], task=task, task_id=data.task_id, user_message=user_message,
+        page_context=page_ctx, role_prompt=role_prompt, speaker_map=speaker_map,
+        workspace_key=data.chat_session_id or data.task_id))
+
+    session_id = _deterministic_session_id(data.task_id, resolved_project_id, data.chat_session_id) if cfg["session_persistence"] else None
+    auth_tier = data.auth_tier if data.auth_tier in ("readonly", "workspace_write", "full_task") else cfg["auth_tier"]
+
+    # ③ 路由回显（§3.9-1）：明示本次由智能体执行 + 授权档，静默分流摧毁信任
+    yield {"type": "engine_route", "engine": cfg["engine_id"], "display_name": probe_result.get("display_name"),
+           "auth_tier": auth_tier, "session_id": session_id, "auto_selected": auto_selected}
+
+    # ④ MCP 桥：签发单轮短时令牌 + 写临时 mcp-config（回连 base_url），轮次结束回收
+    mcp_config_path: str | None = None
+    bridge_token: str | None = None
+    allowed_tools: list[str] = []
+    if manifest_has_mcp(cfg["engine_id"]):
+        try:
+            mcp_config_path, tok_ctx, allowed_tools = build_bridge_config(
+                task_id=data.task_id, project_id=resolved_project_id,
+                auth_tier=auth_tier, base_url=base_url)
+            bridge_token = tok_ctx.token
+        except Exception as e:  # noqa: BLE001 - 桥不可用不阻断只读深度问答
+            logger.warning("[智能体模式] MCP 桥初始化失败（降级为无工具）：%s", e)
+
+    stream_id = data.stream_id or session_id or f"adhoc-{id(data)}"
+    try:
+        async for evt in run_cli_agent(
+            stream_id=stream_id, engine_id=cfg["engine_id"], cli_path=probe_result["path"],
+            workspace=export["workspace"], add_dirs=export["add_dirs"], brief=export["brief"],
+            auth_tier=auth_tier, model=cfg.get("model"), session_id=session_id,
+            resume=bool(data.resume_session and session_id),
+            mcp_config=mcp_config_path, allowed_tools=allowed_tools,
+        ):
+            if evt.get("type") == "done":
+                evt.setdefault("metadata", {})
+                evt["metadata"]["engine"] = cfg["engine_id"]
+            yield evt
+    except CliAgentError as e:
+        logger.warning("[智能体模式] CLI 启动失败：%s，回退内置", e)
+        yield {"type": "__fallback__", "hint": str(e)}
+    finally:
+        if mcp_config_path and bridge_token:
+            teardown_bridge(mcp_config_path, bridge_token)
+
+
+@router.post("/api/chat/cancel")
+async def chat_cancel(data: dict):
+    """真取消端点（方案 §3.9-5）：kill CLI 进程组，前端 fetch abort 不足以终止任务。"""
+    stream_id = (data or {}).get("stream_id") or ""
+    hit = cancel_stream(stream_id) if stream_id else False
+    return {"ok": True, "cancelled": hit, "stream_id": stream_id}
+
+
 @router.post("/api/chat/stream")
-async def chat_stream(data: ChatRequest):
+async def chat_stream(data: ChatRequest, request: Request):
     """AI 对话流式端点（SSE + Agent 循环）。 / AI chat streaming endpoint (SSE + Agent loop).
 
     使用 ReAct Agent 循环：LLM 自主决策调用工具 → 执行 → 结果回传 → 最终流式回复。
@@ -872,6 +1020,21 @@ async def chat_stream(data: ChatRequest):
         resolved_project_id = tasks[data.task_id].get("project_id")
 
     async def event_generator():
+        # ── 引擎选择：agent=强制、auto=规则分流（§3.5/D4）；不可用时自动回退内置 ──
+        if get_chat_engine_config()["enabled"] and (
+                data.engine == "agent" or (data.engine == "auto" and classify_engine_intent(user_message) == "agent")):
+            need_fallback = False
+            async for evt in _agent_engine_events(data, user_message, resolved_project_id,
+                                                   base_url=str(request.base_url).rstrip("/"),
+                                                   auto_selected=(data.engine == "auto")):
+                if evt.get("type") == "__fallback__":
+                    need_fallback = True
+                    break
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            if not need_fallback:
+                return
+            # 需要回退：继续下方内置 agent_loop（已构建的 system_prompt/context 复用）
+
         full_content = ""
         try:
             async for event in run_agent_loop(

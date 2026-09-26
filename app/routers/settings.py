@@ -42,6 +42,7 @@ from app.settings_store import (
 from app.store import (
     get_active_api_key,
     get_asr_config,
+    get_chat_engine_config,
     get_engine_config,
     get_feature_flags,
     get_llm_config,
@@ -196,6 +197,7 @@ def get_settings():
         "storage": get_storage_config(),
         "disabled_commands": settings.get("disabled_commands", []),
         "active_agent": settings.get("active_agent", "meeting-minutes"),
+        "chat_engine": get_chat_engine_config(),
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
     }
@@ -203,6 +205,15 @@ def get_settings():
 
 _VALID_ENGINE_MODES = ("cloud", "proxy", "direct", "local")
 _VALID_MODEL_TIERS = ("auto", "conservative", "standard")
+
+
+def _coerce_int(value, lo: int, hi: int, default: int = 0) -> int:
+    """将任意输入安全钳制为 [lo, hi] 整数（防脏配置写入 settings.json）。"""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
 
 
 def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_local: dict) -> dict:
@@ -369,6 +380,27 @@ def save_settings(data: dict):
         if derived is not None:
             merged["access_mode"] = derived
 
+    # ── 智能体模式引擎（正交于 access_mode，方案 D1）/ Agent-mode chat engine ──
+    # 仅白名单校验后写入 chat_engine 命名空间；缺省保留既有值，绝不触碰 LLM/ASR Key。
+    incoming_ce = data.get("chat_engine")
+    if isinstance(incoming_ce, dict):
+        existing_ce = existing.get("chat_engine", {}) or {}
+        tier = incoming_ce.get("auth_tier", existing_ce.get("auth_tier", "readonly"))
+        if tier not in ("readonly", "workspace_write", "full_task"):
+            tier = "readonly"
+        merged["chat_engine"] = {
+            "enabled": bool(incoming_ce.get("enabled", existing_ce.get("enabled", False))),
+            "engine_id": incoming_ce.get("engine_id", existing_ce.get("engine_id", "qoder-cli")),
+            "model": incoming_ce.get("model", existing_ce.get("model")) or None,
+            "auth_tier": tier,
+            "session_persistence": bool(incoming_ce.get("session_persistence",
+                                                       existing_ce.get("session_persistence", True))),
+            "retention_days": _coerce_int(incoming_ce.get("retention_days",
+                                    existing_ce.get("retention_days", 7)), lo=0, hi=3650),
+            "cli_path_override": incoming_ce.get("cli_path_override",
+                                                  existing_ce.get("cli_path_override")) or None,
+        }
+
     save_settings_to_disk(merged)
 
     # 声纹配置变更后重置 provider 缓存，使下次调用重新选择 / Reset provider cache after voiceprint config change
@@ -419,6 +451,28 @@ def save_settings(data: dict):
             "cloud_api_key_set": bool(final_vp_key),
         },
     }
+
+
+@router.get("/api/settings/chat-engine")
+def get_chat_engine_status():
+    """
+    智能体模式引擎状态与可用性探针（就地引导用，方案 R2/§3.9-2）.
+
+    返回当前 chat_engine 配置 + 探针结论（installed/version/logged_in）。
+    探针为同步 subprocess（--version/status 只读），适用于本同步端点。
+    """
+    from core.cli_engine import load_manifest, probe_engine
+
+    cfg = get_chat_engine_config()
+    try:
+        manifest = load_manifest(cfg["engine_id"])
+    except FileNotFoundError:
+        return {"ok": True, "config": cfg, "probe": {
+            "available": False, "reason": "not_installed", "display_name": cfg["engine_id"],
+            "hint": "chatEngine.notInstalled", "path": None, "version": None, "logged_in": False,
+        }}
+    pr = probe_engine(manifest, cli_path_override=cfg.get("cli_path_override"))
+    return {"ok": True, "config": cfg, "probe": pr}
 
 
 @router.get("/api/settings/routing")

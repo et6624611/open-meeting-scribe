@@ -50,6 +50,8 @@
 
 /* 内容区 Tab + 面板 */
 .gen-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* 洞察台会后只读态容器：占满内容区并接管滚动 / Insight Deck (post-meeting) wrapper: fills content, owns scrolling */
+.gen-insights-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .gen-tabs { display: flex; gap: 0; padding: 0; background: transparent; height: 100%; flex: 1; }
 .gen-tab { padding: 0 var(--s-3); font-size: var(--fs-13); color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; transition: all 0.12s; background: none; border-top: none; border-left: none; border-right: none; font: inherit; height: 100%; display: flex; align-items: center; }
 .gen-tab:hover { color: var(--fg); }

@@ -3,25 +3,34 @@ core/chat_context.py — AI 对话上下文构建与注入内容提取 / AI chat
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-版本 / Version: 1.0.0
+更新 / Updated: 2026-09-25
+版本 / Version: 1.1.0
 
 职责 / Responsibilities:
   - 页面上下文构建（_build_page_context） / Page context building (_build_page_context)
   - 说话人名称映射（build_speaker_name_map） / Speaker name mapping (build_speaker_name_map)
+  - 洞察台注入块（build_insights_context_block） / Insight Deck injection block (build_insights_context_block)
   - 注入内容提取（extract_injectable_items） / Injectable content extraction (extract_injectable_items)
   - 作业日志意图检测（is_joblog_intent） / Job log intent detection (is_joblog_intent)
 
 从 app/routers/chat.py 拆分而来 / Split from app/routers/chat.py.
 """
 
+import json
 import logging
 import re
+from pathlib import Path
 
 from app.store import tasks
 from core import hotwords, projects, speakers
 from core.audio import is_stream_recording
 
 logger = logging.getLogger(__name__)
+
+# 洞察台注入块：存储路径与上限 / Insight Deck injection block: storage path and limits
+INSIGHTS_TASKS_DIR = Path("data/tasks")
+INSIGHTS_MAX_ITEMS = 5      # 最多注入最近 N 条洞察 / Max recent insights to inject
+INSIGHTS_MAX_CHARS = 1200   # 整块字符上限 / Whole-block character cap
 
 # 作业日志注入意图关键词
 JOBLOG_INTENT_KEYWORDS = [
@@ -54,6 +63,50 @@ def build_speaker_name_map(task_id: str | None) -> dict:
     return name_map
 
 
+def build_insights_context_block(task_id: str | None) -> str | None:
+    """构建「会议洞察台」注入块（供 chat qa/stream 两条路径共用）。
+    Build the Insight Deck injection block (shared by both chat qa/stream paths).
+
+    读取 data/tasks/<task_id>.insights.json，取最近 N 条有效洞察，整块截断；
+    Reads persisted insight messages, injects the latest N valid ones under a char cap;
+    diagram 源码不整段注入（token 不友好），仅附一行提示 / diagram source is only hinted, never injected whole.
+    文件不存在 / 无有效消息时返回 None（三态：有洞察/无洞察/无文件） / None when absent or empty.
+    """
+    if not task_id:
+        return None
+    f = INSIGHTS_TASKS_DIR / f"{task_id}.insights.json"
+    if not f.exists():
+        return None
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    msgs = [m for m in data.get("messages", [])
+            if (m.get("title") or "").strip() and (m.get("body") or "").strip()]
+    if not msgs:
+        return None
+
+    header = "## 会议洞察台（AI 会中/会后观察，供参考非事实源）"
+    lines: list[str] = []
+    budget = INSIGHTS_MAX_CHARS - len(header) - 1
+    used = 0
+    for m in msgs[-INSIGHTS_MAX_ITEMS:]:
+        phase = "会后" if m.get("phase") == "post_meeting" else "会中"
+        entry = f"- [{phase}] {m['title'].strip()}：{m['body'].strip()[:200]}"
+        solution = (m.get("solution") or "").strip()
+        if solution:
+            entry += f"（建议：{solution[:100]}）"
+        if (m.get("diagram") or "").strip():
+            entry += "（该洞察附决策流图）"
+        if used + len(entry) + 1 > budget:
+            break
+        lines.append(entry)
+        used += len(entry) + 1
+    if not lines:
+        return None
+    return header + "\n" + "\n".join(lines)
+
+
 def build_page_context(page: str) -> str | None:
     """根据前端页面构建差异化上下文。返回格式化文本或 None。"""
     if page == "start":
@@ -65,7 +118,7 @@ def build_page_context(page: str) -> str | None:
         return None
 
     if page == "generating":
-        return None
+        return "## 当前页面\n用户正在查看已完成的会议纪要，可结合纪要、待办与洞察台结论回答问题。"
 
     if page == "speakers":
         spk_list = speakers.load_speakers()

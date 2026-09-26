@@ -337,16 +337,64 @@ class TestBuildPageContext:
         assert ctx is not None
         assert "会议" in ctx
 
-    def test_generating_page_returns_none(self):
-        """纪要页由 task 上下文覆盖，无需额外页面上下文"""
+    def test_generating_page_context(self):
+        """纪要页提示可结合洞察台结论作答（REQ-INSIGHT-DECK-POSTMEETING R3）"""
         from app.routers.chat import _build_page_context
         ctx = _build_page_context("generating")
-        assert ctx is None
+        assert ctx is not None
+        assert "纪要" in ctx
+        assert "洞察台" in ctx
 
     def test_unknown_page_returns_none(self):
         from app.routers.chat import _build_page_context
         ctx = _build_page_context("nonexistent_page")
         assert ctx is None
+
+
+class TestBuildInsightsContextBlock:
+    """洞察台注入块：三态行为、条数/字符上限、phase 标注（REQ-INSIGHT-DECK-POSTMEETING R3）"""
+
+    def _write_insights(self, tmp_path, monkeypatch, messages):
+        import json
+        import core.chat_context as chat_context
+        monkeypatch.setattr(chat_context, "INSIGHTS_TASKS_DIR", tmp_path)
+        (tmp_path / "t1.insights.json").write_text(
+            json.dumps({"messages": messages}, ensure_ascii=False), encoding="utf-8")
+        return chat_context
+
+    def test_no_file_returns_none(self, tmp_path, monkeypatch):
+        import core.chat_context as chat_context
+        monkeypatch.setattr(chat_context, "INSIGHTS_TASKS_DIR", tmp_path)
+        assert chat_context.build_insights_context_block("missing-id") is None
+        assert chat_context.build_insights_context_block(None) is None
+
+    def test_empty_messages_returns_none(self, tmp_path, monkeypatch):
+        cc = self._write_insights(tmp_path, monkeypatch, [])
+        assert cc.build_insights_context_block("t1") is None
+
+    def test_block_content_and_phase(self, tmp_path, monkeypatch):
+        cc = self._write_insights(tmp_path, monkeypatch, [
+            {"title": "会中发现", "body": "讨论缺口", "solution": "补人", "diagram": "flowchart LR", "phase": "meeting"},
+            {"title": "会后发现", "body": "资源冲突", "phase": "post_meeting"},
+        ])
+        block = cc.build_insights_context_block("t1")
+        assert block is not None
+        assert "会议洞察台" in block
+        assert "[会中] 会中发现" in block
+        assert "[会后] 会后发现" in block
+        assert "（该洞察附决策流图）" in block
+        # diagram 源码不整段注入
+        assert "flowchart LR" not in block
+
+    def test_caps_items_at_five(self, tmp_path, monkeypatch):
+        msgs = [{"title": f"洞察{i}", "body": "短内容", "phase": "meeting"} for i in range(9)]
+        cc = self._write_insights(tmp_path, monkeypatch, msgs)
+        block = cc.build_insights_context_block("t1")
+        # 取最近 5 条：洞察4–洞察8 在，洞察3 及之前不在
+        assert "洞察8" in block
+        assert "洞察4" in block
+        assert "洞察3" not in block
+        assert block.count("- [会中]") == 5
 
 
 class TestChatWithCurrentPage:

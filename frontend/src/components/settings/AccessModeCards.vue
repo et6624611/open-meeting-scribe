@@ -85,43 +85,44 @@
           </template>
         </details>
       </div>
+      <div
+        class="amc-card amc-expert-card"
+        :class="{ 'is-selected': expert, 'is-busy': busy }"
+        role="switch"
+        :aria-checked="expert"
+        tabindex="0"
+        @click="onToggleExpert"
+        @keydown.enter.prevent="onToggleExpert"
+        @keydown.space.prevent="onToggleExpert"
+      >
+        <div class="amc-head">
+          <span class="amc-icon" v-html="expertIcon"></span>
+          <span class="amc-title">{{ t('settings.access.expert_label') }}</span>
+          <span v-if="expert" class="amc-badge-current">{{ t('settings.access.current') }}</span>
+        </div>
+        <p class="amc-tagline">{{ t('settings.access.expert_desc') }}</p>
+        <div class="amc-dims">
+          <span class="amc-dim"><em>{{ t('settings.access.dim_power') }}</em>{{ t('settings.access.expert_power') }}</span>
+          <span class="amc-dim-sep">·</span>
+          <span class="amc-dim"><em>{{ t('settings.access.dim_cost') }}</em>{{ t('settings.access.expert_cost') }}</span>
+          <span class="amc-dim-sep">·</span>
+          <span class="amc-dim"><em>{{ t('settings.access.dim_data') }}</em>{{ t('settings.access.expert_data') }}</span>
+        </div>
+      </div>
     </div>
 
     <p v-if="switchMessage" class="amc-switch-msg" :class="{ 'is-error': switchError }">{{ switchMessage }}</p>
 
-    <!-- ═══ R1/D4 高级设置折叠区 / Advanced settings collapse ═══ -->
-    <details class="amc-advanced" :open="expert">
-      <summary class="amc-advanced-summary">{{ t('settings.access.advanced') }}</summary>
-
-      <div class="wm-setting-row amc-expert-row">
-        <label>
-          {{ t('settings.access.expert_label') }}
-          <span class="toggle-desc">{{ t('settings.access.expert_desc') }}</span>
-        </label>
-        <div class="wm-toggle-wrap">
-          <div
-            class="wm-toggle"
-            :class="{ 'is-on': expert }"
-            role="switch"
-            :aria-checked="expert"
-            tabindex="0"
-            @click="onToggleExpert"
-            @keydown.enter.prevent="onToggleExpert"
-            @keydown.space.prevent="onToggleExpert"
-          ></div>
-          <span class="wm-setting-val">{{ expert ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-        </div>
-      </div>
-
+    <!-- ═══ D4 高级模式选中后展示高级配置面板（不再使用独立启用开关）/ Advanced panel shown when expert selected ═══ -->
+    <div v-if="expert" class="amc-advanced-panel">
       <!-- 服务区块：离线选中时整体灰化 + 「由离线模式接管」（消除静默覆盖） -->
       <div class="amc-services" :class="{ 'is-takeover': current === 'local' }">
         <div class="amc-services-head">
           <h3 class="amc-services-title">{{ t('settings.access.services_title') }}</h3>
           <span v-if="current === 'local'" class="amc-takeover-badge">{{ t('settings.access.services_takeover') }}</span>
         </div>
-        <fieldset :disabled="current === 'local' || !expert">
+        <fieldset :disabled="current === 'local'">
           <p v-if="current === 'local'" class="amc-services-note">{{ t('settings.access.services_takeover_desc') }}</p>
-          <p v-else-if="!expert" class="amc-services-note">{{ t('settings.access.services_expert_hint') }}</p>
           <template v-else>
             <!-- LLM 底层参数（与「服务」分类共享同一 settings 引用，改动互为可见） -->
             <div class="settings-field amc-field">
@@ -147,14 +148,14 @@
           </template>
         </fieldset>
       </div>
-    </details>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
  * 接入方式三卡片（REQ-ACCESS-MODE-CARDS T3/T4 · AM-F1）
- * R1 三选一卡片 + R4 引导头 + D3 声纹折叠区 + D4 专家模式开关 + 服务区块离线灰化。
+ * R1 三选一卡片 + R4 引导头 + D3 声纹折叠区 + D4 高级模式卡片（选中即展示高级配置面板）+ 服务区块离线灰化。
  * access_mode/expert_mode 读写走 api/access.ts（AM-B1 契约 §13，mock 先行）。
  */
 import { computed, ref } from 'vue'
@@ -178,6 +179,8 @@ const cardIcons = computed<Record<AccessMode, string>>(() => ({
   hosted: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
   byok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
 }))
+
+const expertIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>'
 
 const current = computed(() => engineStore.accessMode)
 const expert = computed(() => engineStore.expertMode)
@@ -217,7 +220,7 @@ async function onSelect(mode: AccessMode) {
   }
 }
 
-/** 卡片 ←→ 方向键导航（radiogroup 键盘语义） / Arrow-key navigation within the radiogroup */
+/** 卡片 ←→ 方向键导航（radiogroup 键盘语义，仅在三种接入模式间循环） / Arrow-key navigation within the radiogroup */
 function onArrowKey(e: KeyboardEvent, mode: AccessMode) {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
   e.preventDefault()
@@ -271,7 +274,7 @@ function showLogin() {
 .access-guide-desc { font-size: 12px; color: var(--muted); margin: 0; }
 
 /* ─── 三卡片 / Cards ─── */
-.amc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-3); }
+.amc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s-3); }
 .amc-card { position: relative; border: 1.5px solid var(--border); border-radius: var(--radius); padding: var(--s-4); cursor: pointer; background: var(--surface); transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
 .amc-card:hover { border-color: var(--border-strong); }
 .amc-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -301,15 +304,11 @@ function showLogin() {
 .amc-switch-msg { font-size: 12px; color: var(--accent); margin: 0; font-weight: 500; }
 .amc-switch-msg.is-error { color: var(--error); }
 
-/* ─── 高级设置 / Advanced ─── */
-.amc-advanced { border: 1px solid var(--border); border-radius: var(--radius); padding: 0 var(--s-4) var(--s-2); }
-.amc-advanced > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); padding: var(--s-3) 0; user-select: none; list-style: none; }
-.amc-advanced > summary::-webkit-details-marker { display: none; }
-.amc-advanced > summary::before { content: '▸'; display: inline-block; margin-right: 6px; transition: transform 0.15s; }
-.amc-advanced[open] > summary::before { transform: rotate(90deg); }
-.amc-expert-row { padding: var(--s-2) 0 var(--s-4); border-bottom: 1px solid var(--border); }
+/* ─── 高级模式卡片与高级配置面板 / Expert card + advanced panel ─── */
+.amc-expert-card { align-self: start; }
+.amc-advanced-panel { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-4); }
 
-.amc-services { margin-top: var(--s-4); transition: opacity 0.2s; }
+.amc-services { transition: opacity 0.2s; }
 .amc-services fieldset { border: none; padding: 0; margin: 0; min-width: 0; }
 .amc-services-head { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin-bottom: var(--s-2); }
 .amc-services-title { font-size: 13px; font-weight: 600; margin: 0; }

@@ -6,7 +6,7 @@
  */
 import { ref, computed, type Ref } from 'vue'
 import { tt } from '@/i18n'
-import { runInsightAnalysis, loadInsightMessages, saveInsightMessages } from '@/api/insights'
+import { runInsightAnalysis, loadInsightMessages, saveInsightMessages, runPostMeetingAnalysis as apiRunPostMeetingAnalysis } from '@/api/insights'
 import { buildDiagramCaption } from '@/utils/mermaidCaption'
 
 /** 洞察消息结构 / Insight message structure */
@@ -34,6 +34,8 @@ export interface InsightMessage {
   acknowledged: boolean
   /** Mermaid 图语法（可选） / Mermaid diagram syntax (optional) */
   diagram?: string
+  /** 产生阶段：会中（缺省）/ 会后补分析 / Phase: in-meeting (default) or post-meeting supplement */
+  phase?: 'meeting' | 'post_meeting'
   /** 旧版结构化知识图谱（仅历史消息重载时存在，新分析不再产出）
       Legacy structured graph (only on reloaded historical messages; new analyses never emit it) */
   graph?: unknown
@@ -290,6 +292,31 @@ async function maybeAutoAnalyze(
   await runAnalysis(recentLines, chapterTitles, 'system', autoAnalyzing, true)
 }
 
+/* ─── 会后补分析（纪要页触发，服务端基于全文） / Post-meeting supplement (from summary page, server-side full content) ─── */
+
+/** 会后补分析加载状态 / Post-meeting analysis loading state */
+const postAnalyzing: Ref<boolean> = ref(false)
+
+/**
+ * 触发会后补分析：服务端读取完整 dialogue + 章节跑一轮洞察，有发现时后端已落盘。
+ * Trigger post-meeting analysis: server reads full dialogue + chapters, appends + persists on finding.
+ * 成功后以重拉语义用响应 messages 替换本地列表，规避前端全量覆盖竞态。
+ * On success replaces local list with response messages (reload semantics), avoiding the full-overwrite race.
+ * @returns 分析结果 result（含 has_finding）；并发/空 taskId 时返回 null。
+ */
+async function runPostMeetingSupplement(taskId: string) {
+  if (!taskId || postAnalyzing.value) return null
+  postAnalyzing.value = true
+  try {
+    const { result, messages } = await apiRunPostMeetingAnalysis(taskId)
+    messagesByTask.value[taskId] = (messages || []) as InsightMessage[]
+    loadedTasks.add(taskId)
+    return result
+  } finally {
+    postAnalyzing.value = false
+  }
+}
+
 /** 获取当前正在录音的任务 ID（供侧边栏洞察按钮导航使用） / Get currently recording task ID (for sidebar insight button navigation) */
 function getActiveRecordingTaskId(): string {
   if (currentTaskId.value) return currentTaskId.value
@@ -437,6 +464,9 @@ export function useAiInsights() {
     // 自动分析 / Auto analysis
     autoAnalyzing,
     maybeAutoAnalyze,
+    // 会后补分析 / Post-meeting supplement
+    postAnalyzing,
+    runPostMeetingSupplement,
     // 导航辅助 / Navigation helper
     getActiveRecordingTaskId,
     // 对话图形化 / Chat diagram

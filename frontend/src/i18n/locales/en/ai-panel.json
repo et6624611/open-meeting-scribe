@@ -39,6 +39,22 @@
   "thinking": "Thinking…",
   "thinking_elapsed": "Thinking · {sec}s",
   "stop_generating": "Stop generating",
+  "mode_label": "Chat mode",
+  "mode_qa": "Ask",
+  "mode_agent": "Agent",
+  "mode_auto": "Auto",
+  "mode_auto_hint": "Automatically picks Ask or Agent by request content; the result is shown",
+  "engine_echo_auto": "auto-selected",
+  "mode_qa_hint": "Built-in lightweight Q&A, fast response",
+  "mode_agent_hint": "Invoke local Qoder CLI for engineering multi-step tasks",
+  "mode_agent_cost_hint": "Uses your personal Qoder credits, not billed by this app",
+  "engine_echo": "Run by {name}",
+  "session_continue": "Continuing last deep session",
+  "auth_tier": {
+    "readonly": "Read-only",
+    "workspace_write": "Workspace write",
+    "full_task": "Full task"
+  },
   "quote": {
     "source": "Source: {source}",
     "source_block": "Source: {source} · block {index}",

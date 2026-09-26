@@ -16,6 +16,8 @@ export interface LlmMetadata {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
   finish_reason: string
   id: string
+  /** 智能体模式引擎标识（回显与多轮恢复判定用） */
+  engine?: string
 }
 
 /** 消息性能指标 / Message performance metrics */
@@ -44,6 +46,8 @@ export interface AgentStage {
   icon?: string
   status: 'running' | 'done' | 'error'
   detail?: string
+  /** 工具调用 id（智能体模式并行工具按此配对，不靠数组下标） */
+  id?: string
 }
 
 export interface ChatAction {
@@ -108,6 +112,16 @@ export interface ChatOptions {
   role?: string
   /** 当前可见的 Mermaid 图源码，用于图修改上下文 / Current visible Mermaid diagram source, for diagram modification context */
   current_diagram?: string
+  /** 引擎路由：undefined/qa=内置链路；'agent'=强制本地 CLI；'auto'=规则分流（方案 §3.9-1） */
+  engine?: 'agent' | 'auto'
+  /** 本轮流标识，供 /api/chat/cancel 真取消（§3.9-5） */
+  stream_id?: string
+  /** 本轮授权档覆盖（readonly|workspace_write|full_task），缺省取设置 */
+  auth_tier?: string
+  /** 是否恢复上一 CLI 会话（多轮深度对话） */
+  resume_session?: boolean
+  /** 面板会话标签 id，令 CLI 会话与面板会话对齐（同标签多轮自然延续） */
+  chat_session_id?: string
   signal?: AbortSignal
 }
 
@@ -136,8 +150,10 @@ export async function sendMessage(
 export interface StreamCallbacks {
   onToken: (token: string) => void
   onStage: (stage: { stage: string; label: string }) => void
-  onToolCall: (tool: { name: string; label: string; icon: string; args: Record<string, unknown> }) => void
-  onToolResult: (result: { name: string; summary: string; success: boolean }) => void
+  onToolCall: (tool: { name: string; label: string; icon: string; args: Record<string, unknown>; id?: string }) => void
+  onToolResult: (result: { name: string; summary: string; success: boolean; tool_use_id?: string }) => void
+  /** 智能体模式路由回显（§3.9-1）：本次由哪个引擎/授权档执行，含 auto 自动选中标记 */
+  onEngineRoute?: (info: { engine: string; display_name: string; auth_tier: string; session_id?: string; auto_selected?: boolean }) => void
   onDone: (data: {
     metadata?: LlmMetadata
     latency_ms?: number
@@ -148,6 +164,8 @@ export interface StreamCallbacks {
     agent_iterations?: number
     /** Mermaid 图语法 / Mermaid diagram syntax */
     diagram?: string
+    /** 引擎标识（智能体模式回显） */
+    engine?: string
   }) => void
   onError: (error: string) => void
 }
@@ -173,6 +191,11 @@ export async function sendMessageStream(
       current_page: options?.current_page,
       role: options?.role,
       current_diagram: options?.current_diagram,
+      engine: options?.engine,
+      stream_id: options?.stream_id,
+      auth_tier: options?.auth_tier,
+      resume_session: options?.resume_session,
+      chat_session_id: options?.chat_session_id,
     }),
     signal: options?.signal,
   })
@@ -220,6 +243,8 @@ export async function sendMessageStream(
             callbacks?.onToolCall(event)
           } else if (event.type === 'tool_result') {
             callbacks?.onToolResult(event)
+          } else if (event.type === 'engine_route') {
+            callbacks?.onEngineRoute?.(event)
           } else if (event.type === 'done') {
             callbacks?.onDone(event)
           } else if (event.type === 'error') {
@@ -230,6 +255,26 @@ export async function sendMessageStream(
         }
       }
     }
+  }
+}
+
+/** 真取消（智能体模式）：kill 后端 CLI 进程组，fetch abort 不足以终止任务（§3.9-5） */
+export async function cancelStream(streamId: string): Promise<boolean> {
+  try {
+    const { data } = await client.post<{ cancelled: boolean }>('/api/chat/cancel', { stream_id: streamId })
+    return !!data.cancelled
+  } catch {
+    return false
+  }
+}
+
+/** 删除面板会话时联动清理其智能体工作区（方案 D5：数据留痕不只进不出） */
+export async function cleanupAgentWorkspace(chatSessionId: string, taskId?: string): Promise<boolean> {
+  try {
+    await client.post('/api/agent-tools/cleanup', { chat_session_id: chatSessionId, task_id: taskId })
+    return true
+  } catch {
+    return false
   }
 }
 

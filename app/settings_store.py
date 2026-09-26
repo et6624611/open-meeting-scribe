@@ -258,6 +258,45 @@ def get_voiceprint_config() -> dict:
     }
 
 
+def get_chat_engine_config() -> dict:
+    """
+    获取"智能体模式"引擎配置（从 settings.json 的 chat_engine 命名空间）。
+    Get the agent-mode chat engine config (chat_engine namespace in settings.json).
+
+    与 access_mode（LLM/ASR 传输通道）正交（方案 D1）：本命名空间只管 AI 面板是否
+    调用本地 CLI 工程化引擎，不影响 hosted/byok/local 三卡。默认关闭。
+
+    返回 / Returns:
+      {
+        "enabled": False,           # 智能体模式总开关 / master switch
+        "engine_id": "qoder-cli",   # 引擎 id / engine id
+        "model": None,              # CLI 侧模型（可选覆盖）/ CLI model override
+        "auth_tier": "readonly",    # readonly|workspace_write|full_task（§3.9-3 授权档）
+        "session_persistence": True,# 是否跨轮恢复 CLI 会话（D5）
+        "retention_days": 7,        # 工作区保留天数（<=0 不自动清理，R7）
+        "cli_path_override": None,  # CLI 路径覆盖（高级）
+      }
+    """
+    settings = load_settings()
+    ce = settings.get("chat_engine", {}) or {}
+    tier = ce.get("auth_tier", "readonly")
+    if tier not in ("readonly", "workspace_write", "full_task"):
+        tier = "readonly"
+    try:
+        retention = int(ce.get("retention_days", 7))
+    except (TypeError, ValueError):
+        retention = 7
+    return {
+        "enabled": bool(ce.get("enabled", False)),
+        "engine_id": ce.get("engine_id", "qoder-cli"),
+        "model": ce.get("model") or None,
+        "auth_tier": tier,
+        "session_persistence": bool(ce.get("session_persistence", True)),
+        "retention_days": retention,
+        "cli_path_override": ce.get("cli_path_override") or None,
+    }
+
+
 def get_feature_flags() -> dict:
     """
     获取功能开关配置（从 settings.json） / Get feature flag config (from settings.json).

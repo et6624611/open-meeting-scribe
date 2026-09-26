@@ -247,8 +247,8 @@ def load_tasks_from_disk() -> None:
                         continue
                     # 无可用音频数据，清理任务文件 / No recoverable audio; cleanup task file
                     task_file.unlink(missing_ok=True)
-                    joblog_file = TASKS_DIR / f"{task_id}.joblog.jsonl"
-                    joblog_file.unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
                     orphan_recording += 1
                     continue
                 # 清理历史遗留的无内容 failed 任务（之前重启标记的孤儿，无音频/对话/摘要） / Cleanup legacy empty failed tasks (orphans from prior restarts; no audio/dialogue/summary)
@@ -258,8 +258,8 @@ def load_tasks_from_disk() -> None:
                         and not task.get("dialogue")
                         and not task.get("summary")):
                     task_file.unlink(missing_ok=True)
-                    joblog_file = TASKS_DIR / f"{task_id}.joblog.jsonl"
-                    joblog_file.unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
                     orphan_recording += 1
                     continue
                 tasks[task_id] = task

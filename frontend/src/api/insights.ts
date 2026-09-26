@@ -68,6 +68,18 @@ export async function loadInsightMessages(taskId: string): Promise<{ messages: a
 }
 
 /**
+ * 会后补分析：服务端基于任务全文 + 章节执行一轮洞察分析，有发现时后端已追加快照落盘 /
+ * Post-meeting analysis: server analyzes from full task content and appends the snapshot on finding.
+ * 返回完整消息列表，调用方以重拉语义替换本地列表 / Returns the full list; caller replaces local state with it.
+ */
+export async function runPostMeetingAnalysis(taskId: string): Promise<{ result: InsightAnalysisResult; messages: any[] }> {
+  const { data } = await client.post<{ result: InsightAnalysisResult; messages: any[] }>(
+    `/api/insights/analyze/task/${taskId}`
+  )
+  return data
+}
+
+/**
  * 保存指定会议的洞察消息列表 / Save insight messages for a meeting
  */
 export async function saveInsightMessages(taskId: string, messages: any[]): Promise<{ ok: boolean; count: number }> {

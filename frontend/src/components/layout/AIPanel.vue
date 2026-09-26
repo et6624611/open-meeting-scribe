@@ -73,6 +73,9 @@
       :filtered-cmds="filteredCmds"
       :input-text="inputText"
       :format-change="chat.formatChangeDescription"
+      :chat-mode="chat.chatMode.value"
+      :active-engine="chat.activeEngine.value"
+      :has-agent-session="chat.hasAgentSession.value"
       @send="onSend"
       @send-raw="chat.sendRaw"
       @stop-generation="chat.stopGeneration"
@@ -87,6 +90,7 @@
       @input-key="handleInputKey"
       @input-change="handleInputChange"
       @update:input-text="inputText = $event"
+      @update:chat-mode="chat.setChatMode($event)"
     />
 
     <!-- 上下文 Tab / Context Tab -->
@@ -133,6 +137,7 @@ import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
 import { useTaskStore } from '@/stores/task'
 import { useAiChat } from '@/composables/useAiChat'
+import { cleanupAgentWorkspace } from '@/api/chat'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAiCommands } from '@/composables/useAiCommands'
@@ -238,7 +243,7 @@ function startRename(id: string) {
   nextTick(() => { const el = sessionTabsRef.value?.renameInputRef; (Array.isArray(el) ? el[0] : el)?.focus(); (Array.isArray(el) ? el[0] : el)?.select() })
 }
 function confirmRename() { if (renamingId.value && renameInput.value.trim()) aiSessions.renameSession(renamingId.value, renameInput.value.trim()); renamingId.value = null }
-function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); nextTick(() => scrollFeed()) }
+function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); void cleanupAgentWorkspace(id, taskStore.currentTaskId || undefined); nextTick(() => scrollFeed()) }
 
 // ── 发送消息 / Send message ──
 async function onSend() {

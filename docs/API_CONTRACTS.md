@@ -3,7 +3,7 @@ title: 外部接口契约
 description: DashScope / 通义千问 API 技术细节的唯一事实源
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-24
+updated_at: 2026-09-25
 status: published
 ---
 
@@ -455,3 +455,19 @@ recognition.stop()  # 阻塞直到所有结果返回
 ### 13.6 路由判定唯一入口（消歧）
 
 `_should_use_cloud`（`core/llm.py`）与 `_get_asr_mode`（`core/transcribe.py`）为薄适配层，仅调用 `core/routing.get_routing_decision(context)`；对 `engine.mode`/`prefer_subscription` 组合的读取只存在于 `core/routing.py`。旧字段读取兼容一个版本（A2），窗口结束后专家模式下只读写新字段。
+
+---
+
+## 14. 洞察台会后化 API（REQ-INSIGHT-DECK-POSTMEETING R2 · 已实现）
+
+### POST /api/insights/analyze/task/{task_id}（会后补分析）
+
+- 无请求体。服务端从任务读取完整 `dialogue` 与 `chapters`，取时间序最近 `POST_ANALYSIS_MAX_LINES`（默认 40，环境变量 `OMS_INSIGHTS_POST_K` 可配）句构造分析输入，复用 `core.insights.run_analysis`（含角色 prompt 与 model_tier 防幻觉守卫，与无状态 `/api/insights/analyze` 对等）。
+- 错误：404 任务不存在；400 `task_not_completed`（非 completed）/ `insufficient_content`（无转写或无章节）；**409 `analysis_in_flight`**（同任务已有分析在跑，不排队不并行；只防同时不防先后，多次成功分析追加多批消息属预期）；**504 `analysis_timeout`**（整体超时守护 `OMS_INSIGHTS_POST_TIMEOUT` 默认 60 秒，超时**不写盘**），`detail` 均为 `{error, message}` 结构；前端对 409/504 按提示文案处理不算失败。
+- 响应：`{"result": {title, body, solution, has_finding, diagram, graph}, "messages": [...]}`。`has_finding=true` 时后端已**追加**写入 `data/tasks/<task_id>.insights.json`（原子写），新消息带 `phase: "post_meeting"`、`source: "system"`、`actions: []`；前端以响应 `messages` 整体替换本地列表（重拉语义），不经 `POST /api/insights/messages` 全量覆盖，规避交叉竞态。
+- 无发现 / LLM 失败：返回安全默认值（`has_finding=false`），不写盘，`messages` 为存量列表。
+
+### 洞察消息 `phase` 字段（向后兼容增量）
+
+- `InsightMessage.phase?: "meeting" | "post_meeting"`；存量文件缺字段一律按 `"meeting"` 读取，前端卡片对 `post_meeting` 显示「会后」徽标。
+- AI 会话上下文注入：chat qa/stream 两路径经 `core.chat_context.build_insights_context_block(task_id)` 注入「会议洞察台」块（最多 5 条 / 整块 1200 字符，diagram 源码不整段注入）；CLI 引擎工作区另导出 `context/insights.md`（全量）。

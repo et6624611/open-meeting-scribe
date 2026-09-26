@@ -76,13 +76,14 @@
 
     <!-- 底部：洞察台指示器 + 设置 / Bottom: Insight Deck indicator + settings -->
     <div class="ar-bottom">
-      <!-- 洞察台指示器 / Insight Deck indicator -->
+      <!-- 洞察台指示器（会中或有未读会后会话时显示） / Insight Deck indicator (recording, or post-meeting with unread insights) -->
       <button
-        v-if="insights.insightsEnabled.value && activeRecordingTaskId"
+        v-if="insights.insightsEnabled.value && showInsightsIndicator"
         class="ar-insights"
         :class="{
           'is-enabled': insights.unreadCount.value === 0,
           'has-unread': insights.unreadCount.value > 0,
+          'is-static': !isRealtimeState,
         }"
         :title="insights.unreadCount.value > 0 ? t('ai-panel.insights.sidebar_indicator_tip', { count: insights.unreadCount.value }) : t('ai-panel.insights.sidebar_indicator')"
         :aria-label="t('ai-panel.insights.sidebar_indicator')"
@@ -134,6 +135,25 @@ const activeRecordingTaskId = computed(() => {
   return task?.task_id ?? ''
 })
 
+/**
+ * 是否展示洞察指示器：会中录音，或当前查看的会后会话已有洞察消息。
+ * Show indicator: active recording, or the currently-viewed completed meeting already has insights.
+ * 仅“已有洞察”时展示，不因会后未读而凭空浮现入口（入口靠纪要页 Tab）。
+ * Only when insights already exist — unread alone won't surface a phantom entry (Tab is the primary path).
+ */
+const showInsightsIndicator = computed(() => {
+  if (activeRecordingTaskId.value) return true
+  const cur = taskStore.currentTaskId
+  if (!cur) return false
+  return insights.insightMessages.value.length > 0
+})
+
+/**
+ * 实时态（录音页）才保留呼吸/心跳动效；会后会话态静态展示，避免误读为“仍在录音”。
+ * Animated only on the live recording page; static post-meeting to avoid misreading.
+ */
+const isRealtimeState = computed(() => route.name === 'recording')
+
 /** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
 const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/settings'])
 
@@ -167,16 +187,22 @@ function navigate(path: string) {
   router.push(path)
 }
 
-/** 点击洞察指示器：直达录音页洞察面板 / Click insights indicator: navigate to recording page insights panel */
+/** 点击洞察指示器：会中直达录音页洞察面板；会后直达纪要页洞察 Tab / Click indicator: recording insights panel, or summary insights tab */
 function onInsightsClick() {
   const recTaskId = activeRecordingTaskId.value
-  if (!recTaskId) return
-
-  taskStore.selectTask(recTaskId)
-  router.push({
-    name: 'recording',
-    params: { taskId: recTaskId },
-    query: { tab: 'insights' },
-  })
+  if (recTaskId) {
+    taskStore.selectTask(recTaskId)
+    router.push({
+      name: 'recording',
+      params: { taskId: recTaskId },
+      query: { tab: 'insights' },
+    })
+    return
+  }
+  const cur = taskStore.currentTaskId
+  if (cur) {
+    layout.pendingGenTab = 'insights'
+    router.push({ name: 'generating', params: { taskId: cur } })
+  }
 }
 </script>

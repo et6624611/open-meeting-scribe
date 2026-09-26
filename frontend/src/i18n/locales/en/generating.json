@@ -218,7 +218,19 @@
     "transcript": "Transcript",
     "notes": "Notes",
     "summary": "Minutes",
-    "todos": "Action Items"
+    "todos": "Action Items",
+    "insights": "Insights"
+  },
+  "insights": {
+    "analyze": "Analyze This Meeting",
+    "analyze_tip": "Runs another global observation over the full minutes; each analysis may surface new findings",
+    "analyzing": "Analyzing…",
+    "analyze_none": "No new insight highlights found for this meeting.",
+    "analyze_failed": "Post-meeting insight analysis failed. Please try again later.",
+    "analyze_in_flight": "An analysis for this meeting is already running. Please wait.",
+    "empty_title": "No insights for this meeting yet",
+    "empty_desc": "The Insight Deck holds AI process observations, not minutes content. Click below to generate new observations from the full transcript.",
+    "phase_post": "Post-meeting"
   },
   "ai_actions": {
     "rewrite": "Please rewrite the following, keeping the original meaning but more concise",

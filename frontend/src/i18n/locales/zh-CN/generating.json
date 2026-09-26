@@ -219,7 +219,19 @@
     "transcript": "原文",
     "notes": "随记",
     "summary": "纪要",
-    "todos": "行动项"
+    "todos": "行动项",
+    "insights": "洞察"
+  },
+  "insights": {
+    "analyze": "分析本场会议",
+    "analyze_tip": "基于完整纪要内容再跑一轮全局观察；每次分析可能产生新的发现",
+    "analyzing": "分析中…",
+    "analyze_none": "本场会议暂未发现新的洞察要点。",
+    "analyze_failed": "会后洞察分析失败，请稍后重试。",
+    "analyze_in_flight": "该会议正在分析中，请稍候。",
+    "empty_title": "本场会议还没有洞察",
+    "empty_desc": "洞察台是 AI 的过程观察，不属于纪要内容；点击下方按钮可基于全文产生新的观察。",
+    "phase_post": "会后"
   },
   "ai_actions": {
     "rewrite": "请帮我改写以下内容，保持原意但更精炼",

@@ -371,6 +371,24 @@
         @toggle-form="showAddForm = !showAddForm"
         @add="onAddTodo"
       />
+
+      <!-- 洞察台（会后只读态） / Insight Deck (post-meeting read-only) -->
+      <div v-show="activeTab === 'insights'" class="gen-insights-wrap">
+        <RecInsightsPanel
+          :messages="insights.insightMessages.value"
+          :enabled="insights.insightsEnabled.value"
+          :unread-count="insights.unreadCount.value"
+          :acted-actions="genInsightActed"
+          :analyzing="insights.postAnalyzing.value"
+          :expanded="false"
+          :auto-freq="insights.autoFreq.value"
+          mode="readonly"
+          @toggle-message="insights.toggleExpanded($event)"
+          @action="onInsightAction"
+          @manual-check="onPostMeetingAnalyze"
+          @seek-to="onInsightSeek"
+        />
+      </div>
     </div>
     <!-- 浮动选中工具栏 / Floating selection toolbar -->
     <SelectionToolbar
@@ -446,6 +464,7 @@ import SummaryPanel from './generating/SummaryPanel.vue'
 import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
+import RecInsightsPanel from './recording/RecInsightsPanel.vue'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
 import OnboardingDialog from './generating/OnboardingDialog.vue'
 import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
@@ -462,6 +481,7 @@ import { useOnboarding } from '@/composables/useOnboarding'
 import { useProjectOnboarding } from '@/composables/useProjectOnboarding'
 import { useInlineEdit } from '@/composables/useInlineEdit'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
+import { useAiInsights, type InsightMessage, type InsightAction } from '@/composables/useAiInsights'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -542,6 +562,44 @@ const { showProjectOnboarding, connected: projConnected, openOnboarding: openPro
 // ─── 知识库同步状态 / Knowledge base sync status ───
 const syncStatus = ref<SyncStatus>({ can_sync: false })
 const isSyncing = ref(false)
+
+// ─── 洞察台会后化（REQ-INSIGHT-DECK-POSTMEETING R1） / Insight Deck post-meeting ───
+const insights = useAiInsights()
+/** 已触发过的动作去重（沿用录音页语义） / Dedup acted action buttons (same semantics as recording page) */
+const genInsightActed = ref<Record<string, boolean>>({})
+
+function onInsightAction(msg: InsightMessage, act: InsightAction) {
+  const key = msg.id + ':' + act.key
+  if (genInsightActed.value[key]) return
+  genInsightActed.value[key] = true
+  if (act.key === 'acknowledge') insights.acknowledgeMessage(msg.id)
+}
+
+/** 洞察图/节点点击→跳回原文并定位时间轴 / Seek from insight: switch to transcript + seek */
+function onInsightSeek(ms: number) {
+  switchTab('transcript')
+  player.seekToMs(ms)
+}
+
+/** 会后补分析：服务端基于全文 + 章节跑一轮，有发现时已落盘，前端以重拉结果刷新 / Post-meeting supplement */
+async function onPostMeetingAnalyze() {
+  try {
+    const result = await insights.runPostMeetingSupplement(data.taskId)
+    if (result && !result.has_finding) {
+      showToast(t('generating.insights.analyze_none'), 'info')
+    }
+  } catch (e) {
+    // 409：同任务已有分析在跑（不排队不并行），按提示处理不算失败 / 409 = in-flight, not a failure
+    const status = (e as { response?: { status?: number } })?.response?.status
+    if (status === 409) showToast(t('generating.insights.analyze_in_flight'), 'info')
+    else showToast(t('generating.insights.analyze_failed'), 'error')
+  }
+}
+
+// 进入洞察 Tab 即全部已读：会后只读态即消费场景，未读角标随之清零 / Entering the tab consumes all unread state
+watch(activeTab, (tab) => {
+  if (tab === 'insights') insights.markAllRead()
+})
 
 async function loadSyncStatus() {
   if (!data.task.value?.project_id || data.task.value?.status !== 'completed') {

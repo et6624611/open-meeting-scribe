@@ -123,6 +123,11 @@
   32%, 100% { box-shadow: 0 0 0 0 oklch(62% 0.20 270 / 0); transform: scale(1); }
 }
 .ar-insights svg { width: 18px; height: 18px; }
+/* 会后静态态：保留色彩语义但停用呼吸/心跳动效，避免误读为仍在录音 /
+   Post-meeting static: keep color semantics, kill pulsing animations */
+.ar-insights.is-static {
+  animation: none;
+}
 /* 同 .ar-btn：hover / is-enabled / has-unread 已提供充分视觉反馈 */
 .ar-insights:focus-visible {
   outline: none;

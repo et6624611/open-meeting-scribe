@@ -4,7 +4,7 @@ description: "列出所有 Vue 组件与页面/区域的对应关系，方便快
 tags: ["vue", "frontend", "component_map", "ui"]
 created_at: "2026-09-12"
 updated_at: 2026-09-25
-version: "1.6.0"
+version: "1.7.0"
 author: "wangyongliang"
 status: "published"
 category: "technical"
@@ -35,7 +35,7 @@ category: "technical"
 |------|------|----------|------|
 | `/` | `views/StartView.vue` | 快速启动 | 首页，录音按钮 + 上传入口 |
 | `/recording/:taskId?` | `views/RecordingView.vue` | 录音中 | 实时录音页：波形、实时转写、洞察台、底部控制栏 |
-| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/行动项四 Tab（原「决策」Tab 更名）+ 说话人绑定 |
+| `/meeting/:taskId` | `views/GeneratingView.vue` | 会议纪要 | 会议详情：原文/随记/纪要/行动项/洞察五 Tab（原「决策」Tab 更名）+ 说话人绑定 + 会后只读洞察台 |
 | `/library` | `views/LibraryView.vue` | 会议库 | 全部会议列表，表格 + 搜索 + 筛选 + 分页 |
 | `/projects` | `views/ProjectsView.vue` | 项目管理 | 项目列表与详情 |
 | `/speakers` | `views/SpeakersView.vue` | 说话人管理 | 说话人列表 → 详情两态切换 |
@@ -78,7 +78,7 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | 顶部工具栏（gen-toolbar） | 面包屑导航 + 复制/导出/全屏按钮 + 「更多」下拉菜单（编辑纪要/重新生成/重新转写/归档/删除） |
 | 元信息行（gen-meta） | 时长、说话人数、日期（可点击改日期）、项目绑定芯片（下拉切换项目） |
 | 说话人名单区（speaker-zone） | 各说话人名称 + 发言占比横条，按颜色区分 |
-| Tab 切换栏（gen-tabs） | 原文/随记/纪要/行动项四 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
+| Tab 切换栏（gen-tabs） | 原文/随记/纪要/行动项/洞察五 Tab + 音频播放控制条（播放/暂停/进度/倍速） |
 | 章节导航条（chapter-overview） | 仅原文 Tab 可见：章节圆点导航 + 当前章节索引 + 原文显隐切换按钮 |
 | 划词工具栏（SelectionToolbar） | 浮动选中条：引用到 AI / 改写 / 总结 / 提取待办 |
 | 行间改写输入（InlineEditInput） | 划词改写后弹出的指令输入框（快捷指令 chips + 自定义指令） |
@@ -91,6 +91,7 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | `generating/SummaryPanel.vue` | 纪要 Tab | Markdown 纪要 + 章节回顾卡片 + 行动项入口 + 生成中状态展示 |
 | `generating/NotesPanel.vue` | 随记 Tab | Markdown 编辑器 + 工具栏（加粗/斜体/代码/标题/列表/引用） |
 | `generating/DecisionFlowPanel.vue` | 行动项 Tab（原「决策」Tab，2026-09-25 更名） | 行动项面板：点阵图进度可视化 + 文字摘要 + 添加按钮 + 已完成沉底分组；含结构化决策只读区（展示层剥除成对强调符号，RF-F1） |
+| `recording/RecInsightsPanel.vue`（复用） | 洞察 Tab（会后只读态） | 纪要页以 `:readonly="true"` 复用洞察台面板：隐藏开关/频率/扩展控件、消息始终可见 + 「分析本场会议」补分析入口 + 会后徽标（REQ-INSIGHT-DECK-POSTMEETING R1） |
 | `generating/DecisionNode.vue` | 行动项节点 | 单个行动项卡片：两行布局（标题 + 元信息）+ 左侧 40px rail 状态圆点 + 展开详情（why/how/outcome）+ 状态菜单 + 负责人轮转 |
 | `decisions/DecisionCard.vue` | 决策中心卡片 | 单条决策：剥除符号后的纯文本展示（stripDecisionEmphasis）+ 来源会议跳转（dq 携带原始文本）+ pending/superseded/revoked 态 |
 | `decisions/AddDecisionDialog.vue` | 决策中心·补录 | 手动补录决策（text 1..2000 前端前置校验 + 待确认开关） |

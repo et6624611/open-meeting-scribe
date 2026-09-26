@@ -94,6 +94,7 @@ audit_logger.propagate = False  # 不重复写入 server.log / Don't duplicate t
 
 from app.routers import (
     agent,
+    agent_tools,
     auth,
     chat,
     cloud_api,
@@ -272,6 +273,7 @@ _REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
 _AUTH_EXEMPT_PREFIXES = (
     "/auth/",
     "/api/admin/",
+    "/api/agent-tools/",   # 反向工具面：用进程内短时 bearer 保护（非 JWT），仅本机回环使用
     "/api/cloud/",
     "/api/config/",
     "/api/download/",
@@ -413,6 +415,7 @@ app.include_router(config.router)
 app.include_router(update.router)
 app.include_router(insights.router)
 app.include_router(agent.router)
+app.include_router(agent_tools.router)
 app.include_router(cloud_api.router)
 app.include_router(ws_transcript.router)
 app.include_router(import_tasks.router)
@@ -574,6 +577,14 @@ async def startup():
         cleanup_orphaned_intermediate_files()
     except Exception as e:
         logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
+
+    # 智能体引擎过期工作区按保留期清理（含会议上下文，R7/§3.10；不影响服务）
+    try:
+        from app.settings_store import get_chat_engine_config
+        from core.cli_engine import sweep_expired_workspaces
+        sweep_expired_workspaces(get_chat_engine_config().get("retention_days", 7))
+    except Exception as e:
+        logger.warning(f"启动清理智能体工作区失败（不影响服务）: {e}")
 
     # 启动自动归档定时任务（每 24 小时检查一次） / Start auto-archive scheduled task (check once per 24h)
     asyncio.create_task(_auto_archive_loop())
