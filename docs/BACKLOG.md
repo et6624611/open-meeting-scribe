@@ -4,8 +4,8 @@ description: 零散缺陷与体验优化条目，从版本主线中剥离独立�
 tags: ["backlog", "requirements", "bugfix", "ux"]
 author: Yongliang Wang
 created_at: 2026-09-07
-updated_at: 2026-09-24
-version: "1.7.0"
+updated_at: 2026-09-26
+version: "1.8.0"
 status: published
 ---
 
@@ -574,6 +574,16 @@ ai_context: "确认了星瀚预算模块采用 RESTful API 对接，数据迁移
 完整数据模型、抽取契约、API、UI、回填方案、AC-1~10 与派工拆单见 [REQUIREMENT-DECISION-CENTER.md](REQUIREMENT-DECISION-CENTER.md)。状态：**已交付合入**（B1@586d141 复验关闭、R4 回填 56 场/359 条、F1@714f6cf 验收合入，2026-09-25；AC-1 抽取质量转 dogfooding 观察）。本需求同时落定 OUTPUT-STRUCT §Q1 渲染源改判（`task["decisions"]` + todos 共同渲染 `decisions.md`）。
 
 **遗留跟进（源自 F1 验收观察项，待排期）**：`GET /api/decisions` 全量首拉约 5s（359 条规模，后端遍历内存任务表 + 磁盘加载），前端骨架屏已覆盖观感；建议 B 侧独立小单评估：任务表增量缓存或分页/游标。优先级低——单机数据量增长到千条级前不阻塞。关联候选：REQ-DECISION-CENTER P2（议题维度）同列表评审。
+
+### 设置信息架构重构：决策层收敛 + 单向数据流 + 声纹云端下架（REQ-SETTINGS-IA）
+**目标**：消灭「一个逻辑状态四个写入口」根因——接入方式收敛为 离线/联网 两卡 + 能力级详情层，参数编辑面唯一收敛到「服务」页，词汇定五词，声纹云端路径整体下架使「零出网」结构性为真，prefer_subscription 从路由 override 降为账户默认勾选（三态徽章+覆盖持久化），切换事务全量回滚。来源：2026-09-26 项目方两裁决 + UI 评审意见书（R1-R6）+ 7 项终裁。
+
+完整五刀范围、存量迁移映射、AC-1~8、风险与闸口见 [REQUIREMENT-SETTINGS-IA.md](REQUIREMENT-SETTINGS-IA.md)（v0.2.0）。状态：**已批准，待 IDE 承接排期**；**前置闸**：Dev 完成声纹注册表迁移评估。交互基准 = docs/prototypes/PROTOTYPE-SETTINGS-IA.html v4。
+
+### 专家详情注释层 + 配置栈六层重排 + 对话模型闭环（REQ-EXPERT-MODE）
+**目标**：专家模式从「平行旧版视图」重定义为「同模型加细节层」（工程值注释行 + 页面级开关 + role/aria 修复）；设置导航按 L0→L5 六层重排（本地资产/CLI 探针状态前置回显）；对话面板补会话级模型选择器接线（后端 chat.py:214 契约零改动）+ 回复尾部消费方/计费回显。
+
+范围、AC-1~5 与风险见 [REQUIREMENT-EXPERT-MODE.md](REQUIREMENT-EXPERT-MODE.md)（v0.2.0）。状态：**已批准，串行依赖 REQ-SETTINGS-IA 合入**（注释层字段名与词表由其定稿）。无障碍硬指标（≥12px + ≥4.5:1）经裁决-5 升为产品级规则，本单为首个落地样本。
 
 ---
 

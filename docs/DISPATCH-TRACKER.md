@@ -11,16 +11,17 @@ status: active
 
 ## 在途派工
 
-（本轮无在途单——全部六单执行结果见已关闭表与「IDE 承接第二轮留痕」节）
+（2026-09-26 起仅恢复**产品评审通道**个案派工；开发派工维持 IDE 承接，见「派工体系收口留痕」节）
 
 | 单号 | 派工依据 | Owner | 会话 / 分支 | 状态 | 最近进展（巡检时间） | 下一步 | 待关注 |
 |---|---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — | — |
 
 ## 待派工队列
 
 | 单号 | 派工依据 | 拟 Owner | 触发条件 |
 |---|---|---|---|
+| REQ-SETTINGS-IA | docs/REQUIREMENT-SETTINGS-IA.md v0.2.0（2026-09-26 项目方批准实施；原型 v4 为交互基准；7 项终裁已回写） | Qoder IDE 承接方（开发收口规则）/ 产品侧出验收 | IDE 侧排期启动；**前置闸**：Dev 完成声纹注册表迁移评估（§3.4 ⚠），未定前 AC 中「无用户数据迁移」不得写入实现提交说明 |
+| REQ-EXPERT-MODE | docs/REQUIREMENT-EXPERT-MODE.md v0.2.0（同日批准） | Qoder IDE 承接方 | **串行依赖 REQ-SETTINGS-IA 合入**（注释层字段名与五词表由其定稿）；点验项走 QA 通道 |
 | DEF-PROXY-03 终判（观察项，代码已交） | qa-evidence/def-proxy-0203/proxy03-qualification.md（代码层排除+偏差自检已上线） | 项目方（样音复测）/ 后端（若留痕再现） | 项目方有声样音录制后看任务 JSON 是否出现 wav_wallclock_gap_sec：无→按观察项关闭；有→携留痕开代码修复单 |
 
 （REQ-DECISION-CENTER-R2 六条反馈已随 DC-R2-a / -BE / -b / -c 四单全部闭环，队列内无决策中心剩单）
@@ -29,6 +30,7 @@ status: active
 
 | 单号 | 关闭时间 | 结果 |
 |---|---|---|
+| UI-REVIEW-SETTINGS-IA-01 | 2026-09-26 | **评审通道个案关单（产品验收）**。UI 设计师交付 docs/REVIEW-UI-SETTINGS-IA-REPORT.md（R1-R6 三态结论 + 1 阻塞项 + 附录 B 勘误表）。阻塞项（① 问题 2 演示与 embedding_provider.py:518-530 离线短路相反）派工人独立复核确认成立。逐项处置：21 条修改建议采纳 20、部分采纳 1（R6-4 矩阵改四列含「本机端点」单列，保留窄屏可读性意见）；原型升 **v4**（勘误版问题 2 重写、附录 B 行号全修、对比度令牌 --warn #8a5800/--subtle #6b7382、三态徽章、离线态 setPsub 守卫、role/aria + roving tabindex、弹窗字段 diff/失败态/动态确认文案、②页现状-建议-未来风险 chip、上下步导航、双写模拟器字段集并排 + 清空 Key 演示、词汇五词收敛）。验收回应 docs/REVIEW-UI-SETTINGS-IA-ACCEPTANCE.md。node --check + id/function 交叉校验全过。**遗留转产品侧**：项目方已于 09-26 会话内终裁 7 项（Q1=联网模式、裁决-1=全量回滚、裁决-2=联网→离线更强确认、裁决-3=允许例外+判据措辞、裁决-4=五词表、裁决-5=无障碍产品级规则、Q3=三级 amber 提示），Q2/Q4-Q7 共 5 项随需求单登记继续追踪；声纹注册表迁移需 Dev 确认后需求单方可写「无用户数据迁移」。**后续（同日）**：项目方「批准实施」，REQ-SETTINGS-IA v0.2.0 + REQ-EXPERT-MODE v0.2.0 已登记入待派工队列，本轮全部产出（原型 v4/评审三文档/两需求单/台账）随登记 commit 入库 |
 | DC-DEC-B1 | 2026-09-25 00:40 | 两轮验收：首轮 RF-1 打回（模板「三、决策」节漏采），23dc21d 修复复验通过（33/33 新用例+84/84 相邻回归本侧独立复跑）。PR #7 squash 合入 main@586d141。R4 已执行（项目方批准 00:24）：382 扫描/56 回填/359 条决策/9 空标记；47 失败经抽查 46 场为旧版格式纪要（无结论/决策章节）、1 场混合节，属真实历史边界非解析缺陷，留决策中心手动补录兜底；报告 data/_backfill_report.json。遗留：AC-1 真实 LLM dogfooding 随后续 5 场真实会议自然验证 |
 | DC-DEC-F1 | 2026-09-25 02:20 | 三轮验收：首轮（86c33fd）构建/代码过，RF-F1（** 剥除）+rebase 修复单下达；增量 d181ed2 §12 契约对齐五项通过；修复轮 07aea76 复验通过——stripDecisionEmphasis 仅剥成对 **/__（dq 保留原文、后端不回改、检索双命中），DecisionCard/SupersedeDialog/DecisionFlowPanel 三面接入，本侧独立 worktree 构建全绿，真实后端冒烟证据 dc-f1-20~27（359 条零符号泄漏、补录/取代/撤销/检索/锚点跳转全链路、临时数据清理）。squash 合入 main@714f6cf。备注：分支 merge 实际锚点为 e2c8142（回报写 07d83f7，勘误不影响代码）。交错增量收编：工程师修复轮后续 commit 17f9857 补齐成对反引号剥除（RF-F1 原口径清零，构建复跑全绿，证据 dc-f1-28~30），已 squash 合入 main@d92e598；merge 代 rebase 获产品认可（squash 保 main 线性，分支内部无需重写远端历史）。R5 文档收尾已同步落：GLOSSARY 术语拆分 / VUE_COMPONENT_MAP 路由+组件+api 行 / PRD v1.3.0 / OUTPUT-STRUCT §Q1 裁决注记 / BACKLOG 全量拉取 5s 性能跟进项。解锁：AM-F1 派工前置仅剩 REQ-PROGRESS-P0 合入。**09-25 项目方浏览器补验通过**（决策中心页面，按新验收流对已关单的 DC-DEC-B1/F1 补记最终验收人结论） |
 | REQ-PROGRESS-P0 | 2026-09-25 13:10 | **IDE 承接轮关单**。项目方授权承接方代跑浏览器点验：Playwright 无头 1440×900 六项全 PASS（四步面板+单调前进+离开恢复无假100%+刷新重建+英文面板零残留零key泄漏+完成态正常退出），证据 qa-evidence/req-progress-p0-ide/（6 截图+metrics.json+selftest 日志）随 52ba415 入库；merge --no-ff 合入 main@a62cd2b，合并后构建全绿。前轮 720px 窄视口「逐字竖排」定性=主干三栏固定宽度总和溢出（layout.css:19 min-width:300 + useContainerSize 档位均主干既有，P0 未触壳布局），非本单回归；主干 i18n 中文残留（顶栏状态 pill「处理中/处理失败」、库页状态列、日期/量词硬编码）维持 BACKLOG 建议（DC-DEC-F1 行同口径留痕） |

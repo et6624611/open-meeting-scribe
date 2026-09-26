@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置信息架构对照原型 · 现状 vs 建议 — OpenMeetingScribe</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --surface:#fff; --border:#e3e6ea; --border-strong:#c9ced6;
+    --text:#1c2330; --muted:#5b6472; --subtle:#8a93a2;
+    --accent:#2f6fed; --accent-soft:#eaf1fe; --accent-mid:#b9cffa;
+    --ok:#1a8a4f; --ok-soft:#e6f6ec;
+    --warn:#8a5800; --warn-soft:#fdf3df;
+    --err:#c23a3a; --err-soft:#fdecec;
+    --subtle:#6b7382;
+    --code:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.65 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:80px}
+  .wrap{max-width:1120px;margin:0 auto;padding:24px 20px}
+  header.page{padding:28px 0 8px}
+  header.page h1{font-size:22px;margin:0 0 6px}
+  header.page p.sub{color:var(--muted);margin:0;font-size:13px}
+  .tabs{display:flex;gap:8px;margin:20px 0 24px;position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:5;border-bottom:1px solid var(--border)}
+  .tab{padding:8px 18px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);cursor:pointer;font-size:14px;color:var(--muted)}
+  .tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  section.view{display:none}
+  section.view.on{display:block}
+  h2.sec{font-size:17px;margin:34px 0 4px}
+  p.secdesc{color:var(--muted);margin:0 0 16px;font-size:13px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 9px;border-radius:999px;margin-right:6px;vertical-align:2px}
+  .tag.red{background:var(--err-soft);color:var(--err)}
+  .tag.green{background:var(--ok-soft);color:var(--ok)}
+  .tag.blue{background:var(--accent-soft);color:var(--accent)}
+  .tag.amber{background:var(--warn-soft);color:var(--warn)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px}
+  .card h3{margin:0 0 10px;font-size:15px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:840px){.grid2{grid-template-columns:1fr}}
+  code.k{font-family:var(--code);font-size:12px;background:#eef0f3;border-radius:4px;padding:1px 6px}
+  .field{margin:10px 0}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .field input,.field select{width:100%;max-width:340px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:6px;font-size:13px;background:#fff}
+  .btn{display:inline-block;padding:6px 16px;border-radius:7px;border:1px solid var(--border-strong);background:var(--surface);cursor:pointer;font-size:13px}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.sm{padding:3px 10px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .banner{border-radius:8px;padding:9px 14px;font-size:13px;margin:10px 0}
+  .banner.err{background:var(--err-soft);color:var(--err);border:1px solid #f0c7c7}
+  .banner.ok{background:var(--ok-soft);color:var(--ok);border:1px solid #bfe4cc}
+  .banner.warn{background:var(--warn-soft);color:var(--warn);border:1px solid #efdcb0}
+  .banner.info{background:var(--accent-soft);color:#215bb8;border:1px solid var(--accent-mid)}
+  /* ── 关系图 ── */
+  .diagram{display:flex;flex-direction:column;gap:0;align-items:center;padding:8px 0}
+  .dnode{border:1.5px solid var(--border-strong);border-radius:9px;background:var(--surface);padding:10px 16px;text-align:center;min-width:210px;position:relative}
+  .dnode .t{font-weight:600;font-size:13px}
+  .dnode .s{font-size:11px;color:var(--subtle);font-family:var(--code)}
+  .dnode.intent{border-color:var(--accent);background:var(--accent-soft)}
+  .dnode.up{border-color:#d9a24a;background:var(--warn-soft)}
+  .dnode.down{border-color:var(--border-strong)}
+  .arrow{font-size:11px;color:var(--muted);text-align:center;padding:2px 0;line-height:1.4}
+  .arrow b{color:var(--err)}
+  .row3{display:flex;gap:24px;justify-content:center;flex-wrap:wrap}
+  /* ── 双写模拟器 ── */
+  .sim-tabs{display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px}
+  .sim-tab{padding:7px 16px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px}
+  .sim-tab.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .disk{font-family:var(--code);font-size:11.5px;background:#1d232e;color:#9fd0a8;border-radius:8px;padding:10px 14px;white-space:pre;overflow-x:auto;margin-top:12px}
+  .dirty{outline:2px solid var(--warn)!important}
+  .savedchip{display:inline-block;font-size:11px;color:var(--ok);background:var(--ok-soft);border-radius:999px;padding:1px 8px;margin-left:6px}
+  .draftchip{display:inline-block;font-size:11px;color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:1px 8px;margin-left:6px}
+  /* ── 建议方案卡片 ── */
+  .amc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .amc{border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;background:var(--surface);position:relative}
+  .amc:hover{border-color:var(--border-strong)}
+  .amc.sel{border-color:var(--accent);background:var(--accent-soft)}
+  .amc .ttl{font-weight:600;font-size:14px}
+  .amc .cur{font-size:10px;color:var(--accent);background:var(--surface);border:1px solid var(--accent-mid);border-radius:999px;padding:0 7px;margin-left:6px}
+  .amc .tl{font-size:12px;color:var(--muted);margin:4px 0 0}
+  .amc .tech{display:none;font-family:var(--code);font-size:12px;color:var(--subtle);margin-top:8px;background:#f2f4f7;border-radius:5px;padding:3px 8px}
+  body.expert .amc .tech{display:block}
+  .switchrow{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-bottom:10px}
+  .sw{width:38px;height:22px;border-radius:999px;background:var(--border-strong);position:relative;cursor:pointer;transition:background .15s;flex:none}
+  .sw::after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .15s}
+  .sw.on{background:var(--accent)}
+  .sw.on::after{left:18px}
+  /* 从属详情 */
+  .sub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .detail-layer{margin-left:10px;padding:14px;border-left:2px solid var(--accent);background:var(--bg,#fafbfd);border-radius:0 8px 8px 0}
+  .subcard{border:1px solid var(--border);border-radius:9px;padding:12px 14px;background:var(--surface)}
+  .subcard h4{margin:0 0 6px;font-size:13px}
+  .subcard .tech{display:none;font-family:var(--code);font-size:12px;color:var(--subtle);margin:0 0 6px;background:#f2f4f7;border-radius:5px;padding:2px 7px}
+  body.expert .subcard .tech{display:block}
+  .subcard.is-inherited{opacity:.62}
+  .subcard.is-inherited h4::after{content:"🔒 本机接管";font-size:10px;font-weight:400;color:var(--muted);background:var(--surface);border:1px solid var(--border-strong);border-radius:999px;padding:1px 8px;margin-left:8px}
+  .subcard.hl-target{outline:2px solid var(--accent);outline-offset:2px}
+  .badge-def,.badge-ovr,.badge-none,.badge-lock{display:inline-block;font-size:11px;border-radius:999px;padding:1px 8px;margin-left:6px;cursor:pointer;border:1px solid transparent}
+  .badge-def{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-mid)}
+  .badge-ovr{color:#1a5fb4;background:#e7f0fb;border-color:#b6cfec}
+  .badge-none{color:var(--muted);background:#eef0f3;border-color:var(--border)}
+  .badge-lock{color:var(--muted);background:#eef0f3;border-color:var(--border-strong)}
+  .edit-track{font-size:12px;color:var(--muted);border-top:1px dashed var(--border);margin:8px 0 0;padding-top:8px}
+  @keyframes fadeflash{0%{background:var(--warn-soft)}100%{background:transparent}}
+  .flash{animation:fadeflash 1s ease-out}
+  .ro-badge{display:inline-block;font-size:11px;font-family:var(--code);background:#eef0f3;border-radius:5px;padding:1px 7px;margin:2px 4px 2px 0}
+  .ready-ok{color:var(--ok);font-weight:600}
+  .ready-warn{color:var(--warn);font-weight:600}
+  /* 矩阵 */
+  table.matrix{border-collapse:collapse;width:100%;font-size:12px;margin-top:8px}
+  table.matrix th,table.matrix td{border:1px solid var(--border);padding:6px 9px;text-align:left}
+  table.matrix th{background:#f2f4f7;font-size:12px}
+  table.matrix td.cur-col{background:var(--accent-soft)}
+  table.matrix th.cur-col{background:var(--accent);color:#fff}
+  .mx-out{font-size:11px;color:var(--warn);border:1px solid var(--warn);border-radius:3px;padding:0 4px;margin-left:4px}
+  .mx-zero{font-size:11px;color:var(--ok);border:1px solid var(--ok);border-radius:3px;padding:0 4px;margin-left:4px}
+  .note{font-size:12px;color:var(--subtle);margin-top:8px}
+  .viewnav{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+  .step{display:flex;gap:10px;margin:8px 0}
+  .step .n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+  ul.tight{margin:6px 0;padding-left:20px}
+  ul.tight li{margin:3px 0}
+  .modal-mask{position:fixed;inset:0;background:rgba(20,26,36,.45);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-mask.show{display:flex}
+  .modal{background:var(--surface);border-radius:12px;max-width:460px;width:92%;padding:22px 24px}
+  .modal h3{margin:0 0 10px;font-size:15px}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  footer{color:var(--subtle);font-size:12px;text-align:center;margin-top:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="page">
+  <h1>设置信息架构 · 现状 vs 建议 对照原型</h1>
+  <p class="sub">REQ-SETTINGS-IA 评审辅助 v4（按 2026-09-26 UI 评审意见书 R1-R6 + 附录 B 勘误落修）· 现状行为按 main 分支真实代码复现（行号见各节标注）· 建议层已落入 2026-09-26 项目方裁决：<b>声纹仅本地；体验/托管从接入方式降为账户登录门后的能力级选项，账户勾选决定详情默认</b></p>
+</header>
+
+<div class="tabs">
+  <button class="tab on" data-v="v-now" onclick="showView('v-now',this)">① 现状 · 哪里乱</button>
+  <button class="tab" data-v="v-mid" onclick="showView('v-mid',this)">② 配置明细下钻（6 层）</button>
+  <button class="tab" data-v="v-fix" onclick="showView('v-fix',this)">③ 建议 · 决策层 + 从属详情层</button>
+</div>
+
+<!-- ═══════════════ 现状视图 ═══════════════ -->
+<section class="view on" id="v-now">
+
+  <div class="banner err" style="margin-top:0"><b>一句话结论：</b>一个逻辑状态（接入方式）有四个写入口，且界面承诺不由实现派生。证据按具体程度从左到右排列：双写模拟 → 死字段与无绑定文案 → 三套词汇 → 专家模式误用。建议架构见 ③。</div>
+
+  <h2 class="sec"><span class="tag red">根因 W1</span>一个逻辑状态，四个写入口</h2>
+  <p class="secdesc">代码里的真实关系：access_mode 表达用户意图，engine.mode / asr.mode 是其投影；但反向同步同样成立，导致「服务页」「引擎页」也变成了 access_mode 的写入口。</p>
+  <div class="card">
+    <div class="diagram">
+      <div class="row3">
+        <div class="dnode up"><div class="t">账户 · prefer_subscription</div><div class="s">routing.py:148-150 → 路由输入</div></div>
+        <div class="dnode intent"><div class="t">接入方式 access_mode</div><div class="s">local | hosted | byok | null</div></div>
+      </div>
+      <div class="arrow">┌────────────────┴────────────────┐<br>
+        <b>正向</b> apply_access_mode() settings_store.py:592-614 ｜ <b>反向</b> derive_access_mode() routers/settings.py:378-381<br>▼ 双向都成立 ⇒ 从属字段也能改写顶层意图</div>
+      <div class="row3">
+        <div class="dnode down"><div class="t">服务</div><div class="s">llm.* 即存即生效 · asr.mode 触发重对齐</div></div>
+        <div class="dnode down"><div class="t">引擎</div><div class="s">engine.mode → 写回④号入口</div></div>
+        <div class="dnode down"><div class="t">就绪度回报</div><div class="s">_llm_key_available / local_ready</div></div>
+      </div>
+    </div>
+    <div class="banner err">prefer_subscription 在因果链上位于接入方式<b>之上</b>：开着它，用户选「自带 Key」，实际走平台计费（route_override=cloud）。界面把它藏在「账户」里，文案只说「优先消耗体验期配额」（settings.json:82），没说是谁的账单。</div>
+  </div>
+
+  <h2 class="sec"><span class="tag red">问题 1（最伤）</span>双写入口 · 保存语义相反 —— 现场模拟</h2>
+  <p class="secdesc">复现真实缺陷：卡片高级面板 @change 即落盘（AccessModeCards.vue:130-146 → saveServices:255）；「服务」页走显式保存（SettingsView.vue:1513 onSave）。两处绑定同一个 reactive settings，注释自认「改动互为可见」（AccessModeCards.vue:127）。</p>
+  <div class="card">
+    <div class="sim-tabs">
+      <div class="sim-tab on" onclick="showSim('sim-card',this)">接入方式页 · 高级面板（自动保存）</div>
+      <div class="sim-tab" onclick="showSim('sim-svc',this)">「服务」分类页（显式保存）</div>
+    </div>
+    <div id="sim-card">
+      <div class="banner info" style="margin-top:0">你选中「自带 Key」并展开高级面板。改任何一格，<b>立刻写盘</b>。</div>
+      <div class="field"><label>LLM · API Key <span style="color:var(--err)">（标签就是占位符文案 · AccessModeCards.vue:137）</span></label>
+        <input id="card-key" value="" placeholder="sk-..." oninput="onCardKey(this.value)"></div>
+      <div class="note">当前落盘 key：<code class="k" id="disk-key">(空)</code><span id="card-saved-chip"></span></div>
+    </div>
+    <div id="sim-svc" style="display:none">
+      <div class="banner warn" style="margin-top:0">同一个字段在这里改，<b>不点保存就不落盘</b>——但切回上一页看到的却是这里的草稿值。</div>
+      <div class="field"><label>API Key</label>
+        <input id="svc-key" value="" placeholder="sk-..." oninput="draftKey=this.value;markDraft()"></div>
+      <button class="btn pri" onclick="svcSave()">保存设置</button>
+      <span id="svc-chip"></span>
+    </div>
+    <div class="disk" id="sim-disk">DISK settings.json（唯一真相） { llm: { api_key: null } }</div>
+    <p class="note" id="sim-verdict">操作提示：先在「服务」页输入一个 key 但<b>不点保存</b>，再切回「高级面板」—— 你会看到未保存的草稿冒充已保存值；反过来，高级面板里改完已落盘，「服务」页的「保存」按钮就成了无意义动作。</p>
+  </div>
+
+  <h2 class="sec"><span class="tag red">问题 2</span>「零出网」是与实现无绑定的静态文案 —— 现场模拟（勘误版）</h2>
+  <p class="secdesc">评审勘误：原判词「离线+provider=cloud 实际出网」与真实代码相反——<code class="k">core/embedding_provider.py:518-530</code> 在离线档<b>短路</b>：本地模式强制本机 CAM++，未就绪直接降级 MFCC，代码自述「绝不触达云端」。今天这句话<b>恰好为真</b>。但核实后有三条比「正在欺骗」更根本的缺陷（右侧切换模拟）。</p>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <div class="field"><label>模拟：当前接入方式</label>
+          <select id="vp-mode" onchange="vpNow()"><option value="local">离线模式</option><option value="hosted">联网模式 · 体验配额（proxy 档）</option></select></div>
+        <div class="field"><label>声纹提供方 provider（「服务」页可写 · SettingsView.vue:286）</label>
+          <select id="vp-now" onchange="vpNow()"><option value="auto">自动</option><option value="local">仅本地</option><option value="cloud" selected>云端（本机运行时默认值）</option></select></div>
+        <p class="note">对照真实代码：离线档 <code class="k">:518-530</code> 短路忽略 provider；联网 proxy 档 <code class="k">:533-549</code> 按 provider 选云端路径。</p>
+      </div>
+      <div>
+        <div class="amc sel" style="cursor:default"><div class="ttl"><span id="vp-card-ttl">离线模式</span> <span class="cur">当前</span></div>
+          <p class="tl" id="vp-card-tl">算力在本机 · 不花钱 · 数据不出设备</p>
+          <div style="border-top:1px dashed var(--border);margin-top:8px;padding-top:8px;font-size:12px;color:var(--subtle)" id="vp-note-now">▸ 离线模式使用本机 CAM++ 声纹模型，<b>零出网</b>，无需配置。</div>
+        </div>
+        <div id="vp-verdict" class="banner info" style="display:none"></div>
+      </div>
+    </div>
+    <ul class="tight" style="margin-top:10px">
+      <li><b>(a) 结构性缺陷，非当下欺骗</b>：「零出网」写死于 <code class="k">i18n/zh-CN/settings.json:167</code>，不读任何字段。今天成立纯属实现与文案恰好一致——任何一次改动都能悄悄破坏它，界面不会告诉你它已失效。这正是第 4 刀「从派生校验升级为结构性为真」的依据。</li>
+      <li><b>(b) provider 在离线档是死字段</b>：被 <code class="k">:520</code> 短路忽略，界面上却仍可写——它本身就是 W1「一个状态四个写入口」的又一例。</li>
+      <li><b>(c) 联网 proxy 档确实出网</b>：<code class="k">i18n:275</code>「音频片段送云端声纹服务」，且本机运行时 <code class="k">data/settings.json</code> 默认 <code class="k">voiceprint.provider="cloud"</code>（该文件已 gitignore，非入库泄露；但默认态即出网，决策层界面从未说明）。</li>
+    </ul>
+  </div>
+
+  <h2 class="sec"><span class="tag red">问题 3</span>同一状态三套词汇，无对照</h2>
+  <div class="card">
+    <table class="matrix">
+      <tr><th></th><th>卡片用词<br><span style="font-weight:400;font-size:11px">i18n settings.json:148-152</span></th><th>引擎页下拉文案<br><span style="font-weight:400;font-size:11px">i18n settings.json:237-240</span></th><th>矩阵列头文案<br><span style="font-weight:400;font-size:11px">i18n settings.json:254-259</span></th><th>数据字段值</th></tr>
+      <tr><td>1</td><td>离线模式</td><td>本地引擎（离线）</td><td>本地引擎</td><td><code class="k">local</code></td></tr>
+      <tr><td>2</td><td>托管模式</td><td>体验代理（共享服务）</td><td>体验代理</td><td><code class="k">proxy</code> / <code class="k">cloud</code></td></tr>
+      <tr><td>3</td><td>自带 Key 模式</td><td>自持 Key（直连）</td><td>自持 Key</td><td><code class="k">direct</code></td></tr>
+      <tr><td>4</td><td colspan="3" style="color:var(--warn)">幽灵枚举：<code class="k">engine_mode_cloud</code>（:237）可经 <code class="k">engine_mode_${mode}</code>（SettingsView.vue:316）在只读位渲染，但选择器永不提供该值</td><td><code class="k">cloud</code></td></tr>
+    </table>
+    <div class="banner err">用户选了「托管模式」，需要自己推断 托管 == 体验代理 == proxy == cloud。而唯一权威回答「我的数据去哪」的流向矩阵被放在「计算引擎」实现细节页（渲染于 SettingsView.vue:434-456），三列全量展示、不高亮当前列——它是说明书，不是状态面板。</div>
+  </div>
+
+  <h2 class="sec"><span class="tag red">问题 4/5</span>专家模式的形态错误</h2>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <ul class="tight">
+          <li><b>role="switch" 装在 role="radiogroup" 里</b>（AccessModeCards.vue:10 / :91）：箭头键只在 3 张卡间循环（:224-231），键盘用户 tab 到高级卡后方向键无响应；radio 用 roving tabindex，switch 恒 <code class="k">tabindex=0</code>（:93），焦点顺序不一致。</li>
+          <li>三维对比两维填 N/A：「算力：由所选模式决定 · 数据：由所选模式决定」（settings.json:171-173）——往对比网格填 N/A 本身就说明它不属于这个网格。</li>
+          <li>文案被迫自我辩护：「作为第四种介入方式：选中后…」（:170）——需要文字解释视觉排布，就是排布有问题。</li>
+        </ul>
+      </div>
+      <div>
+        <ul class="tight">
+          <li><b>专家模式 = 恢复旧版分类视图</b> = 发了一套平行的完整控制权，而不是在同一模型上多看一层细节。</li>
+          <li>切换无后果预览：一次点击直接改 engine.mode / asr.mode（AccessModeCards.vue:205-221 发起，引擎子进程启停实际在父组件 SettingsView.vue:1022-1029 / 1219-1221）；点当前卡完全无响应（:206 早退）。</li>
+          <li>local 卡有四重选中信号（accent 边框+底色+「推荐入门」+「当前」，:27-28/:281），其余卡只有两个。</li>
+          <li><code class="k">access_mode=null</code> 且已登录时引导头不出现（:187 <code class="k">&amp;&amp; !isLoggedIn</code>）：用户只见三张无选中的卡，没有任何「必须选一个」的提示。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="viewnav"><button class="btn" disabled>← 上一步</button><span class="note" style="margin:0">叙事动线：① 现状 → ② 下钻 → ③ 建议</span><button class="btn" onclick="navView(1)">下一步：配置明细下钻 →</button></div>
+</section>
+
+<!-- ═══════════════ 配置明细下钻视图 ═══════════════ --><section class="view" id="v-mid">
+
+  <h2 class="sec"><span class="tag blue">下钻</span>从「套餐」进，看每一层今天到底能配什么</h2>
+  <p class="secdesc">左侧选层，内容忠实复刻 main 分支实际渲染的字段（含缺陷标注）。每层顶部蓝色条 = 该字段在哪个页面可写（对应 ①：四个写入口问题）；红色条 = 已核实缺陷。</p>
+
+  <div class="card">
+    <div class="sim-tabs" style="flex-wrap:wrap">
+      <div class="sim-tab on" onclick="showMid('mid-plan',this)">L0 套餐 / 账户</div>
+      <div class="sim-tab" onclick="showMid('mid-llm',this)">L1 LLM 配置</div>
+      <div class="sim-tab" onclick="showMid('mid-asr',this)">L2 ASR 配置</div>
+      <div class="sim-tab" onclick="showMid('mid-engine',this)">L3 本地引擎资产</div>
+      <div class="sim-tab" onclick="showMid('mid-cli',this)">L4 CLI 引擎（智能体）</div>
+      <div class="sim-tab" onclick="showMid('mid-chat',this)">L5 对话面板（使用面）</div>
+    </div>
+
+    <!-- L0 套餐 -->
+    <div id="mid-plan">
+      <div class="banner info" style="margin-top:0"><span class="tag blue">现状</span> 入口现状：账户信息渲染在「服务」页顶部与「账户」区（SettingsView.vue:75/127/163）。当前唯一档位 free=「体验期」。<span class="tag amber">未来风险</span> <code class="k">tierName()</code> 写死返回体验期（:1462-1463）——付费档位接入后此处将直接说谎（当下尚未发生）。</div>
+      <div class="grid2">
+        <div>
+          <div class="subcard"><h4>已登录视图（现状复刻）</h4>
+            <p style="font-size:13px;margin:4px 0">套餐：<span class="usage-tier-badge" style="background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 10px;font-size:12px">体验期</span>
+            <span style="font-size:12px;color:var(--muted);margin-left:10px">剩余配额 <b id="plan-quota">240</b> 分钟</span></p>
+            <input type="range" min="0" max="600" value="240" style="width:100%;max-width:340px" oninput="document.getElementById('plan-quota').textContent=this.value">
+            <div class="field"><label>prefer_subscription · 优先使用订阅流量（开关在「账户」，但它是路由输入，见 routing.py:148）</label>
+              <select id="plan-psub" onchange="syncPsub(this.value)"><option value="off">关闭</option><option value="on">开启</option></select></div>
+            <div class="field"><label>本地说话人分离（can_toggle 后端判定 rules at app/routers/settings.py:189，仅 tier != free；UI 置灰在 SettingsView.vue:474-506，体验期恒为灰）</label>
+              <input type="checkbox" disabled> <span style="font-size:12px;color:var(--subtle)">体验期不可切换</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="subcard"><h4>prefer_subscription 开启后「自带 Key 模式」的真实账单</h4>
+            <div id="plan-impact" class="banner warn">关闭中：切换上方下拉体验后果。自带 Key = 花你的钱。</div>
+          </div>
+          <div class="subcard" style="margin-top:12px"><h4>套餐 → 能力解锁映射（现状隐式，无界面）</h4>
+            <table class="matrix"><tr><th></th><th>体验期 free</th><th>未来付费档</th></tr>
+            <tr><td>托管模式</td><td>消耗体验配额</td><td class="note">无界面说明配额耗尽后的行为</td></tr>
+            <tr><td>本地分离开关</td><td>灰</td><td>可开</td></tr>
+            <tr><td>prefer_subscription</td><td colspan="2" class="note">文案只提「体验期配额」，档位语义全靠猜</td></tr></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- L1 LLM -->
+    <div id="mid-llm" style="display:none">
+      <div class="banner info" style="margin-top:0">LLM 配置面现状分裂在两处：「服务」页完整表单（provider 预设 + base_url + key + model，显式保存）与卡片高级面板 3 格（自动保存）。且按接入方式不同，可配性完全不同——但这个页面<b>不感知你选了哪个接入方式</b>。</div>
+      <div class="field" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="margin:0">按接入方式查看 LLM 实际可配性：</label>
+        <button class="btn sm" id="b-l1-local" onclick="l1Mode('local')">离线</button>
+        <button class="btn sm" id="b-l1-hosted" onclick="l1Mode('hosted')">托管</button>
+        <button class="btn sm pri" id="b-l1-byok" onclick="l1Mode('byok')">自带 Key</button>
+      </div>
+      <div id="l1-local" class="banner warn" style="display:none">离线模式：路由恒为 local（routing.py:124-125）。下方 provider/base_url/model 表单照常显示、照常可编辑——但<b>保存了对路由无任何影响</b>。这正是「界面不感知决策层」的样例。</div>
+      <div id="l1-hosted" class="banner info" style="display:none">托管模式：LLM 强制走平台云代理（routing.py:127-130）。你在这里填的 base_url/key 只在卡片上以「体验代理」词汇间接出现，表单本身无提示。</div>
+      <div id="l1-byok">
+        <div class="grid2">
+          <div class="subcard"><h4>「服务」页表单（显式保存）— SettingsView.vue:186-229</h4>
+            <div class="field"><label>LLM 服务提供商（预设下拉，本机引擎探测可达会置顶 + 不可达置灰）</label>
+              <select id="l1-prov" onchange="l1Prov(this.value)">
+                <option>DashScope（通义千问）</option><option>OpenAI</option><option>DeepSeek</option>
+                <option value="ollama">Ollama（本机 · 已检测到）</option>
+                <option value="lmstudio">LM Studio（本机 · 未检测到，置灰示意）</option>
+                <option>自定义</option>
+              </select></div>
+            <div class="field"><label>Base URL（provider 切换自动回填）</label><input id="l1-url" value="https://dashscope.aliyuncs.com/compatible-mode/v1"></div>
+            <div class="field"><label>API Key <span id="l1-keyhint" style="color:var(--subtle)">（本机端点自动填占位 key，:1352-1355）</span></label><input id="l1-key" type="password" value=""></div>
+            <div class="field"><label>LLM 模型（候选 = 探测到的本机模型 &gt; 预设建议模型；可自由输入）</label>
+              <select id="l1-model"><option>qwen-plus</option><option>qwen-max</option><option>qwen-turbo</option></select></div>
+            <button class="btn pri" disabled>保存设置</button> <span class="note" style="display:inline">＝ 全页 6 组字段一起存（:1513-1521）</span>
+          </div>
+          <div>
+            <div class="subcard"><h4>供应商预设 → 建议模型映射（真实数据，:1256-1261 + 后端清单）</h4>
+              <table class="matrix">
+                <tr><th>预设</th><th>base_url</th><th>建议模型</th></tr>
+                <tr><td>DashScope（通义千问）</td><td class="note">dashscope.aliyuncs.com/compatible-mode/v1</td><td>qwen-plus · qwen-max · qwen-turbo</td></tr>
+                <tr><td>OpenAI</td><td class="note">api.openai.com/v1</td><td>gpt-4o · gpt-4o-mini</td></tr>
+                <tr><td>DeepSeek</td><td class="note">api.deepseek.com/v1</td><td>deepseek-chat · deepseek-reasoner</td></tr>
+                <tr><td>Ollama / LM Studio（本机）</td><td class="note">localhost:11434 / 1234</td><td>探测回填实际已装模型（如 qwen2.5:14b）</td></tr>
+                <tr><td>自定义</td><td class="note">手填</td><td>手填</td></tr>
+              </table>
+            </div>
+            <div class="banner err" style="margin-top:12px">缺陷：卡片高级面板只露出 base_url/model/key 三格、<b>无 provider 选择器</b>（AccessModeCards.vue:128-147）；在这里换 provider 联动改掉的 base_url，回到卡片面板看不出这 URL 属于哪家。两面板标签还用占位符文案「留空则保留当前密钥」当字段名。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- L2 ASR -->
+    <div id="mid-asr" style="display:none">
+      <div class="banner info" style="margin-top:0">ASR 在「服务」页是独立的 mode 下拉（cloud/proxy/direct 三值，SettingsView.vue:237-241）。精确机制：<code class="k">derive_access_mode</code> 只看 engine.mode（settings_store.py:509-516），改 asr.mode 本身不直接改写接入方式，<b>但它触发一次「access_mode := f(engine.mode)」重对齐</b>——在两者已分歧的存量配置上，编辑 ASR 会静默覆盖你在卡片上选的模式。</div>
+      <div class="field" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="margin:0">asr.mode：</label>
+        <button class="btn sm" id="l2-proxy" onclick="l2Mode('proxy')">代理模式（共享服务）</button>
+        <button class="btn sm" id="l2-direct" onclick="l2Mode('direct')">直连模式（自持 Key）</button>
+        <button class="btn sm" id="l2-cloud" onclick="l2Mode('cloud')">云端代理（登录即用）</button>
+      </div>
+      <div class="grid2">
+        <div class="subcard"><h4>表单随 asr.mode 变（现状复刻）</h4>
+          <div id="l2-form-proxy">
+            <div class="field"><label>服务提供商</label><input value="Cloud AI（API Key 由平台代理管理）" disabled></div>
+            <div class="field"><label>ASR 模型</label><input value="paraformer-v2"></div>
+          </div>
+          <div id="l2-form-direct" style="display:none">
+            <div class="field"><label>API 端点地址</label><input value="https://dashscope.aliyuncs.com"></div>
+            <div class="field"><label>API Key</label><input type="password" placeholder="sk-..."></div>
+            <div class="field"><label>ASR 模型</label><input value="paraformer-v2"></div>
+          </div>
+          <div id="l2-form-cloud" style="display:none">
+            <div class="field"><label>服务提供商</label><input value="Cloud AI（登录即用）" disabled></div>
+            <div class="field"><label>ASR 模型</label><input value="paraformer-v2"></div>
+          </div>
+          <div class="banner err" id="l2-verdict" style="margin-top:8px">点上方三个按钮体验重对齐后果。</div>
+          <table class="matrix" style="margin-top:10px">
+            <tr><th colspan="2">重对齐映射表（settings_store.py:499-516，真实代码注释）</th></tr>
+            <tr><td><code class="k">engine.mode=local</code></td><td>→ 离线模式</td></tr>
+            <tr><td><code class="k">engine.mode=proxy / cloud</code></td><td>→ 托管模式</td></tr>
+            <tr><td><code class="k">engine.mode=direct</code> + 订阅偏好关</td><td>→ 自带 Key 模式</td></tr>
+            <tr><td><code class="k">engine.mode=direct</code> + 订阅偏好开</td><td>→ <b style="color:var(--warn)">托管模式</b>（A1 裁决：prefer_subscription 甚至参与「你选了什么模式」的推导）</td></tr>
+          </table>
+        </div>
+        <div class="subcard"><h4>离线 ASR（与上表单平行存在）</h4>
+          <p style="font-size:13px">access_mode=local 时走本机 FunASR，<b>不读 asr.mode</b>（routing.py:124-125）。本机链路组成见 L3。云端 ASR 与本地 ASR 的模型词表不同（paraformer-v2 是云端 API 模型名；本机是权重文件），界面用同一个「ASR 模型」标签表达两件事。</p>
+          <div class="field"><label>说话人分离来源（账户页 local_diarization × 功能页自动识别开关 × 声纹 provider——三处可影响同一行为）</label>
+            <input value="（体验期锁定：云端 voiceprint / 本地 CAM++）" disabled></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- L3 本地引擎资产 -->
+    <div id="mid-engine" style="display:none">
+      <div class="banner info" style="margin-top:0">R5 模型资产管理（SettingsView.vue:367-399，仅专家模式可见）：决定 local_ready，即「离线模式是否就绪」的真身。它是接入方式的<b>前置条件</b>，却藏在第四层。</div>
+      <div class="card" style="box-shadow:none">
+        <table class="matrix">
+          <tr><th>模型资产</th><th>用途</th><th>状态</th><th>备注</th></tr>
+          <tr><td><code class="k">funasr-paraformer</code></td><td>语音转写主模型</td><td><span class="ready-ok">已就绪</span></td><td>必装</td></tr>
+          <tr><td><code class="k">ct-punc</code></td><td>标点恢复</td><td><span class="ready-warn">未安装（可选项）</span></td><td><span class="tag amber">已裁决</span> 降级不可接受 → 实质上必装</td></tr>
+          <tr><td><code class="k">cam++</code></td><td>声纹特征提取（本机）</td><td><span class="ready-ok">已就绪</span></td><td>voiceprint.provider=local/auto 时消费</td></tr>
+          <tr><td colspan="4" class="note">行数据为演示示意；真实清单/体积/进度来自 /api/engine/models overview。</td></tr>
+        </table>
+        <div class="field" style="margin-top:10px"><label>存储位置（管理员可改）＋ 磁盘余量提示 → 现状在引擎页内</label><input value="~/Library/Application Support/OpenMeetingScribe/models" disabled></div>
+        <div class="banner warn">离线卡片只显示「待就绪/已就绪」徽章（AccessModeCards.vue:53-56）；<b>差哪个组件、去哪装</b>要跳到专家模式的引擎页——决策卡与就绪度详情分居两层且后者默认不可见。</div>
+      </div>
+    </div>
+
+    <!-- L4 CLI 引擎 -->
+    <div id="mid-cli" style="display:none">
+      <div class="banner info" style="margin-top:0">智能体模式的算力提供者是<b>本机 CLI 引擎</b>（chat_engine 命名空间），与 access_mode 正交（routers/settings.py:383 注释「方案 D1」）。这是四层配置栈里唯一「用户自己装了才算数」的一层。</div>
+      <div class="grid2">
+        <div class="subcard"><h4>chat_engine 配置面（现状）</h4>
+          <div class="field"><label>引擎清单（core/cli_engine/manifests/）</label>
+            <select><option>Qoder CLI</option><option selected>Qoder CLI（国内版）</option></select></div>
+          <div class="field"><label>权限级别 auth_tier</label>
+            <select><option selected>readonly（只读）</option><option>workspace_write（工作区可写）</option><option>full_task（全任务）</option></select></div>
+          <div class="field"><label>CLI 路径覆盖（探测失败时手填）</label><input placeholder="qoder"></div>
+          <p class="note">探针三段：可执行路径解析（probe.py:63-70）→ --version 版本下限校验（:73-76）→ status 登录态签名校验（:94-108）。不通过则该引擎在对话面板不可用。</p>
+        </div>
+        <div class="subcard"><h4>它出现在设置界面哪里？</h4>
+          <p style="font-size:13px">问题本身：chat_engine 的编辑入口在「账户」页的流量偏好附近，但<b>对话面板选「智能体」模式时</b>才用到它——配置面与使用面之间没有互相跳转；探针状态（装了没/登录没）在设置页无回显，用户只有在对话里撞错才知道。</p>
+          <div class="banner warn">正交性对用户是隐形的：离线模式 + CLI 智能体 = 纪要走本机、对话走 Qoder CLI 登录账号计费。组合语义没有任何一屏讲清（流向矩阵不含 CLI 列）。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- L5 对话面板 -->
+    <div id="mid-chat" style="display:none">
+      <div class="banner err" style="margin-top:0">先回答评审问题：<b>对话面板现在不能选模型。</b>后端 ChatRequest 支持逐条消息传 model（chat.py:214），前端请求体既无 model 也无 mode（useAiChat.ts:150 只带 engine）→ 永远落到默认 <code class="k">qwen-plus</code>（chat.py:567/712）。服务页里配置的 llm.model 与对话实际用哪个模型之间的关系，界面零呈现。</div>
+      <div class="grid2">
+        <div class="subcard"><h4>现状：面板可选的只有「模式」</h4>
+          <div class="ai-mode-row" style="margin:8px 0"><div class="ai-mode-pill" style="border:1px solid var(--border-strong);border-radius:999px;padding:2px;display:inline-flex">
+            <span class="btn sm pri" style="border-radius:999px">⚡ 问答</span><span class="btn sm" style="border-radius:999px">🧭 自动</span><span class="btn sm" style="border-radius:999px">🤖 智能体</span>
+          </div></div>
+          <div class="banner info" style="font-size:12px">🤖 本次由 <b>Qoder CLI（国内版）</b> 执行 · <span style="color:var(--subtle)">自动选择</span> · 只读</div>
+          <p class="note">引擎回显条（AiChatPanel.vue:122-127）是事后告知：本次消息实际由谁执行 + auth_tier。问答模式下用什么 LLM 完全无回显。</p>
+        </div>
+        <div class="subcard"><h4><span class="tag green">建议</span> 配置面↔使用面闭环</h4>
+          <div class="field"><label>模型（默认跟随设置，可会话级改）</label>
+            <select><option>跟随设置（qwen-plus · DashScope）</option><option>qwen-max</option><option>deepseek-chat</option><option>qwen2.5:14b（本机 Ollama）</option></select></div>
+          <div class="field"><label>智能体引擎（含探针状态前置回显）</label>
+            <select><option>Qoder CLI（国内版）✓ 已登录</option><option>Qoder CLI ✗ 未安装</option></select></div>
+          <p class="note">离线/托管/自带 Key 在模型候选里以来源标注呈现（本机 / 平台代理 / 你的 Key），与会话级 model 参数闭环；每轮回复尾部回显实际消费方与计费口径。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec"><span class="tag amber">下钻结论</span>配置栈的真实深度 = 6 层，导航只给了 4 个平级入口</h2>
+  <div class="card">
+    <p style="margin:0 0 8px">L0 套餐 → L1 接入方式决策 → L2 LLM/ASR/声纹参数 → L3 本地资产就绪度 → L4 CLI 引擎（正交栈）→ L5 使用面（对话面板）。现状导航把 L1 与 L2 的三块压成四个平级分类，L3/L4 藏进专家模式，L5 与配置面完全断连。<b>建议方案的从属详情层按此六层重排</b>（见 ③）。</p>
+  </div>
+  <div class="viewnav"><button class="btn" onclick="navView(-1)">← 上一步：现状</button><span class="note" style="margin:0">叙事动线：① 现状 → ② 下钻 → ③ 建议</span><button class="btn" onclick="navView(1)">下一步：建议方案 →</button></div>
+</section>
+
+<!-- ═══════════════ 建议视图 ═══════════════ -->
+<section class="view" id="v-fix">
+
+  <h2 class="sec"><span class="tag green">目标结构</span>决策层（离线 / 联网） + 能力级详情层（算力来源按 ASR/LLM 分选）</h2>
+  <p class="secdesc">2026-09-26 项目方裁决已落入本演示：<b>①</b> 云端声纹下架，声纹仅本机 CAM++——「零出网」从「派生校验」升级为<b>结构性为真</b>；<b>②</b> 体验/托管不再是独立接入方式，随账户登录降为 ASR、LLM 详情中各自可勾选的算力来源；账户下「优先使用体验」勾选项决定详情默认生效值。</p>
+
+  <div class="switchrow" style="justify-content:flex-end;gap:8px;margin:0 0 6px">
+    <span style="font-size:12px;color:var(--muted)">专家详情 · 开启后：卡片、详情卡、流向矩阵同步显示工程值（注释层，非平行界面）</span>
+    <div class="sw" id="sw-expert" role="switch" aria-checked="false" tabindex="0" onclick="toggleExpert()" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleExpert()}"></div>
+  </div>
+  <div class="card">
+    <div id="guide-banner" class="banner info" style="display:none;margin-top:0"><b>还需一步：先选一个接入方式。</b>离线 / 联网决定算力归属，随时可换。<span id="guide-cloud-hint"></span></div>
+    <div class="amc-grid" role="radiogroup" aria-label="接入方式" id="amc-grid">
+      <div class="amc" id="c-local" role="radio" aria-checked="false" tabindex="0" onclick="pick('local')" onkeydown="cardKeynav(event,'local')">
+        <div class="ttl">离线模式<span class="cur" style="display:none">当前</span></div>
+        <p class="tl">算力全在本机 · 不花钱 · 数据不出设备（声纹结构性零出网）</p>
+        <div class="tech">engine.mode ▸ local · asr.mode ▸ local</div>
+      </div>
+      <div class="amc" id="c-cloud" role="radio" aria-checked="false" tabindex="-1" onclick="pick('cloud')" onkeydown="cardKeynav(event,'cloud')">
+        <div class="ttl">联网模式<span class="cur" style="display:none">当前</span><span id="cloud-login-hint" style="font-size:11px;color:var(--warn);font-weight:400;margin-left:6px"></span></div>
+        <p class="tl">至少一项能力使用云端算力 · 计费来源在下方详情逐能力选择</p>
+        <div class="tech">llm/asr 各自 ▸ 体验（proxy）/ 自带 Key（direct）/ 本机端点（local-ep）</div>
+      </div>
+    </div>
+    <div id="fix-msg" class="banner info" style="display:none"></div>
+
+    <h3 style="margin:20px 0 4px;font-size:14px">从属详情（联网模式下逐能力可选；离线模式下被本机链路接管，只读）</h3>
+    <div class="sub-grid detail-layer">
+      <div class="subcard" id="sub-acct"><h4>账户 · 套餐</h4>
+        <div class="tech">account.tier ▸ free · prefer_subscription ▸ bool</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px">
+          <div class="sw on" id="sw-login" role="switch" aria-checked="true" tabindex="0" onclick="toggleLogin()" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleLogin()}"></div><span id="login-label">已登录</span>
+          <span style="margin-left:auto;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 10px;font-size:12px">体验期</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted)">剩余体验配额 <b id="plan-quota2">120</b> 分钟</div>
+        <input type="range" min="0" max="300" value="120" style="width:100%" oninput="setQuota(this.value)">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <div class="sw on" id="sw-psub" role="switch" aria-checked="true" tabindex="0" onclick="setPsub(!FIX.psub)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();setPsub(!FIX.psub)}"></div>
+          <span style="font-size:12px" id="psub-label">优先使用体验配额</span>
+        </div>
+        <p class="note" id="psub-note">勾选后：LLM / ASR 详情默认选中「体验配额」并标注「默认生效」；这里改的是<b>默认值</b>，详情仍可逐能力覆盖——不存在静默改写。</p>
+      </div>
+      <div class="subcard" id="sub-llm"><h4>LLM · 算力来源 <span id="llm-default-chip"></span></h4>
+        <div class="tech">llm.provider ▸ preset · chat_engine.auth_tier ▸ readonly</div>
+        <select id="sel-llm" onchange="setSrc('llm',this.value)" style="width:100%;font-size:12px;padding:5px 8px">
+          <option value="trial">体验配额</option>
+          <option value="byok">自带 Key</option>
+          <option value="local-ep">本机端点</option>
+        </select>
+        <div id="llm-ready" style="font-size:12px;margin-top:6px"></div>
+        <p class="note" id="llm-bill"></p>
+        <p class="edit-track">当前 Key：<code class="k">sk-a***3</code>（脱敏）· 上次更新 09-21 · <button class="btn sm" onclick="msg('info','演示：跳转到「服务」页 LLM 区块——全产品唯一 Key/Base URL 编辑面。')">在服务页编辑</button></p>
+      </div>
+      <div class="subcard" id="sub-asr"><h4>ASR · 算力来源 <span id="asr-default-chip"></span></h4>
+        <div class="tech">asr.mode ▸ proxy|direct · model ▸ paraformer-v2</div>
+        <select id="sel-asr" onchange="setSrc('asr',this.value)" style="width:100%;font-size:12px;padding:5px 8px">
+          <option value="trial">体验配额</option>
+          <option value="byok">自带 Key</option>
+        </select>
+        <div id="asr-ready" style="font-size:12px;margin-top:6px"></div>
+        <p class="note" id="asr-bill"></p>
+        <p class="edit-track">端点：<code class="k">dashscope.aliyuncs.com</code> · <button class="btn sm" onclick="msg('info','演示：跳转到「服务」页 ASR 区块（唯一编辑面）。')">在服务页编辑</button></p>
+        <div style="border-top:1px dashed var(--border);margin-top:8px;padding-top:8px;font-size:12px;color:var(--subtle)">声纹识别：<b>仅本机 CAM++</b> · 零出网（说话人分离不再有云端路径）<span class="tag green" style="margin-left:4px">云端声纹提取已下架 · 待实现</span><br><span style="font-size:11px">注：main 尚未实现下架（服务页声纹区块 / 卡片 provider 选择器 / :533-549 云端路径均在线），属本需求删改范围，见第 4 刀；注册表迁移需 Dev 确认后方可写「无用户数据迁移」。</span></div>
+      </div>
+      <div class="subcard"><h4>引擎 · 本地组件</h4>
+        <div class="tech">engine.local_ready ▸ all required assets present</div>
+        <div><span class="ro-badge">local_ready: <b id="ro-local">已就绪</b></span></div>
+        <p class="note"><button class="btn sm" onclick="flipLocal()">模拟：模型未安装</button>　未就绪时离线卡显示黄色「待就绪」并可直达 L3 资产清单。</p>
+      </div>
+      <div class="subcard"><h4>CLI 引擎 · 智能体算力（正交栈）</h4>
+        <div class="tech">chat_engine ▸ qoder-cli-cn · auth_tier=readonly</div>
+        <div><span class="ro-badge">Qoder CLI（国内版）</span><span class="ready-ok" style="font-size:12px">✓ 已装 ✓ 已登录</span></div>
+        <div style="margin-top:6px"><span class="ro-badge">权限级：只读</span></div>
+        <p class="note">探针状态常驻回显；对话面板选「智能体」之前即可见，不再撞错才知道。</p>
+      </div>
+      <div class="subcard"><h4>使用面回显 · 对话模型</h4>
+        <div class="tech">chat.model ▸ per-message override</div>
+        <div><span class="ro-badge">会话默认：跟随详情</span><span class="ro-badge" id="ro-llm-src">来源：—（未选接入方式）</span></div>
+        <p class="note">对话面板模型选择器（② L5 右卡）切换后在此回显；每轮回复尾部标注实际消费方与计费口径。</p>
+      </div>
+    </div>
+
+    <div id="fix-matrix" style="display:none">
+      <h3 style="margin:20px 0 2px;font-size:14px">数据流向矩阵（专家详情开启 · 已搬到接入方式页 · 高亮当前列）</h3>
+      <table class="matrix" id="matrix-el"></table>
+      <p class="note">列头只放用户词（离线 / 体验配额 / 自带 Key / 本机端点）；proxy / direct 等工程值仅在专家注释行出现。单元格内标注出网性。</p>
+    </div>
+  </div>
+
+  <h2 class="sec"><span class="tag blue">改造原则</span>六刀，按优先级（2026-09-26 裁决后版本）</h2>
+  <div class="card">
+    <div class="step"><div class="n">1</div><div><b>决策层重构</b>：三卡收敛为「离线 / 联网」两卡（体验不再占卡位）；详情层 = 能力级算力来源逐能力选择（LLM：体验 / 自带 Key / 本机端点；ASR：体验 / 自带 Key），账户「优先使用体验」勾选决定详情<b>默认生效值</b>并明示徽章。旧 route_override 静默语义整体消灭：配额耗尽、Key 缺失一律明示「自动改用」+ 常驻状态行（界面禁用「降级/兜底/fallback」词，用户看见的是换了计费方，不是系统做了个内部决定）。</div></div>
+    <div class="step"><div class="n">2</div><div><b>单向数据流 + 保存语义统一</b>：卡片是接入方式唯一写入口；参数编辑面收敛到「服务」（L2）一处、显式保存；引擎页 dropdown（SettingsView.vue:340-344）改只读徽章；卡片内联自动保存面板与跨屏草稿互见（AccessModeCards.vue:127 注释自认）一并废除。routers/settings.py:378 反向同步降级为旧客户端兼容窗口。</div></div>
+    <div class="step"><div class="n">3</div><div><b>词汇收敛</b>：用户词只剩 离线 / 联网 / 体验配额 / 自带 Key；托管、体验代理、自持 Key、proxy、direct 只在专家详情作括号注释。流向矩阵搬入接入方式页、按能力逐行高亮（演示见上：声纹行恒亮「本机」列）。幽灵枚举 engine_mode_cloud 随 A1 推导映射一并清理。</div></div>
+    <div class="step"><div class="n">4</div><div><b>声纹云端下架（结构性零出网）</b>：删除 voiceprint.provider 字段与 cloud_base_url/cloud_api_key、服务页声纹区块（SettingsView.vue:280-300）、卡片折叠区 provider 选择器（AccessModeCards.vue:69-85）、hosted 档「音频送云端提取声纹」链路（矩阵 voiceprint_proxy 单元格，settings.json:275）；「零出网」文案（:167）从静态承诺变为恒真事实。注册表本就存本机 ⇒ 无用户数据迁移。</div></div>
+    <div class="step"><div class="n">5</div><div><b>prefer_subscription → 账户默认勾选</b>：从「路由 override 输入」改为「详情默认值来源」；勾选联动是显式可见的（徽章标注「默认生效」），用户逐能力覆盖后<b>持久化覆盖状态，不被下次登录/勾选改回</b>。App.vue:238 事后 toast 降为兜底。</div></div>
+    <div class="step"><div class="n">6</div><div><b>配置栈按六层重排 + 使用面闭环</b>（对应 ② 页下钻结论）：L0 套餐 → L1 离线/联网决策 → L2 服务参数（唯一编辑面）→ L3 本地资产（就绪度前置到离线卡 + 直达入口）→ L4 CLI 引擎（正交栈，探针状态前置回显）→ L5 使用面（对话面板会话级模型选择器——后端 per-message model 已存在（chat.py:214），前端补接线即可，默认「跟随详情」；回复尾部回显实际消费方与计费口径）。档位文案去写死（tierName :1462）。</div></div>
+  </div>
+
+  <h2 class="sec"><span class="tag blue">专家模式重定义（已确认方向：同模型加细节层）</span></h2>
+  <div class="card">
+    <ul class="tight">
+      <li>从 radiogroup 摘出：不再是第四张 radio/switch 卡，而是页面级「专家详情」开关（右上角，演示中已放置），aria 语义为独立 switch，不参与三选一。</li>
+      <li>开启效果 = 给同一模型<b>叠加注释层</b>：卡片露出 <code class="k">engine.mode=…</code>、流向矩阵进主页、服务/引擎页出现底层字段。关回去，用户看到的仍是同一个 access_mode——不再是「平行的旧版分类视图」（settings.json:170 现文案）。</li>
+      <li>切换卡片增加后果预览（演示中点击非当前卡可见）：列出将被改写的投影字段与引擎进程动作，确认后才落盘；点当前卡给出「已是当前模式」反馈而非无响应。</li>
+    </ul>
+  </div>
+  <h2 class="sec"><span class="tag amber">落地依赖</span>存量迁移映射 + 待裁决问题（需求单登记前需项目方确认）</h2>
+  <div class="card">
+    <div class="grid2">
+      <div>
+        <h3 style="font-size:14px;margin:0 0 6px">access_mode 三值 → 新模型迁移（A2 兼容窗口内仍同步旧字段）</h3>
+        <table class="matrix">
+          <tr><th>存量</th><th>迁移为</th><th>旧字段投影</th></tr>
+          <tr><td><code class="k">local</code></td><td>离线模式</td><td>engine.mode=local 不变</td></tr>
+          <tr><td><code class="k">hosted</code></td><td>联网 + LLM/ASR 来源=体验 + 账户勾选开</td><td>engine.mode=proxy 不变</td></tr>
+          <tr><td><code class="k">byok</code></td><td>联网 + LLM/ASR 来源=自带 Key + 账户勾选关</td><td>engine.mode=direct 不变</td></tr>
+          <tr><td colspan="3" class="note">derive 映射 A1 裁决（direct+订阅开=托管）随新模型<b>废止</b>：计费来源不再是模式推导的输出，而是逐能力的显式状态。混配存量（如 hosted + asr.mode=direct）按详情层逐能力读取实际值，冲突时明示不静默。</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 style="font-size:14px;margin:0 0 6px">裁决状态（2026-09-26 项目方终裁 7 项 ✅；余 5 项待定）</h3>
+        <ul class="tight">
+          <li><b>Q1 顶层命名 ✅</b>：定名「联网模式」（判据：标题写不会被下层配置证伪的判据）。GLOSSARY「托管」清退随需求单执行。</li>
+          <li><b>Q2 未登录路径</b>：联网模式下体验不可选、又无 Key ⇒ 强制登录引导？（原 hosted 卡 login_required 状态的继承）</li>
+          <li><b>Q3 配额耗尽行为 ✅</b>：按设计师三级分层方案定案——L1 行内常驻 / L2 页面横幅 amber 不用红 / L3 顶层卡角标；文案「自动改用」禁用「降级」；10 分钟预警阈值；每次自动改用落本地事件记录。</li>
+          <li><b>Q4 计量口径</b>：体验配额按能力分别计费还是维持统一分钟数？能力级 source 粒度已支持分开计量。</li>
+          <li><b>Q5 声纹下架波及面</b>：OBS-01「云端声纹重部署」预案取消，QA-R2 启动门相应项移除——需知会 QA 工程师；说话人分离功能页「自动识别」云端链路描述同步改写。</li>
+          <li><b>Q6 打包与体积</b>：云端声纹客户端代码（cloud voiceprint 调用路径）随下架删除，WP-G 冻结包口径同步（DevOps）。</li>
+          <li><b>Q7 决策留痕</b>：本裁决两条结论建议登记入决策中心（REQ-DECISION-CENTER 正好覆盖「已定结论」形态），升格式后回填。</li>
+          <li><b>裁决-1 切换失败语义 ✅</b>：定案<b>全量回滚</b>——任一环节失败则所有字段不写入，保持原模式；需求单按此定义事务边界。</li>
+          <li><b>裁决-2 联网→离线确认强度 ✅</b>：定案<b>需更强确认</b>——该方向追加「将打断进行中的转写」显式风险条目与差异化警示样式。</li>
+          <li><b>裁决-3 顶层卡措辞上限 ✅</b>：定案<b>允许例外 + 判据措辞</b>——联网卡副标题用「至少一项能力使用云端算力」；「本机端点」仅出现在 LLM 详情层，不上顶层卡。</li>
+          <li><b>裁决-4 用户词表 ✅</b>：定案<b>五词</b>——离线 / 联网 / 体验配额 / 自带 Key / 本机端点。</li>
+          <li><b>裁决-5 无障碍硬指标 ✅</b>：定案<b>升为产品级规则</b>——注释层/状态文字 ≥12px + 对比度 ≥4.5:1，写入两份需求单验收标准，全页面遵守。</li>
+          <li><b>设计师立场（供 Q1/Q3 终裁参考）</b>：Q1 定名「联网模式」（否「在线」——与登录态/连通性三重歧义；慎用「云端」——会被下层 LLM=本机端点证伪，且与「云端声纹已下架」撞词）；Q3 三级分层提示：L1 行内常驻 / L2 页面横幅 amber 不用红 / L3 顶层卡角标，文案「自动改用」+10 分钟预警阈值+每次自动改用落本地事件记录。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="viewnav"><button class="btn" onclick="navView(-1)">← 上一步：配置明细下钻</button><span class="note" style="margin:0">叙事动线：① 现状 → ② 下钻 → ③ 建议</span><button class="btn" disabled>下一步：—</button></div>
+</section>
+
+<footer>OpenMeetingScribe · REQ-SETTINGS-IA 评审原型 · 现状行为逐行对应 main 分支代码，建议层为产品方向演示非最终视觉稿</footer>
+</div>
+
+<!-- 后果预览弹窗 -->
+<div class="modal-mask" id="modal">
+  <div class="modal">
+    <h3 id="m-title">切换到「联网模式」？</h3>
+    <div id="m-body"></div>
+    <div class="acts">
+      <button class="btn" id="m-cancel" onclick="closeModal()">取消</button>
+      <button class="btn pri" id="m-confirm" onclick="confirmPick()">确认切换</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── 通用 ── */
+function showView(id,btn){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+  else document.querySelector('.tab[data-v="'+id+'"]').classList.add('on');
+}
+function navView(dir){
+  const order=['v-now','v-mid','v-fix'];
+  const cur=order.findIndex(id=>document.getElementById(id).classList.contains('on'));
+  const next=Math.min(order.length-1,Math.max(0,cur+dir));
+  showView(order[next]);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* ── 现状：双写模拟器（复现 reactive settings 共享 + 两套保存语义） ── */
+let diskKey = null;       // 已落盘
+let draftKey = '';        // 服务页草稿
+let cardKeyLive = null;   // 高级面板展示值（bug：直接绑同一对象，显示草稿冒充落盘）
+function showSim(id,btn){
+  document.getElementById('sim-card').style.display = id==='sim-card'?'':'none';
+  document.getElementById('sim-svc').style.display  = id==='sim-svc'?'':'none';
+  btn.parentElement.querySelectorAll('.sim-tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+  // bug 演示：切回高级面板时，输入框回填的是「同一 settings 对象」的当前值（含未保存草稿）
+  if(id==='sim-card'){
+    const shown = draftKey !== '' ? draftKey : (diskKey ?? '');
+    document.getElementById('card-key').value = shown;
+    if(shown !== (diskKey ?? '')){
+      document.getElementById('card-key').classList.add('dirty');
+      document.getElementById('sim-verdict').innerHTML =
+        '<b>你正在看到的不是落盘值。</b>「服务」页有未保存草稿，高级面板因共享同一 reactive 对象直接显示了草稿——界面无法区分「已生效」与「未生效」。';
+    } else {
+      document.getElementById('card-key').classList.remove('dirty');
+    }
+  }
+}
+function simDisk(){
+  document.getElementById('sim-disk').innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start">'
+    +'<div><b style="font-size:12px">卡片面板 @change 落盘字段集</b><div class="k" style="display:block;margin-top:4px">{ llm.api_key: '+(diskKey===null?'null':'"'+diskKey+'"')+', llm.base_url, llm.model, asr.* }</div></div>'
+    +'<div><b style="font-size:12px">「服务」页保存按钮落盘字段集</b><div class="k" style="display:block;margin-top:4px">{ asr.*, llm.*, voiceprint.*, output_dir, feature_flags, storage }</div></div>'
+    +'</div><div style="font-size:11px;margin-top:6px;color:var(--subtle)">DISK settings.json（唯一真相）· 两套字段面不一致：卡片 ⊂ 服务页（少 声纹/输出目录/开关/存储 4 组）</div>';
+}
+function onCardKey(v){
+  diskKey = (v===''? null : v); draftKey = v;
+  document.getElementById('disk-key').textContent = v || '(空)';
+  document.getElementById('card-saved-chip').innerHTML = '<span class="savedchip">✓ 已自动保存'+(v===''?'（清空已落盘）':'')+'</span>';
+  document.getElementById('svc-key').value = v;
+  simDisk();
+  document.getElementById('sim-verdict').innerHTML = (v===''
+    ? '<b>「清空 Key」这条最常见的真实操作也被自动保存吞掉</b>：一次点击即把线上 Key 清掉，无确认、无回滚。'
+    : '卡片面板 @change 即落盘。此时切到「服务」页：那里仍显示<b>显式保存按钮</b>，且按钮保存的字段面（6 组）与这里（仅 llm+asr）不一致——同一字段两套保存语义（SettingsView.vue:1513-1523 vs AccessModeCards.vue:255-261）。')
+    ;
+  document.getElementById('svc-chip').innerHTML = '<span class="savedchip">已由卡片面板落盘</span>';
+}
+function markDraft(){
+  const el=document.getElementById('svc-key');
+  el.classList.toggle('dirty', draftKey !== (diskKey ?? ''));
+  document.getElementById('svc-chip').innerHTML = draftKey!==(diskKey??'') ? '<span class="draftchip">未保存草稿</span>' : '';
+}
+function svcSave(){
+  diskKey = draftKey;
+  document.getElementById('disk-key').textContent = diskKey || '(空)';
+  simDisk();
+  document.getElementById('svc-key').classList.remove('dirty');
+  document.getElementById('card-key').value = draftKey;
+  document.getElementById('card-key').classList.remove('dirty');
+  document.getElementById('svc-chip').innerHTML = '<span class="savedchip">✓ 已保存</span>';
+  document.getElementById('sim-verdict').innerHTML = '显式保存成功。但注意：这里的「保存」一次写入 6 组字段（asr/llm/声纹/输出目录/功能开关/存储），比卡片面板的自动保存面广——同一屏内不同字段生效时区不同。';
+}
+
+/* ── 现状：静态隐私承诺演示（勘误版：死字段 + 无绑定文案 + proxy 档真实出网） ── */
+function vpNow(){
+  const mode=document.getElementById('vp-mode').value;
+  const p=document.getElementById('vp-now').value;
+  const v=document.getElementById('vp-verdict');
+  const note=document.getElementById('vp-note-now');
+  const ttl=document.getElementById('vp-card-ttl');
+  const tl=document.getElementById('vp-card-tl');
+  let html='',cls='banner info';
+  if(mode==='local'){
+    ttl.textContent='离线模式'; tl.textContent='算力在本机 · 不花钱 · 数据不出设备';
+    note.innerHTML='▸ 离线模式使用本机 CAM++ 声纹模型，<b>零出网</b>，无需配置。';
+    if(p==='cloud'){
+      cls='banner warn';
+      html='<b>今天的真相：巧合一致。</b>provider=cloud 在离线档被 embedding_provider.py:518-530 短路忽略——它是<b>死字段</b>（界面仍可写、后端静默无视）。「零出网」为真，只因为实现恰好强制本机，而文案写死于 settings.json:167、不读任何字段。任何一次改动都能悄悄破坏这句话。';
+    } else {
+      html='离线档实现强制本机 CAM++，与文案一致。但这份一致不是文案引用字段派生出来的——是两处恰好没冲突（见右侧勘误三条）。';
+    }
+  } else {
+    ttl.textContent='联网模式 · 体验配额'; tl.textContent='算力在云 · 平台代付（消耗体验分钟数）';
+    if(p==='cloud'){
+      cls='banner err';
+      note.innerHTML='▸（proxy 档实际链路：i18n:275「音频片段送云端声纹服务」——<b>出网</b>）';
+      html='<b>联网 proxy 档真实出网</b>：provider=cloud 走云端声纹（:533-549），而本机运行时默认值正是 cloud。用户在决策层选「体验配额」时，界面从未说出声纹音频片段会送云端。→ 2026-09-26 裁决连根消除：云端声纹下架，见 ③ 第 4 刀。';
+    } else if(p==='local'){
+      cls='banner warn';
+      note.innerHTML='▸（provider=local 在 proxy 档仍短路走本机 CAM++）';
+      html='同一字段在两个档位语义相反：离线档=死字段，联网档=可偏离模式预期。字段该删（第 4 刀），不该由用户猜。';
+    } else {
+      html='「自动」在 proxy 档按账户配置探测云端可用性，可用即出网——出不出网取决于账户状态，界面同样不派生显示。';
+    }
+  }
+  v.className=cls; v.style.display=''; v.innerHTML=html;
+}
+
+/* ── 建议方案演示状态（2026-09-26 裁决后模型） ── */
+const FIX = { mode:null, expert:false, logged:true, psub:true, quota:120,
+  llmSrc:'trial', asrSrc:'trial', localReady:true, pending:null,
+  names:{local:'离线模式',cloud:'联网模式'}, hasKey:false };
+const BILL = { trial:'体验配额 · 平台计费（消耗分钟数）', byok:'自带 Key · 你的供应商计费', 'local-ep':'本机端点 · 零出网' };
+
+function toggleExpert(){
+  FIX.expert=!FIX.expert;
+  document.body.classList.toggle('expert',FIX.expert);
+  const sw=document.getElementById('sw-expert');
+  sw.classList.toggle('on',FIX.expert);
+  sw.setAttribute('aria-checked',String(FIX.expert));
+  document.getElementById('fix-matrix').style.display = FIX.expert?'':'none';
+  if(FIX.expert) renderMatrix();
+}
+function cardKeynav(ev,which){
+  if(ev.key!=='ArrowLeft'&&ev.key!=='ArrowRight') return;
+  ev.preventDefault();
+  const other = which==='local'?'c-cloud':'c-local';
+  const el=document.getElementById(other);
+  document.querySelectorAll('#amc-grid .amc').forEach(c=>c.tabIndex=-1);
+  el.tabIndex=0; el.focus();
+}
+function toggleLogin(){
+  FIX.logged=!FIX.logged;
+  const sw=document.getElementById('sw-login');
+  sw.classList.toggle('on',FIX.logged);
+  sw.setAttribute('aria-checked',String(FIX.logged));
+  document.getElementById('login-label').textContent = FIX.logged?'已登录':'未登录';
+  if(!FIX.logged && (FIX.llmSrc==='trial'||FIX.asrSrc==='trial')){
+    FIX.llmSrc = FIX.hasKey?'byok':'trial';
+    msg('warn','未登录：详情中「体验配额」不可选（登录门槛前置）。联网模式要求先登录，或逐能力改用自带 Key / 本机端点。');
+  }
+  renderDetail();
+}
+function setPsub(on){
+  if(FIX.mode==='local'){
+    msg('info','离线模式下本设置暂不生效：算力来源由本机链路接管，账户勾选只作用于联网模式的详情默认值。');
+    return;
+  }
+  FIX.psub=on;
+  document.getElementById('sw-psub').classList.toggle('on',on);
+  document.getElementById('sw-psub').setAttribute('aria-checked',String(on));
+  if(on){ FIX.llmSrc='trial'; FIX.asrSrc='trial';
+    msg('info','账户勾选生效：LLM / ASR 详情已<b>显式</b>切回「体验配额」并标注「默认生效」——这是默认值联动，不是旧版那种事后 route_override 静默改写。');
+  }
+  renderDetail(); flashDefaults();
+}
+function setSrc(which,v){
+  FIX[which+'Src']=v; renderDetail();
+}
+function setQuota(v){ FIX.quota=+v; document.getElementById('plan-quota2').textContent=v; renderDetail(); }
+function flipLocal(){ FIX.localReady=!FIX.localReady; renderDetail(); }
+function jumpAcct(){
+  const el=document.getElementById('sub-acct');
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+  el.classList.add('hl-target'); setTimeout(()=>el.classList.remove('hl-target'),1400);
+}
+function flashDefaults(){
+  ['llm','asr'].forEach(w=>{ const rd=document.getElementById(w+'-ready'); rd.classList.remove('flash'); void rd.offsetWidth; rd.classList.add('flash'); });
+}
+
+function srcLabel(v){ return {trial:'体验配额',byok:'自带 Key','local-ep':'本机端点'}[v]||v; }
+function pick(mode){
+  if(mode===FIX.mode){ msg('info','已是当前模式——现状代码在这里是静默早退无响应（AccessModeCards.vue:206），本方案改为非阻断 inline 提示。'); return; }
+  FIX.pending=mode;
+  document.getElementById('m-title').textContent='切换到「'+FIX.names[mode]+'」？';
+  const eff = FIX.psub?'trial':'byok';
+  const cur = FIX.mode===null?'—（未选）':FIX.names[FIX.mode];
+  const fields = mode==='local'
+    ? [['access_mode',cur,'local'],['engine.mode','按来源派生值','local（启动本机子进程）'],['asr.mode','proxy / direct','local'],['LLM 来源',srcLabel(FIX.llmSrc)+'（只读保留）','本机接管'],['ASR 来源',srcLabel(FIX.asrSrc)+'（只读保留）','本机接管']]
+    : [['access_mode',cur,'cloud'],['engine.mode','local','按 LLM/ASR 来源派生（proxy|direct|local-ep）'],['asr.mode','local','按来源派生'],['LLM 来源',srcLabel(FIX.llmSrc),FIX.mode===null?('默认「'+srcLabel(eff)+'」（可覆盖）'):('保持 '+srcLabel(FIX.llmSrc))],['ASR 来源',srcLabel(FIX.asrSrc),FIX.mode===null?('默认「'+srcLabel(eff)+'」（可覆盖）'):('保持 '+srcLabel(FIX.asrSrc))]];
+  const ftab='<details'+(FIX.expert?' open':'')+'><summary style="font-size:12px;color:var(--muted);cursor:pointer">字段变更（'+(FIX.expert?'工程值级 diff':'查看技术细节')+'）</summary><table class="matrix"><tr><th>字段</th><th>现值</th><th>将写入</th></tr>'+
+    fields.map(r=>'<tr><td><code class="k">'+r[0]+'</code></td><td>'+r[1]+'</td><td><b>'+r[2]+'</b></td></tr>').join('')+'</table></details>';
+  const proc = mode==='local'
+    ? '<li><b>进程动作</b>：启动本地引擎子进程（组件缺失时给「待就绪」+直达资产清单，不静默半启动态）。</li>'+ (FIX.mode==='cloud'?'<li style="color:var(--err)"><b>⚠ 风险确认（联网→离线）</b>：进行中的转写/会话将被打断并停止云端会话。裁决-2 已定案：本方向采用更强确认——红色风险条目 + 需勾选「我已了解将打断转写」后才可点击确认（演示未实现勾选）。</li>':'')
+    : '<li><b>进程动作</b>：如本地引擎运行中，停止子进程并结束本机会话；当前正在进行的转写将被打断（联网→离线方向风险更高，见裁决-2）。</li>';
+  const bill = mode==='local'
+    ? '<li><b>计费与出网</b>：无出网、无计费（声纹结构性零出网）。</li>'
+    : '<li><b>计费与出网</b>：体验配额=平台代付（消耗分钟数）；自带 Key=你的供应商计费；本机端点=零出网。逐能力明示，无静默 route_override。</li>';
+  document.getElementById('m-body').innerHTML =
+    ftab + '<ul class="tight" style="margin-top:8px">'+ proc + bill +
+    '<li>账户勾选「优先使用体验」当前为 '+ (FIX.psub?'开':'关') +' ⇒ 详情默认值「'+srcLabel(eff)+'」' + (FIX.mode===null?'，改选即覆盖并持久化覆盖状态':'，保持你的逐能力覆盖状态') + '。</li></ul>' +
+    '<label style="font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="m-fail"> 模拟：引擎启动失败（验证半途而废行为——裁决-1 项目方已定案：全量回滚）</label>';
+  document.getElementById('m-confirm').textContent = mode==='local'?'确认切换并启动本机引擎':'确认切换并停用本机引擎';
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>document.getElementById('m-cancel').focus(),50);
+}
+function closeModal(){ document.getElementById('modal').classList.remove('show'); FIX.pending=null; }
+function confirmPick(){
+  const fail = document.getElementById('m-fail') && document.getElementById('m-fail').checked;
+  const target = FIX.pending;
+  closeModal();
+  if(fail){
+    msg('warn','<b>切换中 → 失败：未生效，已保持原模式。</b>access_mode / engine.mode / asr.mode 均未写入——按裁决-1 项目方已定案「全量回滚」：任一环节失败，所有字段不写、保持原模式。');
+    return;
+  }
+  FIX.mode=target;
+  document.querySelectorAll('.amc').forEach(c=>{
+    const on = c.id==='c-'+FIX.mode;
+    c.classList.toggle('sel', on);
+    c.setAttribute('aria-checked',String(on));
+    c.tabIndex = on?0:-1;
+    c.querySelector('.cur').style.display = on?'':'none';
+  });
+  msg('ok','已切换为「'+FIX.names[FIX.mode]+'」。详情层已联动。');
+  renderDetail(); if(FIX.expert) renderMatrix();
+}
+function msg(kind,text){ const el=document.getElementById('fix-msg'); el.className='banner '+kind; el.style.display=''; el.innerHTML=text; }
+
+function capReady(which){
+  const src=FIX[which+'Src'];
+  const model = which==='llm'?'qwen-plus':'paraformer-v2';
+  if(FIX.mode==='local') return {cls:'note', txt:'本机链路接管（只读）· '+(which==='llm'?'llm ▸ 见引擎页本机可用性':'asr ▸ 本机 FunASR')};
+  if(!FIX.logged && src==='trial') return {cls:'ready-warn', txt:'✗ 未登录：体验配额不可用（登录门槛） <button class="btn sm" onclick="msg(\'info\',\'演示：进入登录流程；联网模式要求先登录（继承原 hosted 卡 login_required，Q2 待终裁）\')">去登录</button>'};
+  if(src==='trial'){
+    if(FIX.quota<=0) return {cls:'ready-warn', txt:(which==='llm'?'LLM':'ASR')+' · 体验配额已用尽 → 本次起<b>自动改用</b>你的已配置来源，账单归属见下行 <button class="btn sm" onclick="msg(\'info\',\'演示：查看用量明细 + 近期变更记录\')">查看用量</button> <button class="btn sm" onclick="msg(\'info\',\'演示：改回体验配额（额度恢复后可选）\')">改回体验配额</button>'};
+    if(FIX.quota<=10) return {cls:'ready-warn', txt:'⚠ 剩余 '+FIX.quota+' 分钟（接近耗尽预警）· 模型 '+model+' <button class="btn sm" onclick="msg(\'info\',\'演示：耗尽前预先改选自带 Key / 本机端点\')">预先改选</button>'};
+    return {cls:'ready-ok', txt:'✓ 可用 · 剩余 '+FIX.quota+' 分钟 · 模型 '+model};
+  }
+  if(src==='byok') return FIX.hasKey
+      ? {cls:'ready-ok', txt:'✓ Key 就绪 · 编辑仅在「服务」页一处（显式保存）'}
+      : {cls:'ready-warn', txt:'✗ 未配置 API Key <button class="btn sm" onclick="msg(\'info\',\'演示：跳转「服务」页配 Key（唯一编辑面）\')">去配 Key</button>'};
+  return {cls:'ready-ok', txt:'✓ Ollama 探测可达 · qwen2.5:14b（零出网）'};
+}
+function renderDetail(){
+  const off = FIX.mode==='local';
+  const un  = FIX.mode===null;
+  const gb=document.getElementById('guide-banner');
+  if(gb) gb.style.display = un?'':'none';
+  const ghi=document.getElementById('guide-cloud-hint');
+  if(ghi) ghi.textContent = '（联网模式'+(FIX.logged?'已满足登录条件':'需登录')+'；离线模式无需登录）';
+  const cli=document.getElementById('cloud-login-hint');
+  if(cli) cli.textContent = FIX.logged?'':'· 需登录';
+  ['llm','asr'].forEach(w=>{
+    const card=document.getElementById('sub-'+w);
+    if(card) card.classList.toggle('is-inherited',off);
+    const sel=document.getElementById('sel-'+w);
+    sel.disabled = off;
+    sel.value = FIX[w+'Src'];
+    if(off && sel.querySelector('option[value="local-eng"]')==null && w==='asr'){
+      sel.insertAdjacentHTML('beforeend','<option value="local-eng" disabled>本地引擎（离线接管）</option>');
+    }
+    const r=capReady(w);
+    const rd=document.getElementById(w+'-ready'); rd.className=r.cls; rd.style.fontSize='12px'; rd.style.marginTop='6px'; rd.innerHTML=r.txt;
+    const bill=document.getElementById(w+'-bill');
+    bill.textContent = off ? '计费：无（本机算力）' : '计费：'+BILL[FIX[w+'Src']];
+    if(w==='llm' && !off && FIX.psub && FIX.llmSrc==='trial') bill.textContent += ' · ASR/LLM 共用同一额度池（计量口径待裁决 Q4）';
+    const chip=document.getElementById(w+'-default-chip');
+    const eff = FIX.psub?'trial':'byok';
+    let b='';
+    if(off) b='<span class="badge-lock" title="算力由本机链路接管，账户勾选暂不生效">本机接管</span>';
+    else if(un) b='<span class="badge-none" title="接入方式尚未选择">未设置</span>';
+    else if(FIX[w+'Src']===eff) b='<span class="badge-def" onclick="jumpAcct()" title="点击定位到账户勾选">默认生效（账户）</span>';
+    else b='<span class="badge-ovr" onclick="jumpAcct()" title="你显式改选过，覆盖状态已持久化，不会被下次登录/勾选改回">已覆盖（本能力）</span>';
+    chip.innerHTML=b;
+  });
+  const sp=document.getElementById('sw-psub');
+  sp.style.opacity = off?.45:1; sp.style.cursor = off?'not-allowed':'pointer';
+  const spl=document.getElementById('psub-label');
+  if(spl) spl.textContent = off?'优先使用体验配额（离线模式下暂不生效）':'优先使用体验配额';
+  document.getElementById('ro-local').textContent = FIX.localReady?'已就绪':'未安装';
+  const ps=document.getElementById('psub-note');
+  ps.innerHTML = FIX.psub
+    ? '已勾选：LLM / ASR 详情默认「体验配额」（显式徽章标注）。逐能力改选即覆盖默认，<b>覆盖状态会持久化、不再被下次登录改回</b>。'
+    : '未勾选：详情默认「自带 Key」；无 Key 的能力显示未就绪警告。配额仅在详情手动选中时消耗。';
+  const src=document.getElementById('ro-llm-src');
+  src.textContent='来源：'+(un?'—（未选接入方式）':off?'本机链路':({trial:'体验配额 · qwen-plus',byok:'自带 Key · 你的预设','local-ep':'本机 Ollama'})[FIX.llmSrc]||FIX.llmSrc);
+  if(FIX.mode) renderMatrix();
+}
+function renderMatrix(){
+  const cols=['local','trial','byok','local-ep'];
+  const labels={local:'离线（本机）',trial:'体验配额',byok:'自带 Key','local-ep':'本机端点'};
+  const tech={local:'local',trial:'proxy · cloud',byok:'direct','local-ep':'local-ep'};
+  const off=FIX.mode==='local';
+  const OUT='<span class="mx-out">出网 ↑</span>', ZERO='<span class="mx-zero">零出网</span>', NA='—（该来源不提供）';
+  const asrCol = off?'local':(FIX.asrSrc==='trial'?'trial':'byok');
+  const llmCol = off?'local':FIX.llmSrc;
+  const rows=[
+    ['音频', ['本机 FunASR 推理 '+ZERO,'平台代理 → 云端 ASR '+OUT,'直连你配置的云端 ASR '+OUT,NA], asrCol],
+    ['转写文本', ['仅存本机 '+ZERO,'云端瞬算回传，仅存本机 '+OUT,'云端瞬算回传，仅存本机 '+OUT,'仅存本机 '+ZERO], null],
+    ['声纹特征', ['本机 CAM++ '+ZERO,'本机 CAM++（云端路径已下架） '+ZERO,'本机 CAM++（云端路径已下架） '+ZERO,'本机 CAM++ '+ZERO], 'local'],
+    ['LLM 上下文', ['本机引擎推理 '+ZERO,'平台代理 → 云端 LLM '+OUT,'直连你的端点 / Key '+OUT,'仅你的本机 Ollama '+ZERO], llmCol],
+  ];
+  let h='<tr><th></th>'+cols.map(c=>'<th class="'+(FIX.mode&&!off&&(c===asrCol||c===llmCol)?'cur-col':'')+'">'+labels[c]+(FIX.expert?'<br><span style="font-weight:400;font-size:11px;font-family:var(--code)">'+tech[c]+'</span>':'')+'</th>').join('')+'</tr>';
+  for(const[name,cells,rowCol]of rows){
+    h+='<tr><td><b>'+name+'</b></td>'+cells.map((v,i)=>'<td class="'+(cols[i]===rowCol?'cur-col':'')+'">'+v+'</td>').join('')+'</tr>';
+  }
+  document.getElementById('matrix-el').innerHTML=h;
+}
+/* ── 配置明细下钻视图 ── */
+function showMid(id,btn){
+  ['mid-plan','mid-llm','mid-asr','mid-engine','mid-cli','mid-chat'].forEach(x=>{
+    document.getElementById(x).style.display = x===id?'':'none';
+  });
+  btn.parentElement.querySelectorAll('.sim-tab').forEach(t=>t.classList.remove('on'));
+  btn.classList.add('on');
+}
+function syncPsub(v){
+  const el=document.getElementById('plan-impact');
+  if(v==='on'){ el.className='banner warn';
+    el.innerHTML='后果：选「自带 Key」的用户实际走平台体验配额计费（route_override=cloud，routing.py:148-150）。且按 A1 裁决，derive 映射直接把 <code class="k">engine.mode=direct + 订阅偏好开</code> 归类为<b>托管模式</b>——这个账户级开关参与了「你处于什么模式」的定义。';
+  } else { el.className='banner ok'; el.textContent='自带 Key 模式直连你的 Key，账单走你的供应商。'; }
+}
+function l1Mode(m){
+  ['local','hosted','byok'].forEach(x=>{
+    document.getElementById('l1-'+x).style.display = x===m?'':'none';
+    const b=document.getElementById('b-l1-'+x);
+    b.className = 'btn sm'+(x===m?' pri':'');
+  });
+}
+const PROV = {
+  'DashScope（通义千问）':['https://dashscope.aliyuncs.com/compatible-mode/v1',['qwen-plus','qwen-max','qwen-turbo'],''],
+  'OpenAI':['https://api.openai.com/v1',['gpt-4o','gpt-4o-mini'],''],
+  'DeepSeek':['https://api.deepseek.com/v1',['deepseek-chat','deepseek-reasoner'],''],
+  'ollama':['http://localhost:11434/v1',['qwen2.5:14b','llama3.1:8b'],'本机端点：自动填占位 key <code class="k">ollama</code>（:1352-1355），模型候选来自探测回填（:1326-1330）'],
+  'lmstudio':['http://localhost:1234/v1',['（未检测到——真实界面中该项置灰不可选，isPresetDisabled :1311-1316）'],'探测不可达：置灰 + 显示安装指引链接（:1318-1323）'],
+  '自定义':['',['（手填）'],''],
+};
+function l1Prov(name){
+  const [url,models,hint]=PROV[name]||PROV['自定义'];
+  document.getElementById('l1-url').value=url;
+  document.getElementById('l1-model').innerHTML=models.map(x=>'<option>'+x+'</option>').join('');
+  document.getElementById('l1-keyhint').innerHTML = hint || '（本机端点自动填占位 key，:1352-1355）';
+}
+function l2Mode(m){
+  ['proxy','direct','cloud'].forEach(x=>{
+    document.getElementById('l2-form-'+x).style.display = x===m?'':'none';
+    const b=document.getElementById('l2-'+x);
+    b.className = 'btn sm'+(x===m?' pri':'');
+  });
+  const v=document.getElementById('l2-verdict');
+  v.className='banner warn'; v.style.marginTop='8px';
+  v.innerHTML='你点了 <code class="k">asr.mode='+m+'</code> 并保存（服务页 onSave 一次带上 asr 组）。后端 <code class="k">elif "engine" in data or "asr" in data</code>（routers/settings.py:378）触发重对齐：access_mode := f(engine.mode)。本演示预设 engine.mode=proxy 与你卡面上选的「自带 Key」分歧 ⇒ 三个按钮<b>无论点哪个，落盘后接入方式都变成「托管模式」</b>——改变你模式的不是 ASR 选项本身，而是那次隐式重对齐。界面全程零提示。';
+}
+renderDetail();
+vpNow();
+simDisk();
+</script>
+</body>
+</html>
