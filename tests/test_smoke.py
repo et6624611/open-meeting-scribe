@@ -321,7 +321,10 @@ class TestGetSettings:
         data = resp.json()
         assert "llm" in data
         assert "asr" in data
-        assert "voiceprint" in data
+        # REQ-SETTINGS-IA 第 4 刀（AC-3）：voiceprint 配置面已从 schema 下架；
+        # 逐能力算力来源快照随 GET 暴露（详情层数据源）
+        assert "voiceprint" not in data
+        assert "capability" in data
 
 
 # ============================================================
@@ -602,6 +605,7 @@ class TestInsightPostMeeting:
     def test_timeout_returns_504_and_never_persists(self, client, tmp_path, monkeypatch):
         """超时守护 → 504 且不写盘；守卫释放后同任务可重试"""
         import asyncio
+
         import app.routers.insights as insights_router
         monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
         monkeypatch.setattr(insights_router, "POST_ANALYSIS_TIMEOUT_SECONDS", 0.05)

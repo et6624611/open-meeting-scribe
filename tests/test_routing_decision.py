@@ -1,28 +1,64 @@
 """
-tests/test_routing_decision.py — REQ-ACCESS-MODE-CARDS T2 路由判定收口（AM-B1）
+tests/test_routing_decision.py — REQ-SETTINGS-IA 路由判定（两值决策层 + 逐能力来源）
 
-覆盖 AC-4（三模式路由 + 计费口径）、AC-5（D2 override 可感知）、AC-6（未配置兜底等价）。
+覆盖：
+  - §3.1 离线/联网两模式路由 + 计费三来源口径
+  - §3.5 静默语义消灭：prefer_subscription 不再 override 路由；
+    配额耗尽 / Key 缺失一律明示 auto_switched + 事件记录（Q3 三级提示数据源）
+  - AC-6 未配置兜底等价（保留升级前行为）
 运行：pytest tests/test_routing_decision.py -v
 """
 
 import pytest
 
-# 预导入（收集期、桩未激活时）：app.routers.settings / app.server 顶层以
-# `from app.store import ...` 绑定函数引用。若在 app.store 被 monkeypatch 之后
-# 才首次导入，桩会被永久绑定进路由模块，污染后续测试（跨文件顺序依赖）。
+# 预导入（收集期、桩未激活时）：防桩被永久绑定进路由模块（跨文件顺序依赖）。
 import app.routers.settings  # noqa: F401
 import app.server  # noqa: F401
-
 import app.settings_store as ss
 import core.routing as rt
 
 
+@pytest.fixture(autouse=True)
+def _fresh_switch_state(monkeypatch):
+    """隔离自动改用事件的状态跳变缓存与事件文件（避免测试间互相吞事件）。"""
+    monkeypatch.setattr(rt, "_LAST_SWITCH_STATE", {}, raising=True)
+
+
+@pytest.fixture()
+def events(monkeypatch):
+    """收集 record_event 调用。"""
+    recorded = []
+
+    def _record(event_type, **fields):
+        recorded.append({"type": event_type, **fields})
+
+    import core.settings_events as se
+    monkeypatch.setattr(se, "record_event", _record, raising=True)
+    return recorded
+
+
 @pytest.fixture()
 def access(monkeypatch):
-    """设置 access_mode 桩（get_expert_mode 同步桩为 False，隔离文件系统）。"""
-    def _set(mode, expert=False):
+    """设置 access_mode + 逐能力生效来源桩（隔离文件系统与 users）。
+
+    llm_src/asr_src 传入即 capability.effective；offline 态强制 local。
+    """
+    def _set(mode, expert=False, llm_src="", asr_src=""):
         monkeypatch.setattr(ss, "get_access_mode", lambda: mode)
         monkeypatch.setattr(ss, "get_expert_mode", lambda: expert)
+
+        def _cap(prefer_subscription=None):
+            default = "trial" if prefer_subscription else "byok"
+            if mode == "local":
+                llm_eff = asr_eff = "local"
+            else:
+                llm_eff = llm_src or default
+                asr_eff = asr_src or default
+            return {"account_default": default,
+                    "llm": {"explicit": llm_eff, "override": True, "default": default, "effective": llm_eff},
+                    "asr": {"explicit": asr_eff, "override": True, "default": default, "effective": asr_eff}}
+
+        monkeypatch.setattr(ss, "get_capability_status", _cap)
     return _set
 
 
@@ -34,7 +70,23 @@ def user_state(monkeypatch):
             user = {"id": "u1", "provider": "sms", "quota": quota,
                     "prefs": {"prefer_subscription": prefer_subscription}}
         monkeypatch.setattr("core.users.get_current_user", lambda: user, raising=True)
+        # check_quota 桩：remaining = quota（-1 表示不受计量限制由 quota=None 表达）
+        import core.metering as mt
+        monkeypatch.setattr(mt, "is_metered", lambda: logged_in and prefer_subscription is not None)
+
+        def _check(user_id, estimated_minutes=0):
+            if not logged_in:
+                return {"allowed": True, "remaining": -1, "quota": -1, "used": 0, "warning": None}
+            rem = DEFAULT if quota is None else quota
+            return {"allowed": (rem == -1 or rem > 0), "remaining": rem,
+                    "quota": rem, "used": 0, "warning": None}
+
+        monkeypatch.setattr(mt, "check_quota", _check)
     return _set
+
+
+DEFAULT = -1  # 不受计量限制
+VALID_KEY = "sk-valid-local-api-key-0123456789"
 
 
 @pytest.fixture()
@@ -60,22 +112,20 @@ def keys(monkeypatch):
     return _set
 
 
-VALID_KEY = "sk-valid-local-api-key-0123456789"
-
-
 # ============================================================
-# AC-4 三模式路由判定
+# §3.1 离线模式：结构性零出网
 # ============================================================
 
 
-class TestRoutedModes:
+class TestOfflineMode:
     def test_local_never_cloud_and_llm_offline(self, access, keys, cloud, user_state):
         access("local")
         keys()
         cloud(True)
-        user_state(prefer_subscription=True)  # 即使开着订阅偏好，离线也不切云（R7 零出网）
+        user_state(prefer_subscription=True)  # 即使勾选体验优先，离线也不切云
         d = rt.get_routing_decision("llm")
-        assert d["route"] == "local" and d["route_override"] is False
+        assert d["route"] == "local" and d["source"] == "local"
+        assert d["auto_switched"] is False
         from core.llm import _should_use_cloud
         assert _should_use_cloud() is False
 
@@ -84,148 +134,166 @@ class TestRoutedModes:
         keys()
         assert rt.get_routing_decision("asr")["route"] == "local"
 
-    def test_hosted_llm_consumes_quota_path(self, access, keys, cloud, user_state):
-        access("hosted")
-        keys(llm_key="")
-        cloud(True)
-        user_state()
-        d = rt.get_routing_decision("llm")
-        assert d["route"] == "cloud"
-        from core.llm import _should_use_cloud
-        assert _should_use_cloud() is True
-
-    def test_hosted_asr_uses_proxy_transport(self, access, keys, cloud, user_state):
-        access("hosted")
-        keys(asr_mode="proxy", proxy_url="http://proxy.local")
-        cloud(True)
-        user_state()
-        assert rt.get_routing_decision("asr")["route"] == "proxy"
-
-    def test_hosted_asr_never_silently_direct(self, access, keys, cloud, user_state):
-        """旧配置分歧（engine=proxy 但 asr.mode=direct）：托管语义下不静默走自有 Key。"""
-        access("hosted")
-        keys(asr_mode="direct", asr_key=VALID_KEY)
-        cloud(True)
-        user_state()
-        assert rt.get_routing_decision("asr")["route"] == "cloud"
-
-    def test_byok_direct_with_valid_key(self, access, keys, cloud, user_state):
-        access("byok")
-        keys(llm_key=VALID_KEY, asr_mode="direct", asr_key=VALID_KEY)
-        cloud(False)
-        user_state(prefer_subscription=False)
-        assert rt.get_routing_decision("llm")["route"] == "direct"
-        assert rt.get_routing_decision("asr")["route"] == "direct"
-        from core.llm import _should_use_cloud
-        assert _should_use_cloud() is False
-
-
-# ============================================================
-# AC-4② 计费口径与 metering 一致：local 不计量 / hosted 计量 / byok 不消耗
-# ============================================================
-
-
-class TestMeteringAlignment:
-    def test_local_not_metered_even_for_sms_user(self, access, keys, cloud, user_state):
+    def test_local_not_metered_route_never_cloud(self, access, keys, cloud, user_state):
         access("local")
         keys()
         cloud(True)
         user_state(quota=100)
-        from core.metering import is_metered
-        assert is_metered() is False
+        for ctx in ("llm", "asr"):
+            d = rt.get_routing_decision(ctx)
+            assert d["route"] == "local" and d["auto_switched"] is False
 
-    def test_hosted_metered_for_sms_user(self, access, keys, cloud, user_state):
-        access("hosted")
-        keys()
+
+# ============================================================
+# §3.1/§3.5 联网模式：逐能力来源判定
+# ============================================================
+
+
+class TestCloudTrialSource:
+    def test_trial_llm_routes_cloud_and_reports_trial(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="trial", asr_src="trial")
+        keys(llm_key="")
         cloud(True)
         user_state(quota=100)
-        from core.metering import is_metered
-        assert is_metered() is True
+        d = rt.get_routing_decision("llm")
+        assert d["route"] == "cloud" and d["source"] == "trial"
+        assert d["auto_switched"] is False and d["reason"] == ""
 
-    def test_byok_quota_untouched_without_pref(self, access, keys, cloud, user_state):
-        access("byok")
+    def test_trial_asr_uses_proxy_transport(self, access, keys, cloud, user_state):
+        access("cloud", asr_src="trial")
+        keys(asr_mode="proxy", proxy_url="http://proxy.local")
+        cloud(True)
+        user_state(quota=100)
+        d = rt.get_routing_decision("asr")
+        assert d["route"] == "proxy" and d["source"] == "trial"
+
+    def test_trial_asr_never_silently_direct(self, access, keys, cloud, user_state):
+        """来源=体验但 asr.mode 投影分歧：按体验语义传输，绝不走自有 Key。"""
+        access("cloud", asr_src="trial")
+        keys(asr_mode="direct", asr_key=VALID_KEY)
+        cloud(True)
+        user_state(quota=100)
+        assert rt.get_routing_decision("asr")["route"] in ("cloud", "proxy")
+
+    def test_trial_quota_exhausted_auto_switches_with_event(self, access, keys, cloud, user_state, events):
+        """配额耗尽 → 明示自动改用已就绪来源 + 落事件（禁用「降级」，L1-L3 数据源）。"""
+        access("cloud", llm_src="trial")
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(quota=0)
+        d = rt.get_routing_decision("llm")
+        assert d["route"] == "direct"
+        assert d["source"] == "byok"
+        assert d["auto_switched"] is True
+        assert d["reason"] == "trial_quota_exhausted"
+        assert any(e["type"] == "auto_switch" and e.get("reason") == "trial_quota_exhausted" for e in events)
+
+    def test_trial_exhausted_no_fallback_stays_explicit(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="trial")
+        keys(llm_key="")
+        cloud(False)
+        user_state(quota=0)
+        d = rt.get_routing_decision("llm")
+        assert d["source"] == "trial"
+        assert d["auto_switched"] is False
+        assert d["reason"] == "trial_quota_exhausted_no_fallback"
+
+    def test_trial_not_logged_in_auto_switches(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="trial")
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(logged_in=False)
+        d = rt.get_routing_decision("llm")
+        assert d["auto_switched"] is True and d["reason"] == "trial_requires_login"
+        assert d["route"] == "direct"
+
+
+class TestCloudByokSource:
+    def test_byok_direct_with_valid_key(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="byok", asr_src="byok")
         keys(llm_key=VALID_KEY, asr_mode="direct", asr_key=VALID_KEY)
+        cloud(False)
+        user_state(prefer_subscription=True, quota=100)
+        assert rt.get_routing_decision("llm")["route"] == "direct"
+        assert rt.get_routing_decision("asr")["route"] == "direct"
+
+    def test_prefer_subscription_no_longer_overrides(self, access, keys, cloud, user_state):
+        """第 5 刀：勾选不再改写显式来源路由（静默 route_override 语义消灭）。"""
+        access("cloud", llm_src="byok")
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(prefer_subscription=True, quota=100)
+        d = rt.get_routing_decision("llm")
+        assert d["route"] == "direct" and d["auto_switched"] is False and d["reason"] == ""
+
+    def test_byok_missing_key_switches_to_trial_explicitly(self, access, keys, cloud, user_state, events):
+        """Key 缺失：不再静默走平台计费——明示 auto_switched + 事件记录。"""
+        access("cloud", llm_src="byok")
+        keys(llm_key="")
         cloud(True)
         user_state(prefer_subscription=False, quota=100)
         d = rt.get_routing_decision("llm")
-        assert d["route"] == "direct" and d["route_override"] is False
+        assert d["route"] == "cloud" and d["source"] == "trial"
+        assert d["auto_switched"] is True and d["reason"] == "byok_key_missing"
+        assert any(e["type"] == "auto_switch" and e.get("capability") == "llm" for e in events)
 
-
-# ============================================================
-# AC-5 D2：跨模式隐式路由变化可查询
-# ============================================================
-
-
-class TestRouteOverride:
-    def test_byok_prefer_subscription_overrides_to_cloud(self, access, keys, cloud, user_state):
-        access("byok")
-        keys(llm_key=VALID_KEY, asr_mode="direct", asr_key=VALID_KEY)
-        cloud(True)
-        user_state(prefer_subscription=True, quota=100)
-        for ctx in ("llm", "asr"):
-            d = rt.get_routing_decision(ctx)
-            assert d["route"] == "cloud"
-            assert d["route_override"] is True
-            assert d["reason"] == "prefer_subscription"
-
-    def test_quota_exhausted_falls_back_to_direct(self, access, keys, cloud, user_state):
-        """配额耗尽不误扣也不误切：回落自有 Key（与体验期口径一致）。"""
-        access("byok")
-        keys(llm_key=VALID_KEY, asr_mode="direct", asr_key=VALID_KEY)
-        cloud(True)
-        user_state(prefer_subscription=True, quota=0)
+    def test_byok_missing_key_cloud_unavailable_fails_explicit(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="byok")
+        keys(llm_key="")
+        cloud(False)
+        user_state(logged_in=False)
         d = rt.get_routing_decision("llm")
-        assert d["route"] == "direct" and d["route_override"] is False
+        assert d["route"] == "direct" and d["auto_switched"] is False
+        assert d["reason"] == "byok_key_missing_cloud_unavailable"
 
-    def test_localhost_endpoint_never_overrides(self, access, keys, cloud, user_state):
-        """R4 边界：Ollama/LM Studio 自持端点先于一切 override，绝不切云。"""
-        access("byok")
+
+class TestCloudLocalEndpointSource:
+    def test_local_endpoint_zero_egress(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="local_endpoint")
         keys(llm_key="", llm_base_url="http://localhost:11434/v1")
         cloud(True)
-        user_state(prefer_subscription=True, quota=100)
+        user_state(quota=100)
         d = rt.get_routing_decision("llm")
-        assert d["route"] == "direct" and d["route_override"] is False
+        assert d["route"] == "direct" and d["source"] == "local_endpoint"
+        assert d["auto_switched"] is False and d["reason"] == ""
 
-    def test_localhost_guard_is_llm_only_asr_still_switches(self, access, keys, cloud, user_state):
-        """升级前口径：localhost 守卫仅在 LLM；ASR 的订阅切换不受 LLM base_url 影响。"""
-        access("byok")
-        keys(llm_key="", llm_base_url="http://localhost:11434/v1",
-             asr_mode="direct", asr_key=VALID_KEY)
+    def test_local_endpoint_misconfigured_explicit(self, access, keys, cloud, user_state):
+        """声明本机端点但 base_url 非 localhost：明示 misconfigured，不静默切云。"""
+        access("cloud", llm_src="local_endpoint")
+        keys(llm_key="", llm_base_url="https://api.openai.com/v1")
         cloud(True)
-        user_state(prefer_subscription=True, quota=100)
-        d = rt.get_routing_decision("asr")
-        assert d["route"] == "cloud"
-        assert d["route_override"] is True
-        assert d["reason"] == "prefer_subscription"
-
-    def test_byok_missing_key_falls_back_with_reason(self, access, keys, cloud, user_state):
-        access("byok")
-        keys(llm_key="", asr_mode="direct", asr_key="")
-        cloud(True)
-        user_state(prefer_subscription=False)
+        user_state(quota=100)
         d = rt.get_routing_decision("llm")
-        assert d["route"] == "cloud"
-        assert d["route_override"] is True
-        assert d["reason"] == "byok_key_missing"
-
-    def test_routing_endpoint_exposes_override_to_frontend(self, access, keys, cloud, user_state):
-        """AC-T2③：GET /api/settings/routing 可查询 override 事件与配额。"""
-        access("byok")
-        keys(llm_key=VALID_KEY, asr_mode="direct", asr_key=VALID_KEY)
-        cloud(True)
-        user_state(prefer_subscription=True, quota=100)
-        import app.routers.settings as r
-        resp = r.get_routing_status()
-        assert resp["ok"] is True
-        assert resp["access_mode"] == "byok"
-        assert resp["onboarding_required"] is False
-        assert resp["llm"]["route_override"] is True
-        assert resp["llm"]["reason"] == "prefer_subscription"
-        assert resp["asr"]["route"] == "cloud"
+        assert d["route"] == "direct" and d["reason"] == "local_endpoint_misconfigured"
+        assert d["auto_switched"] is False
 
 
 # ============================================================
-# AC-6 未配置（null）兜底：与升级前行为逐项等价
+# 兼容：route_override 字段镜像 auto_switched（一个版本日落）
+# ============================================================
+
+
+class TestCompatMirror:
+    def test_route_override_mirrors_auto_switched(self, access, keys, cloud, user_state):
+        access("cloud", llm_src="trial")
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(quota=0)
+        d = rt.get_routing_decision("llm")
+        assert d["route_override"] == d["auto_switched"] is True
+
+    def test_event_recorded_only_on_transition(self, access, keys, cloud, user_state, events):
+        access("cloud", llm_src="trial")
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(quota=0)
+        for _ in range(3):
+            rt.get_routing_decision("llm")
+        assert len([e for e in events if e.get("reason") == "trial_quota_exhausted"]) == 1
+
+
+# ============================================================
+# AC-6 未配置（null）兜底：与升级前行为逐项等价（原样保留）
 # ============================================================
 
 
@@ -247,7 +315,6 @@ class TestLegacyFallback:
         assert _should_use_cloud() is True
 
     def test_localhost_guard_precedes_subscription_pref(self, access, keys, cloud, user_state):
-        """等价锚定：与 test_llm_selfhost 既有契约一致（localhost 先于 ps）。"""
         access(None)
         keys(llm_key="", llm_base_url="http://127.0.0.1:1234/v1")
         cloud(True)

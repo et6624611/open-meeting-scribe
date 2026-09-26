@@ -3,6 +3,10 @@
   <div class="ai-feed" ref="feedRef">
     <div v-for="(msg, i) in messages" :key="i" class="ai-msg" :class="{ 'is-user': msg.role === 'user' }">
       <div class="ai-bubble" v-html="fmt(msg.content)"></div>
+      <!-- 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致） -->
+      <div v-if="msg.role === 'assistant' && msg.modelUsage" class="ai-usage-echo">
+        {{ t('ai-panel.usage_echo', { model: msg.modelUsage.model, src: srcLabel(msg.modelUsage.source), billing: billingLabel(msg.modelUsage.billing) }) }}<span v-if="msg.modelUsage.auto_switched">{{ t('ai-panel.usage_echo_auto_switched') }}</span>
+      </div>
       <!-- 消息时间戳 / Message timestamp -->
       <div v-if="msg.timestamp" class="ai-msg-ts">{{ fmtTime(msg.timestamp) }}</div>
       <!-- 截断警告 / Truncation warning -->
@@ -118,20 +122,35 @@
       </template>
       <div v-else-if="inputText.startsWith('/')" class="ai-cmd-empty">无匹配指令</div>
     </div>
-    <!-- 引擎路由回显（§3.9-1：本次由智能体执行必须可见） -->
+    <!-- 引擎路由回显（§3.9-1：本次由智能体执行必须可见；前置探针状态，不再撞错才知道） -->
+    <div v-if="chatMode !== 'qa' && cliProbe && !cliProbe.available" class="ai-cli-probe-warn">
+      ⚠ {{ probeHintText }}
+      <span class="ai-cli-probe-stage">{{ t('ai-panel.cli_probe_failed_stage', { stage: probeStageLabel }) }}</span>
+    </div>
     <div v-if="activeEngine" class="ai-engine-echo">
       <span class="ee-icon">🤖</span>
       <span>{{ t('ai-panel.engine_echo', { name: activeEngine.display_name }) }}</span>
       <span v-if="activeEngine.auto_selected" class="ee-auto">{{ t('ai-panel.engine_echo_auto') }}</span>
       <span class="ee-tier">{{ t('ai-panel.auth_tier.' + activeEngine.auth_tier) }}</span>
     </div>
-    <!-- 模式选择器（会话级，与“角色”正交）/ Mode selector (session-level, orthogonal to role) -->
+    <!-- 模式选择器（会话级，与“角色”正交）+ 会话级模型选择器（REQ-EXPERT-MODE 第 6 刀） / Mode + model selectors -->
     <div class="ai-mode-row">
       <div class="ai-mode-pill" role="group" :aria-label="t('ai-panel.mode_label')">
         <button class="mp-opt" :class="{ 'is-active': chatMode === 'qa' }" @click="$emit('update:chatMode', 'qa')" :title="t('ai-panel.mode_qa_hint')">⚡ {{ t('ai-panel.mode_qa') }}</button>
-        <button class="mp-opt" :class="{ 'is-active': chatMode === 'auto' }" @click="$emit('update:chatMode', 'auto')" :title="t('ai-panel.mode_auto_hint')">🧭 {{ t('ai-panel.mode_auto') }}</button>
-        <button class="mp-opt" :class="{ 'is-active': chatMode === 'agent' }" @click="$emit('update:chatMode', 'agent')" :title="t('ai-panel.mode_agent_hint')">🤖 {{ t('ai-panel.mode_agent') }}</button>
+        <button class="mp-opt" :class="{ 'is-active': chatMode === 'auto' }" :disabled="!agentAvailable" @click="$emit('update:chatMode', 'auto')" :title="agentAvailable ? t('ai-panel.mode_auto_hint') : probeHintText">🧭 {{ t('ai-panel.mode_auto') }}</button>
+        <button class="mp-opt" :class="{ 'is-active': chatMode === 'agent' }" :disabled="!agentAvailable" @click="$emit('update:chatMode', 'agent')" :title="agentAvailable ? t('ai-panel.mode_agent_hint') : probeHintText">🤖 {{ t('ai-panel.mode_agent') }}</button>
       </div>
+      <!-- 模型选择器：默认跟随详情；候选标注来源（本机/体验配额/自带 Key） -->
+      <select
+        class="ai-model-select"
+        :value="sessionModel"
+        :aria-label="t('ai-panel.model_label')"
+        :title="t('ai-panel.model_label')"
+        @change="$emit('update:sessionModel', ($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">{{ t('ai-panel.model_follow', { model: detailModelLabel }) }}</option>
+        <option v-for="mo in modelOptions" :key="mo.value" :value="mo.value">{{ mo.value }} · {{ srcLabel(mo.source) }}</option>
+      </select>
       <span v-if="chatMode !== 'qa'" class="ai-mode-cost">{{ t('ai-panel.mode_agent_cost_hint') }}</span>
       <span v-if="chatMode !== 'qa' && hasAgentSession" class="ai-mode-continue">🔗 {{ t('ai-panel.session_continue') }}</span>
     </div>
@@ -143,8 +162,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { LlmMetadata, MessagePerformance, SourceFile, AgentStage } from '@/api/chat'
+import { computed, ref } from 'vue'
+import type { LlmMetadata, MessagePerformance, SourceFile, AgentStage, ModelUsage } from '@/api/chat'
+import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
@@ -153,8 +173,8 @@ import type { AiCommand } from '@/composables/useAiCommands'
 
 const { t } = useI18n()
 
-defineProps<{
-  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance; stages?: AgentStage[] }>
+const props = defineProps<{
+  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance; stages?: AgentStage[]; modelUsage?: ModelUsage }>
   isLoading: boolean
   isStreaming: boolean
   thinkingElapsed: number
@@ -176,6 +196,16 @@ defineProps<{
   activeEngine: { display_name: string; auth_tier: string; auto_selected: boolean } | null
   /** 当前面板会话已建立智能体会话 → 下一轮自动延续（方案 §3.6） */
   hasAgentSession: boolean
+  /** 会话级模型选择器（REQ-EXPERT-MODE §2.3）：'' = 跟随详情 */
+  sessionModel: string
+  /** 模型候选（预设 + 本机探测，每项标注来源） */
+  modelOptions: Array<{ value: string; source: 'local' | 'trial' | 'byok' }>
+  /** 详情层 LLM 当前生效模型（跟随标签插值） */
+  detailModelLabel: string
+  /** CLI 引擎探针前置回显（§2.2 AC-4：失败段定位） */
+  cliProbe: ChatEngineProbe | null
+  /** 智能体模式是否可选（探针不通则置灰 + 指引） */
+  agentAvailable: boolean
 }>()
 
 defineEmits<{
@@ -194,6 +224,7 @@ defineEmits<{
   (e: 'inputChange'): void
   (e: 'update:inputText', val: string): void
   (e: 'update:chatMode', val: 'qa' | 'agent' | 'auto'): void
+  (e: 'update:sessionModel', val: string): void
 }>()
 
 const inputRef = ref<HTMLTextAreaElement | null>(null)
@@ -225,6 +256,31 @@ function fmt(c: string): string {
 function shortText(text: string): string {
   return text.length > 80 ? text.slice(0, 80) + '…' : text
 }
+
+// ─── 使用面闭环辅助（REQ-EXPERT-MODE §2.3）：来源/计费标签 + 探针指引文案 ───
+function srcLabel(source: string): string {
+  if (source === 'local' || source === 'local_endpoint') return t('ai-panel.model_src_local')
+  if (source === 'trial') return t('ai-panel.model_src_trial')
+  if (source === 'byok') return t('ai-panel.model_src_byok')
+  return source || '—'
+}
+function billingLabel(billing: string): string {
+  if (billing === 'platform_quota') return t('ai-panel.usage_billing_platform_quota')
+  if (billing === 'own_key') return t('ai-panel.usage_billing_own_key')
+  if (billing === 'none') return t('ai-panel.usage_billing_none')
+  return ''
+}
+const probeHintText = computed(() => {
+  const p = props.cliProbe
+  if (!p) return ''
+  if (p.failed_stage === 'version' || p.reason === 'version_low') return t('ai-panel.cli_probe_version_low')
+  if (p.failed_stage === 'login' || p.reason === 'not_logged_in') return t('ai-panel.cli_probe_not_logged_in')
+  return t('ai-panel.cli_probe_not_installed')
+})
+const probeStageLabel = computed(() => {
+  const s = props.cliProbe?.failed_stage
+  return s === 'version' ? '②' : s === 'login' ? '③' : '①'
+})
 
 
 </script>
@@ -503,5 +559,41 @@ function shortText(text: string): string {
   border-radius: var(--radius-xs, 4px);
   background: var(--surface-3, rgba(0,0,0,0.06));
   color: var(--muted, #888);
+}
+/* ── 回复尾部消费方/计费回显（≥12px，裁决-5） ── */
+.ai-usage-echo {
+  font-size: 12px;
+  color: var(--muted, #888);
+  margin: 2px 0 0;
+  padding: 1px 8px;
+  border-left: 2px solid var(--border, #ddd);
+}
+/* ── CLI 探针前置警告（amber 不用红；置灰前先告知） ── */
+.ai-cli-probe-warn {
+  display: block;
+  margin: 2px 0 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  color: var(--warn, #8a5800);
+  background: var(--warn-soft, #fdf3df);
+  border: 1px solid var(--warn-border, rgba(138,88,0,0.25));
+}
+.ai-cli-probe-stage { color: var(--subtle, #999); margin-left: 6px; }
+/* ── 会话级模型选择器 ── */
+.ai-model-select {
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: var(--fg, #333);
+  max-width: 220px;
+  outline: none;
+}
+.ai-model-select:focus-visible { border-color: var(--accent, #6b5bff); }
+.mp-opt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

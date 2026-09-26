@@ -37,11 +37,13 @@ DATA_DIR.mkdir(exist_ok=True)
 # 声纹注册表文件
 REGISTRY_FILE = DATA_DIR / "voiceprint_registry.json"
 
-# 声纹模型版本标识。云端服务返回 "cam++-v1-cloud"，与本地 "cam++-v1" 互相兼容。
-VOICEPRINT_MODEL_VERSION = "cam++-v1-cloud"
+# 声纹模型版本标识。REQ-SETTINGS-IA 第 4 刀（云端声纹下架）后恒为本机 "cam++-v1"；
+# 存量 "cam++-v1-cloud" 标记记录经下方兼容集继续可匹配——注册表无需用户数据迁移（ADR-0009）。
+VOICEPRINT_MODEL_VERSION = "cam++-v1"
 
-# 兼容版本集合：本地 cam++-v1 与云端 cam++-v1-cloud 提取的 embedding 可互相匹配
-# 参见 ADR-0009
+# 兼容版本集合：本机 cam++-v1 与历史云端 cam++-v1-cloud 提取的 embedding 可互相匹配
+# （同一 CAM++ 权重与 CMN 前处理口径，同片段 cos=1.0 已验证）。
+# 云端链路下架后本集合是存量云标记特征的唯一兼容通道，保留至自然被覆盖，参见 ADR-0009。
 COMPATIBLE_VERSIONS: dict[str, set[str]] = {
     "cam++-v1": {"cam++-v1", "cam++-v1-cloud"},
     "cam++-v1-cloud": {"cam++-v1", "cam++-v1-cloud"},

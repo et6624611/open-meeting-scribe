@@ -18,7 +18,6 @@
 产物：.eval_local_engine/results/metrics.json、refs/<SEG>_proofread_worksheet.md、
       refs/<SEG>_consensus.json
 """
-import difflib
 import json
 import re
 import sys

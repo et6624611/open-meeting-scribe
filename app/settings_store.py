@@ -229,33 +229,8 @@ def get_asr_config() -> dict:
     }
 
 
-def get_voiceprint_config() -> dict:
-    """
-    获取声纹识别配置（从 settings.json） / Get voiceprint recognition config (from settings.json).
-
-    返回格式 / Returns:
-      {
-        "provider": "auto",       # "local" / "cloud" / "auto"
-        "cloud": {
-          "base_url": "",
-          "api_key": ""
-        }
-      }
-
-    环境变量 VOICEPRINT_PROVIDER / VOICEPRINT_API_KEY / VOICEPRINT_BASE_URL
-    可覆盖 settings.json 中的对应字段 / Can override corresponding fields in settings.json.
-    """
-    settings = load_settings()
-    vp_config = settings.get("voiceprint", {})
-    cloud_config = vp_config.get("cloud", {})
-
-    return {
-        "provider": vp_config.get("provider", "auto"),
-        "cloud": {
-            "base_url": cloud_config.get("base_url", ""),
-            "api_key": cloud_config.get("api_key", ""),
-        },
-    }
+# 声纹配置 getter 已随 REQ-SETTINGS-IA 第 4 刀下架：voiceprint.provider / cloud_base_url /
+# cloud_api_key 字段在 schema/UI/后端三处不存在，声纹结构性零出网（仅本机 CAM++）。
 
 
 def get_chat_engine_config() -> dict:
@@ -465,14 +440,33 @@ def get_engine_config() -> dict:
 
 
 # ============================================================
-# 接入方式（REQ-ACCESS-MODE-CARDS · T1）/ Access mode
+# 接入方式（REQ-SETTINGS-IA §3.1/§4 · 决策层收敛）/ Access mode v2
 # ============================================================
-# 用户侧统一字段：access_mode ∈ {local, hosted, byok} | None（未配置→null 触发引导）
-# 与 expert_mode（布尔）。旧字段（engine.mode / asr.mode / prefer_subscription /
-# provider / base_url / model / 各 api_key）降级为底层实现细节，兼容窗口一个版本（A2）：
-# 写路径继续同步旧字段以保持回滚能力。
+# 用户侧决策层唯一字段：access_mode ∈ {local(离线), cloud(联网)} | None（未选态→触发引导）。
+# 体验/自带随账户降为逐能力算力来源（第 5 刀）：
+#   capability_source           当前选择值（迁移/切网时初始化，之后仅用户显式改选变动）
+#   capability_source_override  true = 用户逐能力显式覆盖过，持久化生效，
+#                               不被下次登录/账户勾选改回（AC-5）
+# 生效值 = override ? capability_source : 账户默认（prefer_subscription 开=trial / 关=byok）。
+# 旧字段（engine.mode / asr.mode）降级为 A2 投影：写路径继续同步以保持回滚能力，
+# 但不再作为路由输入（路由唯一输入 = access_mode + 逐能力生效来源，见 core/routing.py）。
 
-ACCESS_MODES = ("local", "hosted", "byok")
+ACCESS_MODES = ("local", "cloud")
+# 存量枚举（已废止：仅兼容读取/迁移输入，不再是合法写入值）
+LEGACY_ACCESS_MODES = ("hosted", "byok")
+
+# 能力级算力来源（裁决-4 五词中的三项用户词；工程值 proxy/direct 仅专家注释层出现）
+LLM_CAP_SOURCES = ("trial", "byok", "local_endpoint")
+ASR_CAP_SOURCES = ("trial", "byok")
+
+
+def _llm_base_is_localhost(settings: dict) -> bool:
+    """LLM base_url 指向本机端点（以 URL 为准，不读 provider 字面量）。"""
+    try:
+        from core.llm import is_localhost_base_url
+        return is_localhost_base_url(((settings.get("llm") or {}).get("base_url")) or "")
+    except Exception:
+        return False
 
 # expert_mode 自动开启判定所用的「默认值」口径（与 get_llm_config / get_asr_config 默认一致）
 _DEFAULT_EXPERT_BASELINES = {
@@ -493,28 +487,38 @@ def _current_prefer_subscription() -> bool:
     return False
 
 
+def account_default_source(prefer_subscription: bool | None = None) -> str:
+    """账户「优先使用体验配额」勾选 = 详情默认值来源（第 5 刀）：开→trial，关→byok。"""
+    ps = _current_prefer_subscription() if prefer_subscription is None else bool(prefer_subscription)
+    return "trial" if ps else "byok"
+
+
+def _capability_defaults(source_seed: str | None = None, llm_localhost: bool = False) -> dict:
+    """按种子来源生成两能力初始选择值（trial/byok 直映；llm 本机端点单独识别）。"""
+    if source_seed == "trial":
+        return {"llm": "trial", "asr": "trial"}
+    if source_seed == "byok":
+        return {"llm": "local_endpoint" if llm_localhost else "byok", "asr": "byok"}
+    return {"llm": "", "asr": ""}
+
+
 def derive_access_mode(settings: dict, prefer_subscription: bool | None = None) -> str | None:
-    """需求书 §4 一次性迁移映射（纯函数，不落盘）。
+    """旧客户端兼容窗口的反向投影（纯函数，不落盘；REQ-SETTINGS-IA §3.2 日落中）。
 
-    | 存量组合                                   | 迁移为  |
-    | engine.mode=local                          | local   |
-    | engine.mode=proxy                          | hosted  |
-    | engine.mode=cloud（A-i1 延伸：同为云代理计费）| hosted  |
-    | engine.mode=direct 且 prefer_subscription=F | byok    |
-    | engine.mode=direct 且 prefer_subscription=T | hosted  |  ← A1 裁决
-    | 未配置                                     | None    |  → 触发引导
+    新口径：决策层只剩两值，任何云端传输（local 除外）一律投影为 cloud（联网）；
+    A1 裁决（direct+订阅开=托管）已废止——计费来源不再参与模式推导，
+    prefer_subscription 参数保留仅为签名兼容，不再影响结论。
 
-    prefer_subscription=None 时读取当前登录用户偏好。
+    | engine.mode=local                 | local |
+    | engine.mode=proxy / cloud / direct | cloud |
+    | 未配置                             | None  | → 触发引导
     """
     engine = settings.get("engine", {}) or {}
     mode = engine.get("mode")
     if mode == "local":
         return "local"
-    if mode in ("proxy", "cloud"):
-        return "hosted"
-    if mode == "direct":
-        ps = _current_prefer_subscription() if prefer_subscription is None else bool(prefer_subscription)
-        return "hosted" if ps else "byok"
+    if mode in ("proxy", "cloud", "direct"):
+        return "cloud"
     return None
 
 
@@ -529,12 +533,9 @@ def derive_expert_mode(settings: dict) -> bool:
             return True
         if model and model != baseline["model"]:
             return True
-    # 非默认 Key 组合：旧版 flat api_key、声纹云配置、以及代理模式下不应出现的自有 ASR Key
+    # 非默认 Key 组合：旧版 flat api_key、以及代理模式下不应出现的自有 ASR Key
+    # （声纹云配置分支已随 REQ-SETTINGS-IA 第 4 刀下架：voiceprint 字段不再存在于 schema）
     if settings.get("api_key"):
-        return True
-    vp = settings.get("voiceprint", {}) or {}
-    vp_cloud = vp.get("cloud", {}) or {}
-    if vp.get("provider") not in (None, "auto") or vp_cloud.get("base_url") or vp_cloud.get("api_key"):
         return True
     asr_cfg = settings.get("asr", {}) or {}
     if asr_cfg.get("mode") != "direct" and asr_cfg.get("api_key"):
@@ -543,41 +544,150 @@ def derive_expert_mode(settings: dict) -> bool:
 
 
 def migrate_access_mode(settings: dict, prefer_subscription: bool | None = None) -> bool:
-    """就地执行一次性迁移：补充 access_mode / expert_mode / 迁移标记；旧字段原样保留（回滚用）。
+    """就地执行一次性迁移（REQ-SETTINGS-IA §4）：存量三值收敛为两值 + 逐能力来源初始化。
 
-    已迁移（存在 `_access_mode_migrated` 标记）则不重复推导，返回 False。
+    | 存量 access_mode | 迁移为 | 能力来源初始化 | A2 投影不变量 |
+    | local            | local  | —（本机接管）      | engine.mode=local |
+    | hosted           | cloud  | LLM/ASR=trial      | engine.mode=proxy |
+    | byok             | cloud  | LLM/ASR=byok（llm 本机端点识别） | engine.mode=direct |
+    | null / 未配置    | null   | 触发引导         | 不动旧字段 |
+
+    混配存量（如 hosted + asr.mode=direct）按详情层逐能力读实际值并标 override，
+    冲突明示不静默（§4）；A1 裁决已废止。
+    已迁移（`_settings_ia_migrated` 标记）则不重复推导，返回 False。
     """
-    if settings.get("_access_mode_migrated"):
+    if settings.get("_settings_ia_migrated"):
         return False
-    if "access_mode" not in settings:
-        settings["access_mode"] = derive_access_mode(settings, prefer_subscription)
+
+    legacy = settings.get("access_mode")
+    if legacy is None and "access_mode" not in settings:
+        legacy = derive_access_mode(settings, prefer_subscription)
+
+    # 存量三值/旧字段投影 → 新两值 + 能力种子（trial/byok）
+    seed: str | None = None
+    if legacy == "local":
+        seed = None
+    elif legacy in ("hosted", "byok"):
+        seed = "trial" if legacy == "hosted" else "byok"
+    elif legacy == "cloud":
+        # 已是新值（带 v1 标记的过渡态）：按旧字段反推种子
+        seed = "trial" if (settings.get("engine", {}) or {}).get("mode") in ("proxy", "cloud") else "byok"
+    settings["access_mode"] = "local" if legacy == "local" else ("cloud" if legacy else None)
+
+    if settings["access_mode"] == "cloud":
+        llm_localhost = seed == "byok" and _llm_base_is_localhost(settings)
+        sources = _capability_defaults(seed, llm_localhost=llm_localhost)
+        overrides = {"llm": False, "asr": False}
+        # 混配存量：逐能力读实际值，与顶层种子分歧的能力显式标注（不静默）
+        asr_mode = (settings.get("asr", {}) or {}).get("mode")
+        if asr_mode == "direct" and sources["asr"] == "trial":
+            sources["asr"] = "byok"
+            overrides["asr"] = True
+        elif asr_mode == "proxy" and sources["asr"] == "byok":
+            sources["asr"] = "trial"
+            overrides["asr"] = True
+        settings["capability_source"] = sources
+        settings["capability_source_override"] = overrides
+    else:
+        settings.setdefault("capability_source", {"llm": "", "asr": ""})
+        settings.setdefault("capability_source_override", {"llm": False, "asr": False})
+
     if not isinstance(settings.get("expert_mode"), bool):
         settings["expert_mode"] = derive_expert_mode(settings)
-    settings["_access_mode_migrated"] = True
+    settings["_access_mode_migrated"] = True  # v1 标记保留（回滚兼容）
+    settings["_settings_ia_migrated"] = True
     return True
 
 
 def run_access_mode_migration() -> bool:
     """启动时迁移入口：加载 settings.json，如需迁移则持久化。返回是否发生变更。"""
     settings = load_settings()
-    if migrate_access_mode(settings):
+    changed = migrate_access_mode(settings)
+    # 第 4 刀：声纹云端路径下架，存量 voiceprint 字段随保存一次性丢弃（注册表无需迁移，
+    # cam++-v1-cloud 标记特征与本机 cam++-v1 在 COMPATIBLE_VERSIONS 互兼容，见 ADR-0009）
+    if "voiceprint" in settings:
+        settings.pop("voiceprint", None)
+        changed = True
+    if changed:
         save_settings_to_disk(settings)
-        logger.info(f"接入方式迁移完成: access_mode={settings.get('access_mode')}, expert_mode={settings.get('expert_mode')}")
+        logger.info(f"接入方式迁移完成: access_mode={settings.get('access_mode')}, expert_mode={settings.get('expert_mode')}, capability_source={settings.get('capability_source')}")
         return True
     return False
+
+
+def _project_legacy_fields(settings: dict, mode: str | None, sources: dict) -> None:
+    """A2 兼容窗口：将新模型投影到旧字段（仅供回滚后的旧版本读取，不参与路由判定）。"""
+    if mode is None:
+        return
+    engine = dict(settings.get("engine", {}) or {})
+    asr = dict(settings.get("asr", {}) or {})
+    if mode == "local":
+        engine["mode"] = "local"
+    else:  # cloud：按生效来源投影传输层旧值
+        llm_src = sources.get("llm") or ""
+        if llm_src == "trial":
+            engine["mode"] = "proxy"
+        elif llm_src in ("byok", "local_endpoint"):
+            engine["mode"] = "direct"
+        asr_src = sources.get("asr") or ""
+        if asr_src == "trial":
+            asr["mode"] = "proxy"
+        elif asr_src == "byok":
+            asr["mode"] = "direct"
+    settings["engine"] = engine
+    settings["asr"] = asr
 
 
 def get_access_mode() -> str | None:
     """当前接入方式（路由判定唯一数据源，见 core/routing.py）。
 
-    已迁移 → 返回持久值（可能为 None=未配置，触发引导）；
-    未迁移（如 CLI 先于服务启动钩子读取）→ 按 §4 惰性推导，不写盘。
+    已迁移 → 返回持久值（可能为 None=未选态，触发引导）；
+    存量遗留值（hosted/byok）→ 防御性投影为 cloud，不写盘；
+    未迁移（如 CLI 先于服务启动钩子读取）→ 惰性推导，不写盘。
     """
     settings = load_settings()
-    if settings.get("_access_mode_migrated"):
+    if settings.get("_settings_ia_migrated") or settings.get("_access_mode_migrated"):
         mode = settings.get("access_mode")
+        if mode in LEGACY_ACCESS_MODES:
+            return "cloud"
         return mode if mode in ACCESS_MODES else None
     return derive_access_mode(settings)
+
+
+def get_capability_status(prefer_subscription: bool | None = None) -> dict:
+    """逐能力算力来源快照（详情层/路由共用，纯读不写盘）。
+
+    返回 / Returns:
+      {"llm": {explicit, override, default, effective},
+       "asr": {...},
+       "account_default": "trial"|"byok"}
+    离线态（access_mode=local）下 effective 统一为 "local"（本机接管）。
+    """
+    settings = load_settings()
+    default = account_default_source(prefer_subscription)
+    access = get_access_mode()
+    sources = settings.get("capability_source", {}) or {}
+    overrides = settings.get("capability_source_override", {}) or {}
+    result: dict = {"account_default": default}
+    for cap in ("llm", "asr"):
+        explicit = sources.get(cap) or ""
+        overridden = bool(overrides.get(cap, False))
+        if access == "local":
+            # 离线态：本机接管（只读），勾选不参与生效值
+            effective = "local"
+        elif overridden and explicit:
+            # 已覆盖：持久化显式值，不被登录/勾选改回（AC-5）
+            effective = explicit
+        else:
+            # 未覆盖：跟随账户默认（勾选联动的显式默认生效值）
+            effective = default
+        result[cap] = {
+            "explicit": explicit,
+            "override": overridden,
+            "default": default,
+            "effective": effective,
+        }
+    return result
 
 
 def get_expert_mode() -> bool:
@@ -589,35 +699,70 @@ def get_expert_mode() -> bool:
     return derive_expert_mode(settings)
 
 
-def apply_access_mode(settings: dict, mode: str | None) -> None:
-    """写入 access_mode 并同步旧字段（A2 兼容窗口：回滚后旧版本可直接读取生效）。
+def apply_access_mode(
+    settings: dict,
+    mode: str | None,
+    sources: dict | None = None,
+    overrides: dict | None = None,
+    prefer_subscription: bool | None = None,
+) -> None:
+    """写入 access_mode（+ 逐能力来源）并同步 A2 投影旧字段。
 
-    mode=None 表示未配置（触发引导），仅清除选择不动旧字段。
+    mode=None 表示未选态（触发引导），仅清除选择不影响旧字段。
+    存量枚举（hosted/byok）作为旧客户端兼容输入归一化为 cloud + 对应来源，
+    不报错不静默（投影后的模式 + 默认来源与旧语义等价）。
+    sources 仅接受合法枚举；未传时切联网按账户默认初始化（override=False）。
     """
-    if mode is not None and mode not in ACCESS_MODES:
-        raise ValueError(f"非法 access_mode: {mode!r}，允许值: {ACCESS_MODES}")
-    settings["access_mode"] = mode
+    if mode in LEGACY_ACCESS_MODES:
+        settings["access_mode"] = "cloud"
+        seed = "trial" if mode == "hosted" else "byok"
+        settings["capability_source"] = _capability_defaults(seed, llm_localhost=(mode == "byok" and _llm_base_is_localhost(settings)))
+        settings["capability_source_override"] = {"llm": False, "asr": False}
+    else:
+        if mode is not None and mode not in ACCESS_MODES:
+            raise ValueError(f"非法 access_mode: {mode!r}，允许值: {ACCESS_MODES}")
+        settings["access_mode"] = mode
     settings["_access_mode_migrated"] = True
-    if mode is None:
+    settings["_settings_ia_migrated"] = True
+
+    if mode == "cloud" or (mode is None and settings.get("access_mode") == "cloud"):
+        default = account_default_source(prefer_subscription)
+        cur = dict(settings.get("capability_source", {}) or {})
+        cur_ovr = dict(settings.get("capability_source_override", {}) or {"llm": False, "asr": False})
+        if sources:
+            for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
+                if cap in sources:
+                    val = sources.get(cap)
+                    if val in allowed:
+                        cur[cap] = val
+                        # 任何手动改选都视为显式覆盖（持久化，不被勾选改回）
+                        cur_ovr[cap] = bool((overrides or {}).get(cap, True))
+                    elif val is None or val == "":
+                        cur[cap] = ""
+                        cur_ovr[cap] = False
+        settings["capability_source"] = {"llm": cur.get("llm", ""), "asr": cur.get("asr", "")}
+        # 联网态下未初始化的能力补账户默认（显式联动，非静默 override）
+        if not settings["capability_source"]["llm"]:
+            settings["capability_source"]["llm"] = default
+        if not settings["capability_source"]["asr"]:
+            settings["capability_source"]["asr"] = default
+        settings["capability_source_override"] = {"llm": bool(cur_ovr.get("llm", False)), "asr": bool(cur_ovr.get("asr", False))}
+    elif mode is None:
         return
-    engine = dict(settings.get("engine", {}) or {})
-    asr = dict(settings.get("asr", {}) or {})
-    if mode == "local":
-        engine["mode"] = "local"
-    elif mode == "hosted":
-        engine["mode"] = "proxy"
-        asr["mode"] = "proxy"
-    elif mode == "byok":
-        engine["mode"] = "direct"
-        asr["mode"] = "direct"
-    settings["engine"] = engine
-    settings["asr"] = asr
+
+    _project_legacy_fields(settings, settings.get("access_mode"), settings.get("capability_source", {}) or {})
 
 
-def set_access_mode(mode: str | None) -> None:
-    """持久化 access_mode（含旧字段同步）。非法值抛 ValueError，不落盘。"""
+def set_access_mode(
+    mode: str | None,
+    sources: dict | None = None,
+    overrides: dict | None = None,
+    prefer_subscription: bool | None = None,
+) -> None:
+    """持久化 access_mode（含逐能力来源与旧字段投影）。非法值抛 ValueError，不落盘。"""
     settings = load_settings()
-    apply_access_mode(settings, mode)
+    apply_access_mode(settings, mode, sources=sources, overrides=overrides,
+                      prefer_subscription=prefer_subscription)
     save_settings_to_disk(settings)
 
 

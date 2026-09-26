@@ -58,6 +58,9 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result = {
         "available": False, "reason": "probe_error", "path": None,
         "version": None, "logged_in": False, "display_name": display_name, "hint": "",
+        # 三段探针失败段定位（REQ-EXPERT-MODE §2.2：详情卡/对话面板直接可见哪段挂了）
+        # path=可执行解析 · version=版本下限 · login=登录态；None=未失败
+        "failed_stage": None,
     }
 
     # ① 路径解析（探针命令来自 manifest，v1 仅本机 CLI；--version 与 status 为无头安全只读命令）
@@ -65,6 +68,7 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     path = binary if cli_path_override else shutil.which(binary)
     if not path:
         result["reason"] = "not_installed"
+        result["failed_stage"] = "path"
         result["hint"] = "chatEngine.notInstalled"
         return result
     result["path"] = path
@@ -79,6 +83,7 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     except Exception as e:  # noqa: BLE001 - 探针任何异常都应降级为不可用，绝不抛出
         logger.warning("[CLI引擎探针] 版本命令失败 %s: %s", display_name, e)
         result["reason"] = "probe_error"
+        result["failed_stage"] = "version"
         result["hint"] = "chatEngine.probeError"
         return result
 
@@ -87,6 +92,7 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result["version"] = version_text.splitlines()[0][:40] if version_text else None
     if need and got < need:
         result["reason"] = "version_low"
+        result["failed_stage"] = "version"
         result["hint"] = "chatEngine.versionLow"
         return result
 
@@ -104,6 +110,7 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result["logged_in"] = logged_in
     if not logged_in:
         result["reason"] = "not_logged_in"
+        result["failed_stage"] = "login"
         result["hint"] = "chatEngine.notLoggedIn"
         return result
 

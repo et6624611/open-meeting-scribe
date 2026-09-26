@@ -578,12 +578,12 @@ ai_context: "确认了星瀚预算模块采用 RESTful API 对接，数据迁移
 ### 设置信息架构重构：决策层收敛 + 单向数据流 + 声纹云端下架（REQ-SETTINGS-IA）
 **目标**：消灭「一个逻辑状态四个写入口」根因——接入方式收敛为 离线/联网 两卡 + 能力级详情层，参数编辑面唯一收敛到「服务」页，词汇定五词，声纹云端路径整体下架使「零出网」结构性为真，prefer_subscription 从路由 override 降为账户默认勾选（三态徽章+覆盖持久化），切换事务全量回滚。来源：2026-09-26 项目方两裁决 + UI 评审意见书（R1-R6）+ 7 项终裁。
 
-完整五刀范围、存量迁移映射、AC-1~8、风险与闸口见 [REQUIREMENT-SETTINGS-IA.md](REQUIREMENT-SETTINGS-IA.md)（v0.2.0）。状态：**已批准，待 IDE 承接排期**；**前置闸**：Dev 完成声纹注册表迁移评估。交互基准 = docs/prototypes/PROTOTYPE-SETTINGS-IA.html v4。
+完整五刀范围、存量迁移映射、AC-1~8、风险与闸口见 [REQUIREMENT-SETTINGS-IA.md](REQUIREMENT-SETTINGS-IA.md)（v0.2.0）。状态：**已实施（2026-09-26，IDE 承接轮）**：五刀全部落地，本机实机迁移验证通过（存量 voiceprint 键已丢、capability_source 已写）；前置闸已解除（Dev 评估：注册表存本机且 COMPATIBLE_VERSIONS 双向兼容，确认无用户数据迁移）。浏览器点验项（AC-5/6/7）交 QA 通道，产品侧出验收单。交互基准 = docs/prototypes/PROTOTYPE-SETTINGS-IA.html v4。
 
 ### 专家详情注释层 + 配置栈六层重排 + 对话模型闭环（REQ-EXPERT-MODE）
 **目标**：专家模式从「平行旧版视图」重定义为「同模型加细节层」（工程值注释行 + 页面级开关 + role/aria 修复）；设置导航按 L0→L5 六层重排（本地资产/CLI 探针状态前置回显）；对话面板补会话级模型选择器接线（后端 chat.py:214 契约零改动）+ 回复尾部消费方/计费回显。
 
-范围、AC-1~5 与风险见 [REQUIREMENT-EXPERT-MODE.md](REQUIREMENT-EXPERT-MODE.md)（v0.2.0）。状态：**已批准，串行依赖 REQ-SETTINGS-IA 合入**（注释层字段名与词表由其定稿）。无障碍硬指标（≥12px + ≥4.5:1）经裁决-5 升为产品级规则，本单为首个落地样本。
+范围、AC-1~5 与风险见 [REQUIREMENT-EXPERT-MODE.md](REQUIREMENT-EXPERT-MODE.md)（v0.2.0）。状态：**已实施（2026-09-26，串行于 SETTINGS-IA 同轮落地）**：注释层/页面级开关/六层重排（含 CLI 分类页）/探针三段定位/会话级模型选择器+回复尾部回显均已接线；字号门禁入 pytest（tests/test_expert_mode.py）。键盘走查/对比度 axe 点验（AC-1/2/3/4）交 QA 通道，产品侧出验收单。无障碍硬指标（≥12px + ≥4.5:1）经裁决-5 升为产品级规则，本单为首个落地样本。
 
 ---
 

@@ -34,7 +34,6 @@ import pytest
 from core import voiceprint_registry as vp_reg
 from core.errors import LocalEngineError, classify_error
 
-
 # ── 替身与工具 / Stubs and helpers ──
 
 def _write_wav(path, seconds=1.0, sample_rate=16000):
@@ -197,8 +196,8 @@ class TestLocalTranscriptionContract:
 
 class TestLocalRouting:
     def test_get_asr_mode_returns_local_when_engine_local(self, tmp_path, monkeypatch):
-        import core.transcribe as t
         import app.settings_store as ss
+        import core.transcribe as t
 
         # 自包含夹具（同 test_llm_selfhost 口径）：隔离真实 data/settings.json。
         # AM-B1 后 _get_asr_mode 经 core/routing 先读 access_mode；已迁移机器上
@@ -208,9 +207,9 @@ class TestLocalRouting:
         assert t._get_asr_mode() == "local"
 
     def test_get_asr_mode_not_local_when_engine_cloud(self, tmp_path, monkeypatch):
-        import core.transcribe as t
         import app.settings_store as ss
         import app.store as store
+        import core.transcribe as t
 
         monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "cloud", "local": {}})
@@ -218,8 +217,8 @@ class TestLocalRouting:
         assert t._get_asr_mode() == "proxy"
 
     def test_transcribe_local_end_to_end(self, tmp_path, monkeypatch):
-        import core.transcribe as t
         import core.engine_host as eh
+        import core.transcribe as t
 
         wav = _write_wav(tmp_path / "m.wav")
         asr_resp = {
@@ -275,9 +274,9 @@ class TestLocalHotwords:
 
     def test_local_transcribe_applies_hotwords(self, tmp_path, monkeypatch):
         """_transcribe_local 必施热词映射（必配项，非降级）。"""
-        import core.transcribe as t
         import core.engine_host as eh
         import core.hotwords as hw
+        import core.transcribe as t
 
         wav = _write_wav(tmp_path / "h.wav")
         asr_resp = {
@@ -360,40 +359,39 @@ class TestLocalCamPlusProvider:
         assert prov.dim == 192
         assert prov.model_version == "cam++-v1"
 
-    def test_provider_selection_local_uses_camplus(self, monkeypatch):
+    def test_provider_selection_camplus_available(self, monkeypatch):
+        """REQ-SETTINGS-IA 第 4 刀后两级选择：CAM++ 就绪 → 本机 CAM++。"""
         import core.embedding_provider as ep
 
-        monkeypatch.setattr(ep, "_local_engine_active", lambda: True)
         monkeypatch.setattr(ep.LocalCamPlusProvider, "is_available", lambda self: True)
         ep.reset_provider()
         prov = ep.get_embedding_provider()
         assert isinstance(prov, ep.LocalCamPlusProvider)
         ep.reset_provider()
 
-    def test_provider_selection_local_unavailable_falls_to_mfcc_never_cloud(self, monkeypatch):
+    def test_provider_selection_camplus_unavailable_falls_to_mfcc_never_cloud(self, monkeypatch):
+        """CAM++ 未就绪 → 直接 MFCC；声纹不存在任何云端代码路径（结构性零出网）。"""
         import core.embedding_provider as ep
 
-        monkeypatch.setattr(ep, "_local_engine_active", lambda: True)
         monkeypatch.setattr(ep.LocalCamPlusProvider, "is_available", lambda self: False)
-        # 若误触云端会调用 CloudEmbeddingProvider.is_available（HTTP）——桩为抛错以证明未走云端
-        def _boom(self):
-            raise AssertionError("本地模式不应触达云端")
-        monkeypatch.setattr(ep.CloudEmbeddingProvider, "is_available", _boom)
         ep.reset_provider()
         prov = ep.get_embedding_provider()
         assert isinstance(prov, ep.MfccFallbackProvider)
         ep.reset_provider()
 
-    def test_provider_selection_non_local_unchanged(self, monkeypatch):
+    def test_cloud_provider_and_settings_surface_removed(self):
+        """第 4 刀硬指标：CloudEmbeddingProvider / provider 配置读取均不存在。"""
         import core.embedding_provider as ep
 
-        monkeypatch.setattr(ep, "_local_engine_active", lambda: False)
-        monkeypatch.setattr(ep, "_load_voiceprint_settings", lambda: {"provider": "auto"})
-        ep.reset_provider()
-        prov = ep.get_embedding_provider()
-        # 无云端配置 → 既有逻辑降级 MFCC（云/auto 路径零改动）
-        assert isinstance(prov, (ep.CloudEmbeddingProvider, ep.MfccFallbackProvider))
-        ep.reset_provider()
+        assert not hasattr(ep, "CloudEmbeddingProvider")
+        assert not hasattr(ep, "_load_voiceprint_settings")
+        assert not hasattr(ep, "_local_engine_active")
+
+    def test_voiceprint_config_getter_removed_from_store(self):
+        """AC-3：voiceprint.provider 字段在 schema/后端不存在——getter 已下架。"""
+        import app.store as store
+
+        assert not hasattr(store, "get_voiceprint_config")
 
 
 class TestZeroMigrationCompat:
@@ -404,7 +402,7 @@ class TestZeroMigrationCompat:
         assert vp_reg._is_compatible_version("cam++-v1-cloud") is True
 
     def test_local_registered_record_matchable(self, tmp_path, monkeypatch):
-        """本地 cam++-v1 注册的记录，可被注册表（encoder 常量为 cloud）匹配命中。"""
+        """本地 cam++-v1 注册的记录，可被注册表（encoder 常量现为 cam++-v1）匹配命中。"""
         monkeypatch.setattr(vp_reg, "REGISTRY_FILE", tmp_path / "registry.json")
         vec = np.zeros(192, dtype=np.float32)
         vec[0] = 1.0
@@ -424,8 +422,8 @@ class TestZeroMigrationCompat:
 
 class TestAc4Fallback:
     def test_transcribe_local_propagates_classified_error(self, tmp_path, monkeypatch):
-        import core.transcribe as t
         import core.engine_host as eh
+        import core.transcribe as t
 
         wav = _write_wav(tmp_path / "f.wav")
         monkeypatch.setattr(
@@ -465,8 +463,8 @@ class TestAc4Fallback:
 
 class TestRealtimeDegradation:
     def test_realtime_mode_local(self, monkeypatch):
-        import core.realtime_asr as ra
         import app.settings_store as ss
+        import core.realtime_asr as ra
 
         monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "local", "local": {}})
         assert ra._get_asr_mode() == "local"

@@ -33,13 +33,13 @@
   "abandon_duration": "已录制时长：{elapsed}",
   "abandon_cancel": "取消",
   "abandon_confirm": "确认放弃",
-  "engine_badge_local": "本地引擎",
-  "engine_badge_proxy": "体验代理",
-  "engine_badge_selfkey": "自持 Key",
+  "engine_badge_local": "离线",
+  "engine_badge_proxy": "体验配额",
+  "engine_badge_selfkey": "自带 Key",
   "engine_badge_unready": "未就绪",
-  "engine_badge_tip_local": "本地引擎：转写、声纹、纪要全程在本机或自接端点处理，数据不出设备。点击查看数据流向矩阵",
-  "engine_badge_tip_proxy": "体验代理：经项目方共享代理调用云端转写与 LLM，业务数据不在项目方服务器留存。点击查看数据流向矩阵",
-  "engine_badge_tip_selfkey": "自持 Key：直连你自行配置的云端 ASR / LLM 服务。点击查看数据流向矩阵",
-  "engine_badge_tip_unready": "本地引擎未就绪：已选择本地引擎但组件或模型缺失，转写任务将挂起。点击前往设置",
-  "engine_badge_aria": "计算引擎状态：{state}，点击查看数据流向"
+  "engine_badge_tip_local": "离线模式：转写、声纹、纪要全程在本机或本机端点处理，数据不出设备。点击查看数据流向矩阵",
+  "engine_badge_tip_proxy": "体验配额：经平台共享代理调用云端转写与 LLM，消耗体验分钟数，业务数据不在项目方服务器留存。点击查看数据流向矩阵",
+  "engine_badge_tip_selfkey": "自带 Key：直连你配置的云端 ASR / LLM 服务，由你的供应商计费。点击查看数据流向矩阵",
+  "engine_badge_tip_unready": "离线未就绪：已选离线模式但本地组件或模型缺失，转写任务将挂起。点击前往设置",
+  "engine_badge_aria": "接入状态：{state}，点击查看数据流向"
 }

@@ -1,0 +1,158 @@
+"""
+tests/test_expert_mode.py — REQ-EXPERT-MODE 后端契约 + 注释层静态门禁
+
+覆盖：
+  - §2.2 CLI 探针三段失败段定位（failed_stage，AC-4 后端侧）
+  - §2.3 会话级模型透传：默认值跟随详情 llm.model（AC-3 后端侧）+
+    回复尾部消费方/计费回显 meta（与 routing 判定一致）
+  - AC-2 注释层最小字号静态门禁（≥12px，裁决-5 产品级规则落地样本）
+  - §2.2 导航 L0→L5 重排 + CLI 分类页接线（静态源检）
+运行：pytest tests/test_expert_mode.py -v
+"""
+
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+FE = ROOT / "frontend" / "src"
+
+
+# ============================================================
+# §2.2 探针三段失败段定位
+# ============================================================
+
+
+class TestProbeFailedStage:
+    def test_missing_binary_reports_path_stage(self):
+        """① 段失败：可执行文件解析不到 → failed_stage=path（AC-4 三段定位）。"""
+        from core.cli_engine import load_manifest, probe_engine
+
+        manifest = dict(load_manifest("qoder-cli"))
+        manifest["binary"] = "definitely-not-installed-cli-xyz"
+        pr = probe_engine(manifest)
+        assert pr["available"] is False
+        assert pr["failed_stage"] == "path"
+        assert pr["reason"] == "not_installed"
+
+    def test_probe_result_always_carries_failed_stage_key(self):
+        from core.cli_engine import load_manifest, probe_engine
+
+        manifest = dict(load_manifest("qoder-cli"))
+        manifest["binary"] = "definitely-not-installed-cli-xyz"
+        pr = probe_engine(manifest)
+        assert "failed_stage" in pr
+
+
+# ============================================================
+# §2.3 会话级模型默认跟随详情 + 使用回显 meta
+# ============================================================
+
+
+class TestChatModelResolution:
+    def test_default_follows_llm_settings(self, monkeypatch):
+        import app.routers.chat as chat_mod
+        import app.store as store
+
+        monkeypatch.setattr(store, "get_llm_config",
+                            lambda: {"model": "qwen-max", "base_url": "", "api_key": "", "provider": ""},
+                            raising=True)
+        assert chat_mod._chat_model_default() == "qwen-max"
+
+    def test_default_falls_back_when_unconfigured(self, monkeypatch):
+        import app.routers.chat as chat_mod
+        import app.store as store
+
+        monkeypatch.setattr(store, "get_llm_config",
+                            lambda: {"model": "", "base_url": "", "api_key": "", "provider": ""},
+                            raising=True)
+        assert chat_mod._chat_model_default() == "qwen-plus"
+
+    def test_model_usage_meta_maps_billing_from_routing(self, monkeypatch):
+        import app.routers.chat as chat_mod
+        import core.routing as rt
+
+        monkeypatch.setattr(rt, "get_routing_decision", lambda ctx="asr": {
+            "configured_access_mode": "cloud", "expert_mode": False, "route": "cloud",
+            "source": "trial", "auto_switched": False, "route_override": False, "reason": "",
+        }, raising=True)
+        meta = chat_mod._model_usage_meta("qwen-plus")
+        assert meta["source"] == "trial"
+        assert meta["billing"] == "platform_quota"
+        assert meta["auto_switched"] is False
+
+    def test_model_usage_meta_survives_routing_failure(self, monkeypatch):
+        import app.routers.chat as chat_mod
+        import core.routing as rt
+
+        def _boom(ctx="asr"):
+            raise RuntimeError("routing unavailable")
+        monkeypatch.setattr(rt, "get_routing_decision", _boom, raising=True)
+        meta = chat_mod._model_usage_meta("m1")
+        assert meta == {"model": "m1", "source": "", "route": "", "billing": "", "auto_switched": False}
+
+
+# ============================================================
+# AC-2 注释层字号门禁（裁决-5：≥12px）+ §2.2 前端接线静态源检
+# ============================================================
+
+ANNOTATION_BLOCKS = [
+    # (文件, CSS 选择器, 声明块必须含 font-size ≥12px)
+    (FE / "components/settings/AccessModeCards.vue", ".ai-tech"),
+    (FE / "components/settings/AccessModeCards.vue", ".ai-ready"),
+    (FE / "components/settings/AccessModeCards.vue", ".ai-badge-src"),
+    (FE / "components/settings/AccessModeCards.vue", ".ai-probe-stage"),
+    (FE / "components/settings/AccessModeCards.vue", ".ai-mx-badge"),
+    (FE / "components/layout/ai/AiChatPanel.vue", ".ai-usage-echo"),
+    (FE / "components/layout/ai/AiChatPanel.vue", ".ai-cli-probe-warn"),
+    (FE / "components/settings/CliEnginePanel.vue", ".cp-stage"),
+]
+
+
+@pytest.mark.parametrize("path,selector", ANNOTATION_BLOCKS,
+                         ids=lambda v: v.name if isinstance(v, Path) else v)
+def test_annotation_block_font_size_at_least_12px(path, selector):
+    css = path.read_text(encoding="utf-8")
+    m = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)
+    assert m, f"{path.name} 缺少 {selector} 样式块"
+    fs = re.search(r"font-size:\s*(\d+)px", m.group(1))
+    assert fs, f"{selector} 未声明 font-size（注释层必须显式字号）"
+    assert int(fs.group(1)) >= 12, f"{selector} font-size {fs.group(1)}px < 12px（违反裁决-5）"
+
+
+def test_settings_nav_reordered_l0_to_l5_with_cli():
+    src = (FE / "views/SettingsView.vue").read_text(encoding="utf-8")
+    nav = src.split("<nav", 1)[1].split("</nav>", 1)[0]
+    order = [c for c in ("account", "access", "services", "engine", "cli")
+             if f"activeCategory === '{c}'" in nav]
+    assert order == ["account", "access", "services", "engine", "cli"], \
+        f"导航未严格按 L0→L4 重排: {order}"
+
+
+def test_tier_name_not_hardcoded():
+    src = (FE / "views/SettingsView.vue").read_text(encoding="utf-8")
+    assert "settings.tier_names.${tier" in src or "tier_names.${tier" in src
+    # AC-5（EXPERT-MODE）：mock 付费档即显示正确档位名（未知档降级显原值不再恒谎）
+    m = re.search(r"function tierName\(tier\?: string\)[\s\S]{0,300}?\n\}", src)
+    assert m and "te(key)" in m.group(0)
+
+
+def test_chat_panel_model_picker_wired():
+    panel = (FE / "components/layout/ai/AiChatPanel.vue").read_text(encoding="utf-8")
+    assert "ai-model-select" in panel
+    assert "update:sessionModel" in panel
+    chat = (FE / "composables/useAiChat.ts").read_text(encoding="utf-8")
+    assert re.search(r"model:\s*sessionModel\.value\s*\|\|\s*undefined", chat)
+    # 回显消费链：done.model_usage → assistantMsg.modelUsage
+    assert "model_usage" in chat and "modelUsage" in chat
+
+
+def test_expert_switch_is_page_level_role_switch():
+    """专家开关移出决策卡容器：radiogroup 内仅两卡（local/cloud）。"""
+    src = (FE / "components/settings/AccessModeCards.vue").read_text(encoding="utf-8")
+    grid = src.split('role="radiogroup"', 1)[1].split("</div>\n    </div>", 1)[0] \
+        if 'role="radiogroup"' in src else ""
+    assert 'role="radio"' in grid
+    assert 'role="switch"' not in grid, "专家开关仍在 radiogroup 容器内（§2.1 形态错误未修）"
+    assert "role=\"switch\"" in src and "aria-checked" in src  # 页面级开关仍存在

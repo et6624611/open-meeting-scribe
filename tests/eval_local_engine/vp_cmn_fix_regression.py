@@ -23,7 +23,6 @@
   .eval_local_engine/results/vp_cmn_fix.json
 """
 import json
-import math
 import statistics
 import sys
 import tempfile

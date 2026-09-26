@@ -46,7 +46,7 @@ export interface LocalEngineProbeResult {
 
 export interface Settings {
   asr?: {
-    /** 接入模式：proxy（代理）/ direct（直连） / Access mode: proxy / direct */
+    /** 接入模式（A2 投影旧字段；唯一写入口在接入方式详情层） / Legacy projection field */
     mode?: 'proxy' | 'direct'
     provider?: string
     base_url?: string
@@ -64,12 +64,7 @@ export interface Settings {
     api_key_set?: boolean
     model?: string
   }
-  voiceprint?: {
-    provider?: string
-    cloud_base_url?: string
-    cloud_api_key?: string
-    cloud_api_key_set?: boolean
-  }
+  // voiceprint 配置面已随 REQ-SETTINGS-IA 第 4 刀下架：声纹仅本机 CAM++，无字段可配
   diarization?: {
     subscription_tier?: string
     local_diarization?: boolean
@@ -79,8 +74,14 @@ export interface Settings {
   output_dir?: string
   disabled_commands?: string[]
   feature_flags?: Partial<FeatureFlags>
-  /** 优先使用订阅流量 / Prefer subscription quota */
+  /** 优先使用体验配额（详情默认值来源） / Prefer trial quota (capability default source) */
   prefer_subscription?: boolean
+  /** 接入方式决策层（离线/联网/null 未选态）/ Access mode decision layer */
+  access_mode?: 'local' | 'cloud' | null
+  /** 专家详情开关（页面级，与 access_mode 正交）/ Expert detail toggle */
+  expert_mode?: boolean
+  /** 逐能力算力来源快照 / Per-capability compute source snapshot */
+  capability?: import('./access').CapabilityStatus
   /** 存储管理配置 / Storage management config */
   storage?: {
     auto_clean_intermediate?: boolean
@@ -150,5 +151,38 @@ export async function fetchSystemPrompts(): Promise<Record<string, SystemPromptI
 /** 获取 CLI 命令参考 / Fetch CLI command reference */
 export async function fetchCliReference(): Promise<Record<string, unknown>> {
   const { data } = await client.get<Record<string, unknown>>('/api/cli-reference')
+  return data
+}
+
+/** CLI 引擎探针结论（三段：路径解析 → 版本下限 → 登录态） / CLI engine probe verdict */
+export interface ChatEngineProbe {
+  available: boolean
+  reason?: string
+  display_name?: string
+  hint?: string
+  path?: string | null
+  version?: string | null
+  logged_in?: boolean
+  /** 失败段定位（EXPERT-MODE 三段探针回显）：null=全通过 */
+  failed_stage?: 'path' | 'version' | 'login' | null
+}
+
+/** 智能体引擎配置 + 探针状态（详情层 CLI 卡与对话面板前置回显共用） */
+export interface ChatEngineStatus {
+  ok: boolean
+  config: {
+    enabled: boolean
+    engine_id: string
+    model?: string | null
+    auth_tier: string
+    session_persistence?: boolean
+    retention_days?: number
+    cli_path_override?: string | null
+  }
+  probe: ChatEngineProbe
+}
+
+export async function fetchChatEngineStatus(): Promise<ChatEngineStatus> {
+  const { data } = await client.get<ChatEngineStatus>('/api/settings/chat-engine')
   return data
 }

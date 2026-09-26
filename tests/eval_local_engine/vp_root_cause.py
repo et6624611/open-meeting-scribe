@@ -14,8 +14,6 @@ funasr CAMPPlus 管线在 fbank 后做时间维均值归一（CMN）。若假设
 """
 import importlib.util
 import json
-import math
-import sys
 from pathlib import Path
 
 import numpy as np

@@ -356,6 +356,7 @@ class TestBuildInsightsContextBlock:
 
     def _write_insights(self, tmp_path, monkeypatch, messages):
         import json
+
         import core.chat_context as chat_context
         monkeypatch.setattr(chat_context, "INSIGHTS_TASKS_DIR", tmp_path)
         (tmp_path / "t1.insights.json").write_text(
@@ -468,6 +469,7 @@ class TestDecisionFlowTodos:
     @pytest.fixture
     def task_id(self, monkeypatch):
         import uuid
+
         from app.routers import notes as notes_mod
         # 避免测试写入磁盘 / Prevent disk writes during tests
         monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda *_a, **_k: None)

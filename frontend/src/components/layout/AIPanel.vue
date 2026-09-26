@@ -76,6 +76,11 @@
       :chat-mode="chat.chatMode.value"
       :active-engine="chat.activeEngine.value"
       :has-agent-session="chat.hasAgentSession.value"
+      :session-model="chat.sessionModel.value"
+      :model-options="chat.modelCandidates.value"
+      :detail-model-label="chat.detailModelLabel.value"
+      :cli-probe="chat.cliProbe.value"
+      :agent-available="chat.agentAvailable.value"
       @send="onSend"
       @send-raw="chat.sendRaw"
       @stop-generation="chat.stopGeneration"
@@ -91,6 +96,7 @@
       @input-change="handleInputChange"
       @update:input-text="inputText = $event"
       @update:chat-mode="chat.setChatMode($event)"
+      @update:session-model="chat.setSessionModel($event)"
     />
 
     <!-- 上下文 Tab / Context Tab -->

@@ -8,21 +8,27 @@
         <kbd>ESC</kbd>
       </button>
       <h1 class="settings-nav-title">{{ t('settings.title') }}</h1>
+      <!-- 导航按配置栈 L0→L5 六层重排（REQ-EXPERT-MODE §2.2）：
+           L0 套餐/账户 → L1 接入方式决策 → L2 服务参数 → L3 本地资产 → L4 CLI 引擎 →（后续常规分类） -->
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        {{ t('settings.cat_account') }}
+      </button>
       <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'access' }" @click="activeCategory = 'access'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
         {{ t('settings.cat_access') }}
       </button>
-      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'account' }" @click="activeCategory = 'account'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        {{ t('settings.cat_account') }}
-      </button>
-      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'services' }" @click="activeCategory = 'services'">
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'services' }" @click="activeCategory = 'services'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
         {{ t('settings.cat_services') }}
       </button>
-      <button v-if="expertMode" class="settings-nav-item" :class="{ 'is-active': activeCategory === 'engine' }" @click="activeCategory = 'engine'">
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'engine' }" @click="activeCategory = 'engine'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></svg>
         {{ t('settings.cat_engine') }}
+      </button>
+      <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'cli' }" @click="activeCategory = 'cli'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        {{ t('settings.cat_cli') }}
       </button>
       <button class="settings-nav-item" :class="{ 'is-active': activeCategory === 'transcription' }" @click="activeCategory = 'transcription'">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
@@ -52,17 +58,17 @@
       <a class="settings-privacy-link" href="https://github.com/et6624611/open-meeting-scribe/blob/main/SECURITY.md" target="_blank" rel="noopener">{{ t('settings.privacy_notice.learn_more') }}</a>
     </div>
 
-    <!-- ═══ 接入方式 / Access mode（REQ-ACCESS-MODE-CARDS · AM-F1 T3/T4） ═══ -->
+    <!-- ═══ 接入方式 / Access mode（REQ-SETTINGS-IA：决策两卡 + 从属详情层） ═══ -->
     <div v-show="activeCategory === 'access'">
       <AccessModeCards
         :settings="settings"
-        @local-selected="onAccessLocalSelected"
-        @expert-changed="onExpertChanged"
+        @goto="onAccessGoto"
+        @guide-request="onGuideRequest"
       />
     </div>
 
     <!-- ═══ 账户 / Account ═══ -->
-    <div v-show="expertMode && activeCategory === 'account'">
+    <div v-show="activeCategory === 'account'">
     <!-- 账户信息 / Account info -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.account') }}</h2>
@@ -182,8 +188,8 @@
     </div>
     </div>
 
-    <!-- ═══ 服务 / Services ═══ -->
-    <div v-show="expertMode && activeCategory === 'services'">
+    <!-- ═══ 服务 / Services（参数唯一编辑面 · 显式保存，REQ-SETTINGS-IA 第 2 刀） ═══ -->
+    <div v-show="activeCategory === 'services'">
     <!-- API 配置 / API configuration -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.api_config') }}</h2>
@@ -232,29 +238,14 @@
       <!-- ASR 语音转写服务 / ASR speech-to-text service -->
       <div class="api-subsection">
         <h3 class="api-subsection-title">{{ t('settings.asr_service') }}</h3>
+        <!-- 算力来源只读回显（REQ-SETTINGS-IA 第 2 刀：来源唯一写入口 = 接入方式详情层） -->
         <div class="settings-field">
-          <label class="settings-label">{{ t('settings.asr_mode') }}</label>
-          <select v-model="settings.asr!.mode" class="settings-input">
-            <option value="cloud">{{ t('settings.asr_mode_cloud') }}</option>
-            <option value="proxy">{{ t('settings.asr_mode_proxy') }}</option>
-            <option value="direct">{{ t('settings.asr_mode_direct') }}</option>
-          </select>
+          <label class="settings-label">{{ t('settings.asr_source_readonly') }}</label>
+          <span class="api-readonly">{{ asrSourceLabel }}<span class="api-proxy-hint">{{ t('settings.asr_source_hint') }}</span></span>
         </div>
 
-        <!-- 云端/代理模式：只读展示 / Cloud/Proxy mode: read-only display -->
-        <template v-if="settings.asr?.mode !== 'direct'">
-          <div class="settings-field">
-            <label class="settings-label">{{ t('settings.asr_provider') }}</label>
-            <span class="api-readonly">{{ settings.asr?.provider || 'Cloud AI' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
-          </div>
-          <div class="settings-field">
-            <label class="settings-label">{{ t('settings.asr_model') }}</label>
-            <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
-          </div>
-        </template>
-
-        <!-- 直连模式：可配置 Base URL 和 API Key / Direct mode: configurable Base URL and API Key -->
-        <template v-else>
+        <!-- 自带 Key 时才可配端点与 Key / Key & endpoint only editable when the ASR source is "own key" -->
+        <template v-if="settings.asr?.mode === 'direct'">
           <div class="settings-field">
             <label class="settings-label">{{ t('settings.asr_base_url') }}</label>
             <input v-model="settings.asr!.base_url" class="settings-input" placeholder="https://dashscope.aliyuncs.com" />
@@ -263,11 +254,17 @@
             <label class="settings-label">{{ t('settings.api_key') }}</label>
             <input v-model="settings.asr!.api_key" type="password" class="settings-input" :placeholder="t('settings.asr_api_key_placeholder')" />
           </div>
+        </template>
+        <template v-else>
           <div class="settings-field">
-            <label class="settings-label">{{ t('settings.asr_model') }}</label>
-            <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
+            <label class="settings-label">{{ t('settings.asr_provider') }}</label>
+            <span class="api-readonly">{{ settings.asr?.provider || 'Cloud AI' }}<span class="api-proxy-hint">{{ t('settings.asr_proxy_managed') }}</span></span>
           </div>
         </template>
+        <div class="settings-field">
+          <label class="settings-label">{{ t('settings.asr_model') }}</label>
+          <input v-model="settings.asr!.model" class="settings-input" placeholder="paraformer-v2" />
+        </div>
       </div>
 
       <div class="settings-actions">
@@ -277,31 +274,11 @@
       <p v-if="testResult" class="settings-test-result" :class="{ 'is-error': testIsError }">{{ testResult }}</p>
     </div>
 
-    <!-- 声纹服务 / Voiceprint service -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.voiceprint') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.voiceprint_desc') }}</p>
-      <div class="settings-field">
-        <label class="settings-label">{{ t('settings.voiceprint_provider') }}</label>
-        <select v-model="settings.voiceprint!.provider" class="settings-input">
-          <option value="auto">{{ t('settings.voiceprint_provider_auto') }}</option>
-          <option value="local">{{ t('settings.voiceprint_provider_local') }}</option>
-          <option value="cloud">{{ t('settings.voiceprint_provider_cloud') }}</option>
-        </select>
-      </div>
-      <div class="settings-field">
-        <label class="settings-label">{{ t('settings.voiceprint_cloud_base_url') }}</label>
-        <input v-model="settings.voiceprint!.cloud_base_url" class="settings-input" placeholder="https://" />
-      </div>
-      <div class="settings-field">
-        <label class="settings-label">{{ t('settings.voiceprint_cloud_api_key') }}</label>
-        <input v-model="settings.voiceprint!.cloud_api_key" type="password" class="settings-input" :placeholder="t('settings.voiceprint_cloud_api_key_placeholder')" />
-      </div>
-    </div>
+    <!-- 声纹服务区块已随 REQ-SETTINGS-IA 第 4 刀下架：声纹仅本机 CAM++，无配置面 -->
     </div>
 
-    <!-- ═══ 计算引擎 / Compute engine（R6：引擎状态透明 + 数据流向矩阵；D-R2：管理员级配置；D4：仅专家模式） ═══ -->
-    <div v-show="expertMode && activeCategory === 'engine'">
+    <!-- ═══ 计算引擎 / Compute engine（R5 资产面；模式为只读回显，唯一写入口在接入方式页） ═══ -->
+    <div v-show="activeCategory === 'engine'">
     <!-- 引擎状态 / Engine status -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.engine_status') }}</h2>
@@ -333,22 +310,12 @@
         </div>
         <p v-if="engineStore.status?.mode === 'local' && engineStore.status.local_ready && !engineStore.status.process_running" class="engine-ready-hint">{{ t('settings.engine_ready_not_running') }}</p>
 
-        <!-- D-R2：管理员可编辑引擎模式；普通用户只读 / D-R2: admin can edit engine mode; regular users read-only -->
-        <template v-if="(userStore.isAdmin || engineStore.canManage)">
-          <div class="engine-status-row">
-            <span class="engine-status-label">{{ t('settings.engine_mode_switch') }}</span>
-            <select v-model="engineModeDraft" class="settings-input engine-mode-select">
-              <option value="proxy">{{ t('settings.engine_mode_proxy') }}</option>
-              <option value="direct">{{ t('settings.engine_mode_direct') }}</option>
-              <option value="local">{{ t('settings.engine_mode_local') }}</option>
-            </select>
-            <button class="btn btn-primary btn-sm" @click="onSaveEngineMode" :disabled="engineSaving || engineModeDraft === engineStore.status?.mode">
-              {{ engineSaving ? t('settings.engine_saving') : t('settings.save') }}
-            </button>
-          </div>
-          <p v-if="engineSaveMessage" class="engine-save-msg" :class="{ 'is-error': engineSaveError }">{{ engineSaveMessage }}</p>
-        </template>
-        <p v-else class="engine-readonly-hint">{{ t('settings.engine_admin_only') }}</p>
+        <!-- 引擎模式只读徽章（REQ-SETTINGS-IA 第 2 刀：原可写 dropdown 改只读回显，
+             避免参数页静默改写用户选过的接入模式；切换唯一入口在决策卡事务） -->
+        <div class="engine-status-row">
+          <span class="engine-status-label">{{ t('settings.engine_mode') }}</span>
+          <span class="engine-status-value"><span class="ai-mode-badge">{{ engineModeLabel }}</span><span class="engine-mode-readonly-hint">{{ t('settings.engine_mode_readonly') }}</span></span>
+        </div>
       </div>
 
       <!-- dev 四态手工切换（仅开发模式，验证 R6 徽章用） / Dev-only four-state switch (verification aid) -->
@@ -427,46 +394,14 @@
       </template>
     </div>
 
-    <!-- 数据处理流向矩阵 / Data flow matrix -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.engine_matrix_title') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.engine_matrix_desc') }}</p>
-      <div class="engine-matrix-wrap">
-        <table class="engine-matrix">
-          <thead>
-            <tr>
-              <th class="em-corner">{{ t('settings.engine_matrix_corner') }}</th>
-              <th v-for="col in MATRIX_COLS" :key="col" :class="`is-${col}`">
-                <span class="em-col-name">{{ t(`settings.engine_col_${col}`) }}</span>
-                <span class="em-col-sub">{{ t(`settings.engine_col_${col}_sub`) }}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in MATRIX_ROWS" :key="row">
-              <th class="em-row-name">{{ t(`settings.engine_row_${row}`) }}</th>
-              <td v-for="col in MATRIX_COLS" :key="col">
-                <span class="em-tag" :class="`is-${MATRIX_TAGS[row][col]}`">{{ t(`settings.engine_tag_${MATRIX_TAGS[row][col]}`) }}</span>
-                <span class="em-cell">{{ t(`settings.engine_cell_${row}_${col}`) }}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="engine-matrix-note">{{ t('settings.engine_matrix_note') }}</p>
+    <!-- 数据处理流向矩阵已搬入「接入方式」页（REQ-SETTINGS-IA 第 3 刀：四列用户词、逐能力高亮、
+         出网双通道徽章；专家详情开启时显示），本资产页不再重复呈现 -->
+
     </div>
 
-    <!-- 首次启用本地引擎引导弹窗（磁盘预检 / 权重缺失 / 校验失败排错） / First-enable guide dialog (disk precheck / missing weights / integrity failure) -->
-    <LocalEngineGuideDialog
-      :open="guideOpen"
-      :disk-free-bytes="engineStore.overview?.disk_free_bytes ?? 0"
-      :disk-required-bytes="engineStore.overview?.total_size_required_bytes ?? 0"
-      :disk-buffer-bytes="DISK_BUFFER_BYTES"
-      :missing="engineStore.requiredNotReady"
-      :tampered="engineStore.tamperedModels"
-      @close="guideOpen = false"
-      @download-all="onGuideDownloadAll"
-    />
+    <!-- ═══ CLI 引擎 / CLI engine（L4 层，REQ-EXPERT-MODE §2.2：探针三段状态前置回显） ═══ -->
+    <div v-show="activeCategory === 'cli'">
+      <CliEnginePanel />
     </div>
 
     <!-- ═══ 转写 / Transcription ═══ -->
@@ -882,6 +817,19 @@
     </div>
 
     </div><!-- .settings-content -->
+
+    <!-- 首次启用本地引擎引导弹窗（磁盘预检 / 权重缺失 / 校验失败排错）；
+         视图级挂载：接入方式页切换失败直达与引擎页共用 -->
+    <LocalEngineGuideDialog
+      :open="guideOpen"
+      :disk-free-bytes="engineStore.overview?.disk_free_bytes ?? 0"
+      :disk-required-bytes="engineStore.overview?.total_size_required_bytes ?? 0"
+      :disk-buffer-bytes="DISK_BUFFER_BYTES"
+      :missing="engineStore.requiredNotReady"
+      :tampered="engineStore.tamperedModels"
+      @close="guideOpen = false"
+      @download-all="onGuideDownloadAll"
+    />
   </div><!-- .settings-layout -->
 </template>
 
@@ -895,9 +843,10 @@ import { useWatermarkStore } from '@/stores/watermark'
 import { useTaskStore } from '@/stores/task'
 import { useEngineStore } from '@/stores/engine'
 import type { EngineBadgeState } from '@/stores/engine'
-import type { EngineMode, DownloadJob } from '@/api/engine'
+import type { DownloadJob } from '@/api/engine'
 import LocalEngineGuideDialog from '@/components/modals/LocalEngineGuideDialog.vue'
 import AccessModeCards from '@/components/settings/AccessModeCards.vue'
+import CliEnginePanel from '@/components/settings/CliEnginePanel.vue'
 import { showToast } from '@/composables/useToast'
 import { fetchSettings, saveSettings, testApiConnection, fetchCliReference, probeLocalEngine } from '@/api/settings'
 import type { Settings, FeatureFlags, ProviderPreset, LocalEngineProbe, LocalEngineProbeResult } from '@/api/settings'
@@ -912,7 +861,7 @@ import { usePageBack } from '@/composables/usePageBack'
 import { modKey } from '@/utils/platform'
 import { useUpdateCheck } from '@/composables/useUpdateCheck'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { goBack } = usePageBack()
 const route = useRoute()
 const userStore = useUserStore()
@@ -1002,54 +951,47 @@ watch(selectedDevice, async (newVal) => {
 })
 
 /** 当前选中的设置类别（支持 ?cat= 深链；A3：状态栏/徽章统一跳 ?cat=access） / Active settings category (deep link) */
-const SETTINGS_CATEGORIES = ['access', 'account', 'services', 'engine', 'transcription', 'appearance', 'features', 'system']
-/** D4：账户/服务/引擎三个旧分类仅专家模式可见 */
-const EXPERT_CATEGORIES = ['account', 'services', 'engine']
+const SETTINGS_CATEGORIES = ['access', 'account', 'services', 'engine', 'cli', 'transcription', 'appearance', 'features', 'system']
 const queryCat = typeof route.query.cat === 'string' ? route.query.cat : ''
 const queryTab = typeof route.query.tab === 'string' ? route.query.tab : ''
 const deepLinkCat = SETTINGS_CATEGORIES.includes(queryCat) ? queryCat : (SETTINGS_CATEGORIES.includes(queryTab) ? queryTab : '')
 const activeCategory = ref<string>(deepLinkCat || 'access')
 
-/** D4 专家模式：开关态来自主 store（单一来源） */
-const expertMode = computed(() => engineStore.expertMode)
+/**
+ * 详情卡「在服务页编辑 / 直达资产清单」导航（REQ-SETTINGS-IA 第 2 刀：参数编辑面收敛一处）。
+ * 专家开关不再控制分类可见性（废除「平行旧版视图」形态）。
+ */
+function onAccessGoto(category: 'services' | 'engine') {
+  if (SETTINGS_CATEGORIES.includes(category)) activeCategory.value = category
+}
 
-// 非专家态兜底：旧分类深链或开关关闭后的当前分类 → 回「接入方式」
-watch(expertMode, (on) => {
-  if (!on && EXPERT_CATEGORIES.includes(activeCategory.value)) activeCategory.value = 'access'
-}, { immediate: true })
-
-/** 卡片选中离线：与引擎模式切换同款前置检查（磁盘/权重/校验 → 引导弹窗；全就绪 → 启动引擎） */
-async function onAccessLocalSelected() {
+/** 切换事务因模型缺失/磁盘不足/校验失败回滚 → 直达本地引擎引导弹窗（不静默半启动态） */
+async function onGuideRequest() {
   await engineStore.loadOverview(true)
-  if (diskShort.value || engineStore.requiredNotReady.length || engineStore.tamperedModels.length) {
-    guideOpen.value = true
-  } else if (!engineStore.status?.process_running) {
-    await onStartEngine()
-  }
+  guideOpen.value = true
 }
 
-function onExpertChanged(on: boolean) {
-  if (on) showToast(t('settings.access.expert_on_hint'), 'info')
-}
+/** 联网态下 ASR 来源只读回显（写入口在接入方式详情层） */
+const asrSourceLabel = computed(() => {
+  const src = engineStore.capability?.asr?.effective || settings.asr?.mode || ''
+  if (src === 'trial' || src === 'proxy') return t('settings.access.src_trial')
+  if (src === 'byok' || src === 'direct') return t('settings.access.src_byok')
+  if (src === 'local') return t('settings.access.src_local')
+  return src || '—'
+})
 
-// ─── 计算引擎（R6 / D-R2） / Compute engine (R6 / D-R2) ───
+// ─── 计算引擎（R5 资产面；模式只读回显） / Compute engine (R5 assets; mode read-only) ───
 const isDev = import.meta.env.DEV
 const ENGINE_BADGE_STATES: EngineBadgeState[] = ['local', 'proxy', 'selfkey', 'unready']
 
-/** 流向矩阵：4 类数据 × 3 引擎；tag 决定单元格流向标 / Flow matrix: 4 data kinds × 3 engines; tag drives the cell flow label */
-const MATRIX_ROWS = ['audio', 'transcript', 'voiceprint', 'llm_context'] as const
-const MATRIX_COLS = ['local', 'proxy', 'selfkey'] as const
-const MATRIX_TAGS: Record<(typeof MATRIX_ROWS)[number], Record<(typeof MATRIX_COLS)[number], string>> = {
-  audio:      { local: 'stay',     proxy: 'proxy',    selfkey: 'cloud' },
-  transcript: { local: 'stay',     proxy: 'proxy',    selfkey: 'cloud' },
-  voiceprint: { local: 'stay',     proxy: 'proxy',    selfkey: 'endpoint' },
-  llm_context:{ local: 'endpoint', proxy: 'proxy',    selfkey: 'endpoint' },
-}
-
-const engineModeDraft = ref<EngineMode>('proxy')
-const engineSaving = ref(false)
-const engineSaveMessage = ref('')
-const engineSaveError = ref(false)
+/** 引擎模式只读标签（五词表；工程值仅悬停提示） */
+const engineModeLabel = computed(() => {
+  const mode = engineStore.status?.mode || ''
+  if (mode === 'local') return t('settings.engine_mode_local')
+  if (mode === 'proxy' || mode === 'cloud') return t('settings.engine_mode_proxy')
+  if (mode === 'direct') return t('settings.engine_mode_direct')
+  return mode || '—'
+})
 
 // ─── R5 模型资产管理 / R5 model asset management ───
 /** 与后端 core/model_downloader.DISK_BUFFER_BYTES 对齐（500MB 磁盘缓冲） / Mirrors backend DISK_BUFFER_BYTES (500MB) */
@@ -1198,41 +1140,6 @@ function onGuideDownloadAll() {
   onDownload('all')
 }
 
-async function onSaveEngineMode() {
-  engineSaving.value = true
-  engineSaveMessage.value = ''
-  try {
-    await saveSettings({ engine: { mode: engineModeDraft.value } })
-    engineStore.applyMode(engineModeDraft.value)
-    engineSaveMessage.value = t('settings.engine_saved')
-    engineSaveError.value = false
-
-    if (engineModeDraft.value === 'local') {
-      // 首次启用本地引擎前置检查：磁盘预检 / 权重缺失 / 校验失败 → 引导弹窗；全部就绪 → 直接启动
-      // First-enable precheck: disk / missing / tampered → guide dialog; all ready → start engine
-      await engineStore.loadOverview(true)
-      if (diskShort.value || engineStore.requiredNotReady.length || engineStore.tamperedModels.length) {
-        guideOpen.value = true
-      } else {
-        await onStartEngine()
-      }
-    } else if (engineStore.status?.process_running) {
-      // 切离本地模式：停掉常驻引擎子进程 / Leaving local mode: stop resident engine subprocess
-      await engineStore.stop()
-    }
-  } catch (e) {
-    console.error('[engine] save mode failed:', e)
-    engineSaveMessage.value = t('settings.engine_save_failed')
-    engineSaveError.value = true
-  } finally {
-    engineSaving.value = false
-  }
-}
-
-watch(() => engineStore.status?.mode, (mode) => {
-  if (mode) engineModeDraft.value = mode
-}, { immediate: true })
-
 // ─── 水印氛围 / Watermark ambiance ───
 const wmEnabled = computed(() => watermarkStore.enabled)
 const wmOpacity = computed(() => watermarkStore.opacity)
@@ -1247,7 +1154,7 @@ function onWmOpacityInput(e: Event) {
 }
 // DEF-02: 补全嵌套空对象，避免 fetchSettings() 返回前模板非空断言触发 TypeError
 // DEF-02: Pre-fill nested objects so template non-null assertions are safe before async load
-const settings = reactive<Settings>({ llm: {}, asr: {}, voiceprint: {} })
+const settings = reactive<Settings>({ llm: {}, asr: {} })
 const testing = ref(false)
 const testResult = ref('')
 const testIsError = ref(false)
@@ -1459,8 +1366,11 @@ function onEnableCommand(cmd: string) {
   saveSettings({ disabled_commands: settings.disabled_commands })
 }
 
-function tierName(_tier?: string) {
-  return t('settings.tier_names.free')
+function tierName(tier?: string) {
+  // 去写死（REQ-EXPERT-MODE §2.2）：读账户真实档位，未来付费档接入即正确显示；
+  // 未知档位降级显示原始 tier 值，不再恒返「体验期」说谎。
+  const key = `settings.tier_names.${tier || 'free'}`
+  return te(key) ? t(key) : (tier || t('settings.tier_names.free'))
 }
 
 // ─── 语言切换 / Language switch ───
@@ -1514,7 +1424,6 @@ async function onSave() {
   await saveSettings({
     asr: { ...settings.asr },
     llm: { ...settings.llm },
-    voiceprint: { ...settings.voiceprint },
     output_dir: settings.output_dir,
     feature_flags: { ...featureFlags },
     storage: { ...storageConfig },
@@ -1685,11 +1594,6 @@ onMounted(async () => {
       update_check: s.feature_flags.update_check !== false,
       voiceprint_auto_match: s.feature_flags.voiceprint_auto_match === true,
     })
-  }
-  // 声纹配置 / Voiceprint config
-  if (s.voiceprint) {
-    if (!settings.voiceprint) settings.voiceprint = {}
-    Object.assign(settings.voiceprint, s.voiceprint)
   }
   // 分离配置 / Diarization config
   if (s.diarization) {

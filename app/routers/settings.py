@@ -25,6 +25,7 @@ API Key 在 GET 响应中脱敏返回（sk-****xxxx），仅在 POST 保存时�
 import logging
 import os
 import time
+from copy import deepcopy
 from pathlib import Path
 
 import requests
@@ -33,9 +34,13 @@ from fastapi import APIRouter
 from app.routers.chat import CHAT_SYSTEM_PROMPT
 from app.settings_store import (
     ACCESS_MODES,
+    ASR_CAP_SOURCES,
+    LEGACY_ACCESS_MODES,
+    LLM_CAP_SOURCES,
     apply_access_mode,
     derive_access_mode,
     get_access_mode,
+    get_capability_status,
     get_expert_mode,
     migrate_access_mode,
 )
@@ -47,7 +52,6 @@ from app.store import (
     get_feature_flags,
     get_llm_config,
     get_storage_config,
-    get_voiceprint_config,
     load_settings,
     mask_api_key,
     save_settings_to_disk,
@@ -133,7 +137,6 @@ def get_settings():
     settings = load_settings()
     llm = get_llm_config()
     asr = get_asr_config()
-    voiceprint = get_voiceprint_config()
     feature_flags = get_feature_flags()
 
     # 声纹偏好：根据用户订阅状态决定 / Voiceprint preference: based on user subscription status
@@ -176,12 +179,8 @@ def get_settings():
             "api_key_set": bool(llm["api_key"]),
             "model": llm["model"],
         },
-        "voiceprint": {
-            "provider": voiceprint["provider"],
-            "cloud_base_url": voiceprint["cloud"]["base_url"],
-            "cloud_api_key": mask_api_key(voiceprint["cloud"]["api_key"]),
-            "cloud_api_key_set": bool(voiceprint["cloud"]["api_key"]),
-        },
+        # 声纹配置面已随 REQ-SETTINGS-IA 第 4 刀下架（字段在 schema/UI/后端三处不存在）；
+        # 声纹仅本机 CAM++，说话人分离行为由 diarization 块只读回显。
         "diarization": {
             "subscription_tier": tier,
             "local_diarization": local_pref,
@@ -191,6 +190,8 @@ def get_settings():
         "prefer_subscription": prefer_subscription,
         "access_mode": get_access_mode(),
         "expert_mode": get_expert_mode(),
+        # 逐能力算力来源快照（详情层三态徽章/默认联动的数据源）
+        "capability": get_capability_status(prefer_subscription),
         "output_dir": settings.get("output_dir", "data/output/"),
         "engine": get_engine_config(),
         "feature_flags": feature_flags,
@@ -270,8 +271,6 @@ def save_settings(data: dict):
 
     existing_llm = existing.get("llm", {})
     existing_asr = existing.get("asr", {})
-    existing_vp = existing.get("voiceprint", {})
-    existing_vp_cloud = existing_vp.get("cloud", {})
     existing_ff = existing.get("feature_flags", {})
     existing_engine = existing.get("engine", {}) or {}
     existing_engine_local = existing_engine.get("local", {}) or {}
@@ -316,14 +315,8 @@ def save_settings(data: dict):
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
         }
 
-    # ── 声纹配置 / Voiceprint config ──
-    new_vp = data.get("voiceprint", {})
-    new_vp_cloud = new_vp.get("cloud", {})
-    incoming_vp_key = new_vp_cloud.get("api_key", "")
-    if not incoming_vp_key or "****" in incoming_vp_key:
-        final_vp_key = existing_vp_cloud.get("api_key", "")
-    else:
-        final_vp_key = incoming_vp_key
+    # ── 声纹配置已整体下架（REQ-SETTINGS-IA 第 4 刀）：POST 不再接收 voiceprint 字段，
+    #    存量键在保存时一并丢弃（注册表特征经 COMPATIBLE_VERSIONS 继续可匹配，无用户数据迁移）
 
     merged = {
         **existing,
@@ -335,13 +328,6 @@ def save_settings(data: dict):
             "model": new_llm.get("model", existing_llm.get("model", "qwen-plus")),
         },
         "engine": _merge_engine_config(data.get("engine"), existing_engine, existing_engine_local),
-        "voiceprint": {
-            "provider": new_vp.get("provider", existing_vp.get("provider", "auto")),
-            "cloud": {
-                "base_url": new_vp_cloud.get("base_url", existing_vp_cloud.get("base_url", "")),
-                "api_key": final_vp_key,
-            },
-        },
         "output_dir": data.get("output_dir", existing.get("output_dir", "data/output/")),
         "feature_flags": {
             "realtime_chapters": data.get("feature_flags", {}).get("realtime_chapters", existing_ff.get("realtime_chapters", True)),
@@ -358,27 +344,38 @@ def save_settings(data: dict):
         },
     }
 
-    # ── 接入方式（REQ-ACCESS-MODE-CARDS T1/T2）/ Access mode handling ──
-    # 1) 新客户端显式提交 access_mode：写入并同步旧字段（A2 回滚窗口）。
-    # 2) 旧客户端继续只写 engine.mode/asr.mode：兼容窗口内重对齐 access_mode，
-    #    保证路由唯一判定源（core/routing）与最新旧字段写入不漂移。
+    # ── 接入方式（REQ-SETTINGS-IA §3.1/§3.2）/ Access mode handling ──
+    # 1) 新 UI（决策卡/详情层）显式提交 access_mode / capability_source：唯一写入口，
+    #    写入并按 A2 投影旧字段；绝不触发反向重对齐。
+    # 2) 旧客户端只写 engine.mode/asr.mode：§3.2 将其降级为兼容窗口（带日落期限），
+    #    仅当投影字段发生真实变化时重对齐，避免新 UI 参数保存静默改写模式。
     # 3) expert_mode 仅接受布尔显式值；其余场景由迁移规则推导。
+    merged.pop("voiceprint", None)  # 第 4 刀：存量声纹配置键随任何一次保存丢弃
+
     if isinstance(data.get("expert_mode"), bool):
         merged["expert_mode"] = data["expert_mode"]
+
     if "access_mode" in data:
         incoming_access = data.get("access_mode")
-        if incoming_access is None or incoming_access in ACCESS_MODES:
-            apply_access_mode(merged, incoming_access)
+        if incoming_access is None or incoming_access in ACCESS_MODES or incoming_access in LEGACY_ACCESS_MODES:
+            apply_access_mode(merged, incoming_access, sources=data.get("capability_source"))
         else:
             logger.warning(f"忽略非法 access_mode 值: {incoming_access!r}（允许 {ACCESS_MODES} 或 null）")
-            if not merged.get("_access_mode_migrated"):
+            if not merged.get("_settings_ia_migrated"):
                 migrate_access_mode(merged)
+    elif isinstance(data.get("capability_source"), dict):
+        # 详情层逐能力来源选择（任何手动改选即标 override，持久化不被勾选改回）
+        apply_access_mode(merged, merged.get("access_mode"), sources=data["capability_source"])
     elif not merged.get("_access_mode_migrated"):
         migrate_access_mode(merged)
     elif "engine" in data or "asr" in data:
-        derived = derive_access_mode(merged)
-        if derived is not None:
-            merged["access_mode"] = derived
+        engine_changed = merged.get("engine", {}).get("mode") != (existing.get("engine") or {}).get("mode")
+        asr_changed = merged.get("asr", {}).get("mode") != (existing.get("asr") or {}).get("mode")
+        if engine_changed or asr_changed:
+            logger.info("[兼容窗口·日落中] 旧客户端改写投影字段 engine/asr.mode，重对齐 access_mode（REQ-SETTINGS-IA §3.2）")
+            derived = derive_access_mode(merged)
+            if derived is not None:
+                merged["access_mode"] = derived
 
     # ── 智能体模式引擎（正交于 access_mode，方案 D1）/ Agent-mode chat engine ──
     # 仅白名单校验后写入 chat_engine 命名空间；缺省保留既有值，绝不触碰 LLM/ASR Key。
@@ -403,13 +400,6 @@ def save_settings(data: dict):
 
     save_settings_to_disk(merged)
 
-    # 声纹配置变更后重置 provider 缓存，使下次调用重新选择 / Reset provider cache after voiceprint config change
-    try:
-        from core.embedding_provider import reset_provider
-        reset_provider()
-    except Exception:
-        pass
-
     # 同步到环境变量（供未改造的旧模块使用） / Sync to env vars (for legacy modules)
     if final_llm_key:
         os.environ["DASHSCOPE_API_KEY"] = final_llm_key
@@ -418,7 +408,7 @@ def save_settings(data: dict):
         f"设置已更新: "
         f"asr_provider={merged['asr']['provider']}, "
         f"llm_provider={merged['llm']['provider']}, model={merged['llm']['model']}, "
-        f"voiceprint_provider={merged['voiceprint']['provider']}"
+        f"access_mode={merged.get('access_mode')}"
     )
 
     asr_resp = {
@@ -444,13 +434,83 @@ def save_settings(data: dict):
             "api_key_set": bool(final_llm_key),
             "model": merged["llm"]["model"],
         },
-        "voiceprint": {
-            "provider": merged["voiceprint"]["provider"],
-            "cloud_base_url": merged["voiceprint"]["cloud"]["base_url"],
-            "cloud_api_key": mask_api_key(final_vp_key),
-            "cloud_api_key_set": bool(final_vp_key),
-        },
+        "access_mode": merged.get("access_mode"),
+        "capability": get_capability_status(),
     }
+
+
+@router.post("/api/settings/access-mode")
+def switch_access_mode(data: dict):
+    """接入方式切换事务（REQ-SETTINGS-IA §3.1 裁决-1：失败全量回滚）。
+
+    流程：内存中计算完整新配置 → 进程动作（启停本机引擎） → 全部成功才一次性落盘。
+    任一环节失败（引擎启动/停止失败、模型缺失、非法参数）：settings.json 零写入，
+    界面据 ok=false + failed_stage 明示「未生效，已保持原模式」。
+    """
+    incoming = data.get("access_mode")
+    sources = data.get("capability_source")
+    if isinstance(sources, dict):
+        # 逐能力来源白名单校验（非法值拒绝整笔请求，不静默丢弃）
+        for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
+            if cap in sources and sources[cap] is not None and sources[cap] != "" and sources[cap] not in allowed:
+                return {"ok": False, "failed_stage": "validate",
+                        "error": f"非法 capability_source.{cap}: {sources[cap]!r}"}
+    if incoming is not None and incoming not in ACCESS_MODES and incoming not in LEGACY_ACCESS_MODES:
+        return {"ok": False, "failed_stage": "validate",
+                "error": f"非法 access_mode: {incoming!r}（允许 {ACCESS_MODES} 或 null）"}
+
+    existing = load_settings()
+    merged = deepcopy(existing)
+    try:
+        apply_access_mode(merged, incoming, sources=sources if isinstance(sources, dict) else None)
+    except ValueError as e:
+        return {"ok": False, "failed_stage": "validate", "error": str(e)}
+    target = merged.get("access_mode")
+
+    # ── 进程动作阶段：失败则不落盘（全量回滚） ──
+    if target in ("local", "cloud"):
+        try:
+            from core.engine_host import get_engine_host
+            host = get_engine_host()
+            if target == "local":
+                res = host.start()
+                if not res.get("ok", False):
+                    logger.warning(f"[接入切换] 本机引擎启动失败，事务回滚: {res}")
+                    return {"ok": False, "failed_stage": "engine_start",
+                            "error_code": res.get("error_code"),
+                            "error": res.get("error") or "本机引擎启动失败"}
+            elif host.is_running():
+                res = host.stop()
+                if not res.get("ok", False):
+                    logger.warning(f"[接入切换] 本机引擎停止失败，事务回滚: {res}")
+                    return {"ok": False, "failed_stage": "engine_stop",
+                            "error_code": res.get("error_code"),
+                            "error": res.get("error") or "本机引擎停止失败"}
+        except Exception as e:
+            logger.warning(f"[接入切换] 引擎进程动作异常，事务回滚: {e}")
+            return {"ok": False, "failed_stage": "engine", "error": str(e)[:200]}
+
+    # ── 全部成功：一次性落盘 ──
+    save_settings_to_disk(merged)
+    logger.info(f"[接入切换] 成功: access_mode {existing.get('access_mode')!r} → {target!r}")
+    return {
+        "ok": True,
+        "access_mode": target,
+        "capability": get_capability_status(),
+        "llm": get_routing_decision_safe("llm"),
+        "asr": get_routing_decision_safe("asr"),
+    }
+
+
+def get_routing_decision_safe(context: str) -> dict:
+    """路由判定异常安全包装（切换事务响应使用）。"""
+    from core.routing import get_routing_decision
+    try:
+        return get_routing_decision(context)
+    except Exception as e:
+        return {"configured_access_mode": None, "expert_mode": False, "route": "",
+                "source": "", "auto_switched": False, "route_override": False,
+                "reason": f"routing_error:{e}"}
 
 
 @router.get("/api/settings/chat-engine")
@@ -478,15 +538,17 @@ def get_chat_engine_status():
 @router.get("/api/settings/routing")
 def get_routing_status():
     """
-    查询当前接入方式路由结论（REQ-ACCESS-MODE-CARDS AC-T2③ / D2）.
+    查询当前接入方式路由结论（REQ-SETTINGS-IA §3.1/§3.5 改版）.
 
     路由判定唯一入口 core/routing.get_routing_decision 的只读投影，供前端：
-      - 状态栏播报「结论 + 原因」（AM-F1 / R2）；
-      - byok→cloud 等跨模式隐式路由变化（route_override=true）的一次性 toast 显性告知（D2/R3）；
-      - access_mode=null 时触发首次引导（R4）。
-    计费口径（与 core/metering 一致）：hosted 消耗配额 / byok 走自有 Key / local 不计量。
+      - 决策卡/详情卡逐能力回显「生效来源 + 原因」（L1 行内常驻提示的数据源）；
+      - 明示自动改用（auto_switched）聚合计数 → 联网卡 L3 角标与 L2 页面横幅；
+      - 配额 ≤10 分钟预警（Q3 终裁阈值）与最近自动改用事件记录（账单争议可查）；
+      - access_mode=null 时触发强引导（§3.1 未选态）。
+    计费口径（与 core/metering 一致）：体验配额消耗分钟数 / 自带 Key 走自有供应商 /
+    本机（离线与本机端点）不计量且零出网。
     """
-    from core.routing import get_routing_decision
+    from core.routing import QUOTA_WARN_MINUTES, get_routing_decision
 
     llm_decision = get_routing_decision("llm")
     asr_decision = get_routing_decision("asr")
@@ -502,6 +564,21 @@ def get_routing_status():
     except Exception:
         pass
 
+    # 逐能力自动改用聚合（L2/L3 提示与事件记录回显）
+    auto_switched_caps = [c for c, d in (("llm", llm_decision), ("asr", asr_decision)) if d.get("auto_switched")]
+    quota_warning = None
+    if quota and isinstance(quota, dict):
+        remaining = quota.get("remaining")
+        if remaining is not None and 0 <= remaining <= QUOTA_WARN_MINUTES:
+            quota_warning = "low"
+
+    recent_events: list[dict] = []
+    try:
+        from core.settings_events import recent_events as _recent
+        recent_events = _recent(limit=5)
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "access_mode": access_mode,
@@ -509,7 +586,16 @@ def get_routing_status():
         "onboarding_required": access_mode is None,
         "llm": llm_decision,
         "asr": asr_decision,
+        "capability": get_capability_status(),
         "quota": quota,
+        "quota_warning": quota_warning,
+        "auto_switch": {
+            "count": len(auto_switched_caps),
+            "capabilities": auto_switched_caps,
+            "reasons": {c: d.get("reason") for c, d in (("llm", llm_decision), ("asr", asr_decision))
+                        if d.get("auto_switched") or d.get("reason") in ("trial_quota_exhausted_no_fallback", "trial_requires_login")},
+        },
+        "recent_events": recent_events,
     }
 
 

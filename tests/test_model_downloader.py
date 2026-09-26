@@ -300,6 +300,7 @@ class TestDiskPrecheck:
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient
+
     from app.server import app
     with TestClient(app) as c:
         yield c
@@ -401,6 +402,7 @@ class TestEngineHost:
 
     def test_worker_command_dev_mode(self, model_env):
         import sys
+
         from core.engine_host import build_worker_command
         cmd = build_worker_command()
         assert cmd == [sys.executable, "-m", "core.engine_worker"]

@@ -33,13 +33,13 @@
   "abandon_duration": "Recorded duration: {elapsed}",
   "abandon_cancel": "Cancel",
   "abandon_confirm": "Confirm Abandon",
-  "engine_badge_local": "Local Engine",
-  "engine_badge_proxy": "Trial Proxy",
+  "engine_badge_local": "Offline",
+  "engine_badge_proxy": "Trial Quota",
   "engine_badge_selfkey": "Own Key",
   "engine_badge_unready": "Not Ready",
-  "engine_badge_tip_local": "Local engine: transcription, voiceprint and summaries run entirely on-device or via your own endpoint. Data never leaves your device. Click to view the data flow matrix",
-  "engine_badge_tip_proxy": "Trial proxy: cloud ASR and LLM are reached through the project's shared proxy. Business data is never persisted on project servers. Click to view the data flow matrix",
-  "engine_badge_tip_selfkey": "Own Key: connects directly to the cloud ASR / LLM services you configured. Click to view the data flow matrix",
-  "engine_badge_tip_unready": "Local engine not ready: local mode is selected but components or models are missing; transcription tasks will be suspended. Click to open settings",
-  "engine_badge_aria": "Compute engine status: {state}. Click to view data flows"
+  "engine_badge_tip_local": "Offline mode: transcription, voiceprint and summaries run entirely on-device or via your local endpoint. Data never leaves your device. Click to view the data flow matrix",
+  "engine_badge_tip_proxy": "Trial quota: cloud ASR and LLM are reached through the platform's shared proxy, consuming trial minutes. Business data is never persisted on project servers. Click to view the data flow matrix",
+  "engine_badge_tip_selfkey": "Own Key: connects directly to the cloud ASR / LLM services you configured, billed by your provider. Click to view the data flow matrix",
+  "engine_badge_tip_unready": "Offline not ready: offline mode is selected but local components or models are missing; transcription tasks will be suspended. Click to open settings",
+  "engine_badge_aria": "Access status: {state}. Click to view data flows"
 }

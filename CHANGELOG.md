@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-25"
+updated_at: "2026-09-26"
 status: published
 ---
 
@@ -12,6 +12,41 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-26 — 设置信息架构重构（REQ-SETTINGS-IA）+ 专家详情注释层（REQ-EXPERT-MODE）
+
+### 新增
+- **决策层两卡 + 从属详情层**（REQ-SETTINGS-IA）：接入方式收敛为「离线 / 联网」（Q1 定名），配套六张详情卡（账户·套餐 / LLM 算力来源 / ASR 算力来源 / 引擎本地组件 / CLI 引擎 / 使用面回显），缩进+引用轨两层分离；离线态 LLM/ASR 卡整卡「🔒 本机接管」。
+- **切换事务端点** `POST /api/settings/access-mode`：切换必经后果预览（字段级 diff + 进程动作 + 计费与出网三段；联网→离线红色风险条目+显式勾选知晓，裁决-2）；任一环节失败全量回滚，settings.json 零写入（裁决-1）。
+- **逐能力算力来源**：`capability_source{,_override}` 新字段，体验配额/自带 Key/本机端点逐能力选择；账户「优先使用体验配额」勾选降为详情默认值来源，三态徽章（默认生效/已覆盖/未设置，离线上第四形态本机接管），覆盖状态持久化不被登录/勾选改回；route_override 静默计费改写语义消灭。
+- **自动改用三级提示 + 事件记录**（Q3）：L1 能力行内常驻（含 CTA）/ L2 页面 amber 横幅可折叠历史 / L3 联网卡角标；10 分钟预警阈值；每次自动改用落 `data/settings_events.json`（core/settings_events.py，账单争议可查）；界面禁用「降级/兜底/fallback」词。
+- **专家详情 = 同模型叠注释层**（REQ-EXPERT-MODE）：页面级 role=switch 开关（移出 radiogroup），开启后卡片/详情卡/矩阵显示等宽工程值行（`engine.mode ▸ local` 式，≥12px）；不再恢复平行旧版分类视图。
+- **设置导航 L0→L5 重排 + CLI 引擎分类页**：账户→接入方式→服务→计算引擎→CLI 引擎；探针三段（路径解析→版本校验→登录态）失败段定位（probe_engine 新增 `failed_stage`）常驻回显；对话面板智能体未就绪置灰+指引。
+- **会话级对话模型选择器**（第 6 刀使用面闭环）：默认跟随详情，候选=预设模型/探测本机模型并标注来源；每轮回复尾部回显实际消费方与计费口径（done 事件 `model_usage`，与 core/routing 判定同源）；model 缺省改读 llm.model 设置值。
+- 词汇五词表入 GLOSSARY v1.4.0（离线/联网/体验配额/自带 Key/本机端点，「托管」等留历史映射注记）。
+
+### 变更
+- **单向数据流**：接入方式唯一写入口=决策卡事务端点；逐能力来源写入口=详情卡；「服务」页降为参数唯一编辑面（显式保存）；引擎页 mode dropdown 改只读徽章；卡片内联自动保存面板废除；routers/settings 反向同步降级为旧客户端兼容窗口（仅投影字段真实变化时重对齐，带日落日志）。
+- **声纹云端下架**（2026-09-26 裁决①）：`voiceprint.provider/cloud_base_url/cloud_api_key` 字段在 schema/UI/后端三处不存在，CloudEmbeddingProvider 删除；「零出网」结构性为真。存量注册特征无需迁移（cam++-v1-cloud 与 cam++-v1 经 COMPATIBLE_VERSIONS 互兼容，ADR-0009）；存量 settings 键启动时丢弃。
+- 流向矩阵搬入接入方式页：四列（离线/体验配额/自带 Key/本机端点）、逐能力行高亮、单元格「出网 ↑ / 零出网」徽章；幽灵枚举 `engine_mode_cloud` 随删。
+- `GET /api/settings`：移除 voiceprint 块，新增 `capability` 快照；`GET /api/settings/routing` 新增 `capability`/`auto_switch`/`quota_warning`/`recent_events`；旧客户端 access_mode=hosted/byok 提交归一化为 cloud+对应来源。
+- 状态栏/顶栏徽章文案切五词表（离线/体验配额/自带 Key）；App.vue 事后 toast 降为兜底（主路径 L1-L3 常驻）。
+- tierName 去写死：读账户真实档位，未知档降级显原值。
+
+### 存量迁移
+| 存量 access_mode | 迁移为 | 投影不变量 |
+|---|---|---|
+| local | 离线模式 | engine.mode=local |
+| hosted | 联网 + LLM/ASR=体验配额 + 勾选开 | engine.mode=proxy |
+| byok | 联网 + 来源=自带 Key（llm localhost 识别为本机端点） | engine.mode=direct |
+
+混配存量逐能力读实际值并标覆盖（冲突明示）；A1 裁决（direct+订阅开=托管）废止；新增标记 `_settings_ia_migrated`。
+
+### 涉及文件
+- 后端：`app/settings_store.py`、`app/routers/settings.py`、`app/routers/chat.py`、`core/routing.py` v2.0、`core/settings_events.py`（新）、`core/embedding_provider.py`、`core/voiceprint_registry.py`、`core/cli_engine/probe.py`
+- 前端：`api/access.ts` 重写、`api/settings.ts`、`api/chat.ts`、`stores/engine.ts`、`components/settings/AccessModeCards.vue` 重写、`components/settings/CliEnginePanel.vue`（新）、`views/SettingsView.vue`、`AiChatPanel.vue`、`AIPanel.vue`、`useAiChat.ts`、`App.vue`、i18n（settings/common/topbar/ai-panel × 双语）
+- 测试：`test_access_mode_migration.py` 重写（迁移全组合+事务回滚）、`test_routing_decision.py` 重写（逐能力来源）、`test_settings_i18n_vocab.py`（新，五词 lint）、`test_expert_mode.py`（新，探针/注释层门禁）；全量 580 绿；文档：`docs/BACKLOG.md`、`docs/DISPATCH-TRACKER.md`、`docs/GLOSSARY.md` v1.4.0
+- 浏览器点验项（两单 AC 清单列明）交 QA 通道，产品侧出验收单
 
 ## [未发布] - 2026-09-25 — 洞察台会后化（REQ-INSIGHT-DECK-POSTMEETING）
 

@@ -301,8 +301,9 @@ class TestEngineOverride:
         assert tr.tasks[tid]["audio_path"]
 
     def test_endpoint_rejects_unknown_override(self, tmp_path, monkeypatch):
-        import app.routers.tasks as tr
         from fastapi import HTTPException
+
+        import app.routers.tasks as tr
 
         tid = self._make_task(tmp_path, tr.tasks)
         with pytest.raises(HTTPException) as ei:
@@ -310,8 +311,9 @@ class TestEngineOverride:
         assert ei.value.status_code == 400
 
     def test_endpoint_rejects_cloud_when_not_configured(self, tmp_path, monkeypatch):
-        import app.routers.tasks as tr
         from fastapi import HTTPException
+
+        import app.routers.tasks as tr
 
         tid = self._make_task(tmp_path, tr.tasks)
         monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: False)

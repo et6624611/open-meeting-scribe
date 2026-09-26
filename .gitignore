@@ -21,6 +21,7 @@ data/usage/
 data/downloads/
 data/models/
 data/remote_config.json
+data/settings_events.json
 data/*.wav
 data/*.mp3
 data/*.m4a

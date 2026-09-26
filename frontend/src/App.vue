@@ -187,22 +187,25 @@ if (typeof window !== 'undefined') {
 }
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
-// ─── 底部状态栏：结论 + 原因 + 动作（REQ-ACCESS-MODE-CARDS T5 / AC-T5①） ───
+// ─── 底部状态栏：结论 + 原因 + 动作（REQ-SETTINGS-IA §3.1 改版） ───
 // 状态推导全部收敛在 stores/engine.ts（单一来源）；模型串与延迟降级到 hover 详情。
 const STATUS_LABEL_KEYS: Record<AccessStatusState, string> = {
   local_ready: 'engine_status_local_ready',
   local_pending: 'engine_status_local_pending',
-  hosted_ready: 'engine_status_hosted_ready',
-  hosted_needs_login: 'engine_status_hosted_login',
-  byok_ready: 'engine_status_byok_ready',
-  byok_needs_key: 'engine_status_byok_key',
+  cloud_ready: 'engine_status_cloud_ready',
+  cloud_needs_login: 'engine_status_cloud_login',
+  cloud_needs_key: 'engine_status_cloud_key',
+  cloud_auto_switched: 'engine_status_cloud_auto_switched',
   unconfigured: 'engine_status_unconfigured',
 }
 
 const engineStatusLabel = computed(() => {
   const st = engineStore.statusState
-  if (st === 'hosted_ready') {
-    return t('common.usage.engine_status_hosted_ready', { n: fmtQuotaMinutes(engineStore.quotaRemaining) })
+  if (st === 'cloud_ready') {
+    return t('common.usage.engine_status_cloud_ready', { n: fmtQuotaMinutes(engineStore.quotaRemaining) })
+  }
+  if (st === 'cloud_auto_switched') {
+    return t('common.usage.engine_status_cloud_auto_switched', { n: engineStore.autoSwitch.count })
   }
   return t(`common.usage.${STATUS_LABEL_KEYS[st]}`)
 })
@@ -234,15 +237,17 @@ function goToAccessSettings() {
   router.push({ name: 'settings', query: { cat: 'access' } })
 }
 
-// ─── D2：跨模式路由切换显性告知（每会话每原因仅一次；事件源=契约 §13.5 route_override，mock 先行） ───
+// ─── 兜底告知（REQ-SETTINGS-IA §3.5 第 5 刀）：主路径已升为设置页 L1/L2/L3 常驻提示，
+// 此处仅在自动改用发生时于任意页面作一次性事后告知（每会话每原因仅一次）；
+// 静默 route_override 语义已消灭，文案用「自动改用」，禁用「降级」。事件源 = routing.auto_switched。
 watch(() => engineStore.routeOverride, (reason) => {
   if (!reason) return
-  const key = `oms.routeOverrideToast.${reason}`
+  const key = `oms.autoSwitchToast.${reason}`
   try {
     if (sessionStorage.getItem(key)) return
     sessionStorage.setItem(key, '1')
   } catch { /* 存储不可用时仍提示，仅失去判重 */ }
-  showToast(t(`common.usage.route_override_${reason}`), 'warn')
+  showToast(t(`common.usage.auto_switch_${reason}`, { n: fmtQuotaMinutes(engineStore.quotaRemaining) }), 'warn')
 })
 
 // 公告横幅 / Announcement banner

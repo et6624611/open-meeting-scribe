@@ -29,10 +29,16 @@ from app.store import (  # noqa: F401
     tasks,
 )
 from core import joblog
-from core.speakers import normalize_speaker_name
+from core.agent_loop import run_agent_loop
 from core.agent_workspace import resolve_agent_role
 from core.chat_actions import detect_action, execute_action
-from core.chat_context import build_page_context, build_speaker_name_map, build_insights_context_block, extract_injectable_items, is_joblog_intent
+from core.chat_context import (
+    build_insights_context_block,
+    build_page_context,
+    build_speaker_name_map,
+    extract_injectable_items,
+    is_joblog_intent,
+)
 from core.chat_edits import (  # noqa: F401
     _sanitize_edit_ops,
     audit_reply_claims,
@@ -41,8 +47,8 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.agent_loop import run_agent_loop
-from core.llm import async_chat_completion, async_chat_completion_full, async_chat_completion_stream
+from core.llm import async_chat_completion, async_chat_completion_full
+from core.speakers import normalize_speaker_name
 
 # 向后兼容别名（测试与外部引用） / Backward-compatible aliases (for tests and external references)
 _detect_action = detect_action
@@ -50,8 +56,6 @@ _is_joblog_intent = is_joblog_intent
 _build_page_context = build_page_context
 _execute_and_verify_edits = execute_and_verify_edits
 _audit_reply_claims = audit_reply_claims
-from core.i18n import _
-
 # ── 智能体模式（本地 CLI 引擎，可选接入）/ Agent mode (local CLI engine, optional) ──
 from app.store import get_chat_engine_config  # noqa: E402
 from core.cli_engine import (  # noqa: E402
@@ -62,8 +66,9 @@ from core.cli_engine import (  # noqa: E402
     probe_engine,
     run_cli_agent,
 )
-from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge  # noqa: E402
 from core.cli_engine.intent import classify_engine_intent  # noqa: E402
+from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge  # noqa: E402
+from core.i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -543,6 +548,38 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
 # AI 对话端点 / AI Chat Endpoints
 # ============================================================
 
+
+def _chat_model_default() -> str:
+    """会话未逐条指定 model 时的默认值：跟随详情 llm.model 设置（REQ-EXPERT-MODE §2.3）。
+
+    「跟随详情」语义下 llm.model 变更即时反映到下一轮；设置缺失才落 qwen-plus。
+    """
+    try:
+        from app.store import get_llm_config
+        return get_llm_config().get("model") or "qwen-plus"
+    except Exception:
+        return "qwen-plus"
+
+
+def _model_usage_meta(model: str) -> dict:
+    """本轮实际消费方与计费口径回显（与 core/routing 判定同源，AC-3）。
+
+    billing 枚举：platform_quota=消耗体验分钟数 / own_key=自有供应商计费 /
+    none=本机算力不计量 / ""=判定不可得（前端隐藏计费段）。
+    """
+    meta = {"model": model, "source": "", "route": "", "billing": "", "auto_switched": False}
+    try:
+        from core.routing import get_routing_decision
+        d = get_routing_decision("llm")
+        meta["source"] = d.get("source") or ""
+        meta["route"] = d.get("route") or ""
+        meta["auto_switched"] = bool(d.get("auto_switched"))
+        meta["billing"] = {"trial": "platform_quota", "byok": "own_key",
+                           "local_endpoint": "none", "local": "none"}.get(meta["source"], "")
+    except Exception:
+        pass
+    return meta
+
 @router.post("/api/chat")
 async def chat(data: ChatRequest):
     """AI 对话端点（含动作检测与执行）。 / AI chat endpoint (incl. action detection and execution)."""
@@ -564,7 +601,7 @@ async def chat(data: ChatRequest):
         system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
     context_blocks = []
     action_result: dict | None = None
-    chat_model = data.model or "qwen-plus"
+    chat_model = data.model or _chat_model_default()
 
     # ── 步骤 0: 数据编辑意图 ── / ── Step 0: Data edit intent ──
     edit_changes: list[dict] = []
@@ -655,6 +692,7 @@ async def chat(data: ChatRequest):
         return {
             "reply": reply,
             "diagram": diagram,
+            "model_usage": _model_usage_meta(llm_result.model or chat_model),
             "metadata": {
                 "model": llm_result.model,
                 "usage": llm_result.usage,
@@ -709,7 +747,7 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
         role = resolve_agent_role(data.role)
         system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
     context_blocks: list[str] = []
-    chat_model = data.model or "qwen-plus"
+    chat_model = data.model or _chat_model_default()
 
     # ── 实时转写流 / Realtime transcript stream ──
     realtime_entries = []
@@ -1012,7 +1050,7 @@ async def chat_stream(data: ChatRequest, request: Request):
     logger.info("[AI对话-流式] 注入块 task=%s mode=%s blocks=%d", data.task_id, data.mode, len(context_blocks))
     logger.debug("[AI对话-流式] 注入块详情=%s", [{"head": b[:120].replace("\n", " "), "len": len(b)} for b in context_blocks])
 
-    chat_model = data.model or "qwen-plus"
+    chat_model = data.model or _chat_model_default()
 
     # 解析项目 ID / Resolve project ID
     resolved_project_id = data.project_id
@@ -1056,6 +1094,8 @@ async def chat_stream(data: ChatRequest, request: Request):
                     existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
                     extracted_items = extract_injectable_items(full_content, existing_todos)
                     event["extracted_items"] = extracted_items
+                    # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）
+                    event["model_usage"] = _model_usage_meta(chat_model)
 
                     # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
                     diagram = ""

@@ -37,6 +37,17 @@ export interface ChatMessage {
   performance?: MessagePerformance
   /** Agent 思考阶段列表 / Agent thinking stages */
   stages?: AgentStage[]
+  /** 本轮实际消费方与计费回显（REQ-EXPERT-MODE §2.3，与 routing 判定一致） */
+  modelUsage?: ModelUsage
+}
+
+/** 回复尾部使用回显：模型 · 算力来源 · 计费口径 */
+export interface ModelUsage {
+  model: string
+  source: 'trial' | 'byok' | 'local_endpoint' | 'local' | ''
+  route: string
+  billing: 'platform_quota' | 'own_key' | 'none' | ''
+  auto_switched: boolean
 }
 
 /** Agent 思考阶段 / Agent thinking stage */
@@ -136,7 +147,7 @@ export async function sendMessage(
     history: options?.history,
     realtime_transcripts: options?.realtime_transcripts,
     mode: options?.mode || 'agent',
-    model: options?.model || 'qwen-plus',
+    model: options?.model || undefined, // 缺省不写死：后端跟随详情 llm.model（REQ-EXPERT-MODE §2.3）
     current_page: options?.current_page,
     role: options?.role,
     current_diagram: options?.current_diagram,
@@ -166,6 +177,8 @@ export interface StreamCallbacks {
     diagram?: string
     /** 引擎标识（智能体模式回显） */
     engine?: string
+    /** 本轮消费方/计费回显（与 core/routing 实际判定一致） */
+    model_usage?: ModelUsage
   }) => void
   onError: (error: string) => void
 }
@@ -187,7 +200,7 @@ export async function sendMessageStream(
       history: options?.history,
       realtime_transcripts: options?.realtime_transcripts,
       mode: options?.mode || 'agent',
-      model: options?.model || 'qwen-plus',
+      model: options?.model || undefined, // 缺省不写死：后端跟随详情 llm.model（REQ-EXPERT-MODE §2.3）
       current_page: options?.current_page,
       role: options?.role,
       current_diagram: options?.current_diagram,

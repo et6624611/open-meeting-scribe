@@ -22,7 +22,6 @@ from core.cli_engine import event_bridge as eb
 from core.cli_engine import manifest as mf
 from core.cli_engine import probe as probe_mod
 
-
 # ============================================================
 # 真实 stream-json 样本（取自 .spike_qoder 取证，内联以保持自包含）
 # ============================================================
@@ -343,6 +342,7 @@ class TestIntentClassifier:
 class TestWorkspaceRetention:
     def test_sweep_removes_expired_only(self, monkeypatch, tmp_path):
         import os
+
         from core.cli_engine import context_export as ce
         root = tmp_path / "agent-workspace"
         monkeypatch.setattr(ce, "WORKSPACE_ROOT", root)

@@ -8,10 +8,12 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
+import { fetchChatEngineStatus, fetchSettings, probeLocalEngine, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAgentStore } from '@/stores/agent'
+import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
 import { tt } from '@/i18n'
@@ -51,6 +53,7 @@ export function useAiChat() {
   const realtimeStore = useRealtimeStore()
   const aiSessions = useAiSessionsStore()
   const agentStore = useAgentStore()
+  const engineStore = useEngineStore()
   const insights = useAiInsights()
 
   const isLoading = ref(false)
@@ -76,6 +79,70 @@ export function useAiChat() {
     chatMode.value = mode
     localStorage.setItem('ai_chat_mode', mode)
   }
+
+  // ── 会话级模型选择器（REQ-EXPERT-MODE §2.3：默认跟随详情，后端零改造透传 model） ──
+  // 态存于 engine store 共享（与接入方式页「使用面回显」卡联动）
+  /** '' = 跟随详情（不传 model，后端取 llm.model 设置值，变更即时反映到下一轮） */
+  const sessionModel = computed(() => engineStore.sessionModel)
+  /** 候选项：预设模型 + 探测到的本机模型，每项标注来源（本机/体验配额/自带 Key） */
+  interface ModelOption { value: string; source: 'local' | 'trial' | 'byok' }
+  const modelCandidates = ref<ModelOption[]>([])
+  /** 详情层 LLM 当前生效模型（「跟随详情」标签插值用） */
+  const detailModelLabel = computed(() => (engineStore.accessSettings as any)?.llm?.model || 'qwen-plus')
+  /** CLI 引擎探针状态前置回显（§2.2：不再撞错才知道；失败段定位 AC-4） */
+  const cliProbe = ref<ChatEngineProbe | null>(null)
+  const agentEngineEnabled = ref(false)
+
+  async function loadModelCandidates() {
+    const opts: ModelOption[] = []
+    const seen = new Set<string>()
+    const capSource = engineStore.capability?.llm?.effective
+    const cloudSource: 'trial' | 'byok' = capSource === 'trial' ? 'trial' : 'byok'
+    try {
+      const s = await fetchSettings()
+      for (const p of s.llm_provider_presets || []) {
+        for (const m of p.models || []) {
+          if (seen.has(m)) continue
+          seen.add(m)
+          opts.push({ value: m, source: p.localhost ? 'local' : cloudSource })
+        }
+      }
+    } catch { /* 静默：候选降级为仅探测结果 */ }
+    try {
+      const probe = await probeLocalEngine()
+      for (const e of probe.engines) {
+        if (!e.reachable) continue
+        for (const m of e.models) {
+          if (seen.has(m)) continue
+          seen.add(m)
+          opts.push({ value: m, source: 'local' })
+        }
+      }
+    } catch { /* 同上 */ }
+    modelCandidates.value = opts
+  }
+
+  async function loadCliProbe() {
+    try {
+      const st = await fetchChatEngineStatus()
+      cliProbe.value = st.probe ?? null
+      agentEngineEnabled.value = !!st.config?.enabled
+    } catch {
+      cliProbe.value = null
+    }
+  }
+
+  /** 智能体模式是否可选（未安装/未登录时置灰 + 指引，AC-4） */
+  const agentAvailable = computed(() => cliProbe.value?.available === true)
+
+  // 面板挂载即拉一次（探针/候选不阻塞对话）；模型候选随详情源变化重标
+  void loadCliProbe()
+  void loadModelCandidates()
+  // 详情层来源变化 → 云端候选来源标签同步重标（本机候选不变）
+  watch(() => engineStore.capability?.llm?.effective, (eff) => {
+    const cs: 'trial' | 'byok' = eff === 'trial' ? 'trial' : 'byok'
+    modelCandidates.value = modelCandidates.value.map(o => (o.source === 'local' ? o : { ...o, source: cs }))
+  })
 
   /** 思考耗时（秒），流式期间实时更新，完成后归零 / Thinking elapsed seconds; live during streaming, resets after done */
   const thinkingElapsed = computed(() => {
@@ -148,6 +215,8 @@ export function useAiChat() {
         role: agentStore.activeAgent || undefined,
         current_diagram: insights.lastViewedDiagram.value || undefined,
         engine: chatMode.value === 'qa' ? undefined : chatMode.value,
+        // 会话级模型透传（REQ-EXPERT-MODE §2.3）：'' = 跟随详情不传
+        model: sessionModel.value || undefined,
         stream_id: streamId,
         chat_session_id: aiSessions.currentBucket.activeSessionId || undefined,
         resume_session: chatMode.value !== 'qa' && hasAgentSession.value,
@@ -207,6 +276,8 @@ export function useAiChat() {
           assistantMsg.timestamp = new Date().toISOString()
           if (data.metadata) assistantMsg.metadata = data.metadata
           if (data.sources) assistantMsg.sources = data.sources
+          // 回复尾部消费方/计费回显（与后端 routing 实际判定同源）
+          if (data.model_usage) assistantMsg.modelUsage = data.model_usage
           if (data.latency_ms != null) {
             assistantMsg.performance = {
               latency_ms: data.latency_ms,
@@ -459,5 +530,9 @@ export function useAiChat() {
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast,
     chatMode, setChatMode, activeEngine, hasAgentSession,
+    // 使用面闭环（REQ-EXPERT-MODE §2.3） / usage-surface loop
+    sessionModel, setSessionModel: engineStore.setSessionModel,
+    modelCandidates, detailModelLabel, cliProbe, agentEngineEnabled, agentAvailable,
+    refreshCliProbe: loadCliProbe,
   }
 }

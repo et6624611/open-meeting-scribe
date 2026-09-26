@@ -2,22 +2,24 @@
 core/embedding_provider.py — 声纹嵌入提取抽象层 / Speaker embedding extraction abstraction layer
 
 职责 / Responsibilities:
-  定义 EmbeddingProvider 接口，支持三种实现 / Define EmbeddingProvider interface, three implementations:
-    1. CloudEmbeddingProvider — 云端 HTTP 调用（通过环境变量配置地址） / Cloud HTTP call (address configured via env vars)
-    2. MfccFallbackProvider — 14 维 MFCC 降级（零依赖兆底） / 14-dim MFCC fallback (zero-dep fallback)
-    3. LocalCamPlusProvider — 本地 CAM++ 192 维（R3 离线，经引擎常驻子进程） / Local CAM++ 192-dim (R3 offline, via resident engine subprocess)
+  定义 EmbeddingProvider 接口，两种实现 / Define EmbeddingProvider interface, two implementations:
+    1. LocalCamPlusProvider — 本机 CAM++ 192 维（经引擎常驻子进程） / Local CAM++ 192-dim via engine subprocess
+    2. MfccFallbackProvider — 14 维 MFCC 兜底（零依赖） / 14-dim MFCC fallback (zero-dep)
 
-  通过 get_embedding_provider() 按配置自动选择提供者 / Auto-select provider via get_embedding_provider() based on config.
+  通过 get_embedding_provider() 选择提供者 / Provider selected via get_embedding_provider().
 
 设计原则 / Design principles:
-  - 批处理链路（voiceprint.py）和实时链路（diarization.py）均通过 provider 提取嵌入 / Both batch pipeline (voiceprint.py) and realtime pipeline (diarization.py) extract embeddings via provider
-  - provider 可热切换，调用方无感知 / Provider can be hot-swapped, callers are unaware
-  - 云端不可用时降级为 MFCC 14 维 / Degrade to MFCC 14-dim when cloud unavailable
+  - 批处理链路（voiceprint.py）和实时链路（diarization.py）均通过 provider 提取嵌入 / Both pipelines extract embeddings via provider
+  - REQ-SETTINGS-IA 第 4 刀（2026-09-26 项目方裁决①）：云端声纹链路整体下架，
+    声纹仅本机 CAM++，「零出网」从文案承诺升级为结构性为真（无云端代码路径可走）；
+    CloudEmbeddingProvider 与 voiceprint.provider / cloud_base_url / cloud_api_key
+    配置面同步删除（存量注册特征无需迁移：cam++-v1-cloud 与 cam++-v1 在
+    voiceprint_registry.COMPATIBLE_VERSIONS 互兼容，同一嵌入空间，ADR-0009）
+  - CAM++ 未就绪时直接兜底 MFCC / Fall back to MFCC when CAM++ is not ready
 
-参见 / See: docs/adr/0009-声纹识别服务云端拆分.md
+参见 / See: docs/adr/0009-声纹识别服务云端拆分.md（云侧链路已按 REQ-SETTINGS-IA 废止）
 """
 
-import base64
 import logging
 from typing import Optional, Protocol, runtime_checkable
 
@@ -74,118 +76,10 @@ class EmbeddingProvider(Protocol):
 
 
 # ============================================================
-# 实现 1：云端 HTTP 调用（已部署）
+# CloudEmbeddingProvider 已随 REQ-SETTINGS-IA 第 4 刀整体下架（2026-09-26 裁决①）：
+# 声纹仅本机 CAM++，不再保留任何可触达云端的代码路径，使「零出网」结构性为真。
+# 跨端兼容由 voiceprint_registry.COMPATIBLE_VERSIONS 承担（存量云标记特征继续可匹配）。
 # ============================================================
-
-class CloudEmbeddingProvider:
-    """
-    云端 HTTP 调用。
-    通过 RESTful API 将音频发送到云端，返回 embedding。
-    需要 VOICEPRINT_API_KEY 环境变量或 settings.json 配置。
-    """
-
-    dim = 192
-    model_version = "cam++-v1-cloud"
-
-    def __init__(self, base_url: str, api_key: str, timeout: float = 30.0):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.timeout = timeout
-
-    def extract(
-        self,
-        audio: np.ndarray,
-        sample_rate: int = 16000,
-    ) -> Optional[np.ndarray]:
-        if len(audio) < sample_rate * 0.5:
-            return None
-
-        if audio.dtype not in (np.float32, np.float64):
-            audio = audio.astype(np.float32) / 32768.0
-        elif audio.dtype == np.float64:
-            audio = audio.astype(np.float32)
-
-        # 转为 16kHz WAV 字节
-        if sample_rate != 16000:
-            ratio = 16000 / sample_rate
-            new_len = int(len(audio) * ratio)
-            audio = np.interp(
-                np.linspace(0, len(audio) - 1, new_len),
-                np.arange(len(audio)),
-                audio,
-            ).astype(np.float32)
-            sample_rate = 16000
-
-        wav_bytes = _float32_to_wav(audio, sample_rate)
-        return self._call_api(wav_bytes, sample_rate)
-
-    def extract_from_pcm(
-        self,
-        pcm_bytes: bytes,
-        sample_rate: int = 16000,
-    ) -> Optional[np.ndarray]:
-        n_samples = len(pcm_bytes) // 2
-        if n_samples == 0:
-            return None
-        samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        return self.extract(samples, sample_rate)
-
-    def _call_api(self, wav_bytes: bytes, sample_rate: int) -> Optional[np.ndarray]:
-        """调用云端 embedding 提取 API"""
-        try:
-            import httpx
-
-            audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
-            payload = {
-                "audio": audio_b64,
-                "sample_rate": sample_rate,
-                "model": "campplus-v1",
-            }
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            }
-
-            resp = httpx.post(
-                f"{self.base_url}/voiceprint/embedding",
-                json=payload,
-                headers=headers,
-                timeout=self.timeout,
-            )
-
-            if resp.status_code == 401:
-                logger.error("[声纹Provider] 云端 API Key 无效")
-                return None
-            if resp.status_code == 402:
-                logger.warning("[声纹Provider] 云端额度不足")
-                return None
-            if resp.status_code == 429:
-                logger.warning("[声纹Provider] 云端请求频率超限")
-                return None
-            if resp.status_code != 200:
-                logger.warning(f"[声纹Provider] 云端返回 HTTP {resp.status_code}")
-                return None
-
-            data = resp.json()
-            embedding = np.array(data["embedding"], dtype=np.float32)
-            return embedding
-
-        except Exception as e:
-            logger.warning(f"[声纹Provider] 云端调用失败: {e}")
-            return None
-
-    def is_available(self) -> bool:
-        """检查云端服务是否可达"""
-        try:
-            import httpx
-            resp = httpx.get(
-                f"{self.base_url}/health",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=5.0,
-            )
-            return resp.status_code == 200
-        except Exception:
-            return False
 
 
 def _float32_to_wav(audio: np.ndarray, sample_rate: int) -> bytes:
@@ -475,100 +369,43 @@ class LocalCamPlusProvider:
 
 
 # ============================================================
-# Provider 选择逻辑
+# Provider 选择逻辑（第 4 刀后只剩两级：本机 CAM++ → MFCC 兜底）
 # ============================================================
 
 _provider: Optional[EmbeddingProvider] = None
 
 
-def _local_engine_active() -> bool:
-    """R3：是否处于本地引擎模式（settings.engine.mode == "local"）。"""
-    try:
-        from app.settings_store import get_engine_config
-        return get_engine_config().get("mode") == "local"
-    except Exception:
-        return False
-
-
 def get_embedding_provider() -> EmbeddingProvider:
     """
-    获取当前生效的 embedding 提供者。
+    获取当前生效的 embedding 提供者（声纹仅本机，结构性零出网）。
 
     选择优先级：
-      0. 本地 CAM++ LocalCamPlusProvider（R3：engine.mode==local 或 voiceprint.provider==local）
-         —— 本地模式下绝不触达云端（零出网）；CAM++ 不可用时直接降级 MFCC。
-      1. 云端 CloudEmbeddingProvider（settings.json 配置 + 服务可达）
+      1. 本机 CAM++ LocalCamPlusProvider（引擎子进程就绪）
       2. 兜底 MfccFallbackProvider（14 维，精度较低但零依赖）
 
-    环境变量 VOICEPRINT_PROVIDER 可覆盖 settings.json。
+    不再读取任何 voiceprint.provider 配置（字段已下架）；不存在云端代码路径。
     注：实时聚类 MFCC 路径（diarization_cluster.should_use_local_diarization）直接构造
-    MfccFallbackProvider，不经本函数，故本改动对实时 MFCC 路径零影响。
+    MfccFallbackProvider，不经本函数。
     """
     global _provider
     if _provider is not None:
         return _provider
 
-    settings = _load_voiceprint_settings()
-    env_provider = __import__("os").getenv("VOICEPRINT_PROVIDER", "")
+    try:
+        candidate = LocalCamPlusProvider()
+        if candidate.is_available():
+            _provider = candidate
+            logger.info("[声纹Provider] 使用本机 CAM++ embedding 提供者（cam++-v1，零出网）")
+            return _provider
+    except Exception as e:
+        logger.warning(f"[声纹Provider] 本机 CAM++ 提供者初始化失败: {e}")
 
-    # 确定 provider 模式
-    provider_mode = env_provider or settings.get("provider", "auto")
-
-    # 0. 本地引擎（R3）：仅在本地模式激活；云模式与 MFCC 实时路径零改动
-    if provider_mode == "local" or _local_engine_active():
-        try:
-            candidate = LocalCamPlusProvider()
-            if candidate.is_available():
-                _provider = candidate
-                logger.info("[声纹Provider] 使用本地 CAM++ embedding 提供者（离线，cam++-v1）")
-                return _provider
-        except Exception as e:
-            logger.warning(f"[声纹Provider] 本地 CAM++ 提供者初始化失败: {e}")
-        # 本地模式下绝不触达云端（零出网）：CAM++ 未就绪则直接 MFCC 兜底
-        logger.warning("[声纹Provider] 本地引擎模式但 CAM++ 不可用（模型未就绪），降级 MFCC（不触达云端）")
-        _provider = MfccFallbackProvider()
-        return _provider
-
-    # 1. 云端优先
-    if provider_mode in ("cloud", "auto"):
-        cloud_config = settings.get("cloud", {})
-        api_key = __import__("os").getenv("VOICEPRINT_API_KEY", "") or cloud_config.get("api_key", "")
-        base_url = __import__("os").getenv(
-            "VOICEPRINT_BASE_URL", ""
-        ) or cloud_config.get("base_url", "")
-
-        if api_key and base_url:
-            try:
-                candidate = CloudEmbeddingProvider(
-                    base_url=base_url,
-                    api_key=api_key,
-                )
-                if candidate.is_available():
-                    _provider = candidate
-                    logger.info("[声纹Provider] 使用云端 embedding 提供者")
-                    return _provider
-                else:
-                    logger.warning("[声纹Provider] 云端服务不可达，降级为 MFCC")
-            except Exception as e:
-                logger.warning(f"[声纹Provider] 云端提供者初始化失败: {e}")
-
-    # 2. MFCC 兜底
-    logger.warning("[声纹Provider] 云端不可用，降级为 MFCC 14 维特征")
+    logger.info("[声纹Provider] 本机 CAM++ 未就绪（模型未安装），直接使用 MFCC 兜底（不触达云端）")
     _provider = MfccFallbackProvider()
     return _provider
 
 
 def reset_provider() -> None:
-    """重置 provider 缓存（配置变更后调用）"""
+    """重置 provider 缓存（模型安装/引擎状态变更后调用）"""
     global _provider
     _provider = None
-
-
-def _load_voiceprint_settings() -> dict:
-    """从 settings.json 加载声纹配置"""
-    try:
-        from app.store import load_settings
-        settings = load_settings()
-        return settings.get("voiceprint", {})
-    except Exception:
-        return {}

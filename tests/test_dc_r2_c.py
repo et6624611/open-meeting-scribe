@@ -116,8 +116,8 @@ def _seed_task(client, tasks_dict):
 @pytest.fixture()
 def patched_tasks(store, monkeypatch):
     """决策路由的任务表指向临时字典（不触碰真实 data/tasks/）。"""
-    from app.routers import decisions as dr
     from app.routers import decision_statuses as dsr
+    from app.routers import decisions as dr
 
     fake: dict = {}
     monkeypatch.setattr(dr, "tasks", fake)

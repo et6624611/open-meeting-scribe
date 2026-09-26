@@ -229,8 +229,8 @@ class TestRegenMerge:
 
 class TestStage2Writeback:
     def _run_stage2(self, monkeypatch, task_id: str, summary_text: str):
-        import core.projects as projects
         import core.pipeline_runner as pr
+        import core.projects as projects
 
         monkeypatch.setattr(
             pr, "run_pipeline_stage2",

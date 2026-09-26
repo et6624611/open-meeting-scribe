@@ -14,25 +14,24 @@ import {
   startEngine, stopEngine, setEngineStorage,
   type EngineStatus, type EngineMode, type EngineModelsOverview, type DownloadJob, type EngineActionResult,
 } from '@/api/engine'
-import { fetchRouting, saveAccess, type AccessMode, type RoutingResponse } from '@/api/access'
+import { fetchRouting, saveExpertMode, switchAccessMode, type AccessMode, type CapabilityStatus, type RoutingResponse } from '@/api/access'
 import { fetchSettings, type Settings } from '@/api/settings'
 
 /** 徽章四态 / Four badge states */
 export type EngineBadgeState = 'local' | 'proxy' | 'selfkey' | 'unready'
 
 /**
- * 状态栏单一结论态（REQ-ACCESS-MODE-CARDS T5 / AC-T5①）。
+ * 状态栏单一结论态（REQ-SETTINGS-IA §3.1/§3.5 改版，单源判定同 core/routing）。
  * 主文案 = 结论(+原因/剩余量)，模型串与延迟降级到 hover（statusDetail）。
- * Single-source status-bar conclusion; model string & latency move to hover.
  */
 export type AccessStatusState =
-  | 'local_ready'      // 离线就绪
-  | 'local_pending'    // 离线未就绪（本地模型未装齐）
-  | 'hosted_ready'     // 托管就绪（剩余 n）
-  | 'hosted_needs_login' // 还需登录
-  | 'byok_ready'       // 自带 Key 就绪
-  | 'byok_needs_key'   // 还需配置 Key
-  | 'unconfigured'     // 未配置（触发引导）
+  | 'local_ready'        // 离线就绪
+  | 'local_pending'      // 离线未就绪（本地模型未装齐）
+  | 'cloud_ready'        // 联网就绪（体验配额有额度 / 自带 Key 就绪）
+  | 'cloud_needs_login'  // 体验配额需登录（登录门槛前置明示）
+  | 'cloud_needs_key'    // 自带 Key 未配置且无可用替代
+  | 'cloud_auto_switched' // 已自动改用（L1-L3 三级提示同源；界面禁用「降级」词）
+  | 'unconfigured'       // 未选态（强引导）
 
 /** 下载进行中的任务状态 / Job states that count as in-flight */
 const ACTIVE_JOB_STATES = ['pending', 'downloading', 'verifying']
@@ -74,38 +73,46 @@ export const useEngineStore = defineStore('engine', () => {
   const accessMode = computed<AccessMode | null>(() => routing.value?.access_mode ?? null)
   const expertMode = computed(() => routing.value?.expert_mode === true)
   const onboardingRequired = computed(() => routing.value?.onboarding_required === true)
+  /** 逐能力算力来源快照（详情层三态徽章/默认联动单源） */
+  const capability = computed<CapabilityStatus | null>(() => routing.value?.capability ?? null)
+  /** 明示自动改用聚合（L2 横幅 / L3 联网卡角标单源） */
+  const autoSwitch = computed(() => routing.value?.auto_switch ?? { count: 0, capabilities: [], reasons: {} })
 
   /**
-   * 双因子徽章态；合入 access_mode 后以接入方式为第一因子（契约 §13.5 单源判定），
-   * routing 未就绪时回退旧 engine.mode 推导。
-   * Badge state; access_mode is the primary factor once routing is loaded.
+   * 双因子徽章态；access_mode 为第一因子，联网态下按逐能力生效来源细分：
+   * 任一能力仍走体验配额 → proxy（平台代付链路可见优先）；全部自带/本机 → selfkey。
    */
   const badge = computed<EngineBadgeState>(() => {
     if (devOverride.value) return devOverride.value
     const mode = routing.value?.access_mode
     if (mode === 'local') return status.value?.local_ready ? 'local' : 'unready'
-    if (mode === 'hosted') return 'proxy'
-    if (mode === 'byok') return 'selfkey'
+    if (mode === 'cloud') {
+      const cap = capability.value
+      const srcs = [cap?.llm?.effective, cap?.asr?.effective].filter(Boolean)
+      return srcs.includes('trial') ? 'proxy' : 'selfkey'
+    }
     const s = status.value
     if (!s) return 'unready'
     if (s.mode === 'local') return s.local_ready ? 'local' : 'unready'
     if (s.mode === 'direct') return 'selfkey'
-    // cloud / proxy 均为项目方共享代理链路（体验代理） / cloud & proxy both route through the shared trial proxy
+    // cloud / proxy 均为平台共享代理链路（体验配额） / both ride the shared trial-quota proxy
     return 'proxy'
   })
 
-  /** 状态栏主结论 / Status-bar conclusion (AC-T5①) */
+  /** 状态栏主结论 */
   const statusState = computed<AccessStatusState>(() => {
     const r = routing.value
     if (!r) return 'unconfigured'
     switch (r.access_mode) {
       case 'local':
         return status.value?.local_ready ? 'local_ready' : 'local_pending'
-      case 'hosted':
-        return userLoggedIn.value ? 'hosted_ready' : 'hosted_needs_login'
-      case 'byok':
-        // 无 Key 被回退云代理（byok_key_missing）不算就绪 / missing key falling back is not "ready"
-        return r.llm.reason === 'byok_key_missing' ? 'byok_needs_key' : 'byok_ready'
+      case 'cloud': {
+        if (autoSwitch.value.count > 0) return 'cloud_auto_switched'
+        const reasons = [r.llm.reason, r.asr.reason]
+        if (reasons.includes('trial_requires_login')) return 'cloud_needs_login'
+        if (reasons.includes('byok_key_missing_cloud_unavailable')) return 'cloud_needs_key'
+        return 'cloud_ready'
+      }
       default:
         return 'unconfigured'
     }
@@ -116,6 +123,19 @@ export const useEngineStore = defineStore('engine', () => {
   function setUserLoggedIn(v: boolean) {
     userLoggedIn.value = v
     if (loaded.value) void loadRouting(true)
+  }
+
+  /**
+   * 会话级对话模型选择（REQ-EXPERT-MODE §2.3）：'' = 跟随详情。
+   * 单一共享态：对话面板选择器与接入方式页「使用面回显」卡双向联动。
+   */
+  const sessionModel = ref(localStorage.getItem('oms_chat_model') || '')
+  function setSessionModel(v: string) {
+    sessionModel.value = v || ''
+    try {
+      if (sessionModel.value) localStorage.setItem('oms_chat_model', sessionModel.value)
+      else localStorage.removeItem('oms_chat_model')
+    } catch { /* 隐私模式写失败仅影响持久 */ }
   }
 
   /** hover/详情文本：模型串（本地模式绝不泄露云模型名，沿 AC-T6③ 约束） / Hover detail: model string */
@@ -133,15 +153,15 @@ export const useEngineStore = defineStore('engine', () => {
     return `ASR: ${asrModel} · LLM: ${llmModel}`
   })
 
-  /** 托管剩余量（供「托管就绪（剩余 n）」插值） / Remaining quota for the hosted label */
+  /** 托管剩余量（供「联网就绪（剩余 n）」插值） / Remaining quota for the cloud-ready label */
   const quotaRemaining = computed<number | null>(() => routing.value?.quota?.remaining ?? null)
 
-  /** 跨模式路由是否偏离（D2 toast 判定的数据源） / Route override flag (D2 toast source) */
+  /** 明示自动改用原因（兜底 toast 判定的数据源；主路径为 L1-L3 常驻提示） */
   const routeOverride = computed(() => {
     const r = routing.value
     if (!r) return null
-    if (r.llm.route_override) return r.llm.reason
-    if (r.asr.route_override) return r.asr.reason
+    if (r.llm.auto_switched) return r.llm.reason
+    if (r.asr.auto_switched) return r.asr.reason
     return null
   })
 
@@ -149,7 +169,7 @@ export const useEngineStore = defineStore('engine', () => {
     if (routingLoading.value || (routing.value && !force)) return
     routingLoading.value = true
     try {
-      routing.value = await fetchRouting(userLoggedIn.value)
+      routing.value = await fetchRouting()
     } catch (e) {
       console.error('[engine] load routing failed:', e)
     } finally {
@@ -165,20 +185,30 @@ export const useEngineStore = defineStore('engine', () => {
     }
   }
 
-  /** 切换接入方式 / 专家模式并刷新派生态（乐观本地 → 后端权威回读） */
-  async function applyAccess(patch: { access_mode?: AccessMode | null; expert_mode?: boolean }) {
-    await saveAccess(patch)
-    if (patch.access_mode !== undefined) {
-      routing.value = routing.value
-        ? { ...routing.value, access_mode: patch.access_mode, onboarding_required: patch.access_mode === null }
-        : routing.value
-    }
-    if (patch.expert_mode !== undefined) {
-      routing.value = routing.value
-        ? { ...routing.value, expert_mode: patch.expert_mode }
-        : routing.value
+  /**
+   * 接入方式切换事务（必经后果预览后调用；裁决-1 失败全量回滚）。
+   * 失败抛错且不动本地态，由调用方展示「未生效，已保持原模式」。
+   */
+  async function applyAccess(payload: {
+    access_mode: AccessMode | null
+    capability_source?: Partial<Record<'llm' | 'asr', string>>
+  }) {
+    const res = await switchAccessMode(payload)
+    if (!res.ok) {
+      const err: Error & { failedStage?: string; errorCode?: string | null } = new Error(res.error || 'switch failed')
+      err.failedStage = res.failed_stage
+      err.errorCode = res.error_code ?? null
+      throw err
     }
     await Promise.all([loadRouting(true), load(true), loadAccessSettings()].map(p => p.catch(() => undefined)))
+    return res
+  }
+
+  /** 专家详情开关（页面级 switch，与 access_mode 正交；失败抛错由调用方回滚 UI 态） */
+  async function applyExpertMode(on: boolean) {
+    await saveExpertMode(on)
+    routing.value = routing.value ? { ...routing.value, expert_mode: on } : routing.value
+    await loadRouting(true)
   }
 
   // ─── R5 模型资产面 / R5 model asset surface ───
@@ -321,8 +351,10 @@ export const useEngineStore = defineStore('engine', () => {
     status, loading, loaded, badge, devOverride, load, applyMode, setDevOverride, canManage,
     overview, overviewLoading, jobs, activeJobs, isDownloading, requiredNotReady, tamperedModels,
     loadOverview, stopPolling, download, cancel, verify, start, stop, saveStorage,
-    // 接入方式（AM-F1） / Access mode (AM-F1)
+    // 接入方式（REQ-SETTINGS-IA） / Access mode (REQ-SETTINGS-IA)
     routing, accessSettings, accessMode, expertMode, onboardingRequired, statusState, statusDetail,
-    quotaRemaining, routeOverride, loadRouting, loadAccessSettings, applyAccess, setUserLoggedIn,
+    quotaRemaining, routeOverride, autoSwitch, capability, loadRouting, loadAccessSettings,
+    applyAccess, applyExpertMode, setUserLoggedIn,
+    sessionModel, setSessionModel,
   }
 })

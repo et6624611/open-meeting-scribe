@@ -16,7 +16,6 @@ import requests
 import app.settings_store as settings_store
 from core.llm import is_localhost_base_url
 
-
 # ============================================================
 # 预设与 localhost 判定
 # ============================================================
@@ -121,6 +120,7 @@ class _FakeResponse:
 @pytest.fixture
 def client():
     from fastapi.testclient import TestClient
+
     from app.server import app
     with TestClient(app) as c:
         yield c

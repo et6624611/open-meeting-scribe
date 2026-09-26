@@ -629,7 +629,6 @@ class TestRecordUsageLocalFallback:
         monkeypatch.setattr(metering, "USAGE_DIR", tmp_path)
 
         # 确保用户存在
-        from core import users
         test_user = {
             "id": "test-user-id",
             "provider": "sms",

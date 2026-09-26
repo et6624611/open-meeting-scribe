@@ -16,8 +16,6 @@ v2.0 重构：实际逻辑已拆分至以下子模块，本文件作为兼容层
   - core/pipeline_runner.py — 管线编排（后台执行） / Pipeline orchestration (background execution)
 """
 
-import os
-import platform
 import sys
 from pathlib import Path
 
@@ -92,8 +90,8 @@ from app.realtime_store import (  # noqa: E402, F401
     push_realtime_msg,
     realtime_chapter_generators,
     realtime_diarizers,
-    realtime_full_transcripts,
     realtime_full_sealed,
+    realtime_full_transcripts,
     realtime_last_heartbeat,
     realtime_last_sentence,
     realtime_presence_scores,
@@ -115,13 +113,13 @@ from app.settings_store import (  # noqa: E402, F401
     SETTINGS_FILE,
     get_active_api_key,
     get_asr_config,
+    get_capability_status,
     get_chat_engine_config,
     get_engine_config,
     get_feature_flags,
     get_llm_config,
     get_silence_detection_config,
     get_storage_config,
-    get_voiceprint_config,
     load_settings,
     mask_api_key,
     save_settings_to_disk,
