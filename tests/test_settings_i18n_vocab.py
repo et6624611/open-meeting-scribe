@@ -84,11 +84,17 @@ def test_access_mode_card_has_no_inline_autosave():
 
 
 def test_settings_view_engine_mode_dropdown_is_readonly():
-    """AC-1：引擎页 mode 可写 dropdown 已改只读徽章。"""
-    src = (ROOT / "frontend" / "src" / "views" / "SettingsView.vue").read_text(encoding="utf-8")
-    assert "onSaveEngineMode" not in src
-    assert not re.search(r"v-model=[\"']engineModeDraft", src)
-    assert "engine_mode_readonly" in src  # 只读徽章文案已接线
+    """AC-1：引擎页 mode 可写 dropdown 已改只读徽章。
+
+    REQ-COMPUTE-CENTER 后引擎资产面从 SettingsView 迁出到 LocalEnginePanel；
+    只读徽章（engine_mode_readonly）随迁到该组件。可写 dropdown 在两个文件中均不得出现。
+    """
+    view = (ROOT / "frontend" / "src" / "views" / "SettingsView.vue").read_text(encoding="utf-8")
+    panel = (ROOT / "frontend" / "src" / "components" / "settings" / "LocalEnginePanel.vue").read_text(encoding="utf-8")
+    assert "onSaveEngineMode" not in view
+    assert not re.search(r"v-model=[\"']engineModeDraft", view)
+    assert not re.search(r"v-model=[\"']engineModeDraft", panel)
+    assert "engine_mode_readonly" in panel  # 只读徽章文案已接线（引擎页迁至 LocalEnginePanel）
 
 
 def test_access_mode_write_entry_single():

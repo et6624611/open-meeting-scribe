@@ -140,6 +140,8 @@ function onTriggerKeydown(e: KeyboardEvent) {
     e.preventDefault()
     if (!open.value) toggle()
   } else if (e.key === 'Escape' && open.value) {
+    // 消费事件：避免页面级 ESC（usePageBack）把「关闭下拉」误判为「返回上一页」
+    e.preventDefault()
     close()
   }
 }

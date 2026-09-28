@@ -6,17 +6,20 @@ app/routers/decision_statuses.py — 决策状态字典 CRUD / Decision status d
 版本：1.0.0
 
 契约事实源：docs/API_CONTRACTS.md §12.4（REQ-DECISION-CENTER-R2 · DC-R2-c · 裁决 D6/D7）。
-删除自定义状态时，引用该状态的决策**当场回落到 active 并落盘**（不留悬空引用）。
+DC-UNIFY-01：字典默认集 = 决策流五态；删除自定义状态时，引用该状态的
+**决策流节点（todos）**当场回落到首个开放态并落盘（不留悬空引用）。
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.store import save_task_to_disk, tasks
+from core.decision_flow import status_of
 from core.decision_status import (
     StatusError,
     create_status,
     delete_status,
+    is_closing,
     load_statuses,
     reorder,
     update_status,
@@ -42,7 +45,7 @@ class StatusReorderRequest(BaseModel):
 
 
 def _raise(exc: StatusError) -> None:
-    """unknown → 404，其余校验失败 → 400（与决策 CRUD 的错误口径一致）。"""
+    """unknown → 404，其余校验失败 → 400（与决策流写入的错误口径一致）。"""
     msg = str(exc)
     raise HTTPException(404 if msg.startswith("unknown status") else 400, msg)
 
@@ -72,7 +75,7 @@ def update_status_item(sid: str, req: StatusUpdateRequest):
 
 @router.delete("/api/decision-statuses/{sid}")
 def delete_status_item(sid: str):
-    """删除自定义状态 + 把引用它的决策回落到 active（锚点不可删）。"""
+    """删除自定义状态 + 把引用它的决策流节点回落到开放态（锚点不可删）。"""
     try:
         result = delete_status(sid)
     except StatusError as exc:
@@ -80,13 +83,14 @@ def delete_status_item(sid: str):
     fallback = result["reassign_to"]
     reassigned = 0
     for task_id, task in list(tasks.items()):
-        decisions = task.get("decisions")
-        if not isinstance(decisions, list):
+        todos = task.get("todos")
+        if not isinstance(todos, list):
             continue
         touched = False
-        for d in decisions:
-            if isinstance(d, dict) and d.get("status") == sid:
-                d["status"] = fallback
+        for todo in todos:
+            if isinstance(todo, dict) and status_of(todo) == sid:
+                todo["status"] = fallback
+                todo["done"] = is_closing(fallback)
                 touched = True
                 reassigned += 1
         if touched:

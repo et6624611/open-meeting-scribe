@@ -13,6 +13,9 @@ docs/SPIKE-QODER-CLI-ENGINE.md §4（路径必须 resolve、prompt 用 -- 分隔
   - D2 维持"每轮一进程"（SPIKE 实测会话恢复无额外惩罚）
   - cancel(stream_id) kill 进程组，兑现 §3.9-5"终止任务"新语义（前端 fetch 断开不足以杀子进程）
   - 所有传入路径 .resolve()（M3/§3.3 相对路径按 -w 解析的陷阱）
+  - 多 CLI 适配：绝不假设所有 CLI 同参数——capabilities.workspace_flag 为空时改用进程
+    cwd 定位工作区；add_dir/会话恢复/系统提示词注入/无持久化标志均按 manifest 声明的
+    capability 与 argv 标志分支，缺失即跳过（而非硬塞未知参数）
 """
 
 from __future__ import annotations
@@ -36,7 +39,15 @@ _TYPEWRITER_DELAY = 0.02
 
 
 class CliAgentError(RuntimeError):
-    """引擎不可用/启动失败，供上层回退内置链路。 / Engine unavailable; caller should fall back."""
+    """引擎不可用/启动失败，供上层回退内置链路。 / Engine unavailable; caller should fall back.
+
+    hint_key 为前端 ai-panel 命名空间的 i18n 键，detail 携带原始异常文案作插值参数。
+    """
+
+    def __init__(self, message: str, hint_key: str = "cli_engine_start_failed", detail: str = ""):
+        super().__init__(message)
+        self.hint_key = hint_key
+        self.detail = detail
 
 
 async def run_cli_agent(
@@ -63,30 +74,43 @@ async def run_cli_agent(
     """
     manifest = load_manifest(engine_id)
     argv = manifest.get("argv", {})
+    caps = manifest.get("capabilities", {}) or {}
 
     cmd: list[str] = [cli_path, *argv.get("base", ["-p", "--output-format", "stream-json"])]
     if model:
         cmd += [argv.get("model_flag", "-m"), model]
-    cmd += [argv.get("workspace_flag", "-w"), str(_resolve(workspace))]
-    for d in add_dirs or []:
-        cmd += [argv.get("add_dir_flag", "--add-dir"), str(_resolve(d))]
-    if resume and session_id:
+    # 工作区定位：有标志则传参，无标志（如 Claude Code）则用进程 cwd 兜底
+    proc_cwd: str | None = None
+    workspace_flag = argv.get("workspace_flag")
+    if workspace_flag:
+        cmd += [workspace_flag, str(_resolve(workspace))]
+    else:
+        proc_cwd = str(_resolve(workspace))
+    if caps.get("add_dir", True):
+        for d in add_dirs or []:
+            cmd += [argv.get("add_dir_flag", "--add-dir"), str(_resolve(d))]
+    # 会话生命周期按 capability 分支；对应标志缺失时静默跳过（不硬塞未知参数）
+    if resume and session_id and caps.get("session_resume", True):
         cmd += [argv.get("session_resume_flag", "-r"), session_id]
     elif session_id:
         cmd += [argv.get("session_new_flag", "--session-id"), session_id]
-    else:
-        cmd += [argv.get("no_persist_flag", "--no-session-persistence")]
+    elif argv.get("no_persist_flag"):
+        cmd += [argv.get("no_persist_flag")]
     cmd += compile_auth_argv(manifest, auth_tier)
-    if mcp_config and manifest.get("capabilities", {}).get("mcp_injection"):
+    if mcp_config and caps.get("mcp_injection"):
         cmd += [argv.get("strict_mcp_flag", "--strict-mcp-config"),
                 argv.get("mcp_config_flag", "--mcp-config"), str(_resolve(mcp_config))]
     # 预授权本轮 MCP 工具（SPIKE §2：--allowed-tools 对 mcp__ 工具生效，消除运行时询问）
     for tool in allowed_tools or []:
         cmd += [argv.get("allowed_tools_flag", "--allowed-tools"), tool]
-    # 轻量任务说明追加到系统提示词（重内容已在工作区）
-    cmd += ["--append-system-prompt", brief]
-    # prompt 置于末尾并以 -- 分隔（§4：中文 prompt 不加 -- 偶发未传递）
-    cmd += [argv.get("prompt_separator", "--"), brief]
+    # 轻量任务说明追加到系统提示词（重内容已在工作区）；引擎不支持则跳过
+    if caps.get("system_prompt_append", True):
+        cmd += [argv.get("system_prompt_flag", "--append-system-prompt"), brief]
+    # prompt 置于末尾；分隔符（如 "--"）由 manifest 声明，Claude 等直接尾传位置参数
+    separator = argv.get("prompt_separator")
+    if separator:
+        cmd += [separator]
+    cmd += [brief]
 
     logger.info("[CLI引擎] 启动 stream=%s engine=%s tier=%s resume=%s",
                 stream_id, engine_id, auth_tier, resume)
@@ -98,10 +122,11 @@ async def run_cli_agent(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             stdin=asyncio.subprocess.DEVNULL,
+            cwd=proc_cwd,
             start_new_session=True,  # 独立进程组，cancel 可整组 kill（§3.9-5）
         )
     except (FileNotFoundError, PermissionError, OSError) as e:
-        raise CliAgentError(f"无法启动 CLI 引擎：{e}") from e
+        raise CliAgentError(f"无法启动 CLI 引擎：{e}", hint_key="cli_engine_start_failed", detail=str(e)) from e
 
     _ACTIVE[stream_id] = proc
     got_result = False
@@ -111,7 +136,10 @@ async def run_cli_agent(
                 line = await asyncio.wait_for(proc.stdout.readline(), timeout=first_event_timeout)
             except asyncio.TimeoutError:
                 yield {bridge.EV_TYPE_KEY: bridge.EV_ERROR,
-                       "content": "引擎首帧超时，可能额度不足或环境异常", "engine_error": "timeout"}
+                       "content": "引擎首帧超时，可能额度不足或环境异常",
+                       "hint_key": "cli_engine_first_event_timeout",
+                       "hint_params": {"engine": manifest.get("display_name", "CLI")},
+                       "engine_error": "timeout"}
                 break
             if not line:
                 break  # EOF

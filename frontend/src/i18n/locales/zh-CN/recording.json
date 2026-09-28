@@ -5,13 +5,13 @@
     "paused": "已暂停"
   },
   "speaker": {
-    "count": "{count} 位说话人",
-    "count_title": "当前识别到的说话人",
-    "bind_title": "绑定说话人身份",
-    "search_placeholder": "搜索说话人...",
+    "count": "{count} 位人员",
+    "count_title": "当前识别到的人员",
+    "bind_title": "绑定人员身份",
+    "search_placeholder": "搜索人员...",
     "no_match": "无匹配结果",
     "create_and_bind": "新建「{name}」并绑定",
-    "locate": "定位此说话人",
+    "locate": "定位此人员",
     "me_suffix": "（我）",
     "default_name": "未识别",
     "unid_initial": "未"
@@ -29,7 +29,7 @@
     "empty": "等待识别结果…",
     "empty_hint": "开始说话后，识别内容将实时显示在这里",
     "listening": "正在聆听…",
-    "local_batch_notice": "本地引擎模式：录音期间暂不显示实时文字，停止录音后在本机完成转写（全程不出网）。逐字级流式识别不在本地模式目标范围内。",
+    "local_batch_notice": "本地引擎模式：分段识别逐句上屏（约有数秒延迟），全程在本机完成、不出网。",
     "connect_failed": "转写连接已断开",
     "reconnecting": "正在重新连接…（第 {attempt} 次）",
     "retry": "重新连接"
@@ -117,8 +117,8 @@
     "auto_stopped_text": "因长时间无活动已自动停止录制"
   },
   "errors": {
-    "bind_speaker_failed": "绑定说话人失败",
-    "create_bind_speaker_failed": "创建并绑定说话人失败"
+    "bind_speaker_failed": "绑定人员失败",
+    "create_bind_speaker_failed": "创建并绑定人员失败"
   },
   "translate": {
     "title": "翻译",

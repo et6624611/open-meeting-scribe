@@ -72,6 +72,16 @@ export function matchTask(task: Task, q: string): boolean {
 }
 
 /**
+ * 判断搜索词是否命中「标题 / 音频名」维度。 / Check whether the query hits the title / audio-name dimension.
+ * 用于区分「标题命中」与「靠纪要/转写等内容命中」，供来源标识展示。空词返回 true。
+ */
+export function matchesTitle(task: Task, q: string): boolean {
+  if (!q) return true
+  const lower = q.toLowerCase()
+  return (task.title || task.audio_name || '').toLowerCase().includes(lower)
+}
+
+/**
  * 将文本中匹配搜索词的部分用 <mark> 标签高亮。 / Highlight matched portions of text with <mark> tags.
  * 返回 HTML 字符串，供 v-html 使用。 / Returns HTML string for v-html.
  * 空搜索词直接返回原文（无标签）。 / Empty query returns original text (no tags).

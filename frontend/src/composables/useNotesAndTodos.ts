@@ -1,9 +1,10 @@
 /**
  * 随记 & 待办 CRUD / Notes & todos CRUD
  */
-import { ref, watch, type ComputedRef, type Ref } from 'vue'
-import { saveNotes, saveSummary, fetchTodos, toggleTodo, createTodo, deleteTodo, updateTodo, type TodoPatch } from '@/api/notes'
+import { watch, type ComputedRef, type Ref } from 'vue'
+import { saveNotes, saveSummary, fetchTodos, toggleTodo, createTodo, deleteTodo, updateTodo, type TodoCreatePayload, type TodoPatch } from '@/api/notes'
 import type { TodoItem, Task, DecisionStatus } from '@/api/types'
+import { useDecisionStatuses } from './useDecisionStatuses'
 
 export function useNotesAndTodos(
   taskId: string,
@@ -15,10 +16,8 @@ export function useNotesAndTodos(
   _task: ComputedRef<Task | null>,
   onContentModified?: () => void,
 ) {
-  const showAddForm = ref(false)
-  const newTodoText = ref('')
-  const newTodoAssignee = ref('')
-  const newTodoContent = ref('')
+  // 状态字典：闭档位驱动 done 同步，开放首态作为取消勾选的回落（与后端口径一致）
+  const { statuses, isClosing } = useDecisionStatuses()
   let notesTimer: ReturnType<typeof setTimeout> | null = null
   let summaryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -47,8 +46,8 @@ export function useNotesAndTodos(
     try {
       await toggleTodo(taskId, todo.id, !todo.done)
       todo.done = !todo.done
-      // 同步决策流状态 / Keep decision-flow status in sync
-      todo.status = todo.done ? 'done' : 'in_progress'
+      // 同步决策流状态：完成态 = done，取消勾选回到首个开放态 / Keep decision-flow status in sync
+      todo.status = todo.done ? 'done' : (statuses.value.find(s => !s.closing)?.id || 'in_progress')
       onContentModified?.()
     } catch { /* */ }
   }
@@ -57,20 +56,21 @@ export function useNotesAndTodos(
     try {
       await updateTodo(taskId, todo.id, { status })
       todo.status = status
-      todo.done = status === 'done'
+      // done 是旧兼容字段：闭档态（完成类）即为已完成，不再等价于 status === 'done'
+      todo.done = isClosing(status)
       onContentModified?.()
     } catch { /* */ }
   }
 
-  async function onAddTodo() {
-    const text = newTodoText.value.trim()
-    if (!text) return
-    try {
-      const t = await createTodo(taskId, text, newTodoAssignee.value.trim() || undefined, newTodoContent.value.trim() || undefined)
-      todos.value.push(t)
-      newTodoText.value = ''; newTodoAssignee.value = ''; newTodoContent.value = ''; showAddForm.value = false
-      onContentModified?.()
-    } catch { /* */ }
+  // DC-UNIFY-01 统一口径：添加决策与手动补录共用 AddDecisionDialog 表单（title/text/owner_id/status）
+  // 归属会议由弹层选择：非当前任务时只写盘不更新本地列表；失败抛由调用方提示
+  async function onAddTodo(payload: TodoCreatePayload, targetTaskId?: string): Promise<TodoItem> {
+    const text = (payload.text || '').trim()
+    const tid = targetTaskId || taskId
+    const t = await createTodo(tid, { ...payload, text })
+    if (tid === taskId) todos.value.push(t)
+    onContentModified?.()
+    return t
   }
 
   async function onDeleteTodo(todo: TodoItem) {
@@ -91,7 +91,6 @@ export function useNotesAndTodos(
   })
 
   return {
-    showAddForm, newTodoText, newTodoAssignee, newTodoContent,
     loadNotes, loadTodos, onNotesChange, onSummaryChange,
     onToggleTodo, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, locateTodoSource,
   }

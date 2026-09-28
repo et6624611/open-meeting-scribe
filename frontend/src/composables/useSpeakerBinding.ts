@@ -29,7 +29,9 @@ export function useSpeakerBinding(
   }>({ visible: false, speakerId: -1, x: 0, y: 0, search: '', focusIdx: -1 })
   let dropdownEl: HTMLElement | null = null
 
-  const bindingBarHidden = ref(false)
+  // 默认不展示绑定横幅（不给用户待办压力）：页面以只读可编辑态打开，
+  // 用户点击人员栏「编辑关联」按钮（reenterBinding）后主动进入绑定态。
+  const bindingBarHidden = ref(true)
   const bindBarDismissed = ref(localStorage.getItem(`oms_bind_bar_dismissed:${taskId}`) === 'true')
 
   function initBindingMapping() {

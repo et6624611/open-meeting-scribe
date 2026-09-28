@@ -26,7 +26,7 @@ from core.errors import classify_error, is_transient_error
 from core.i18n import _
 from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
 from core.speaker_count import estimate_speaker_count
-from core.summarize import merge_decisions_after_regen, parse_decisions_with_status, parse_todos_from_summary
+from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_todos_from_summary
 
 logger = logging.getLogger(__name__)
 
@@ -592,33 +592,34 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
 
             summary_text = result.get("summary", "")
             if summary_text:
-                parsed_todos = parse_todos_from_summary(summary_text)
-                if parsed_todos:
-                    tasks[task_id]["todos"] = parsed_todos
-                    logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_todos)} 条待办")
-
-                # REQ-DECISION-CENTER R1：决策抽取（重新生成只覆盖 auto，保留 manual/injection/backfill）
+                # DC-UNIFY-01：行动项（checkbox）与结论（主要结论/决策）合流为唯一一条决策流，
+                # 后者以「待确认」态入盘；只覆盖 source=auto，手动/注入节点与墓碑均保留（DC-R2-BE）。
                 try:
+                    parsed_todos = parse_todos_from_summary(summary_text)
                     parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
-                    tasks[task_id]["decisions"] = merge_decisions_after_regen(
-                        tasks[task_id].get("decisions") or [], parsed_decisions,
-                        tasks[task_id].get("decision_deletions"),  # DC-R2-BE 墓碑：删过的 auto 不复活
+                    tasks[task_id]["todos"] = merge_flow_after_regen(
+                        tasks[task_id].get("todos") or [],
+                        parsed_todos + parsed_decisions,
+                        tasks[task_id].get("decision_deletions"),
                     )
-                    if parsed_decisions:
-                        logger.info(f"[{task_id[:8]}] 自动提取 {len(parsed_decisions)} 条决策")
+                    if parsed_todos or parsed_decisions:
+                        logger.info(
+                            f"[{task_id[:8]}] 自动提取决策流 {len(parsed_todos) + len(parsed_decisions)} 条"
+                            f"（行动项 {len(parsed_todos)} · 结论 {len(parsed_decisions)}）"
+                        )
                     if parse_status:
-                        logger.warning(f"[{task_id[:8]}] 决策解析降级（{parse_status}），本轮 auto 决策置空")
+                        logger.warning(f"[{task_id[:8]}] 决策解析降级（{parse_status}），本轮 auto 结论置空")
                         joblog.append_event(
                             task_id, joblog.STAGE_SUMMARY,
-                            f"决策解析降级（{parse_status}）：本轮 auto 决策置空，不影响任务状态", level="warn",
+                            f"决策解析降级（{parse_status}）：本轮 auto 结论置空，不影响任务状态", level="warn",
                         )
                 except Exception as e:
-                    kept = [d for d in (tasks[task_id].get("decisions") or []) if d.get("source") != "auto"]
-                    tasks[task_id]["decisions"] = kept
-                    logger.warning(f"[{task_id[:8]}] 决策抽取异常（不阻断流水线）: {e}")
+                    kept = [t for t in (tasks[task_id].get("todos") or []) if t.get("source") != "auto"]
+                    tasks[task_id]["todos"] = kept
+                    logger.warning(f"[{task_id[:8]}] 决策流提取异常（不阻断流水线）: {e}")
                     joblog.append_event(
                         task_id, joblog.STAGE_SUMMARY,
-                        f"决策抽取异常，auto 决策置空（不阻断流水线）: {e}", level="warn",
+                        f"决策流提取异常，auto 节点置空（不阻断流水线）: {e}", level="warn",
                     )
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")

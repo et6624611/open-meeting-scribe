@@ -5,13 +5,13 @@
     "paused": "Paused"
   },
   "speaker": {
-    "count": "{count} speaker(s)",
-    "count_title": "Currently identified speakers",
-    "bind_title": "Bind Speaker Identity",
-    "search_placeholder": "Search speakers...",
+    "count": "{count} people",
+    "count_title": "Currently identified people",
+    "bind_title": "Bind Person Identity",
+    "search_placeholder": "Search people...",
     "no_match": "No matching results",
     "create_and_bind": "Create \"{name}\" and bind",
-    "locate": "Locate this speaker",
+    "locate": "Locate this person",
     "me_suffix": " (Me)",
     "default_name": "Unidentified",
     "unid_initial": "?"
@@ -29,7 +29,7 @@
     "empty": "Waiting for recognition results...",
     "empty_hint": "Start speaking and the recognized content will appear here in real time",
     "listening": "Listening…",
-    "local_batch_notice": "Local engine mode: live text is not shown during recording; transcription completes on this device after you stop recording (no network involved). Word-level streaming is out of scope for local mode.",
+    "local_batch_notice": "Local engine mode: segmented recognition with sentence-by-sentence display (a few seconds behind), fully on-device with no network involved.",
     "connect_failed": "Transcription connection lost",
     "reconnecting": "Reconnecting... (attempt {attempt})",
     "retry": "Reconnect"
@@ -117,8 +117,8 @@
     "auto_stopped_text": "Recording automatically stopped due to prolonged inactivity"
   },
   "errors": {
-    "bind_speaker_failed": "Failed to bind speaker",
-    "create_bind_speaker_failed": "Failed to create and bind speaker"
+    "bind_speaker_failed": "Failed to bind person",
+    "create_bind_speaker_failed": "Failed to create and bind person"
   },
   "translate": {
     "title": "Translate",

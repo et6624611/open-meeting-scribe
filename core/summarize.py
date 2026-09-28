@@ -502,7 +502,10 @@ def extract_decisions_section(summary: str) -> str | None:
 
 def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
     """
-    从纪要「主要结论」与「决策」两个章节解析决策项（RF-1），并返回降级状态。
+    从纪要「主要结论」与「决策」两个章节解析决策流节点（RF-1），并返回降级状态。
+
+    DC-UNIFY-01：解析结果不再是独立的 decision 对象，而是**决策流节点**（todos 形状），
+    默认落在「待确认」态（项目方裁决：自动生成但不擅自定案，由用户逐条确认）。
 
     内置默认模板下两节分工不同（结论清单 vs 可跟进决策点），两节结果按出现顺序
     合并去重（同一表述保留「主要结论」中的先见项）。
@@ -511,7 +514,7 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
     宽容解析：优先有序列表项（"1. " 起），兼容裸行条目（存量回填写法多样）。
 
     Returns:
-        (decisions, degrade_status)
+        (nodes, degrade_status)
         degrade_status: None=正常（含"无结论/无决策"阴性说明）；
                         "missing_section"=两章节均缺失；
                         "no_items"=章节存在但既无条目也非阴性说明（格式异常）
@@ -527,7 +530,7 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
         logger.info("决策解析降级：纪要缺少「主要结论」/「决策」章节")
         return [], "missing_section"
 
-    decisions: list[dict] = []
+    nodes: list[dict] = []
     seen_texts: set[str] = set()
     now_iso = datetime.now().isoformat()
 
@@ -565,43 +568,44 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                 continue
             seen_texts.add(dedup_key)
 
-            decisions.append({
+            # 决策流节点形状（todos）：status=to_decide 由项目方裁决「自动生成但待用户定案」（三态口径）
+            nodes.append({
                 "id": str(uuid.uuid4()),
                 "title": title,
                 "text": text,
-                # 执行人对 auto 决策不作要求（D4/D5）：留空合法，仅手工补录可指派
+                "assignee": "",
                 "owner_id": None,
-                "owner_name": "",
-                "status": "active",
+                "done": False,
+                "status": "to_decide",
+                "how": [text],
+                "owner_type": "self",
                 "pending_confirmation": pending,
                 "source": "auto",
                 "created_at": now_iso,
                 "updated_at": now_iso,
-                "superseded_by": None,
-                "related_todo_ids": [],
             })
 
-    if not decisions:
+    if not nodes:
         if any(_NEGATIVE_CONCLUSION_RE.search(s) for s in sections):
             # 阴性说明（"本次会议未形成明确结论/决策"）→ 正常空结果，不算降级
             return [], None
         logger.info("决策解析降级：「主要结论」/「决策」章节未解析出任何条目")
         return [], "no_items"
 
-    logger.info(f"从纪要中解析出 {len(decisions)} 条决策")
-    return decisions, None
+    logger.info(f"从纪要中解析出 {len(nodes)} 条决策（待确认）")
+    return nodes, None
 
 
 def parse_decisions_from_summary(summary: str) -> list[dict]:
     """
-    从纪要「主要结论」/「决策」章节解析决策项（简化签名，与 parse_todos_from_summary 并列）。
+    从纪要「主要结论」/「决策」章节解析决策流节点（简化签名，与 parse_todos_from_summary 并列）。
 
     Returns:
-        [{"id", "title", "text", "owner_id", "owner_name", "status", "pending_confirmation",
-          "source", "created_at", "updated_at", "superseded_by", "related_todo_ids"}, ...]
+        [{"id", "title", "text", "assignee", "owner_id", "done", "status", "how",
+          "owner_type", "pending_confirmation", "source", "created_at", "updated_at"}, ...]
     """
-    decisions, _ = parse_decisions_with_status(summary)
-    return decisions
+    nodes, _ = parse_decisions_with_status(summary)
+    return nodes
 
 
 def decision_text_key(text: object) -> str:
@@ -613,33 +617,57 @@ def decision_text_key(text: object) -> str:
     return _re_key.sub(r"\s+", " ", text.strip())
 
 
-def build_decision_tombstone(decision: dict) -> dict | None:
-    """为被删的 auto 决策生成墓碑条目；非 auto 不建（merge 本就不覆盖，无复活风险）。"""
+def build_decision_tombstone(node: dict) -> dict | None:
+    """为被删的 auto 决策流节点生成墓碑条目；非 auto 不建（merge 本就不覆盖，无复活风险）。"""
     from datetime import datetime as _dt
-    if not isinstance(decision, dict) or decision.get("source") != "auto":
+    if not isinstance(node, dict) or node.get("source") != "auto":
         return None
-    key = decision_text_key(decision.get("text"))
+    key = decision_text_key(node.get("text"))
     if not key:
         return None
     return {"text_key": key, "deleted_at": _dt.now().isoformat()}
 
 
-def merge_decisions_after_regen(existing: list[dict], parsed: list[dict], deletions: list[dict] | None = None) -> list[dict]:
+def merge_flow_after_regen(
+    existing: list[dict],
+    parsed: list[dict],
+    deletions: list[dict] | None = None,
+) -> list[dict]:
     """
-    重新生成纪要后的决策合并：只覆盖 source=auto，保留 manual/injection/backfill；
-    并按 task 级墓碑（decision_deletions）过滤被用户删过的 auto 决策，防重生成复活（DC-R2-BE）。
+    重新生成纪要后的决策流合并（DC-UNIFY-01）。
+
+    规则：
+      1. 只覆盖 `source == "auto"` 的节点，手动/注入/AI 对话产生的节点一律保留
+      2. 按 task 级墓碑（`decision_deletions`）筛掉被用户删过的 auto 节点，防重生成复活（DC-R2-BE）
+      3. 保留项与新增项按归一化文本去重（行动项与结论条目常同文本）
 
     Args:
-        existing: 任务当前 decisions（可能缺字段，调用方负责给出列表）
-        parsed: 本次解析出的 auto 决策
-        deletions: 墓碑列表 [{"text_key": str, "deleted_at": str}]；None/缺省保持既有行为（向后兼容）
+        existing: 任务当前 todos
+        parsed: 本次解析出的 auto 节点（checkbox 待办 + 结论决策）
+        deletions: 墓碑列表 [{"text_key": str, "deleted_at": str}]；None/缺省保持既有行为
 
     Returns:
-        合并后的新列表（保留项在前，新 auto 在后，墓碑命中项已筛除）
+        合并后的新列表（保留项在前，新 auto 在后）
     """
-    kept = [d for d in (existing or []) if d.get("source") != "auto"]
+    kept = [t for t in (existing or []) if isinstance(t, dict) and t.get("source") != "auto"]
     tombstones = {
         t.get("text_key") for t in (deletions or []) if isinstance(t, dict) and t.get("text_key")
     }
-    fresh = [d for d in (parsed or []) if not tombstones or decision_text_key(d.get("text")) not in tombstones]
-    return kept + fresh
+    seen = {decision_text_key(t.get("text")) for t in kept}
+    seen.discard("")
+    merged: list[dict] = list(kept)
+    for node in (parsed or []):
+        if not isinstance(node, dict):
+            continue
+        key = decision_text_key(node.get("text"))
+        if not key or key in tombstones or key in seen:
+            continue
+        seen.add(key)
+        merged.append(node)
+    return merged
+
+
+# 向后兼容别名：旧名 merge_decisions_after_regen 语义已扩大为整条决策流
+def merge_decisions_after_regen(existing: list[dict], parsed: list[dict], deletions: list[dict] | None = None) -> list[dict]:
+    """已废弃：请用 `merge_flow_after_regen`（参数与行为完全一致）。"""
+    return merge_flow_after_regen(existing, parsed, deletions)

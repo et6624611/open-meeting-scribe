@@ -36,23 +36,23 @@
     "kb_search_placeholder": "Search knowledge base…"
   },
   "binding": {
-    "title": "Link speakers to real identities",
-    "title_all_bound": "Speaker linking complete",
-    "detected": "Detected {count} speaker(s)",
+    "title": "Link people to real identities",
+    "title_all_bound": "People linking complete",
+    "detected": "Detected {count} people",
     "unbound_hint": ", {count} unlinked",
-    "locate": "Locate this speaker's utterances",
-    "name_required": "Please enter a name before creating a speaker",
+    "locate": "Locate this person's utterances",
+    "name_required": "Please enter a name before creating a person",
     "skip": "Skip for now",
     "confirm": "Confirm Linking",
     "close": "Close",
     "click_to_bind": "Click to select or create identity",
     "click_to_rebind": "Click to modify linking",
-    "edit_bindings": "Edit speaker linking",
-    "search_placeholder": "Search speakers...",
+    "edit_bindings": "Edit people linking",
+    "search_placeholder": "Search people...",
     "no_bind": "No link",
     "no_match": "No matching results",
     "create_named": "Create",
-    "create": "+ New Speaker"
+    "create": "+ New person"
   },
   "transcript": {
     "show": "Show Transcript",
@@ -86,14 +86,14 @@
     "exit_focus": "Exit focus",
     "back_to_playback": "Back to playback",
     "back_to_playback_title": "Back to current playback position",
-    "focus_speaker": "Focus on this speaker",
+    "focus_speaker": "Focus on this person",
     "exit_focus_all": "Exit focus, show all"
   },
   "speaker_panel": {
-    "title": "Speakers",
+    "title": "People",
     "collapse": "Collapse panel",
-    "expand": "Expand speaker panel",
-    "search_placeholder": "Search speakers...",
+    "expand": "Expand people panel",
+    "search_placeholder": "Search people...",
     "me_label": "● Me",
     "total": "Total {duration} · {turns} utterance(s)"
   },
@@ -138,9 +138,6 @@
     "empty": "No decisions",
     "add": "Add Decision",
     "content_placeholder": "Record decision content (Markdown)…",
-    "assignee_placeholder": "Assignee (optional)",
-    "cancel": "Cancel",
-    "submit": "Add",
     "delete": "Delete",
     "filter_all": "All",
     "filter_active": "Active",
@@ -153,19 +150,23 @@
     "selected_count": "{count} selected",
     "edit_save": "Save",
     "edit_cancel": "Cancel",
+    "edit_menu": "Decision actions",
+    "edit_text": "Edit decision text",
+    "edit_title_label": "Title",
+    "edit_content_label": "Content",
+    "edit_title_placeholder": "One-line summary (optional)",
+    "edit_content_placeholder": "Decision text",
     "mark_done": "Mark done",
     "mark_active": "Mark active",
     "add_decision": "Add decision",
-    "decision_title_placeholder": "Decision / item title…",
     "flow_progress": "Decision flow progress",
     "flow_empty": "Record your first decision",
     "flow_empty_hint": "Record key decisions and follow-up actions from the meeting",
     "completed_group": "{count} decisions completed",
     "total_count": "{count} total",
+    "status_other": "Other",
     "status_to_decide": "To decide",
-    "status_to_start": "To start",
     "status_in_progress": "In progress",
-    "status_to_confirm": "To confirm",
     "status_done": "Done",
     "owner_label": "Owner (click to switch)",
     "owner_self": "Waiting: Self",
@@ -179,9 +180,9 @@
     "avatar_self": "Me"
   },
   "onboarding": {
-    "title": "Link Speaker Identities",
+    "title": "Link People Identities",
     "got_it": "Got it",
-    "info_icon_tip": "What is speaker linking?",
+    "info_icon_tip": "What is people linking?",
     "demo_label_1": "Sam",
     "demo_label_2": "Alex",
     "demo_name_1": "Alex",
@@ -218,7 +219,7 @@
     "transcript": "Transcript",
     "notes": "Notes",
     "summary": "Minutes",
-    "todos": "Action Items",
+    "todos": "Decisions",
     "insights": "Insights"
   },
   "insights": {
@@ -238,7 +239,7 @@
     "extract_todo": "Please extract decisions from the following"
   },
   "errors": {
-    "create_speaker_failed": "Failed to create speaker",
+    "create_speaker_failed": "Failed to create person",
     "save_mapping_failed": "Failed to save mapping incrementally",
     "submit_mapping_failed": "Failed to submit mapping",
     "update_project_failed": "Failed to update knowledge base link",
@@ -270,18 +271,13 @@
     "remove": "Remove",
     "person_suffix": " attending",
     "add_inline_placeholder": "Add…",
-    "pick_speaker": "Pick from speakers",
+    "pick_speaker": "Pick from people",
     "auto_tag": "auto",
-    "search_placeholder": "Search speakers…",
+    "search_placeholder": "Search people…",
     "create_hint": "Create \"{name}\""
   },
   "pipeline": {
     "completed": "Minutes ready"
   },
-  "decisions_panel_title": "Decisions from this meeting",
-  "decisions_panel_link": "Open Decision Center",
-  "decisions_panel_none": "No structured decisions for this meeting yet",
-  "decisions_panel_pending": "Pending",
-  "decisions_panel_superseded": "Superseded",
-  "decisions_panel_revoked": "Revoked"
+  "decisions_panel_link": "Open Decision Center"
 }

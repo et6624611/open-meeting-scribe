@@ -36,7 +36,7 @@ from core.cli_engine.manifest import (
     resolve_tool_label,
 )
 from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge
-from core.cli_engine.probe import probe_engine
+from core.cli_engine.probe import list_models, probe_engine
 from core.cli_engine.runner import CliAgentError, cancel_stream, run_cli_agent
 
 __all__ = [
@@ -45,6 +45,7 @@ __all__ = [
     "resolve_tool_label",
     "compile_auth_argv",
     "probe_engine",
+    "list_models",
     "export_context",
     "workspace_dir",
     "cleanup_workspace",

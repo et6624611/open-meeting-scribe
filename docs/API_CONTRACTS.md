@@ -3,7 +3,7 @@ title: 外部接口契约
 description: DashScope / 通义千问 API 技术细节的唯一事实源
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-25
+updated_at: 2026-09-27
 status: published
 ---
 
@@ -271,98 +271,78 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ---
 
-## 12. 决策中心 API（REQ-DECISION-CENTER B1 · DC-DEC-F1 前端派工依据）
+## 12. 决策中心 API（DC-UNIFY-01 · 决策流是唯一决策对象）
 
-> 依据 `docs/REQUIREMENT-DECISION-CENTER.md` v0.2.0 §R1/§R2。后端分支 `feat/req-decision-center-b1`，合入前本节即为前端契约事实源。
+> 依据 `docs/REQUIREMENT-DECISION-CENTER.md` v0.3.0。项目方 2026-09-27 裁决：只保留**决策流**（`task["todos"]`）
+> 一种决策对象；原 `task["decisions"]`（decision 记录）及其任务级 CRUD、纪要页只读展示区全部下线，
+> 存量 decision 数据不再迁移（磁盘保留、无读路径）。
 
-### 12.0 decision 数据对象（`task["decisions"]` 数组元素）
+### 12.0 决策流节点（`task["todos"]` 数组元素）
 
-```json
+```jsonc
 {
   "id": "uuid4 字符串，任务内唯一",
-  "title": "决策短标题（三要素之一，可为空串）",
-  "text": "决策内容（转述文本，不含 [待确认] 前缀）",
+  "title": "决策短标题（三要素之一，可为空串；auto/手动添加常为空）",
+  "text": "决策正文（转述文本，不含 [待确认] 前缀）",
+  "assignee": "执行人展示名（快照；有 owner_id 时读侧以说话人档案为权威解析）",
   "owner_id": "执行人说话人档案 uuid，未指派为 null",
-  "owner_name": "执行人展示名（读侧以档案为权威解析，档案缺失时回退写入快照）",
-  "status": "状态字典 id（内置：active / done / superseded / revoked；用户可新增）",
-  "pending_confirmation": false,
-  "source": "auto | backfill | manual | injection",
+  "owner_type": "self | agent | colleague | enterprise（等待谁推进，展示用）",
+  "status": "状态字典 id（内置五态 to_decide/to_start/in_progress/to_confirm/done；用户可增删改）",
+  "done": false,               // 兼容字段：等价于 status 属于闭档（完成类）态
+  "why": "决策正文（Markdown）",
+  "how": ["执行步骤…"],         // 缺省视为 [text]
+  "outcome": "完成后带来什么",
+  "pending_confirmation": false, // 仅 auto 解析的历史标志位，不再作为筛选维度
+  "source": "auto | manual | injection | backfill",
   "created_at": "ISO 8601",
-  "updated_at": "ISO 8601",
-  "superseded_by": { "task_id": "…", "decision_id": "…" },
-  "related_todo_ids": ["同会议 todo id"]
+  "updated_at": "ISO 8601"
 }
 ```
 
-- **状态字典化（DC-R2-c，项目方裁决 D6/D7）**：`status` 不再是封闭枚举，取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。系统锚点只有 `active`（生效中，新决策默认态）与 `done`（完成），不可改名不可删除。
-- **历史 `superseded` / `revoked` 的去处**：两态降级为普通可编辑状态（默认名保留、默认闭档），因此**存量任务 JSON 的 status 值仍然合法，零改写**；`supersede/revoke` 写回端点已下线，`superseded_by` 停止写入但保留只读透出（前端降级展示历史引用）。
-- **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底；`pending_confirmation` 仍为独立标志位，不并入字典（D7）。
-- **三要素化（DC-R2-b，项目方裁决 D4/D5）**：`title` / `text`（内容）/ `owner`（执行人）；执行人以说话人档案为权威存 `owner_id`，因此档案改名全局跟随无需批量重写任务 JSON；`owner_name` 仅作展示快照与兜底。
-- **存量兼容**：旧数据无 `title` / `owner_id` / `owner_name` 三键 ⇒ 读侧按 `""` / `null` 给出（不报错），展示层按「内容首行」降级为行首文本；存量任务文件**不做批量改写**。
-- **auto 决策不指派执行人**（D5：AI 只要求标题+正文），抽取源为纪要「主要结论」/「决策」章节的 `**短标题**：正文` 条目式写法；不符合该写法的条目 `title` 为空串，`text` 保留整句（不丢条目）。
-- 旧任务 JSON 无 `decisions` 字段 ⇒ 所有读写路径按 `[]` 处理，不报错。
-- 重新生成纪要仅替换 `source=auto` 条目；`manual` / `injection` / `backfill` 保留。
-- `superseded_by` 可为 `null`；来源会议被删除后引用悬空时读取不报错，前端按「引用已失效」降级显示。
-- `related_todo_ids` v1 由前端/手动维护，自动抽取恒为 `[]`。
-- `source=auto` 抽取源（RF-1 起）：纪要「主要结论」与「决策」两章节的条目按出现顺序合并去重；两节的阴性说明（"本次会议未形成明确结论/决策"）均视为正常空结果。
+- **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流五态；系统锚点只有 `done`（完成），不可改名不可删除，其余四态用户可维护。
+- **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底，同时驱动 `done=true`；读侧 `status` 缺省时由 `done` 推导（历史 task JSON 零迁移）。
+- **自动生成口径（项目方裁决）**：纪要「主要结论」/「决策」章节的条目自动解析为决策流节点，**统一落在 `to_confirm`（待确认）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。
+- **重新生成纪要**：只覆盖 `source=auto` 节点，手动/注入节点保留；命中 `task["decision_deletions"]` 墓碑（按归一化文本）的 auto 节点不复活（DC-R2-BE）。
+- **执行人以说话人档案为权威**：`owner_id` 可解析且档案名非占位串 ⇒ 展示名取档案名（改名全局生效）；档案缺失时回退 `assignee` 快照，不报 422。
+- **旧任务 JSON 无 `todos` 字段** ⇒ 读写路径按 `[]` 处理；无 `title`/`owner_id` 键 ⇒ 读侧按 `""`/`null` 给出，展示层降级为「正文即标题」。
 
-### 12.1 任务级 CRUD
+### 12.1 节点级 CRUD（复用决策流端点，与纪要页同一套）
 
 | 方法与路径 | 请求体 | 响应 | 错误 |
 |---|---|---|---|
-| `GET /api/tasks/{task_id}/decisions` | — | `{"decisions": [decision…]}` | 404 任务不存在 |
-| `POST /api/tasks/{task_id}/decisions` | `{text: str(1..2000), title?: str(0..200)="", owner_id?: str|""=null, owner_name?: str|""=null, pending_confirmation?: bool=false, related_todo_ids?: str[]=}` | `{"decision": decision}`（`source=manual`、`status=active`） | 404 任务不存在；422 校验失败 |
-| `PUT /api/tasks/{task_id}/decisions/{decision_id}` | `{text?, title?, owner_id?, owner_name?, status?: <状态字典 id>, pending_confirmation?, related_todo_ids?}`（均可选，仅更新携带字段） | `{"decision": decision}` | 404 任务/决策不存在；422（含 status 不在字典内；decision 不存在时 404 优先） |
-| `DELETE /api/tasks/{task_id}/decisions/{decision_id}` | — | `{"ok": true}` | 404 任务/决策不存在 |
+| `GET /api/tasks/{task_id}/todos` | — | `{"todos": [节点 + status_name/status_name_en/status_color/status_closing + 会议元信息]}` | 404 任务不存在 |
+| `POST /api/tasks/{task_id}/todos` | `{text: str(1..500), assignee?: str="", why?: str(≤2000), title?: str(≤200), owner_id?: str|""=null, status?: <状态字典 id>}` | `{"todo": node}`（缺省 `source=manual`、`status=首个开放态`） | 404；422（含 status 不在字典内） |
+| `PUT /api/tasks/{task_id}/todos/{todo_id}` | `{text?, title?, assignee?, owner_id?, why?, how?, outcome?, status?, owner_type?}`（仅更新携带字段） | `{"todo": node}` | 404 任务/节点不存在；422 status 非法 |
+| `DELETE /api/tasks/{task_id}/todos/{todo_id}` | — | `{"ok": true}`（auto 节点同时落墓碑） | 404 |
+| `POST /api/tasks/{task_id}/todos/{todo_id}/toggle` | `{done: bool}` | `{"todo": node}` | 404 |
 
-<!-- 旧 `PATCH /api/tasks/{task_id}/decisions/{decision_id}/supersede` 已随 DC-R2-c（D6）下线：
-     取代/撤销不再是系统行为，状态变更一律走 PUT + 状态字典 id。 -->
+写操作（POST/PUT/DELETE/toggle）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
 
-写操作（POST/PUT/DELETE）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
-
-**owner 字段写入口径（DC-R2-b）**：
-- `owner_id` 能在说话人档案中解析且档案名非占位串 ⇒ `owner_name` 以**档案名为准**（覆盖传入快照）。
-- 档案不存在/已删除 ⇒ 宽容回退传入的 `owner_name` 快照（**不报 422**，建档与提交之间的并发删除不应阻断补录）。
-- PUT 下 `owner_id` / `owner_name` 的 **空串 = 清空指派**，**未传 = 保持原指派**（前端清空时显式下发空串）。
+<!-- 旧 §12.1 的任务级 decision CRUD（GET/POST/PUT/DELETE /api/tasks/{id}/decisions*）已随 DC-UNIFY-01 下线；
+     决策中心不再另开一套写入路径，一律走上表。 -->
 
 ### 12.2 聊天注入联动
 
-`POST /api/tasks/{task_id}/inject` 当 `type="decision"` 时，除注入记录外同步向 `task["decisions"]` 追加一项：`id` 与注入记录同值、`source="injection"`、`text=content`。删除该注入记录（`DELETE /api/tasks/{task_id}/injections/{injection_id}`）时级联删除对应决策项（与 todo 注入行为一致）。
+`POST /api/tasks/{task_id}/inject` 当 `type` 为 `todo` 或 `decision` 时，均向 `task["todos"]` 追加一条决策流节点（`id` 与注入记录同值、`source="injection"`）；`decision` 类型额外拆 `**标题**：正文` 到 `title` 并落在 `to_confirm` 态，`todo` 类型落默认开放态。删除注入记录时级联删除该节点。
 
-### 12.3 跨任务聚合 `GET /api/decisions`
+### 12.3 跨会议聚合 `GET /api/decisions`（决策中心数据源）
 
 查询参数（全部可选，可叠加）：
 
 | 参数 | 语义 |
 |---|---|
 | `since` / `until` | 按会议日期过滤，`YYYY-MM-DD`，闭区间；任务无 `meeting_date` 时在给定日期过滤下被排除 |
-| `kb_id` | 按所属知识库（= `project_id`）过滤；未关联知识库的任务被排除 |
+| `kb_id` | 按所属知识库（= `project_id`）过滤 |
 | `status` | 状态字典 id 精确过滤（非封闭枚举）；非法值 422 |
-| `q` | `text` 与 `title` 子串匹配（区分大小写，DC-R2-b 扩展至标题） |
+| `q` | `text` / `title` / `why` 子串匹配（区分大小写） |
+| `task_id` | 限定单场会议（纪要页快照用）；缺省为全量 |
 | `group_by` | `meeting`\|`date`；缺省返回平铺列表 |
 
-响应：
+响应：行 = 决策流节点 + 状态字典元信息 + 来源会议元信息（`meeting_title` / `meeting_date` / `kb_id` / `kb_name`），分组结构与旧版一致。
 
-```jsonc
-// 缺省（平铺）
-{ "decisions": [ { …decision全部字段, "title": "决策自身标题（存量无键时为 ""）",
-                 "owner_name": "执行人展示名（读侧解析）",
-                 "status_name": "状态显示名", "status_name_en": "状态英文名",
-                 "status_color": "var(--st-done) 或 #RRGGBB", "status_closing": false,
-                 "task_id": "…", "meeting_title": "来源会议标题",
-                 "meeting_date": "YYYY-MM-DD|null", "kb_id": "…|null", "kb_name": "…|null" } ] }
-// group_by=meeting → 按会议分组；group_by=date → 按会议日期分组
-{ "groups": [ { "key": "task_id 或 meeting_date", "label": "会议标题或日期",
-               "task_id": "…(仅 group_by=meeting)", "meeting_date": "…",
-               "decisions": [ 同平铺元素 ] } ] }
-```
-
-- **键位修正（DC-R2-b）**：行内 `title` 从「会议标题」改为「决策自身标题」，来源会议标题另下发 `meeting_title`（无会议标题时回退 `audio_name` 再回退 `task_id`）；`group_by=meeting` 的 `label` 取 `meeting_title`。前端分组头与跳转链路必须读 `meeting_title`。
-
-- **状态元信息随行下发（DC-R2-c）**：`status_name` / `status_name_en` / `status_color` / `status_closing` 由后端从状态字典解析，前端徽标、颜色与沉底分层全部配置驱动（不再写死 `st-*` 类名）；字典中查不到的历史 status 降级为原值文本 + `closing=true`。
-- 平铺与组内均按 `meeting_date` 倒序（无日期沉底）。
-- 默认视图「只看非完成类」由**前端按 `status_closing` 本地筛选**实现（后端不默认过滤）；多状态不再拆成多次单值请求（状态字典可自定义后 N 个状态 = N 次往返不划算）。
-- 数据源为后端内存任务表（桌面单机量级），无分页契约；`total` 字段随列表长度给出。
+- **状态元信息随行下发**：`status_name` / `status_name_en` / `status_color` / `status_closing` 由后端从字典解析，前端色点、徽标与沉底分层全部配置驱动（不写死 `st-*` 类名）；字典中查不到的历史 status 降级为首个开放态。
+- 平铺与组内均按 `meeting_date` 倒序（无日期沉底）；默认视图「只看非闭档」由前端本地筛选（后端不默认过滤）。
+- 数据源为后端内存任务表（桌面单机量级），无分页契约；`total` 随列表长度给出。
 
 ### 12.4 状态字典 CRUD（DC-R2-c · `data/decision_statuses.json`）
 
@@ -376,15 +356,16 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ```json
 // status 对象
-{ "id": "active | done | st-<hex8> | 历史值 superseded/revoked",
-  "name": "生效中", "name_en": "Active",
-  "color": "var(--st-done)", "closing": false, "system": true }
+{ "id": "to_decide | to_start | in_progress | to_confirm | done | st-<hex8>",
+  "name": "待确认", "name_en": "To confirm",
+  "color": "var(--st-confirm)", "closing": false, "system": false }
 ```
 
-- **首次读取即迁移**：`data/decision_statuses.json` 不存在时自动写入内置四态（active/done 锚点 + superseded/revoked 可编辑态）；文件缺锚点或脏数据时整体回退默认集，不阻断决策中心。
+- **首次读取即迁移**：文件不存在时自动写入内置五态（`to_decide`/`to_start`/`in_progress`/`to_confirm` + `done` 锚点）；已存在旧结构（以 decision 对象为中心的 active/superseded/revoked）时自动补齐缺失的五态种子、剪除未被改过名的遗留态并回写。文件缺 `done` 锚点或脏数据时整体回退默认集，不阻断决策中心。
+- **系统锚点只有 `done`**（D6）：不可改名、不可删除、不可改闭档位；其余四态（含五态中的非锚点项）用户可改名/标色/排序/删除。
 - **`color` 允许 CSS 变量表达式**（如 `var(--accent)`）或十六进制色值，前端内联使用以随主题联动。
-- **`name_en` 仅内置状态有独立英文名**；自定义状态的 `name_en` 与 `name` 同值（用户输入什么就显示什么）。
-- **删除自定义状态的联动**：引用该状态的决策当场回落 `active` 并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
+- **`name_en` 仅内置状态有独立英文名**；自定义状态的 `name_en` 与 `name` 同值。
+- **删除自定义状态的联动**：引用该状态的**决策流节点（todos）**当场回落到删后字典的首个开放态并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
 
 ---
 ## 13. 接入方式路由契约（REQ-ACCESS-MODE-CARDS · AM-B1 后端交付 · AM-F1 前端派工依据）

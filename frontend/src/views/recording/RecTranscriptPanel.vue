@@ -61,7 +61,7 @@
         </div>
       </div>
     </div>
-    <!-- 本地模式声明：如实描述「录音期间不出稿、结束后本机转写」；WP-I（分段增量上屏）验收通过后切增量口径 / Local mode notice: honest interim wording, switch to segmented-incremental after WP-I ships -->
+    <!-- 本地模式声明：WP-I（分段增量上屏）已验收，文案切增量口径 / Local mode notice: WP-I segmented-incremental shipped, wording now reflects sentence-by-sentence display -->
     <div v-if="engineStore.status?.mode === 'local'" class="rec-local-batch-banner" role="status">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span>{{ t('recording.transcript.local_batch_notice') }}</span>

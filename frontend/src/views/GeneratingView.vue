@@ -361,15 +361,10 @@
         :visible="activeTab === 'todos'"
         :task-id="data.taskId"
         :todos="todos"
-        :show-add-form="showAddForm"
-        v-model:new-todo-text="newTodoText"
-        v-model:new-todo-assignee="newTodoAssignee"
-        v-model:new-todo-content="newTodoContent"
         @delete="onDeleteTodo"
         @update="onEditTodo"
         @status-change="onStatusChange"
-        @toggle-form="showAddForm = !showAddForm"
-        @add="onAddTodo"
+        @add="showAddDecisionDialog = true"
       />
 
       <!-- 洞察台（会后只读态） / Insight Deck (post-meeting read-only) -->
@@ -430,6 +425,14 @@
       v-model="showDeleteDialog"
       @confirm="onDeleteConfirm"
     />
+
+    <!-- 添加决策：与决策中心「手动补录决策」共用同一弹层（样式与数据口径统一） / Add decision dialog (shared with Decision Center) -->
+    <AddDecisionDialog
+      ref="addDecisionDialogRef"
+      v-model="showAddDecisionDialog"
+      :default-task-id="data.taskId"
+      @submit="onAddDecisionSubmit"
+    />
     </template>
 
     <!-- AC-4 显式确认（QA-R1 DEF-04）：切云端重试前告知数据上云，绝不静默上云（PRD R7）。
@@ -470,6 +473,9 @@ import OnboardingDialog from './generating/OnboardingDialog.vue'
 import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
+import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
+import type { TodoCreatePayload } from '@/api/notes'
+import { extractErrorMessage } from '@/api/client'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { showToast } from '@/composables/useToast'
 import { useGeneratingData } from '@/composables/useGeneratingData'
@@ -553,11 +559,26 @@ const {
 } = panel
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
-  showAddForm, newTodoText, newTodoAssignee, newTodoContent,
-  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange,
+  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, loadTodos,
 } = notes
-const { showOnboarding, demoLines, hasSeenOnboarding, openOnboarding, closeOnboarding } = onboarding
+const { showOnboarding, demoLines, openOnboarding, closeOnboarding } = onboarding
 const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
+
+// ─── 添加决策：复用决策中心「手动补录决策」弹层（DC-UNIFY-01 样式/数据统一） ───
+const showAddDecisionDialog = ref(false)
+const addDecisionDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
+async function onAddDecisionSubmit(taskId: string, payload: TodoCreatePayload) {
+  try {
+    await onAddTodo(payload, taskId)
+    showToast(t('decisions.toast_add_ok'), 'success')
+    showAddDecisionDialog.value = false
+    // 重拉保证与后端权威数据一致（owner 解析、归属其它会议的节点不干扰本地列表）
+    void loadTodos()
+  } catch (e) {
+    addDecisionDialogRef.value?.setSubmitting(false)
+    showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
+  }
+}
 
 // ─── 知识库同步状态 / Knowledge base sync status ───
 const syncStatus = ref<SyncStatus>({ can_sync: false })
@@ -627,10 +648,8 @@ async function onSyncToKb() {
   }
 }
 
-// ─── 首次进入时自动弹出说话人关联引导弹窗 / Auto-open speaker binding onboarding on first entry ───
-watch(showBindingBar, (visible) => {
-  if (visible && !hasSeenOnboarding.value) openOnboarding()
-}, { immediate: true })
+// 说话人关联引导弹窗不再自动弹出（默认不展示绑定横幅，不给用户待办压力），
+// 改为用户进入绑定态后点击标题旁信息图标（open-info）主动查看。
 
 // [状态同步] 任务状态变化时刷新知识库同步状态（完成/关联项目时显示同步按钮）
 watch(() => data.task.value, (t) => {

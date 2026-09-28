@@ -114,7 +114,9 @@ export function useAiContext() {
     { immediate: true },
   )
   const showAllMeetings = ref(false)
-  const heroDismissed = ref(localStorage.getItem('ctx_hero_dismissed') === '1')
+  // 横幅折叠态：存在 localStorage，默认折叠为一行，用户手动展开后记住偏好
+  // Hero collapsed state: persisted in localStorage, collapsed to one line by default
+  const heroCollapsed = ref(localStorage.getItem('ctx_hero_collapsed') !== '0')
 
   const ctxSections = ref({
     meeting: true,
@@ -150,6 +152,14 @@ export function useAiContext() {
 
   const relatedMeetingCount = computed(() => relatedMeetings.value.length)
 
+  // 上下文归属的会议（currentTask 是全局选中态，在非会议页时用于向用户标明上下文来源）
+  // The meeting the context belongs to; currentTask is global, so on other pages we show the source
+  const contextSource = computed(() => {
+    const task = taskStore.currentTask
+    if (!task) return null
+    return { taskId: task.task_id, title: task.title || t('ai-panel.context.source_untitled') }
+  })
+
   const currentTaskDuration = computed(() => {
     const task = taskStore.currentTask
     if (!task?.audio_duration) return '—'
@@ -177,9 +187,9 @@ export function useAiContext() {
   )
 
   // ── 方法 / Methods ──
-  function dismissHero() {
-    heroDismissed.value = true
-    localStorage.setItem('ctx_hero_dismissed', '1')
+  function toggleHero() {
+    heroCollapsed.value = !heroCollapsed.value
+    localStorage.setItem('ctx_hero_collapsed', heroCollapsed.value ? '1' : '0')
   }
 
   function generateSummary(sendRaw: (text: string) => void, switchTab: (tab: string) => void) {
@@ -234,7 +244,7 @@ export function useAiContext() {
     linkedProject,
     relatedMeetings,
     showAllMeetings,
-    heroDismissed,
+    heroCollapsed,
     ctxSections,
     MAX_VISIBLE_MEETINGS,
     // 计算 / Computed
@@ -243,6 +253,7 @@ export function useAiContext() {
     contextResourceCount,
     meetingOutputCount,
     relatedMeetingCount,
+    contextSource,
     currentTaskDuration,
     speakerCount: speakerCountDisplay,
     chapterCount: chapterCountDisplay,
@@ -252,7 +263,7 @@ export function useAiContext() {
     todoDone,
     isContextEmpty,
     // 方法 / Methods
-    dismissHero,
+    toggleHero,
     generateSummary,
     linkRelatedMeeting,
     goToTranscript,

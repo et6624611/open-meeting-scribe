@@ -137,6 +137,8 @@
           </h4>
           <p v-if="expert" class="ai-tech">llm.provider ▸ preset · chat_engine.auth_tier ▸ {{ chatEngineStatus?.config?.auth_tier || 'readonly' }}</p>
           <select class="ai-select" :disabled="offline" :value="capability?.llm?.effective || ''" @change="onSourceChange('llm', ($event.target as HTMLSelectElement).value)">
+            <!-- 离线态：effective=local（本机接管），补同名只读选项避免下拉空白 -->
+            <option v-if="offline" value="local">{{ t('settings.access.src_local') }}</option>
             <option value="trial">{{ t('settings.access.src_trial') }}</option>
             <option value="byok">{{ t('settings.access.src_byok') }}</option>
             <option value="local_endpoint">{{ t('settings.access.src_local_ep') }}</option>
@@ -163,6 +165,8 @@
           </h4>
           <p v-if="expert" class="ai-tech">asr.mode ▸ proxy | direct · model ▸ {{ settings.asr?.model || 'paraformer-v2' }}</p>
           <select class="ai-select" :disabled="offline" :value="capability?.asr?.effective || ''" @change="onSourceChange('asr', ($event.target as HTMLSelectElement).value)">
+            <!-- 离线态：effective=local（本机接管），补同名只读选项避免下拉空白 -->
+            <option v-if="offline" value="local">{{ t('settings.access.src_local') }}</option>
             <option value="trial">{{ t('settings.access.src_trial') }}</option>
             <option value="byok">{{ t('settings.access.src_byok') }}</option>
           </select>
@@ -706,7 +710,7 @@ onUnmounted(() => document.removeEventListener('click', onReadyClick))
 .ai-expert-label { font-size: 12px; color: var(--muted); }
 .ai-expert-desc { font-size: 12px; color: var(--subtle); max-width: 520px; }
 .ai-sw { flex: none; width: 38px; height: 22px; border-radius: 999px; background: var(--border-strong); position: relative; cursor: pointer; transition: background .15s; }
-.ai-sw::after { content: ""; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .15s; }
+.ai-sw::after { content: ""; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); top: 2px; left: 2px; transition: left .15s; box-shadow: 0 0 0 1px var(--border-strong); }
 .ai-sw.is-on { background: var(--accent); }
 .ai-sw.is-on::after { left: 18px; }
 .ai-sw.is-disabled { opacity: .45; cursor: not-allowed; }
@@ -716,16 +720,16 @@ onUnmounted(() => document.removeEventListener('click', onReadyClick))
 .ai-sw-sm.is-on::after { left: 16px; }
 
 /* ─── L2 页面横幅（amber 不用红） ─── */
-.ai-banner { border: 1px solid oklch(from var(--warn) l c h / .35); background: var(--warn-soft); color: var(--warn); border-radius: var(--radius); padding: var(--s-2) var(--s-4); font-size: 12px; }
+.ai-banner { border: 1px solid oklch(from var(--warn) l c h / .45); background: var(--warn-soft); color: var(--fg); border-radius: var(--radius); padding: var(--s-2) var(--s-4); font-size: 12px; }
 .ai-banner-main { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .ai-banner-icon { font-size: 13px; }
 .ai-banner-text { flex: 1; min-width: 200px; }
-.ai-banner-toggle { border: none; background: none; color: var(--warn); font-size: 12px; cursor: pointer; text-decoration: underline; }
+.ai-banner-toggle { border: none; background: none; color: var(--fg); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .ai-banner-history { margin-top: 4px; color: var(--muted); font-size: 12px; }
 
 /* ─── 未选态强引导 ─── */
 .ai-guide { border: 1px solid var(--accent-mid); background: var(--accent-soft); border-radius: var(--radius); padding: var(--s-4) var(--s-5); }
-.ai-guide-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--accent); }
+.ai-guide-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--fg); }
 .ai-guide-desc { font-size: 12px; color: var(--muted); margin: 0; }
 
 /* ─── 决策卡 ─── */
@@ -740,90 +744,96 @@ onUnmounted(() => document.removeEventListener('click', onReadyClick))
 .ai-card-title { font-size: 14px; font-weight: 600; }
 .ai-card-tagline { font-size: 12px; color: var(--muted); margin: var(--s-2) 0 0; line-height: 1.5; }
 .ai-card-ctx { margin-top: var(--s-2); padding-top: var(--s-2); border-top: 1px dashed var(--border); font-size: 12px; display: flex; align-items: center; gap: var(--s-2); }
-.ai-card-ctx.is-warn { color: var(--warn); }
+.ai-card-ctx.is-warn { color: var(--fg); font-weight: 600; }
 .ai-badge { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid transparent; white-space: nowrap; }
-.ai-badge-current { color: var(--accent); background: var(--surface); border-color: var(--accent-mid); }
-.ai-badge-login { color: var(--warn); background: var(--warn-soft); border-color: oklch(from var(--warn) l c h / .3); }
-.ai-badge-switch { color: var(--warn); background: var(--warn-soft); border-color: oklch(from var(--warn) l c h / .3); }
+.ai-badge-current { color: var(--fg); background: var(--surface); border-color: var(--accent); }
+.ai-badge-login { color: var(--fg); background: var(--warn-soft); border-color: oklch(from var(--warn) l c h / .55); }
+.ai-badge-switch { color: var(--fg); background: var(--warn-soft); border-color: oklch(from var(--warn) l c h / .55); }
 
-/* 工程值注释行（专家详情；等宽 + ▸ 键值对齐语法，与 .ai-note 说明文区分） */
-.ai-tech { display: none; font-family: var(--font-mono); font-size: 12px; color: var(--subtle); margin: var(--s-2) 0 0; background: oklch(96% 0.005 250); border-radius: 5px; padding: 2px 8px; }
+/* 工程值注释行（专家详情；等宽 + ▸ 键值对齐语法，与 .ai-note 说明文区分）
+   次要感靠「等宽 + 描边」表达，正文保持 --fg —— 注释写错=用户判断错，不能降对比 */
+.ai-tech { display: none; font-family: var(--font-mono); font-size: 12px; color: var(--fg); margin: var(--s-2) 0 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; }
 .access-ia.is-expert .ai-tech { display: block; }
 
-.ai-msg { font-size: 12px; color: var(--accent); margin: 0; font-weight: 500; }
+.ai-msg { font-size: 12px; color: var(--fg); margin: 0; font-weight: 500; }
 .ai-msg.is-error { color: var(--error); }
-.ai-msg.is-ok { color: var(--ok); }
+.ai-msg.is-ok { color: var(--fg); }
 
 /* ─── 详情层（缩进 + 引用轨，与决策层视觉两层分离） ─── */
 .ai-detail-title { font-size: 14px; font-weight: 600; margin: var(--s-2) 0 0; }
-.ai-detail-layer { margin-left: var(--s-2); padding: var(--s-4); border-left: 2px solid var(--accent); background: oklch(97.5% 0.004 250); border-radius: 0 var(--radius) var(--radius) 0; }
+.ai-detail-layer { margin-left: var(--s-2); padding: var(--s-4); border-left: 2px solid var(--accent); background: var(--bg); border-radius: 0 var(--radius) var(--radius) 0; }
 .ai-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s-3); }
 .ai-subcard { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-3) var(--s-4); background: var(--surface); }
-.ai-subcard.is-inherited { opacity: .62; }
+/* 只读接管态：虚线边 + 降饱和标题 + 锁徽章表达，不用 opacity 压正文对比度（只读 ≠ 看不清） */
+.ai-subcard.is-inherited { border-style: dashed; border-color: var(--border-strong); }
+.ai-subcard.is-inherited .ai-subcard-title { color: var(--muted); }
 .ai-subcard.is-flash { animation: ai-fadeflash 1s ease-out; }
 @keyframes ai-fadeflash { 0% { background: var(--warn-soft); } 100% { background: var(--surface); } }
 .ai-subcard-title { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ai-select { width: 100%; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; color: var(--text); }
-.ai-select:disabled { background: oklch(95% 0.005 250); }
+.ai-select { width: 100%; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--fg); }
+.ai-select:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--border); }
 
 /* 三态徽章（默认生效/已覆盖/未设置/本机接管；色+文字双通道不单靠颜色） */
 .ai-badge-src { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid transparent; cursor: pointer; }
-.ai-badge-src.is-default { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-mid); }
-.ai-badge-src.is-override { color: oklch(40% 0.12 250); background: oklch(93% 0.03 250); border-color: oklch(75% 0.08 250); }
-.ai-badge-src.is-none, .ai-badge-src.is-takeover { color: var(--muted); background: oklch(94% 0.005 250); border-color: var(--border-strong); }
+/* 三态音量阶梯：品牌色实心（默认）→ 品牌色描边（已覆盖）→ 中性灰底（未设置/本机接管）
+   文字一律 --fg，区分度由「实心/描边/灰底 + 边框色相」承担 */
+.ai-badge-src.is-default { color: var(--fg); background: var(--accent-soft); border-color: var(--accent); }
+.ai-badge-src.is-override { color: var(--fg); background: transparent; border-color: var(--accent); }
+.ai-badge-src.is-none, .ai-badge-src.is-takeover { color: var(--fg); background: var(--surface-2); border-color: var(--border-strong); }
 
-/* L1 行内常驻状态行（≥12px，amber 对比度 ≥4.5:1） */
-.ai-ready { font-size: 12px; margin: 6px 0 0; line-height: 1.5; min-height: 18px; }
-.ai-ready.is-ok { color: var(--ok); }
-.ai-ready.is-warn { color: var(--warn); font-weight: 500; }
+/* L1 行内常驻状态行（≥12px）
+   语义色只承担「底色 + 边框 + 首字符图标」三通道，正文一律 --fg：
+   浅色主题下 --warn/--ok 对 --surface 仅 2.3–3.7:1，作 12px 文字色不达 AA（实测见评审报告） */
+.ai-ready { font-size: 12px; margin: 6px 0 0; line-height: 1.5; min-height: 18px; color: var(--fg); }
+.ai-ready.is-warn { font-weight: 600; background: var(--warn-soft); border: 1px solid oklch(from var(--warn) l c h / .45); border-radius: 6px; padding: 2px 6px; }
 .ai-note { font-size: 12px; color: var(--subtle); margin: 6px 0 0; line-height: 1.5; }
 .ai-edit-track { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--border); margin: 8px 0 0; padding-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ai-vp-note { font-size: 12px; color: var(--subtle); border-top: 1px dashed var(--border); margin: 8px 0 0; padding-top: 8px; }
-.ai-k { font-family: var(--font-mono); font-size: 12px; background: oklch(94% 0.005 250); border-radius: 4px; padding: 0 5px; }
-.ai-ro-badge { display: inline-block; font-size: 12px; font-family: var(--font-mono); background: oklch(94% 0.005 250); border-radius: 5px; padding: 1px 7px; margin: 2px 4px 2px 0; }
-.ai-ok-txt { color: var(--ok); font-weight: 600; }
-.ai-warn-txt { color: var(--warn); font-weight: 600; }
+.ai-k { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+.ai-ro-badge { display: inline-block; font-size: 12px; font-family: var(--font-mono); background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; margin: 2px 4px 2px 0; }
+.ai-ok-txt { color: var(--fg); font-weight: 600; }
+.ai-warn-txt { color: var(--fg); font-weight: 700; }
 .ai-probe-stage { display: inline-block; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 3px; color: var(--muted); }
-.ai-probe-stage.is-ok { border-color: oklch(from var(--ok) l c h / .45); color: var(--ok); }
-.ai-probe-stage.is-fail { border-color: oklch(from var(--warn) l c h / .55); color: var(--warn); font-weight: 700; }
-.ai-probe-stage.is-unknown { opacity: .5; }
+.ai-probe-stage.is-ok { border-color: oklch(from var(--ok) l c h / .6); color: var(--fg); }
+.ai-probe-stage.is-fail { border-color: oklch(from var(--warn) l c h / .6); background: var(--warn-soft); color: var(--fg); font-weight: 700; }
+.ai-probe-stage.is-unknown { color: var(--subtle); }
 .ai-muted { font-size: 12px; color: var(--muted); }
 .ai-acct-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }
-.ai-tier-badge { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 1px 10px; font-size: 12px; }
+.ai-tier-badge { background: var(--accent-soft); color: var(--fg); border: 1px solid var(--accent-mid); border-radius: 999px; padding: 0 9px; font-size: 12px; }
 .ai-quota { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
 .ai-psub-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .ai-psub-row.is-idle .ai-psub-label { color: var(--subtle); }
 .ai-psub-label { font-size: 12px; }
-.ai-btn-sm { padding: 2px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); cursor: pointer; }
-.ai-btn-sm:hover { border-color: var(--accent); color: var(--accent); }
-.ai-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ai-btn-sm { padding: 2px 10px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--fg); cursor: pointer; }
+.ai-btn-sm:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+.ai-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 
 /* ─── 流向矩阵 ─── */
 .ai-matrix-section { margin-top: var(--s-2); }
 .ai-matrix { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
 .ai-matrix th, .ai-matrix td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
-.ai-matrix th { background: oklch(95% 0.005 250); font-size: 12px; }
-.ai-matrix th.is-cur { background: var(--accent); color: #fff; }
+.ai-matrix th { background: var(--surface-2); font-size: 12px; }
+.ai-matrix th.is-cur { background: var(--accent); color: var(--accent-fg); }
 .ai-matrix td.is-cur { background: var(--accent-soft); }
 .ai-matrix-tech { display: block; font-weight: 400; font-size: 12px; font-family: var(--font-mono); opacity: .85; }
 .ai-mx-badge { font-size: 12px; border-radius: 3px; padding: 0 4px; margin-left: 4px; white-space: nowrap; }
-.ai-mx-badge.is-out { color: var(--warn); border: 1px solid var(--warn); }
-.ai-mx-badge.is-zero { color: var(--ok); border: 1px solid var(--ok); }
+.ai-mx-badge.is-out { color: var(--fg); background: var(--warn-soft); border: 1px solid oklch(from var(--warn) l c h / .6); }
+.ai-mx-badge.is-zero { color: var(--fg); background: var(--ok-soft); border: 1px solid oklch(from var(--ok) l c h / .6); }
 
 /* ─── 后果预览弹窗 ─── */
-.ai-modal-mask { position: fixed; inset: 0; background: rgba(20, 26, 36, .45); display: flex; align-items: center; justify-content: center; z-index: 50; }
-.ai-modal { background: var(--surface); border-radius: 12px; max-width: 520px; width: 92%; padding: var(--s-5); max-height: 86vh; overflow: auto; }
+.ai-modal-mask { position: fixed; inset: 0; background: oklch(0% 0 0 / .55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.ai-modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; max-width: 520px; width: 92%; padding: var(--s-5); max-height: 86vh; overflow: auto; box-shadow: var(--shadow-float); }
 .ai-modal-title { margin: 0 0 10px; font-size: 15px; }
 .ai-modal-fields { font-size: 12px; color: var(--muted); }
 .ai-modal-fields summary { cursor: pointer; }
 .ai-modal-table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
 .ai-modal-table th, .ai-modal-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
-.ai-modal-table th { background: oklch(95% 0.005 250); }
+.ai-modal-table th { background: var(--surface-2); }
 .ai-modal-list { margin: 10px 0 0; padding-left: 20px; font-size: 12px; line-height: 1.7; }
 .ai-modal-list li.is-risk { color: var(--error); font-weight: 600; }
 .ai-modal-ack { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--error); margin-top: 10px; cursor: pointer; }
 .ai-modal-acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: var(--s-4); }
-.ai-btn { padding: 6px 16px; border-radius: 7px; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-size: 13px; color: var(--text); }
-.ai-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ai-btn { padding: 6px 16px; border-radius: 7px; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-size: 13px; color: var(--fg); }
+.ai-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .ai-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 </style>

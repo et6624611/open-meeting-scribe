@@ -54,6 +54,9 @@ export interface TranslationEntry {
 /** 段落合并时间阈值（同一说话人连续句子间隔 < 此值则合并为段落） / Paragraph merge gap threshold (merge consecutive sentences from same speaker if gap < this) */
 const PARAGRAPH_MERGE_GAP_MS = 3000
 
+/** 段落合并长度上限（超过此字数不再合并，强制另起段落，防单人长发言撑出文字墙） / Paragraph merge length cap (force new paragraph beyond this, avoid wall-of-text on long monologues) */
+const PARAGRAPH_MAX_CHARS = 150
+
 export function useWebSocketTranscript() {
   const lines = ref<TranscriptLine[]>([])
   const partialText = ref('')
@@ -281,13 +284,14 @@ export function useWebSocketTranscript() {
     }
   }
 
-  /** 段落合并：同一说话人连续句子间隔 < 阈值则合并文本，否则新建段落 / Paragraph merge: merge text if same speaker within gap, otherwise create new paragraph */
+  /** 段落合并：同一说话人连续句子间隔 < 阈值且未超长则合并文本，否则新建段落 / Paragraph merge: merge text if same speaker within gap and under length cap, otherwise create new paragraph */
   function mergeOrAppendLine(newLine: TranscriptLine) {
     const last = lines.value[lines.value.length - 1]
     if (
       last &&
       last.speaker_id === newLine.speaker_id &&
       last.isFinal &&
+      last.text.length < PARAGRAPH_MAX_CHARS &&
       newLine.begin_time &&
       (last.end_time || 0) > 0 &&
       (newLine.begin_time - (last.end_time || 0)) < PARAGRAPH_MERGE_GAP_MS

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.routers.admin import is_local_single_user, require_admin_or_local
 from app.settings_store import load_settings, save_settings_to_disk
-from core.engine_host import get_engine_host
+from core.engine_host import get_engine_host, invalidate_models_check
 from core.model_downloader import (
     DISK_BUFFER_BYTES,
     cancel_download,
@@ -136,6 +136,8 @@ def post_verify(data: dict = None, _: dict = Depends(require_admin_or_local)):
     if model_key not in MODEL_BY_KEY:
         return {"ok": False, "error_code": "unknown_model", "error": f"未知模型: {model_key}"}
     result = verify_model(model_key)
+    # 用户主动发起的实时校验完成后丢弃观测面缓存，避免 status 在 TTL 内继续回显旧结论。
+    invalidate_models_check()
     return {"ok": result["status"] != "tampered", "model_key": model_key, **result}
 
 
@@ -177,5 +179,7 @@ def post_storage(data: dict = None, _: dict = Depends(require_admin_or_local)):
     engine["local"] = local
     settings["engine"] = engine
     save_settings_to_disk(settings)
+    # 换目录等于换了一整套权重；缓存虽按目录锚定也会自然失效，此处显式清空以免歧义。
+    invalidate_models_check()
     logger.info(f"[模型] 管理员更新存储位置: {model_dir}")
     return {"ok": True, "model_dir": model_dir, "disk_free_bytes": get_disk_free_bytes(target)}

@@ -8,7 +8,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
-import { fetchChatEngineStatus, fetchSettings, probeLocalEngine, type ChatEngineProbe } from '@/api/settings'
+import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
@@ -16,7 +16,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
-import { tt } from '@/i18n'
+import { tt, getLocale } from '@/i18n'
 
 const AI_MAX_CONTEXT = 20
 
@@ -45,6 +45,18 @@ const DEFAULT_SUGGESTIONS: FollowUpSuggestion[] = [
   { text: '提取待办事项', icon: ICON_PLUS },
   { text: '分析发言要点', icon: ICON_SEARCH },
 ]
+
+/**
+ * 智能体引擎文案解析：后端事件携 hint_key（ai-panel 命名空间）时按当前 locale 翻译，
+ * 键缺失/无键时回退后端下发的中文兜底文案（历史兼容）。
+ */
+function resolveEngineText(hintKey: string | undefined, fallback: string,
+                           params?: Record<string, unknown>): string {
+  if (!hintKey) return fallback
+  const translated = tt(`ai-panel.${hintKey}`, params || {})
+  // vue-i18n 缺键时返回键本身 → 视为未命中，用兜底文案
+  return translated && translated !== `ai-panel.${hintKey}` ? translated : fallback
+}
 
 export function useAiChat() {
   const router = useRouter()
@@ -92,22 +104,49 @@ export function useAiChat() {
   /** CLI 引擎探针状态前置回显（§2.2：不再撞错才知道；失败段定位 AC-4） */
   const cliProbe = ref<ChatEngineProbe | null>(null)
   const agentEngineEnabled = ref(false)
+  // ── 智能体引擎模型（就地切换：CLI 路径读 chat_engine.model，非 sessionModel） ──
+  const agentEngineId = ref('')
+  /** 当前 chat_engine.model（'' = 引擎默认，不传 -m） */
+  const agentEngineModel = ref('')
+  /** 引擎展示名（name_key 命中优先翻译，否则品牌原文） */
+  const agentEngineName = ref('')
+  /** 该引擎当前用户可用模型清单（--list-models 探测） */
+  const agentModels = ref<string[]>([])
+  const agentModelsReason = ref('')
+  const agentModelsLoading = ref(false)
+
+  /** 归一化 base_url 用于 provider 匹配：去尾部斜杠与 /v1 段 */
+  function normBaseUrl(u: string): string {
+    return (u || '').trim().replace(/\/+$/, '').replace(/\/v1$/, '')
+  }
 
   async function loadModelCandidates() {
     const opts: ModelOption[] = []
     const seen = new Set<string>()
     const capSource = engineStore.capability?.llm?.effective
     const cloudSource: 'trial' | 'byok' = capSource === 'trial' ? 'trial' : 'byok'
+    // 云端组：只取「当前生效 provider」对应的预设模型，而非把全目录都贴上同一来源标签
+    // （体验配额经云端代理转发至 DashScope；自带 Key/直连按 base_url / provider 名匹配预设）
     try {
       const s = await fetchSettings()
-      for (const p of s.llm_provider_presets || []) {
-        for (const m of p.models || []) {
-          if (seen.has(m)) continue
-          seen.add(m)
-          opts.push({ value: m, source: p.localhost ? 'local' : cloudSource })
-        }
+      const cloudPresets = (s.llm_provider_presets || []).filter(p => !p.localhost)
+      let target: (typeof cloudPresets)[number] | undefined
+      if (capSource === 'trial') {
+        target = cloudPresets.find(p => /dashscope/i.test(p.base_url || '') || /通义|DashScope/i.test(p.name || ''))
+      } else {
+        const cur = normBaseUrl(s.llm?.base_url || '')
+        target = cloudPresets.find(p => normBaseUrl(p.base_url) === cur)
+          || cloudPresets.find(p => p.name === s.llm?.provider)
+      }
+      // 无匹配（如自定义端点）→ 仅列当前配置的模型，不臆造全目录
+      const cloudModels = target?.models?.length ? target.models : (s.llm?.model ? [s.llm.model] : [])
+      for (const m of cloudModels) {
+        if (seen.has(m)) continue
+        seen.add(m)
+        opts.push({ value: m, source: cloudSource })
       }
     } catch { /* 静默：候选降级为仅探测结果 */ }
+    // 本机组：只列探测到已安装/可达的模型，去掉写死预设（避免显示未安装的）
     try {
       const probe = await probeLocalEngine()
       for (const e of probe.engines) {
@@ -127,9 +166,40 @@ export function useAiChat() {
       const st = await fetchChatEngineStatus()
       cliProbe.value = st.probe ?? null
       agentEngineEnabled.value = !!st.config?.enabled
+      // 捕获引擎配置（id/model）与展示名，供智能体模式模型选择器使用
+      const cfg = st.config
+      agentEngineId.value = cfg?.engine_id || ''
+      agentEngineModel.value = cfg?.model || ''
+      const info = (st.engines || []).find(e => e.engine_id === cfg?.engine_id)
+      const nameKey = st.probe?.name_key || info?.name_key || ''
+      const tn = nameKey ? tt(nameKey) : ''
+      agentEngineName.value = (tn && tn !== nameKey) ? tn : (st.probe?.display_name || info?.display_name || cfg?.engine_id || 'CLI')
     } catch {
       cliProbe.value = null
     }
+  }
+
+  /** 拉取智能体引擎可用模型（就地切换菜单打开时） */
+  async function loadAgentModels() {
+    agentModelsLoading.value = true
+    try {
+      const r = await fetchChatEngineModels(agentEngineId.value || undefined)
+      agentModels.value = r.models || []
+      agentModelsReason.value = r.reason || ''
+    } catch {
+      agentModels.value = []
+      agentModelsReason.value = 'probe_error'
+    } finally {
+      agentModelsLoading.value = false
+    }
+  }
+
+  /** 就地切换 CLI 引擎模型：持久化到 chat_engine.model（CLI 路径唯一读取源）；'' = 引擎默认 */
+  async function setAgentModel(v: string) {
+    agentEngineModel.value = v
+    try {
+      await saveSettings({ chat_engine: { model: v || null } } as never)
+    } catch { /* 静默：本地已更新，下次面板刷新对齐 */ }
   }
 
   /** 智能体模式是否可选（未安装/未登录时置灰 + 指引，AC-4） */
@@ -138,11 +208,12 @@ export function useAiChat() {
   // 面板挂载即拉一次（探针/候选不阻塞对话）；模型候选随详情源变化重标
   void loadCliProbe()
   void loadModelCandidates()
-  // 详情层来源变化 → 云端候选来源标签同步重标（本机候选不变）
-  watch(() => engineStore.capability?.llm?.effective, (eff) => {
-    const cs: 'trial' | 'byok' = eff === 'trial' ? 'trial' : 'byok'
-    modelCandidates.value = modelCandidates.value.map(o => (o.source === 'local' ? o : { ...o, source: cs }))
-  })
+  // 详情层来源变化 → 重新按当前 provider 派生候选（模型集与来源标签同步刷新）
+  watch(() => engineStore.capability?.llm?.effective, () => { void loadModelCandidates() })
+  // 切到智能体模式且尚无模型清单 → 懒加载 --list-models（immediate 覆盖初始即 agent 态）
+  watch(chatMode, (m) => {
+    if (m === 'agent' && agentModels.value.length === 0 && !agentModelsLoading.value) void loadAgentModels()
+  }, { immediate: true })
 
   /** 思考耗时（秒），流式期间实时更新，完成后归零 / Thinking elapsed seconds; live during streaming, resets after done */
   const thinkingElapsed = computed(() => {
@@ -229,9 +300,11 @@ export function useAiChat() {
         },
         onStage(stageData) {
           // 更新或添加思考阶段 / Update or add thinking stage
+          // 智能体引擎文案 i18n 化：携 hint_key 时按当前 locale 翻译，否则用 label 兜底
+          const stageLabel = resolveEngineText(stageData.hint_key, stageData.label, stageData.hint_params)
           const existing = stages.value.find(s => s.type === stageData.stage)
           if (existing) {
-            existing.label = stageData.label
+            existing.label = stageLabel
           } else if (stageData.stage === 'thinking' || stageData.stage === 'generating') {
             // 将之前的 running 阶段标记为 done / Mark previous running stages as done
             stages.value.forEach(s => {
@@ -239,7 +312,7 @@ export function useAiChat() {
             })
             stages.value.push({
               type: stageData.stage as 'thinking' | 'generating',
-              label: stageData.label,
+              label: stageLabel,
               status: 'running',
             })
           }
@@ -251,7 +324,9 @@ export function useAiChat() {
           })
           stages.value.push({
             type: 'tool_call',
-            label: tool.label,
+            // 双语标签：manifest 同时下发 label(zh)+label_en，按当前 locale 选取（多 CLI 国际化）
+            label: getLocale() === 'en' && tool.label_en ? tool.label_en : tool.label,
+            label_en: tool.label_en,
             icon: tool.icon,
             status: 'running',
             id: tool.id,
@@ -270,7 +345,12 @@ export function useAiChat() {
         },
         onEngineRoute(info) {
           // §3.9-1 路由回显：本次由智能体引擎执行（含 auto 自动选中），静默分流摧毁信任
-          activeEngine.value = { display_name: info.display_name, auth_tier: info.auth_tier, auto_selected: !!info.auto_selected }
+          // 引擎名本地化：name_key 命中翻译优先（如国内版后缀），否则品牌原文
+          const name = info.name_key ? tt(info.name_key) : ''
+          activeEngine.value = {
+            display_name: name && name !== info.name_key ? name : (info.display_name || info.engine),
+            auth_tier: info.auth_tier, auto_selected: !!info.auto_selected,
+          }
         },
         onDone(data) {
           assistantMsg.timestamp = new Date().toISOString()
@@ -302,10 +382,12 @@ export function useAiChat() {
           }
           followUps.value = generateFollowUps(assistantMsg.content)
         },
-        onError(error: string) {
+        onError(error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) {
+          // 智能体引擎错误 i18n 化：携 hint_key 时按当前 locale 翻译
+          const errText = resolveEngineText(extra?.hint_key, error, extra?.hint_params)
           if (!assistantMsg.content) {
             aiSessions.activeMessages.splice(loadingIdx, 1)
-            aiSessions.activeMessages.push({ role: 'assistant', content: `抱歉，出了点问题：${error}` })
+            aiSessions.activeMessages.push({ role: 'assistant', content: `${tt('ai-panel.chat_error_prefix')}${errText}` })
           }
           aiSessions.persist()
         },
@@ -345,7 +427,7 @@ export function useAiChat() {
         } else if (err.message) {
           detail = err.message
         }
-        aiSessions.activeMessages.push({ role: 'assistant', content: `抱歉，出了点问题：${detail}` })
+        aiSessions.activeMessages.push({ role: 'assistant', content: `${tt('ai-panel.chat_error_prefix')}${detail}` })
         aiSessions.persist()
       }
     } finally {
@@ -534,5 +616,8 @@ export function useAiChat() {
     sessionModel, setSessionModel: engineStore.setSessionModel,
     modelCandidates, detailModelLabel, cliProbe, agentEngineEnabled, agentAvailable,
     refreshCliProbe: loadCliProbe,
+    // 智能体模式就地切换引擎模型（写 chat_engine.model）
+    agentEngineId, agentEngineModel, agentEngineName, agentModels, agentModelsReason, agentModelsLoading,
+    loadAgentModels, setAgentModel,
   }
 }

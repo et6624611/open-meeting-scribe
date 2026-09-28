@@ -3,7 +3,8 @@ tests/test_model_downloader.py — R5 模型下载器与常驻引擎架构测试
 
 覆盖：引导下载（进度/状态）、SHA256 校验与篡改拒载、断点续传（Range）、
 可取消（保留 .part）、磁盘空间预检、存储位置配置、管理员权限门（D-R2）、
-MODELSCOPE_CACHE 指向、引擎常驻子进程（ping/stop/篡改拒载启动）。
+MODELSCOPE_CACHE 指向、引擎常驻子进程（ping/stop/篡改拒载启动）、
+观测面完整性校验缓存（命中/TTL/失效/门禁不吃缓存）。
 
 内嵌 ModelScope 桩 HTTP 服务器，无真实外网/大模型下载（对齐 R8 CI 约束）。
 
@@ -459,3 +460,112 @@ class TestEngineHost:
 
         # 幂等：重复 stop 不报错 / Idempotent stop
         assert host.stop()["ok"] is True
+
+
+# ============================================================
+# 观测面完整性校验缓存（status 提速的后端前提）
+# ============================================================
+
+class TestModelsCheckCache:
+    """status 走缓存、start 门禁走实时：两者不得互相污染。"""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_cache(self):
+        import core.engine_host as engine_host
+        engine_host.invalidate_models_check()
+        yield
+        engine_host.invalidate_models_check()
+
+    @staticmethod
+    def _patch_check(engine_host, monkeypatch, results):
+        """按调用次序依次返回 results（用尽后重复末项），回传调用计数。"""
+        calls = {"n": 0}
+
+        def _fake():
+            idx = min(calls["n"], len(results) - 1)
+            calls["n"] += 1
+            return dict(results[idx])
+
+        monkeypatch.setattr(engine_host, "check_required_models", _fake)
+        return calls
+
+    def test_second_call_hits_cache(self, model_env, monkeypatch):
+        import core.engine_host as engine_host
+        calls = self._patch_check(engine_host, monkeypatch, [
+            {"ready": True, "missing": [], "tampered": []},
+        ])
+        first = engine_host.check_required_models_cached()
+        second = engine_host.check_required_models_cached()
+        assert first["cached"] is False
+        assert second["cached"] is True
+        assert second["ready"] is True and second["missing"] == []
+        assert calls["n"] == 1  # 命中时不重做哈希
+
+    def test_invalidate_forces_recheck(self, model_env, monkeypatch):
+        import core.engine_host as engine_host
+        calls = self._patch_check(engine_host, monkeypatch, [
+            {"ready": True, "missing": [], "tampered": []},
+            {"ready": False, "missing": ["fsmn-vad"], "tampered": []},
+        ])
+        engine_host.check_required_models_cached()
+        engine_host.invalidate_models_check()
+        after = engine_host.check_required_models_cached()
+        assert calls["n"] == 2
+        assert after["cached"] is False
+        assert after["ready"] is False and after["missing"] == ["fsmn-vad"]
+
+    def test_ttl_expiry_recomputes(self, model_env, monkeypatch):
+        import core.engine_host as engine_host
+        monkeypatch.setattr(engine_host, "MODELS_CHECK_TTL_SECONDS", 0.0)
+        calls = self._patch_check(engine_host, monkeypatch, [
+            {"ready": True, "missing": [], "tampered": []},
+        ])
+        engine_host.check_required_models_cached()
+        engine_host.check_required_models_cached()
+        assert calls["n"] == 2  # TTL=0 时永不命中
+
+    def test_model_dir_change_bypasses_cache(self, model_env, monkeypatch):
+        """换存储目录 = 换一套权重：旧目录的结论不得沿用。"""
+        import core.engine_host as engine_host
+        import core.model_registry as registry
+        calls = self._patch_check(engine_host, monkeypatch, [
+            {"ready": True, "missing": [], "tampered": []},
+            {"ready": False, "missing": ["fsmn-vad"], "tampered": []},
+        ])
+        assert engine_host.check_required_models_cached()["cached"] is False
+        other = model_env["model_dir"].parent / "other-models"
+        monkeypatch.setattr(registry, "get_model_dir", lambda: other)
+        second = engine_host.check_required_models_cached()
+        assert second["cached"] is False
+        assert calls["n"] == 2
+
+    def test_status_uses_cache_and_reports_freshness(self, model_env, monkeypatch):
+        import core.engine_host as engine_host
+        calls = self._patch_check(engine_host, monkeypatch, [
+            {"ready": True, "missing": [], "tampered": []},
+        ])
+        host = engine_host.EngineHost()
+        s1 = host.status()
+        s2 = host.status()
+        assert s1["models_ready"] is True and s2["models_ready"] is True
+        assert s1["models_check_cached"] is False and s2["models_check_cached"] is True
+        assert calls["n"] == 1
+        assert s2["models_check_age_seconds"] >= 0
+
+    def test_start_gate_never_serves_stale_ready(self, model_env, monkeypatch):
+        """缓存里是 ready 旧结论，实时校验已转篡改 → start() 必须拒载（R5）。"""
+        import core.engine_host as engine_host
+        results = [{"ready": True, "missing": [], "tampered": []}]
+        calls = self._patch_check(engine_host, monkeypatch, results)
+        assert engine_host.check_required_models_cached()["ready"] is True  # 播种缓存
+
+        results[0] = {"ready": False, "missing": [], "tampered": ["cam-plus"]}
+        host = engine_host.EngineHost()
+        try:
+            result = host.start()
+            assert result["ok"] is False
+            assert result["error_code"] == "models_tampered"
+            assert not host.is_running()
+        finally:
+            host.stop()
+        assert calls["n"] == 2  # 门禁重做了一次实时校验

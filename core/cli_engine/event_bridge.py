@@ -13,6 +13,10 @@ Translate Qoder CLI stream-json NDJSON into the app's canonical SSE event vocabu
   - 宽容解析：未知类型/子类型一律忽略，绝不因单行异常中断整个流（R1）
   - 成败判定读 result 事件（is_error/error_code），不信退出码（§4 关键陷阱）
   - M1：CLI 的 text 为整段 block，本层不切分；切分交给 runner 的 chunk_text 合成打字机
+  - i18n：面向用户的文案一律携带 hint_key/hint_params（前端 ai-panel 命名空间），
+    label/content 仅作中文兜底；工具标签同时携带 label(zh) + label_en
+  - 多 CLI 适配：manifest 可选声明 event_schema（语义角色→字段路径映射），
+    非 stream-json 形状的事件流按 schema 提取；缺省即 Qoder/Claude 的 stream-json 形状
 """
 
 from __future__ import annotations
@@ -49,6 +53,11 @@ def parse_line(raw_line: str, manifest: dict) -> list[dict]:
     subtype = evt.get("subtype")
     ignore_subtypes = set(manifest.get("ignore_subtypes", []))
 
+    # ⓪ 非 stream-json 形状：按 manifest.event_schema 声明的字段路径解释（Gemini/Codex 等预留扩展点）
+    schema = manifest.get("event_schema")
+    if schema:
+        return _parse_by_schema(evt, schema, manifest)
+
     # ① system 事件：仅 init 有价值（回显 session/工具集），其余噪声丢弃
     if etype == "system":
         if subtype == "artifacts_update" or subtype in ignore_subtypes or subtype is None:
@@ -57,7 +66,8 @@ def parse_line(raw_line: str, manifest: dict) -> list[dict]:
             return []
         if subtype == "init":
             return [{
-                EV_TYPE_KEY: EV_STAGE, "stage": "thinking", "label": "引擎已启动",
+                EV_TYPE_KEY: EV_STAGE, "stage": "thinking",
+                "label": "引擎已启动", "hint_key": "cli_engine_started",
                 "engine_init": {
                     "session_id": evt.get("session_id"),
                     "model": evt.get("model"),
@@ -67,8 +77,10 @@ def parse_line(raw_line: str, manifest: dict) -> list[dict]:
             }]
         # permission_denied 作为可解释提示（§2 dont_ask 档）
         if subtype == "permission_denied":
-            msg = str(evt.get("message") or evt.get("stderr") or "该操作需要授权，已被拦截")
-            return [{EV_TYPE_KEY: EV_STAGE, "stage": "thinking", "label": f"⛔ {msg[:80]}"}]
+            msg = str(evt.get("message") or evt.get("stderr") or "")
+            return [{EV_TYPE_KEY: EV_STAGE, "stage": "thinking", "label": f"⛔ {msg[:80]}",
+                     "hint_key": "cli_engine_permission_denied",
+                     "hint_params": {"detail": msg[:80]}}]
         return []
 
     # ② assistant 事件：thinking → stage；text → token（整段，runner 再切）；tool_use → tool_call
@@ -80,7 +92,8 @@ def parse_line(raw_line: str, manifest: dict) -> list[dict]:
             if btype == "thinking":
                 txt = (block.get("thinking") or "").strip()
                 if txt:
-                    out.append({EV_TYPE_KEY: EV_STAGE, "stage": "thinking", "label": txt[:80] or "思考中…"})
+                    out.append({EV_TYPE_KEY: EV_STAGE, "stage": "thinking", "label": txt[:80] or "思考中…",
+                                "hint_params": {"detail": txt[:80]}})
             elif btype == "text":
                 txt = block.get("text") or ""
                 if txt.strip():
@@ -118,13 +131,14 @@ EV_TYPE_KEY = "type"  # 规范事件类型字段名
 def _tool_call_event(block: dict, manifest: dict) -> dict:
     from core.cli_engine.manifest import resolve_tool_label
     name = block.get("name") or "Unknown"
-    label, icon = resolve_tool_label(manifest, name)
+    label, label_en, icon = resolve_tool_label(manifest, name)
     args = block.get("input") or {}
     return {
         EV_TYPE_KEY: EV_TOOL_CALL,
         "id": block.get("id"),
         "name": name,
         "label": label,
+        "label_en": label_en,
         "icon": icon,
         "args": args,
     }
@@ -162,9 +176,13 @@ def _result_events(evt: dict, manifest: dict) -> list[dict]:
         errors = evt.get("errors") or []
         first_err = errors[0] if errors else "引擎执行失败"
         mapped = _map_error(error_code, manifest)
+        hint_key = "cli_engine_error"
         if mapped == "credit_exhausted":
-            first_err = "本机 Qoder 额度不足，请检查账户额度或改用其它模型/内置问答。"
+            first_err = f"本机 {manifest.get('display_name', 'CLI')} 额度不足，请检查账户额度或改用其它模型/内置问答。"
+            hint_key = "cli_engine_credit_exhausted"
         return [{EV_TYPE_KEY: EV_ERROR, "content": str(first_err)[:300],
+                 "hint_key": hint_key,
+                 "hint_params": {"engine": display_name_of(manifest), "detail": str(first_err)[:200]},
                  "engine_error": mapped, "permission_denials": denials}]
 
     done = {
@@ -176,6 +194,55 @@ def _result_events(evt: dict, manifest: dict) -> list[dict]:
     if denials:
         done["permission_denials"] = denials
     return [done]
+
+
+def display_name_of(manifest: dict) -> str:
+    """引擎品牌展示名（不翻译；本地化后缀由前端 name_key 承担）。"""
+    return manifest.get("display_name", "CLI")
+
+
+def _dig(obj, path: str):
+    """按点分路径从嵌套 dict 取值（event_schema 用）；任一段缺失返回 None。"""
+    if not path:
+        return None
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _parse_by_schema(evt: dict, schema: dict, manifest: dict) -> list[dict]:
+    """
+    通用事件解释器：按 manifest.event_schema 声明的语义角色→字段路径映射产出规范事件。
+
+    支持的语义角色（均为点分路径）：
+      type_path   — 事件类型字段（缺省 "type"）
+      done_types / error_types — 判定终态的类型值列表
+      text_path   — 回复正文（非空即产出 token）
+      error_path  — 错误文案（随 error 事件 content 兜底）
+    未知形状宽容忽略（R1）。stream-json 引擎（Qoder/Claude）无需 schema，走主路径。
+    """
+    etype = _dig(evt, schema.get("type_path", "type"))
+    etype = str(etype) if etype is not None else ""
+    out: list[dict] = []
+
+    if etype in (schema.get("error_types") or []):
+        detail = str(_dig(evt, schema.get("error_path", "")) or "引擎执行失败")[:300]
+        return [{EV_TYPE_KEY: EV_ERROR, "content": detail,
+                 "hint_key": "cli_engine_error",
+                 "hint_params": {"engine": display_name_of(manifest), "detail": detail},
+                 "engine_error": _map_error(str(evt.get("error_code") or ""), manifest)}]
+
+    text = _dig(evt, schema.get("text_path", "")) if schema.get("text_path") else None
+    if isinstance(text, str) and text.strip():
+        out.append({EV_TYPE_KEY: EV_TOKEN, "content": text})
+
+    if etype in (schema.get("done_types") or []):
+        out.append({EV_TYPE_KEY: EV_DONE, "metadata": {"model": _dig(evt, schema.get("model_path", ""))},
+                    "latency_ms": _dig(evt, schema.get("latency_path", "")) if schema.get("latency_path") else None})
+    return out
 
 
 def _map_error(error_code: str, manifest: dict) -> str:

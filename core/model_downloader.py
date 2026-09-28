@@ -216,6 +216,15 @@ class _Cancelled(Exception):
     """内部：任务被取消 / Internal: job cancelled."""
 
 
+def _invalidate_engine_models_check() -> None:
+    """丢弃引擎侧必装模型完整性校验缓存（延迟导入避开与 engine_host 的循环依赖）。"""
+    try:
+        from core.engine_host import invalidate_models_check
+        invalidate_models_check()
+    except Exception as e:  # 仅影响观测面时效，不得打断下载收尾
+        logger.warning(f"[模型下载] 引擎校验缓存失效调用失败（下一次将按 TTL 过期）: {e}")
+
+
 def _run_model_download(job: DownloadJob):
     """后台线程主体：下载一个模型的全部文件 / Thread body: download all files of one model."""
     meta = MODEL_BY_KEY[job.model_key]
@@ -304,6 +313,10 @@ def _run_model_download(job: DownloadJob):
         job.error = str(e)[:500]
         job.touch()
         logger.error(f"[模型下载] 失败: {job.model_key}: {e}")
+    finally:
+        # 本轮无论成败都可能改动了模型目录（写入新权重、校验失败前 unlink 重下），
+        # 丢弃引擎侧缓存，使徽章 / status 下一次即反映真实状态而非等 TTL 到期。
+        _invalidate_engine_models_check()
 
 
 def start_download(model_key: str) -> dict:

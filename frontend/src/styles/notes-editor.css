@@ -449,16 +449,6 @@
 .todos-add-bar { margin-top: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
 .todos-add-btn { display: flex; align-items: center; justify-content: center; gap: var(--s-1); padding: var(--s-2); border: 1px dashed var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: all 0.15s; width: 100%; }
 .todos-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.todos-add-form { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
-.todos-add-form input, .todos-add-form textarea { font-size: var(--fs-13); padding: var(--s-1) var(--s-2); border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; font-family: inherit; }
-.todos-add-form input:focus, .todos-add-form textarea:focus { border-color: var(--accent); }
-.todos-add-form textarea { resize: vertical; min-height: 36px; line-height: 1.5; }
-.todos-add-form .add-form-row { display: flex; gap: var(--s-2); align-items: center; }
-.todos-add-form .add-form-actions { display: flex; gap: var(--s-2); justify-content: flex-end; }
-.todos-add-form .add-form-actions button { padding: 4px 12px; border-radius: 4px; font-size: var(--fs-12); cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--fg); transition: all 0.15s; }
-.todos-add-form .add-form-actions .btn-submit { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-.todos-add-form .add-form-actions .btn-submit:hover { background: oklch(from var(--accent) calc(l - 0.06) c h); }
-.todos-add-form .add-form-actions .btn-cancel:hover { background: var(--surface-2); }
 .todos-empty { text-align: center; padding: var(--s-7); color: var(--muted); font-size: var(--fs-13); }
 
 /* ─── 待办筛选栏 / Todos filter bar ─── */
@@ -600,11 +590,8 @@
   transition: opacity 0.12s;
 }
 .db-status-btn:hover { opacity: 0.8; }
-.db-status-btn.pill-to_decide { background: oklch(0.92 0.02 250); color: var(--st-decide); }
-.db-status-btn.pill-to_start { background: oklch(0.92 0.03 250); color: var(--st-start); }
-.db-status-btn.pill-in_progress { background: var(--accent-soft); color: var(--accent); }
-.db-status-btn.pill-to_confirm { background: oklch(0.94 0.04 70); color: var(--st-confirm); }
-.db-status-btn.pill-done { background: oklch(0.92 0.03 150); color: var(--st-done); }
+/* 状态色由卡片上的 --db-status-* 变量注入（状态字典驱动，不再写死枚举类名） */
+.db-status-btn { background: var(--db-status-soft, var(--surface-2)); color: var(--db-status-color, var(--muted)); }
 .db-dd-caret { opacity: 0.6; flex-shrink: 0; }
 .db-owner-btn {
   display: inline-flex; align-items: center; gap: 4px;
@@ -632,11 +619,6 @@
 .db-dd-item:hover { background: var(--surface-2); }
 .db-dd-item.is-active { color: var(--accent); font-weight: 500; }
 .db-dd-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.db-dd-dot.dot-to_decide { background: var(--st-decide); }
-.db-dd-dot.dot-to_start { background: var(--st-start); }
-.db-dd-dot.dot-in_progress { background: var(--st-progress); }
-.db-dd-dot.dot-to_confirm { background: var(--st-confirm); }
-.db-dd-dot.dot-done { background: var(--st-done); }
 .db-dd-check { margin-left: auto; flex-shrink: 0; color: var(--accent); }
 .db-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: var(--s-1); }
 .db-footer-spacer { flex: 1; }
@@ -650,11 +632,62 @@
 .db-delete-btn:hover { color: oklch(0.50 0.15 25); background: oklch(0.92 0.06 25); }
 .db-delete-btn svg { width: 13px; height: 13px; }
 .db-content { margin-top: var(--s-2); }
-.db-dot.dot-to_decide { background: var(--st-decide); }
-.db-dot.dot-to_start { background: var(--st-start); }
-.db-dot.dot-in_progress { background: var(--st-progress); }
-.db-dot.dot-to_confirm { background: var(--st-confirm); }
-.db-dot.dot-done { background: var(--st-done); }
+.db-dot { background: var(--db-status-color, var(--muted)); }
+
+/* ═══ 决策卡 ⋯ 动作按钮 + 弹出菜单（usePopMenu 以 fixed 定位，z-index 取全局阶梯） ═══ */
+.db-action-wrap { position: relative; display: inline-flex; }
+.db-action-btn {
+  width: 22px; height: 22px; border-radius: var(--radius-sm); margin-right: 2px;
+  display: grid; place-items: center;
+  color: var(--subtle); opacity: 0; border: none; background: transparent;
+  cursor: pointer; transition: all 0.12s;
+}
+.db-node:hover .db-action-btn,
+.db-action-btn[aria-expanded="true"],
+.db-action-btn:focus-visible { opacity: 1; }
+.db-action-btn:hover { color: var(--fg); background: var(--surface-2); }
+.db-action-btn svg { width: 13px; height: 13px; }
+.db-menu {
+  display: none; position: fixed; min-width: 156px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.12);
+  padding: var(--s-1); z-index: var(--z-popover);
+}
+.db-menu.is-open { display: block; }
+.db-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border: none; background: transparent;
+  color: var(--fg); font-size: var(--fs-12); cursor: pointer;
+  border-radius: var(--radius-sm); transition: background 0.1s;
+  text-align: left; font-family: inherit; white-space: nowrap;
+}
+.db-menu-item:hover { background: var(--surface-2); }
+.db-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.db-menu-item svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+
+/* ═══ 决策卡行内编辑态：标题 + 主文本（正文 why 仍走常驻 textarea） ═══ */
+.db-title-spacer { flex: 1; min-width: 0; }
+.db-edit { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.db-edit-field { display: flex; flex-direction: column; gap: 4px; }
+.db-edit-label { font-size: var(--fs-11); color: var(--muted); }
+.db-edit-input, .db-edit-area {
+  width: 100%; box-sizing: border-box; padding: var(--s-2);
+  font-family: inherit; font-size: var(--fs-12); line-height: 1.6;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg); outline: none;
+  transition: border-color 0.12s;
+}
+.db-edit-area { resize: vertical; min-height: 60px; }
+.db-edit-input:focus, .db-edit-area:focus { border-color: var(--accent); }
+.db-edit-input::placeholder, .db-edit-area::placeholder { color: var(--subtle); }
+.db-edit-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.db-edit-btn {
+  padding: 5px 12px; font-size: var(--fs-12); border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all 0.12s;
+}
+.db-edit-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+.db-edit-btn.is-primary { border: none; background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+.db-edit-btn.is-primary:hover { opacity: 0.9; }
 
 /* ─── 决策流容器 ─── */
 .db-flow { display: flex; flex-direction: column; gap: var(--s-3); width: 100%; }
@@ -666,6 +699,8 @@
 .db-row1 { display: flex; align-items: center; gap: var(--s-2); }
 .db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 标题 + 正文双要素：正文退为摘要行（编辑走下方决策正文） */
+.db-sub { margin-top: 2px; padding-left: 18px; font-size: var(--fs-12); color: var(--muted); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .db-node.is-done .db-title { text-decoration: line-through; color: var(--subtle); }
 .db-completed { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
 .flow-completed-toggle { display: flex; align-items: center; gap: 6px; padding: var(--s-2) var(--s-3); border: none; background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; width: 100%; }

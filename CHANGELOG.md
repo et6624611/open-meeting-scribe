@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-26"
+updated_at: "2026-09-28"
 status: published
 ---
 
@@ -12,6 +12,30 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-27 — 决策对象统一：决策流为唯一「决策」（DC-UNIFY-01）
+
+### 变更
+- **单一决策对象**（项目方裁决）：「决策」收敛为会议内的决策流节点（`task["todos"]`）这一个对象；原 `task["decisions"]` 记录对象及其 CRUD API（`/api/tasks/{id}/decisions*`）、独立卡片组件（`DecisionCard.vue`）、执行人快照下拉（`OwnerSelectCombobox.vue`）一并下线，存量数据不迁移、无读路径。
+- **共享读写口径** `core/decision_flow.py`：执行人以说话人档案为权威（改名全局生效、档案缺失宽容回退快照名）、节点状态字典驱动（历史无 status 由 `done` 布尔兼容推导）、新建节点形状统一（纪要页手动添加 / AI 注入 / 决策中心补录共用）、读侧随行下发状态字典与元信息，前端不再写死枚举。
+- **决策中心重做为就地可交互的决策流卡片**：筛选 chips / 色点 / 徽标 / 闭档沉底全部由状态字典驱动（`useDecisionStatuses` 一处加载多处复用）；补录与编辑直接落到来源会议的决策流。纪要页 Tab 界面统一称「决策」，「行动项」降为数据语义描述。
+- **CLI 引擎多适配**：`engine_id` 白名单动态取自 `core/cli_engine/manifests/` 目录（新增 claude-code、qoder-cli-cn 清单），设置页引擎下拉数据驱动并带预览探针，新增引擎无需改代码。
+
+### 涉及文件
+- `core/decision_flow.py`（新增）、`app/routers/decisions.py`（大幅删减）、`app/routers/notes.py`、`app/routers/decision_statuses.py`、`app/routers/settings.py`、`app/routers/import_tasks.py`
+- `frontend/src/views/DecisionCenterView.vue`、`generating/DecisionFlowPanel.vue`、`DecisionNode.vue`、`composables/useDecisionStatuses.ts`（新增）、`components/settings/*`（新增详情面板拆分）
+- `tests/test_decision_flow.py`（新增）、删除 `test_dc_r2_*.py` / `test_decision_center.py`；`docs/API_CONTRACTS.md` §12、`docs/GLOSSARY.md` 同步
+
+## [未发布] - 2026-09-27 — 会议库检索体验优化（匹配计数 + 来源标识）
+
+### 变更
+- **计数改匹配口径**（LibraryView）：搜索/筛选时，顶部「N 个会议」显示「匹配 N / 共 M」，「全部 / 已归档」Tab 计数显示各 Tab 的匹配数（此前恒为全量 450/194/256，与已筛短的列表不一致，易被误认为搜索失效）。抽出共用过滤函数 `applyLibFilters`，列表分组与计数同口径。
+- **来源标识徽章**：靠纪要/转写原文等非标题维度命中的行，标题后加「原文中匹配」徽章（含 tooltip 说明），标题命中的行不加——多维度搜索逻辑（`matchTask`）保持不变，仅将「为什么匹配」可视化。
+
+### 涉及文件
+- `frontend/src/views/LibraryView.vue`（过滤函数抽取、匹配计数 computed、来源徽章与样式）
+- `frontend/src/utils/search.ts`（新增 `matchesTitle`）
+- `frontend/src/i18n/locales/{zh-CN,en}/library.json`（`count_matched` / `source_content` / `source_content_hint`）
 
 ## [未发布] - 2026-09-26 — 设置信息架构重构（REQ-SETTINGS-IA）+ 专家详情注释层（REQ-EXPERT-MODE）
 

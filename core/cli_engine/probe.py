@@ -58,6 +58,8 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result = {
         "available": False, "reason": "probe_error", "path": None,
         "version": None, "logged_in": False, "display_name": display_name, "hint": "",
+        # 引擎展示名的 i18n 键（品牌名不翻译；含本地化后缀的引擎由前端按键翻译）
+        "name_key": manifest.get("name_key", ""),
         # 三段探针失败段定位（REQ-EXPERT-MODE §2.2：详情卡/对话面板直接可见哪段挂了）
         # path=可执行解析 · version=版本下限 · login=登录态；None=未失败
         "failed_stage": None,
@@ -117,3 +119,73 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result["available"] = True
     result["reason"] = "ok"
     return result
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# 表头/分隔行（非模型名）：整行仅由分隔符或常见表头词构成
+_SEP_RE = re.compile(r"^[-=*·—\s|:]+$")
+_HEADER_WORDS = ("available model", "model name", "modelid", "list of model", "usage", "current")
+# 表头列名单元（整行首列为这些大写词时视为表头行，非模型名）
+_HEADER_TOKENS = {"MODEL", "MODELS", "ID", "NAME", "CONTEXT", "WINDOW", "COST",
+                  "PRICE", "CURRENCY", "DESCRIPTION", "STATUS", "PROVIDER", "ENABLED", "DEFAULT", "ALIAS"}
+# 模型名 token：以字母/数字开头，含字母，允许 . - _ / 等
+_MODEL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/\-:]*$")
+
+
+def _extract_model_name(line: str) -> str | None:
+    """从一行输出中抽取模型名：去列表符号/表头，取首个像模型 id 的 token。"""
+    text = _ANSI_RE.sub("", line).strip()
+    if not text or _SEP_RE.match(text):
+        return None
+    if any(w in text.lower() for w in _HEADER_WORDS):
+        return None
+    # 去常见列表前缀："- " / "* " / "• " / "1. " / ") "
+    text = re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)", "", text).strip()
+    # 名称与描述常以制表符或 2+ 空格分隔，取首字段
+    first = re.split(r"\t|  +", text)[0].strip()
+    cand = first.split(" ", 1)[0].strip()
+    if cand.upper() in _HEADER_TOKENS:
+        return None
+    if _MODEL_TOKEN_RE.match(cand) and any(c.isalpha() for c in cand):
+        return cand
+    return None
+
+
+def list_models(manifest: dict, cli_path_override: str | None = None) -> dict:
+    """
+    运行 manifest 声明的 models_cmd（如 `qoder --list-models`），返回该引擎当前用户可用模型清单。
+
+    Returns:
+        {"ok": bool, "models": [str], "reason": "ok"|"unsupported"|"not_installed"|"not_logged_in"|"probe_error"}
+    未声明 models_cmd 的引擎返回 unsupported（前端降级为仅「引擎默认」+ 跳设置）。
+    """
+    binary = manifest.get("binary", "qoder")
+    models_cmd = manifest.get("probe", {}).get("models_cmd")
+    if not models_cmd:
+        return {"ok": False, "models": [], "reason": "unsupported"}
+
+    path = cli_path_override or shutil.which(binary)
+    if not path:
+        return {"ok": False, "models": [], "reason": "not_installed"}
+    cmd = [path if c == binary else c for c in models_cmd]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=_PROBE_TIMEOUT,
+                           stdin=subprocess.DEVNULL)
+    except Exception as e:  # noqa: BLE001 - 列模型任何异常降级，绝不抛出
+        logger.warning("[CLI引擎列模型] 命令失败 %s: %s", manifest.get("display_name", "CLI"), e)
+        return {"ok": False, "models": [], "reason": "probe_error"}
+
+    combined = f"{r.stdout or ''}\n{r.stderr or ''}"
+    if "not logged in" in combined.lower():
+        return {"ok": False, "models": [], "reason": "not_logged_in"}
+
+    models: list[str] = []
+    seen: set[str] = set()
+    for line in (r.stdout or "").splitlines():
+        name = _extract_model_name(line)
+        if name and name not in seen:
+            seen.add(name)
+            models.append(name)
+        if len(models) >= 40:
+            break
+    return {"ok": True, "models": models, "reason": "ok" if models else "probe_error"}

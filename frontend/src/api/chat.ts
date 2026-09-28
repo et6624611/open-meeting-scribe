@@ -59,6 +59,11 @@ export interface AgentStage {
   detail?: string
   /** 工具调用 id（智能体模式并行工具按此配对，不靠数组下标） */
   id?: string
+  /** 英文标签（CLI 引擎工具调用双语，按当前 locale 选取） */
+  label_en?: string
+  /** 后端 i18n 键（ai-panel 命名空间；智能体引擎文案不硬嵌中文） */
+  hint_key?: string
+  hint_params?: Record<string, unknown>
 }
 
 export interface ChatAction {
@@ -160,11 +165,11 @@ export async function sendMessage(
 /** 流式 SSE 事件回调 / Streaming SSE event callbacks */
 export interface StreamCallbacks {
   onToken: (token: string) => void
-  onStage: (stage: { stage: string; label: string }) => void
-  onToolCall: (tool: { name: string; label: string; icon: string; args: Record<string, unknown>; id?: string }) => void
+  onStage: (stage: { stage: string; label: string; label_en?: string; hint_key?: string; hint_params?: Record<string, unknown> }) => void
+  onToolCall: (tool: { name: string; label: string; label_en?: string; icon: string; args: Record<string, unknown>; id?: string }) => void
   onToolResult: (result: { name: string; summary: string; success: boolean; tool_use_id?: string }) => void
   /** 智能体模式路由回显（§3.9-1）：本次由哪个引擎/授权档执行，含 auto 自动选中标记 */
-  onEngineRoute?: (info: { engine: string; display_name: string; auth_tier: string; session_id?: string; auto_selected?: boolean }) => void
+  onEngineRoute?: (info: { engine: string; display_name: string; name_key?: string; auth_tier: string; session_id?: string; auto_selected?: boolean }) => void
   onDone: (data: {
     metadata?: LlmMetadata
     latency_ms?: number
@@ -180,7 +185,7 @@ export interface StreamCallbacks {
     /** 本轮消费方/计费回显（与 core/routing 实际判定一致） */
     model_usage?: ModelUsage
   }) => void
-  onError: (error: string) => void
+  onError: (error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) => void
 }
 
 /** 流式发送消息（SSE） / Send message with streaming via SSE */
@@ -261,7 +266,8 @@ export async function sendMessageStream(
           } else if (event.type === 'done') {
             callbacks?.onDone(event)
           } else if (event.type === 'error') {
-            callbacks?.onError(event.content || 'Unknown error')
+            callbacks?.onError(event.content || 'Unknown error',
+              { hint_key: event.hint_key, hint_params: event.hint_params })
           }
         } catch {
           // Skip malformed JSON lines

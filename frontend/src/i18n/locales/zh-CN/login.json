@@ -1,7 +1,7 @@
 {
   "back": "返回（或按 ESC）",
   "back_label": "返回",
-  "subtitle": "登录后即可使用 AI 会议纪要生成、说话人识别等全部功能",
+  "subtitle": "登录后即可使用 AI 会议纪要生成、人员身份识别等全部功能",
   "tab_github": "GitHub",
   "tab_sms": "手机号（内测）",
   "sms_beta_notice": "此登录方式仅限中国大陆手机号，仅用于内部测试。",

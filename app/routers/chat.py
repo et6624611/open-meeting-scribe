@@ -949,7 +949,9 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         name = probe_result.get("display_name", "CLI")
         hint = probe_result.get("hint", "chatEngine.probeError")
         logger.info("[智能体模式] 引擎不可用 reason=%s，回退内置", probe_result.get("reason"))
-        yield {"type": "stage", "stage": "thinking", "label": f"⚠️ 智能体引擎（{name}）不可用，已回退内置问答"}
+        yield {"type": "stage", "stage": "thinking", "label": f"⚠️ 智能体引擎（{name}）不可用，已回退内置问答",
+               "hint_key": "cli_engine_unavailable_fallback",
+               "hint_params": {"engine": name}}
         yield {"type": "__fallback__", "hint": hint}
         return
 
@@ -967,13 +969,15 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     export = await loop.run_in_executor(None, lambda: export_context(
         engine_id=cfg["engine_id"], task=task, task_id=data.task_id, user_message=user_message,
         page_context=page_ctx, role_prompt=role_prompt, speaker_map=speaker_map,
-        workspace_key=data.chat_session_id or data.task_id))
+        workspace_key=data.chat_session_id or data.task_id,
+        history=data.history))
 
     session_id = _deterministic_session_id(data.task_id, resolved_project_id, data.chat_session_id) if cfg["session_persistence"] else None
     auth_tier = data.auth_tier if data.auth_tier in ("readonly", "workspace_write", "full_task") else cfg["auth_tier"]
 
     # ③ 路由回显（§3.9-1）：明示本次由智能体执行 + 授权档，静默分流摧毁信任
     yield {"type": "engine_route", "engine": cfg["engine_id"], "display_name": probe_result.get("display_name"),
+           "name_key": probe_result.get("name_key", ""),
            "auth_tier": auth_tier, "session_id": session_id, "auto_selected": auto_selected}
 
     # ④ MCP 桥：签发单轮短时令牌 + 写临时 mcp-config（回连 base_url），轮次结束回收
@@ -1004,7 +1008,9 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
             yield evt
     except CliAgentError as e:
         logger.warning("[智能体模式] CLI 启动失败：%s，回退内置", e)
-        yield {"type": "__fallback__", "hint": str(e)}
+        yield {"type": "__fallback__", "hint": str(e),
+               "hint_key": getattr(e, "hint_key", ""),
+               "hint_params": {"engine": probe_result.get("display_name", "CLI"), "detail": getattr(e, "detail", "")}}
     finally:
         if mcp_config_path and bridge_token:
             teardown_bridge(mcp_config_path, bridge_token)

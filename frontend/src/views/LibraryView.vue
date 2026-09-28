@@ -4,7 +4,8 @@
     <div class="lib-header-bar">
       <div class="lib-title-group">
         <h1>{{ t('library.title') }}</h1>
-        <span class="lib-count">{{ t('library.count', { count: taskStore.tasks.length }) }}</span>
+        <span v-if="hasLibFilter" class="lib-count">{{ t('library.count_matched', { matched: libCountDisplay, total: libTabTotal }) }}</span>
+        <span v-else class="lib-count">{{ t('library.count', { count: libCountDisplay }) }}</span>
       </div>
       <div class="lib-search-wrap">
         <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -21,11 +22,11 @@
     <div class="lib-tabs">
       <button class="lib-tab" :class="{ active: !taskStore.showArchived }" @click="switchTab(false)">
         {{ t('library.tab_active') }}
-        <span class="lib-tab-count">{{ taskStore.activeTasks.length }}</span>
+        <span class="lib-tab-count">{{ activeTabCount }}</span>
       </button>
       <button class="lib-tab" :class="{ active: taskStore.showArchived }" @click="switchTab(true)">
         {{ t('library.tab_archived') }}
-        <span class="lib-tab-count">{{ taskStore.archivedTasks.length }}</span>
+        <span class="lib-tab-count">{{ archivedTabCount }}</span>
       </button>
     </div>
 
@@ -131,6 +132,7 @@
             <div class="cell-title" role="cell">
               <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
               <span class="cell-title-text" v-html="highlightLibTitle(task)"></span>
+              <span v-if="isContentOnlyMatch(task)" class="lib-src-badge" :title="t('library.source_content_hint')">{{ t('library.source_content') }}</span>
             </div>
             <div class="cell-status" role="cell">
               <span class="status-dot" :class="statusDotClass(task.status)"></span>
@@ -253,7 +255,7 @@ import { usePageBack } from '@/composables/usePageBack'
 import { useDialog } from '@/composables/useDialog'
 import { showToast } from '@/composables/useToast'
 import { downloadSummaryUrl, type SummaryFormat } from '@/api/tasks'
-import { matchTask, highlightText } from '@/utils/search'
+import { matchTask, matchesTitle, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
 const { t } = useI18n()
@@ -323,9 +325,8 @@ function switchTab(showArchived: boolean) {
   ;(window as any).__omsUpdatePhilosophy?.(showArchived ? 'archived' : 'active')
 }
 
-/** 会议库专用分组：根据 showArchived 切换数据源，叠加文本搜索 + 日期 + 说话人筛选 / Library grouping: switch source by showArchived, overlay text search + date + speaker filter */
-const libGroupedTasks = computed(() => {
-  const source = taskStore.showArchived ? taskStore.archivedTasks : taskStore.activeTasks
+/** 会议库共用过滤：对给定数据源依次叠加「文本搜索 + 日期 + 说话人」筛选 / Shared library filter: overlay text search + date + speaker on a given source */
+function applyLibFilters(source: Task[]): Task[] {
   const q = taskStore.searchQuery.trim().toLowerCase()
   const dFrom = dateFrom.value
   const dTo = dateTo.value
@@ -356,6 +357,50 @@ const libGroupedTasks = computed(() => {
       return Object.values(mapping).some(name => normalizeSpeakerName(name) === spk)
     })
   }
+
+  return filtered
+}
+
+/** 是否存在任意检索/筛选条件（含搜索词）：决定计数是否切换为「匹配口径」 */
+const hasLibFilter = computed(
+  () => !!taskStore.searchQuery.trim() || !!dateFrom.value || !!dateTo.value || !!filterSpeakerId.value,
+)
+
+/** 当前 Tab 过滤后的可见任务（供分组与计数复用） */
+const libFilteredTasks = computed(() =>
+  applyLibFilters(taskStore.showArchived ? taskStore.archivedTasks : taskStore.activeTasks),
+)
+
+/** 当前 Tab 的全量任务数（未过滤） / Unfiltered total for the current tab */
+const libTabTotal = computed(() =>
+  (taskStore.showArchived ? taskStore.archivedTasks : taskStore.activeTasks).length,
+)
+
+/** 顶部「N 个会议」计数：有筛选时展示匹配数，否则展示当前 Tab 全量 */
+const libCountDisplay = computed(() =>
+  hasLibFilter.value ? libFilteredTasks.value.length : libTabTotal.value,
+)
+
+/** 「全部」Tab 计数：搜索/筛选时展示该 Tab 的匹配数 / Active tab count: matched when filtering */
+const activeTabCount = computed(() =>
+  hasLibFilter.value ? applyLibFilters(taskStore.activeTasks).length : taskStore.activeTasks.length,
+)
+
+/** 「已归档」Tab 计数 / Archived tab count */
+const archivedTabCount = computed(() =>
+  hasLibFilter.value ? applyLibFilters(taskStore.archivedTasks).length : taskStore.archivedTasks.length,
+)
+
+/** 是否靠「非标题」维度命中（用于给转写/纪要命中的行加来源标识） */
+function isContentOnlyMatch(task: Task): boolean {
+  const q = taskStore.searchQuery.trim().toLowerCase()
+  if (!q) return false
+  return !matchesTitle(task, q)
+}
+
+/** 会议库专用分组：基于过滤后的任务按日期分组 / Library grouping: group the filtered tasks by date */
+const libGroupedTasks = computed(() => {
+  const filtered = libFilteredTasks.value
 
   // 复用 store 的分组逻辑（通过临时替换 filteredTasks 的数据源） / Reuse store grouping logic
   // 这里直接按 meeting_date 分组，与 store 保持一致 / Group by meeting_date directly, consistent with store
@@ -1018,6 +1063,17 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 }
 .cell-title-text {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lib-src-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--subtle);
+  border: 1px solid var(--border);
+  white-space: nowrap;
 }
 .table-row.is-playing .cell-title { color: var(--accent); }
 .cell-status {

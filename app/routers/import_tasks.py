@@ -345,40 +345,32 @@ def _create_import_task(
 
         save_task_to_disk(task_id)
 
-        # 从纪要中提取待办 / Extract todos from summary
-        try:
-            from core.summarize import parse_todos_from_summary
-            todos = parse_todos_from_summary(summary_text)
-            if todos:
-                tasks[task_id]["todos"] = todos
-                save_task_to_disk(task_id)
-        except Exception as e:
-            logger.warning(f"[导入] 待办提取失败（不影响导入）: {e}")
-
-        # REQ-DECISION-CENTER R1：从纪要中提取决策 / Extract decisions from summary
+        # DC-UNIFY-01：行动项与结论合流为唯一一条决策流（结论以「待确认」态入盘）
         try:
             from core import joblog
-            from core.summarize import merge_decisions_after_regen, parse_decisions_with_status
-            decisions, parse_status = parse_decisions_with_status(summary_text)
-            tasks[task_id]["decisions"] = merge_decisions_after_regen(
-                tasks[task_id].get("decisions") or [], decisions,
+            from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_todos_from_summary
+            parsed_todos = parse_todos_from_summary(summary_text)
+            parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
+            tasks[task_id]["todos"] = merge_flow_after_regen(
+                tasks[task_id].get("todos") or [],
+                parsed_todos + parsed_decisions,
                 tasks[task_id].get("decision_deletions"),  # DC-R2-BE 墓碑：导入重解析同样不复活已删 auto
             )
-            if decisions or parse_status:
+            if parsed_todos or parsed_decisions or parse_status:
                 save_task_to_disk(task_id)
             if parse_status:
                 logger.warning(f"[导入] 决策解析降级（{parse_status}）: task={task_id[:8]}")
                 joblog.append_event(
                     task_id, joblog.STAGE_SUMMARY,
-                    f"导入决策解析降级（{parse_status}）：决策置空，不影响导入", level="warn",
+                    f"导入决策解析降级（{parse_status}）：结论节点置空，不影响导入", level="warn",
                 )
         except Exception as e:
-            logger.warning(f"[导入] 决策提取失败（不影响导入）: {e}")
+            logger.warning(f"[导入] 决策流提取失败（不影响导入）: {e}")
             try:
                 from core import joblog
                 joblog.append_event(
                     task_id, joblog.STAGE_SUMMARY,
-                    f"导入决策提取异常（不影响导入）: {e}", level="warn",
+                    f"导入决策流提取异常（不影响导入）: {e}", level="warn",
                 )
             except Exception:
                 pass

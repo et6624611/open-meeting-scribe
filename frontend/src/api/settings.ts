@@ -159,12 +159,27 @@ export interface ChatEngineProbe {
   available: boolean
   reason?: string
   display_name?: string
+  /** 展示名的 i18n 键（含本地化后缀的引擎由前端按键翻译；缺省用 display_name） */
+  name_key?: string
   hint?: string
   path?: string | null
   version?: string | null
   logged_in?: boolean
   /** 失败段定位（EXPERT-MODE 三段探针回显）：null=全通过 */
   failed_stage?: 'path' | 'version' | 'login' | null
+}
+
+/** 引擎清单枚举项（数据驱动：新增 manifest 即可选，前端不再硬编码） */
+export interface ChatEngineEngineInfo {
+  engine_id: string
+  display_name: string
+  name_key?: string
+  binary: string
+  min_version?: string
+  install_url?: string
+  capabilities?: Record<string, boolean>
+  /** 本机 PATH 中可执行（快速判断，不含版本/登录态） */
+  installed: boolean
 }
 
 /** 智能体引擎配置 + 探针状态（详情层 CLI 卡与对话面板前置回显共用） */
@@ -179,10 +194,34 @@ export interface ChatEngineStatus {
     retention_days?: number
     cli_path_override?: string | null
   }
+  engines?: ChatEngineEngineInfo[]
   probe: ChatEngineProbe
 }
 
-export async function fetchChatEngineStatus(): Promise<ChatEngineStatus> {
-  const { data } = await client.get<ChatEngineStatus>('/api/settings/chat-engine')
+/**
+ * 拉取引擎状态与探针；engine 参数为预览探针（只读，不改已保存配置）。
+ * Fetch engine status; `engine` runs a read-only preview probe for another engine.
+ */
+export async function fetchChatEngineStatus(engine?: string | null): Promise<ChatEngineStatus> {
+  const { data } = await client.get<ChatEngineStatus>('/api/settings/chat-engine',
+    { params: engine ? { engine } : undefined })
+  return data
+}
+
+/** 智能体引擎可用模型清单（就地切换用） / CLI engine available models for in-place switch */
+export interface ChatEngineModels {
+  ok: boolean
+  models: string[]
+  reason: 'ok' | 'unsupported' | 'not_installed' | 'not_logged_in' | 'probe_error' | string
+  engine_id: string
+}
+
+/**
+ * 拉取智能体引擎当前用户可用模型（跑 CLI --list-models）。
+ * engine 缺省取已保存引擎；未登录/不支持时返回空清单 + reason。
+ */
+export async function fetchChatEngineModels(engine?: string | null): Promise<ChatEngineModels> {
+  const { data } = await client.get<ChatEngineModels>('/api/settings/chat-engine/models',
+    { params: engine ? { engine } : undefined })
   return data
 }

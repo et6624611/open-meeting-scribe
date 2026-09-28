@@ -3,11 +3,13 @@ tests/test_cli_engine.py — 智能体模式（本地 CLI 引擎）适配层单�
 
 覆盖 / Covers:
   - event_bridge：stream-json → 规范 SSE 事件（工具配对/思考/整段 text/done/额度错误映射）
-  - manifest：工具中文标签解析（含 mcp__ 归一、未知降级）、授权档位 argv 编译
+    + event_schema 通用映射（非 stream-json 形状引擎）
+  - manifest：工具双语标签解析（含 mcp__ 归一、未知降级）、授权档位 argv 编译（含逐档 flag 覆盖）
   - probe：三段探针（安装/版本/登录）成功与各失败分支（打桩，不触真机 CLI）
   - context_export：工作区落盘于 agent-workspace/（非 data/，M3）、体量截断
   - M1 打字机切片
   - chat 路由：引擎不可用时 yield __fallback__ 哨兵（不触真机）
+  - 多 CLI 适配：claude-code 清单加载/argv 编译、chat-engine 端点引擎枚举、engine_id 动态白名单
 
 全部离线，不依赖本机 qoder 安装/登录/额度，也不发起任何网络或子进程。
 运行 / Run: pytest tests/test_cli_engine.py -v
@@ -127,6 +129,16 @@ class TestEventBridge:
         assert e["type"] == "error"
         assert e["engine_error"] == "credit_exhausted"
         assert "额度不足" in e["content"]
+        # i18n 化：携前端键与插值参数（引擎名不硬嵌厂商）
+        assert e["hint_key"] == "cli_engine_credit_exhausted"
+        assert e["hint_params"]["engine"] == "Qoder CLI"
+
+    def test_init_and_tool_call_carry_i18n_fields(self, manifest):
+        init = eb.parse_line(LINE_INIT, manifest)[0]
+        assert init["hint_key"] == "cli_engine_started"
+        tool = eb.parse_line(LINE_TOOL_USE, manifest)[0]
+        assert tool["label"] == "读取文件" and tool["label_en"] == "Read file"
+        assert tool["icon"] == "file-text"  # lucide 名（前端内联 SVG 渲染）
 
     def test_denials_forwarded_on_done(self, manifest):
         d = eb.parse_line(LINE_DENIAL, manifest)[0]
@@ -138,6 +150,38 @@ class TestEventBridge:
         assert all(len(p) <= 16 for p in pieces)
         assert eb.chunk_text("", 16) == []
         assert eb.chunk_text("short", 16) == ["short"]
+
+
+# ============================================================
+# event_schema 通用映射（非 stream-json 形状引擎的预留扩展点）
+# ============================================================
+
+class TestEventSchema:
+    SCHEMA_MANIFEST = {
+        "display_name": "Some CLI",
+        "event_schema": {
+            "type_path": "kind",
+            "text_path": "payload.message",
+            "done_types": ["finished"],
+            "error_types": ["failed"],
+            "error_path": "payload.reason",
+        },
+    }
+
+    def test_schema_text_and_done(self):
+        tok = eb.parse_line(json.dumps({"kind": "delta", "payload": {"message": "hi"}}), self.SCHEMA_MANIFEST)
+        assert tok[0]["type"] == "token" and tok[0]["content"] == "hi"
+        done = eb.parse_line(json.dumps({"kind": "finished", "payload": {}}), self.SCHEMA_MANIFEST)
+        assert done[-1]["type"] == "done"
+
+    def test_schema_error_carries_i18n(self):
+        evs = eb.parse_line(json.dumps({"kind": "failed", "payload": {"reason": "boom"}}), self.SCHEMA_MANIFEST)
+        assert evs[0]["type"] == "error" and evs[0]["hint_key"] == "cli_engine_error"
+        assert evs[0]["hint_params"]["engine"] == "Some CLI" and evs[0]["hint_params"]["detail"] == "boom"
+
+    def test_schema_unknown_shapes_ignored(self):
+        assert eb.parse_line(json.dumps({"kind": "noise", "whatever": 1}), self.SCHEMA_MANIFEST) == []
+        assert eb.parse_line(json.dumps({"no_kind": True}), self.SCHEMA_MANIFEST) == []
 
 
 # ============================================================
@@ -156,10 +200,20 @@ class TestManifest:
 
     def test_tool_label_mcp_and_unknown(self, manifest):
         assert mf.resolve_tool_label(manifest, "Write")[0] == "写入文件"
-        lab, icon = mf.resolve_tool_label(manifest, "mcp__oms__add_todos")
-        assert "add_todos" in lab and icon == "🔌"
-        lab2, icon2 = mf.resolve_tool_label(manifest, "TotallyNewTool")
-        assert icon2 == "🔧"  # 未知降级样式，不裸显英文 name
+        lab, lab_en, icon = mf.resolve_tool_label(manifest, "mcp__oms__add_todos")
+        assert "add_todos" in lab and "add_todos" in lab_en and icon == "plug"
+        lab2, _en2, icon2 = mf.resolve_tool_label(manifest, "TotallyNewTool")
+        assert icon2 == "wrench"  # 未知降级样式，不裸显英文 name
+
+    def test_tool_label_bilingual_and_fallback(self, manifest):
+        # 双语：zh/en 同时可得（前端按 locale 选取）
+        zh, en, icon = mf.resolve_tool_label(manifest, "Read", locale="en")
+        assert zh == "读取文件" and en == "Read file" and icon == "file-text"
+        # 缺失语言回退另一语言（不阻断解析）
+        partial = {"tool_labels": {"OnlyZh": {"zh": "仅中文", "icon": "wrench"}}}
+        assert mf.resolve_tool_label(partial, "OnlyZh") == ("仅中文", "仅中文", "wrench")
+        only_en = {"tool_labels": {"OnlyEn": {"en": "Write doc", "icon": "pen-line"}}}
+        assert mf.resolve_tool_label(only_en, "OnlyEn") == ("Write doc", "Write doc", "pen-line")
 
     def test_auth_argv_tiers(self, manifest):
         ro = mf.compile_auth_argv(manifest, "readonly")
@@ -168,6 +222,27 @@ class TestManifest:
         assert "auto" in full and "Write" not in full
         # 未知档位安全回退 readonly（最小权限）
         assert mf.compile_auth_argv(manifest, "garbage") == ro
+
+    def test_claude_code_manifest_loads(self):
+        """多 CLI 适配样例：claude-code 清单可加载，能力诚实声明（无 add_dir，工作区走 cwd）。"""
+        m = mf.load_manifest("claude-code")
+        assert m["binary"] == "claude"
+        assert m["capabilities"]["add_dir"] is False
+        assert m["argv"]["workspace_flag"] is None  # 无 -w 类标志 → runner 用进程 cwd 兜底
+        assert m["name_key"] == "cliengine_engine_claude_code"
+
+    def test_claude_code_auth_argv(self):
+        """逐档 flag 覆盖：Claude 用 --disallowedTools（驼峰），权限模式取值与 Qoder 不同。"""
+        m = mf.load_manifest("claude-code")
+        ro = mf.compile_auth_argv(m, "readonly")
+        assert "--permission-mode" in ro and "default" in ro
+        assert "--disallowedTools" in ro and "Bash" in ro
+        ww = mf.compile_auth_argv(m, "workspace_write")
+        assert "acceptEdits" in ww
+        full = mf.compile_auth_argv(m, "full_task")
+        assert "bypassPermissions" in full and "Write" not in full
+        # 未知档位回退 readonly（最小权限）
+        assert mf.compile_auth_argv(m, "garbage") == ro
 
 
 # ============================================================
@@ -210,6 +285,30 @@ class TestProbe:
         monkeypatch.setattr(probe_mod.subprocess, "run", _run)
         r = probe_mod.probe_engine(manifest)
         assert r["available"] is False and r["reason"] == "not_logged_in"
+
+
+class TestListModels:
+    """list_models：就地切换的 CLI 模型清单发现（全离线，不触真机）。"""
+
+    def test_unsupported_without_models_cmd(self, monkeypatch):
+        monkeypatch.setattr(probe_mod.shutil, "which", lambda x: "/usr/bin/x")
+        r = probe_mod.list_models({"binary": "x", "probe": {}})
+        assert r["ok"] is False and r["reason"] == "unsupported" and r["models"] == []
+
+    def test_not_logged_in(self, manifest, monkeypatch):
+        monkeypatch.setattr(probe_mod.shutil, "which", lambda x: "/usr/bin/qoder")
+        monkeypatch.setattr(probe_mod.subprocess, "run",
+                            lambda *a, **k: _FakeCompleted("Not logged in. Run `qodercli login`."))
+        r = probe_mod.list_models(manifest)
+        assert r["ok"] is False and r["reason"] == "not_logged_in"
+
+    def test_parses_models_and_filters_header(self, manifest, monkeypatch):
+        monkeypatch.setattr(probe_mod.shutil, "which", lambda x: "/usr/bin/qoder")
+        out = "MODEL\tCONTEXT\n--------\nAuto\nQwen3.8-Max\nQwen3.8-Flash  轻量\n"
+        monkeypatch.setattr(probe_mod.subprocess, "run", lambda *a, **k: _FakeCompleted(out))
+        r = probe_mod.list_models(manifest)
+        assert r["ok"] is True
+        assert r["models"] == ["Auto", "Qwen3.8-Max", "Qwen3.8-Flash"]
 
 
 # ============================================================
@@ -310,6 +409,49 @@ class TestSessionIdDerivation:
         # 无 chat_session_id 时回退 task_id
         assert chat._deterministic_session_id("task-a", None, None) == \
                chat._deterministic_session_id("task-a", None, None)
+
+
+# ============================================================
+# 多 CLI 适配：引擎枚举与 engine_id 动态白名单（打桩，不触真机）
+# ============================================================
+
+class TestEngineRegistry:
+    def _base_cfg(self, engine_id="qoder-cli"):
+        return {"enabled": False, "engine_id": engine_id, "model": None,
+                "auth_tier": "readonly", "session_persistence": True,
+                "retention_days": 7, "cli_path_override": None}
+
+    def test_chat_engine_endpoint_lists_engines(self, monkeypatch):
+        import shutil as _shutil
+
+        import app.routers.settings as st
+        monkeypatch.setattr(st, "get_chat_engine_config", self._base_cfg)
+        monkeypatch.setattr(_shutil, "which", lambda x: None)  # 全部未安装：探针落 path 失败段，不触 subprocess
+        resp = st.get_chat_engine_status()
+        ids = {e["engine_id"] for e in resp["engines"]}
+        assert {"qoder-cli", "qoder-cli-cn", "claude-code"} <= ids
+        cc = next(e for e in resp["engines"] if e["engine_id"] == "claude-code")
+        assert cc["display_name"] == "Claude Code" and cc["installed"] is False
+        assert cc["name_key"] == "cliengine_engine_claude_code"
+        assert resp["probe"]["available"] is False and resp["probe"]["failed_stage"] == "path"
+
+    def test_save_rejects_unknown_engine_id(self, monkeypatch):
+        import app.routers.settings as st
+        saved: dict = {}
+        monkeypatch.setattr(st, "load_settings",
+                            lambda: {"chat_engine": self._base_cfg("qoder-cli")})
+        monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
+        st.save_settings({"chat_engine": {"enabled": True, "engine_id": "evil-engine"}})
+        # 非法 id 被丢弃，保留既有合法值（绝不写入未注册引擎）
+        assert saved["chat_engine"]["engine_id"] == "qoder-cli"
+
+    def test_save_accepts_registered_engine_id(self, monkeypatch):
+        import app.routers.settings as st
+        saved: dict = {}
+        monkeypatch.setattr(st, "load_settings", lambda: {"chat_engine": self._base_cfg("qoder-cli")})
+        monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
+        st.save_settings({"chat_engine": {"enabled": True, "engine_id": "claude-code"}})
+        assert saved["chat_engine"]["engine_id"] == "claude-code"
 
 
 # ============================================================

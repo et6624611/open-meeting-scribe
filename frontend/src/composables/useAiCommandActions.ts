@@ -125,12 +125,12 @@ export function useAiCommandActions(
   }
 
   async function onSpeakersAdd() {
-    const name = prompt('输入说话人姓名：')
+    const name = prompt('输入人员姓名：')
     if (!name?.trim()) return
     try {
       const { createSpeaker } = await import('@/api/speakers')
       await createSpeaker(name.trim())
-      showToast(`已添加说话人：${name.trim()}`, 'success')
+      showToast(`已添加人员：${name.trim()}`, 'success')
     } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
@@ -168,8 +168,8 @@ export function useAiCommandActions(
       { key: '/tasks list', desc: '列出所有任务', when: 'all', action: () => router.push('/library') },
       { key: '/tasks show', desc: '查看任务详情', when: 'all', action: onTasksShow },
       { key: '/tasks delete', desc: '删除任务', when: 'all', action: onTasksDelete },
-      { key: '/speakers list', desc: '列出所有说话人', when: 'all', action: () => router.push('/speakers') },
-      { key: '/speakers add', desc: '添加说话人', when: 'all', action: onSpeakersAdd },
+      { key: '/speakers list', desc: '列出所有人员', when: 'all', action: () => router.push('/speakers') },
+      { key: '/speakers add', desc: '添加人员', when: 'all', action: onSpeakersAdd },
       { key: '/hotwords list', desc: '列出热词', when: 'all', action: () => router.push('/hotwords') },
       { key: '/hotwords add', desc: '添加热词', when: 'all', action: onHotwordsAdd },
       { key: '/settings show', desc: '查看设置', when: 'all', action: () => router.push('/settings') },

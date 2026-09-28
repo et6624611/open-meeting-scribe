@@ -49,7 +49,7 @@
   "copy_title": "Copy Title",
   "copy_summary": "Copy Summary",
   "copied": "Copied",
-  "stat_speakers": "Speakers",
+  "stat_speakers": "People",
   "stat_duration": "Duration",
   "stat_created": "Created",
   "stat_source": "Source",
@@ -58,5 +58,5 @@
   "speakers_more": "{count} more",
   "speakers_total": "{count} participants",
   "speakers_unidentified": "{count} unidentified",
-  "speakers_unid_title": "{count} speaker(s) not yet linked to an identity"
+  "speakers_unid_title": "{count} people not yet linked to an identity"
 }

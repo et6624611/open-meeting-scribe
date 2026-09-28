@@ -483,7 +483,7 @@ class TestDecisionFlowTodos:
         resp = client.post(f"/api/tasks/{task_id}/todos", json={"text": "采用云方案", "assignee": "张三"})
         assert resp.status_code == 200
         todo = resp.json()["todo"]
-        assert todo["status"] == "to_start"
+        assert todo["status"] == "to_decide"
         assert todo["how"] == ["采用云方案"]
         assert todo["owner_type"] == "self"
         assert todo["done"] is False
@@ -531,7 +531,8 @@ class TestDecisionFlowTodos:
         todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": True}).json()["todo"]
         assert todo["done"] is True and todo["status"] == "done"
         todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": False}).json()["todo"]
-        assert todo["done"] is False and todo["status"] == "in_progress"
+        # DC-UNIFY-01：取消勾选回到状态字典的首个开放态（不再写死 in_progress）
+        assert todo["done"] is False and todo["status"] == "to_decide"
 
     def test_invalid_status_rejected(self, client, task_id):
         """非法 status 应被拒绝(422)"""

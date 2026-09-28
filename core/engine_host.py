@@ -89,22 +89,50 @@ def build_engine_env() -> dict:
     return {"MODELSCOPE_CACHE": str(model_dir)}
 
 
+def resolve_worker_python() -> str:
+    """引擎工作端解释器 / Engine worker interpreter.
+
+    开发态主 venv 通常不含 funasr/torch（重依赖只随冻结包分发，或装在独立的
+    本地引擎 venv 中），若用主进程 `sys.executable` 拉起 worker，推理阶段
+    `from funasr import AutoModel` 即抛 `ModuleNotFoundError: No module named 'funasr'`。
+    通过环境变量 ENGINE_PYTHON 显式指向装有 funasr/torch 的解释器即可修复；
+    相对路径锚定到项目根。未设置时退回 `sys.executable`（冻结包内 funasr 已随包分发）。
+    """
+    custom = os.environ.get("ENGINE_PYTHON", "").strip()
+    if not custom:
+        return sys.executable
+    path = Path(custom).expanduser()
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parent.parent / path
+    return str(path)
+
+
 def build_worker_command() -> list[str]:
     """引擎工作端启动命令 / Engine worker launch command.
 
-    - 开发态：`python -m core.engine_worker`
+    - 开发态：`<worker_python> -m core.engine_worker`（worker_python 默认当前解释器，
+      可经 ENGINE_PYTHON 指向含 funasr/torch 的本地引擎 venv）
     - 冻结态：`<exe> --engine-worker`（由 desktop.py 入口分派，配合 freeze_support）
     """
     if getattr(sys, "frozen", False):
         return [sys.executable, FROZEN_WORKER_FLAG]
-    return [sys.executable, "-m", "core.engine_worker"]
+    return [resolve_worker_python(), "-m", "core.engine_worker"]
+
+
+def _uses_external_worker_python() -> bool:
+    """worker 是否由独立解释器拉起（非当前进程）——决定是否需要注入 PYTHONPATH。"""
+    return not getattr(sys, "frozen", False) and resolve_worker_python() != sys.executable
 
 
 def build_worker_env() -> dict:
-    """完整子进程环境（当前环境 + MODELSCOPE_CACHE + 开发态 PYTHONPATH）。"""
+    """完整子进程环境（当前环境 + MODELSCOPE_CACHE + 开发态 PYTHONPATH）。
+
+    当 worker 由独立解释器（ENGINE_PYTHON）拉起时，也必须把项目根写入 PYTHONPATH，
+    否则该解释器找不到 `core.engine_worker`；因此非冻结态或跨解释器时统一注入。
+    """
     env = dict(os.environ)
     env.update(build_engine_env())
-    if not getattr(sys, "frozen", False):
+    if not getattr(sys, "frozen", False) or _uses_external_worker_python():
         project_root = str(Path(__file__).resolve().parent.parent)
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing}" if existing else project_root
@@ -130,6 +158,61 @@ def check_required_models() -> dict:
         elif result["status"] != "ready":
             missing.append(key)
     return {"ready": not missing and not tampered, "missing": missing, "tampered": tampered}
+
+
+# ── 完整性校验缓存（仅服务观测面） / Integrity-check cache (observation surface only)──
+# check_required_models() 会对全部必装权重逐文件做 SHA256 哈希（约 2 GB），单次
+# 3s+。此前 /api/engine/status 每次实时校验，既拖慢该端点（日志成排的 [PERF] 慢请
+# 求），也使前端无法高频刷新进程存活态。此处按「模型目录锚定 + TTL + 显式失效」缓存
+# 结果；start() 的拒载门禁仍走实时校验（force=True），R5「篡改拒载」不被削弱。
+# TTL 可经环境变量覆盖；下载完成/取消/失败、显式校验、变更存储目录时显式失效。
+MODELS_CHECK_TTL_SECONDS = float(os.environ.get("ENGINE_MODELS_CHECK_TTL", "60"))
+
+_models_check_cache: dict = {}  # {"dir", "result", "checked_at", "expires_at"}
+_models_check_lock = threading.Lock()
+
+
+def invalidate_models_check() -> None:
+    """丢弃完整性校验缓存（模型文件已经或即将变化时调用）。"""
+    with _models_check_lock:
+        _models_check_cache.clear()
+
+
+def check_required_models_cached(force: bool = False) -> dict:
+    """带缓存的必装模型完整性校验，供观测面（status / 徽章）使用。
+
+    返回结构同 check_required_models()，额外携带 cached / age_seconds。
+    force=True 时跳过读取但仍回填缓存，用于门禁后的结果播种。
+    """
+    from core.model_registry import get_model_dir
+    try:
+        anchor = str(Path(get_model_dir()).expanduser().resolve())
+    except OSError:
+        anchor = str(Path(get_model_dir()).expanduser())
+    now = time.time()
+
+    if not force:
+        with _models_check_lock:
+            hit = _models_check_cache
+            if hit.get("dir") == anchor and hit.get("expires_at", 0) > now:
+                out = dict(hit["result"])
+                out["cached"] = True
+                out["age_seconds"] = round(now - hit["checked_at"], 1)
+                return out
+
+    result = check_required_models()
+    checked_at = time.time()
+    with _models_check_lock:
+        _models_check_cache.clear()
+        _models_check_cache.update({
+            "dir": anchor,
+            "result": dict(result),
+            "checked_at": checked_at,
+            "expires_at": checked_at + MODELS_CHECK_TTL_SECONDS,
+        })
+    result["cached"] = False
+    result["age_seconds"] = 0.0
+    return result
 
 
 class EngineHost:
@@ -158,7 +241,7 @@ class EngineHost:
             if self.is_running():
                 return {"ok": True, "already_running": True, "pid": self._proc.pid}
 
-            precheck = check_required_models()
+            precheck = check_required_models_cached(force=True)
             if not precheck["ready"]:
                 if precheck["tampered"]:
                     return {
@@ -351,16 +434,22 @@ class EngineHost:
     def status(self) -> dict:
         from app.settings_store import get_engine_config
         cfg = get_engine_config()
-        precheck = check_required_models()
+        # 观测面走缓存校验（~毫秒级），使前端可对进程存活态做常规刷新；
+        # 门禁侧（start）仍为实时校验，见 check_required_models_cached 注释。
+        precheck = check_required_models_cached()
+        running = self.is_running()
         return {
             "mode": cfg["mode"],
             "model_dir": str(Path(cfg["local"]["model_dir"]).expanduser()),
             "modelscope_cache": build_engine_env()["MODELSCOPE_CACHE"],
-            "process_running": self.is_running(),
-            "pid": self._proc.pid if self.is_running() else None,
+            "process_running": running,
+            "pid": self._proc.pid if running else None,
             "models_ready": precheck["ready"],
             "missing_models": precheck["missing"],
             "tampered_models": precheck["tampered"],
+            # 完整性校验结果是否为缓存命中 + 距上次实检的秒数（诊断用）
+            "models_check_cached": bool(precheck.get("cached")),
+            "models_check_age_seconds": precheck.get("age_seconds", 0.0),
             "warmup_state": self._warmup_state,  # DEF-QA-R1-03：None/running/done/failed
         }
 

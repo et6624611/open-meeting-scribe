@@ -36,23 +36,23 @@
     "kb_search_placeholder": "搜索知识库…"
   },
   "binding": {
-    "title": "为说话人关联真实身份",
-    "title_all_bound": "说话人关联已完成",
-    "detected": "系统识别到 {count} 位说话人",
+    "title": "为人员关联真实身份",
+    "title_all_bound": "人员关联已完成",
+    "detected": "系统识别到 {count} 位人员",
     "unbound_hint": "，{count} 位待关联",
-    "locate": "定位到该说话人的发言",
-    "name_required": "请先输入姓名再创建说话人",
+    "locate": "定位到该人员的发言",
+    "name_required": "请先输入姓名再创建人员",
     "skip": "暂不关联",
     "confirm": "确认关联",
     "close": "关闭",
     "click_to_bind": "点击选择或新建身份",
     "click_to_rebind": "点击修改关联",
-    "edit_bindings": "编辑说话人关联",
-    "search_placeholder": "搜索说话人...",
+    "edit_bindings": "编辑人员关联",
+    "search_placeholder": "搜索人员...",
     "no_bind": "不关联",
     "no_match": "无匹配结果",
     "create_named": "新建",
-    "create": "+ 新建说话人"
+    "create": "+ 新建人员"
   },
   "transcript": {
     "show": "显示原文",
@@ -86,15 +86,15 @@
     "exit_focus": "退出聚焦",
     "back_to_playback": "回到播放位置",
     "back_to_playback_title": "回到当前播放位置",
-    "focus_speaker": "聚焦该说话人",
+    "focus_speaker": "聚焦该人员",
     "exit_focus_all": "取消聚焦，查看全部"
   },
   "speaker_panel": {
-    "title": "说话人",
+    "title": "人员",
     "collapse": "收起面板",
-    "expand": "展开说话人面板",
-    "search": "搜索说话人",
-    "search_placeholder": "搜索说话人...",
+    "expand": "展开人员面板",
+    "search": "搜索人员",
+    "search_placeholder": "搜索人员...",
     "me_label": "● 我",
     "total": "合计 {duration} · {turns} 条发言"
   },
@@ -138,9 +138,6 @@
     "locate": "定位到原文",
     "empty": "暂无决策",
     "add": "添加决策",
-    "assignee_placeholder": "执行人（可选）",
-    "cancel": "取消",
-    "submit": "添加",
     "delete": "删除",
     "filter_all": "全部",
     "filter_active": "进行中",
@@ -153,20 +150,24 @@
     "selected_count": "已选 {count} 项",
     "edit_save": "保存",
     "edit_cancel": "取消",
+    "edit_menu": "决策操作",
+    "edit_text": "编辑决策文本",
+    "edit_title_label": "标题",
+    "edit_content_label": "内容",
+    "edit_title_placeholder": "一句话概括（可留空）",
+    "edit_content_placeholder": "决策正文",
     "mark_done": "标记完成",
     "mark_active": "标记进行中",
     "add_decision": "添加决策",
-    "decision_title_placeholder": "决策 / 事项标题…",
     "flow_progress": "决策流推进度",
     "flow_empty": "记录第一条决策",
     "flow_empty_hint": "记录会议中的关键决策和后续行动",
     "completed_group": "已完成 {count} 条决策",
     "total_count": "共 {count} 条",
+    "status_other": "其他",
     "content_placeholder": "记录决策内容（Markdown）…",
     "status_to_decide": "待决策",
-    "status_to_start": "待启动",
     "status_in_progress": "进行中",
-    "status_to_confirm": "待确认",
     "status_done": "已完成",
     "owner_label": "推进方(点击切换)",
     "owner_self": "等待:自己",
@@ -180,9 +181,9 @@
     "avatar_self": "我"
   },
   "onboarding": {
-    "title": "关联说话人身份",
+    "title": "关联人员身份",
     "got_it": "我知道了",
-    "info_icon_tip": "什么是说话人关联？",
+    "info_icon_tip": "什么是人员关联？",
     "demo_label_1": "小李",
     "demo_label_2": "小王",
     "demo_name_1": "张明",
@@ -219,7 +220,7 @@
     "transcript": "原文",
     "notes": "随记",
     "summary": "纪要",
-    "todos": "行动项",
+    "todos": "决策",
     "insights": "洞察"
   },
   "insights": {
@@ -239,7 +240,7 @@
     "extract_todo": "请从以下内容中提取决策"
   },
   "errors": {
-    "create_speaker_failed": "新建说话人失败",
+    "create_speaker_failed": "新建人员失败",
     "save_mapping_failed": "增量保存映射失败",
     "submit_mapping_failed": "提交映射失败",
     "update_project_failed": "更新知识库关联失败",
@@ -271,18 +272,13 @@
     "remove": "移除",
     "person_suffix": "人参会",
     "add_inline_placeholder": "添加…",
-    "pick_speaker": "从说话人选择",
+    "pick_speaker": "从人员选择",
     "auto_tag": "自动",
-    "search_placeholder": "搜索说话人…",
+    "search_placeholder": "搜索人员…",
     "create_hint": "新建「{name}」"
   },
   "pipeline": {
     "completed": "纪要已生成"
   },
-  "decisions_panel_title": "本会议决策",
-  "decisions_panel_link": "去决策中心",
-  "decisions_panel_none": "本次会议还没有结构化决策",
-  "decisions_panel_pending": "待确认",
-  "decisions_panel_superseded": "已被取代",
-  "decisions_panel_revoked": "已撤销"
+  "decisions_panel_link": "去决策中心"
 }

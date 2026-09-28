@@ -30,8 +30,13 @@
     </div>
 
     <template v-else>
-      <!-- 引导横幅 / Guide banner -->
-      <div v-if="!heroDismissed" class="ctx-hero">
+      <!-- 引导横幅（可折叠） / Guide banner (collapsible) -->
+      <div v-if="heroCollapsed" class="ctx-hero-bar" @click="$emit('toggleHero')" :title="t('ai-panel.context.hero_expand')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="ctx-hero-bar-title">{{ t('ai-panel.context.hero_title') }}</span>
+        <svg class="ctx-hero-bar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div v-else class="ctx-hero">
         <div class="ctx-hero-inner">
           <div class="ctx-hero-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -41,9 +46,17 @@
             <p>{{ t('ai-panel.context.hero_desc') }}</p>
           </div>
         </div>
-        <button class="ctx-hero-dismiss" @click="heroDismissed = true; $emit('dismissHero')" :title="t('ai-panel.context.hero_dismiss')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <button class="ctx-hero-dismiss" @click.stop="$emit('toggleHero')" :title="t('ai-panel.context.hero_collapse')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         </button>
+      </div>
+
+      <!-- 上下文来源归属（仅非该会议页面显示） / Context source attribution (shown only away from the source meeting) -->
+      <div v-if="contextSource && !isOnSourceMeeting" class="ctx-source" :title="t('ai-panel.context.source_hint')" @click="$emit('goMeeting', contextSource.taskId)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="ctx-source-label">{{ t('ai-panel.context.source_prefix') }}</span>
+        <span class="ctx-source-title">{{ contextSource.title }}</span>
+        <span class="ctx-source-jump">{{ t('ai-panel.context.source_jump') }}</span>
       </div>
 
       <!-- 概览统计 / Overview stats -->
@@ -56,7 +69,7 @@
       </div>
 
       <!-- 会议产出 / Meeting output -->
-      <div class="ctx-section" :class="{ 'is-collapsed': !sections.meeting }">
+      <div class="ctx-section section-meeting" :class="{ 'is-collapsed': !sections.meeting }">
         <div class="ctx-section-header" @click="sections.meeting = !sections.meeting">
           <div class="ctx-section-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -87,7 +100,7 @@
       </div>
 
       <!-- 关联知识库 / Linked knowledge base -->
-      <div class="ctx-section" :class="{ 'is-collapsed': !sections.files }">
+      <div class="ctx-section section-files" :class="{ 'is-collapsed': !sections.files }">
         <div class="ctx-section-header" @click="sections.files = !sections.files">
           <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><h4><template v-if="panelMounted" v-for="(word, wIdx) in sectionTitleChars.files" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="ctx-title-char" :style="{ animationDelay: `${((wIdx > 0 ? sectionTitleChars.files.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.06}s` }">{{ ch }}</span>{{ wIdx < sectionTitleChars.files.length - 1 ? ' ' : '' }}</template></h4></div>
           <div class="ctx-section-header-right"><span v-if="linkedProject" class="ctx-section-count">1 个</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.files }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
@@ -105,7 +118,7 @@
       </div>
 
       <!-- 相关会议 / Related meetings -->
-      <div class="ctx-section" :class="{ 'is-collapsed': !sections.related }">
+      <div class="ctx-section section-related" :class="{ 'is-collapsed': !sections.related }">
         <div class="ctx-section-header" @click="sections.related = !sections.related">
           <div class="ctx-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><h4><template v-if="panelMounted" v-for="(word, wIdx) in sectionTitleChars.related" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="ctx-title-char" :style="{ animationDelay: `${((wIdx > 0 ? sectionTitleChars.related.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.06}s` }">{{ ch }}</span>{{ wIdx < sectionTitleChars.related.length - 1 ? ' ' : '' }}</template></h4></div>
           <div class="ctx-section-header-right"><span class="ctx-section-count">{{ relatedMeetingCount }} 项</span><svg class="ctx-chevron" :class="{ 'is-collapsed': !sections.related }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
@@ -132,9 +145,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const route = useRoute()
 
 // 分区标题逐字显现触发 / Section title character-by-character reveal trigger
 const panelMounted = ref(false)
@@ -149,7 +164,7 @@ const sectionTitleChars = computed(() => {
   }
 })
 
-defineProps<{
+const props = defineProps<{
   isEmpty: boolean
   stats: { transcript: number; summary: number; todos: number; files: number }
   meetingOutputCount: number
@@ -164,12 +179,19 @@ defineProps<{
   relatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   visibleRelatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   relatedMeetingCount: number
+  contextSource: { taskId: string; title: string } | null
+  heroCollapsed: boolean
 }>()
+
+// 当前正停留在来源会议页时，归属一目了然，无需重复提示 / Hide the source row when already on the source meeting
+const isOnSourceMeeting = computed(() =>
+  route.name === 'generating' && route.params.taskId === (props.contextSource?.taskId ?? null)
+)
 
 defineEmits<{
   (e: 'generateSummary'): void
   (e: 'linkMeeting'): void
-  (e: 'dismissHero'): void
+  (e: 'toggleHero'): void
   (e: 'goTranscript'): void
   (e: 'goSummary'): void
   (e: 'goTodos'): void
@@ -179,6 +201,5 @@ defineEmits<{
 }>()
 
 const MAX_VISIBLE_MEETINGS = 5
-const heroDismissed = ref(localStorage.getItem('ctx_hero_dismissed') === '1')
 const sections = ref({ meeting: true, files: true, related: true })
 </script>

@@ -261,6 +261,92 @@
   line-height: 1.55;
 }
 
+/* 引导横幅收起态：一行提示条 */
+.ctx-hero-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-12);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.ctx-hero-bar:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.ctx-hero-bar > svg:first-child {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.ctx-hero-bar-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-hero-bar-chevron {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+
+/* 上下文来源归属 */
+.ctx-source {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-12);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.ctx-source:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.ctx-source > svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.ctx-source-label {
+  flex-shrink: 0;
+}
+.ctx-source-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-source-jump {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.ctx-source:hover .ctx-source-jump {
+  opacity: 1;
+}
+
 /* 概览统计 */
 .ctx-overview {
   display: grid;
@@ -374,9 +460,11 @@
   height: 14px;
   color: var(--muted);
 }
-.ctx-section:nth-child(1) .ctx-section-title svg { color: var(--accent); }
-.ctx-section:nth-child(2) .ctx-section-title svg { color: var(--warn); }
-.ctx-section:nth-child(3) .ctx-section-title svg { color: var(--purple); }
+/* 分组色标下放到计数徽标：标题图标保持中性灰，折叠时由徽标承载分组颜色 */
+/* Group color anchor lives in the count badge; header icons stay neutral gray */
+.section-meeting .ctx-section-count { color: var(--accent); background: var(--accent-soft); }
+.section-files .ctx-section-count { color: var(--warn); background: var(--warn-soft); }
+.section-related .ctx-section-count { color: var(--purple); background: var(--purple-soft); }
 .ctx-section-count {
   font-size: var(--fs-11);
   font-family: var(--font-mono);
@@ -419,17 +507,13 @@
   width: 14px;
   height: 14px;
 }
-.ctx-item-icon.type-transcript {
-  background: var(--info-soft);
-  color: var(--info);
-}
-.ctx-item-icon.type-summary {
+/* 子项图标颜色按分组统一（会议产出=accent，知识库=warn，相关会议=purple），色相只在组间使用 */
+/* Item icons inherit the group hue; hue distinguishes groups, never items within a group */
+.ctx-item-icon.type-transcript,
+.ctx-item-icon.type-summary,
+.ctx-item-icon.type-todo {
   background: var(--accent-soft);
   color: var(--accent);
-}
-.ctx-item-icon.type-todo {
-  background: var(--ok-soft);
-  color: var(--ok);
 }
 .ctx-item-icon.type-file {
   background: var(--warn-soft);

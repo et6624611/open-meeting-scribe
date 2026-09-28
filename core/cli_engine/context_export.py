@@ -32,6 +32,8 @@ WORKSPACE_ROOT = REPO_ROOT / "agent-workspace"
 # 单文件体量上限（字符），超限截断并标注，避免工作区无限膨胀（R4）
 _MAX_TRANSCRIPT_CHARS = 40000
 _MAX_SUMMARY_CHARS = 8000
+_MAX_HISTORY_CHARS = 6000       # 对话历史整块字符上限
+_MAX_HISTORY_TURNS = 10         # 最多保留前 N 轮对话
 
 # 洞察消息存储目录：与后端同一事实源约定（cwd 相对） / Insight messages dir (same cwd-relative convention as routers)
 INSIGHTS_TASKS_DIR = Path("data/tasks")
@@ -99,6 +101,38 @@ def _render_insights(task_id: str | None) -> str:
     return "\n---\n".join(parts)
 
 
+def _render_history(history: list[dict] | None) -> str:
+    """将前端传来的对话历史序列化为 Markdown，供 CLI 即使 session resume 失败仍可读取上文。
+    Serialize conversation history to Markdown so the CLI retains prior turns even when
+    session resume (-r) fails or was never attempted."""
+    if not history:
+        return ""
+    # 过滤当前轮的空 assistant 占位和空内容消息，只保留有效历史
+    turns = [m for m in history if (m.get("content") or "").strip()]
+    # 排除最后一条 user 消息（它会被写入 brief 的用户问题段，避免重复）
+    if turns and turns[-1].get("role") == "user":
+        turns = turns[:-1]
+    if not turns:
+        return ""
+    # 取最近 N 轮
+    turns = turns[-_MAX_HISTORY_TURNS:]
+    parts = ["# 前序对话（同一会话的早期轮次，供延续上下文）\n"]
+    total_chars = 0
+    for t in turns:
+        role_label = "用户" if t.get("role") == "user" else "助手"
+        content = t["content"].strip()
+        # 单条消息截断：助手消息可能非常长，限制为 1500 字符
+        if len(content) > 1500:
+            content = content[:1500] + "\n…（已截断）"
+        segment = f"## {role_label}\n{content}\n"
+        if total_chars + len(segment) > _MAX_HISTORY_CHARS:
+            parts.append("\n…（更早历史已省略）")
+            break
+        parts.append(segment)
+        total_chars += len(segment)
+    return "\n---\n".join(parts)
+
+
 def export_context(
     *,
     engine_id: str,
@@ -109,12 +143,16 @@ def export_context(
     role_prompt: str = "",
     speaker_map: dict | None = None,
     workspace_key: str | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     """
     将会议上下文写入工作区文件，返回调用元数据。 / Write context files, return invocation metadata.
 
     workspace_key：工作区目录主键，优先用面板会话 id（chat_session_id）使工作区与
     CLI 会话对齐 → 删除会话标签可精确定位清理（方案 D5）；缺省回退 task_id。
+
+    history：前端传来的同会话历史消息列表，序列化为 context/history.md，
+    确保即使 session resume 失败 CLI 仍可读回上文（修复多轮上下文割裂）。
 
     Returns:
         {"workspace": str, "add_dirs": [str], "brief": str}
@@ -152,6 +190,13 @@ def export_context(
         (ctx / "insights.md").write_text(insights_md, encoding="utf-8")
         written.append("context/insights.md")
 
+    # 对话历史（保障多轮上下文连续性，防止 session resume 失败时上下文割裂）
+    # Conversation history: guards multi-turn continuity when session resume fails
+    history_md = _render_history(history)
+    if history_md:
+        (ctx / "history.md").write_text(history_md, encoding="utf-8")
+        written.append("context/history.md")
+
     # 页面上下文 + 角色说明 → AGENTS.md（CLI 启动自动读取，替代巨型 prompt 注入）
     agents_parts = ["# 会议助手工作区\n"]
     if role_prompt:
@@ -170,6 +215,15 @@ def export_context(
     brief_lines = [
         "你是嵌入在会议软件中的工程化助手。用户当前问题如下。",
         "会议上下文已就绪于工作区文件：" + (", ".join(written) or "（无会议数据，仅当前问题）"),
+    ]
+    # 当存在对话历史时，显式引导 CLI 阅读上文以保持连续性
+    if history_md:
+        brief_lines.append(
+            "\n## 多轮对话连续性\n"
+            "本会话存在前序对话（见 context/history.md）。请将其作为上下文延续，"
+            "理解用户当前消息是对前一轮回复的追问/确认/延伸，不要当作全新对话重新开始。"
+        )
+    brief_lines += [
         "",
         "## 用户本轮问题",
         user_message.strip(),

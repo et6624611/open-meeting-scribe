@@ -5,13 +5,15 @@ core/decision_status.py — 决策状态字典 / Decision status dictionary
 创建：2026-09-25
 版本：1.0.0
 
-职责（REQ-DECISION-CENTER-R2 · DC-R2-c · 项目方裁决 D6/D7）：
-  1. 决策状态从封闭枚举改为**用户可维护的状态字典**（改名 / 新增 / 删除 / 排序 / 标色）
-  2. 系统锚点只有两个：`active`（生效中，新决策默认态）与 `done`（完成，唯一保底闭档态），
-     二者不可改名、不可删除（D6：项目方明确「只留完成，砍掉这两项」）
-  3. 每个状态携带 `closing` 布尔（是否算「完成类」）：闭档状态在默认视图隐藏并沉底（D7）
-  4. 历史 `superseded` / `revoked` 两态在迁移时落为**普通可编辑状态**（默认名保留、闭档=是），
-     因此存量 task JSON 的 status 值仍然合法，**零改写**（数据诚实）
+职责（REQ-DECISION-CENTER-R2 · DC-R2-c · 裁决 D6/D7 → DC-UNIFY-01 收敛为单一决策流 → 2026-09-28 精简为三态）：
+  1. 决策状态是**用户可维护的状态字典**（改名 / 新增 / 删除 / 排序 / 标色）
+  2. 字典的默认集合 = **决策流三态**（待决策 / 进行中 / 已完成），
+     因为决策流（`task["todos"]`）是唯一的决策对象；系统锚点只有 `done`（已完成），
+     不可改名不可删除，其余两态用户可自由维护（D6 口径：只固定完成为系统保底）
+  3. 每个状态携带 `closing` 布尔（是否算「完成类」）：闭档状态在默认视图隐藏并沉底（D7），
+     同时驱动 todo.done 旧字段同步（兼容只认布尔的读侧）
+  4. 一次性迁移：剪除未被用户改过名的旧遗留态（active/superseded/revoked）与已退役的五态
+     （to_start/to_confirm），补齐缺失的三态种子；残留携带退役态的节点由读侧降级到首个开放态
 
 存储：data/decision_statuses.json（用户数据，已 gitignore），原子写。
 """
@@ -29,8 +31,25 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path("data")
 STATUSES_FILE = DATA_DIR / "decision_statuses.json"
 
-# 系统锚点：不可改名、不可删除（D6）
-SYSTEM_ANCHORS = ("active", "done")
+# 系统锚点：不可改名、不可删除（D6：只固定「完成」为保底）
+SYSTEM_ANCHORS = ("done",)
+
+# 新建决策流节点的默认状态（开放首态）
+DEFAULT_STATUS_ID = "to_decide"
+
+# 决策流三态种子：id 沿用历史枚举值，保证存量 task JSON 的 todo.status 零迁移合法
+FLOW_STATUS_IDS = ("to_decide", "in_progress", "done")
+
+# 五态精简为三态后退役的历史态：这些 id 只可能由系统种子产生（用户自建态 id 形如 st-xxxx），
+# 故按 id 无条件剪除；携带这些态的存量节点由读侧降级到首个开放态（to_decide）
+RETIRED_FLOW_STATUS_IDS = ("to_start", "to_confirm")
+
+# 旧版（decision 对象时代）的遗留态：未被用户改过名则在迁移时剪除
+LEGACY_STATUS_NAMES = {
+    "active": "生效中",
+    "superseded": "已被取代",
+    "revoked": "已撤销",
+}
 
 STATUS_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,32}$")
 NAME_MAX = 20
@@ -41,17 +60,15 @@ class StatusError(ValueError):
 
 
 def _defaults() -> list[dict]:
-    """内置四态：两个系统锚点 + 两个由历史枚举迁移而来的可编辑状态。
+    """内置决策流三态：两个可编辑开放态 + 一个系统保底完成态。
 
     颜色允许 CSS 变量表达式（前端内联使用，随主题联动）或十六进制色值。
     """
     now = datetime.now().isoformat()
     items = [
-        {"id": "active", "name": "生效中", "name_en": "Active", "color": "var(--st-done)", "closing": False, "system": True},
-        {"id": "done", "name": "完成", "name_en": "Done", "color": "var(--accent)", "closing": True, "system": True},
-        # 取代/撤销不再是系统行为（D6），但历史数据仍带这两个值 → 保留为可改名可删除的普通状态
-        {"id": "superseded", "name": "已被取代", "name_en": "Superseded", "color": "var(--st-decide)", "closing": True, "system": False},
-        {"id": "revoked", "name": "已撤销", "name_en": "Revoked", "color": "var(--error)", "closing": True, "system": False},
+        {"id": "to_decide", "name": "待决策", "name_en": "To decide", "color": "var(--st-decide)", "closing": False, "system": False},
+        {"id": "in_progress", "name": "进行中", "name_en": "In progress", "color": "var(--st-progress)", "closing": False, "system": False},
+        {"id": "done", "name": "已完成", "name_en": "Done", "color": "var(--st-done)", "closing": True, "system": True},
     ]
     return [{**i, "created_at": now, "updated_at": now} for i in items]
 
@@ -87,8 +104,33 @@ def _sanitize(raw: object) -> list[dict]:
     return out
 
 
+def _seed_flow_statuses(items: list[dict]) -> tuple[list[dict], bool]:
+    """一次性迁移：剪除未改名的旧遗留态与已退役的五态 + 补齐缺失的决策流三态种子。
+
+    返回 (列表, 是否发生变更)；变更时由调用方落盘，保证下次启动幂等。
+    """
+    changed = False
+    kept: list[dict] = []
+    for s in items:
+        if s["id"] in LEGACY_STATUS_NAMES and s["name"] == LEGACY_STATUS_NAMES[s["id"]]:
+            changed = True   # 旧 decision 时代的遗留态，且用户从未改过名 → 不再占位
+            continue
+        if s["id"] in RETIRED_FLOW_STATUS_IDS:
+            changed = True   # 五态→三态退役：to_start/to_confirm 由系统种子产生，直接剪除
+            continue
+        kept.append(s)
+    have = {s["id"] for s in kept}
+    missing = [d for d in _defaults() if d["id"] not in have]
+    if missing:
+        changed = True
+        # 插到第一个闭档状态之前，保住「完成」沉底的阅读直觉；无闭档则追加尾部
+        at = next((i for i, s in enumerate(kept) if s["closing"]), len(kept))
+        kept[at:at] = missing
+    return kept, changed
+
+
 def load_statuses() -> list[dict]:
-    """读取状态字典；文件不存在时落盘默认集合（首次迁移）。"""
+    """读取状态字典；文件不存在时落盘默认集合，存在旧结构时自动迁移并回写。"""
     if not STATUSES_FILE.exists():
         defaults = _defaults()
         save_statuses(defaults)
@@ -99,7 +141,11 @@ def load_statuses() -> list[dict]:
     except Exception as exc:  # 脏文件不阻断决策中心
         logger.warning(f"决策状态字典读取失败，回退默认：{exc}")
         return _defaults()
-    return _sanitize(raw)
+    statuses, changed = _seed_flow_statuses(_sanitize(raw))
+    if changed:
+        logger.info("决策状态字典已迁移为决策流三态结构，已回写")
+        save_statuses(statuses)
+    return statuses
 
 
 def save_statuses(statuses: list[dict]) -> None:
@@ -116,10 +162,10 @@ def known_ids() -> set[str]:
 
 
 def validate_status_id(sid: object) -> str:
-    """校验写入决策的 status：必须是字典中存在的 id，否则 StatusError。
+    """校验写入决策流节点的 status：必须是字典中存在的 id，否则 StatusError。
 
     存量数据里若存在字典外的历史值（例如用户删掉了自定义状态后残留），
-    由调用方（聚合/读取路径）按 active 降级，不在读路径抛错。
+    由调用方（聚合/读取路径）按 `DEFAULT_STATUS_ID` 降级，不在读路径抛错。
     """
     value = str(sid or "").strip()
     if not value:
@@ -131,6 +177,12 @@ def validate_status_id(sid: object) -> str:
 
 def closing_ids() -> set[str]:
     return {s["id"] for s in load_statuses() if s["closing"]}
+
+
+def is_closing(sid: object) -> bool:
+    """某状态是否算「完成类」；字典外的未知值视为未闭档。"""
+    meta = get_status(str(sid or ""))
+    return bool(meta and meta["closing"])
 
 
 def default_visible_ids() -> set[str]:
@@ -190,7 +242,7 @@ def update_status(sid: str, name: object = None, color: object = None, closing: 
 
 
 def delete_status(sid: str) -> dict:
-    """删除自定义状态。系统锚点不可删；被删状态下的决策由调用方回落到 active。"""
+    """删除自定义状态。系统锚点不可删；被删状态下的节点由调用方回落到默认开放态。"""
     statuses = load_statuses()
     target = next((s for s in statuses if s["id"] == sid), None)
     if target is None:
@@ -198,7 +250,10 @@ def delete_status(sid: str) -> dict:
     if target["system"]:
         raise StatusError("系统锚点状态不可删除")
     save_statuses([s for s in statuses if s["id"] != sid])
-    return {"removed": sid, "reassign_to": "active"}
+    # 回落目标在删后字典里取首个开放态（默认态本身也可能被用户删掉）
+    remaining = load_statuses()
+    fallback = next((s["id"] for s in remaining if not s["closing"]), DEFAULT_STATUS_ID)
+    return {"removed": sid, "reassign_to": fallback}
 
 
 def reorder(order: list[str]) -> list[dict]:

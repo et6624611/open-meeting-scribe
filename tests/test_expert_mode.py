@@ -122,16 +122,21 @@ def test_annotation_block_font_size_at_least_12px(path, selector):
 
 
 def test_settings_nav_reordered_l0_to_l5_with_cli():
+    # REQ-COMPUTE-CENTER：算力相关四段按 账户登录 → API 配置(AI) → ASR 配置 → 本地引擎 排序；
+    # CLI 面收敛进「API 配置」面板（与纪要正交），不再占独立导航位。
     src = (FE / "views/SettingsView.vue").read_text(encoding="utf-8")
     nav = src.split("<nav", 1)[1].split("</nav>", 1)[0]
-    order = [c for c in ("account", "access", "services", "engine", "cli")
+    order = [c for c in ("account", "ai", "asr", "engine")
              if f"activeCategory === '{c}'" in nav]
-    assert order == ["account", "access", "services", "engine", "cli"], \
-        f"导航未严格按 L0→L4 重排: {order}"
+    assert order == ["account", "ai", "asr", "engine"], \
+        f"导航未按算力四段重排: {order}"
+    ai = (FE / "components/settings/AiSourcePanel.vue").read_text(encoding="utf-8")
+    assert "CliEnginePanel" in ai, "CLI 面应从 API 配置面板可达"
 
 
 def test_tier_name_not_hardcoded():
-    src = (FE / "views/SettingsView.vue").read_text(encoding="utf-8")
+    # REQ-COMPUTE-CENTER：账户面（含 tier 名）从 SettingsView 迁出到 AccountPanel。
+    src = (FE / "components/settings/AccountPanel.vue").read_text(encoding="utf-8")
     assert "settings.tier_names.${tier" in src or "tier_names.${tier" in src
     # AC-5（EXPERT-MODE）：mock 付费档即显示正确档位名（未知档降级显原值不再恒谎）
     m = re.search(r"function tierName\(tier\?: string\)[\s\S]{0,300}?\n\}", src)

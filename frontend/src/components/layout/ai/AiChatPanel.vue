@@ -81,7 +81,9 @@
     <Transition name="thinking">
       <div v-if="isLoading && stages.length > 0" class="ai-stages">
         <div v-for="(stage, si) in stages" :key="si" class="ai-stage-item" :class="{ 'is-done': stage.status === 'done', 'is-error': stage.status === 'error' }">
-          <span v-if="stage.icon" class="ai-stage-icon">{{ stage.icon }}</span>
+          <!-- 工具图标：lucide 名命中则内联 SVG（多 CLI 引擎双语标签体系），未命中降级为文本/emoji（历史消息兼容） -->
+          <svg v-if="stageIcon(stage)" class="ai-stage-icon" :viewBox="stageIcon(stage)!.viewBox" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="stageIcon(stage)!.body"></svg>
+          <span v-else-if="stage.icon" class="ai-stage-icon">{{ stage.icon }}</span>
           <svg v-else-if="stage.status === 'running'" class="ai-stage-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
           <span v-else class="ai-stage-check">✓</span>
           <span class="ai-stage-label">{{ stage.label }}</span>
@@ -102,13 +104,7 @@
     <div v-show="suggestions.length > 0" class="ai-suggestions-bar">
       <button v-for="(s, si) in suggestions" :key="si" class="follow-up-chip" @click="$emit('sendRaw', s.text)"><span v-html="s.icon"></span>{{ s.text }}</button>
     </div>
-    <!-- 停止生成 / Stop generation -->
-    <div class="ai-stop-gen" :class="{ 'is-visible': isLoading }">
-      <button class="ai-stop-gen-btn" @click="$emit('stopGeneration')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        {{ t('ai-panel.stop_generating') }}
-      </button>
-    </div>
+    <!-- 停止输入由 composer 发送/停止按钮承接（原型 ai-panel-composer-prototype） -->
     <!-- 引用区域 / Quote reference -->
     <div v-if="quoteText" class="quote-ref">
       <div class="quote-ref-text">{{ quoteText }}</div>
@@ -118,60 +114,145 @@
     <!-- 指令面板 / Command palette -->
     <div class="ai-cmd-palette" :class="{ 'is-open': cmdOpen && filteredCmds.length > 0 }">
       <template v-if="filteredCmds.length > 0">
-        <button v-for="(c, ci) in filteredCmds" :key="c.key" class="ai-cmd-item" :class="{ 'is-active': cmdIndex === ci }" @click="$emit('runCommand', c)"><span class="cmd-key">{{ c.key }}</span><span class="cmd-label">{{ c.desc }}</span></button>
+        <button v-for="(c, ci) in filteredCmds" :key="c.key" class="ai-cmd-item" :class="{ 'is-active': cmdIndex === ci }" :aria-label="c.desc" @click="$emit('runCommand', c)"><span class="cmd-key">{{ c.key }}</span><span class="cmd-label">{{ c.desc }}</span></button>
       </template>
       <div v-else-if="inputText.startsWith('/')" class="ai-cmd-empty">无匹配指令</div>
     </div>
-    <!-- 引擎路由回显（§3.9-1：本次由智能体执行必须可见；前置探针状态，不再撞错才知道） -->
+    <!-- 算力探针前置警告（§2.2 AC-4：失败段定位 + 一键改用问答） / CLI probe notice -->
     <div v-if="chatMode !== 'qa' && cliProbe && !cliProbe.available" class="ai-cli-probe-warn">
-      ⚠ {{ probeHintText }}
-      <span class="ai-cli-probe-stage">{{ t('ai-panel.cli_probe_failed_stage', { stage: probeStageLabel }) }}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+      <span>{{ probeHintText }}<a class="cpw-switch" href="#" @click.prevent="$emit('update:chatMode', 'qa')">{{ t('ai-panel.mode_notice_switch_qa') }}</a></span>
     </div>
-    <div v-if="activeEngine" class="ai-engine-echo">
-      <span class="ee-icon">🤖</span>
-      <span>{{ t('ai-panel.engine_echo', { name: activeEngine.display_name }) }}</span>
-      <span v-if="activeEngine.auto_selected" class="ee-auto">{{ t('ai-panel.engine_echo_auto') }}</span>
-      <span class="ee-tier">{{ t('ai-panel.auth_tier.' + activeEngine.auth_tier) }}</span>
-    </div>
-    <!-- 模式选择器（会话级，与“角色”正交）+ 会话级模型选择器（REQ-EXPERT-MODE 第 6 刀） / Mode + model selectors -->
-    <div class="ai-mode-row">
-      <div class="ai-mode-pill" role="group" :aria-label="t('ai-panel.mode_label')">
-        <button class="mp-opt" :class="{ 'is-active': chatMode === 'qa' }" @click="$emit('update:chatMode', 'qa')" :title="t('ai-panel.mode_qa_hint')">⚡ {{ t('ai-panel.mode_qa') }}</button>
-        <button class="mp-opt" :class="{ 'is-active': chatMode === 'auto' }" :disabled="!agentAvailable" @click="$emit('update:chatMode', 'auto')" :title="agentAvailable ? t('ai-panel.mode_auto_hint') : probeHintText">🧭 {{ t('ai-panel.mode_auto') }}</button>
-        <button class="mp-opt" :class="{ 'is-active': chatMode === 'agent' }" :disabled="!agentAvailable" @click="$emit('update:chatMode', 'agent')" :title="agentAvailable ? t('ai-panel.mode_agent_hint') : probeHintText">🤖 {{ t('ai-panel.mode_agent') }}</button>
+    <!-- 输入框（原型 composer：无边框 textarea 居上） / Input on top -->
+    <textarea class="composer-input" :value="inputText" @input="$emit('update:inputText', ($event.target as HTMLTextAreaElement).value); $emit('inputChange')" :placeholder="t('ai-panel.input_placeholder')" rows="1" ref="inputRef" @keydown="$emit('inputKey', $event)" :aria-label="t('ai-panel.input_aria')"></textarea>
+    <!-- Composer 栏（原型 ai-panel-composer-prototype）：模式触发器 + 资源触发器（左）+ 提示 + 发送/停止（右），同一栏 -->
+    <div class="composer-bar">
+      <!-- 对话模式触发器（会话级，与“角色”正交） / Mode trigger -->
+      <div class="cb-trigger-wrap">
+        <button ref="modeTriggerEl" class="ac-trigger" :class="{ 'is-open': modeMenuVisible }" v-bind="modeTriggerAttrs" :aria-label="t('ai-panel.mode_label')" :title="t('ai-panel.mode_label')" @click="toggleModeMenu">
+          <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-3.5A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>
+          <span class="ac-tr-txt">
+            <span class="ac-tr-name">{{ t('ai-panel.mode_' + chatMode) }}</span>
+            <span class="ac-tr-sub">{{ chatMode === 'agent' ? 'CLI' : chatMode === 'auto' ? 'AUTO' : t('ai-panel.mode_sub_builtin') }}</span>
+          </span>
+          <svg class="ac-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div ref="modeMenuEl" v-show="modeMenuVisible" class="ac-menu" style="width: 288px;" v-bind="modeMenuAttrs">
+          <div class="ac-group">
+            <div class="ac-label"><span>{{ t('ai-panel.mode_label') }}</span><span>3</span></div>
+            <button v-for="m in (['auto', 'qa', 'agent'] as const)" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': chatMode === m }" :aria-label="t('ai-panel.mode_' + m)" @click="onPickMode(m)">
+              <span class="ac-badge">{{ m === 'auto' ? 'A' : m === 'qa' ? 'Q' : '>_' }}</span>
+              <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.mode_' + m) }}</span><span class="ac-it-sub">{{ t('ai-panel.mode_' + m + '_hint') }}</span></span>
+              <span class="ac-right">
+                <svg v-if="chatMode === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
-      <!-- 模型选择器：默认跟随详情；候选标注来源（本机/体验配额/自带 Key） -->
-      <select
-        class="ai-model-select"
-        :value="sessionModel"
-        :aria-label="t('ai-panel.model_label')"
-        :title="t('ai-panel.model_label')"
-        @change="$emit('update:sessionModel', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">{{ t('ai-panel.model_follow', { model: detailModelLabel }) }}</option>
-        <option v-for="mo in modelOptions" :key="mo.value" :value="mo.value">{{ mo.value }} · {{ srcLabel(mo.source) }}</option>
-      </select>
-      <span v-if="chatMode !== 'qa'" class="ai-mode-cost">{{ t('ai-panel.mode_agent_cost_hint') }}</span>
-      <span v-if="chatMode !== 'qa' && hasAgentSession" class="ai-mode-continue">🔗 {{ t('ai-panel.session_continue') }}</span>
-    </div>
-    <div class="ai-input-box">
-      <textarea :value="inputText" @input="$emit('update:inputText', ($event.target as HTMLTextAreaElement).value); $emit('inputChange')" :placeholder="t('ai-panel.input_placeholder')" rows="1" ref="inputRef" @keydown="$emit('inputKey', $event)" :aria-label="t('ai-panel.input_aria')"></textarea>
-      <button class="ai-send-btn" :disabled="!inputText.trim() || isLoading" @click="$emit('send')" :title="t('ai-panel.send')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+
+      <!-- 模型/引擎模型触发器：智能体模式选 CLI 引擎模型（写 chat_engine.model），其余选 LLM 模型（class ai-model-select 为契约测试锚点） -->
+      <div class="cb-trigger-wrap">
+        <button ref="modelTriggerEl" class="ac-trigger ai-model-select" :class="{ 'is-open': modelMenuVisible }" v-bind="modelTriggerAttrs" :aria-label="isAgentMode ? t('ai-panel.model_cli_engine_label') : t('ai-panel.model_label')" @click="toggleModelMenu">
+          <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></svg>
+          <span class="ac-tr-txt">
+            <span class="ac-tr-name">{{ isAgentMode ? (agentEngineModel || t('ai-panel.model_cli_engine_default')) : (sessionModel || detailModelLabel) }}</span>
+            <span class="ac-tr-sub">{{ isAgentMode ? (agentEngineName || 'CLI') : (sessionModel ? sourceLabel(menuModelSource) : t('ai-panel.model_follow_plain')) }}</span>
+          </span>
+          <svg class="ac-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div ref="modelMenuEl" v-show="modelMenuVisible" class="ac-menu" style="width: 322px;" v-bind="modelMenuAttrs">
+          <!-- 智能体模式：CLI 引擎可用模型（--list-models 探测，就地写回 chat_engine.model） -->
+          <template v-if="isAgentMode">
+            <div class="ac-group">
+              <div class="ac-label"><span>{{ agentEngineName || 'CLI' }}</span><span>{{ agentModels.length }}</span></div>
+              <button class="ac-row" role="menuitem" :class="{ 'is-sel': !agentEngineModel }" :aria-label="t('ai-panel.model_cli_engine_default')" @click="onPickAgentModel('')">
+                <span class="ac-badge">⇄</span>
+                <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_cli_engine_default') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_engine_default_hint') }}</span></span>
+                <span class="ac-right">
+                  <svg v-if="!agentEngineModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                </span>
+              </button>
+            </div>
+            <div v-if="agentModels.length" class="ac-group">
+              <button v-for="m in agentModels" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': agentEngineModel === m }" :aria-label="m" @click="onPickAgentModel(m)">
+                <span class="ac-badge">M</span>
+                <span class="ac-it"><span class="ac-it-name">{{ m }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_available') }}</span></span>
+                <span class="ac-right">
+                  <svg v-if="agentEngineModel === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                </span>
+              </button>
+            </div>
+            <div v-else class="ac-empty">{{ agentModelsLoading ? t('ai-panel.model_cli_loading') : (agentModelsReason === 'not_logged_in' ? t('ai-panel.model_cli_need_login') : t('ai-panel.model_cli_unavailable')) }}</div>
+            <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_cli_goto')" @click="onGotoCliSettings">
+              <span>{{ t('ai-panel.model_cli_goto') }}</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </button>
+          </template>
+          <!-- 问答/自动模式：LLM 模型清单（按来源分组） -->
+          <template v-else>
+            <div class="ac-group">
+              <button class="ac-row" role="menuitem" :class="{ 'is-sel': !sessionModel }" :aria-label="t('ai-panel.model_follow', { model: detailModelLabel })" @click="onPickModel('', '')">
+                <span class="ac-badge">⇄</span>
+                <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_follow_plain') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_follow', { model: detailModelLabel }) }}</span></span>
+                <span class="ac-right">
+                  <svg v-if="!sessionModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                </span>
+              </button>
+            </div>
+            <div v-for="g in modelGroups" :key="g.source" class="ac-group">
+              <div class="ac-label"><span>{{ srcLabel(g.source) }}</span><span>{{ g.opts.length }}</span></div>
+              <button v-for="opt in g.opts" :key="opt.value" class="ac-row" role="menuitem" :class="{ 'is-sel': sessionModel === opt.value && menuModelSource === g.source }" :aria-label="opt.value + ' · ' + srcLabel(g.source)" @click="onPickModel(opt.value, g.source)">
+                <span class="ac-badge">{{ srcLabel(g.source).slice(0, 1) }}</span>
+                <span class="ac-it">
+                  <span class="ac-it-name">{{ opt.value }}</span>
+                  <span class="ac-it-sub">{{ g.source === 'local' ? t('ai-panel.model_local_endpoint') : t('ai-panel.model_configured') }}</span>
+                </span>
+                <span class="ac-right">
+                  <svg v-if="sessionModel === opt.value && menuModelSource === g.source" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                </span>
+              </button>
+            </div>
+            <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_manage_sources')" @click="onGotoComputeSettings">
+              <span>{{ t('ai-panel.model_manage_sources') }}</span>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <div class="cb-right">
+        <span v-if="!isLoading && chatMode !== 'agent'" class="cb-hint">⏎ · ⇧⏎</span>
+        <!-- 发送 / 停止（合一按钮，与触发器同栏，原型 composer） / Send / Stop -->
+        <button class="composer-send" :class="{ 'is-stop': isLoading }" :disabled="!isLoading && !inputText.trim()" :aria-label="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" :title="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" @click="onSendOrStop">
+          <span>{{ isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send') }}</span>
+          <svg v-if="isLoading" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { LlmMetadata, MessagePerformance, SourceFile, AgentStage, ModelUsage } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
+import { lucideIcon, type IconDef } from '@/utils/lucideIcons'
 import type { AiCommand } from '@/composables/useAiCommands'
+import { usePopMenu } from '@/composables/usePopMenu'
 
 
 const { t } = useI18n()
+
+/** 阶段图标：按 lucide 名取 SVG 定义（非 lucide 名返回 null 走文本降级） */
+function stageIcon(stage: AgentStage): IconDef | null {
+  return lucideIcon(stage.icon)
+}
 
 const props = defineProps<{
   messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance; stages?: AgentStage[]; modelUsage?: ModelUsage }>
@@ -194,8 +275,6 @@ const props = defineProps<{
   chatMode: 'qa' | 'agent' | 'auto'
   /** 本次回复实际使用的引擎回显 */
   activeEngine: { display_name: string; auth_tier: string; auto_selected: boolean } | null
-  /** 当前面板会话已建立智能体会话 → 下一轮自动延续（方案 §3.6） */
-  hasAgentSession: boolean
   /** 会话级模型选择器（REQ-EXPERT-MODE §2.3）：'' = 跟随详情 */
   sessionModel: string
   /** 模型候选（预设 + 本机探测，每项标注来源） */
@@ -206,9 +285,19 @@ const props = defineProps<{
   cliProbe: ChatEngineProbe | null
   /** 智能体模式是否可选（探针不通则置灰 + 指引） */
   agentAvailable: boolean
+  /** 智能体引擎展示名（如 Qoder CLI） */
+  agentEngineName: string
+  /** 当前 chat_engine.model（'' = 引擎默认） */
+  agentEngineModel: string
+  /** CLI 引擎可用模型清单（--list-models） */
+  agentModels: string[]
+  /** 模型清单获取结果原因（ok/not_logged_in/unsupported/...） */
+  agentModelsReason: string
+  /** 模型清单加载中 */
+  agentModelsLoading: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'send'): void
   (e: 'sendRaw', text: string): void
   (e: 'stopGeneration'): void
@@ -225,10 +314,72 @@ defineEmits<{
   (e: 'update:inputText', val: string): void
   (e: 'update:chatMode', val: 'qa' | 'agent' | 'auto'): void
   (e: 'update:sessionModel', val: string): void
+  (e: 'update:agentModel', val: string): void
 }>()
 
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const feedRef = ref<HTMLElement | null>(null)
+
+// ─── Composer 触发器菜单（原型 ai-panel-composer-prototype）：usePopMenu 统一开合/定位/隐式收起 ───
+const router = useRouter()
+const modeTriggerEl = ref<HTMLElement | null>(null)
+const modeMenuEl = ref<HTMLElement | null>(null)
+const modelTriggerEl = ref<HTMLElement | null>(null)
+const modelMenuEl = ref<HTMLElement | null>(null)
+const { visible: modeMenuVisible, toggle: toggleModeMenu, close: closeModeMenu, triggerAttrs: modeTriggerAttrs, menuAttrs: modeMenuAttrs } = usePopMenu(modeMenuEl, modeTriggerEl, { align: 'start' })
+const { visible: modelMenuVisible, toggle: toggleModelMenu, close: closeModelMenu, triggerAttrs: modelTriggerAttrs, menuAttrs: modelMenuAttrs } = usePopMenu(modelMenuEl, modelTriggerEl, { align: 'start' })
+
+type ModelSource = 'local' | 'trial' | 'byok'
+/** 资源候选按来源分组（本机 CLI → 体验配额 → 自带 Key），组间横线分隔 */
+const MODEL_GROUP_ORDER: ModelSource[] = ['local', 'trial', 'byok']
+const modelGroups = computed(() => MODEL_GROUP_ORDER
+  .map(source => ({ source, opts: props.modelOptions.filter(o => o.source === source) }))
+  .filter(g => g.opts.length > 0))
+/** 会话级选中项的来源（同值跨源时跟随候选表；未命中则保留菜单上次选择） */
+const menuModelSource = computed<ModelSource | ''>(() =>
+  (menuModelOverride.value && menuModelOverride.value.value === props.sessionModel
+    ? menuModelOverride.value.source
+    : props.modelOptions.find(o => o.value === props.sessionModel)?.source) ?? '')
+
+function sourceLabel(source: ModelSource | ''): string {
+  return source ? srcLabel(source) : ''
+}
+
+function onPickMode(m: 'qa' | 'agent' | 'auto') {
+  closeModeMenu()
+  if (m !== props.chatMode) emit('update:chatMode', m)
+}
+function onPickModel(value: string, source: ModelSource | '') {
+  closeModelMenu()
+  emit('update:sessionModel', value)
+  // 同值跨源无法由候选表定位时，跟随菜单选择临时标记
+  if (value && source && props.modelOptions.find(o => o.value === value)?.source !== source) {
+    menuModelOverride.value = { value, source }
+  } else {
+    menuModelOverride.value = null
+  }
+}
+/** 菜单内显式选择的 (value, source)，会话级状态只存 value，跨源同名模型时需额外记源 */
+const menuModelOverride = ref<{ value: string; source: ModelSource } | null>(null)
+function onGotoComputeSettings() {
+  closeModelMenu()
+  void router.push({ name: 'settings', query: { cat: 'ai' } })
+}
+/** 智能体模式：模型位切换为 CLI 引擎模型语义（写 chat_engine.model） */
+const isAgentMode = computed(() => props.chatMode === 'agent')
+function onPickAgentModel(v: string) {
+  closeModelMenu()
+  if (v !== props.agentEngineModel) emit('update:agentModel', v)
+}
+function onGotoCliSettings() {
+  closeModelMenu()
+  void router.push({ name: 'settings', query: { cat: 'ai' } })
+}
+/** 发送/停止合一（原型 composer：加载态下同一按钮切换为停止） */
+function onSendOrStop() {
+  if (props.isLoading) emit('stopGeneration')
+  else emit('send')
+}
 
 /** 每条消息展开的详情面板类型 / Expanded detail panel type per message index */
 const detailOpen = ref<Record<number, string | null>>({})
@@ -276,10 +427,6 @@ const probeHintText = computed(() => {
   if (p.failed_stage === 'version' || p.reason === 'version_low') return t('ai-panel.cli_probe_version_low')
   if (p.failed_stage === 'login' || p.reason === 'not_logged_in') return t('ai-panel.cli_probe_not_logged_in')
   return t('ai-panel.cli_probe_not_installed')
-})
-const probeStageLabel = computed(() => {
-  const s = props.cliProbe?.failed_stage
-  return s === 'version' ? '②' : s === 'login' ? '③' : '①'
 })
 
 
@@ -487,79 +634,169 @@ const probeStageLabel = computed(() => {
 .vc-item.is-verified .vc-status { color: var(--ok); background: var(--ok-soft); }
 .vc-item:not(.is-verified) .vc-status { color: var(--warn); background: var(--warn-soft); }
 
-/* ── 模式选择器（问答/智能体）/ Mode selector ── */
-.ai-mode-row {
+/* ── Composer 栏（原型 ai-panel-composer-prototype）── */
+.composer-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 2px 6px;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  padding-top: 2px;
 }
-.ai-mode-pill {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--surface-3, rgba(0,0,0,0.05));
-  border: 1px solid var(--border, rgba(0,0,0,0.08));
-}
-.mp-opt {
-  border: none;
-  background: transparent;
-  color: var(--muted, #888);
-  font-size: var(--fs-12, 12px);
-  line-height: 1;
-  padding: 4px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.14s;
-  white-space: nowrap;
-}
-.mp-opt:hover { color: var(--text, #333); }
-.mp-opt.is-active {
-  background: var(--accent, #6b5bff);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(107,91,255,0.35);
-}
-.ai-mode-cost {
-  font-size: var(--fs-11, 11px);
-  color: var(--muted, #999);
-  line-height: 1.3;
-}
-.ai-mode-continue {
-  font-size: var(--fs-11, 11px);
-  color: var(--accent, #6b5bff);
-  background: var(--accent-soft, rgba(107,91,255,0.10));
-  padding: 1px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-/* ── 引擎路由回显 chip / Engine route echo chip ── */
-.ai-engine-echo {
+.cb-trigger-wrap { position: relative; min-width: 0; }
+.ac-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 2px 0 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: var(--fs-11, 11px);
-  color: var(--accent, #6b5bff);
-  background: var(--accent-soft, rgba(107,91,255,0.10));
-  border: 1px solid var(--accent-border, rgba(107,91,255,0.25));
+  max-width: 190px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
 }
-.ai-engine-echo .ee-icon { font-size: 12px; }
-.ai-engine-echo .ee-auto {
-  padding: 1px 6px;
-  border-radius: var(--radius-xs, 4px);
-  background: var(--ok-soft, rgba(46,160,67,0.12));
-  color: var(--ok, #2ea043);
-  font-size: var(--fs-11, 11px);
+.ac-trigger:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.ac-trigger.is-open { background: var(--surface-3); border-color: var(--fg); }
+.ac-tr-icon {
+  width: 14px; height: 14px; flex: 0 0 auto;
+  color: var(--muted); fill: none; stroke: currentColor;
+  stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
-.ai-engine-echo .ee-tier {
-  padding: 1px 6px;
-  border-radius: var(--radius-xs, 4px);
-  background: var(--surface-3, rgba(0,0,0,0.06));
+.ac-trigger.is-open .ac-tr-icon { color: var(--fg); }
+.ac-tr-txt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; min-width: 0; }
+.ac-tr-name { font-size: var(--fs-12, 12px); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 124px; }
+.ac-tr-sub { font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--muted); white-space: nowrap; }
+.ac-chev {
+  width: 12px; height: 12px; flex: 0 0 auto;
+  color: var(--subtle); fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform 0.14s ease;
+}
+.ac-trigger.is-open .ac-chev { transform: rotate(180deg); }
+
+/* ── 触发器弹出菜单：usePopMenu fixed 定位，z-index 取全局阶梯 ── */
+.ac-menu {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: var(--z-popover, 500);
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 10px 28px oklch(18% 0.012 250 / 0.14), 0 2px 6px oklch(18% 0.012 250 / 0.06);
+  padding: 6px;
+}
+.ac-group + .ac-group { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 6px; }
+.ac-label {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  padding: 6px 8px 4px;
+  font-family: var(--font-mono); font-size: var(--fs-11, 11px);
+  letter-spacing: 0.06em; color: var(--subtle);
+}
+.ac-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  text-align: left;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ac-row:hover { background: var(--surface-3); }
+.ac-row.is-sel { background: var(--accent-soft); }
+.ac-row.is-sel:hover { background: var(--accent-soft); filter: brightness(0.97); }
+.ac-badge {
+  width: 26px; height: 26px;
+  display: grid; place-items:center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2);
+  font-family: var(--font-mono); font-size: var(--fs-11, 11px); font-weight: 600;
+  color: var(--muted);
+}
+.ac-row.is-sel .ac-badge { background: var(--surface); border-color: var(--border-strong); color: var(--fg); }
+.ac-it { min-width: 0; }
+.ac-it-name { display: block; font-size: var(--fs-13, 13px); font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-it-sub { display: block; font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--muted); margin-top: 1px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-right { display: flex; align-items: center; gap: 6px; justify-self: end; }
+.ac-check { width: 14px; height: 14px; color: var(--accent); flex: 0 0 auto; }
+.ac-pill {
+  display: inline-flex; align-items: center;
+  font-family: var(--font-mono); font-size: var(--fs-11, 11px);
+  border-radius: 5px; padding: 2px 6px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted); background: var(--surface-2); white-space: nowrap;
+}
+.ac-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  width: calc(100% - 12px); margin: 0 6px;
+  padding: 9px 8px;
+  border: none; border-top: 1px solid var(--border); border-radius: 0;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: var(--fs-12, 12px);
+  cursor: pointer; transition: all 0.12s;
+}
+.ac-foot:hover { color: var(--fg); }
+.ac-empty {
+  padding: 10px 8px;
+  font-size: var(--fs-11, 11px);
   color: var(--muted, #888);
+  line-height: 1.5;
 }
+
+.cb-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.cb-hint { font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--subtle); white-space: nowrap; }
+
+/* ── Composer 输入区（无边框 textarea + 右对齐发送/停止）── */
+.composer-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--fs-13, 13px);
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  min-height: 32px;
+  max-height: 150px;
+  padding: 4px 0;
+}
+.composer-input::placeholder { color: var(--subtle); }
+.composer-send-row { display: none; }
+.composer-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+  background: var(--fg);
+  color: var(--surface);
+  font-size: var(--fs-12, 12px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, opacity 0.12s ease, transform 0.05s ease;
+}
+.composer-send:hover { opacity: 0.85; }
+.composer-send:active { transform: translateY(1px); }
+.composer-send:disabled { background: var(--surface-3); color: var(--subtle); cursor: not-allowed; transform: none; opacity: 1; }
+.composer-send.is-stop { background: var(--surface); color: var(--fg); border-color: var(--border-strong); }
+.composer-send.is-stop:hover { background: var(--surface-2); }
+.composer-send svg { width: 13px; height: 13px; flex: 0 0 auto; }
+
 /* ── 回复尾部消费方/计费回显（≥12px，裁决-5） ── */
 .ai-usage-echo {
   font-size: 12px;
@@ -568,32 +805,27 @@ const probeStageLabel = computed(() => {
   padding: 1px 8px;
   border-left: 2px solid var(--border, #ddd);
 }
-/* ── CLI 探针前置警告（amber 不用红；置灰前先告知） ── */
+/* ── CLI 探针前置警告（amber 不用红；置灰前先告知）── */
 .ai-cli-probe-warn {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   margin: 2px 0 4px;
-  padding: 4px 10px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm, 6px);
   font-size: 12px;
+  line-height: 1.5;
   color: var(--warn, #8a5800);
   background: var(--warn-soft, #fdf3df);
   border: 1px solid var(--warn-border, rgba(138,88,0,0.25));
 }
-.ai-cli-probe-stage { color: var(--subtle, #999); margin-left: 6px; }
-/* ── 会话级模型选择器 ── */
-.ai-model-select {
-  font-size: 12px;
-  padding: 3px 8px;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 999px;
-  background: var(--surface, #fff);
-  color: var(--fg, #333);
-  max-width: 220px;
-  outline: none;
-}
-.ai-model-select:focus-visible { border-color: var(--accent, #6b5bff); }
-.mp-opt:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.ai-cli-probe-warn svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: 2px; }
+.ai-cli-probe-warn .cpw-switch {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  margin-left: 6px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 </style>

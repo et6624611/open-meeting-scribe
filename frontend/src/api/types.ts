@@ -47,24 +47,34 @@ export interface FlatTranscriptLine {
   sentence_id: number
 }
 
-// 决策流状态:待决策 → 待启动 → 进行中 → 待确认 → 已完成 / Decision flow status
-export type DecisionStatus = 'to_decide' | 'to_start' | 'in_progress' | 'to_confirm' | 'done'
+// 决策流状态：DC-R2-c 后为状态字典 id（不再是封闭枚举）
+// Decision-flow status: a status-dictionary id since DC-R2-c (open set, user-maintainable)
+export type DecisionStatus = string
 // 等待谁推进(展示用标签) / Who is driving (display-only label)
 export type OwnerType = 'self' | 'agent' | 'colleague' | 'enterprise'
 
 export interface TodoItem {
   id: string
-  text: string          // 决策/事项标题(沿用旧字段) / Decision title (legacy field)
-  done: boolean         // 兼容字段:等价于 status === 'done' / Compat: equals status === 'done'
+  text: string          // 决策正文(沿用旧字段) / Decision body (legacy field)
+  done: boolean         // 兼容字段：等价于状态属于闭档态 / Compat: status is a closing one
   assignee?: string
-  source?: 'ai' | 'manual'
+  source?: 'auto' | 'ai' | 'manual' | 'injection'
   deadline?: string
-  // ── 决策链新增(全部可选,人工编辑) / Decision-chain fields (optional, human-edited) ──
+  // ── 决策链字段（人工编辑） / Decision-chain fields (human-edited) ──
   why?: string          // 为什么做这个决定 / Why this decision
-  how?: string[]        // 如何完成:执行步骤,缺省视为 [text] / How: steps, defaults to [text]
+  how?: string[]        // 如何完成：执行步骤，缺省视为 [text] / How: steps, defaults to [text]
   outcome?: string      // 完成后带来什么 / What it brings
   status?: DecisionStatus  // 缺省时由 done 推导 / Derived from done when absent
   owner_type?: OwnerType   // 等待谁推进(展示用) / Who drives (display-only)
+  // ── DC-UNIFY-01：承接原 decision 对象的能力 / Absorbed from the retired decision record ──
+  title?: string           // 决策短标题（auto/存量可为空）
+  owner_id?: string | null // 执行人说话人档案 id
+  pending_confirmation?: boolean
+  // 后端随行下发的状态字典元信息（读侧只用于展示，不回写）
+  status_name?: string
+  status_name_en?: string
+  status_color?: string
+  status_closing?: boolean
 }
 
 export interface Task {
