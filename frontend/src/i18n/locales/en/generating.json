@@ -47,7 +47,9 @@
     "close": "Close",
     "click_to_bind": "Click to select or create identity",
     "click_to_rebind": "Click to modify linking",
-    "edit_bindings": "Edit people linking",
+    "unbound_collapsed": "Unlinked × {count}",
+    "unbound_collapsed_tip": "Click to expand and locate each unlinked speaker",
+    "edit_bindings": "Link speakers",
     "search_placeholder": "Search people...",
     "no_bind": "No link",
     "no_match": "No matching results",
@@ -137,7 +139,7 @@
     "locate": "Locate in transcript",
     "empty": "No decisions",
     "add": "Add Decision",
-    "content_placeholder": "Record decision content (Markdown)…",
+    "content_placeholder": "Record decision content (Markdown; /today inserts a date)…",
     "delete": "Delete",
     "filter_all": "All",
     "filter_active": "Active",
@@ -155,7 +157,15 @@
     "edit_title_label": "Title",
     "edit_content_label": "Content",
     "edit_title_placeholder": "One-line summary (optional)",
-    "edit_content_placeholder": "Decision text",
+    "edit_content_placeholder": "Decision text (type /today then space to insert a date)",
+    "date_menu_aria": "Insert date",
+    "date_menu_today": "Today",
+    "date_menu_tomorrow": "Tomorrow",
+    "date_menu_yesterday": "Yesterday",
+    "date_menu_now": "Now",
+    "date_menu_plus7d": "In 1 week",
+    "date_menu_plus1m": "In 1 month",
+    "date_menu_minus1w": "1 week ago",
     "mark_done": "Mark done",
     "mark_active": "Mark active",
     "add_decision": "Add decision",
@@ -178,25 +188,6 @@
     "owner_waiting_colleague": "Waiting: Colleague",
     "owner_waiting_enterprise": "Waiting: Enterprise",
     "avatar_self": "Me"
-  },
-  "onboarding": {
-    "title": "Link People Identities",
-    "got_it": "Got it",
-    "info_icon_tip": "What is people linking?",
-    "demo_label_1": "Sam",
-    "demo_label_2": "Alex",
-    "demo_name_1": "Alex",
-    "demo_name_2": "Jamie"
-  },
-  "project_onboarding": {
-    "title": "Link Knowledge Base",
-    "got_it": "Got it",
-    "info_icon_tip": "What is knowledge base linking?",
-    "knowledge_base": "Knowledge Base",
-    "ai_context": "AI Context",
-    "ai_citation": "AI cites docs",
-    "notes_sync": "Notes sync to folder",
-    "user_eco": "User · Other tools"
   },
   "archive_dialog": {
     "title": "Confirm Archive",
@@ -231,12 +222,31 @@
     "analyze_in_flight": "An analysis for this meeting is already running. Please wait.",
     "empty_title": "No insights for this meeting yet",
     "empty_desc": "The Insight Deck holds AI process observations, not minutes content. Click below to generate new observations from the full transcript.",
-    "phase_post": "Post-meeting"
+    "phase_post": "Post-meeting",
+    "board": {
+      "eyebrow": "Insight Board",
+      "empty_title": "No insight board yet",
+      "empty_body": "The board is a human-AI co-created global view: in Agent mode of the chat panel, ask AI to generate the board for this meeting — it reads the transcript and the current board, then produces the full HTML artifact.",
+      "co_create": "Co-create in Chat",
+      "co_create_msg": "Read the insight board of this meeting (or create one from the transcript and chapters if none exists) and co-create / revise it with me.",
+      "co_create_section": "Co-create section",
+      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
+      "refresh": "Refresh",
+      "loading": "Loading\u2026",
+      "view_board": "Board",
+      "view_cards": "Cards"
+    }
   },
   "ai_actions": {
     "rewrite": "Please rewrite the following, keeping the original meaning but more concise",
     "summarize": "Please summarize the following",
     "extract_todo": "Please extract decisions from the following"
+  },
+  "correction": {
+    "mapping_saved": "Mapping saved - ",
+    "applied": "{scope}corrected {n} occurrence(s) in this meeting -> {text}",
+    "no_match": "{scope}\"{text}\" does not appear in this meeting; nothing to correct",
+    "failed": "Correction failed: {reason}"
   },
   "errors": {
     "create_speaker_failed": "Failed to create person",
@@ -271,7 +281,7 @@
     "remove": "Remove",
     "person_suffix": " attending",
     "add_inline_placeholder": "Add…",
-    "pick_speaker": "Pick from people",
+    "pick_speaker": "Add attendee",
     "auto_tag": "auto",
     "search_placeholder": "Search people…",
     "create_hint": "Create \"{name}\""

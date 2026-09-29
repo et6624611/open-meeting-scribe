@@ -112,6 +112,9 @@ export interface Task {
   project_id: string | null
   source?: 'record' | 'upload' | 'import_transcript' | 'import_summary'
   archived_at: string | null
+  /** 一页纸系数（会议级，纪要/洞察各自一页）；旧任务 JSON 无此字段，读取侧按 1 兜底
+   *  Per-meeting one-page factors; absent in legacy task JSON (defaults to 1) */
+  one_page?: { summary?: number; insights?: number } | null
 }
 
 // ─── 用户 / User ───

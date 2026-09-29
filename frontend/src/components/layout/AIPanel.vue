@@ -21,37 +21,32 @@
         <div class="ai-header-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
         <span class="ai-header-title">{{ t('ai-panel.title') }}</span>
       </div>
-      <div class="ai-panel-header-right">
-        <IconButton class="ai-header-btn" :label="t('ai-panel.clear')" @click="chat.clearConversation()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </IconButton>
-      </div>
+      <!-- 头部右侧不再放操作：头部在 conv-layout 下不可见，清空/新建已收进会话弹层顶行 -->
     </div>
     <div class="ai-panel-context"><span>{{ contextLabel }}</span></div>
-    <!-- Tab 栏 / Tab bar -->
+    <!-- Tab 栏 / Tab bar（会话入口常驻此行右端：面板头部在 conv-layout 下被隐藏，Tab 行才是可见顶部） -->
     <div class="ai-panel-tabs">
       <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'chat' }" @click="aiTab = 'chat'">{{ t('ai-panel.tab_chat') }}</button>
       <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'context' }" @click="aiTab = 'context'">
         {{ t('ai-panel.tab_context') }}
         <span v-if="ctx.contextResourceCount.value > 0" class="tab-badge">{{ ctx.contextResourceCount.value }}</span>
       </button>
+      <AiSessionPopover
+        v-if="aiTab === 'chat'"
+        :sessions="aiSessions.sessions"
+        :active-session-id="aiSessions.currentBucket.activeSessionId"
+        :renaming-id="renamingId"
+        :rename-input="renameInput"
+        @switch="onSwitchSession"
+        @new-session="onNewSession"
+        @start-rename="startRename"
+        @delete="onDeleteSession"
+        @confirm-rename="confirmRename"
+        @cancel-rename="cancelRename"
+        @clear="onClearCurrent"
+        @update:rename-input="renameInput = $event"
+      />
     </div>
-
-    <!-- 会话标签栏（仅对话 Tab） / Session tabs (chat Tab only) -->
-    <AiSessionTabs
-      v-show="aiTab === 'chat'"
-      ref="sessionTabsRef"
-      :sessions="aiSessions.sessions"
-      :active-session-id="aiSessions.currentBucket.activeSessionId"
-      :renaming-id="renamingId"
-      :rename-input="renameInput"
-      @switch="onSwitchSession"
-      @new-session="onNewSession"
-      @start-rename="startRename"
-      @delete="onDeleteSession"
-      @confirm-rename="confirmRename"
-      @update:rename-input="renameInput = $event"
-    />
 
     <!-- 对话 Tab / Chat Tab -->
     <AiChatPanel
@@ -65,7 +60,8 @@
       :rewrite-pending="quoteRef.rewritePending.value"
       :verified-changes="chat.verifiedChanges.value"
       :inject-prompt="chat.injectPrompt.value"
-      :suggestions="chat.displaySuggestions.value"
+      :rewrite-not-persisted="chat.rewriteNotPersisted.value"
+      :summary-proposal="chat.summaryProposal.value"
       :quote-text="quoteRef.quoteRef.value?.text || ''"
       :quote-source="quoteSourceLabel"
       :cmd-open="cmds.cmdOpen.value"
@@ -86,14 +82,15 @@
       :agent-models-reason="chat.agentModelsReason.value"
       :agent-models-loading="chat.agentModelsLoading.value"
       @send="onSend"
-      @send-raw="chat.sendRaw"
       @stop-generation="chat.stopGeneration"
-      @insert-to-summary="onInsertToSummary"
-      @insert-to-notes="onInsertToNotes"
       @accept-rewrite="onAcceptRewrite"
       @clear-rewrite="quoteRef.clearRewrite"
       @inject-all="chat.doInjectAll"
       @dismiss-inject="chat.injectPrompt.value = null"
+      @retry-write="onRetryWrite"
+      @dismiss-not-persisted="chat.rewriteNotPersisted.value = null"
+      @accept-summary="chat.acceptSummaryProposal()"
+      @reject-summary="chat.rejectSummaryProposal()"
       @clear-quote="quoteRef.clearQuote"
       @run-command="runCommand"
       @input-key="handleInputKey"
@@ -122,8 +119,6 @@
       :visible-related-meetings="ctx.visibleRelatedMeetings.value"
       :related-meeting-count="ctx.relatedMeetingCount.value"
       :context-source="ctx.contextSource.value"
-      :hero-collapsed="ctx.heroCollapsed.value"
-      @toggle-hero="ctx.toggleHero"
       @show-all-meetings="ctx.showAllMeetings.value = !ctx.showAllMeetings.value"
       @generate-summary="ctx.generateSummary(chat.sendRaw, (tab: string) => aiTab = tab)"
       @link-meeting="ctx.linkRelatedMeeting"
@@ -162,11 +157,10 @@ import { beginResize } from '@/composables/useDivider'
 import { useAiContext } from '@/composables/useAiContext'
 import { useAiCommandActions } from '@/composables/useAiCommandActions'
 import { useAiInsights } from '@/composables/useAiInsights'
-import IconButton from '@/components/common/IconButton.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { modKey } from '@/utils/platform'
 
-import AiSessionTabs from './ai/AiSessionTabs.vue'
+import AiSessionPopover from './ai/AiSessionPopover.vue'
 import AiChatPanel from './ai/AiChatPanel.vue'
 import AiContextPanel from './ai/AiContextPanel.vue'
 
@@ -197,7 +191,6 @@ const aiTab = ref('chat')
 const inputText = ref('')
 const renamingId = ref<string | null>(null)
 const renameInput = ref('')
-const sessionTabsRef = ref<InstanceType<typeof AiSessionTabs> | null>(null)
 const chatPanelRef = ref<InstanceType<typeof AiChatPanel> | null>(null)
 
 // ── 图编辑请求监听（从洞察台“在对话中编辑”按钮触发） / Diagram edit request watcher (triggered from Insight Deck "Edit in Chat" button) ──
@@ -250,13 +243,15 @@ const quoteSourceLabel = computed(() => {
 // ── 会话管理 / Session management ──
 function onNewSession() { aiSessions.createNewSession(); nextTick(() => scrollFeed()) }
 function onSwitchSession(id: string) { chat.followUps.value = []; chat.injectPrompt.value = null; aiSessions.switchTo(id); nextTick(() => scrollFeed()) }
+// 重命名的聚焦/全选由 AiSessionPopover 内部完成
 function startRename(id: string) {
   const s = aiSessions.sessions.find(s => s.id === id); if (!s) return
   renamingId.value = id; renameInput.value = s.name
-  if (sessionTabsRef.value?.showOverflowMenu) sessionTabsRef.value.showOverflowMenu = false
-  nextTick(() => { const el = sessionTabsRef.value?.renameInputRef; (Array.isArray(el) ? el[0] : el)?.focus(); (Array.isArray(el) ? el[0] : el)?.select() })
 }
 function confirmRename() { if (renamingId.value && renameInput.value.trim()) aiSessions.renameSession(renamingId.value, renameInput.value.trim()); renamingId.value = null }
+function cancelRename() { renamingId.value = null }
+/** 清空当前会话（弹层顶行的内联确认已保证不会误触） */
+function onClearCurrent() { chat.clearConversation(); nextTick(() => scrollFeed()) }
 function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); void cleanupAgentWorkspace(id, taskStore.currentTaskId || undefined); nextTick(() => scrollFeed()) }
 
 // ── 发送消息 / Send message ──
@@ -292,12 +287,12 @@ function handleInputChange() {
   } else cmds.close()
 }
 
+/** 输入区高度重算：交给 AiChatPanel 的唯一入口（行数 × 整数行盒，上限转区内滚动）。
+    这里不再自己算高度——原先 Math.min(scrollHeight, 120) 与 CSS 的 min-height:32px /
+    max-height:150px 三处各写一套，且只在 input 事件上触发，导致会话恢复、插入引用、
+    指令回填、洞察台图表预填等路径改值后高度停在单行，末行被切成半行。 */
 function autoResize() {
-  // 从 chatPanel 获取 textarea 引用 / Get textarea ref from chatPanel
-  const ta = chatPanelRef.value?.inputRef
-  if (!ta) return
-  ta.style.height = 'auto'
-  ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
+  chatPanelRef.value?.resizeInput?.()
 }
 
 async function scrollFeed() {
@@ -309,33 +304,45 @@ async function scrollFeed() {
 function runCommand(cmd: AiCommand) { cmds.close(); inputText.value = ''; cmd.action() }
 
 // ── 引用操作 / Quote operations ──
+// 插入纪要/随记已下架（2026-09）：仅保留划词改写的替换原文入口
 function onAcceptRewrite(content: string) { const ok = quoteRef.acceptRewrite(content); showToast(ok ? t('ai-panel.toast.replaced') : t('ai-panel.toast.locate_failed'), ok ? 'success' : 'warn') }
-function onInsertToSummary(content: string) { const ok = quoteRef.insertToSummary(content); showToast(ok ? t('ai-panel.toast.inserted_summary') : t('ai-panel.toast.open_summary_first'), ok ? 'success' : 'warn') }
-function onInsertToNotes(content: string) { const ok = quoteRef.insertToNotes(content); showToast(ok ? t('ai-panel.toast.inserted_notes') : t('ai-panel.toast.open_notes_first'), ok ? 'success' : 'warn') }
 
 // ── 生命周期 / Lifecycle ──
 onMounted(() => {
   cmds.registerCommands(cmdActions.buildCommands())
   window.addEventListener('quote-to-ai', onQuoteToAiEvent)
   window.addEventListener('global-ai-focus', onGlobalAiFocus)
-  document.addEventListener('click', onDocClickCloseOverflow)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('quote-to-ai', onQuoteToAiEvent)
   window.removeEventListener('global-ai-focus', onGlobalAiFocus)
-  document.removeEventListener('click', onDocClickCloseOverflow)
 })
 
-function onDocClickCloseOverflow() {
-  if (sessionTabsRef.value?.showOverflowMenu) sessionTabsRef.value.showOverflowMenu = false
-}
 function onGlobalAiFocus() { aiTab.value = 'chat'; nextTick(() => chatPanelRef.value?.inputRef?.focus()) }
+/** 完成护栏（§5.4）横幅重试：清横幅后原样重发，重新打轮级意图标 */
+function onRetryWrite(text: string) {
+  chat.rewriteNotPersisted.value = null
+  chat.setRewriteIntent(true)
+  void chat.sendRaw(text)
+}
 function onQuoteToAiEvent(e: Event) {
   const detail = (e as CustomEvent).detail || {}
   if (layout.aiCollapsed) layout.toggleAi()
   aiTab.value = 'chat'
   nextTick(() => {
     chatPanelRef.value?.inputRef?.focus()
+    // prefill：只填输入框不发送（洞察板共创起跳用，用户可追加具体诉求后自己回车）
+    if (detail.prefill) {
+      inputText.value = detail.prefill
+      // 模式即权限（§5.1）：共创只打「改写意图」轮级标（完成护栏输入），不再按按钮升档——
+      // 智能体模式本身固有写回权；问答引擎无写工具通道，起跳时仍明确告知需切换。
+      if (detail.coCreate) {
+        chat.setRewriteIntent(true)
+        if (chat.chatMode.value === 'agent') showToast(t('ai-panel.agent_mode_writable'), 'info')
+        else showToast(t('ai-panel.board_cocreate_needs_agent'), 'warn')
+      }
+      return
+    }
     if (detail.action) {
       const qctx = quoteRef.getQuoteContext()
       chat.sendRaw(qctx ? qctx.context + '\n' + t('ai-panel.user_instruction') + detail.action : detail.action)
@@ -353,12 +360,3 @@ watch(() => chat.isStreaming.value, (streaming) => {
   }
 })
 </script>
-
-<style scoped>
-.ai-msg-actions { display: flex; gap: 6px; padding: 4px 0 2px; opacity: 0; transition: opacity 0.15s; }
-.ai-msg:hover .ai-msg-actions { opacity: 1; }
-.ai-insert-btn { display: inline-flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--muted); background: transparent; border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; }
-.ai-insert-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, oklch(95% 0.02 255)); }
-.ai-insert-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
-
-</style>

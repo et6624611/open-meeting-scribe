@@ -39,23 +39,12 @@
       <button class="sel-tool-btn sel-mapping-confirm" @click="confirmMapping">✓</button>
       <button class="sel-tool-btn sel-mapping-cancel" @click="cancelMapping">✕</button>
     </div>
-    <!-- 原有操作按钮 / Original action buttons -->
-    <button class="sel-tool-btn is-primary" @click="onQuoteToAi" :title="t('common.selection_toolbar.quote_title')">
+    <!-- 保留操作按钮：仅「引用到 AI」——改写/总结/提取决策已下架，
+         其能力依赖 AI 且路径单一，由用户在「引用到 AI」中自行达成目的
+         Kept action: quote-to-AI only; rewrite/summarize/extract were retired -->
+    <button class="sel-tool-btn" @click="onQuoteToAi" :title="t('common.selection_toolbar.quote_title')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       {{ t('common.selection_toolbar.quote_to_ai') }}
-    </button>
-    <span class="sel-tool-sep"></span>
-    <button class="sel-tool-btn" @click="onInlineEdit" :title="t('common.selection_toolbar.rewrite_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      {{ t('common.selection_toolbar.rewrite') }}
-    </button>
-    <button class="sel-tool-btn" @click="onAction('summarize')" :title="t('common.selection_toolbar.summarize_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-      {{ t('common.selection_toolbar.summarize') }}
-    </button>
-    <button class="sel-tool-btn" @click="onAction('extract-todo')" :title="t('common.selection_toolbar.extract_todo_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      {{ t('common.selection_toolbar.extract_todo') }}
     </button>
   </div>
 </template>
@@ -72,11 +61,16 @@ const { t } = useI18n()
 
 const props = defineProps<{
   containerSelector?: string
+  /** 可划词的 textarea 选择器列表：由宿主页面传入，覆盖小结/备注/决策卡等编辑区
+   *  Selectable textarea selectors supplied by the host view (summary/notes/decision cards) */
+  textareaSelectors?: string[]
 }>()
 
+// 缺省仍只认小结/备注编辑器；决策卡正文与行内编辑区由 GeneratingView 显式接入
+const DEFAULT_TEXTAREA_SELECTORS = ['textarea.gen-textarea-editor']
+
 const emit = defineEmits<{
-  (e: 'action', action: string, text: string, source: string, blockIndex: number, replacement?: string): void
-  (e: 'inline-edit', text: string, source: string, blockIndex: number, range?: { start: number; end: number }): void
+  (e: 'action', action: string, text: string, source: string, blockIndex: number, replacement?: string, createdMapping?: boolean): void
 }>()
 
 const { setQuote } = useQuoteRef()
@@ -96,7 +90,6 @@ const showMappingInput = ref(false)
 const mappingTarget = ref('')
 let sourceLabel = ''
 let blockIndex = -1
-let textareaRange: { start: number; end: number } | null = null
 
 // ── 热词匹配计算 / Hotword matching computed ──
 const isAlreadyHotword = computed(() =>
@@ -178,8 +171,14 @@ function onMouseUp(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (toolbarEl.value?.contains(target)) return
 
-  // ── textarea 选区检测 / textarea selection detection ──
-  const textareaEl = target.closest('textarea.gen-textarea-editor') as HTMLTextAreaElement | null
+  // ── textarea 选区检测（小结/备注编辑器 + 宿主页面配置的决策卡等） ──
+  // textarea selection detection (summary/notes editors + host-configured areas)
+  const selectors = props.textareaSelectors?.length ? props.textareaSelectors : DEFAULT_TEXTAREA_SELECTORS
+  let textareaEl: HTMLTextAreaElement | null = null
+  for (const sel of selectors) {
+    textareaEl = target.closest(sel) as HTMLTextAreaElement | null
+    if (textareaEl) break
+  }
   if (textareaEl) {
     const start = textareaEl.selectionStart
     const end = textareaEl.selectionEnd
@@ -189,9 +188,11 @@ function onMouseUp(e: MouseEvent) {
     selectedTextRef.value = text
     showMappingInput.value = false
     mappingTarget.value = ''
-    sourceLabel = t('common.selection_toolbar.source_minutes')
+    // 决策卡内的划词标注来源为「决策」，其余编辑器沿用「纪要」
+    sourceLabel = textareaEl.closest('.db-node')
+      ? t('common.selection_toolbar.source_decision')
+      : t('common.selection_toolbar.source_minutes')
     blockIndex = -1
-    textareaRange = { start, end }
     // 使用 mirror div 精确计算选区坐标 / Use mirror div for precise selection coordinates
     const selRect = getTextareaSelectionRect(textareaEl, start, end)
     if (selRect) {
@@ -205,7 +206,6 @@ function onMouseUp(e: MouseEvent) {
   }
 
   // ── DOM Selection 检测（转写原文面板） / DOM Selection detection (transcript panel) ──
-  textareaRange = null
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || !sel.toString().trim()) {
     visible.value = false
@@ -262,28 +262,31 @@ function onScrollCollapse() {
 function onQuoteToAi() {
   setQuote(selectedTextRef.value, sourceLabel, blockIndex)
   visible.value = false
-  textareaRange = null
   window.getSelection()?.removeAllRanges()
   window.dispatchEvent(new CustomEvent('quote-to-ai'))
 }
 
-function onAction(action: string) {
-  emit('action', action, selectedTextRef.value, sourceLabel, blockIndex)
-  visible.value = false
-  textareaRange = null
-  window.getSelection()?.removeAllRanges()
-}
+// 改写/总结/提取待办已随工具栏按钮下架：能力依赖 AI 程度高，
+// 由用户在「引用到 AI」中自行描述目的达成
+// Rewrite/summarize/extract retired with the toolbar buttons; users achieve those
+// intents through quote-to-AI with an explicit instruction.
 
-/** 行间编辑：emit inline-edit 事件，由父组件处理 / Inline edit: emit inline-edit event, handled by parent */
-function onInlineEdit() {
-  emit('inline-edit', selectedTextRef.value, sourceLabel, blockIndex, textareaRange || undefined)
-  visible.value = false
-  textareaRange = null
-  window.getSelection()?.removeAllRanges()
+// ── 词条成形校验 / Term shape guard ──
+/** 热词与映射的左值都是「词」级单位：多行或超长选区不是词。
+ *  data/hotwords.txt 与 data/hotword_mappings.txt 按行解析，一条多行选区落盘后
+ *  会被拆成 N 条脏记录，其中含分隔符的那行会变成一条真实生效的映射。 */
+const MAX_TERM_LEN = 30
+function isUsableTerm(text: string): boolean {
+  if (!text.trim() || /[\r\n]/.test(text) || text.length > MAX_TERM_LEN) {
+    showToast(t('common.selection_toolbar.term_not_a_word'), 'warn')
+    return false
+  }
+  return true
 }
 
 // ── 热词操作 / Hotword actions ──
 function onAddHotword() {
+  if (!isUsableTerm(selectedTextRef.value)) return
   hw.addItem('word', selectedTextRef.value)
   hw.scheduleSave()
   showToast(t('common.selection_toolbar.hotword_added', { text: selectedTextRef.value }), 'success')
@@ -298,8 +301,11 @@ function onApplyCorrection() {
     hw.addItem('word', target)
   }
   hw.scheduleSave()
+  // 修正结果（命中几处 / 未命中）由父组件按后端回执播报：这里此前无条件报「已修正」，
+  // 而旧 DOM 替换实际可能一处都没改到，是一条假成功反馈。
+  // The parent reports the real hit count from the backend receipt; the unconditional
+  // toast here used to claim success even when the DOM rewrite matched nothing.
   emit('action', 'correct', selectedTextRef.value, sourceLabel, blockIndex, target)
-  showToast(t('common.selection_toolbar.correction_applied', { text: target }), 'success')
   visible.value = false
   window.getSelection()?.removeAllRanges()
 }
@@ -313,8 +319,10 @@ function toggleMappingInput() {
 }
 
 function confirmMapping() {
-  if (!mappingTarget.value.trim()) return
   const target = mappingTarget.value.trim()
+  if (!target) return
+  // 左值（误识别写法）来自划词选区，必须先过成形校验；右值来自单行 input，天然安全
+  if (!isUsableTerm(selectedTextRef.value)) return
   hw.addItem('mapping', selectedTextRef.value, target)
   // 引导用户将 target 也加入热词 / Guide user to also add target as hotword
   const targetIsHotword = hw.items.value.some(it => it.type === 'word' && it.content === target)
@@ -322,9 +330,9 @@ function confirmMapping() {
     hw.addItem('word', target)
   }
   hw.scheduleSave()
-  // 同时修正当前选区原文 / Also apply correction to the current selection
-  emit('action', 'correct', selectedTextRef.value, sourceLabel, blockIndex, target)
-  showToast(t('common.selection_toolbar.correction_applied', { text: target }), 'success')
+  // 同时回溯修正本场会议已存的原文/纪要/决策/洞察/导出件 / Also correct this meeting's stored artifacts
+  // createdMapping=true 让父组件的反馈同时涵盖「映射已保存」这一事实（吐司条一次只显一条）。
+  emit('action', 'correct', selectedTextRef.value, sourceLabel, blockIndex, target, true)
   showMappingInput.value = false
   visible.value = false
   window.getSelection()?.removeAllRanges()

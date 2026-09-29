@@ -199,11 +199,9 @@ class TestLocalRouting:
         import app.settings_store as ss
         import core.transcribe as t
 
-        # 自包含夹具（同 test_llm_selfhost 口径）：隔离真实 data/settings.json。
-        # AM-B1 后 _get_asr_mode 经 core/routing 先读 access_mode；已迁移机器上
-        # 会短路进 hosted 分支、绕过本用例要验的 legacy engine.mode 判定。
+        # 逐能力真相源：asr 生效来源=local → 路由 local（不再由 engine.mode 推导）。
         monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
-        monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "local", "local": {}})
+        ss.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "local"}})
         assert t._get_asr_mode() == "local"
 
     def test_get_asr_mode_not_local_when_engine_cloud(self, tmp_path, monkeypatch):
@@ -211,10 +209,11 @@ class TestLocalRouting:
         import app.store as store
         import core.transcribe as t
 
+        # asr 生效来源=trial（非本机）→ 路由不为 local（proxy/cloud/direct 皆可）。
         monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
-        monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "cloud", "local": {}})
-        monkeypatch.setattr(store, "get_asr_config", lambda: {"mode": "proxy", "proxy_url": "http://x"})
-        assert t._get_asr_mode() == "proxy"
+        ss.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "trial"}})
+        monkeypatch.setattr(store, "get_asr_config", lambda: {"mode": "proxy", "proxy_url": "http://x", "api_key": ""})
+        assert t._get_asr_mode() != "local"
 
     def test_transcribe_local_end_to_end(self, tmp_path, monkeypatch):
         import core.engine_host as eh

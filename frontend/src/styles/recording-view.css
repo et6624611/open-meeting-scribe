@@ -149,23 +149,17 @@
 .rec-insights-btn:hover { background: var(--surface); color: var(--fg); }
 .rec-insights-btn.is-active { color: var(--proactive); background: var(--proactive-soft); }
 .rec-insights-btn.is-loading { color: var(--proactive); opacity: 0.7; cursor: wait; }
-.rec-insights-analyze-btn { color: var(--proactive); }
-.rec-insights-analyze-btn:hover { background: var(--proactive-soft); color: var(--proactive); }
 .rec-insights-btn:disabled { pointer-events: none; }
 /* 扩展按钮样式 / Expand button style */
 .rec-insights-expand-btn { transition: color 0.12s, background 0.12s; }
 .rec-insights-expand-btn:hover { background: var(--surface); color: var(--fg); }
 .rec-insights-expand-btn.is-expanded { color: var(--proactive); background: var(--proactive-soft); }
-.rec-insights-spin { animation: spin 1s linear infinite; }
-/* ─── 自动频率 segmented 控件（唯一暴露给用户的旋钮） / Auto frequency segmented control (the only user-facing knob) ─── */
-.rec-insights-freq { display: inline-flex; align-items: center; gap: 2px; padding: 2px; background: var(--surface); border-radius: var(--radius-sm); }
-.rec-insights-freq-opt { border: none; background: transparent; cursor: pointer; font-size: var(--fs-10); line-height: 1; color: var(--muted); padding: 3px 6px; border-radius: calc(var(--radius-sm) - 2px); transition: color 0.12s, background 0.12s; white-space: nowrap; }
-.rec-insights-freq-opt:hover { color: var(--fg); }
-.rec-insights-freq-opt.is-active { color: var(--proactive); background: var(--proactive-soft); font-weight: 600; }
+/* 【已退役】分析按钮/重生成 spinner/分析引擎标签/自动频率 segmented：
+   随「洞察共创 · 会话驱动」下线，洞察触发入口收敛到会话面板 */
 .rec-insights-dropdown-wrap { position: relative; }
 .rec-insights-dropdown { position: absolute; top: 100%; right: 0; z-index: 10; min-width: 120px; margin-top: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
 .rec-insights-dropdown-item { display: block; width: 100%; padding: 6px 10px; border: none; border-radius: var(--radius-xs); background: transparent; color: var(--fg); font-size: 0.8rem; text-align: left; cursor: pointer; white-space: nowrap; }
-.rec-insights-dropdown-item:hover { background: var(--surface); color: var(--proactive); }
+.rec-insights-dropdown-item:hover { background: var(--surface); color: var(--fg); }
 .rec-insights-btn svg { width: 14px; height: 14px; }
 .rec-insights-body { flex: 1; overflow-y: auto; padding: var(--s-3); min-height: 0; }
 .rec-insights-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); padding: var(--s-8) var(--s-4); text-align: center; }
@@ -174,17 +168,18 @@
 .rec-insights-list { display: flex; flex-direction: column; gap: var(--s-2); }
 
 /* 倒计时环形进度 */
-/* 洞察卡片 */
+/* 洞察卡片：用色克制（PROPOSAL-INFO-LAYERING §6）——装饰全中性化，
+   --proactive 只保留域标识（类别徽章）与未读小圆点/主按钮两个状态信号 */
 .rec-insight-card { border-radius: var(--radius); overflow: hidden; }
-.rec-insight-card.is-unread { box-shadow: 0 0 0 1px var(--proactive-mid); }
-.rec-insight-card-header { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--proactive-soft); border: 1px solid var(--proactive-mid); border-left: 3px solid var(--proactive); border-radius: var(--radius); cursor: pointer; transition: background 0.12s; min-height: 36px; }
+.rec-insight-card.is-unread .rec-insight-card-header::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--proactive); flex-shrink: 0; }
+.rec-insight-card-header { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: background 0.12s; min-height: 36px; }
 .rec-insight-card.is-expanded .rec-insight-card-header { border-radius: var(--radius) var(--radius) 0 0; border-bottom: none; }
-.rec-insight-card-header:hover { background: var(--proactive-mid); }
-.rec-insight-cat { font-size: var(--fs-10); font-family: var(--font-mono); font-weight: 600; color: var(--proactive); background: var(--proactive-mid); padding: 2px 6px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.rec-insight-card-header:hover { background: var(--surface-2); }
+.rec-insight-cat { font-size: var(--fs-10); font-family: var(--font-mono); font-weight: 600; color: var(--proactive); background: transparent; padding: 2px 6px 2px 0; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
 .rec-insight-card-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec-insight-chevron { color: var(--subtle); flex-shrink: 0; transition: transform 0.2s; }
 .rec-insight-card.is-expanded .rec-insight-chevron { transform: rotate(180deg); }
-.rec-insight-card-body { background: var(--proactive-soft); border: 1px solid var(--proactive-mid); border-left: 3px solid var(--proactive); border-radius: 0 0 var(--radius) var(--radius); border-top: none; padding: var(--s-3); }
+.rec-insight-card-body { background: var(--surface); border: 1px solid var(--border); border-top: 1px dashed var(--border); border-radius: 0 0 var(--radius) var(--radius); padding: var(--s-3); }
 .rec-insight-body-text { font-size: var(--fs-13); color: var(--muted); line-height: 1.6; margin-bottom: var(--s-2); }
 .rec-insight-body-text strong { color: var(--fg); font-weight: 600; }
 /* 洞察卡片内 Markdown 元素样式 / Markdown element styles inside insight card */
@@ -193,21 +188,26 @@
 .rec-insight-body-text h3 { color: var(--fg); font-weight: 600; margin: var(--s-2) 0 var(--s-1); line-height: 1.3; }
 .rec-insight-body-text h1 { font-size: var(--fs-15); }
 .rec-insight-body-text h2 { font-size: var(--fs-14); }
-.rec-insight-body-text h3 { font-size: var(--fs-13); border-bottom: 1px solid var(--proactive-mid); padding-bottom: 2px; }
+.rec-insight-body-text h3 { font-size: var(--fs-13); border-bottom: 1px solid var(--border); padding-bottom: 2px; }
 .rec-insight-body-text li { margin-left: var(--s-3); margin-bottom: 2px; list-style-type: disc; }
-.rec-insight-body-text li::marker { color: var(--proactive); }
+.rec-insight-body-text li::marker { color: var(--muted); }
 .rec-insight-solution-text h1,
 .rec-insight-solution-text h2,
 .rec-insight-solution-text h3 { color: var(--fg); font-weight: 600; margin: var(--s-2) 0 var(--s-1); line-height: 1.3; }
 .rec-insight-solution-text h3 { font-size: var(--fs-13); }
 .rec-insight-solution-text li { margin-left: var(--s-3); margin-bottom: 2px; list-style-type: decimal; }
-.rec-insight-solution-text li::marker { color: var(--proactive); }
+.rec-insight-solution-text li::marker { color: var(--muted); }
 .rec-insight-solution { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--s-2) var(--s-3); margin-bottom: var(--s-2); }
-.rec-insight-solution-label { font-size: var(--fs-11); font-weight: 600; color: var(--proactive); margin-bottom: var(--s-1); }
+.rec-insight-solution-label { font-size: var(--fs-11); font-weight: 600; color: var(--muted); margin-bottom: var(--s-1); }
 .rec-insight-solution-text { font-size: var(--fs-13); color: var(--muted); line-height: 1.6; }
-.rec-insight-actions { display: flex; gap: var(--s-1); flex-wrap: wrap; margin-top: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--proactive-mid); }
-.rec-insight-action-btn { font-size: var(--fs-11); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--proactive-mid); background: var(--surface); color: var(--proactive); cursor: pointer; transition: background 0.1s, border-color 0.1s; }
-.rec-insight-action-btn:hover { background: var(--proactive-soft); border-color: var(--proactive); }
+/* 备查注释层（三层信息写作 R3）：层次用排印承载——小字号 + 中性次级色 + 虚线分隔，不用色彩 */
+.rec-insight-note { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-11); color: var(--subtle); line-height: 1.5; border-top: 1px dashed var(--border); margin-bottom: var(--s-2); padding-top: var(--s-2); }
+.rec-insight-note-label { flex-shrink: 0; font-weight: 600; }
+.rec-insight-note-text { min-width: 0; }
+.rec-insight-actions { display: flex; gap: var(--s-1); flex-wrap: wrap; margin-top: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--border); }
+.rec-insight-action-btn { font-size: var(--fs-11); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+.rec-insight-action-btn:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--fg); }
+/* 主按钮是全卡唯一强动作，保留实心紫作为可操作状态信号（R4） */
 .rec-insight-action-btn.is-primary { background: var(--proactive); color: var(--surface); border-color: var(--proactive); }
 .rec-insight-action-btn.is-primary:hover { filter: brightness(0.9); }
 .rec-insight-action-btn.is-done { opacity: 0.4; pointer-events: none; }
@@ -215,8 +215,8 @@
 
 /* 洞察卡片内 Mermaid 图表 / Mermaid diagram inside insight card */
 .rec-insight-diagram { margin: var(--s-2) 0; padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-x: auto; }
-/* 图形主输出态：更强的视觉权重 / Primary diagram: stronger visual weight */
-.rec-insight-diagram-primary { margin-top: 0; margin-bottom: 0; border-color: var(--proactive-mid); box-shadow: 0 1px 3px oklch(62% 0.15 270 / 0.08); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+/* 图形主输出态：全幅面积已表达主次地位，去紫色晕影改中性描边（R2） */
+.rec-insight-diagram-primary { margin-top: 0; margin-bottom: 0; border-color: var(--border-strong); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
 /* 仅限 Mermaid 渲染体铺满宽度（精确命中 .mermaid-diagram-svg > svg，
    避免波及画布内部图标/连线 SVG）
    Full-width scaling targets the Mermaid render body only, so canvas icons/wires keep their own sizing */
@@ -231,16 +231,16 @@
 /* 洞察卡片内旧版知识图谱（历史会话兼容，静态 SVG） / Legacy knowledge graph (historical sessions, static SVG) */
 .insight-graph { position: relative; min-height: 200px; overflow: auto; }
 .insight-graph-svg { display: block; min-width: 100%; }
-.insight-graph-svg circle { fill: var(--surface-2); stroke: var(--proactive); }
+.insight-graph-svg circle { fill: var(--surface-2); stroke: var(--border-strong); }
 .insight-graph-svg path { stroke: var(--border-strong); stroke-width: 1; }
 .insight-graph-svg g.is-seekable { cursor: pointer; }
-.insight-graph-svg g.is-seekable:hover circle { stroke: var(--proactive); stroke-width: 2.5; }
+.insight-graph-svg g.is-seekable:hover circle { stroke: var(--fg); stroke-width: 2.5; }
 .insight-graph-node-label { font-size: 11px; fill: var(--fg); text-anchor: middle; }
 .insight-graph-edge-label { font-size: 9px; fill: var(--muted); text-anchor: middle; }
 .insight-graph-tooltip { position: absolute; transform: translateX(-50%); pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px 8px; font-size: var(--fs-11); color: var(--fg); white-space: nowrap; box-shadow: 0 2px 6px oklch(0% 0 0 / 0.1); z-index: 10; }
 
 /* 洞察台画布：workflow 阶段卡渲染器 / Insight Deck canvas: workflow phase-card renderer */
-.insight-flow { position: relative; display: block; width: 100%; height: 360px; border: 1px solid var(--proactive-mid); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.insight-flow { position: relative; display: block; width: 100%; height: 360px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
 .insight-flow.is-fullscreen { width: 100vw; height: 100vh; border: none; border-radius: 0; background: var(--bg); }
 .insight-flow-viewport { position: absolute; inset: 0; overflow: hidden;
   background-image: radial-gradient(var(--border-strong) 1.2px, transparent 1.2px);
@@ -268,20 +268,20 @@
 .insight-flow-chip { display: block; width: 100%; box-sizing: border-box; text-align: left; margin-top: var(--s-2); padding: var(--s-2) 10px;
   background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: default;
   transition: border-color 0.12s; font: inherit; color: var(--fg); }
-.insight-flow-chip:hover { border-color: var(--proactive); }
+.insight-flow-chip:hover { border-color: var(--border-strong); }
 .insight-flow-chip.is-seekable { cursor: pointer; }
 .insight-flow-chip-title { display: block; font-size: var(--fs-12); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .insight-flow-chip-sub { display: flex; align-items: center; gap: 5px; margin-top: 3px; font-size: var(--fs-11); color: var(--muted); }
 .insight-flow-chip-ic { flex: 0 0 auto; width: 11px; height: 11px; color: var(--subtle); }
 .insight-flow-chip-owner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.insight-flow-chip-time { margin-left: auto; color: var(--proactive); font-size: 10px; font-family: var(--font-mono); }
+.insight-flow-chip-time { margin-left: auto; color: var(--muted); font-size: 10px; font-family: var(--font-mono); }
 
 /* 缩放控件（左下角） / Zoom toolbar (bottom-left) */
 .insight-flow-toolbar { position: absolute; left: var(--s-4); bottom: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); z-index: 5; }
 .insight-flow-toolbar button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--muted); cursor: pointer; transition: color 0.12s, border-color 0.12s; }
-.insight-flow-toolbar button:hover { color: var(--fg); border-color: var(--proactive); }
+.insight-flow-toolbar button:hover { color: var(--fg); border-color: var(--border-strong); }
 
 /* 图操作工具栏 / Diagram action toolbar */
 .rec-insight-diagram-wrap { display: flex; flex-direction: column; gap: 0; }
@@ -290,39 +290,13 @@
 .rec-insight-diagram-btn:hover { background: var(--surface-2); color: var(--fg); }
 .rec-insight-diagram-btn svg { flex-shrink: 0; }
 
-/* 已确认卡片：切换为系统默认色系，让出视觉空间 */
-.rec-insight-card.is-acknowledged .rec-insight-card-header {
-  background: var(--surface-2); border-color: var(--border); border-left-color: var(--muted);
-}
-.rec-insight-card.is-acknowledged .rec-insight-card-header:hover {
-  background: var(--surface);
-}
+/* 已确认卡片：默认态已中性化（用色收敛 R2），此处只需去掉域标识紫与降不透明度；
+   未读小圆点伪元素不受影响（R1 状态信号保留） */
 .rec-insight-card.is-acknowledged .rec-insight-cat {
-  color: var(--muted); background: var(--surface);
-}
-.rec-insight-card.is-acknowledged .rec-insight-card-body {
-  background: var(--surface-2); border-color: var(--border); border-left-color: var(--muted);
-}
-.rec-insight-card.is-acknowledged .rec-insight-solution-label {
   color: var(--muted);
 }
-.rec-insight-card.is-acknowledged .rec-insight-action-btn {
-  color: var(--muted); border-color: var(--border);
-}
-.rec-insight-card.is-acknowledged .rec-insight-action-btn:hover {
-  background: var(--surface); border-color: var(--muted);
-}
-.rec-insight-card.is-acknowledged .rec-insight-action-btn.is-primary {
-  background: var(--surface); color: var(--fg); border-color: var(--border);
-}
-.rec-insight-card.is-acknowledged .rec-insight-actions {
-  border-top-color: var(--border);
-}
-.rec-insight-card.is-acknowledged.is-unread {
-  box-shadow: 0 0 0 1px var(--border);
-}
 .rec-insight-card.is-acknowledged .rec-insight-diagram {
-  border-color: var(--border); opacity: 0.7;
+  opacity: 0.7;
 }
 
 /* 音量过低警告横幅 */

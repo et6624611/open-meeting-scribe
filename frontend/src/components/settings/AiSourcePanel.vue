@@ -11,6 +11,8 @@
       :active-key="activeKey"
       :view-key="viewKey"
       :hint="hint"
+      :active-state-tone="headerState.tone"
+      :active-state-text="headerState.text"
       @activate="onActivate"
       @view="viewKey = $event"
     />
@@ -18,24 +20,31 @@
     <!-- 01 体验配额 -->
     <div v-show="viewKey === 'trial'" class="cc-tabpanel">
       <div class="cc-source-line">
-        <span v-if="activeKey === 'trial'" class="cc-src-pill cc-pill cc-pill-accent"><span class="cc-dot"></span>{{ t('settings.compute.effective') }}</span>
+        <span class="cc-src-pill cc-pill" :class="srcPillClass('trial')"><span class="cc-dot"></span>{{ srcStateText('trial') }}</span>
         <span class="cc-src-meta">{{ t('settings.compute.ai_trial_meta') }}</span>
       </div>
       <div class="cc-card">
-        <div class="cc-card-head">
-          <div>
-            <h2 class="cc-card-title">{{ t('settings.compute.month_quota') }}</h2>
-            <p class="cc-card-desc">{{ t('settings.compute.month_quota_desc') }}</p>
+        <template v-if="userStore.isLoggedIn">
+          <div class="cc-card-head">
+            <div>
+              <h2 class="cc-card-title">{{ t('settings.compute.month_quota') }}</h2>
+              <p class="cc-card-desc">{{ t('settings.compute.month_quota_desc') }}</p>
+            </div>
           </div>
-        </div>
-        <div class="cc-quota-row">
-          <div class="cc-quota-figure">{{ quotaRemaining == null ? '∞' : Math.round(quotaRemaining) }}<span v-if="quotaRemaining != null"> {{ t('settings.compute.minutes_left') }}</span></div>
-          <div style="text-align:right"><div class="cc-note">{{ t('settings.compute.model') }}</div><div class="cc-mono" style="font-size:13px">{{ settings.llm?.model || 'qwen-plus' }}</div></div>
-        </div>
-        <div class="cc-divider"></div>
-        <div class="cc-btn-row">
-          <button class="cc-btn cc-btn-secondary cc-btn-sm" @click="activate('trial')">{{ t('settings.compute.use_this') }}</button>
-          <button class="cc-btn cc-btn-ghost cc-btn-sm" @click="viewKey = 'provider'">{{ t('settings.compute.quota_to_provider') }}</button>
+          <div class="cc-quota-row">
+            <div class="cc-quota-figure">{{ quotaRemaining == null ? '∞' : Math.round(quotaRemaining) }}<span v-if="quotaRemaining != null"> {{ t('settings.compute.minutes_left') }}</span></div>
+            <!-- 体验配额在云端执行：本地 tag 模型名不在此生效，展示实际会用的云端模型（与 core/llm._cloud_safe_model 同规则） -->
+            <div style="text-align:right" :title="t('settings.compute.model_trial_tip')"><div class="cc-note">{{ t('settings.compute.model') }}</div><div class="cc-mono" style="font-size:13px">{{ trialModel }}</div></div>
+          </div>
+          <div class="cc-divider"></div>
+          <div class="cc-btn-row">
+            <button class="cc-btn cc-btn-secondary cc-btn-sm" @click="activate('trial')">{{ t('settings.compute.use_this') }}</button>
+            <button class="cc-btn cc-btn-ghost cc-btn-sm" @click="viewKey = 'provider'">{{ t('settings.compute.quota_to_provider') }}</button>
+          </div>
+        </template>
+        <div v-else class="cc-need-login">
+          <p class="cc-note">{{ t('settings.compute.need_login_hint') }}</p>
+          <button class="cc-btn cc-btn-primary cc-btn-sm" @click="showLogin">{{ t('settings.login') }}</button>
         </div>
       </div>
     </div>
@@ -77,6 +86,8 @@
             <label class="cc-field-label">{{ t('settings.llm_model') }}</label>
             <input v-model="llmForm.model" class="cc-input cc-input-mono" list="ai-model-options" placeholder="qwen-plus" />
             <datalist id="ai-model-options"><option v-for="m in modelOptions" :key="m" :value="m" /></datalist>
+            <!-- 作用域说明（AI 算力入口治理 §4）：与 AI 面板统一资源清单的内置组文案镜像互指 -->
+            <div class="cc-note">{{ t('settings.llm_model_scope_note') }}</div>
           </div>
         </div>
         <div class="cc-field">
@@ -173,7 +184,7 @@ const emit = defineEmits<{ (e: 'refresh'): void }>()
 
 const { t } = useI18n()
 const userStore = useUserStore()
-const { accessMode, currentSource, quotaRemaining, pickCloudSource } = useComputeSource()
+const { currentSource, quotaRemaining, pickCloudSource } = useComputeSource()
 
 const viewKey = ref<string>('trial')
 const hint = ref('')
@@ -190,6 +201,13 @@ watch(() => props.settings.llm, (l) => {
   llmForm.model = l?.model || ''
   llmForm.api_key = ''
 }, { immediate: true, deep: true })
+
+/** 体验配额实际生效的模型：llm.model 是跨来源共享字段，残留的本地 tag 名（含 ":"，如 qwen3:8b）
+    在云端链路会被守护性回退为默认模型（与 core/llm._cloud_safe_model 同规则），卡片如实展示 */
+const trialModel = computed(() => {
+  const m = (props.settings.llm?.model || '').trim()
+  return !m || m.includes(':') ? 'qwen-plus' : m
+})
 
 const presets = computed<ProviderPreset[]>(() => props.settings.llm_provider_presets || [
   { name: 'DashScope（通义千问）', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo'] },
@@ -212,15 +230,22 @@ const localModels = computed(() => {
 })
 
 const byokReady = computed(() => !!props.settings.llm?.api_key_set)
+// 就绪 = 配置的本地端点此刻探测可达（而非仅「填过 localhost 地址」）；未探测到即判不可用，避免 Ollama 未启动仍显示绿色
+function originOf(u?: string): string {
+  if (!u) return ''
+  try { return new URL(u).origin } catch { return '' }
+}
 const endpointReady = computed(() => {
-  if (isLocalUrl(props.settings.llm?.base_url)) return true
-  return localEngines.value.some(e => e.reachable)
+  const bu = props.settings.llm?.base_url || ''
+  if (!isLocalUrl(bu)) return false
+  const o = originOf(bu)
+  return localEngines.value.some(e => e.reachable && (!o || originOf(e.base_url) === o))
 })
 
 const sources = computed<SourceItem[]>(() => {
   const q = quotaRemaining.value
   return [
-    { key: 'trial', idx: '01', name: t('settings.compute.src_trial'), ready: userStore.isLoggedIn, meta: q == null ? t('settings.compute.trial_meta_inf') : t('settings.compute.trial_meta', { n: Math.round(q) }) },
+    { key: 'trial', idx: '01', name: t('settings.compute.src_trial'), ready: userStore.isLoggedIn && (quotaRemaining.value == null || quotaRemaining.value > 0), meta: q == null ? t('settings.compute.trial_meta_inf') : t('settings.compute.trial_meta', { n: Math.round(q) }) },
     { key: 'provider', idx: '02', name: t('settings.compute.src_provider'), ready: byokReady.value, meta: t('settings.compute.ai_provider_meta') },
     { key: 'cli', idx: '03', name: t('settings.compute.src_cli'), ready: true, meta: t('settings.compute.ai_cli_meta') },
     { key: 'endpoint', idx: '04', name: t('settings.compute.src_endpoint'), ready: endpointReady.value, meta: t('settings.compute.ai_endpoint_meta') },
@@ -228,7 +253,6 @@ const sources = computed<SourceItem[]>(() => {
 })
 
 const activeKey = computed(() => {
-  if (accessMode.value === 'local') return 'endpoint'
   const src = currentSource('llm')
   if (src === 'trial') return 'trial'
   if (src === 'byok') return 'provider'
@@ -237,6 +261,25 @@ const activeKey = computed(() => {
 })
 
 function onActivate(key: string) { viewKey.value = key; if (key !== activeKey.value) activate(key) }
+
+/** 未登录的体验配额：即便被选为当前来源，也应显示「需登录」而非「生效中」 */
+const trialNeedsLogin = computed(() => activeKey.value === 'trial' && !userStore.isLoggedIn)
+const headerState = computed(() => trialNeedsLogin.value
+  ? { tone: 'warn' as const, text: t('settings.compute.need_login') }
+  : { tone: 'live' as const, text: '' })
+
+function isReady(key: string): boolean { return !!sources.value.find(s => s.key === key)?.ready }
+function srcPillClass(key: string): string {
+  if (key === 'trial' && !userStore.isLoggedIn) return 'cc-pill-warn'
+  if (key === activeKey.value) return 'cc-pill-accent'
+  return isReady(key) ? 'cc-pill-idle' : 'cc-pill-warn'
+}
+function srcStateText(key: string): string {
+  if (key === 'trial' && !userStore.isLoggedIn) return t('settings.compute.need_login')
+  if (key === activeKey.value) return t('settings.compute.effective')
+  return isReady(key) ? t('settings.compute.state_ready') : t('settings.compute.state_down')
+}
+function showLogin() { window.dispatchEvent(new CustomEvent('oms:show-login')) }
 
 async function activate(key: string) {
   hint.value = ''
@@ -324,4 +367,5 @@ onMounted(async () => {
 .cc-tabpanel { animation: cc-fade .18s ease; }
 @keyframes cc-fade { from { opacity: 0; } to { opacity: 1; } }
 .cc-provider { display: block; }
+.cc-need-login { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); padding: var(--s-2) 0; }
 </style>

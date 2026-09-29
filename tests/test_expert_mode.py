@@ -99,11 +99,6 @@ class TestChatModelResolution:
 
 ANNOTATION_BLOCKS = [
     # (文件, CSS 选择器, 声明块必须含 font-size ≥12px)
-    (FE / "components/settings/AccessModeCards.vue", ".ai-tech"),
-    (FE / "components/settings/AccessModeCards.vue", ".ai-ready"),
-    (FE / "components/settings/AccessModeCards.vue", ".ai-badge-src"),
-    (FE / "components/settings/AccessModeCards.vue", ".ai-probe-stage"),
-    (FE / "components/settings/AccessModeCards.vue", ".ai-mx-badge"),
     (FE / "components/layout/ai/AiChatPanel.vue", ".ai-usage-echo"),
     (FE / "components/layout/ai/AiChatPanel.vue", ".ai-cli-probe-warn"),
     (FE / "components/settings/CliEnginePanel.vue", ".cp-stage"),
@@ -153,11 +148,8 @@ def test_chat_panel_model_picker_wired():
     assert "model_usage" in chat and "modelUsage" in chat
 
 
-def test_expert_switch_is_page_level_role_switch():
-    """专家开关移出决策卡容器：radiogroup 内仅两卡（local/cloud）。"""
-    src = (FE / "components/settings/AccessModeCards.vue").read_text(encoding="utf-8")
-    grid = src.split('role="radiogroup"', 1)[1].split("</div>\n    </div>", 1)[0] \
-        if 'role="radiogroup"' in src else ""
-    assert 'role="radio"' in grid
-    assert 'role="switch"' not in grid, "专家开关仍在 radiogroup 容器内（§2.1 形态错误未修）"
-    assert "role=\"switch\"" in src and "aria-checked" in src  # 页面级开关仍存在
+def test_access_mode_cards_removed_as_orphan():
+    """逐能力化后 AccessModeCards 孤儿组件已删除（不在 SettingsView 导航）；回归守卫。"""
+    assert not (FE / "components/settings/AccessModeCards.vue").exists(), "孤儿决策卡页应已删除"
+    src = (FE / "views/SettingsView.vue").read_text(encoding="utf-8")
+    assert "AccessModeCards" not in src, "SettingsView 不应再引用 AccessModeCards"

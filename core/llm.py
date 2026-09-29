@@ -101,12 +101,15 @@ def _is_placeholder_key(key: str) -> bool:
 def _should_use_cloud() -> bool:
     """判断是否应走云端代理。
 
-    T2 收口（REQ-ACCESS-MODE-CARDS AC-T2）：路由判定唯一入口为
-    `core/routing.get_routing_decision("llm")`，以 access_mode 为配置语义；
-    本函数不再独立读取 engine.mode / prefer_subscription 组合。
+    路由判定唯一入口为 `core/routing.get_routing_decision("llm")`，真相源 =
+    逐能力来源 capability_source.llm。若该能力未设置（unconfigured），
+    显式抛错引导去设置，不静默走 direct 报鉴权错。
     """
     from core.routing import get_routing_decision
-    return get_routing_decision("llm")["route"] == "cloud"
+    d = get_routing_decision("llm")
+    if d.get("unconfigured"):
+        raise RuntimeError("AI 纪要来源未设置，请在「设置 > API 配置」选择算力来源")
+    return d["route"] == "cloud"
 
 
 def _get_cloud_user_id() -> str:
@@ -121,6 +124,27 @@ def _get_cloud_user_id() -> str:
     return ""
 
 
+# 云端代理链路的默认模型（体验配额/API 提供商均经 DashScope）
+CLOUD_FALLBACK_MODEL = "qwen-plus"
+
+
+def _cloud_safe_model(model: str | None) -> str:
+    """云端链路模型名守护 / Guard the model name sent to the cloud proxy.
+
+    llm.model 是跨算力来源共享的单字段：用户在本机端点选过 Ollama 模型
+    （tag 形式如 "qwen3:8b"）后切到体验配额，该名字会被原样透传给 DashScope
+    → 模型不存在 → 体验配额下所有 LLM 调用失败（云端代理无白名单回退）。
+    规则：空值或本地 tag 形式（含 ":"）一律回退云端默认模型；其余（qwen-plus /
+    deepseek-chat / gpt-4o 等云模型名）原样透传。
+    """
+    m = (model or "").strip()
+    if not m or ":" in m:
+        if m:
+            logger.info("云端链路模型名 %r 为本地格式，回退 %s", m, CLOUD_FALLBACK_MODEL)
+        return CLOUD_FALLBACK_MODEL
+    return m
+
+
 def _try_cloud_llm(messages, model, temperature, max_tokens) -> str:
     """尝试通过云端代理调用 LLM，返回生成的文本。失败抛出 RuntimeError。
     Try cloud LLM proxy; returns generated text. Raises RuntimeError on failure.
@@ -128,8 +152,8 @@ def _try_cloud_llm(messages, model, temperature, max_tokens) -> str:
     from core.cloud_client import cloud_llm_chat, is_cloud_enabled
     user_id = _get_cloud_user_id()
     logger.info(f"LLM 无本地 Key，尝试云端代理: user={user_id[:8] if user_id else 'anon'}")
-    # model=None 时回退到默认模型，防止云端接口拒绝 / Fallback to default model when None to prevent cloud API rejection
-    effective_model = model or "qwen-plus"
+    # 云端链路模型名守护：空值回退默认，本地 tag 名（qwen3:8b）不得透传 DashScope
+    effective_model = _cloud_safe_model(model)
     result = cloud_llm_chat(messages, effective_model, temperature, max_tokens, user_id)
     if result is None:
         # 区分：云端未启用 vs 云端调用失败 / Distinguish: cloud not enabled vs cloud call failed
@@ -533,7 +557,7 @@ async def async_chat_completion_stream(
         from core.cloud_client import cloud_llm_chat_stream
         user_id = _get_cloud_user_id()
         logger.info(f"LLM 流式调用走云端代理: user={user_id[:8] if user_id else 'anon'}")
-        for token in cloud_llm_chat_stream(messages, model, temperature, max_tokens, user_id):
+        for token in cloud_llm_chat_stream(messages, _cloud_safe_model(model), temperature, max_tokens, user_id):
             yield token
         return
 

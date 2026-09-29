@@ -8,6 +8,7 @@ import { ref, computed, type Ref } from 'vue'
 import { tt } from '@/i18n'
 import { runInsightAnalysis, loadInsightMessages, saveInsightMessages, runPostMeetingAnalysis as apiRunPostMeetingAnalysis } from '@/api/insights'
 import { buildDiagramCaption } from '@/utils/mermaidCaption'
+import { cardSlots, normalizeFactor } from '@/utils/pageBudget'
 
 /** 洞察消息结构 / Insight message structure */
 export interface InsightMessage {
@@ -28,6 +29,8 @@ export interface InsightMessage {
   category: string
   /** AI 建议的解决方案（展开后显示） / AI-suggested solution (shown when expanded) */
   solution: string
+  /** 备查注释层（展开后显示，退可忽略/进可查看） / Note layer (shown when expanded; skippable yet answerable) */
+  note?: string
   /** 是否已展开 / Whether expanded */
   expanded: boolean
   /** 是否已确认 / Whether acknowledged */
@@ -36,6 +39,9 @@ export interface InsightMessage {
   diagram?: string
   /** 产生阶段：会中（缺省）/ 会后补分析 / Phase: in-meeting (default) or post-meeting supplement */
   phase?: 'meeting' | 'post_meeting'
+  /** 一页纸系数预算降级标记：超位旧卡进折叠「历史观察」层，不删除不消失（后端写盘前统一重排）
+   *  Deferred by the one-page card-slot budget: overflow cards fold into the history layer (never deleted) */
+  deferred?: boolean
   /** 旧版结构化知识图谱（仅历史消息重载时存在，新分析不再产出）
       Legacy structured graph (only on reloaded historical messages; new analyses never emit it) */
   graph?: unknown
@@ -50,37 +56,13 @@ export interface InsightAction {
 const STORAGE_KEY = 'ai_insights_enabled'
 const LEGACY_STORAGE_KEY = 'ai_proactive_enabled'
 
-/** 自动分析频率档位 / Auto-analysis frequency level */
-export type AutoFreq = 'off' | 'low' | 'normal' | 'high'
-const FREQ_STORAGE_KEY = 'ai_insights_auto_freq'
-/** 各档位对应的最小触发间隔（毫秒）；off 表示纯手动 / Min trigger interval (ms) per level; off = manual only */
-const FREQ_INTERVAL_MS: Record<AutoFreq, number> = {
-  off: 0,
-  low: 300_000,
-  normal: 180_000,
-  high: 90_000,
-}
-/** 自动触发所需的最小新增转写行数（避免重复画同一张图） / Min new transcript lines required for auto trigger */
-const AUTO_MIN_NEW_LINES = 8
-
-function _loadAutoFreq(): AutoFreq {
-  const v = localStorage.getItem(FREQ_STORAGE_KEY)
-  return v === 'off' || v === 'low' || v === 'normal' || v === 'high' ? v : 'normal'
-}
+/* 【已退役】定时自动分析引擎（autoFreq/maybeAutoAnalyze/内部游标）随
+   「洞察共创 · 会话驱动」下线：洞察生成/修订改由会话面板中人与 AI 共创驱动。 */
 
 /* ─── 全局单例状态 / Global singleton state ─── */
 const insightsEnabled = ref<boolean>(
   (localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)) !== '0'
 )
-/** 自动分析频率（唯一暴露给用户的旋钮） / Auto-analysis frequency (the only user-facing knob) */
-const autoFreq = ref<AutoFreq>(_loadAutoFreq())
-/** 当前频率档对应的最小间隔 / Min interval for current frequency level */
-const autoIntervalMs = computed(() => FREQ_INTERVAL_MS[autoFreq.value])
-
-/* ─── 自动引擎内部游标（不暴露给用户） / Auto-engine internal cursors (not user-facing) ─── */
-const autoAnalyzing: Ref<boolean> = ref(false)
-let lastAnalyzedAt = 0
-let lastAnalyzedLineCount = 0
 
 /** 当前会议 ID（引擎运行时绑定） / Current meeting ID (bound at engine runtime) */
 const currentTaskId = ref<string>('')
@@ -93,6 +75,15 @@ const insightMessages = computed<InsightMessage[]>(() => {
   if (!messagesByTask.value[tid]) messagesByTask.value[tid] = []
   return messagesByTask.value[tid]
 })
+
+/** 当前会议的一页纸系数（洞察面）：由宿主视图从 task.one_page.insights 同步；缺省 1
+    Current meeting's one-page factor for the Insight Deck; synced by the host view from task JSON */
+const onePageInsights = ref<number>(1)
+
+/** 设置当前会议的洞察面系数（角标改档/切会时调用） / Set the meeting's insight-side factor */
+function setOnePageInsights(factor: number | null | undefined) {
+  onePageInsights.value = normalizeFactor(factor)
+}
 
 let _idSeq = 0
 function nextId(): string {
@@ -107,7 +98,12 @@ async function persistMessages(taskId: string) {
   const msgs = messagesByTask.value[taskId]
   if (!msgs) return
   try {
-    await saveInsightMessages(taskId, msgs)
+    const resp = await saveInsightMessages(taskId, msgs)
+    // 后端写盘前按系数重排并回传全量列表：以重拉语义替换本地，避免陈旧内存下次整体覆盖
+    // Backend rebalances before persisting and returns the full list; adopt it to keep local state fresh
+    if (Array.isArray(resp.messages)) {
+      messagesByTask.value[taskId] = resp.messages as InsightMessage[]
+    }
   } catch (e) {
     // 持久化失败不阻断用户体验 / Persist failure does not block user experience
   }
@@ -131,6 +127,20 @@ async function ensureTaskLoaded(taskId: string) {
   }
 }
 
+/** 强制重拉指定会议的洞察消息 / Force-reload a meeting's insight messages from backend.
+ *
+ * 文本回溯修正（POST /api/tasks/{id}/correct-text）在后端改写了 insights.json，而这里有一份
+ * 按会议隔离的内存缓存。不重拉就会出现「洞察卡片仍写旧词、洞察板已是新词」的分裂视图；
+ * 更糟的是切会议时的 persistMessages 会把这份陈旧数组整体写回，覆盖刚落盘的修正。
+ * A retroactive correction rewrites insights.json on disk while this module keeps an
+ * in-memory copy; skipping the reload both shows stale text and lets the next
+ * persistMessages overwrite the fresh correction with the stale array. */
+async function reloadTaskMessages(taskId: string) {
+  if (!taskId) return
+  loadedTasks.delete(taskId)
+  await ensureTaskLoaded(taskId)
+}
+
 /** 设置当前会议 ID（切换会议时调用，加载对应洞察消息） / Set current meeting ID (called when switching meetings; loads corresponding insight messages) */
 async function setCurrentTask(taskId: string) {
   // 先保存当前会议的消息（如果有） / Save current meeting messages first (if any)
@@ -138,9 +148,6 @@ async function setCurrentTask(taskId: string) {
     await persistMessages(currentTaskId.value)
   }
   currentTaskId.value = taskId
-  // 切换会议时重置自动引擎游标，避免跨会议误触发 / Reset auto-engine cursors on meeting switch to avoid cross-meeting misfire
-  lastAnalyzedAt = 0
-  lastAnalyzedLineCount = 0
   // 从后端加载该会议的洞察消息 / Load insight messages for this meeting from backend
   await ensureTaskLoaded(taskId)
 }
@@ -155,7 +162,8 @@ function addInsightMessage(
   source: 'user' | 'system' = 'user',
   category = '',
   solution = '',
-  diagram = ''
+  diagram = '',
+  note = ''
 ): string {
   if (!insightsEnabled.value) return ''
   const id = nextId()
@@ -172,6 +180,7 @@ function addInsightMessage(
     expanded: false,
     acknowledged: false,
     diagram: diagram || undefined,
+    note: note || undefined,
   })
   // 实时持久化 / Realtime persist
   if (currentTaskId.value) persistMessages(currentTaskId.value)
@@ -184,6 +193,36 @@ function addInsightMessage(
 const manualAnalyzing: Ref<boolean> = ref(false)
 
 type TranscriptLineInput = Array<{ text: string; speaker_id: number; begin_time: number }>
+
+/* 已有洞察摘要预算（只读累进 Phase 1）：与后端截断预算对等，前端先行控制规模
+   Existing-insight digest budget (read-only progressive Phase 1): mirrors backend caps, frontend trims first */
+const DIGEST_MAX_ITEMS = 8
+const DIGEST_BODY_CHARS = 120
+const DIGEST_MAX_CHARS = 1800
+
+/**
+ * 构建已有洞察卡片的 title/body 结构化摘要（只读累进上下文）。
+ * Build a structured title/body digest of existing insight cards.
+ * 仅收录 AI 产出的实质洞察（手动/自动卡、含图或建议的卡），排除系统占位提示；
+ * 取最近 N 条并截断总量。 / Keeps only substantive AI insight cards (user-triggered/auto, or
+ * system cards carrying diagram/solution), excludes placeholder prompts; latest N under a char cap.
+ */
+function buildExistingDigest(): Array<{ title: string; body: string }> {
+  const meaningful = insightMessages.value.filter(
+    m => m.title.trim() && (m.source === 'user' || m.diagram || m.solution)
+  )
+  const picked: Array<{ title: string; body: string }> = []
+  let used = 0
+  for (const m of meaningful.slice(-DIGEST_MAX_ITEMS)) {
+    const title = m.title.trim()
+    const body = m.body.trim().slice(0, DIGEST_BODY_CHARS)
+    const cost = title.length + body.length + 1
+    if (used + cost > DIGEST_MAX_CHARS) break
+    picked.push({ title, body })
+    used += cost
+  }
+  return picked
+}
 
 /**
  * 洞察分析核心：调用后端产出图卡片。手动/自动共用。
@@ -199,9 +238,14 @@ async function runAnalysis(
 ) {
   analyzing.value = true
   try {
+    const existingInsights = buildExistingDigest()
     const result = await runInsightAnalysis({
       recent_lines: recentLines.slice(-20),
       chapter_titles: chapterTitles,
+      // 只读累进（Phase 1）：携带已有卡片摘要，使模型获得全局视角、避免重复创建
+      ...(existingInsights.length ? { existing_insights: existingInsights } : {}),
+      // 一页纸系数：携带有效卡位，后端据此注入生成侧预算块
+      card_slots: cardSlots(onePageInsights.value),
     })
 
     if (result.has_finding && result.title) {
@@ -212,7 +256,8 @@ async function runAnalysis(
         source,
         tt('ai-panel.insights.cat_insight'),
         result.solution,
-        result.diagram
+        result.diagram,
+        result.note || ''
       )
     } else if (!silentNoFinding) {
       // 手动触发且无发现 → 给出正面反馈 / Manual trigger with no finding → positive feedback
@@ -232,17 +277,16 @@ async function runAnalysis(
 }
 
 /**
- * 用户主动触发综合洞察分析 / User-triggered unified insight analysis
+ * 用户主动触发综合洞察分析（保留的分析能力，当前无 UI 触发入口；
+ * 洞察的日常生成/修订已改由会话面板入共创） / User-triggered unified insight analysis.
  * 数据不足时也会给出反馈，避免用户点击后无响应产生困扰。 / Provides feedback even when data is insufficient.
- * @param totalLineCount 当前转写总行数（可选），用于同步自动引擎游标，避免刚手动完又自动触发
  */
 async function runManualAnalysis(
   recentLines: TranscriptLineInput,
   chapterTitles: string[],
-  totalLineCount?: number
 ) {
   if (!insightsEnabled.value) return
-  if (manualAnalyzing.value || autoAnalyzing.value) return
+  if (manualAnalyzing.value) return
 
   // 数据不足时给出反馈 / Provide feedback when data is insufficient
   if (recentLines.length < 5 || chapterTitles.length === 0) {
@@ -259,38 +303,10 @@ async function runManualAnalysis(
     return
   }
 
-  // 手动分析后刷新自动引擎游标，冷却从此刻重新计时 / Refresh auto-engine cursors after manual analysis
-  lastAnalyzedAt = Date.now()
-  if (typeof totalLineCount === 'number') lastAnalyzedLineCount = totalLineCount
-
   await runAnalysis(recentLines, chapterTitles, 'user', manualAnalyzing, false)
 }
 
-/**
- * 自动触发入口：由 RecordingView 监听转写增长时调用，内部按频率/冷却/门槛节流。
- * Auto trigger entry: called by RecordingView on transcript growth; throttled internally by frequency/cooldown/threshold.
- * @param totalLineCount 当前转写总行数，用于判断新增行阈值 / Current total transcript line count for new-line threshold
- */
-async function maybeAutoAnalyze(
-  recentLines: TranscriptLineInput,
-  chapterTitles: string[],
-  totalLineCount: number
-) {
-  if (!insightsEnabled.value) return
-  if (autoFreq.value === 'off') return
-  if (manualAnalyzing.value || autoAnalyzing.value) return
-  // 数据门槛：无章节或转写太少不触发（静默） / Data gate: skip silently without chapters or too few lines
-  if (chapterTitles.length === 0 || recentLines.length < 5) return
-  // 冷却：距上次分析不足间隔不触发 / Cooldown: skip if interval not elapsed
-  const now = Date.now()
-  if (now - lastAnalyzedAt < autoIntervalMs.value) return
-  // 新增行阈值：内容增长不足不重复画图 / New-line threshold: skip if not enough growth
-  if (totalLineCount - lastAnalyzedLineCount < AUTO_MIN_NEW_LINES) return
-
-  lastAnalyzedAt = now
-  lastAnalyzedLineCount = totalLineCount
-  await runAnalysis(recentLines, chapterTitles, 'system', autoAnalyzing, true)
-}
+/* 【已退役】maybeAutoAnalyze 定时自动触发入口随「洞察共创 · 会话驱动」下线 */
 
 /* ─── 会后补分析（纪要页触发，服务端基于全文） / Post-meeting supplement (from summary page, server-side full content) ─── */
 
@@ -332,14 +348,14 @@ const lastViewedDiagram = ref<string>('')
 const diagramEditPending = ref<string>('')
 
 export function useAiInsights() {
-  /** 未读消息数 / Unread message count */
+  /** 未读消息数（仅计有效层，降级卡不产生噪声） / Unread count (active layer only; deferred cards never ping) */
   const unreadCount = computed(() =>
-    insightMessages.value.filter(m => !m.read).length
+    insightMessages.value.filter(m => !m.read && !m.deferred).length
   )
 
-  /** 最新的未读消息（用于横幅展示） / Latest unread message (for banner display) */
+  /** 最新的未读消息（用于横幅展示，仅有效层） / Latest unread message (active layer only) */
   const latestUnread = computed(() =>
-    insightMessages.value.find(m => !m.read) ?? null
+    insightMessages.value.find(m => !m.read && !m.deferred) ?? null
   )
 
   /** 切换功能开关 / Toggle feature on/off */
@@ -355,12 +371,6 @@ export function useAiInsights() {
     insightsEnabled.value = val
     localStorage.setItem(STORAGE_KEY, val ? '1' : '0')
     if (val && currentTaskId.value) void ensureTaskLoaded(currentTaskId.value)
-  }
-
-  /** 设置自动分析频率 / Set auto-analysis frequency */
-  function setAutoFreq(val: AutoFreq) {
-    autoFreq.value = val
-    localStorage.setItem(FREQ_STORAGE_KEY, val)
   }
 
   /** 标记消息已读 / Mark message as read */
@@ -393,9 +403,9 @@ export function useAiInsights() {
     }
   }
 
-  /** 获取第一条未读消息 / Get first unread message */
+  /** 获取第一条未读消息（仅有效层） / Get first unread message (active layer only) */
   function getFirstUnread(): InsightMessage | null {
-    return insightMessages.value.find(m => !m.read) ?? null
+    return insightMessages.value.find(m => !m.read && !m.deferred) ?? null
   }
 
   /** 标记全部已读 / Mark all as read */
@@ -438,15 +448,14 @@ export function useAiInsights() {
   return {
     // 状态 / State
     insightsEnabled,
-    autoFreq,
-    autoIntervalMs,
     insightMessages,
     unreadCount,
     latestUnread,
+    onePageInsights,
+    setOnePageInsights,
     // 操作 / Actions
     toggleEnabled,
     setEnabled,
-    setAutoFreq,
     addInsightMessage,
     markAsRead,
     acknowledgeMessage,
@@ -458,12 +467,10 @@ export function useAiInsights() {
     // 会议绑定 / Meeting binding
     setCurrentTask,
     persistMessages,
-    // 手动分析 / Manual analysis
+    reloadTaskMessages,
+    // 手动分析（能力保留，无 UI 触发入口；日常共创走会话面板）
     manualAnalyzing,
     runManualAnalysis,
-    // 自动分析 / Auto analysis
-    autoAnalyzing,
-    maybeAutoAnalyze,
     // 会后补分析 / Post-meeting supplement
     postAnalyzing,
     runPostMeetingSupplement,

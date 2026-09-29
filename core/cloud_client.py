@@ -320,48 +320,6 @@ def cloud_llm_chat(
     return result
 
 
-def cloud_llm_chat_with_tools(
-    messages: list[dict],
-    tools: list[dict],
-    model: str = "qwen-plus",
-    temperature: float = 0.3,
-    max_tokens: int = 4096,
-    user_id: str = "",
-) -> dict | None:
-    """通过云端代理调用 LLM（带工具定义） / Call LLM via cloud proxy with tool definitions.
-
-    用于 Agent 循环的 function calling。
-    Used for function calling in the agent loop.
-
-    Returns:
-        DashScope 格式的响应 dict（可能包含 tool_calls），失败返回 None
-    """
-    if not is_cloud_enabled():
-        return None
-
-    result = _cloud_request("/api/cloud/llm/chat/completions", {
-        "messages": messages,
-        "model": model,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": False,
-        "user_id": user_id,
-        "tools": tools,
-        "tool_choice": "auto",
-    }, timeout=120)
-
-    if result:
-        usage = result.get("usage", {})
-        choice = result.get("choices", [{}])[0]
-        has_tool_calls = bool(choice.get("message", {}).get("tool_calls"))
-        logger.info(
-            f"云端 LLM(工具) 调用: user={user_id[:8] if user_id else 'anon'}, "
-            f"model={model}, tokens={usage.get('total_tokens', 0)}, "
-            f"has_tool_calls={has_tool_calls}"
-        )
-    return result
-
-
 def cloud_llm_chat_stream(
     messages: list[dict],
     model: str = "qwen-plus",

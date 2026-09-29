@@ -570,6 +570,8 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                         pass
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "开始生成纪要（stage2）")
+            # 一页纸系数：从属单个会议，旧任务缺字段按 1 兜底（契约见 docs/API_CONTRACTS.md）
+            one_page_factor = float((tasks[task_id].get("one_page") or {}).get("summary", 1) or 1)
             result = run_pipeline_stage2(
                 dialogue=dialogue,
                 speaker_mapping=speaker_mapping,
@@ -577,6 +579,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                 on_progress=on_progress,
                 meeting_time=meeting_time,
                 user_notes=tasks[task_id].get("user_notes"),
+                one_page_factor=one_page_factor,
             )
 
             tasks[task_id]["status"] = "completed"

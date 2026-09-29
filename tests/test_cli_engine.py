@@ -372,6 +372,86 @@ class TestContextExport:
         assert not (tmp_path / "agent-workspace" / "qoder-cli" / "t9" / "context" / "insights.md").exists()
 
 
+class TestPermissionSection:
+    """模式即权限 §5.2：AGENTS.md 按落档注入"本轮权限段"，置于角色段之后（后声明者胜）。"""
+
+    def _agents_md(self, monkeypatch, tmp_path, **kw):
+        from core.cli_engine import context_export as ce
+        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        ce.export_context(engine_id="qoder-cli", task=None, task_id="perm-1",
+                          user_message="重新生成板", **kw)
+        return (tmp_path / "agent-workspace" / "qoder-cli" / "perm-1" / "AGENTS.md").read_text(encoding="utf-8")
+
+    def test_write_tier_grants_writeback_duty(self, monkeypatch, tmp_path):
+        md = self._agents_md(monkeypatch, tmp_path, auth_tier="workspace_write",
+                             role_prompt="你**没有执行权**：不能修改、删除、写入任何数据")
+        assert "本轮权限段" in md and "协助写回权" in md
+        assert "仅在对话里描述计划" in md
+        # 纪要改写必须走 propose_summary（提案式），不得直接覆盖
+        assert "propose_summary" in md
+        # 注入段必须在角色段之后（覆写存量禁令的语义前提）
+        assert md.index("没有执行权") < md.index("本轮权限段")
+
+    def test_readonly_tier_keeps_prohibition(self, monkeypatch, tmp_path):
+        md = self._agents_md(monkeypatch, tmp_path, auth_tier="readonly")
+        assert "当前为只读档" in md and "已重新生成" in md
+        assert "协助写回权" not in md
+
+    def test_default_none_falls_back_readonly_section(self, monkeypatch, tmp_path):
+        """未传档（历史调用方/存量测试）→ 降级只读段，绝不默认许诺写权。"""
+        md = self._agents_md(monkeypatch, tmp_path)
+        assert "当前为只读档" in md
+
+
+# ============================================================
+# 模式即权限 §5.1：授权档优先级链（纯函数）
+# ============================================================
+
+class TestAuthTierResolution:
+    def _cfg(self, tier="readonly", explicit=False):
+        return {"auth_tier": tier, "auth_tier_explicit": explicit}
+
+    def test_request_tier_wins(self):
+        import app.routers.chat as chat
+        assert chat._resolve_agent_auth_tier("readonly", self._cfg("workspace_write", True)) == "readonly"
+
+    def test_explicit_downgrade_beats_mode_default(self):
+        import app.routers.chat as chat
+        assert chat._resolve_agent_auth_tier(None, self._cfg("readonly", True)) == "readonly"
+
+    def test_mode_default_when_unconfigured(self):
+        """存量默认 readonly（未显式声明）不得截胡：agent 轮默认抬到 workspace_write。"""
+        import app.routers.chat as chat
+        assert chat._resolve_agent_auth_tier(None, self._cfg("readonly", False)) == "workspace_write"
+
+    def test_invalid_request_tier_falls_through(self):
+        import app.routers.chat as chat
+        assert chat._resolve_agent_auth_tier("god_mode", self._cfg()) == "workspace_write"
+
+
+# ============================================================
+# 完成护栏 §5.4：runner 写工具成功回调 → done.metadata.rewritten 事实源
+# ============================================================
+
+class TestOnWriteSuccess:
+    def test_write_tool_result_triggers_callback(self):
+        """直接验证配对逻辑的单元切片：工具名集来自 catalog，mcp__ 前缀剥除后命中。"""
+        from core.agent_tools.catalog import TOOL_CATALOG
+        write_names = {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"}
+        assert {"update_summary", "inject_items", "revise_insight_board",
+                "revise_insight_board_section"} <= write_names
+        assert "revise_insight_board" == "mcp__oms-tools__revise_insight_board".rsplit("__", 1)[-1]
+        assert "get_hotwords" not in write_names
+
+    def test_propose_summary_excluded_from_rewritten_trigger(self):
+        """propose_summary 不落盘，runner 的触发集必须剔除它，否则纪要提案轮被误标 rewritten=true。"""
+        from core.agent_tools.catalog import TOOL_CATALOG
+        trigger = {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"} - {"propose_summary"}
+        assert "propose_summary" in {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"}
+        assert "propose_summary" not in trigger
+        assert {"update_summary", "inject_items", "revise_insight_board"} <= trigger
+
+
 # ============================================================
 # chat 路由回退（引擎不可用 → __fallback__，不触真机）
 # ============================================================
@@ -455,26 +535,10 @@ class TestEngineRegistry:
 
 
 # ============================================================
-# 意图自动分流器 v1（Phase 3）
+# 意图自动分流器 v1 —— 用例已随「AI 算力入口治理」退役删除
+# （auto 规则分流下线，会话模式收敛为问答/智能体两态；
+#  core/cli_engine/intent.py 模块保留，供后续策略复用）
 # ============================================================
-
-class TestIntentClassifier:
-    def test_engineering_signals_route_to_agent(self):
-        from core.cli_engine.intent import classify_engine_intent as c
-        assert c("把这份纪要按公司模板整理成正式报告并保存到项目文件夹") == "agent"
-        assert c("对比这几次会议的行动项完成情况，生成跟踪表") == "agent"
-        assert c("更新纪要，补充待办") == "agent"
-        assert c("写个脚本跑一下") == "agent"
-
-    def test_light_qa_stays_builtin(self):
-        from core.cli_engine.intent import classify_engine_intent as c
-        assert c("这个会议谁提到了预算") == "qa"
-        assert c("刚才那段总结一下") == "qa"
-
-    def test_empty_and_none_default_qa(self):
-        from core.cli_engine.intent import classify_engine_intent as c
-        assert c("") == "qa"
-        assert c(None) == "qa"
 
 
 # ============================================================

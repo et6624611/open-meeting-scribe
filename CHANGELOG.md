@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-28"
+updated_at: "2026-09-29"
 status: published
 ---
 
@@ -12,6 +12,41 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-29 — 工程化能力收敛：退役自建 Agent 循环，CLI 为唯一智能体引擎
+
+### 决策
+- **自建 ReAct 循环退役（ADR-0020，supersede 双轨工具调用 ADR）**：删除 `core/agent_loop.py`（多轮工具循环、function calling/文本回退双轨、工具 JSON Schema）。内置 AI 对话回归「上下文注入 + 单轮流式问答」：`/api/chat/stream` 内置分支直接流式补全，`done` 后处理（待办注入卡 `extracted_items`、`model_usage` 回显、Mermaid 画图意图）全部保留；CLI 失败 `__fallback__` 同样落入单流路径。
+- **会议域工具实现迁移而非删除**：`execute_tool` 与 `_tool_*` 逐字节迁入新建 `core/agent_tools/impl.py`（单一来源），MCP 反向桥读工具执行链路不变；`catalog.py` 成为唯一工具定义来源，双轨定义维护成本消除。
+- **行为变化**：未启用 CLI 的用户无多轮工具调用（常规问答不受影响，上下文已预注入）；洞察板共创落盘、`update_summary`、`inject_items` 等写入型工具仅智能体（CLI）模式具备，问答模式共创起跳时 toast 明确提示；洞察板空态文案同步注明「智能体」模式。
+- **配套死代码清理**：`core/cloud_client.py` 删除 `cloud_llm_chat_with_tools()`；`cloud_api.py` 的 `CloudLLMRequest` 移除 `tools`/`tool_choice` 透传字段（Pydantic 忽略未知字段，旧客户端多发无害）。
+
+### 修复
+- **AI 对话流式渲染冻结（Vue 响应式绕过，浏览器 MutationObserver 实测定位）**：`useAiChat.ts` 的 `onToken/onDone` 写的是 push 前的 raw 对象引用，绕过 reactive 代理的依赖收集 → token 早已逐块到达 JS 层但 DOM 长时间不动、直到 done 才一次性出现全文。现改为经数组下标读回响应式代理（`liveMsg()`）写回，问答/智能体两引擎同一渲染路径同时受益；实测文字量逐 80ms 级增长（242 次 DOM 增量事件）。
+
+### 涉及文件
+- `core/agent_loop.py`（删除）、`core/agent_tools/impl.py`（新增）、`app/routers/chat.py`、`app/routers/agent_tools.py`、`core/agent_tools/catalog.py`、`core/cloud_client.py`、`app/routers/cloud_api.py`、`frontend/src/components/layout/AIPanel.vue`、i18n（ai-panel/generating 中英）、`frontend/src/composables/useAiChat.ts`（流式渲染修复）、`tests/test_agent_tools.py`
+
+### 验证
+- pytest 620 passed（1 失败为环境依赖存量问题）；ruff 改动文件零告警；vue-tsc/build 零错误。
+- 临时实例实测：内置问答 stage→token→done（含 model_usage/extracted_items）；CLI 智能体 engine_route→MCP `oms-tools connected`→token/done 闭环；`/api/agent-tools/invoke` 令牌校验在线。
+
+## [未发布] - 2026-09-29 — 划词工具栏：修正从「假成功」变为全量回溯，并适配主题色
+
+### 新增
+- **文本回溯修正链路 `core/text_correction.py` + `POST /api/tasks/{task_id}/correct-text`**：把一条「误识别→正确文本」映射全量落到本场会议的四份产物（任务对象 / insights.json / board.html / 导出纪要 md）。匹配口径与转写链路同源（新增 `core.hotwords.sub_term`：ASCII 词按邻接边界、中文按子串，详见下方词边界修复条目），改写范围按**键名白名单** `REWRITE_KEYS` 递归判定，标识与路径字段永不触碰；响应逐产物回传真实命中数，并用 `residual` 全量残扫作为「白名单漏项」的显式告警。
+- 新端点契约见 `docs/API_CONTRACTS.md` §15；行为契约用例 `tests/test_text_correction.py`（7 项，含词边界、路径保护、旁路落盘、revision 升位、幂等）。
+
+### 修复
+- **划词「创建映射 / 应用修正」的假成功反馈**：旧 `GeneratingView.replaceInTranscriptDom()` 只在「原文」Tab 的 `.ts-line-body .txt` DOM 里改**第一处**命中就 `return`，不回写数据也不落盘（纪要 Tab 完全无效、一次重渲染即复原），但 toast 仍无条件报「已修正为…」。现改为：后端改写 + 前端从数据源重拉（任务快照 / 决策 / 随记 / 洞察卡片 / 洞察板），命中 0 处时改报「本场会议未出现该词」。随记 Tab 正在编辑时不覆盖用户输入。
+- **洞察消息内存缓存不同步**：`useAiInsights.reloadTaskMessages()` 新增。回溯修正改了 `insights.json`，但模块级 `messagesByTask` 不重拉既会呈现旧词，更会在切会议时被 `persistMessages` 整体写回、覆盖刚落盘的修正。
+- **多行划词会写坏 `data/hotword_mappings.txt`（静默污染后续转写）**：一条多行选区被原样序列化成 `选区→目标` 落盘，一行变 N 行，其中恰好含分隔符的那行又被解析成一条**真实生效**的映射（实测例：`对。比如说→ZZZ不存在的词ZZZ`），下一次转写会静默改坏语料。现两层收口：前端 `SelectionToolbar.isUsableTerm()` 拒收多行 / 超 30 字的选区（「加入热词」与「创建映射」共用）；后端 `POST /api/hotword-mappings` 对不含分隔符的行直接 400（校验先于写盘），仅右值空的退化映射依旧静默丢弃（保持旧行为、不阻断整页保存）。
+- **ASCII 词条的词边界判定在中文语境下全面失效（自 v0.20 热词映射上线即存在）**：`apply_hotword_mappings` 用 `\\b` 判定英文词边界，但 Python 的 Unicode 语义把汉字也算作 `\\w`，「与ES（」「讨论ES。」这类**英文编码紧贴汉字**的形态（中文会议里最常见）左右都不存在 `\\b` → `ES→EAS` 写了永不生效。回溯修正复用同一规则，而 `count_term` 残扫也用同一规则，连 residual 告警都是盲的（报 0，而屏幕上 ES 满屏）。现新增 `core.hotwords.ascii_term_pattern()` 作为边界判定的**单一真源**（`(?<![A-Za-z0-9])词(?![A-Za-z0-9])`，大小写不敏感），四处调用点（映射预编译缓存 / `apply_hotword_mappings` 显式入参分支 / `sub_term` / `count_term`）全部改走它：既命中「与ES」，又不误伤 `FILES` / `ESB` / `CH2O`。契约用例 `tests/test_hotword_term_boundary.py`（含「转写侧与回溯侧同口径」与「计数侧与替换侧不分叉」两条锁定）。
+- **划词工具栏不跟随主题色（5 套暗色主题下几乎不可读）**：`notes-editor.css` 的反色墨条（`background: var(--fg)`）内部颜色全部硬编码为「深底浅字」常量，暗色主题下墨条翻为近白而文字仍为浅灰 → 白底白字。现下沉为一组局部 token（`--sel-ink*` 基于 `var(--bg)` 用 `oklch(from …)` 派生；语义标改跟 `--ok`/`--warn`/`--error` 走），主按钮 hover 改用 `oklch(from var(--accent) calc(l - 0.06) c h)` 而非固定蓝。实测文字对比度：标准深色 14.67:1 / 标准浅色 16.9:1。
+
+### 涉及文件
+- `core/text_correction.py`（新增）、`core/hotwords.py`（+`sub_term`、+`ascii_term_pattern`）、`app/routers/tasks.py`、`app/routers/hotwords.py`（映射行门禁）、`tests/test_text_correction.py`（新增）、`tests/test_hotword_mapping_lines.py`（新增）、`tests/test_hotword_term_boundary.py`（新增）
+- `frontend/src/api/tasks.ts`、`views/GeneratingView.vue`、`components/SelectionToolbar.vue`、`composables/useAiInsights.ts`、`styles/notes-editor.css`、`i18n/locales/{zh-CN,en}/{generating,common}.json`（移除会报假成功的 `correction_applied` 文案）
 
 ## [未发布] - 2026-09-27 — 决策对象统一：决策流为唯一「决策」（DC-UNIFY-01）
 

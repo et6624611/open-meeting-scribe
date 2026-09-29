@@ -109,15 +109,23 @@ const menuRef = ref<HTMLElement | null>(null)
 const menuPosition = ref<Record<string, string>>({})
 const copied = ref<string | null>(null)
 
-/** 根据侧边栏右边缘 + 按钮垂直位置计算菜单坐标 / Calculate menu coords from sidebar right edge + button vertical position */
+/** 根据侧边栏右边缘 + 按钮垂直位置计算菜单坐标 / Calculate menu coords from sidebar right edge + button vertical position
+   *  永不早退：sidebarEl 缺失时退化为以按钮右边缘为锚（用于本组件将来在 .sidebar 之外复用的情况），
+   *  避免菜单因拿不到坐标而落在未定位的静态流底部（用户看到的就是“点了没反应”）。
+   *  Never early-returns: falls back to button-anchored coords when sidebarEl is null. */
 function updatePosition() {
-  if (!props.sidebarEl || !props.buttonRect) return
-  const sidebarRect = props.sidebarEl.getBoundingClientRect()
+  if (!props.buttonRect) return
   const menuWidth = 220
   const gap = 8
 
+  // 同步先给一个确定值（基于按钮顶部），下一帧再按实际高度纠偏，消除初渲染时的 0,0 闪烁
+  const anchorRight = props.sidebarEl
+    ? props.sidebarEl.getBoundingClientRect().right
+    : props.buttonRect.right + gap
+  const baseLeft = Math.max(8, anchorRight - menuWidth - gap)
+  menuPosition.value = { position: 'fixed', left: baseLeft + 'px', top: Math.max(8, props.buttonRect.top) + 'px', width: menuWidth + 'px' }
+
   nextTick(() => {
-    const left = sidebarRect.right - menuWidth - gap
     let top = props.buttonRect!.top
 
     // 防止底部溢出视口 / Prevent bottom overflow from viewport
@@ -130,7 +138,7 @@ function updatePosition() {
 
     menuPosition.value = {
       position: 'fixed',
-      left: left + 'px',
+      left: baseLeft + 'px',
       top: top + 'px',
       width: menuWidth + 'px',
     }
@@ -140,15 +148,23 @@ function updatePosition() {
 watch(() => props.open, (val) => {
   if (val) {
     updatePosition()
-    setTimeout(() => document.addEventListener('click', onClickOutside, { once: true }), 0)
+    // 捕获阶段常驻监听：不受兄弟卡片 ⋯ 按钮的 @click.stop 阻挡，能在打开新菜单时即时关闭旧菜单；
+    // 不再用 once，避免“延迟到下一次点击才消费”导致菜单一闪即没。
+    // Capture-phase persistent listener: unaffected by sibling triggers' @click.stop,
+    // closes other open menus immediately; not { once } so it never defers to the next click.
+    document.addEventListener('click', onClickOutside, true)
     window.addEventListener('keydown', onEscKey)
   } else {
     copied.value = null
+    document.removeEventListener('click', onClickOutside, true)
     window.removeEventListener('keydown', onEscKey)
   }
 })
 
-function onClickOutside() {
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as Node
+  // 点击菜单自身（复制标题/摘要后仍可继续点其它项）不关闭 / Clicks inside the menu don't close it
+  if (menuRef.value?.contains(target)) return
   emit('close')
 }
 
@@ -200,7 +216,7 @@ const durationDisplay = computed(() => {
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', onClickOutside)
+  document.removeEventListener('click', onClickOutside, true)
   window.removeEventListener('keydown', onEscKey)
 })
 </script>

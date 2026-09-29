@@ -38,7 +38,7 @@ status: published
 | 国际化 | `core/i18n/` | Babel + gettext 后端多语言：I18nMiddleware（语言偏好解析，写入 ContextVar）+ get_translator()（lru_cache）+ _() 翻译函数（ContextVar 驱动，请求级 locale，深层调用栈无需传 request）；翻译文件 `locales/{zh_CN,en}/LC_MESSAGES/`（.po+.mo）；工作流 `pybabel extract` → `scripts/gen_i18n_po.py` → `pybabel compile`；详见 [ADR-0013](adr/0013-国际化i18n架构.md) |
 | 作业日志 | `core/joblog.py` | per-task 操作/运行事件流（append-only JSONL）；为会议助手提供渐进式上下文 |
 | 翻译 | `core/translate.py` | 文本翻译 |
-| Agent | `core/agent_workspace.py` `core/agent_loop.py` | Agent 角色工作区管理（角色加载/fork/切换）+ Agent 对话循环 |
+| Agent | `core/agent_workspace.py` `core/agent_tools/` | Agent 角色工作区管理（角色加载/fork/切换）+ 会议域工具唯一实现与 MCP 反向桥工具面（自建 ReAct 循环已退役，见 ADR-0020） |
 | 对话引擎 | `core/chat_actions.py` `core/chat_context.py` `core/chat_edits.py` | AI 对话动作检测与执行 + 对话上下文构建 + 对话编辑管理 |
 | 云端客户端 | `core/cloud_client.py` | 云端 API 客户端（HMAC-SHA256 签名认证） |
 | 洞察 | `core/insights.py` | AI 洞察提取（会议上下文分析） |

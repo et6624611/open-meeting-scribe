@@ -33,16 +33,12 @@ from fastapi import APIRouter
 
 from app.routers.chat import CHAT_SYSTEM_PROMPT
 from app.settings_store import (
-    ACCESS_MODES,
     ASR_CAP_SOURCES,
-    LEGACY_ACCESS_MODES,
     LLM_CAP_SOURCES,
-    apply_access_mode,
-    derive_access_mode,
-    get_access_mode,
+    apply_capability_source,
+    ensure_percap_migrated,
     get_capability_status,
     get_expert_mode,
-    migrate_access_mode,
 )
 from app.store import (
     get_active_api_key,
@@ -188,9 +184,8 @@ def get_settings():
             "can_toggle": tier != "free",
         },
         "prefer_subscription": prefer_subscription,
-        "access_mode": get_access_mode(),
         "expert_mode": get_expert_mode(),
-        # 逐能力算力来源快照（详情层三态徽章/默认联动的数据源）
+        # 逐能力算力来源快照（详情层三态徽章/联动的数据源）
         "capability": get_capability_status(prefer_subscription),
         "output_dir": settings.get("output_dir", "data/output/"),
         "engine": get_engine_config(),
@@ -308,11 +303,14 @@ def save_settings(data: dict):
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
         }
     else:
-        # 代理模式：不保存 base_url 和 api_key / Proxy mode: don't save base_url and api_key
+        # 代理模式：不回显但不删除 base_url 和 api_key / Proxy mode: hide, don't erase credentials.
+        # api_key 与 mode 正交：GET 脱敏≠落盘丢弃——否则任何一次代理模式保存
+        # （含来源选择器的 capability_source 显式保存）都会静默擦除已存 BYOK Key。
         merged_asr = {
             "mode": "proxy",
             "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
+            "api_key": existing_asr.get("api_key", ""),
         }
 
     # ── 声纹配置已整体下架（REQ-SETTINGS-IA 第 4 刀）：POST 不再接收 voiceprint 字段，
@@ -344,38 +342,21 @@ def save_settings(data: dict):
         },
     }
 
-    # ── 接入方式（REQ-SETTINGS-IA §3.1/§3.2）/ Access mode handling ──
-    # 1) 新 UI（决策卡/详情层）显式提交 access_mode / capability_source：唯一写入口，
-    #    写入并按 A2 投影旧字段；绝不触发反向重对齐。
-    # 2) 旧客户端只写 engine.mode/asr.mode：§3.2 将其降级为兼容窗口（带日落期限），
-    #    仅当投影字段发生真实变化时重对齐，避免新 UI 参数保存静默改写模式。
-    # 3) expert_mode 仅接受布尔显式值；其余场景由迁移规则推导。
-    merged.pop("voiceprint", None)  # 第 4 刀：存量声纹配置键随任何一次保存丢弃
+    # ── 逐能力算力来源（唯一真相源）/ Per-capability compute source handling ──
+    # capability_source.{llm,asr} 由「API 配置 / ASR 配置」逐能力写入；非法值拒绝。
+    # engine/asr.mode 仅作回滚兼容投影，由 apply_capability_source 同步；不再参与路由判定。
+    merged.pop("voiceprint", None)  # 存量声纹配置键随任何一次保存丢弃
 
     if isinstance(data.get("expert_mode"), bool):
         merged["expert_mode"] = data["expert_mode"]
 
-    if "access_mode" in data:
-        incoming_access = data.get("access_mode")
-        if incoming_access is None or incoming_access in ACCESS_MODES or incoming_access in LEGACY_ACCESS_MODES:
-            apply_access_mode(merged, incoming_access, sources=data.get("capability_source"))
-        else:
-            logger.warning(f"忽略非法 access_mode 值: {incoming_access!r}（允许 {ACCESS_MODES} 或 null）")
-            if not merged.get("_settings_ia_migrated"):
-                migrate_access_mode(merged)
-    elif isinstance(data.get("capability_source"), dict):
-        # 详情层逐能力来源选择（任何手动改选即标 override，持久化不被勾选改回）
-        apply_access_mode(merged, merged.get("access_mode"), sources=data["capability_source"])
-    elif not merged.get("_access_mode_migrated"):
-        migrate_access_mode(merged)
-    elif "engine" in data or "asr" in data:
-        engine_changed = merged.get("engine", {}).get("mode") != (existing.get("engine") or {}).get("mode")
-        asr_changed = merged.get("asr", {}).get("mode") != (existing.get("asr") or {}).get("mode")
-        if engine_changed or asr_changed:
-            logger.info("[兼容窗口·日落中] 旧客户端改写投影字段 engine/asr.mode，重对齐 access_mode（REQ-SETTINGS-IA §3.2）")
-            derived = derive_access_mode(merged)
-            if derived is not None:
-                merged["access_mode"] = derived
+    if isinstance(data.get("capability_source"), dict):
+        try:
+            apply_capability_source(merged, data["capability_source"])
+        except ValueError as e:
+            logger.warning(f"忽略非法 capability_source: {e}")
+    elif not merged.get("_percap_migrated"):
+        ensure_percap_migrated(merged)
 
     # ── 智能体模式引擎（正交于 access_mode，方案 D1）/ Agent-mode chat engine ──
     # 仅白名单校验后写入 chat_engine 命名空间；缺省保留既有值，绝不触碰 LLM/ASR Key。
@@ -398,6 +379,10 @@ def save_settings(data: dict):
             "engine_id": engine_id,
             "model": incoming_ce.get("model", existing_ce.get("model")) or None,
             "auth_tier": tier,
+            # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：携带 auth_tier 的保存视为用户显式声明，
+            # 此后该档位从"选择"变为"降级/覆盖"语义；未显式声明过时按模式派生默认（agent→workspace_write）。
+            "_auth_tier_explicit": bool(incoming_ce.get("auth_tier") is not None
+                                        or existing_ce.get("_auth_tier_explicit", False)),
             "session_persistence": bool(incoming_ce.get("session_persistence",
                                                        existing_ce.get("session_persistence", True))),
             "retention_days": _coerce_int(incoming_ce.get("retention_days",
@@ -442,68 +427,63 @@ def save_settings(data: dict):
             "api_key_set": bool(final_llm_key),
             "model": merged["llm"]["model"],
         },
-        "access_mode": merged.get("access_mode"),
         "capability": get_capability_status(),
     }
 
 
-@router.post("/api/settings/access-mode")
-def switch_access_mode(data: dict):
-    """接入方式切换事务（REQ-SETTINGS-IA §3.1 裁决-1：失败全量回滚）。
+@router.post("/api/settings/capability")
+def switch_capability_source(data: dict):
+    """逐能力算力来源切换事务（失败全量回滚）。
 
-    流程：内存中计算完整新配置 → 进程动作（启停本机引擎） → 全部成功才一次性落盘。
+    流程：内存合并新来源 → 进程动作（ASR 进入/离开 local 时启停本机引擎）→ 全部成功才落盘。
     任一环节失败（引擎启动/停止失败、模型缺失、非法参数）：settings.json 零写入，
-    界面据 ok=false + failed_stage 明示「未生效，已保持原模式」。
+    界面据 ok=false + failed_stage 明示「未生效，已保持原来源」。
     """
-    incoming = data.get("access_mode")
     sources = data.get("capability_source")
-    if isinstance(sources, dict):
-        # 逐能力来源白名单校验（非法值拒绝整笔请求，不静默丢弃）
-        for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
-            if cap in sources and sources[cap] is not None and sources[cap] != "" and sources[cap] not in allowed:
-                return {"ok": False, "failed_stage": "validate",
-                        "error": f"非法 capability_source.{cap}: {sources[cap]!r}"}
-    if incoming is not None and incoming not in ACCESS_MODES and incoming not in LEGACY_ACCESS_MODES:
-        return {"ok": False, "failed_stage": "validate",
-                "error": f"非法 access_mode: {incoming!r}（允许 {ACCESS_MODES} 或 null）"}
+    if not isinstance(sources, dict):
+        return {"ok": False, "failed_stage": "validate", "error": "缺少 capability_source"}
+    for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
+        if cap in sources and sources[cap] is not None and sources[cap] != "" and sources[cap] not in allowed:
+            return {"ok": False, "failed_stage": "validate",
+                    "error": f"非法 capability_source.{cap}: {sources[cap]!r}"}
 
     existing = load_settings()
     merged = deepcopy(existing)
     try:
-        apply_access_mode(merged, incoming, sources=sources if isinstance(sources, dict) else None)
+        apply_capability_source(merged, sources)
     except ValueError as e:
         return {"ok": False, "failed_stage": "validate", "error": str(e)}
-    target = merged.get("access_mode")
 
-    # ── 进程动作阶段：失败则不落盘（全量回滚） ──
-    if target in ("local", "cloud"):
-        try:
-            from core.engine_host import get_engine_host
-            host = get_engine_host()
-            if target == "local":
-                res = host.start()
-                if not res.get("ok", False):
-                    logger.warning(f"[接入切换] 本机引擎启动失败，事务回滚: {res}")
-                    return {"ok": False, "failed_stage": "engine_start",
-                            "error_code": res.get("error_code"),
-                            "error": res.get("error") or "本机引擎启动失败"}
-            elif host.is_running():
-                res = host.stop()
-                if not res.get("ok", False):
-                    logger.warning(f"[接入切换] 本机引擎停止失败，事务回滚: {res}")
-                    return {"ok": False, "failed_stage": "engine_stop",
-                            "error_code": res.get("error_code"),
-                            "error": res.get("error") or "本机引擎停止失败"}
-        except Exception as e:
-            logger.warning(f"[接入切换] 引擎进程动作异常，事务回滚: {e}")
-            return {"ok": False, "failed_stage": "engine", "error": str(e)[:200]}
+    prev_asr = (existing.get("capability_source") or {}).get("asr") or ""
+    target_asr = (merged.get("capability_source") or {}).get("asr") or ""
+
+    # ── 进程动作阶段：ASR 进入 local 启动本机引擎；离开 local 且引擎在跑则停止（失败回滚） ──
+    try:
+        from core.engine_host import get_engine_host
+        host = get_engine_host()
+        if target_asr == "local" and prev_asr != "local":
+            res = host.start()
+            if not res.get("ok", False):
+                logger.warning(f"[来源切换] 本机引擎启动失败，事务回滚: {res}")
+                return {"ok": False, "failed_stage": "engine_start",
+                        "error_code": res.get("error_code"),
+                        "error": res.get("error") or "本机引擎启动失败"}
+        elif prev_asr == "local" and target_asr != "local" and host.is_running():
+            res = host.stop()
+            if not res.get("ok", False):
+                logger.warning(f"[来源切换] 本机引擎停止失败，事务回滚: {res}")
+                return {"ok": False, "failed_stage": "engine_stop",
+                        "error_code": res.get("error_code"),
+                        "error": res.get("error") or "本机引擎停止失败"}
+    except Exception as e:
+        logger.warning(f"[来源切换] 引擎进程动作异常，事务回滚: {e}")
+        return {"ok": False, "failed_stage": "engine", "error": str(e)[:200]}
 
     # ── 全部成功：一次性落盘 ──
     save_settings_to_disk(merged)
-    logger.info(f"[接入切换] 成功: access_mode {existing.get('access_mode')!r} → {target!r}")
+    logger.info(f"[来源切换] 成功: capability_source {existing.get('capability_source')!r} → {merged.get('capability_source')!r}")
     return {
         "ok": True,
-        "access_mode": target,
         "capability": get_capability_status(),
         "llm": get_routing_decision_safe("llm"),
         "asr": get_routing_decision_safe("asr"),
@@ -516,9 +496,9 @@ def get_routing_decision_safe(context: str) -> dict:
     try:
         return get_routing_decision(context)
     except Exception as e:
-        return {"configured_access_mode": None, "expert_mode": False, "route": "",
+        return {"expert_mode": False, "route": "",
                 "source": "", "auto_switched": False, "route_override": False,
-                "reason": f"routing_error:{e}"}
+                "reason": f"routing_error:{e}", "unconfigured": False}
 
 
 @router.get("/api/settings/chat-engine")
@@ -607,7 +587,7 @@ def get_routing_status():
       - 决策卡/详情卡逐能力回显「生效来源 + 原因」（L1 行内常驻提示的数据源）；
       - 明示自动改用（auto_switched）聚合计数 → 联网卡 L3 角标与 L2 页面横幅；
       - 配额 ≤10 分钟预警（Q3 终裁阈值）与最近自动改用事件记录（账单争议可查）；
-      - access_mode=null 时触发强引导（§3.1 未选态）。
+      - 逐能力未设置（source=""）时回显 unconfigured，触发逐能力引导。
     计费口径（与 core/metering 一致）：体验配额消耗分钟数 / 自带 Key 走自有供应商 /
     本机（离线与本机端点）不计量且零出网。
     """
@@ -615,7 +595,6 @@ def get_routing_status():
 
     llm_decision = get_routing_decision("llm")
     asr_decision = get_routing_decision("asr")
-    access_mode = llm_decision["configured_access_mode"]
 
     quota = None
     try:
@@ -644,9 +623,7 @@ def get_routing_status():
 
     return {
         "ok": True,
-        "access_mode": access_mode,
         "expert_mode": llm_decision["expert_mode"],
-        "onboarding_required": access_mode is None,
         "llm": llm_decision,
         "asr": asr_decision,
         "capability": get_capability_status(),

@@ -29,7 +29,6 @@
 .project-file-item .file-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .ai-proj-item.is-selected { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 .gen-meta-project { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
-.gen-meta-proj-info-icon { margin-left: 6px; }
 .gen-meta-project-chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 12px; border-radius: 999px;

@@ -29,6 +29,7 @@ const LUCIDE_ICONS: Record<string, IconDef> = {
   'x': { viewBox: '0 0 24 24', body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>' },
   'alert-triangle': { viewBox: '0 0 24 24', body: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>' },
   'help-circle': { viewBox: '0 0 24 24', body: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' },
+  'sparkles': { viewBox: '0 0 24 24', body: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>' },
 }
 
 /** 按 lucide 图标名取 SVG 定义；未知名返回 null（调用方降级为文本/emoji） */

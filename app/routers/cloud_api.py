@@ -363,8 +363,6 @@ class CloudLLMRequest(BaseModel):
     max_tokens: int = Field(default=4096, description="最大 token 数 / Max tokens")
     stream: bool = Field(default=False, description="是否流式 / Whether to stream")
     user_id: str = Field(default="", description="用户 ID（用于配额检查） / User ID for quota check")
-    tools: list[dict] | None = Field(default=None, description="工具定义（Agent function calling） / Tool definitions for agent function calling")
-    tool_choice: str | None = Field(default=None, description="工具选择策略 / Tool choice strategy")
 
 
 def _check_user_quota(user_id: str, estimated_minutes: float = 0.1) -> dict:
@@ -438,11 +436,6 @@ def cloud_llm_proxy(req: CloudLLMRequest, request: Request):
         "max_tokens": req.max_tokens,
         "stream": req.stream,
     }
-    # Agent function calling: 透传 tools 和 tool_choice / Pass through tools and tool_choice for agent
-    if req.tools:
-        body["tools"] = req.tools
-    if req.tool_choice:
-        body["tool_choice"] = req.tool_choice
 
     logger.info(
         f"LLM 代理: user={req.user_id[:8] if req.user_id else 'anon'}, "

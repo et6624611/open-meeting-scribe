@@ -147,7 +147,8 @@ class TestSummarizeWiring:
 
         monkeypatch.setattr(summarize, "chat_completion", fake_chat_completion)
         summarize.generate_summary(self._dialogue(), model="qwen-plus")
-        assert captured["system"] == summarize.SYSTEM_PROMPT
+        # 一页纸系数上线后的新不变量：标准档 = 基座提示词 + 默认 1 页预算块（防幻觉守卫仍为空）
+        assert captured["system"] == summarize.SYSTEM_PROMPT + summarize.build_page_budget_block(1.0)
         assert model_tier.CONSERVATIVE_PROMPT_GUARD not in captured["system"]
 
 

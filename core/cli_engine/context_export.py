@@ -48,23 +48,58 @@ def workspace_dir(engine_id: str, task_id: str | None) -> Path:
     return ws
 
 
-def _render_transcript(task: dict, speaker_map: dict) -> str:
-    """将 task.dialogue 渲染为带时间戳、说话人实名化的 Markdown。"""
-    dialogue = task.get("dialogue") or []
-    lines: list[str] = []
-    for item in dialogue:
+def _flatten_dialogue(task: dict, speaker_map: dict) -> list[tuple[str, str]]:
+    """将 task.dialogue 展开为 (说话人名, 文本) 序列。"""
+    pairs: list[tuple[str, str]] = []
+    for item in task.get("dialogue") or []:
         name = normalize_speaker_name(item.get("speaker_name")) or "未识别发言人"
         sents = item.get("sentences") or []
         if sents:
             for s in sents:
                 text = (s.get("text") or "").strip()
                 if text:
-                    lines.append(f"{name}：{text}")
+                    pairs.append((name, text))
         else:
             text = (item.get("text") or "").strip()
             if text:
-                lines.append(f"{name}：{text}")
-    out = "\n".join(lines)
+                pairs.append((name, text))
+    return pairs
+
+
+def _realtime_pairs(entries: list[dict] | None, task: dict,
+                    speaker_map: dict, task_id: str | None) -> list[tuple[str, str]]:
+    """录音进行中 dialogue 尚未落盘，用实时定稿句渲染转写（会中问答复盘 2026-09-29）。
+    来源优先级：前端快照 > 后端全量缓冲 > 最近缓冲；说话人名用内存映射按 id 解析。"""
+    entries = entries or []
+    if not entries and task_id:
+        from app import realtime_store  # 同进程内存只读，与 chat 内置链路同一事实源
+        entries = (realtime_store.realtime_full_transcripts.get(task_id)
+                   or realtime_store.realtime_transcript_buffers.get(task_id) or [])
+    if not entries:
+        return []
+    # task.speaker_mapping（id→名）优先，回退全局 speaker_map
+    local_map: dict = {}
+    for sid, name in (task.get("speaker_mapping") or {}).items():
+        try:
+            local_map[int(sid)] = name
+        except (ValueError, TypeError):
+            pass
+    pairs: list[tuple[str, str]] = []
+    for entry in entries:
+        text = (entry.get("text") or "").strip()
+        if not text:
+            continue
+        name = ((entry.get("speaker_name") or "").strip()
+                or normalize_speaker_name(local_map.get(entry.get("speaker_id")))
+                or normalize_speaker_name(speaker_map.get(entry.get("speaker_id")))
+                or "未识别发言人")
+        pairs.append((name, text))
+    return pairs
+
+
+def _render_transcript(pairs: list[tuple[str, str]]) -> str:
+    """将 (说话人名, 文本) 序列渲染为 Markdown。"""
+    out = "\n".join(f"{name}：{text}" for name, text in pairs)
     if len(out) > _MAX_TRANSCRIPT_CHARS:
         out = out[:_MAX_TRANSCRIPT_CHARS] + "\n…（转写过长已截断）"
     return out
@@ -82,7 +117,8 @@ def _render_insights(task_id: str | None) -> str:
         msgs = json.loads(f.read_text(encoding="utf-8")).get("messages", [])
     except Exception:
         return ""
-    valid = [m for m in msgs if (m.get("title") or "").strip()]
+    # 过滤 deferred：与 chat 侧 build_insights_context_block 同口径，仅注入用户可见的有效卡
+    valid = [m for m in msgs if (m.get("title") or "").strip() and not m.get("deferred")]
     if not valid:
         return ""
     parts = ["# 会议洞察台（AI 会中/会后观察，供参考非事实源）\n"]
@@ -93,6 +129,10 @@ def _render_insights(task_id: str | None) -> str:
         solution = (m.get("solution") or "").strip()
         if solution:
             block += f"\n**行动建议**：{solution}\n"
+        # 备查注释随卡导出：与 chat 侧 build_insights_context_block 同口径（三层信息写作契约）
+        note = (m.get("note") or "").strip()
+        if note:
+            block += f"\n> 注：{note}\n"
         diagram = (m.get("diagram") or "").strip()
         if diagram:
             block += f"\n```mermaid\n{diagram}\n```\n"
@@ -133,6 +173,33 @@ def _render_history(history: list[dict] | None) -> str:
     return "\n---\n".join(parts)
 
 
+def _build_permission_section(auth_tier: str | None) -> str:
+    """
+    按本轮授权档生成 AGENTS.md 权限段（模式即权限，PROPOSAL-AGENT-REWRITE-CHANNEL §5.2）。
+
+    置于角色段之后并声明"以本段为准"：覆写存量角色 AGENT.md（含用户自建区 _roles/my/）
+    的"没有执行权"绝对禁令——不改用户资产文件，运行时分段解耦。
+    问答模式（内置单流）不经本函数：其只读语义由内置 prompt 与无工具通道天然保障。
+    """
+    if auth_tier in ("workspace_write", "full_task"):
+        return (
+            "## 本轮权限段（最高优先级，以本段为准；与上文角色描述冲突时按本段执行）\n"
+            "当前为智能体可写档：你拥有协助写回权。\n"
+            "- 用户要求修改/重新生成随记、纪要、决策、洞察板时，必须调用对应的集成工具（MCP）完成落盘；"
+            "仅在对话里描述计划、读取基线后就收尾，不算完成。\n"
+            "- 纪要（summary）改写例外：必须调用 propose_summary 产出待确认提案，由用户在前端接受后才落盘；"
+            "不得直接调用 update_summary 覆盖纪要。\n"
+            "- 改写前先读基线（如 revise_insight_board 不带 html 即读当前板；纪要覆盖前先从工作区读回原文）。\n"
+            "- 落盘成功后，回复中必须明确告知用户改了哪个域、对应版本/条数。\n"
+            "- 直写边界：文件编辑工具只允许写 output/ 产物区；任务数据（纪要/随记/决策/洞察板）"
+            "必须经集成工具落盘，严禁绕过工具直接改工作区外数据文件。\n")
+    return (
+        "## 本轮权限段（最高优先级，以本段为准；与上文角色描述冲突时按本段执行）\n"
+        "当前为只读档：你没有执行权，不能修改、删除、写入任何数据。\n"
+        "- 若用户要求改写某域，说明需切换到智能体（可写）模式后执行，不要声称已完成任何修改。\n"
+        "- 禁止使用\"已修正/已更新/已删除/已重新生成\"等表述描述未发生的写入。\n")
+
+
 def export_context(
     *,
     engine_id: str,
@@ -144,6 +211,8 @@ def export_context(
     speaker_map: dict | None = None,
     workspace_key: str | None = None,
     history: list[dict] | None = None,
+    realtime_entries: list[dict] | None = None,
+    auth_tier: str | None = None,
 ) -> dict:
     """
     将会议上下文写入工作区文件，返回调用元数据。 / Write context files, return invocation metadata.
@@ -153,6 +222,9 @@ def export_context(
 
     history：前端传来的同会话历史消息列表，序列化为 context/history.md，
     确保即使 session resume 失败 CLI 仍可读回上文（修复多轮上下文割裂）。
+
+    realtime_entries：录音进行中前端快照的实时定稿句；dialogue 尚未落盘时用它
+    渲染 transcript.md，避免会中提问时 CLI 看到"无转写"（2026-09-29 会中问答复盘）。
 
     Returns:
         {"workspace": str, "add_dirs": [str], "brief": str}
@@ -165,10 +237,16 @@ def export_context(
     written: list[str] = []
 
     if task:
-        transcript = _render_transcript(task, speaker_map)
-        if transcript:
-            (ctx / "transcript.md").write_text(
-                "# 会议转写原文（说话人已实名化）\n\n" + transcript, encoding="utf-8")
+        pairs = _flatten_dialogue(task, speaker_map)
+        in_progress = False
+        if not pairs:
+            pairs = _realtime_pairs(realtime_entries, task, speaker_map, task_id)
+            in_progress = bool(pairs)
+        if pairs:
+            header = ("# 会议转写原文（说话人已实名化；录音进行中，以下为实时转写）\n\n"
+                      if in_progress else "# 会议转写原文（说话人已实名化）\n\n")
+            (ctx / "transcript.md").write_text(header + _render_transcript(pairs),
+                                               encoding="utf-8")
             written.append("context/transcript.md")
 
         summary = (task.get("summary") or "").strip()
@@ -203,6 +281,8 @@ def export_context(
         agents_parts.append("## 角色\n" + role_prompt.strip() + "\n")
     if page_context:
         agents_parts.append("## 环境\n" + page_context.strip() + "\n")
+    # 模式即权限（§5.2）：按本轮落档注入权限段，置于角色段之后（后声明者胜）
+    agents_parts.append(_build_permission_section(auth_tier))
     agents_parts.append(
         "## 说明\n本工作区由 OpenMeetingScribe 自动生成。"
         "context/ 目录为会议只读上下文，output/ 目录为你的可写产物区。"

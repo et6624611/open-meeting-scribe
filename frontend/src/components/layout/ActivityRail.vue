@@ -171,11 +171,12 @@ function navigate(path: string) {
     // Toggle-back: for all rail navigation pages
     if (RAIL_NAV_PAGES.has(path)) {
       const origin = previousRoute.value
-      if (origin && (origin.startsWith('/recording') || origin.startsWith('/meeting') || origin === '/')) {
-        router.push(origin)
-      } else {
-        router.push('/')
-      }
+      const target = origin && (origin.startsWith('/recording') || origin.startsWith('/meeting') || origin === '/')
+        ? origin
+        : '/'
+      // 目标与当前路径相同（重复导航）→ 视为无操作仅清理，避免静默的 NavigationDuplicated
+      // Duplicate navigation would reject silently (button “does nothing”); skip it, only clear origin.
+      if (target !== route.path) router.push(target).catch(() => {})
       previousRoute.value = ''
     }
     return
@@ -184,7 +185,7 @@ function navigate(path: string) {
   if (RAIL_NAV_PAGES.has(path)) {
     previousRoute.value = route.fullPath
   }
-  router.push(path)
+  router.push(path).catch(() => {})
 }
 
 /** 点击洞察指示器：会中直达录音页洞察面板；会后直达纪要页洞察 Tab / Click indicator: recording insights panel, or summary insights tab */
@@ -196,13 +197,13 @@ function onInsightsClick() {
       name: 'recording',
       params: { taskId: recTaskId },
       query: { tab: 'insights' },
-    })
+    }).catch(() => {})
     return
   }
   const cur = taskStore.currentTaskId
   if (cur) {
     layout.pendingGenTab = 'insights'
-    router.push({ name: 'generating', params: { taskId: cur } })
+    router.push({ name: 'generating', params: { taskId: cur } }).catch(() => {})
   }
 }
 </script>

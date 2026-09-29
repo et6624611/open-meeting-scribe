@@ -53,6 +53,29 @@ jobs:
         Remove-Item -Recurse -Force "build/ffmpeg-temp"
         Write-Host "ffmpeg + ffprobe 下载完成"
     
+    - name: 注入桌面端云端服务凭据
+      # 将 GitHub Secrets 写入 desktop-secrets.env，PyInstaller 打包时嵌入到 exe 内
+      # Write GitHub Secrets to desktop-secrets.env; PyInstaller embeds it into the exe bundle
+      shell: pwsh
+      env:
+        OMS_CLOUD_API_URL:   ${{ secrets.OMS_CLOUD_API_URL }}
+        OMS_CLOUD_API_TOKEN: ${{ secrets.OMS_CLOUD_API_TOKEN }}
+        OMS_SMS_PROXY_URL:   ${{ secrets.OMS_SMS_PROXY_URL }}
+        OMS_SMS_PROXY_TOKEN: ${{ secrets.OMS_SMS_PROXY_TOKEN }}
+      run: |
+        if (-not $env:OMS_CLOUD_API_TOKEN) {
+          Write-Host "⚠ 未配置 OMS_CLOUD_API_TOKEN 等 GitHub Secrets，打包版云端代理功能将不可用"
+        } else {
+          $lines = @(
+            "CLOUD_API_URL=$env:OMS_CLOUD_API_URL",
+            "CLOUD_API_TOKEN=$env:OMS_CLOUD_API_TOKEN",
+            "SMS_PROXY_URL=$env:OMS_SMS_PROXY_URL",
+            "SMS_PROXY_TOKEN=$env:OMS_SMS_PROXY_TOKEN"
+          )
+          $lines | Set-Content -Path "desktop-secrets.env" -Encoding UTF8
+          Write-Host "✓ desktop-secrets.env 已生成"
+        }
+
     - name: PyInstaller 打包
       run: |
         pyinstaller --clean --noconfirm build/pyinstaller.spec

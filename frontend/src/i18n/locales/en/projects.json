@@ -17,6 +17,7 @@
   "stat_files_unit": "files",
   "stat_meetings": "Linked Meetings",
   "stat_meetings_unit": "meetings",
+  "meeting_speakers_unit": "speakers",
   "stat_folders": "Linked Folders",
   "stat_folders_unit": "folders",
   "rename": "Rename",

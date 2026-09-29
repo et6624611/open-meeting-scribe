@@ -31,7 +31,7 @@
             @keydown.ctrl.enter.prevent="submit"
           />
         </label>
-        <label class="ad-field">
+        <label class="ad-field ad-text-field">
           <span class="ad-label">{{ t('decisions.add_content_label') }}</span>
           <textarea
             ref="textAreaRef"
@@ -39,9 +39,14 @@
             class="ad-textarea"
             rows="3"
             :placeholder="t('decisions.add_text_placeholder')"
-            @keydown.meta.enter.prevent="submit"
-            @keydown.ctrl.enter.prevent="submit"
+            @input="onTextSlashInput"
+            @keydown="onTextKeydown"
+            @blur="slashMenuOnBlur"
           ></textarea>
+          <SlashDateMenu
+            :open="slashOpen" :items="slashItems" :active-index="slashActive" :pos="slashPos"
+            @select="slashMenu.select" @hover="slashMenu.setActive"
+          />
         </label>
         <!-- 次要信息（等待方 / 状态）默认折叠，展开后可编辑；不编辑即默认“等自己 · 待决策” -->
         <div class="ad-advanced">
@@ -82,6 +87,9 @@ import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { useDialog } from '@/composables/useDialog'
 import { useDecisionStatuses } from '@/composables/useDecisionStatuses'
+import { useSlashDateMenu } from '@/composables/useSlashDateMenu'
+import { handleDateShortcut } from '@/utils/dateShortcuts'
+import SlashDateMenu from '@/components/SlashDateMenu.vue'
 import type { TodoCreatePayload } from '@/api/notes'
 import type { OwnerType } from '@/api/types'
 
@@ -110,6 +118,27 @@ const submitting = ref(false)
 const errorMsg = ref('')
 const titleInputRef = ref<HTMLInputElement | null>(null)
 const textAreaRef = ref<HTMLTextAreaElement | null>(null)
+
+// 斜杠日期候选菜单（内容 textarea）
+const slashMenu = useSlashDateMenu(() => textAreaRef.value)
+const {
+  open: slashOpen, items: slashItems, activeIndex: slashActive, pos: slashPos,
+  onInput: slashMenuOnInput, onKeydown: slashMenuOnKeydown, onBlur: slashMenuOnBlur,
+} = slashMenu
+function onTextSlashInput(e: Event) {
+  handleDateShortcut(e)
+  slashMenuOnInput()
+}
+
+// 统一 keydown：先给菜单（纯 Enter 选中项会 preventDefault），未消费且 Cmd/Ctrl+Enter 则提交
+function onTextKeydown(e: KeyboardEvent) {
+  slashMenuOnKeydown(e)
+  if (e.defaultPrevented) return
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    submit()
+  }
+}
 
 // 纪要页上下文（传入 defaultTaskId）时锁定归属会议并隐藏选择器
 const meetingLocked = computed(() => Boolean(props.defaultTaskId))
@@ -193,6 +222,8 @@ defineExpose({ setSubmitting: (v: boolean) => { submitting.value = v } })
 .ad-close:hover { background: var(--surface-2); color: var(--fg); }
 .ad-body { padding: var(--s-4) var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); }
 .ad-field { display: flex; flex-direction: column; gap: 6px; }
+/* 内容字段作为斜杠菜单的定位祖先 / content field is the positioning ancestor of the slash menu */
+.ad-text-field { position: relative; }
 .ad-label { font-size: var(--fs-12, 12px); color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ad-select, .ad-textarea, .ad-input {
@@ -202,6 +233,8 @@ defineExpose({ setSubmitting: (v: boolean) => { submitting.value = v } })
 }
 .ad-select:focus, .ad-textarea:focus, .ad-input:focus { outline: none; border-color: var(--accent); }
 .ad-textarea { resize: vertical; min-height: 64px; }
+/* 内容字段作为斜杠菜单的定位祖先 / content field is positioning ancestor of slash menu */
+.ad-text-field { position: relative; }
 /* 次要信息折叠区：一个弱化的文字开关 + 展开后的缩进字段组 */
 .ad-advanced { display: flex; flex-direction: column; gap: var(--s-2); }
 .ad-adv-toggle { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; border: none; background: transparent; padding: 2px 0; font-size: var(--fs-12, 12px); color: var(--muted); cursor: pointer; font-family: inherit; }

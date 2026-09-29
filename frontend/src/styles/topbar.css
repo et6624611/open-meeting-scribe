@@ -57,20 +57,6 @@
 .state-pill.is-map .pip { background: var(--warn); }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* ─── 全局引擎状态徽章（R6 / PRD-LOCAL-ENGINE：本地引擎 / 体验代理 / 自持 Key / 未就绪） ─── */
-.engine-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-11); font-weight: 500; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; white-space: nowrap; flex-shrink: 0; }
-.engine-badge:hover { border-color: var(--border-strong); background: var(--surface-3, var(--surface-2)); }
-.engine-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.engine-badge .eb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--subtle); flex-shrink: 0; }
-.engine-badge.is-local { color: var(--ok); border-color: oklch(from var(--ok) l c h / 0.25); background: var(--ok-soft); }
-.engine-badge.is-local .eb-dot { background: var(--ok); }
-.engine-badge.is-proxy { color: var(--accent); border-color: var(--accent-mid); background: var(--accent-soft); }
-.engine-badge.is-proxy .eb-dot { background: var(--accent); }
-.engine-badge.is-selfkey { color: var(--fg); }
-.engine-badge.is-selfkey .eb-dot { background: var(--muted); }
-.engine-badge.is-unready { color: var(--warn); border-color: oklch(from var(--warn) l c h / 0.3); background: var(--warn-soft); }
-.engine-badge.is-unready .eb-dot { background: var(--warn); animation: blink 1.2s ease-in-out infinite; }
-
 /* ─── 新建按钮（基础样式已迁移至 hotwords.css） ── */
 .topbar-new-btn.is-disabled { opacity: 0.6; cursor: pointer; }
 .topbar-new-btn.is-disabled svg { opacity: 0.7; }
@@ -144,8 +130,14 @@
 .pp-speed { width: auto; min-width: 22px; padding: 0 6px; border-radius: 999px; font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
 
 /* ─── 注册引导横幅（颜色从主题变量派生，适配任意主题） ─── */
-.reg-guidance-banner { position: relative; background: var(--ann-bg, var(--surface-2)); border-bottom: 1px solid var(--ann-border, var(--border)); padding: 10px 24px; transition: opacity 0.3s ease, max-height 0.3s ease; overflow: hidden; }
-.reg-guidance-banner.is-hidden { opacity: 0; max-height: 0; padding: 0 24px; border-bottom: none; pointer-events: none; }
+/* 横幅是 .frame（flex column）的流内行：隐藏必须用 display:none，
+   否则基类的 padding + border 仍会撑出一行，压在 .body 顶部遮住左栏最上面的
+   拉手 / 头部按钮（opacity:0 + pointer-events:none 只挡住了"看得见"，
+   挡不住"占位"）。按钮在横幅出现/消失时会因此"点了没反应"。
+   Banners are in-flow rows of .frame; hiding them via opacity left the row
+   occupying space and swallowing clicks on the topmost left-rail buttons. */
+.reg-guidance-banner { position: relative; background: var(--ann-bg, var(--surface-2)); border-bottom: 1px solid var(--ann-border, var(--border)); padding: 10px 24px; overflow: hidden; }
+.reg-guidance-banner.is-hidden { display: none; }
 .reg-guidance-content { display: flex; align-items: center; gap: 12px; max-width: 1400px; margin: 0 auto; }
 .reg-guidance-icon { width: 20px; height: 20px; color: var(--ann-icon, var(--accent)); flex-shrink: 0; }
 .reg-guidance-text { flex: 1; font-size: var(--fs-13); color: var(--fg); line-height: 1.5; }
@@ -185,9 +177,25 @@
 
 /* ─── Status bar + Usage ─── */
 /* ─── Status bar ─── */
-.status { border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); font-family: var(--font-mono); font-size: 11px; color: var(--muted); height: 28px; flex-shrink: 0; }
+.status { border-top: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-5); font-family: var(--font-mono); font-size: 11px; color: var(--muted); height: 28px; flex-shrink: 0; position: relative; }
 .status .left, .status .right { display: flex; align-items: center; gap: var(--s-4); }
 .status .item { display: flex; align-items: center; gap: 6px; }
+
+/* 底栏可展开明细（两段式） / Expandable per-capability detail popover anchored above the bar */
+.status-engine { cursor: pointer; }
+.status-engine .status-caret { margin-left: 6px; font-size: 10px; color: var(--subtle); }
+.status-engine.is-open { color: var(--fg); }
+.status-detail { position: absolute; left: var(--s-5); bottom: calc(100% + 6px); min-width: 280px; max-width: 90vw; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-float); padding: var(--s-3) var(--s-4); z-index: var(--z-popover); font-family: var(--font-body); }
+.sd-row { display: flex; align-items: center; gap: var(--s-3); font-size: 12px; padding: 3px 0; }
+.sd-cap { color: var(--muted); min-width: 68px; }
+.sd-src { color: var(--fg); font-weight: 500; flex: 1; }
+.sd-st { font-family: var(--font-mono); font-size: 11px; padding: 1px 7px; border-radius: 5px; white-space: nowrap; }
+.sd-st.is-ok { color: var(--ok); background: var(--ok-soft); }
+.sd-st.is-warn { color: var(--warn); background: var(--warn-soft); }
+.sd-st.is-muted { color: var(--muted); background: var(--surface-2); }
+.sd-quota { margin-top: var(--s-2); font-size: 12px; color: var(--muted); }
+.sd-config { margin-top: var(--s-3); width: 100%; font-size: 12px; color: var(--accent); background: transparent; border: 1px solid var(--accent-mid); border-radius: var(--radius-sm); padding: 5px 8px; cursor: pointer; }
+.sd-config:hover { background: var(--accent-soft); }
 .status .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 
 /* ─── Philosophy (inside status bar) ─── */

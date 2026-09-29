@@ -17,6 +17,7 @@
   "stat_files_unit": "个",
   "stat_meetings": "关联会议",
   "stat_meetings_unit": "场",
+  "meeting_speakers_unit": "人",
   "stat_folders": "关联文件夹",
   "stat_folders_unit": "个",
   "rename": "重命名",

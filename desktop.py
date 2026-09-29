@@ -85,7 +85,7 @@ def _setup_desktop_env():
     # .env.example 模板中的占位符（如 http://your-server:8000）是非空字符串，
     # 简单的 if not os.getenv() 无法检测到。需要识别并替换占位符值。
     def _is_placeholder(value: str) -> bool:
-        """检测环境变量是否为模板占位符值。"""
+        """检测环境变量是否为模板占位符値。"""
         if not value:
             return True
         v = value.lower()
@@ -96,18 +96,20 @@ def _setup_desktop_env():
             or value == "http://your-server:8000"
         )
 
-    def _set_default(key: str, default: str):
-        """若环境变量未设置或为占位符，则注入默认值。"""
-        current = os.getenv(key, "")
-        if _is_placeholder(current):
-            os.environ[key] = default
-
-    # SMS 代理：桌面端连接官方云端短信服务
-    _set_default("SMS_PROXY_URL", "http://47.116.10.194:8080")
-    _set_default("SMS_PROXY_TOKEN", "oms-sms-proxy-secret-2026")
-    # 云端用户服务：桌面端连接官方云端服务器（ASR/LLM 代理 + 用户同步 + 配额管理）
-    _set_default("CLOUD_API_URL", "http://47.116.10.194:8000")
-    _set_default("CLOUD_API_TOKEN", "oms-sms-proxy-secret-2026")
+    # 桌面端云端服务默认値：从 PyInstaller 内嵌的 desktop-secrets.env 读取。
+    # Desktop cloud service defaults: read from PyInstaller-embedded desktop-secrets.env.
+    #
+    # 打包时 CI 将 GitHub Secrets 写入此文件；若文件不存在（未配置 secrets），
+    # 云端功能不可用，本地模式（直连 DashScope API Key）仍正常工作。
+    # CI writes GitHub Secrets to this file at build time; if absent, cloud features
+    # are disabled and local mode (direct DashScope API Key) continues to work.
+    _secrets_file = Path(getattr(sys, "_MEIPASS", "")) / "desktop-secrets.env"
+    if _secrets_file.is_file():
+        from dotenv import dotenv_values
+        _desktop_secrets = dotenv_values(str(_secrets_file))
+        for _key, _val in _desktop_secrets.items():
+            if _val and _is_placeholder(os.getenv(_key, "")):
+                os.environ[_key] = _val
 
 
 # 必须在 load_dotenv / 导入项目模块之前执行 / Must run before load_dotenv / importing project modules

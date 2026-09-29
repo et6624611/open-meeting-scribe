@@ -562,12 +562,12 @@ async def startup():
     except Exception:
         pass
 
-    # REQ-ACCESS-MODE-CARDS T1：一次性接入方式迁移（旧字段原样保留，支持回滚窗口）
+    # 逐能力迁移：把存量 access_mode 映射为 capability_source 并移除该字段（旧字段投影保留支持回滚）
     try:
-        from app.settings_store import run_access_mode_migration
-        run_access_mode_migration()
+        from app.settings_store import run_percap_migration
+        run_percap_migration()
     except Exception as e:
-        logger.warning(f"启动接入方式迁移失败（不影响服务，运行时按 §4 惰性推导兜底）: {e}")
+        logger.warning(f"启动逐能力迁移失败（不影响服务）: {e}")
 
     load_tasks_from_disk()
     recover_interrupted_tasks()

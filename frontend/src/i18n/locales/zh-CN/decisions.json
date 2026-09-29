@@ -23,7 +23,7 @@
   "error_load": "加载决策失败",
   "add_modal_title": "手动补录决策",
   "add_meeting_label": "归属会议",
-  "add_text_placeholder": "请输入决策内容",
+  "add_text_placeholder": "请输入决策内容（/today 插日期）",
   "add_title_label": "标题",
   "add_title_placeholder": "一句话概括（可留空）",
   "add_title_too_long": "标题不能超过 200 字",

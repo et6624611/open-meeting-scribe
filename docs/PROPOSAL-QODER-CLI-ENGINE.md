@@ -3,8 +3,8 @@ title: "PROPOSAL: Qoder CLI 作为 AI 对话面板的工程化会话引擎（初
 description: "提议将本地 Qoder CLI 作为 OpenMeetingScribe AI 对话面板的可选外部 Agent 引擎：软件负责会议上下文的构建与供给，CLI 负责工程化多轮会话与工具执行，通过接入模式路由、stream-json 桥接与 MCP Bridge 实现两者集成。"
 tags: ["proposal", "ai-chat", "agent", "qoder-cli", "architecture", "mcp", "ux"]
 created_at: "2026-09-25"
-updated_at: "2026-09-25"
-version: "0.4.0"
+updated_at: "2026-09-29"
+version: "0.5.0"
 author: "wangyongliang"
 status: "draft"
 category: "architecture"
@@ -13,8 +13,8 @@ related_docs: ["docs/PRD.md", "docs/ARCHITECTURE.md", "docs/adr/"]
 
 # PROPOSAL-QODER-CLI-ENGINE：Qoder CLI 作为 AI 对话面板的工程化会话引擎
 
-> 状态：**v0.4.0——实施中**：Phase 0（Spike 取证）、Phase 1（只读竖切片 + 前端最小改动）、Phase 2（MCP 双向桥）、Phase 3（意图自动分流 v1 / 三态模式 / 写操作审计 / 工作区保留清理）均已落地并实测；见 `docs/SPIKE-QODER-CLI-ENGINE.md` 与 `core/cli_engine/`、`core/agent_tools/`、`mcp-bridge/`。默认关闭（不破坏零配置即用）。
-> 早期状态：v0.2 吸收产品/交互深度评审；v0.2.1 增补配置分层/多引擎适配层；v0.3.0 按 Phase 0 实测修订（M1/M2/M3，废弃 default 档与 allowed-tools 前置授权）。
+> 状态：**v0.5.0——工程化能力收敛**：Phase 0–3 均已落地并实测；2026-09-29 起自建 agent_loop 链路退役（[ADR-0020](adr/0020-工程化能力收敛退役自建Agent循环.md)），CLI 引擎成为唯一工程化会话载体；内置对话回归上下文注入+单轮流式问答，会议域工具实现迁至 `core/agent_tools/impl.py` 专供 MCP 反向桥消费。见 `docs/SPIKE-QODER-CLI-ENGINE.md` 与 `core/cli_engine/`、`core/agent_tools/`、`mcp-bridge/`。默认关闭（不破坏零配置即用）。
+> 早期状态：v0.2 吸收产品/交互深度评审；v0.2.1 增补配置分层/多引擎适配层；v0.3.0 按 Phase 0 实测修订（M1/M2/M3，废弃 default 档与 allowed-tools 前置授权）；v0.4.0 Phase 3 落地（意图分流 v1 / 三态模式 / 写操作审计 / 工作区清理）。
 
 ---
 

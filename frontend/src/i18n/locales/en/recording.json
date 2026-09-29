@@ -59,19 +59,14 @@
     "unread_count": "{count} unread insight(s)",
     "expand": "Expand Insight Deck",
     "collapse": "Collapse Insight Deck",
-    "freq_label": "Auto rate",
-    "freq_tip": "Auto-analysis frequency: how often AI draws diagrams to aid your thinking",
-    "freq_off": "Off",
-    "freq_low": "Low",
-    "freq_normal": "Mid",
-    "freq_high": "High",
     "flow_phase_no": "Phase {no}",
     "flow_step_owner": "Discussion step",
     "flow_fit": "Fit to canvas",
     "flow_zoom_in": "Zoom in",
     "flow_zoom_out": "Zoom out",
     "flow_fullscreen": "Fullscreen",
-    "flow_exit_fullscreen": "Exit fullscreen"
+    "flow_exit_fullscreen": "Exit fullscreen",
+    "deferred_title": "History ({count})"
   },
   "control": {
     "pause": "Pause",

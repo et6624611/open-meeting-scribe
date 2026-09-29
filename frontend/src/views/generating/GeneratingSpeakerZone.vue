@@ -9,10 +9,10 @@
     <!-- ═══ 紧凑态（readonly / complete） ═══ -->
     <template v-if="!interactive">
       <div class="gs-compact-bar">
-        <!-- 说话人完整展示（宽屏：名字 + 占比条） / Full speaker display (wide: name + bar) -->
+        <!-- 宽屏仅逐个展示已关联说话人，未关联折叠成一条（见下方 gs-unbound-wrap） -->
         <div class="gs-compact-full">
           <span
-            v-for="sp in speakers" :key="'f'+sp.sid"
+            v-for="sp in boundSpeakers" :key="'f'+sp.sid"
             class="gs-compact-label"
             :title="sp.displayName"
             @click="emit('locate-speaker', sp.sid)"
@@ -31,7 +31,7 @@
         <!-- 说话人紧凑圆点（窄屏折叠） / Compact dots (narrow fallback) -->
         <div class="gs-compact-dots">
           <span
-            v-for="sp in speakers" :key="'d'+sp.sid"
+            v-for="sp in boundSpeakers" :key="'d'+sp.sid"
             class="gs-compact-dot"
             :style="{ background: sp.color }"
             :title="sp.displayName"
@@ -40,6 +40,27 @@
           <button v-if="canEditBindings" class="gs-compact-edit" :title="t('generating.binding.edit_bindings')" @click="emit('reenter-binding')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </button>
+        </div>
+
+        <!-- 未关联说话人折叠条：逐枚展示信息趋同，收拢为一条，点击展开逐个定位 -->
+        <!-- Collapsed unbound speakers chip: expand on click to locate each -->
+        <div class="gs-unbound-wrap" :class="{ 'is-open': unboundOpen }" v-if="unboundSpeakers.length">
+          <button class="gs-unbound-chip" :title="t('generating.binding.unbound_collapsed_tip')" @click.stop="toggleUnbound">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            {{ t('generating.binding.unbound_collapsed', { count: unboundSpeakers.length }) }}
+            <svg class="gs-unbound-chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div v-if="unboundOpen" class="gs-unbound-dropdown" @click.stop>
+            <div
+              v-for="sp in unboundSpeakers" :key="'u'+sp.sid"
+              class="gs-unbound-item"
+              @click="locateUnbound(sp.sid)"
+            >
+              <span class="gs-compact-label-dot" :style="{ background: sp.color }"></span>
+              <span class="gs-compact-label-name" :style="{ color: sp.color }">{{ sp.displayName }}</span>
+              <span class="gs-compact-label-bar"><span class="gs-compact-label-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
+            </div>
+          </div>
         </div>
 
         <!-- 分隔符 / Separator -->
@@ -102,9 +123,6 @@
       <div class="gs-body">
         <div class="gbb-title-row">
           <span class="gbb-title">{{ mode === 'complete' ? t('generating.binding.title_all_bound') : t('generating.binding.title') }}</span>
-          <button class="gbb-title-info" type="button" :title="t('generating.onboarding.info_icon_tip')" @click="emit('open-info')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          </button>
         </div>
 
         <div class="gs-chips">
@@ -192,6 +210,7 @@
 import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { useEscClose } from '@/composables/useEscClose'
 import { createSpeaker, type Speaker } from '@/api/speakers'
 
 interface ZoneSpeaker {
@@ -225,7 +244,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'open-info'): void
   (e: 'open-dropdown', event: MouseEvent, speakerId: number): void
   (e: 'locate-speaker', speakerId: number): void
   (e: 'skip'): void
@@ -243,6 +261,22 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const interactive = computed(() => props.mode === 'actionable')
+
+// ─── 未关联说话人折叠 / Unbound speakers collapse ───
+// 紧凑态下未关联说话人显示名趋同，逐枚展示信息冗余，收拢为一条可展开的折叠条
+const boundSpeakers = computed(() => props.speakers.filter(s => s.bound))
+const unboundSpeakers = computed(() => props.speakers.filter(s => !s.bound))
+const unboundOpen = ref(false)
+useEscClose(unboundOpen, () => { unboundOpen.value = false })
+
+function toggleUnbound() {
+  unboundOpen.value = !unboundOpen.value
+}
+
+function locateUnbound(speakerId: number) {
+  unboundOpen.value = false
+  emit('locate-speaker', speakerId)
+}
 
 // ─── 参会人 auto/manual 判断 / Roster auto/manual detection ───
 function isAutoMember(name: string): boolean {
@@ -316,11 +350,12 @@ function onRosterPickerKeydown(e: KeyboardEvent) {
 
 /** 点击外部关闭选择器 / Close picker on outside click */
 function onDocClickPicker(e: MouseEvent) {
-  if (rosterPickerOpen.value) {
-    const target = e.target as HTMLElement
-    if (!target.closest('.gs-roster-picker-wrap')) {
-      rosterPickerOpen.value = false
-    }
+  const target = e.target as HTMLElement
+  if (rosterPickerOpen.value && !target.closest('.gs-roster-picker-wrap')) {
+    rosterPickerOpen.value = false
+  }
+  if (unboundOpen.value && !target.closest('.gs-unbound-wrap')) {
+    unboundOpen.value = false
   }
 }
 

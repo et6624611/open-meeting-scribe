@@ -47,7 +47,9 @@
     "close": "关闭",
     "click_to_bind": "点击选择或新建身份",
     "click_to_rebind": "点击修改关联",
-    "edit_bindings": "编辑人员关联",
+    "unbound_collapsed": "未关联 × {count}",
+    "unbound_collapsed_tip": "点击展开，逐个定位未关联说话人",
+    "edit_bindings": "关联说话人",
     "search_placeholder": "搜索人员...",
     "no_bind": "不关联",
     "no_match": "无匹配结果",
@@ -155,7 +157,15 @@
     "edit_title_label": "标题",
     "edit_content_label": "内容",
     "edit_title_placeholder": "一句话概括（可留空）",
-    "edit_content_placeholder": "决策正文",
+    "edit_content_placeholder": "决策正文（输入 /today 后按空格可插入日期）",
+    "date_menu_aria": "插入日期",
+    "date_menu_today": "今天",
+    "date_menu_tomorrow": "明天",
+    "date_menu_yesterday": "昨天",
+    "date_menu_now": "此刻",
+    "date_menu_plus7d": "一周后",
+    "date_menu_plus1m": "一月后",
+    "date_menu_minus1w": "一周前",
     "mark_done": "标记完成",
     "mark_active": "标记进行中",
     "add_decision": "添加决策",
@@ -165,7 +175,7 @@
     "completed_group": "已完成 {count} 条决策",
     "total_count": "共 {count} 条",
     "status_other": "其他",
-    "content_placeholder": "记录决策内容（Markdown）…",
+    "content_placeholder": "记录决策内容（Markdown，/today 插日期）…",
     "status_to_decide": "待决策",
     "status_in_progress": "进行中",
     "status_done": "已完成",
@@ -179,25 +189,6 @@
     "owner_waiting_colleague": "等待同事",
     "owner_waiting_enterprise": "等待企业",
     "avatar_self": "我"
-  },
-  "onboarding": {
-    "title": "关联人员身份",
-    "got_it": "我知道了",
-    "info_icon_tip": "什么是人员关联？",
-    "demo_label_1": "小李",
-    "demo_label_2": "小王",
-    "demo_name_1": "张明",
-    "demo_name_2": "李婷"
-  },
-  "project_onboarding": {
-    "title": "关联知识库",
-    "got_it": "我知道了",
-    "info_icon_tip": "什么是知识库关联？",
-    "knowledge_base": "知识库",
-    "ai_context": "AI 上下文",
-    "ai_citation": "AI 引用文档",
-    "notes_sync": "纪要同步回文件夹",
-    "user_eco": "用户 · 其他工具"
   },
   "archive_dialog": {
     "title": "确认归档",
@@ -232,12 +223,31 @@
     "analyze_in_flight": "该会议正在分析中，请稍候。",
     "empty_title": "本场会议还没有洞察",
     "empty_desc": "洞察台是 AI 的过程观察，不属于纪要内容；点击下方按钮可基于全文产生新的观察。",
-    "phase_post": "会后"
+    "phase_post": "会后",
+    "board": {
+      "eyebrow": "洞察板",
+      "empty_title": "尚无洞察板",
+      "empty_body": "洞察板是一份人与 AI 共创的全局视图：在 AI 对话的「智能体」模式中说「为本次会议生成洞察板」，AI 会读取转写与当前板、产出整份 HTML 并落盘。",
+      "co_create": "在对话中共创",
+      "co_create_msg": "请读取当前会议的洞察板（如尚无则基于转写与章节新建），与我一起生成或修订它。",
+      "co_create_section": "共创此节",
+      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "view_board": "板视图",
+      "view_cards": "卡片视图"
+    }
   },
   "ai_actions": {
     "rewrite": "请帮我改写以下内容，保持原意但更精炼",
     "summarize": "请帮我总结以下内容",
     "extract_todo": "请从以下内容中提取决策"
+  },
+  "correction": {
+    "mapping_saved": "映射已保存，",
+    "applied": "{scope}本场会议已修正 {n} 处 →「{text}」",
+    "no_match": "{scope}本场会议未出现「{text}」，无需修正",
+    "failed": "修正失败：{reason}"
   },
   "errors": {
     "create_speaker_failed": "新建人员失败",
@@ -272,7 +282,7 @@
     "remove": "移除",
     "person_suffix": "人参会",
     "add_inline_placeholder": "添加…",
-    "pick_speaker": "从人员选择",
+    "pick_speaker": "添加参会人",
     "auto_tag": "自动",
     "search_placeholder": "搜索人员…",
     "create_hint": "新建「{name}」"

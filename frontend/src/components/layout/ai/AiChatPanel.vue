@@ -2,47 +2,59 @@
   <!-- 对话消息流 / Chat message feed -->
   <div class="ai-feed" ref="feedRef">
     <div v-for="(msg, i) in messages" :key="i" class="ai-msg" :class="{ 'is-user': msg.role === 'user' }">
-      <div class="ai-bubble" v-html="fmt(msg.content)"></div>
+      <!-- 占位气泡：assistant 消息在首个 token 前 content 为空，此时不渲染，避免 .ai-bubble 的 padding/border 撑出空白条 -->
+      <div v-if="msg.content" class="ai-bubble" v-html="fmt(msg.content)"></div>
       <!-- 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致） -->
       <div v-if="msg.role === 'assistant' && msg.modelUsage" class="ai-usage-echo">
         {{ t('ai-panel.usage_echo', { model: msg.modelUsage.model, src: srcLabel(msg.modelUsage.source), billing: billingLabel(msg.modelUsage.billing) }) }}<span v-if="msg.modelUsage.auto_switched">{{ t('ai-panel.usage_echo_auto_switched') }}</span>
       </div>
-      <!-- 消息时间戳 / Message timestamp -->
-      <div v-if="msg.timestamp" class="ai-msg-ts">{{ fmtTime(msg.timestamp) }}</div>
+      <!-- 消息时间戳 / Message timestamp（空占位消息不显示，避免与用户消息时间重复出现） -->
+      <div v-if="msg.timestamp && msg.content" class="ai-msg-ts">{{ fmtTime(msg.timestamp) }}</div>
       <!-- 截断警告 / Truncation warning -->
       <div v-if="msg.role === 'assistant' && msg.metadata?.finish_reason === 'length'" class="ai-trunc-warn">⚠️ 回复因 token 上限被截断，内容可能不完整</div>
-      <!-- 插入纪要/随记按钮（仅 assistant 消息） / Insert summary/notes button (assistant messages only) -->
-      <div v-if="msg.role === 'assistant' && msg.content" class="ai-msg-actions">
-        <IconButton class="ai-insert-btn" :label="t('ai-panel.insert_summary')" show-label @click="$emit('insertToSummary', msg.content)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9,15 12,12 15,15"/></svg>
-        </IconButton>
-        <IconButton class="ai-insert-btn" :label="t('ai-panel.insert_notes')" show-label @click="$emit('insertToNotes', msg.content)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        </IconButton>
-      </div>
-      <!-- 元数据图标行 / Metadata icon row -->
-      <div v-if="msg.role === 'assistant' && msg.metadata" class="ai-msg-meta">
+      <!-- 元数据图标行：复制 + 三个可展开详情图标（模型与 Token / 性能 / 引用）
+           插入纪要/随记按钮已下架（2026-09），插入类操作由纪要页划词工具栏承接 -->
+      <div v-if="msg.role === 'assistant' && msg.content" class="ai-msg-meta">
         <div class="ai-meta-icons">
-          <button class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'metadata' }" title="模型与 Token" @click="toggleDetail(i, 'metadata')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1h5l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z"/><path d="M9 1v4h4"/></svg></button>
-          <button v-if="msg.sources?.length" class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'sources' }" title="引用来源" @click="toggleDetail(i, 'sources')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2V5a2 2 0 00-2-2H6z"/><path d="M6 8a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2v-1a2 2 0 00-2-2H6z"/></svg></button>
-          <button v-if="msg.performance" class="ai-meta-icon-btn" :class="{ 'is-active': detailOpen[i] === 'perf' }" title="性能指标" @click="toggleDetail(i, 'perf')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 1L4 9h4l-1 6 5-8H9l1-6z"/></svg></button>
+          <IconButton :label="copiedIdx === i ? t('ai-panel.meta_copied') : t('ai-panel.meta_copy')" @click="onCopyReply(msg.content, i)">
+            <svg v-if="copiedIdx === i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="13" height="13" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          </IconButton>
+          <IconButton :active="detailOpen[i] === 'metadata'" :label="t('ai-panel.meta_model_tokens')" @click="toggleDetail(i, 'metadata')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 1h5l4 4v9a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z"/><path d="M9 1v4h4"/></svg>
+          </IconButton>
+          <IconButton :active="detailOpen[i] === 'perf'" :label="t('ai-panel.meta_performance')" @click="toggleDetail(i, 'perf')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 1L4 9h4l-1 6 5-8H9l1-6z"/></svg>
+          </IconButton>
+          <IconButton :active="detailOpen[i] === 'sources'" :label="t('ai-panel.meta_sources')" @click="toggleDetail(i, 'sources')">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2V5a2 2 0 00-2-2H6z"/><path d="M6 8a2 2 0 00-2 2v1a2 2 0 002 2h4a2 2 0 002-2v-1a2 2 0 00-2-2H6z"/></svg>
+          </IconButton>
         </div>
-        <!-- 元数据详情面板 / Metadata detail panel -->
+        <!-- 元数据详情面板 / Metadata detail panel：后端回显字段可能缺失（如 byok 链路只回 model），逐字段容错不留白 -->
         <div v-if="detailOpen[i] === 'metadata'" class="ai-meta-detail">
-          <div class="ai-meta-row"><span class="ai-meta-label">Model</span><span>{{ msg.metadata.model }}</span></div>
-          <div class="ai-meta-row"><span class="ai-meta-label">Tokens</span><span>{{ msg.metadata.usage.prompt_tokens }} + {{ msg.metadata.usage.completion_tokens }} = {{ msg.metadata.usage.total_tokens }}</span></div>
-          <div class="ai-meta-row"><span class="ai-meta-label">Finish</span><span>{{ msg.metadata.finish_reason }}</span></div>
-          <div class="ai-meta-row"><span class="ai-meta-label">ID</span><span class="ai-meta-id">{{ msg.metadata.id }}</span></div>
+          <template v-if="msg.metadata">
+            <div class="ai-meta-row"><span class="ai-meta-label">Model</span><span>{{ msg.metadata.model || '—' }}</span></div>
+            <div class="ai-meta-row"><span class="ai-meta-label">Tokens</span><span>{{ fmtTokens(msg.metadata) }}</span></div>
+            <div class="ai-meta-row"><span class="ai-meta-label">Finish</span><span>{{ msg.metadata.finish_reason || '—' }}</span></div>
+            <div class="ai-meta-row"><span class="ai-meta-label">ID</span><span class="ai-meta-id">{{ msg.metadata.id || '—' }}</span></div>
+          </template>
+          <div v-else class="ai-meta-empty">{{ t('ai-panel.meta_empty_metadata') }}</div>
+        </div>
+        <!-- 性能面板 / Performance panel -->
+        <div v-if="detailOpen[i] === 'perf'" class="ai-meta-detail">
+          <template v-if="msg.performance">
+            <div class="ai-meta-row"><span class="ai-meta-label">Latency</span><span>{{ msg.performance.latency_ms }}ms</span></div>
+            <div class="ai-meta-row"><span class="ai-meta-label">Output</span><span>{{ msg.performance.char_count }} chars</span></div>
+            <div class="ai-meta-row"><span class="ai-meta-label">Context</span><span>{{ msg.performance.context_block_count }} blocks, {{ msg.performance.message_count }} messages</span></div>
+          </template>
+          <div v-else class="ai-meta-empty">{{ t('ai-panel.meta_empty_performance') }}</div>
         </div>
         <!-- 引用来源面板 / Sources panel -->
         <div v-if="detailOpen[i] === 'sources'" class="ai-meta-detail">
-          <div v-for="(src, si) in msg.sources" :key="si" class="ai-meta-row">📎 {{ src.title || src.name }}</div>
-        </div>
-        <!-- 性能面板 / Performance panel -->
-        <div v-if="detailOpen[i] === 'perf' && msg.performance" class="ai-meta-detail">
-          <div class="ai-meta-row"><span class="ai-meta-label">Latency</span><span>{{ msg.performance.latency_ms }}ms</span></div>
-          <div class="ai-meta-row"><span class="ai-meta-label">Output</span><span>{{ msg.performance.char_count }} chars</span></div>
-          <div class="ai-meta-row"><span class="ai-meta-label">Context</span><span>{{ msg.performance.context_block_count }} blocks, {{ msg.performance.message_count }} messages</span></div>
+          <template v-if="msg.sources?.length">
+            <div v-for="(src, si) in msg.sources" :key="si" class="ai-meta-row">📎 {{ src.title || src.name }}</div>
+          </template>
+          <div v-else class="ai-meta-empty">{{ t('ai-panel.meta_empty_sources') }}</div>
         </div>
       </div>
       <!-- 改写 Diff 视图 / Rewrite diff view -->
@@ -57,6 +69,22 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
           </IconButton>
           <button class="diff-reject-btn" @click="$emit('clearRewrite')">{{ t('ai-panel.reject_rewrite') }}</button>
+        </div>
+      </div>
+      <!-- 纪要提案式 diff（propose_summary，未落盘） / Summary proposal diff (accept to persist) -->
+      <div v-if="summaryProposal && i === messages.length - 1 && msg.role === 'assistant'" class="sum-prop-view">
+        <div class="diff-header"><span>{{ t('ai-panel.summary_proposal_label') }}</span></div>
+        <div class="sum-prop-body">
+          <template v-for="(line, li) in summaryProposalDiff" :key="li">
+            <div v-if="line.type !== 'same'" class="sum-prop-line" :class="line.type === 'add' ? 'is-add' : 'is-del'">{{ line.text || '\u00A0' }}</div>
+          </template>
+        </div>
+        <p class="sum-prop-hint">{{ t('ai-panel.summary_proposal_hint') }}</p>
+        <div class="diff-actions">
+          <IconButton class="diff-accept-btn" :label="t('ai-panel.summary_proposal_accept')" show-label @click="$emit('acceptSummary')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+          </IconButton>
+          <button class="diff-reject-btn" @click="$emit('rejectSummary')">{{ t('ai-panel.summary_proposal_reject') }}</button>
         </div>
       </div>
       <!-- AI 操作校验结果展示 / AI action verification results -->
@@ -96,14 +124,18 @@
         <span class="ai-thinking-text">{{ t('ai-panel.thinking_elapsed', { sec: thinkingElapsed }) }}</span>
       </div>
     </Transition>
+
+    <!-- 完成护栏横幅（模式即权限 §5.4）：改写意图轮零写回 → 显式告知，不让用户对着旧版本猜 -->
+    <div v-if="rewriteNotPersisted" class="guard-notice" role="alert">
+      <span class="guard-text">{{ t('ai-panel.chat_not_persisted') }}</span>
+      <button class="guard-retry" @click="$emit('retryWrite', rewriteNotPersisted.text)">{{ t('ai-panel.chat_not_persisted_retry') }}</button>
+      <button class="guard-dismiss" @click="$emit('dismissNotPersisted')">{{ t('ai-panel.chat_not_persisted_dismiss') }}</button>
+    </div>
   </div>
 
   <!-- 输入区 / Input zone -->
   <div class="ai-input-zone">
-    <!-- 跟进建议 / Follow-up suggestions -->
-    <div v-show="suggestions.length > 0" class="ai-suggestions-bar">
-      <button v-for="(s, si) in suggestions" :key="si" class="follow-up-chip" @click="$emit('sendRaw', s.text)"><span v-html="s.icon"></span>{{ s.text }}</button>
-    </div>
+    <!-- 跟进建议提示板已下架（2026-09）：不再在输入区展示建议 chips，sendRaw 入口由引用提问等路径保留 -->
     <!-- 停止输入由 composer 发送/停止按钮承接（原型 ai-panel-composer-prototype） -->
     <!-- 引用区域 / Quote reference -->
     <div v-if="quoteText" class="quote-ref">
@@ -123,25 +155,36 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
       <span>{{ probeHintText }}<a class="cpw-switch" href="#" @click.prevent="$emit('update:chatMode', 'qa')">{{ t('ai-panel.mode_notice_switch_qa') }}</a></span>
     </div>
-    <!-- 输入框（原型 composer：无边框 textarea 居上） / Input on top -->
-    <textarea class="composer-input" :value="inputText" @input="$emit('update:inputText', ($event.target as HTMLTextAreaElement).value); $emit('inputChange')" :placeholder="t('ai-panel.input_placeholder')" rows="1" ref="inputRef" @keydown="$emit('inputKey', $event)" :aria-label="t('ai-panel.input_aria')"></textarea>
-    <!-- Composer 栏（原型 ai-panel-composer-prototype）：模式触发器 + 资源触发器（左）+ 提示 + 发送/停止（右），同一栏 -->
-    <div class="composer-bar">
-      <!-- 对话模式触发器（会话级，与“角色”正交） / Mode trigger -->
+    <!-- 输入卡片：textarea + composer 栏整体包边框，跟随焦点高亮（提示板下架后恢复输入区边界感） -->
+    <div class="composer-card">
+      <!-- 输入框（无边框 textarea 居上）：高度 = 行数 × 整数行盒，超过上限转区内滚动（Composer 尺寸契约）。
+           快捷键提示 ⏎/⇧⏎ 已并入占位文案，不再单独展示 -->
+      <textarea
+        class="composer-input"
+        :class="{ 'is-more-below': moreBelow, 'is-more-above': moreAbove }"
+        :value="inputText"
+        @input="$emit('update:inputText', ($event.target as HTMLTextAreaElement).value); $emit('inputChange')"
+        @scroll.passive="onComposerScroll"
+        :placeholder="t('ai-panel.input_placeholder')"
+        rows="1"
+        ref="inputRef"
+        @keydown="$emit('inputKey', $event)"
+        :aria-label="t('ai-panel.input_aria')"
+      ></textarea>
+      <!-- Composer 栏（原型 ai-panel-composer-prototype）：模式触发器 + 资源触发器（左）+ 发送/停止（右），同一栏 -->
+      <div class="composer-bar" ref="barRef" :class="{ 'is-compact': compact }">
+      <!-- 对话模式触发器（会话级，与“角色”正交）：图标化展示，图标形状随模式变化；无障碍由 aria-label（模式通用名）+ data-tip（当前模式名）承载，多语言 key 不变 -->
       <div class="cb-trigger-wrap">
-        <button ref="modeTriggerEl" class="ac-trigger" :class="{ 'is-open': modeMenuVisible }" v-bind="modeTriggerAttrs" :aria-label="t('ai-panel.mode_label')" :title="t('ai-panel.mode_label')" @click="toggleModeMenu">
-          <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-3.5A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>
-          <span class="ac-tr-txt">
-            <span class="ac-tr-name">{{ t('ai-panel.mode_' + chatMode) }}</span>
-            <span class="ac-tr-sub">{{ chatMode === 'agent' ? 'CLI' : chatMode === 'auto' ? 'AUTO' : t('ai-panel.mode_sub_builtin') }}</span>
-          </span>
-          <svg class="ac-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <button ref="modeTriggerEl" class="ac-trigger is-icon" :class="{ 'is-open': modeMenuVisible }" v-bind="modeTriggerAttrs" :aria-label="t('ai-panel.mode_label')" :data-tip="t('ai-panel.mode_' + chatMode)" @click="toggleModeMenu">
+          <!-- 图标随当前模式换形状（自动=星芒/问答=问号/智能体=终端），与菜单行徽标为同一套图标 -->
+          <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" v-html="modeIconBody"></svg>
         </button>
         <div ref="modeMenuEl" v-show="modeMenuVisible" class="ac-menu" style="width: 288px;" v-bind="modeMenuAttrs">
           <div class="ac-group">
-            <div class="ac-label"><span>{{ t('ai-panel.mode_label') }}</span><span>3</span></div>
-            <button v-for="m in (['auto', 'qa', 'agent'] as const)" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': chatMode === m }" :aria-label="t('ai-panel.mode_' + m)" @click="onPickMode(m)">
-              <span class="ac-badge">{{ m === 'auto' ? 'A' : m === 'qa' ? 'Q' : '>_' }}</span>
+            <div class="ac-label"><span>{{ t('ai-panel.mode_label') }}</span><span>{{ MODE_LIST.length }}</span></div>
+            <button v-for="m in MODE_LIST" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': chatMode === m }" :aria-label="t('ai-panel.mode_' + m)" @click="onPickMode(m)">
+              <!-- 行徽标与外部触发器图标一一对应（同一套 lucide 图标），保证内外符号一致 -->
+              <span class="ac-badge"><svg class="ac-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="MODE_ICONS[m].body"></svg></span>
               <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.mode_' + m) }}</span><span class="ac-it-sub">{{ t('ai-panel.mode_' + m + '_hint') }}</span></span>
               <span class="ac-right">
                 <svg v-if="chatMode === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
@@ -153,89 +196,96 @@
 
       <!-- 模型/引擎模型触发器：智能体模式选 CLI 引擎模型（写 chat_engine.model），其余选 LLM 模型（class ai-model-select 为契约测试锚点） -->
       <div class="cb-trigger-wrap">
-        <button ref="modelTriggerEl" class="ac-trigger ai-model-select" :class="{ 'is-open': modelMenuVisible }" v-bind="modelTriggerAttrs" :aria-label="isAgentMode ? t('ai-panel.model_cli_engine_label') : t('ai-panel.model_label')" @click="toggleModelMenu">
+        <button ref="modelTriggerEl" class="ac-trigger ai-model-select" :class="{ 'is-open': modelMenuVisible }" v-bind="modelTriggerAttrs" :aria-label="isAgentMode ? t('ai-panel.model_cli_engine_label') : t('ai-panel.model_label')" :title="isAgentMode ? (agentEngineModel || t('ai-panel.model_cli_engine_default')) : (sessionModel || detailModelLabel)" @click="toggleModelMenu">
           <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></svg>
           <span class="ac-tr-txt">
-            <span class="ac-tr-name">{{ isAgentMode ? (agentEngineModel || t('ai-panel.model_cli_engine_default')) : (sessionModel || detailModelLabel) }}</span>
-            <span class="ac-tr-sub">{{ isAgentMode ? (agentEngineName || 'CLI') : (sessionModel ? sourceLabel(menuModelSource) : t('ai-panel.model_follow_plain')) }}</span>
+            <span class="ac-tr-name">{{ isAgentMode ? (agentEngineModel || t('ai-panel.model_cli_engine_default')) : (sessionModel || `${t('ai-panel.model_builtin_default')} · ${detailModelLabel}`) }}</span>
+            <span class="ac-tr-sub">{{ isAgentMode ? (agentEngineName || 'CLI') : (sessionModel ? sourceLabel(menuModelSource) : t('ai-panel.model_builtin_default')) }}</span>
           </span>
           <svg class="ac-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
         <div ref="modelMenuEl" v-show="modelMenuVisible" class="ac-menu" style="width: 322px;" v-bind="modelMenuAttrs">
-          <!-- 智能体模式：CLI 引擎可用模型（--list-models 探测，就地写回 chat_engine.model） -->
-          <template v-if="isAgentMode">
-            <div class="ac-group">
-              <div class="ac-label"><span>{{ agentEngineName || 'CLI' }}</span><span>{{ agentModels.length }}</span></div>
-              <button class="ac-row" role="menuitem" :class="{ 'is-sel': !agentEngineModel }" :aria-label="t('ai-panel.model_cli_engine_default')" @click="onPickAgentModel('')">
-                <span class="ac-badge">⇄</span>
-                <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_cli_engine_default') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_engine_default_hint') }}</span></span>
-                <span class="ac-right">
-                  <svg v-if="!agentEngineModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
-                </span>
-              </button>
-            </div>
-            <div v-if="agentModels.length" class="ac-group">
-              <button v-for="m in agentModels" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': agentEngineModel === m }" :aria-label="m" @click="onPickAgentModel(m)">
-                <span class="ac-badge">M</span>
-                <span class="ac-it"><span class="ac-it-name">{{ m }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_available') }}</span></span>
-                <span class="ac-right">
-                  <svg v-if="agentEngineModel === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
-                </span>
-              </button>
-            </div>
-            <div v-else class="ac-empty">{{ agentModelsLoading ? t('ai-panel.model_cli_loading') : (agentModelsReason === 'not_logged_in' ? t('ai-panel.model_cli_need_login') : t('ai-panel.model_cli_unavailable')) }}</div>
-            <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_cli_goto')" @click="onGotoCliSettings">
-              <span>{{ t('ai-panel.model_cli_goto') }}</span>
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          <!-- ══ 统一资源清单（AI 算力入口治理 §2）：全集恒定呈现，模式只切换可选性 ══ -->
+          <!-- ── 内置 LLM 组：智能体模式下整组置灰 ── -->
+          <div class="ac-group" :class="{ 'is-group-disabled': isAgentMode }">
+            <div class="ac-label"><span>{{ t('ai-panel.model_group_builtin') }}</span><span>{{ modelOptions.length + 1 }}</span></div>
+            <div v-if="isAgentMode" class="ac-hint">{{ t('ai-panel.model_hint_unavailable_builtin') }}</div>
+            <!-- 内置默认：全部对话默认算力 + 面板外函数类操作（原「跟随详情」） -->
+            <button class="ac-row" role="menuitem" :class="{ 'is-disabled': isAgentMode, 'is-sel': !isAgentMode && !sessionModel }" :aria-label="t('ai-panel.model_builtin_default')" @click="onPickModel('', '')">
+              <span class="ac-badge">⇄</span>
+              <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_builtin_default') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_builtin_default_hint', { model: detailModelLabel }) }}</span></span>
+              <span class="ac-right">
+                <svg v-if="!isAgentMode && !sessionModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                <span v-else-if="isAgentMode && !sessionModel" class="ac-pill">{{ t('ai-panel.badge_current') }}</span>
+              </span>
             </button>
-          </template>
-          <!-- 问答/自动模式：LLM 模型清单（按来源分组） -->
-          <template v-else>
-            <div class="ac-group">
-              <button class="ac-row" role="menuitem" :class="{ 'is-sel': !sessionModel }" :aria-label="t('ai-panel.model_follow', { model: detailModelLabel })" @click="onPickModel('', '')">
-                <span class="ac-badge">⇄</span>
-                <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_follow_plain') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_follow', { model: detailModelLabel }) }}</span></span>
-                <span class="ac-right">
-                  <svg v-if="!sessionModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
-                </span>
-              </button>
-            </div>
-            <div v-for="g in modelGroups" :key="g.source" class="ac-group">
-              <div class="ac-label"><span>{{ srcLabel(g.source) }}</span><span>{{ g.opts.length }}</span></div>
-              <button v-for="opt in g.opts" :key="opt.value" class="ac-row" role="menuitem" :class="{ 'is-sel': sessionModel === opt.value && menuModelSource === g.source }" :aria-label="opt.value + ' · ' + srcLabel(g.source)" @click="onPickModel(opt.value, g.source)">
-                <span class="ac-badge">{{ srcLabel(g.source).slice(0, 1) }}</span>
-                <span class="ac-it">
-                  <span class="ac-it-name">{{ opt.value }}</span>
-                  <span class="ac-it-sub">{{ g.source === 'local' ? t('ai-panel.model_local_endpoint') : t('ai-panel.model_configured') }}</span>
-                </span>
-                <span class="ac-right">
-                  <svg v-if="sessionModel === opt.value && menuModelSource === g.source" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
-                </span>
-              </button>
-            </div>
-            <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_manage_sources')" @click="onGotoComputeSettings">
-              <span>{{ t('ai-panel.model_manage_sources') }}</span>
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            <div class="ac-note">{{ t('ai-panel.model_scope_note') }}</div>
+          </div>
+          <!-- 会话级 LLM 候选（按来源分组） -->
+          <div v-for="g in modelGroups" :key="g.source" class="ac-group" :class="{ 'is-group-disabled': isAgentMode }">
+            <div class="ac-label"><span>{{ srcLabel(g.source) }}</span><span>{{ g.opts.length }}</span></div>
+            <button v-for="opt in g.opts" :key="opt.value" class="ac-row" role="menuitem" :class="{ 'is-disabled': isAgentMode, 'is-sel': !isAgentMode && sessionModel === opt.value && menuModelSource === g.source }" :aria-label="opt.value + ' · ' + srcLabel(g.source)" @click="onPickModel(opt.value, g.source)">
+              <span class="ac-badge">{{ srcLabel(g.source).slice(0, 1) }}</span>
+              <span class="ac-it">
+                <span class="ac-it-name">{{ opt.value }}</span>
+                <span class="ac-it-sub">{{ g.source === 'local' ? t('ai-panel.model_local_endpoint') : t('ai-panel.model_configured') }}</span>
+              </span>
+              <span class="ac-right">
+                <svg v-if="!isAgentMode && sessionModel === opt.value && menuModelSource === g.source" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                <span v-else-if="isAgentMode && sessionModel === opt.value" class="ac-pill">{{ t('ai-panel.badge_current') }}</span>
+              </span>
             </button>
-          </template>
+          </div>
+          <!-- ── CLI 引擎组：问答模式下整组置灰（常驻呈现，探测仍懒加载） ── -->
+          <div class="ac-group" :class="{ 'is-group-disabled': !isAgentMode }">
+            <div class="ac-label"><span>{{ agentEngineName || 'CLI' }}</span><span>{{ agentModels.length }}</span></div>
+            <div v-if="!isAgentMode" class="ac-hint">{{ t('ai-panel.model_hint_cli_disabled') }}</div>
+            <button class="ac-row" role="menuitem" :class="{ 'is-disabled': !isAgentMode, 'is-sel': isAgentMode && !agentEngineModel }" :aria-label="t('ai-panel.model_cli_engine_default')" @click="onPickAgentModel('')">
+              <span class="ac-badge">⇄</span>
+              <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.model_cli_engine_default') }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_engine_default_hint') }}</span></span>
+              <span class="ac-right">
+                <svg v-if="isAgentMode && !agentEngineModel" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                <span v-else-if="!isAgentMode && !agentEngineModel" class="ac-pill">{{ t('ai-panel.badge_default') }}</span>
+              </span>
+            </button>
+          </div>
+          <div v-if="agentModels.length" class="ac-group" :class="{ 'is-group-disabled': !isAgentMode }">
+            <button v-for="m in agentModels" :key="m" class="ac-row" role="menuitem" :class="{ 'is-disabled': !isAgentMode, 'is-sel': isAgentMode && agentEngineModel === m }" :aria-label="m" @click="onPickAgentModel(m)">
+              <span class="ac-badge">M</span>
+              <span class="ac-it"><span class="ac-it-name">{{ m }}</span><span class="ac-it-sub">{{ t('ai-panel.model_cli_available') }}</span></span>
+              <span class="ac-right">
+                <svg v-if="isAgentMode && agentEngineModel === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+                <span v-else-if="!isAgentMode && agentEngineModel === m" class="ac-pill">{{ t('ai-panel.badge_current') }}</span>
+              </span>
+            </button>
+          </div>
+          <div v-else class="ac-empty">{{ cliGroupEmptyText }}</div>
+          <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_cli_goto')" @click="onGotoCliSettings">
+            <span>{{ t('ai-panel.model_cli_goto') }}</span>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
+          <!-- 统一底部入口（原两侧各自的 footer 合并） -->
+          <button class="ac-foot" role="menuitem" :aria-label="t('ai-panel.model_manage_all')" @click="onGotoComputeSettings">
+            <span>{{ t('ai-panel.model_manage_all') }}</span>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
         </div>
       </div>
 
       <div class="cb-right">
-        <span v-if="!isLoading && chatMode !== 'agent'" class="cb-hint">⏎ · ⇧⏎</span>
-        <!-- 发送 / 停止（合一按钮，与触发器同栏，原型 composer） / Send / Stop -->
-        <button class="composer-send" :class="{ 'is-stop': isLoading }" :disabled="!isLoading && !inputText.trim()" :aria-label="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" :title="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" @click="onSendOrStop">
-          <span>{{ isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send') }}</span>
+        <!-- 发送 / 停止（合一按钮，图标化展示，文字文案由 title/aria-label（多语言 key 不变）承载，与触发器同栏，原型 composer） / Send / Stop -->
+        <button class="composer-send is-icon" :class="{ 'is-stop': isLoading }" :disabled="!isLoading && !inputText.trim()" :aria-label="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" :title="isLoading ? t('ai-panel.stop_generating') : t('ai-panel.send')" @click="onSendOrStop">
           <svg v-if="isLoading" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
+      </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { LlmMetadata, MessagePerformance, SourceFile, AgentStage, ModelUsage } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
@@ -243,6 +293,7 @@ import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
 import { lucideIcon, type IconDef } from '@/utils/lucideIcons'
+import { diffLines, type DiffLine } from '@/utils/textDiff'
 import type { AiCommand } from '@/composables/useAiCommands'
 import { usePopMenu } from '@/composables/usePopMenu'
 
@@ -263,7 +314,6 @@ const props = defineProps<{
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
   injectPrompt: { desc: string } | null
-  suggestions: Array<{ icon: string; text: string }>
   quoteText: string
   quoteSource: string
   cmdOpen: boolean
@@ -271,8 +321,8 @@ const props = defineProps<{
   filteredCmds: AiCommand[]
   inputText: string
   formatChange: (change: any) => string
-  /** 当前会话模式：qa=问答、agent=智能体、auto=自动分流 */
-  chatMode: 'qa' | 'agent' | 'auto'
+  /** 当前会话模式：qa=问答、agent=智能体（auto 规则分流已退役，AI 算力入口治理 §1） */
+  chatMode: 'qa' | 'agent'
   /** 本次回复实际使用的引擎回显 */
   activeEngine: { display_name: string; auth_tier: string; auto_selected: boolean } | null
   /** 会话级模型选择器（REQ-EXPERT-MODE §2.3）：'' = 跟随详情 */
@@ -295,30 +345,105 @@ const props = defineProps<{
   agentModelsReason: string
   /** 模型清单加载中 */
   agentModelsLoading: boolean
+  /** 完成护栏（§5.4）：改写意图轮零写回时的横幅态 */
+  rewriteNotPersisted: { text: string } | null
+  /** 纪要提案式 diff（提案式，未落盘）：baseline=当前纪要，proposed=AI 建议全文 */
+  summaryProposal: { baseline: string; proposed: string } | null
 }>()
 
 const emit = defineEmits<{
   (e: 'send'): void
-  (e: 'sendRaw', text: string): void
   (e: 'stopGeneration'): void
-  (e: 'insertToSummary', content: string): void
-  (e: 'insertToNotes', content: string): void
   (e: 'acceptRewrite', content: string): void
   (e: 'clearRewrite'): void
   (e: 'injectAll'): void
   (e: 'dismissInject'): void
+  (e: 'retryWrite', text: string): void
+  (e: 'dismissNotPersisted'): void
+  (e: 'acceptSummary'): void
+  (e: 'rejectSummary'): void
   (e: 'clearQuote'): void
   (e: 'runCommand', cmd: AiCommand): void
   (e: 'inputKey', ev: KeyboardEvent): void
   (e: 'inputChange'): void
   (e: 'update:inputText', val: string): void
-  (e: 'update:chatMode', val: 'qa' | 'agent' | 'auto'): void
+  (e: 'update:chatMode', val: 'qa' | 'agent'): void
   (e: 'update:sessionModel', val: string): void
   (e: 'update:agentModel', val: string): void
 }>()
 
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 const feedRef = ref<HTMLElement | null>(null)
+const barRef = ref<HTMLElement | null>(null)
+
+/** 纪要提案的行级 diff（供 diff 卡渲染）；无提案时空数组 */
+const summaryProposalDiff = computed<DiffLine[]>(() => {
+  const p = props.summaryProposal
+  if (!p) return []
+  return diffLines(p.baseline, p.proposed)
+})
+
+// ─── Composer 尺寸契约（2026-09-29）：输入区高度与控制行高度解耦，两个高度由同一组 CSS 变量推导 ───
+// 行盒必须取整数（--composer-line: 20px）。原先 line-height:1.6 = 20.8px，任何高度都落在半行上，
+// 末行必然被切成半行；且高度同时被 min-height:32px / max-height:150px / JS 的 120 三处决定，
+// 任一非键入路径（会话恢复 / 插入引用 / 指令回填 / 图表预填）改值后不重算，就停在一行的高度上。
+/** 从 :root 读尺寸变量：CSS 与 JS 共用同一事实来源，改一处即可整栏升降 */
+function composerVar(name: string, fallback: number): number {
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name))
+  return Number.isFinite(v) && v > 0 ? v : fallback
+}
+/** 溢出渐隐状态：下方还有内容 → 底边渐隐；已滚动过 → 顶边渐隐。遮罩只作用于输入框内部，不进入控制行 */
+const moreBelow = ref(false)
+const moreAbove = ref(false)
+function syncOverflow(ta: HTMLTextAreaElement) {
+  moreBelow.value = ta.scrollHeight - ta.clientHeight - ta.scrollTop > 1
+  moreAbove.value = ta.scrollTop > 1
+}
+function onComposerScroll(e: Event) { syncOverflow(e.target as HTMLTextAreaElement) }
+
+/** 输入区高度重算（唯一入口）：高度 = 行数 × 行盒；超出上限由 CSS max-height 接管并转区内滚动。
+    挂在值变化 + 控制行宽度变化上，覆盖所有写入路径，不再只依赖 input 事件。 */
+function resizeInput() {
+  const ta = inputRef.value
+  if (!ta) return
+  ta.style.height = 'auto'
+  // 面板折叠（display:none）时测得 0，跳过以免把高度写成 0；展开后由 ResizeObserver 重新触发
+  if (ta.scrollHeight === 0) return
+  const line = composerVar('--composer-line', 20)
+  ta.style.height = Math.round(ta.scrollHeight / line) * line + 'px'
+  syncOverflow(ta)
+}
+
+/** 窄档：控制行可用宽度不足时，模型触发器降级为纯图标。
+    收缩顺序固定为 ① 触发器文字省略 → ② 触发器降级为纯图标 → ③ 发送键永不收缩、永不换行。 */
+const compact = ref(false)
+function syncDensity() {
+  const bar = barRef.value
+  if (!bar) return
+  compact.value = bar.clientWidth > 0 && bar.clientWidth < composerVar('--composer-compact-below', 288)
+}
+
+// 值变化即重算：会话恢复 / 插入引用 / 指令回填 / 洞察台图表预填等都不经过 input 事件
+watch(() => props.inputText, () => { void nextTick(resizeInput) })
+// 触发器标签随模式与模型变化，长度变了就重新判定窄档
+watch(
+  () => [props.chatMode, props.sessionModel, props.agentEngineModel, props.agentEngineName],
+  () => { void nextTick(syncDensity) },
+)
+
+let composerRo: ResizeObserver | null = null
+/** 剪贴板反馈定时器：非键入路径，卸载时清理 */
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+onMounted(() => {
+  resizeInput()
+  syncDensity()
+  // 只观察控制行：其高度恒为 --composer-bar-h，不会因输入区高度回写而被循环触发
+  if (typeof ResizeObserver !== 'undefined' && barRef.value) {
+    composerRo = new ResizeObserver(() => { resizeInput(); syncDensity() })
+    composerRo.observe(barRef.value)
+  }
+})
+onBeforeUnmount(() => { composerRo?.disconnect(); composerRo = null; if (copiedTimer) clearTimeout(copiedTimer) })
 
 // ─── Composer 触发器菜单（原型 ai-panel-composer-prototype）：usePopMenu 统一开合/定位/隐式收起 ───
 const router = useRouter()
@@ -345,11 +470,13 @@ function sourceLabel(source: ModelSource | ''): string {
   return source ? srcLabel(source) : ''
 }
 
-function onPickMode(m: 'qa' | 'agent' | 'auto') {
+function onPickMode(m: 'qa' | 'agent') {
   closeModeMenu()
   if (m !== props.chatMode) emit('update:chatMode', m)
 }
 function onPickModel(value: string, source: ModelSource | '') {
+  // 智能体模式下内置组整组置灰，点击 no-op（不自动切模式，避免隐式改变执行引擎）
+  if (isAgentMode.value) return
   closeModelMenu()
   emit('update:sessionModel', value)
   // 同值跨源无法由候选表定位时，跟随菜单选择临时标记
@@ -367,7 +494,15 @@ function onGotoComputeSettings() {
 }
 /** 智能体模式：模型位切换为 CLI 引擎模型语义（写 chat_engine.model） */
 const isAgentMode = computed(() => props.chatMode === 'agent')
+/** CLI 组空态文案：问答模式未探测时明示懒加载时机，智能体模式下区分加载/未登录/不可用 */
+const cliGroupEmptyText = computed(() => {
+  if (props.agentModelsLoading) return t('ai-panel.model_cli_loading')
+  if (!isAgentMode.value) return t('ai-panel.model_cli_not_probed')
+  return props.agentModelsReason === 'not_logged_in' ? t('ai-panel.model_cli_need_login') : t('ai-panel.model_cli_unavailable')
+})
 function onPickAgentModel(v: string) {
+  // 问答模式下 CLI 组整组置灰，点击 no-op
+  if (!isAgentMode.value) return
   closeModelMenu()
   if (v !== props.agentEngineModel) emit('update:agentModel', v)
 }
@@ -381,10 +516,34 @@ function onSendOrStop() {
   else emit('send')
 }
 
+/** 对话模式清单（两态）：模式菜单渲染与徒标/计数单一来源 */
+const MODE_LIST = ['qa', 'agent'] as const
+
+/** 对话模式图标：外部触发器与菜单行徽标共用同一套 lucide 图标，保证内外一致 */
+const MODE_ICONS: Record<'qa' | 'agent', IconDef> = {
+  qa: lucideIcon('help-circle')!,
+  agent: lucideIcon('terminal')!,
+}
+const modeIconBody = computed(() => MODE_ICONS[props.chatMode].body)
+
 /** 每条消息展开的详情面板类型 / Expanded detail panel type per message index */
 const detailOpen = ref<Record<number, string | null>>({})
 
-defineExpose({ inputRef, feedRef })
+/** 刚复制过的消息下标：图标短暂切换为对钩作反馈（剪贴板不可用时静默降级） */
+const copiedIdx = ref<number | null>(null)
+async function onCopyReply(content: string, idx: number) {
+  try {
+    await navigator.clipboard.writeText(content)
+  } catch {
+    console.warn('[AiChatPanel] Clipboard copy failed')
+    return
+  }
+  copiedIdx.value = idx
+  if (copiedTimer) clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => { copiedIdx.value = null; copiedTimer = null }, 1500)
+}
+
+defineExpose({ inputRef, feedRef, resizeInput })
 
 /** 格式化 ISO 时间戳为 HH:MM:SS / Format ISO timestamp to HH:MM:SS */
 function fmtTime(iso: string): string {
@@ -397,6 +556,13 @@ function fmtTime(iso: string): string {
 /** 切换消息的详情面板（互斥） / Toggle message detail panel (mutually exclusive) */
 function toggleDetail(idx: number, panel: string) {
   detailOpen.value[idx] = detailOpen.value[idx] === panel ? null : panel
+}
+
+/** Tokens 行格式化：usage 可能整体或部分缺失（byok 回显链路），缺位用 — 占位 */
+function fmtTokens(meta: LlmMetadata): string {
+  const u = meta.usage
+  if (!u) return '—'
+  return `${u.prompt_tokens ?? '—'} + ${u.completion_tokens ?? '—'} = ${u.total_tokens ?? '—'}`
 }
 
 function fmt(c: string): string {
@@ -449,38 +615,29 @@ const probeHintText = computed(() => {
   padding: 3px 8px;
   margin: 4px 0 0;
 }
-/* ── 元数据图标行 / Metadata icon row ── */
+/* ── 元数据图标行 / Metadata icon row ──
+   按钮统一用 IconButton（图标按钮规范）；此处把它压缩回元数据行的 22px 密度：
+   父作用域 :deep 选择器特异性高于 IconButton 自带的 .icon-btn--icon-only，能稳定覆盖 */
 .ai-msg-meta {
   margin-top: 4px;
 }
 .ai-meta-icons {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
-.ai-meta-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.ai-meta-icons :deep(.icon-btn) {
   width: 22px;
   height: 22px;
-  border: none;
   border-radius: 4px;
-  background: transparent;
   color: var(--muted, #999);
-  cursor: pointer;
-  transition: all 0.15s;
 }
-.ai-meta-icon-btn:hover {
-  background: var(--surface-2);
-  color: var(--fg);
-}
-.ai-meta-icon-btn.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.ai-meta-icon-btn svg {
+.ai-meta-icons :deep(.icon-btn__icon svg) {
   width: 14px;
   height: 14px;
+}
+.ai-meta-icons :deep(.icon-btn--active) {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 /* ── 详情面板 / Detail panel ── */
 .ai-meta-detail {
@@ -509,6 +666,11 @@ const probeHintText = computed(() => {
   font-family: monospace;
   font-size: 10px;
   word-break: break-all;
+}
+/* 详情面板空态：图标常驻，数据缺失时展开可见原因，不留白屏 */
+.ai-meta-empty {
+  font-style: italic;
+  color: var(--subtle, #aaa);
 }
 /* ─ 思考中指示器 / Thinking indicator ─ */
 .ai-thinking {
@@ -634,21 +796,49 @@ const probeHintText = computed(() => {
 .vc-item.is-verified .vc-status { color: var(--ok); background: var(--ok-soft); }
 .vc-item:not(.is-verified) .vc-status { color: var(--warn); background: var(--warn-soft); }
 
-/* ── Composer 栏（原型 ai-panel-composer-prototype）── */
+/* ── 输入卡片：textarea + composer 栏整体的可见边框（提示板下架后恢复输入区边界感）──
+   卡片不再用 gap 串起两者：文本区与控制行的间距改由 .composer-bar 的 margin-top 承担，
+   保证任何状态下末行文字与按钮之间都有 --composer-gap 的硬间距。 */
+.composer-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 10px);
+  background: var(--surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.composer-card:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+
+/* ── Composer 栏（原型 ai-panel-composer-prototype）──
+   高度恒定 --composer-bar-h、恒为单行：折行会把栏高从 34px 变成两行，反向挤压文本区。
+   原先的 flex-wrap:wrap 与「保证单行不换行」的注释本就冲突，且被 .cb-trigger-wrap 的
+   min-width:0 短路成死代码——真正的失效是触发器不收缩、直接溢出压到发送键上。 */
 .composer-bar {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  flex-wrap: wrap;
-  padding-top: 2px;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  height: var(--composer-bar-h);
+  min-height: var(--composer-bar-h);
+  margin-top: var(--composer-gap);
 }
-.cb-trigger-wrap { position: relative; min-width: 0; }
+/* 收缩链：外层能缩、内层才跟着缩。缺了 display:flex / min-width:0 时，
+   只有 wrap 会被压窄，里面的 .ac-trigger 仍按内容宽渲染并溢出到发送键上。 */
+.cb-trigger-wrap { position: relative; display: flex; min-width: 0; flex: 0 1 auto; }
+/* 对话模式触发器是图标态，尺寸固定，不参与收缩 */
+.cb-trigger-wrap:has(.ac-trigger.is-icon) { flex: 0 0 auto; }
+/* 模型触发器先让位：先文字省略，宽度仍不够时由 .is-compact 降级为纯图标 */
+.cb-trigger-wrap:has(.ai-model-select) { flex-shrink: 1; }
 .ac-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 190px;
-  height: 34px;
+  /* min-width:0 让触发器能跟着外层一起收缩；max-width 用 min() 保证再窄也不溢出栏宽 */
+  min-width: 0;
+  max-width: min(190px, 100%);
+  height: var(--composer-bar-h);
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
@@ -665,9 +855,10 @@ const probeHintText = computed(() => {
   stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
 .ac-trigger.is-open .ac-tr-icon { color: var(--fg); }
-.ac-tr-txt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; min-width: 0; }
+.ac-tr-txt { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; min-width: 0; overflow: hidden; }
 .ac-tr-name { font-size: var(--fs-12, 12px); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 124px; }
-.ac-tr-sub { font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--muted); white-space: nowrap; }
+/* 副标题与标题同样要能省略：否则它的 min-content 宽度会把整栏顶到装不下（如长引擎名 / 长模型 id） */
+.ac-tr-sub { font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 124px; }
 .ac-chev {
   width: 12px; height: 12px; flex: 0 0 auto;
   color: var(--subtle); fill: none; stroke: currentColor;
@@ -675,6 +866,12 @@ const probeHintText = computed(() => {
   transition: transform 0.14s ease;
 }
 .ac-trigger.is-open .ac-chev { transform: rotate(180deg); }
+/* 图标化触发器（对话模式）：仅保留图标（形状随模式变化），固定方形尺寸，不随面板宽度伸缩；
+   提示文案由 aria-label / data-tip 承载，全局 tooltip 对无可见文字的按钮会显示提示 */
+.ac-trigger.is-icon { flex: 0 0 auto; width: var(--composer-bar-h); max-width: var(--composer-bar-h); justify-content: center; padding: 0; }
+.ac-trigger.is-icon .ac-tr-txt,
+.ac-trigger.is-icon .ac-chev { display: none; }
+.ac-trigger.is-icon .ac-tr-icon { width: 16px; height: 16px; }
 
 /* ── 触发器弹出菜单：usePopMenu fixed 定位，z-index 取全局阶梯 ── */
 .ac-menu {
@@ -726,6 +923,7 @@ const probeHintText = computed(() => {
   color: var(--muted);
 }
 .ac-row.is-sel .ac-badge { background: var(--surface); border-color: var(--border-strong); color: var(--fg); }
+.ac-badge-icon { width: 14px; height: 14px; flex-shrink: 0; }
 .ac-it { min-width: 0; }
 .ac-it-name { display: block; font-size: var(--fs-13, 13px); font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-it-sub { display: block; font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--muted); margin-top: 1px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -754,32 +952,81 @@ const probeHintText = computed(() => {
   color: var(--muted, #888);
   line-height: 1.5;
 }
+/* ── 统一资源清单：非生效引擎组整组置灰（点击 no-op，提示行说明原因）── */
+.ac-row.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.ac-row.is-disabled:hover { background: transparent; }
+.ac-row.is-disabled.is-sel { background: transparent; }
+.ac-hint {
+  padding: 2px 8px 4px;
+  font-size: var(--fs-11, 11px);
+  color: var(--muted, #888);
+  font-style: italic;
+}
+.ac-note {
+  padding: 4px 8px 2px;
+  font-size: var(--fs-11, 11px);
+  color: var(--subtle, #aaa);
+  line-height: 1.5;
+}
 
-.cb-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
-.cb-hint { font-family: var(--font-mono); font-size: var(--fs-11, 11px); color: var(--subtle); white-space: nowrap; }
+/* 发送/停止永远最后让位：不收缩、不换行、始终贴右 */
+.cb-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex: 0 0 auto; flex-wrap: nowrap; }
 
-/* ── Composer 输入区（无边框 textarea + 右对齐发送/停止）── */
+/* ── Composer 输入区（无边框 textarea + 右对齐发送/停止）──
+   高度 = 行数 × --composer-line，由 JS 写入；超过 --composer-max-lines 行由这里的
+   max-height 接管并转区内滚动，末行不再被切成半行，也不会顶到控制行上。
+   注意：不要再补 min-height —— 32px 不是行盒的整数倍，会让单行态又落回半行边界。 */
 .composer-input {
+  flex: 0 0 auto;
   width: 100%;
   border: 0;
   background: transparent;
   color: var(--fg);
   font: inherit;
   font-size: var(--fs-13, 13px);
-  line-height: 1.6;
+  line-height: var(--composer-line);
   resize: none;
   outline: none;
-  min-height: 32px;
-  max-height: 150px;
-  padding: 4px 0;
+  height: var(--composer-line);
+  max-height: calc(var(--composer-line) * var(--composer-max-lines));
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 .composer-input::placeholder { color: var(--subtle); }
+/* 滚动条沿用产品约定：默认隐藏，悬停才显形（base.css 的 hover 触发规则不含本元素，在此补齐） */
+.composer-input:hover { scrollbar-color: oklch(0% 0 0 / 0.18) transparent; }
+.composer-input:hover::-webkit-scrollbar-thumb { background: oklch(0% 0 0 / 0.18); }
+/* 溢出渐隐：遮罩只作用于输入框本身，边界严格止于文本区，不进入 --composer-gap 与控制行 */
+.composer-input.is-more-below {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--composer-fade)), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--composer-fade)), transparent);
+}
+.composer-input.is-more-above {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
+  mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade));
+}
+.composer-input.is-more-above.is-more-below {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade), black calc(100% - var(--composer-fade)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade), black calc(100% - var(--composer-fade)), transparent);
+}
+/* 窄档（控制行可用宽度 < --composer-compact-below）：模型触发器降级为纯图标，
+   发送键位置与尺寸不变；标题与副标题改由 aria-label / title 承载 */
+.composer-bar.is-compact .ai-model-select .ac-tr-txt,
+.composer-bar.is-compact .ai-model-select .ac-chev { display: none; }
+.composer-bar.is-compact .ai-model-select { flex: 0 0 auto; width: var(--composer-bar-h); max-width: var(--composer-bar-h); padding: 0; justify-content: center; }
+/* 图标态下外层也不再参与收缩，避免把 34px 的图标挤出栏外 */
+.composer-bar.is-compact .cb-trigger-wrap:has(.ai-model-select) { flex: 0 0 auto; }
 .composer-send-row { display: none; }
 .composer-send {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  /* 与控制行同轴：栏高 = 触发器高 = 发送键高，不再出现 34 / 32 两种高度并列 */
+  height: var(--composer-bar-h);
   padding: 0 12px;
   border-radius: var(--radius-sm, 6px);
   border: 1px solid transparent;
@@ -796,6 +1043,9 @@ const probeHintText = computed(() => {
 .composer-send.is-stop { background: var(--surface); color: var(--fg); border-color: var(--border-strong); }
 .composer-send.is-stop:hover { background: var(--surface-2); }
 .composer-send svg { width: 13px; height: 13px; flex: 0 0 auto; }
+/* 图标化发送/停止按钮：固定方形尺寸，文字文案由 title/aria-label 承载 */
+.composer-send.is-icon { flex: 0 0 auto; width: var(--composer-bar-h); padding: 0; justify-content: center; }
+.composer-send.is-icon svg { width: 15px; height: 15px; }
 
 /* ── 回复尾部消费方/计费回显（≥12px，裁决-5） ── */
 .ai-usage-echo {
@@ -828,4 +1078,59 @@ const probeHintText = computed(() => {
   white-space: nowrap;
   cursor: pointer;
 }
+/* ── 完成护栏横幅（模式即权限 §5.4）： amber 系，与探针警告同一视觉语言 ── */
+.guard-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn, #8a5800);
+  background: var(--warn-soft, #fdf3df);
+  border: 1px solid var(--warn-border, rgba(138,88,0,0.25));
+}
+.guard-notice .guard-text { flex: 1 1 auto; }
+.guard-notice .guard-retry {
+  border: 1px solid var(--warn-border, rgba(138,88,0,0.35));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.guard-notice .guard-retry:hover { background: var(--warn-border, rgba(138,88,0,0.12)); }
+.guard-notice .guard-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted, #888);
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+/* ── 纪要提案式 diff（sum-prop，复用 diff-header/diff-actions 全局类） ── */
+.sum-prop-view {
+  margin-top: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.sum-prop-body {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sum-prop-line { padding: 1px 4px; border-radius: 2px; }
+.sum-prop-line.is-add { background: var(--diff-add, oklch(92% 0.08 155)); color: var(--diff-add-fg, oklch(30% 0.1 155)); }
+.sum-prop-line.is-del { background: var(--diff-del, oklch(94% 0.06 25)); color: var(--diff-del-fg, oklch(40% 0.12 25)); text-decoration: line-through; }
+.sum-prop-hint { margin: 0; padding: 4px 10px 8px; font-size: 11px; color: var(--muted); font-style: italic; }
 </style>

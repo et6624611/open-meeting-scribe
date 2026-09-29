@@ -114,9 +114,6 @@ export function useAiContext() {
     { immediate: true },
   )
   const showAllMeetings = ref(false)
-  // 横幅折叠态：存在 localStorage，默认折叠为一行，用户手动展开后记住偏好
-  // Hero collapsed state: persisted in localStorage, collapsed to one line by default
-  const heroCollapsed = ref(localStorage.getItem('ctx_hero_collapsed') !== '0')
 
   const ctxSections = ref({
     meeting: true,
@@ -187,11 +184,6 @@ export function useAiContext() {
   )
 
   // ── 方法 / Methods ──
-  function toggleHero() {
-    heroCollapsed.value = !heroCollapsed.value
-    localStorage.setItem('ctx_hero_collapsed', heroCollapsed.value ? '1' : '0')
-  }
-
   function generateSummary(sendRaw: (text: string) => void, switchTab: (tab: string) => void) {
     sendRaw(t('ai-panel.context.action_generate_summary_text'))
     switchTab('chat')
@@ -244,7 +236,6 @@ export function useAiContext() {
     linkedProject,
     relatedMeetings,
     showAllMeetings,
-    heroCollapsed,
     ctxSections,
     MAX_VISIBLE_MEETINGS,
     // 计算 / Computed
@@ -263,7 +254,6 @@ export function useAiContext() {
     todoDone,
     isContextEmpty,
     // 方法 / Methods
-    toggleHero,
     generateSummary,
     linkRelatedMeeting,
     goToTranscript,

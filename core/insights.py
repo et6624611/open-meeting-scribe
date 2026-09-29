@@ -3,8 +3,8 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-更新 / Updated: 2026-09-23
-版本 / Version: 5.0.0
+更新 / Updated: 2026-09-28
+版本 / Version: 5.2.0
 
 洞察台定位为绘图面板：以受约束 Mermaid（workflow 阶段卡画布）为主要输出，
 文字分析降级为图注。图定位为「思考支架而非结论」，三个观察角度以
@@ -13,6 +13,10 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 
 设计理念 / Design philosophy：LLM 的核心优势在于对更大上下文的感知 / LLM's core advantage lies in perceiving larger context.
 会议中探讨的共识 / Consensus explored in meetings 应基于更大的上下文环境，而非局限于某人的局部认知 / Should be based on larger context, not limited to someone's local awareness.
+
+只读累进（Phase 1）：分析请求可携带当前洞察卡片集的 title/body 结构化摘要（已有洞察），
+使模型在局部窗口之外获得全局视角，并约束「同主题优先增量、避免重复创建」；
+仅影响提示词输入，不改动写入模型与持久化契约。
 """
 
 import json
@@ -107,9 +111,15 @@ flowchart LR
 采用画布格式时，另按「阶段名：一句话」逐段给出阶段描述（可与提问式图注合并）。
 避免替用户下结论；用"这里是否缺了……？""这条依赖由谁确认？"这样的追问，帮助用户自己发现问题。
 
+### 备查注释（note 字段）
+
+用≤60字承载备查明细，让读者「退可忽略、进可查看」。严格的内容资格：仅以下三类素材可入注——
+① 依据出处（谁在什么时间说的，如「说话人2 07:34」）；② 构成明细（数量、覆盖范围、清单）；③ 例外与存疑（`[待确认]` 异写变体、未敲定点、适用边界）。
+工程性元数据（置信度、内部字段名）与 body 重复的转述无资格入注；没有合格素材时 note 设为空字符串，不得为注而注。
+
 ## 返回 JSON
 
-{"title": "一句话概括", "body": "图注（1-3 句话，画布格式时附「阶段名：一句话」描述）", "solution": "行动建议（可选）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
+{"title": "一句话概括", "body": "图注（1-3 句话，画布格式时附「阶段名：一句话」描述）", "solution": "行动建议（可选）", "note": "备查明细（≤60字，可选）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
 
 仅返回 JSON。"""
 
@@ -125,22 +135,68 @@ def _fmt_ms(ms: int) -> str:
     return f"{total_sec // 60:02d}:{total_sec % 60:02d}"
 
 
+# 已有洞察摘要注入预算（字符）：防上下文膨胀挤占转写块
+# Character budget for the existing-insights block, to not crowd out the transcript
+EXISTING_INSIGHTS_MAX_ITEMS = 8
+EXISTING_INSIGHTS_BODY_CHARS = 120
+EXISTING_INSIGHTS_NOTE_CHARS = 40
+EXISTING_INSIGHTS_MAX_CHARS = 2000
+# 洞察卡备查注释层长度上限（与提示词契约一致） / Max length of the insight note layer
+INSIGHT_NOTE_MAX_CHARS = 60
+
+
+def _format_existing_insights(existing: list[dict] | None) -> str:
+    """将已有洞察卡片集渲染为「已产出的洞察卡片」上下文块；无有效内容返回空串。
+    Render existing insight cards as a context block; empty string when none."""
+    if not existing:
+        return ""
+    lines: list[str] = []
+    used = 0
+    for m in existing[-EXISTING_INSIGHTS_MAX_ITEMS:]:
+        title = str(m.get("title") or "").strip()
+        if not title:
+            continue
+        body = str(m.get("body") or "").strip()[:EXISTING_INSIGHTS_BODY_CHARS]
+        entry = f"- {title}" + (f"：{body}" if body else "")
+        # 备查注释随卡携带（计入总额，单独截 40） / carry the note layer under the global cap
+        note = str(m.get("note") or "").strip()[:EXISTING_INSIGHTS_NOTE_CHARS]
+        if note:
+            entry += f"（注：{note}）"
+        if used + len(entry) + 1 > EXISTING_INSIGHTS_MAX_CHARS:
+            break
+        lines.append(entry)
+        used += len(entry) + 1
+    if not lines:
+        return ""
+    return (
+        "## 已产出的洞察卡片（本轮分析的全局上下文，勿重复）\n"
+        + "\n".join(lines)
+        + "\n\n注意：若本轮讨论与上述卡片同主题，请勿再创建重复卡片（has_finding 设为 false），"
+        "除非能补充明确的增量新发现；若确属新主题，可在图注中点出与既有卡片的关联。"
+    )
+
+
 def _build_user_message(
     recent_lines: list[dict],
     chapter_titles: list[str],
+    existing_insights: list[dict] | None = None,
 ) -> str:
-    """构建用户消息"""
+    """构建用户消息（可选携带已有洞察摘要，实现只读累进视角）"""
     transcript_text = "\n".join(
         f"[说话人{line.get('speaker_id', 0) + 1}] ({_fmt_ms(line.get('begin_time', 0))}) {line.get('text', '')}"
         for line in recent_lines
     )
     titles_text = "\n".join(f"- {t}" for t in chapter_titles)
 
-    return (
-        f"## 会议章节主题\n{titles_text}\n\n"
-        f"## 最近讨论内容（{len(recent_lines)} 条）\n{transcript_text}\n\n"
-        "请基于以上讨论内容进行综合洞察分析。"
-    )
+    parts = [
+        f"## 会议章节主题\n{titles_text}",
+        f"## 最近讨论内容（{len(recent_lines)} 条）\n{transcript_text}",
+    ]
+    insights_block = _format_existing_insights(existing_insights)
+    if insights_block:
+        parts.insert(1, insights_block)
+    parts.append("请基于以上讨论内容进行综合洞察分析。")
+    return "\n\n".join(parts)
 
 
 def _parse_analysis_result(reply: str) -> dict:
@@ -183,6 +239,8 @@ def _parse_analysis_result(reply: str) -> dict:
         "title": str(result.get("title", "")),
         "body": str(result.get("body", "")),
         "solution": str(result.get("solution", "")),
+        # 备查注释层：旧契约无此字段，缺省降级空串 / note layer: absent in legacy contracts, defaults to ""
+        "note": str(result.get("note") or "").strip()[:INSIGHT_NOTE_MAX_CHARS],
         "has_finding": bool(result.get("has_finding", False)),
         "diagram": str(result.get("diagram", "")),
         "graph": graph,
@@ -198,6 +256,8 @@ async def run_analysis(
     recent_lines: list[dict],
     chapter_titles: list[str],
     role_name: str | None = None,
+    existing_insights: list[dict] | None = None,
+    card_budget: dict | None = None,
 ) -> dict:
     """
     执行综合洞察分析。
@@ -207,13 +267,17 @@ async def run_analysis(
       chapter_titles: 章节标题列表
       role_name: 当前角色名（可选），优先使用角色专属 prompt；
                  无角色或角色未定义 insight prompt 时回退到内置默认。
+      existing_insights: 已有洞察卡片 [{title, body}]（可选），只读累进上下文；
+                 注入 user message，不受角色 system prompt 覆盖影响。
+      card_budget: 一页纸卡位预算 {"slots": int, "active": int}（可选）；
+                 非空时在 system prompt 追加卡位约束块（含角色覆盖路径）。
 
     返回：
-      {"title": str, "body": str, "solution": str, "has_finding": bool, "diagram": str, "graph": dict|None}
+      {"title": str, "body": str, "solution": str, "note": str, "has_finding": bool, "diagram": str, "graph": dict|None}
       失败时返回 has_finding=False
     """
     if not recent_lines or not chapter_titles:
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}
 
     # 角色感知：优先使用角色专属 prompt，回退到内置默认 / Role-aware: prefer role-specific prompt, fallback to built-in default
     system_prompt = None
@@ -229,7 +293,13 @@ async def run_analysis(
     from core.model_tier import get_tier_prompt_guard
     system_prompt += get_tier_prompt_guard()
 
-    user_message = _build_user_message(recent_lines, chapter_titles)
+    # 一页纸系数卡位预算：与存储侧 apply_budget 同口径，角色覆盖路径同点位生效
+    if card_budget:
+        from core.insight_budget import budget_block
+        system_prompt += budget_block(
+            int(card_budget.get("slots", 0)), int(card_budget.get("active", 0)))
+
+    user_message = _build_user_message(recent_lines, chapter_titles, existing_insights)
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -253,7 +323,7 @@ async def run_analysis(
 
     except json.JSONDecodeError:
         logger.warning("[洞察台] 分析返回非 JSON: %s", reply[:200])
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}
     except Exception as e:
         logger.warning("[洞察台] 分析失败: %s", e)
-        return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}

@@ -29,7 +29,6 @@ from app.store import (  # noqa: F401
     tasks,
 )
 from core import joblog
-from core.agent_loop import run_agent_loop
 from core.agent_workspace import resolve_agent_role
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import (
@@ -47,7 +46,11 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.llm import async_chat_completion, async_chat_completion_full
+from core.llm import (
+    async_chat_completion,
+    async_chat_completion_full,
+    async_chat_completion_stream,
+)
 from core.speakers import normalize_speaker_name
 
 # 向后兼容别名（测试与外部引用） / Backward-compatible aliases (for tests and external references)
@@ -66,7 +69,6 @@ from core.cli_engine import (  # noqa: E402
     probe_engine,
     run_cli_agent,
 )
-from core.cli_engine.intent import classify_engine_intent  # noqa: E402
 from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge  # noqa: E402
 from core.i18n import _
 
@@ -221,7 +223,7 @@ class ChatRequest(BaseModel):
     role: Optional[str] = None  # Agent 角色标识 / Agent role identifier
     current_diagram: Optional[str] = None  # 当前可见的 Mermaid 图源码（用于图修改） / Current visible Mermaid diagram source (for diagram modification)
     # ── 智能体模式（本地 CLI 引擎，方案 §3.5/§3.9-1）/ Agent mode via local CLI engine ──
-    engine: Optional[str] = None            # None/qa=内置链路；"agent"=本地 CLI 工程化引擎；"auto"=规则分流
+    engine: Optional[str] = None            # None/qa=内置链路；"agent"=本地 CLI 工程化引擎（auto 规则分流已退役：AI 算力入口治理 §1）
     stream_id: Optional[str] = None         # 本轮流标识，供 /api/chat/cancel 真取消
     auth_tier: Optional[str] = None         # 本轮授权档覆盖（可选，缺省取设置）
     resume_session: Optional[bool] = None   # 是否恢复上一 CLI 会话（多轮深度对话）
@@ -404,11 +406,12 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
     source_files: list[dict] = []
 
     # ── 维度 1: 实时转写流 / Realtime transcript stream ──
+    # 后端内存缓冲优先（SDK 回调线程持续写入，不受前端上报滞后/缺漏影响），前端快照兜底
     realtime_entries = []
-    if data.realtime_transcripts:
-        realtime_entries = data.realtime_transcripts[-REALTIME_BUFFER_MAX:]
-    elif data.task_id and data.task_id in realtime_transcript_buffers:
+    if data.task_id and data.task_id in realtime_transcript_buffers:
         realtime_entries = realtime_transcript_buffers[data.task_id]
+    elif data.realtime_transcripts:
+        realtime_entries = data.realtime_transcripts[-REALTIME_BUFFER_MAX:]
 
     if realtime_entries:
         speaker_name_map = build_speaker_name_map(data.task_id) if data.task_id else {}
@@ -576,9 +579,20 @@ def _model_usage_meta(model: str) -> dict:
         meta["auto_switched"] = bool(d.get("auto_switched"))
         meta["billing"] = {"trial": "platform_quota", "byok": "own_key",
                            "local_endpoint": "none", "local": "none"}.get(meta["source"], "")
+        # 回显与实际执行对齐：云端链路会守护性替换本地 tag 模型名（_cloud_safe_model）
+        if meta["route"] == "cloud" and ":" in (model or ""):
+            from core.llm import CLOUD_FALLBACK_MODEL
+            meta["model"] = CLOUD_FALLBACK_MODEL
     except Exception:
         pass
     return meta
+
+
+def _executor_tag(model: str) -> str:
+    """执行方标识尾巴（AI 算力入口治理 §3）：面板外函数类端点失败提示附
+    「谁跑的」，与 model_usage 同源但用语言中立的括号标签，免新增译文词条。"""
+    src = _model_usage_meta(model).get("source") or ""
+    return f"[{model} · {src}]" if src else f"[{model}]"
 
 @router.post("/api/chat")
 async def chat(data: ChatRequest):
@@ -927,6 +941,24 @@ def _resolve_project_path(project_id: str | None) -> str | None:
     return None
 
 
+# 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档合法值集
+_VALID_TIERS = ("readonly", "workspace_write", "full_task")
+
+
+def _resolve_agent_auth_tier(request_tier: str | None, cfg: dict) -> str:
+    """
+    智能体轮授权档优先级链（纯函数，单测覆盖）：
+      请求级显式 auth_tier > 用户在设置页显式降级（auth_tier_explicit=true 的存量档位）
+      > 模式派生默认（agent → workspace_write）。
+    旧默认 readonly 不再截胡：未显式声明过的 cfg 档位视为存量默认，不参与落档。
+    """
+    if request_tier in _VALID_TIERS:
+        return request_tier
+    if cfg.get("auth_tier_explicit") and cfg.get("auth_tier") in _VALID_TIERS:
+        return str(cfg["auth_tier"])
+    return "workspace_write"
+
+
 async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_project_id: str | None,
                                base_url: str = "http://127.0.0.1:8000", auto_selected: bool = False):
     """
@@ -966,19 +998,25 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     role_prompt = role["agent_md"] if role else ""
     page_ctx = build_page_context(data.current_page) if data.current_page else ""
 
+    # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档优先级链落档
+    resolved_tier = _resolve_agent_auth_tier(data.auth_tier, cfg)
+
     export = await loop.run_in_executor(None, lambda: export_context(
         engine_id=cfg["engine_id"], task=task, task_id=data.task_id, user_message=user_message,
         page_context=page_ctx, role_prompt=role_prompt, speaker_map=speaker_map,
         workspace_key=data.chat_session_id or data.task_id,
-        history=data.history))
+        history=data.history,
+        # 会中透传实时句（前端快照）：dialogue 落盘前由 export_context 用它渲染 transcript.md
+        realtime_entries=data.realtime_transcripts,
+        # 模式即权限（§5.2）：按本轮实际落档在 AGENTS.md 注入权限段（置于角色段之后，覆写旧禁令）
+        auth_tier=resolved_tier))
 
     session_id = _deterministic_session_id(data.task_id, resolved_project_id, data.chat_session_id) if cfg["session_persistence"] else None
-    auth_tier = data.auth_tier if data.auth_tier in ("readonly", "workspace_write", "full_task") else cfg["auth_tier"]
 
     # ③ 路由回显（§3.9-1）：明示本次由智能体执行 + 授权档，静默分流摧毁信任
     yield {"type": "engine_route", "engine": cfg["engine_id"], "display_name": probe_result.get("display_name"),
            "name_key": probe_result.get("name_key", ""),
-           "auth_tier": auth_tier, "session_id": session_id, "auto_selected": auto_selected}
+           "auth_tier": resolved_tier, "session_id": session_id, "auto_selected": auto_selected}
 
     # ④ MCP 桥：签发单轮短时令牌 + 写临时 mcp-config（回连 base_url），轮次结束回收
     mcp_config_path: str | None = None
@@ -988,23 +1026,29 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         try:
             mcp_config_path, tok_ctx, allowed_tools = build_bridge_config(
                 task_id=data.task_id, project_id=resolved_project_id,
-                auth_tier=auth_tier, base_url=base_url)
+                auth_tier=resolved_tier, base_url=base_url)
             bridge_token = tok_ctx.token
         except Exception as e:  # noqa: BLE001 - 桥不可用不阻断只读深度问答
             logger.warning("[智能体模式] MCP 桥初始化失败（降级为无工具）：%s", e)
 
     stream_id = data.stream_id or session_id or f"adhoc-{id(data)}"
+    # 完成护栏（§5.4）：本轮写工具是否成功落过盘 → done.metadata.rewritten，前端据此判"只说不做"
+    write_ok = {"rewritten": False}
     try:
         async for evt in run_cli_agent(
             stream_id=stream_id, engine_id=cfg["engine_id"], cli_path=probe_result["path"],
             workspace=export["workspace"], add_dirs=export["add_dirs"], brief=export["brief"],
-            auth_tier=auth_tier, model=cfg.get("model"), session_id=session_id,
+            auth_tier=resolved_tier, model=cfg.get("model"), session_id=session_id,
             resume=bool(data.resume_session and session_id),
             mcp_config=mcp_config_path, allowed_tools=allowed_tools,
+            on_write_success=lambda _tool_name: write_ok.__setitem__("rewritten", True),
         ):
             if evt.get("type") == "done":
                 evt.setdefault("metadata", {})
                 evt["metadata"]["engine"] = cfg["engine_id"]
+                # 写回事实随 done 下发：呈现与审计同一数据源，不把"看见改了什么"和"回退"割裂
+                evt["metadata"]["rewritten"] = write_ok["rewritten"]
+                evt["metadata"]["auth_tier"] = resolved_tier
             yield evt
     except CliAgentError as e:
         logger.warning("[智能体模式] CLI 启动失败：%s，回退内置", e)
@@ -1026,10 +1070,12 @@ async def chat_cancel(data: dict):
 
 @router.post("/api/chat/stream")
 async def chat_stream(data: ChatRequest, request: Request):
-    """AI 对话流式端点（SSE + Agent 循环）。 / AI chat streaming endpoint (SSE + Agent loop).
+    """AI 对话流式端点（SSE）。 / AI chat streaming endpoint (SSE).
 
-    使用 ReAct Agent 循环：LLM 自主决策调用工具 → 执行 → 结果回传 → 最终流式回复。
-    Uses ReAct agent loop: LLM decides tool calls → execute → feed back → final streaming answer.
+    内置路径：上下文注入 + 单轮流式补全（自建 ReAct 循环已退役，
+    工程化能力收敛至 CLI 智能体引擎）；engine=agent 走 CLI，失败回退内置。
+    Built-in path: context injection + single-turn streaming completion; the
+    engine="agent" route runs the local CLI agent and falls back on failure.
     """
     user_message = data.message.strip()
     if not user_message:
@@ -1064,65 +1110,68 @@ async def chat_stream(data: ChatRequest, request: Request):
         resolved_project_id = tasks[data.task_id].get("project_id")
 
     async def event_generator():
-        # ── 引擎选择：agent=强制、auto=规则分流（§3.5/D4）；不可用时自动回退内置 ──
-        if get_chat_engine_config()["enabled"] and (
-                data.engine == "agent" or (data.engine == "auto" and classify_engine_intent(user_message) == "agent")):
+        # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
+        if get_chat_engine_config()["enabled"] and data.engine == "agent":
             need_fallback = False
             async for evt in _agent_engine_events(data, user_message, resolved_project_id,
-                                                   base_url=str(request.base_url).rstrip("/"),
-                                                   auto_selected=(data.engine == "auto")):
+                                                   base_url=str(request.base_url).rstrip("/")):
                 if evt.get("type") == "__fallback__":
                     need_fallback = True
                     break
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
             if not need_fallback:
                 return
-            # 需要回退：继续下方内置 agent_loop（已构建的 system_prompt/context 复用）
+            # 需要回退：继续下方内置单轮流式问答（已构建的 system_prompt/context 复用）
 
+        # ── 内置问答：上下文注入 + 单轮流式补全（原 run_agent_loop 多轮工具循环已退役） ──
         full_content = ""
+        start_time = time.perf_counter()
         try:
-            async for event in run_agent_loop(
-                user_message=user_message,
-                system_prompt=system_prompt,
-                history=data.history or [],
-                task_id=data.task_id,
-                project_id=resolved_project_id,
-                model=chat_model,
+            messages = [{"role": "system", "content": system_prompt}]
+            for msg in (data.history or [])[-10:]:
+                role = "user" if msg.get("role") == "user" else "assistant"
+                content = msg.get("content", "")
+                if content:
+                    messages.append({"role": role, "content": content})
+            messages.append({"role": "user", "content": user_message})
+
+            stage_evt = {"type": "stage", "stage": "generating", "label": "生成回复..."}
+            yield f"data: {json.dumps(stage_evt, ensure_ascii=False)}\n\n"
+
+            async for token in async_chat_completion_stream(
+                messages, model=chat_model, max_tokens=4096,
             ):
-                evt_type = event.get("type")
+                full_content += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
 
-                if evt_type == "token":
-                    full_content += event.get("content", "")
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            event: dict = {
+                "type": "done",
+                "metadata": {"model": chat_model},
+                "latency_ms": round((time.perf_counter() - start_time) * 1000),
+            }
+            # 后处理：提取可注入项 / Post-processing: extract injectable items
+            existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
+            extracted_items = extract_injectable_items(full_content, existing_todos)
+            event["extracted_items"] = extracted_items
+            # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）
+            event["model_usage"] = _model_usage_meta(chat_model)
 
-                elif evt_type == "done":
-                    # 后处理：提取可注入项 / Post-processing: extract injectable items
-                    existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
-                    extracted_items = extract_injectable_items(full_content, existing_todos)
-                    event["extracted_items"] = extracted_items
-                    # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）
-                    event["model_usage"] = _model_usage_meta(chat_model)
+            # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
+            diagram = ""
+            if data.current_diagram and _detect_diagram_modify_intent(user_message):
+                logger.info("[AI对话] 检测到图修改意图，基于当前图生成修改")
+                diagram = await _modify_mermaid_diagram(user_message, data.current_diagram, chat_model)
+            elif _detect_diagram_intent(user_message):
+                logger.info("[AI对话] 检测到画图意图，生成 Mermaid 图")
+                diagram = await _generate_mermaid_diagram(user_message, chat_model)
+            if diagram:
+                event["diagram"] = diagram
+                logger.info("[AI对话] diagram 长度=%d, 随 done 事件发送", len(diagram))
 
-                    # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
-                    diagram = ""
-                    if data.current_diagram and _detect_diagram_modify_intent(user_message):
-                        logger.info("[AI对话] 检测到图修改意图，基于当前图生成修改")
-                        diagram = await _modify_mermaid_diagram(user_message, data.current_diagram, chat_model)
-                    elif _detect_diagram_intent(user_message):
-                        logger.info("[AI对话] 检测到画图意图，生成 Mermaid 图")
-                        diagram = await _generate_mermaid_diagram(user_message, chat_model)
-                    if diagram:
-                        event["diagram"] = diagram
-                        logger.info("[AI对话] diagram 长度=%d, 随 done 事件发送", len(diagram))
-
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-                else:
-                    # stage / tool_call / tool_result / error — 直接转发
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
         except Exception as e:
-            logger.error("AI Agent 对话流式失败: %s", e)
+            logger.error("内置问答流式失败: %s", e)
             err_msg = str(e)
             if not full_content:
                 yield f"data: {json.dumps({'type': 'error', 'content': err_msg}, ensure_ascii=False)}\n\n"
@@ -1146,17 +1195,27 @@ async def optimize_text(data: OptimizeRequest):
     text = data.text.strip()
     if not text:
         raise HTTPException(400, _("Text cannot be empty"))
-    model = data.model or "qwen-plus"
+    model = data.model or _chat_model_default()  # 使用配置默认模型（与 /api/chat 对齐）
     messages = [
         {"role": "system", "content": OPTIMIZE_SYSTEM_PROMPT},
         {"role": "user", "content": f"请优化以下文本：\n\n{text}"},
     ]
     try:
         optimized = await async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
-        return {"ok": True, "original": text, "optimized": optimized.strip()}
+        # 执行回显（AI 算力入口治理 §3）：成功响应携带实际消费方/计费口径
+        return {"ok": True, "original": text, "optimized": optimized.strip(),
+                "model_usage": _model_usage_meta(model)}
+    except RuntimeError as e:
+        # LLM 配置/服务错误 — 提示用户检查设置 + 执行方标识 / LLM config/service error → actionable hint + executor
+        logger.error("文稿优化失败（LLM 配置/服务）: %s", e)
+        raise HTTPException(
+            503,
+            _("AI service unavailable. Please check LLM configuration in Settings. ({err})").format(err=e)
+            + " " + _executor_tag(model),
+        )
     except Exception as e:
         logger.error("文稿优化失败: %s", e)
-        raise HTTPException(500, _("Text refinement failed: {err}").format(err=e))
+        raise HTTPException(500, _("Text refinement failed: {err}").format(err=e) + " " + _executor_tag(model))
 
 
 # ============================================================
@@ -1172,17 +1231,27 @@ async def inline_edit(data: InlineEditRequest):
         raise HTTPException(400, _("Text cannot be empty"))
     if not instruction:
         raise HTTPException(400, _("Instruction cannot be empty"))
-    model = data.model or "qwen-plus"
+    model = data.model or _chat_model_default()  # 使用配置默认模型（与 /api/chat 对齐）
     messages = [
         {"role": "system", "content": INLINE_EDIT_SYSTEM_PROMPT},
         {"role": "user", "content": f"改写指令：{instruction}\n\n原文：\n{text}"},
     ]
     try:
         edited = await async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
-        return {"ok": True, "original": text, "edited": edited.strip()}
+        # 执行回显（AI 算力入口治理 §3）：成功响应携带实际消费方/计费口径
+        return {"ok": True, "original": text, "edited": edited.strip(),
+                "model_usage": _model_usage_meta(model)}
+    except RuntimeError as e:
+        # LLM 配置/服务错误 — 提示用户检查设置 + 执行方标识 / LLM config/service error → actionable hint + executor
+        logger.error("行间编辑失败（LLM 配置/服务）: %s", e)
+        raise HTTPException(
+            503,
+            _("AI service unavailable. Please check LLM configuration in Settings. ({err})").format(err=e)
+            + " " + _executor_tag(model),
+        )
     except Exception as e:
         logger.error("行间编辑失败: %s", e)
-        raise HTTPException(500, _("Inline edit failed: {err}").format(err=e))
+        raise HTTPException(500, _("Inline edit failed: {err}").format(err=e) + " " + _executor_tag(model))
 
 
 # ============================================================

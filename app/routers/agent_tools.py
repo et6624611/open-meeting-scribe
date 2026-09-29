@@ -7,7 +7,7 @@ app/routers/agent_tools.py — 智能体反向工具调用端点 / Agent reverse
 
 POST /api/agent-tools/invoke  {name, arguments}
   - 鉴权：Authorization: Bearer <短时令牌>（core.agent_tools.tokens 进程内注册表）
-  - 读工具 → core.agent_loop.execute_tool（与内置 Agent 循环同一实现）
+  - 读工具 → core.agent_tools.impl.execute_tool（会议域工具唯一实现）
   - 写工具 → app.routers.notes 既有函数（同一 tasks 内存 + save_task_to_disk + 脏标记）
   - 授权档位决定可调用集合：readonly 仅读；workspace_write/full_task 才可写
 
@@ -58,16 +58,17 @@ def invoke_tool(payload: ToolInvoke, request: Request,
     if not tool:
         raise HTTPException(404, {"error": "unknown_tool", "message": f"未知工具: {payload.name}"})
 
-    # 授权档位：写工具要求可写档
+    # 授权档位：写工具要求可写档；例外：revise_insight_board 不带 html 时为读语义（取基线），只读档放行
     if tool["kind"] == "write" and not ctx.writable:
-        raise HTTPException(403, {"error": "read_only",
-                                  "message": f"当前授权档（{ctx.auth_tier}）为只读，禁止写操作 {payload.name}"})
+        if not (payload.name == "revise_insight_board" and "html" not in (payload.arguments or {})):
+            raise HTTPException(403, {"error": "read_only",
+                                      "message": f"当前授权档（{ctx.auth_tier}）为只读，禁止写操作 {payload.name}"})
 
     args = payload.arguments or {}
 
-    # ── 读工具：复用内置 agent 循环的 execute_tool ──
+    # ── 读工具：会议域工具唯一实现（core/agent_tools/impl.py） ──
     if tool["kind"] == "read":
-        from core.agent_loop import execute_tool
+        from core.agent_tools.impl import execute_tool
         result = execute_tool(payload.name, args, task_id=ctx.task_id, project_id=ctx.project_id)
         return {"ok": True, "tool": payload.name, "result": result}
 
@@ -85,6 +86,15 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
 
     if not ctx.task_id:
         raise HTTPException(400, {"error": "no_task", "message": "写操作需要关联具体会议任务"})
+
+    if name == "propose_summary":
+        # 提案式纪要改写：后端不写 task、不落盘（区别于 update_summary）。
+        # proposed 全文经 tool_call 事件的 args 回前端 diff 卡，用户接受后才走 PUT /summary 落盘。
+        summary = str(args.get("summary", ""))[:20000]
+        logger.info("[agent-tools] propose_summary task=%s len=%d", ctx.task_id, len(summary))
+        audit_logger.info("[agent-engine] propose_summary task=%s tier=%s chars=%d (未落盘,待用户确认)",
+                          ctx.task_id, ctx.auth_tier, len(summary))
+        return {"ok": True, "tool": name, "result": {"proposed": True, "chars": len(summary)}}
 
     if name == "update_summary":
         summary = str(args.get("summary", ""))[:20000]
@@ -111,6 +121,26 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
         audit_logger.info("[agent-engine] inject_items task=%s tier=%s count=%d",
                           ctx.task_id, ctx.auth_tier, len(injected))
         return {"ok": True, "tool": name, "result": {"injected": len(injected), "ids": injected}}
+
+    if name == "revise_insight_board":
+        # 洞察共创 HTML 产物：唯一实现与内置引擎共享（core.insight_board.invoke_revise_board）
+        from core.insight_board import invoke_revise_board
+        result = invoke_revise_board(ctx.task_id, args)
+        if args.get("html") and result.get("ok"):
+            audit_logger.info("[agent-engine] revise_insight_board task=%s tier=%s chars=%d rev=%s",
+                              ctx.task_id, ctx.auth_tier, len(str(args.get("html"))), result.get("revision"))
+        return {"ok": bool(result.get("ok")), "tool": name, "result": result}
+
+    if name == "revise_insight_board_section":
+        # 单节共创：按 data-ib-id 只替那一节，其余节硬隔离
+        from core.insight_board import board_html_save_section
+        section_id = str(args.get("section_id", "")).strip()
+        html_arg = str(args.get("html", ""))
+        result = board_html_save_section(ctx.task_id, section_id, html_arg)
+        if result.get("ok"):
+            audit_logger.info("[agent-engine] revise_insight_board_section task=%s tier=%s sec=%s rev=%s",
+                              ctx.task_id, ctx.auth_tier, section_id, result.get("revision"))
+        return {"ok": bool(result.get("ok")), "tool": name, "result": result}
 
     raise HTTPException(404, {"error": "unhandled_write", "message": f"未实现的写工具: {name}"})
 

@@ -114,7 +114,7 @@ async def parse_edit_intent(message: str, task: dict) -> list[dict]:
         {"role": "user", "content": f"用户消息：{message}\n\n当前待办清单（JSON）：\n{json.dumps(brief, ensure_ascii=False)}"},
     ]
     try:
-        raw = await async_chat_completion(messages, model="qwen-plus", temperature=0.1, max_tokens=512)
+        raw = await async_chat_completion(messages, model=None, temperature=0.1, max_tokens=512)
     except Exception as e:
         logger.warning(f"编辑意图解析失败（降级为普通对话）: {e}")
         return []

@@ -30,27 +30,6 @@
     </div>
 
     <template v-else>
-      <!-- 引导横幅（可折叠） / Guide banner (collapsible) -->
-      <div v-if="heroCollapsed" class="ctx-hero-bar" @click="$emit('toggleHero')" :title="t('ai-panel.context.hero_expand')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        <span class="ctx-hero-bar-title">{{ t('ai-panel.context.hero_title') }}</span>
-        <svg class="ctx-hero-bar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div v-else class="ctx-hero">
-        <div class="ctx-hero-inner">
-          <div class="ctx-hero-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          </div>
-          <div class="ctx-hero-text">
-            <h3>{{ t('ai-panel.context.hero_title') }}</h3>
-            <p>{{ t('ai-panel.context.hero_desc') }}</p>
-          </div>
-        </div>
-        <button class="ctx-hero-dismiss" @click.stop="$emit('toggleHero')" :title="t('ai-panel.context.hero_collapse')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-        </button>
-      </div>
-
       <!-- 上下文来源归属（仅非该会议页面显示） / Context source attribution (shown only away from the source meeting) -->
       <div v-if="contextSource && !isOnSourceMeeting" class="ctx-source" :title="t('ai-panel.context.source_hint')" @click="$emit('goMeeting', contextSource.taskId)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -180,7 +159,6 @@ const props = defineProps<{
   visibleRelatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   relatedMeetingCount: number
   contextSource: { taskId: string; title: string } | null
-  heroCollapsed: boolean
 }>()
 
 // 当前正停留在来源会议页时，归属一目了然，无需重复提示 / Hide the source row when already on the source meeting
@@ -191,7 +169,6 @@ const isOnSourceMeeting = computed(() =>
 defineEmits<{
   (e: 'generateSummary'): void
   (e: 'linkMeeting'): void
-  (e: 'toggleHero'): void
   (e: 'goTranscript'): void
   (e: 'goSummary'): void
   (e: 'goTodos'): void

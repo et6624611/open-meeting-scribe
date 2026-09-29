@@ -87,7 +87,7 @@ class TestInvokeEndpoint:
         assert r.status_code == 401
 
     def test_read_tool_dispatch(self, client, monkeypatch):
-        import core.agent_loop as al
+        import core.agent_tools.impl as al
         monkeypatch.setattr(al, "execute_tool",
                             lambda name, args, task_id=None, project_id=None: json.dumps({"ok": name}))
         ctx = self._issue("readonly", task_id="t1")
@@ -131,6 +131,76 @@ class TestInvokeEndpoint:
             assert any(t["text"] == "出方案" for t in tasks[tid]["todos"])
         finally:
             tasks.pop(tid, None)
+
+    # ── 纪要提案式改写（propose_summary）：名义 write、实际不落盘 ──
+    def test_propose_summary_is_registered_write_tool(self):
+        t = TOOLS_BY_NAME.get("propose_summary")
+        assert t and t["kind"] == "write" and t["needs_task"] is True
+        assert any(s["name"] == "propose_summary" for s in mcp_tool_specs())
+
+    def test_propose_summary_does_not_persist(self, client):
+        # 注入一个带 user_summary 的任务，invoke propose_summary 后应返回 ok/proposed，但 user_summary 不变
+        from app.store import tasks
+        tid = "propstest-0001"
+        tasks[tid] = {"task_id": tid, "status": "completed", "summary": "旧纪要", "user_summary": "旧纪要", "todos": []}
+        try:
+            ctx = self._issue("workspace_write", task_id=tid)
+            r = client.post("/api/agent-tools/invoke",
+                            json={"name": "propose_summary", "arguments": {"summary": "新纪要提案"}},
+                            headers={"Authorization": f"Bearer {ctx.token}"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["ok"] is True and body["result"]["proposed"] is True
+            # 关键：后端不写 task，user_summary 仍为旧值（落盘由前端接受时的 PUT /summary 完成）
+            assert tasks[tid]["user_summary"] == "旧纪要"
+        finally:
+            tasks.pop(tid, None)
+
+    def test_propose_summary_denied_in_readonly(self, client):
+        ctx = self._issue("readonly", task_id="t1")
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": "propose_summary", "arguments": {"summary": "x"}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert r.status_code == 403
+
+    def test_allowlist_includes_propose_summary_when_writable(self):
+        # _tool_allowlist 返回 mcp 全名（mcp__oms-tools__<tool>），故按拼接子串判定
+        assert "propose_summary" in " ".join(mb._tool_allowlist("workspace_write"))
+        assert "propose_summary" not in " ".join(mb._tool_allowlist("readonly"))
+
+    # ── 洞察共创板工具（读写双语义） / Insight board co-create tool ──
+    def test_board_read_allowed_in_readonly(self, client, monkeypatch, tmp_path):
+        # 不带 html = 读基线，只读档放行（写档门控的例外）
+        import core.insight_board as ib
+        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
+        ctx = self._issue("readonly", task_id="t1")
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": "revise_insight_board", "arguments": {}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert r.status_code == 200
+        assert r.json()["result"]["html"] is None and r.json()["result"]["revision"] == 0
+
+    def test_board_write_denied_in_readonly(self, client, monkeypatch, tmp_path):
+        import core.insight_board as ib
+        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
+        ctx = self._issue("readonly", task_id="t1")
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": "revise_insight_board", "arguments": {"html": "<p>x</p>"}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert r.status_code == 403
+
+    def test_board_write_then_read_consistent(self, client, monkeypatch, tmp_path):
+        import core.insight_board as ib
+        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
+        ctx = self._issue("full_task", task_id="t1")
+        w = client.post("/api/agent-tools/invoke",
+                        json={"name": "revise_insight_board", "arguments": {"html": "<h1>板</h1>"}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert w.status_code == 200 and w.json()["result"]["revision"] == 1
+        rd = client.post("/api/agent-tools/invoke",
+                         json={"name": "revise_insight_board", "arguments": {}},
+                         headers={"Authorization": f"Bearer {ctx.token}"})
+        assert rd.json()["result"]["html"] == "<h1>板</h1>"
 
 
 # ============================================================
@@ -221,6 +291,64 @@ class TestBridgeConfig:
     def test_mcp_tool_specs_shape(self):
         specs = mcp_tool_specs()
         assert all({"name", "description", "inputSchema"} <= set(s) for s in specs)
+
+
+# ============================================================
+# 会中实时转写回退（2026-09-29 会中问答复盘：dialogue 落盘前工具面/工作区不得谎报"无转写"）
+# ============================================================
+
+class TestInProgressRealtimeFallback:
+    _SENTENCES = [
+        {"text": "我们讨论一下标准方案的选型", "speaker_id": 0, "speaker_name": "", "begin_time": 5000, "end_time": 8000},
+        {"text": "标准方案采用星三架构", "speaker_id": 1, "speaker_name": "王工", "begin_time": 65000, "end_time": 69000},
+    ]
+
+    def test_transcript_tool_falls_back_to_realtime_buffer(self, monkeypatch):
+        import app.realtime_store as rs
+        from app.store import tasks
+        from core.agent_tools import impl
+        task_id = "rt-fallback-1"
+        tasks[task_id] = {"task_id": task_id, "status": "recording", "dialogue": None}
+        monkeypatch.setitem(rs.realtime_full_transcripts, task_id, list(self._SENTENCES))
+        try:
+            out = json.loads(impl._tool_get_meeting_transcript(task_id, 20))
+            assert out.get("in_progress") is True
+            assert len(out["transcript_lines"]) == 2
+            assert "[01:05] 王工" in out["transcript_lines"][1]
+            # 会中 get_meeting_info 也应提示实时句数而非沉默
+            info = json.loads(impl._tool_get_meeting_info(task_id))
+            assert info.get("realtime_sentence_count") == 2
+        finally:
+            tasks.pop(task_id, None)
+            rs.realtime_full_transcripts.pop(task_id, None)
+
+    def test_transcript_tool_no_data_still_reports_empty(self, monkeypatch):
+        import app.realtime_store as rs
+        from app.store import tasks
+        from core.agent_tools import impl
+        task_id = "rt-fallback-empty"
+        tasks[task_id] = {"task_id": task_id, "status": "recording", "dialogue": None}
+        monkeypatch.setattr(rs, "realtime_full_transcripts", {})
+        monkeypatch.setattr(rs, "realtime_transcript_buffers", {})
+        try:
+            out = json.loads(impl._tool_get_meeting_transcript(task_id, 20))
+            assert "暂无转写记录" in out.get("info", "")
+        finally:
+            tasks.pop(task_id, None)
+
+    def test_export_context_writes_transcript_from_realtime(self, monkeypatch, tmp_path):
+        from core.cli_engine import context_export as ce
+        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        task = {"task_id": "rt-2", "status": "recording", "dialogue": None,
+                "speaker_mapping": {"0": "李工"}}
+        meta = ce.export_context(engine_id="qoder-cli", task=task, task_id="rt-2",
+                                 user_message="标准方案是什么",
+                                 realtime_entries=list(self._SENTENCES))
+        assert "context/transcript.md" in meta["brief"]
+        text = (Path(meta["workspace"]) / "context" / "transcript.md").read_text(encoding="utf-8")
+        assert "录音进行中" in text
+        assert "李工：我们讨论一下标准方案的选型" in text  # speaker_mapping 解析 id→名
+        assert "王工：标准方案采用星三架构" in text  # 条目自带实名优先
 
 
 # ============================================================

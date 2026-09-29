@@ -194,12 +194,12 @@ def load_hotword_mappings(
     mappings.sort(key=lambda x: len(x[0]), reverse=True)
     logger.info(f"加载热词映射: {len(mappings)} 条")
 
-    # 预编译正则（英文词用 \b 词边界，中文用直接替换） / Pre-compile regex (English words use \b word boundary, Chinese uses direct replacement)
+    # 预编译正则（英文词用 ASCII 邻接边界，中文用直接替换） / Pre-compile regex (ASCII terms use the ASCII-adjacency boundary, CJK uses direct replacement)
     compiled = []
     for asr_text, correct_text in mappings:
         if _is_ascii_word(asr_text):
             compiled.append((
-                re.compile(r"\b" + re.escape(asr_text) + r"\b", re.IGNORECASE),
+                ascii_term_pattern(asr_text),
                 correct_text,
             ))
 
@@ -222,6 +222,51 @@ def _is_ascii_word(pattern: str) -> bool:
     return bool(re.match(r"^[A-Za-z0-9]+$", pattern))
 
 
+def ascii_term_pattern(term: str) -> re.Pattern:
+    """ASCII 词条「独立成词」的判定正则 / Word-boundary pattern for an ASCII term.
+
+    为何不用 `\\b`：Python 的 Unicode 语义下，中日韩假名/汉字也算 `\\w`，
+    所以「与ES（」里 与 与 E 之间根本不存在 `\\b`，导致紧贴中文的英文编码（中文会议里
+    最常见的形态）永远匹配不上：ES→EAS 写了却不生效，而用同一规则做的残留扫描也报 0，
+    连「漏改告警」都是盲的。
+    真正的边界语义应是「左右不挨其他 ASCII 字母/数字」：既能命中「与ES（」，
+    又不会咬穿 FILES / ESB / ESG。
+
+    Why not `\\b`: under Python's Unicode semantics CJK ideographs are `\\w`, so there is
+    no boundary between 与 and E in 「与ES（」 and English codes glued to Chinese never match.
+    The intended boundary is "not adjacent to another ASCII letter/digit".
+    """
+    return re.compile(
+        r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
+
+
+def sub_term(text: str, asr_text: str, correct_text: str) -> tuple[str, int]:
+    """
+    按映射匹配规则替换单个词条，并返回命中次数 / Replace one term, returning the hit count.
+
+    与 apply_hotword_mappings 共用同一匹配语义，区别只在于这里需要把命中数交回调用方
+    （划词修正的全量回溯要据此告知用户到底改了几处）。
+    Shares the matching semantics of apply_hotword_mappings; the only difference is that
+    the hit count is handed back, which the retroactive correction flow needs to report.
+
+    Returns:
+        (替换后的文本, 命中次数) / (replaced text, hit count)
+    """
+    if not text or not asr_text:
+        return text, 0
+    if _is_ascii_word(asr_text):
+        pattern = ascii_term_pattern(asr_text)
+        # 替换侧用函数而非模板串：避免 correct_text 里的 \1 / \\ 被当作反向引用吞掉。
+        # A callable replacement keeps correct_text literal (\1, \\ must not be reinterpreted).
+        return pattern.subn(lambda _m: correct_text, text)
+    hits = text.count(asr_text)
+    if not hits:
+        return text, 0
+    return text.replace(asr_text, correct_text), hits
+
+
 def apply_hotword_mappings(
     text: str,
     mappings: list[tuple[str, str]] | None = None,
@@ -231,7 +276,9 @@ def apply_hotword_mappings(
     对文本应用热词映射（后处理纠正） / Apply hotword mappings to text (post-processing correction).
 
     匹配策略 / Matching strategy:
-      - 纯英文/数字词：使用 \\b 词边界匹配，大小写不敏感（避免误替换子串） / Pure English/numeric words: use \\b word boundary matching, case-insensitive (avoid substring replacement)
+      - 纯英文/数字词：按 ASCII 邻接边界匹配，大小写不敏感（避免咬穿 FILES / ESB，
+        同时能命中紧贴中文的「与ES」，详见 ascii_term_pattern）
+        / Pure ASCII terms: bounded by non-ASCII-alphanumeric neighbours, case-insensitive
       - 含中文的串：直接子串替换 / Strings with Chinese: direct substring replacement
 
     Args:
@@ -246,8 +293,7 @@ def apply_hotword_mappings(
         # 调用方显式传入 mappings，走原逻辑（每次编译正则） / Caller explicitly passes mappings, use original logic (compile regex each time)
         for asr_text, correct_text in mappings:
             if _is_ascii_word(asr_text):
-                pattern = re.compile(r"\b" + re.escape(asr_text) + r"\b", re.IGNORECASE)
-                text = pattern.sub(correct_text, text)
+                text = ascii_term_pattern(asr_text).sub(correct_text, text)
             else:
                 text = text.replace(asr_text, correct_text)
         return text

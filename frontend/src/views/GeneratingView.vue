@@ -217,15 +217,6 @@
               </button>
             </template>
           </div>
-          <!-- 知识库关联引导图标（仅未关联时显示） / Knowledge base link guide icon (shown only when unlinked) -->
-          <span
-            v-if="!task?.project_id"
-            class="gen-spk-info-icon gen-meta-proj-info-icon"
-            :title="t('generating.project_onboarding.info_icon_tip')"
-            @click="openProjOnboarding"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-          </span>
         </span>
       </div>
     </div>
@@ -243,7 +234,6 @@
       :roster="rosterComposable.roster.value"
       :bound-names="boundNames"
       :all-speakers="speakers"
-      @open-info="openOnboarding"
       @open-dropdown="openBindingDropdown"
       @locate-speaker="onLocateSpeaker"
       @skip="skipMapping"
@@ -262,10 +252,10 @@
     <div class="gen-control-zone">
       <div class="gen-tabs-group">
         <div class="gen-tabs" id="genTabsContainer">
-          <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)">
+          <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)" @mouseenter="onTabHover(tab.id)">
             <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
             <span class="tab-label">{{ tab.label }}</span>
-            <span class="tab-dot" :class="dotClass(tab.id)"></span>
+            <span class="tab-dot" :class="tabDotClass(tab.id)"></span>
           </button>
         </div>
       </div>
@@ -367,51 +357,37 @@
         @add="showAddDecisionDialog = true"
       />
 
-      <!-- 洞察台（会后只读态） / Insight Deck (post-meeting read-only) -->
+      <!-- 洞察台（会后） / Insight Deck：不再区分板/卡视图，统一为 AI 共创的 HTML 产物呈现 -->
       <div v-show="activeTab === 'insights'" class="gen-insights-wrap">
-        <RecInsightsPanel
-          :messages="insights.insightMessages.value"
-          :enabled="insights.insightsEnabled.value"
-          :unread-count="insights.unreadCount.value"
-          :acted-actions="genInsightActed"
-          :analyzing="insights.postAnalyzing.value"
-          :expanded="false"
-          :auto-freq="insights.autoFreq.value"
-          mode="readonly"
-          @toggle-message="insights.toggleExpanded($event)"
-          @action="onInsightAction"
-          @manual-check="onPostMeetingAnalyze"
-          @seek-to="onInsightSeek"
+        <InsightBoard
+          :artifact="board"
+          :loading="boardLoading"
+          @seek="onInsightSeek"
+          @refresh="loadBoardData"
+          @co-create="onBoardCoCreate"
+          @co-create-section="onBoardCoCreateSection"
         />
       </div>
     </div>
     <!-- 浮动选中工具栏 / Floating selection toolbar -->
     <SelectionToolbar
       container-selector=".gen-content"
+      :textarea-selectors="['textarea.gen-textarea-editor', 'textarea.db-card-textarea', 'textarea.db-edit-area']"
       @action="onSelectionAction"
-      @inline-edit="onInlineEditRequest"
     />
-    <!-- 行间编辑浮动输入框 / Inline edit floating input -->
+    <!-- 行间编辑浮动输入框（input 态 + result 确认态共用，确认卡带执行方回显） -->
     <InlineEditInput
-      :visible="inlineEdit.showInput.value"
+      :visible="inlineEdit.showInput.value || inlineEdit.showDiff.value"
       :loading="inlineEdit.isLoading.value"
       :anchor-rect="inlineEdit.anchorRect.value"
+      :diff-visible="inlineEdit.showDiff.value"
+      :edited-text="inlineEdit.editedText.value"
+      :model-usage="inlineEdit.lastModelUsage.value"
       @submit="onInlineEditSubmit"
       @cancel="inlineEdit.cancelEdit"
-    />
-
-    <!-- 说话人绑定引导弹窗（子组件） / Speaker binding onboarding dialog (sub-component) -->
-    <OnboardingDialog
-      v-model="showOnboarding"
-      :demo-lines="demoLines"
-      @close="closeOnboarding"
-    />
-
-    <!-- 知识库关联引导弹窗（子组件） / Knowledge base onboarding dialog (sub-component) -->
-    <ProjectOnboardingDialog
-      v-model="showProjectOnboarding"
-      :connected="projConnected"
-      @close="closeProjOnboarding"
+      @accept="inlineEdit.acceptEdit"
+      @reject="inlineEdit.rejectEdit"
+      @goto-settings="onInlineEditGotoSettings"
     />
 
     <ArchiveDialog
@@ -456,7 +432,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { isPlaceholderName } from '@/utils/speakerDisplay'
-import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject } from '@/api/tasks'
+import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject, fetchTask, correctTaskText } from '@/api/tasks'
 import type { SyncStatus } from '@/api/tasks'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useDropdownPopup } from '@/composables/useDropdownPopup'
@@ -467,10 +443,10 @@ import SummaryPanel from './generating/SummaryPanel.vue'
 import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
-import RecInsightsPanel from './recording/RecInsightsPanel.vue'
+import InsightBoard from './generating/InsightBoard.vue'
+import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
+import { onBoardWritten } from '@/composables/useBoardSync'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
-import OnboardingDialog from './generating/OnboardingDialog.vue'
-import ProjectOnboardingDialog from './generating/ProjectOnboardingDialog.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
@@ -483,11 +459,9 @@ import { useSpeakerBinding } from '@/composables/useSpeakerBinding'
 import { useSpeakerPanel } from '@/composables/useSpeakerPanel'
 import { usePlaybackFollow } from '@/composables/usePlaybackFollow'
 import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
-import { useOnboarding } from '@/composables/useOnboarding'
-import { useProjectOnboarding } from '@/composables/useProjectOnboarding'
 import { useInlineEdit } from '@/composables/useInlineEdit'
+import { useAiInsights } from '@/composables/useAiInsights'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
-import { useAiInsights, type InsightMessage, type InsightAction } from '@/composables/useAiInsights'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -527,14 +501,16 @@ const notes = useNotesAndTodos(
   loadSyncStatus, // 内容修改后自动刷新同步状态 / Refresh sync status after content modification
 )
 
-const onboarding = useOnboarding()
-const projOnboarding = useProjectOnboarding()
 const inlineEdit = useInlineEdit()
+/** 洞察消息的跨组件共享状态（仅用于修正后强制重拉，不让陈内存写回覆盖新落盘的文本） */
+const insights = useAiInsights()
+/** 回溯修正进行中：一次请求会同时改写任务/洞察/洞察板/导出件四份产物，不允并发提交 */
+const correcting = ref(false)
 const rosterComposable = useMeetingRoster(data.taskId, data.task)
 
 // ─── 解构到模板作用域 / Destructure to template scope ───
 const {
-  task, activeTab, TABS, switchTab, dotClass,
+  task, activeTab, TABS, switchTab,
   chapters, activeChapterIdx, scrollToChapter, allChaptersVisible,
   visibleChapterIndices, expandedChapters, summaryExpandedChapters,
   transcriptItems, flatTranscript, summaryMd, todos, notesContent, notesSaved,
@@ -561,8 +537,6 @@ const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFol
 const {
   onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, loadTodos,
 } = notes
-const { showOnboarding, demoLines, openOnboarding, closeOnboarding } = onboarding
-const { showProjectOnboarding, connected: projConnected, openOnboarding: openProjOnboarding, closeOnboarding: closeProjOnboarding } = projOnboarding
 
 // ─── 添加决策：复用决策中心「手动补录决策」弹层（DC-UNIFY-01 样式/数据统一） ───
 const showAddDecisionDialog = ref(false)
@@ -584,17 +558,7 @@ async function onAddDecisionSubmit(taskId: string, payload: TodoCreatePayload) {
 const syncStatus = ref<SyncStatus>({ can_sync: false })
 const isSyncing = ref(false)
 
-// ─── 洞察台会后化（REQ-INSIGHT-DECK-POSTMEETING R1） / Insight Deck post-meeting ───
-const insights = useAiInsights()
-/** 已触发过的动作去重（沿用录音页语义） / Dedup acted action buttons (same semantics as recording page) */
-const genInsightActed = ref<Record<string, boolean>>({})
-
-function onInsightAction(msg: InsightMessage, act: InsightAction) {
-  const key = msg.id + ':' + act.key
-  if (genInsightActed.value[key]) return
-  genInsightActed.value[key] = true
-  if (act.key === 'acknowledge') insights.acknowledgeMessage(msg.id)
-}
+// ─── 洞察台（会后 HTML 产物共创） / Insight Deck (post-meeting HTML co-create) ───
 
 /** 洞察图/节点点击→跳回原文并定位时间轴 / Seek from insight: switch to transcript + seek */
 function onInsightSeek(ms: number) {
@@ -602,25 +566,118 @@ function onInsightSeek(ms: number) {
   player.seekToMs(ms)
 }
 
-/** 会后补分析：服务端基于全文 + 章节跑一轮，有发现时已落盘，前端以重拉结果刷新 / Post-meeting supplement */
-async function onPostMeetingAnalyze() {
+// 【已退役】会后补分析触发入口：随「洞察共创 · 会话驱动」下线，历史洞察消息仍只读呈现
+
+// ─── 洞察板（HTML 产物共创版） / Insight Board (HTML artifact) ───
+// 单一写入源在后端：AI 经会话工具 revise_insight_board 整份落盘，前端只读重拉；
+// 旧 Board Spec 的失败归因横幅/生成端点已随共创模式退役。
+//
+// 自动同步双通道（不再依赖人工刷新）：
+//   ① 信号通道——对话流里识别到一次成功落板（useBoardSync 广播 board-written）→ 即时重拉；
+//   ② 版本通道——洞察 Tab 可见时每 10s 探测 ?meta=1 的 revision，
+//      盖住「写板发生在另一个窗口/设备、本标签页收不到对话流信号」的缝隙。
+// 换新呈现：静默替换 + rev 徽标脉冲（共创场景用户本已预期内容会变，不打断阅读）。
+const board = ref<BoardArtifact>({ html: null, revision: 0, updated_at: null })
+const boardFetched = ref(false)
+const boardLoading = ref(false)
+/** 离开洞察 Tab 期间收到过落板信号 / Board written while the tab was hidden */
+const boardDirty = ref(false)
+
+const BOARD_POLL_MS = 10_000
+let boardPollTimer: ReturnType<typeof setInterval> | null = null
+
+// 圆点跟随实际内容源：洞察 Tab 是否有点取决于洞察板产物是否存在，
+// 而板是懒加载的——悬停时补一次首拉，保证圆点在切 Tab 前就能正确点亮
+function onTabHover(tabId: string) {
+  if (tabId === 'insights' && !boardFetched.value && !boardLoading.value) loadBoardData()
+}
+
+function tabDotClass(tabId: string): string {
+  const base = data.dotClass(tabId)
+  if (tabId === 'insights') return board.value.html ? 'is-done' : base
+  return base
+}
+
+async function loadBoardData() {
+  boardFetched.value = true
+  boardLoading.value = true
   try {
-    const result = await insights.runPostMeetingSupplement(data.taskId)
-    if (result && !result.has_finding) {
-      showToast(t('generating.insights.analyze_none'), 'info')
-    }
-  } catch (e) {
-    // 409：同任务已有分析在跑（不排队不并行），按提示处理不算失败 / 409 = in-flight, not a failure
-    const status = (e as { response?: { status?: number } })?.response?.status
-    if (status === 409) showToast(t('generating.insights.analyze_in_flight'), 'info')
-    else showToast(t('generating.insights.analyze_failed'), 'error')
+    board.value = await loadBoard(data.taskId)
+  } catch {
+    // 读板失败不阻断卡片视图 / Load failure never blocks the cards view
+  } finally {
+    boardLoading.value = false
   }
 }
 
-// 进入洞察 Tab 即全部已读：会后只读态即消费场景，未读角标随之清零 / Entering the tab consumes all unread state
+/** 轻量版本探测：只在版本号前进（或无板→有板）时才拉整份正文 */
+async function probeBoardRevision() {
+  if (boardLoading.value || document.hidden) return
+  try {
+    const meta = await loadBoardMeta(data.taskId)
+    if (meta.revision !== board.value.revision || (meta.exists && !board.value.html)) {
+      await loadBoardData()
+    }
+  } catch {
+    // 探测失败静默跳过，下一轮再试 / Probe failure is silent; next tick retries
+  }
+}
+
+function startBoardPolling() {
+  stopBoardPolling()
+  boardPollTimer = setInterval(probeBoardRevision, BOARD_POLL_MS)
+}
+
+function stopBoardPolling() {
+  if (boardPollTimer) { clearInterval(boardPollTimer); boardPollTimer = null }
+}
+
+// Tab 切换：进入→首拉（脏则重拉）+ 开轮询；离开→停轮询（不可见不产生流量）
 watch(activeTab, (tab) => {
-  if (tab === 'insights') insights.markAllRead()
+  if (tab === 'insights') {
+    if (!boardFetched.value || boardDirty.value) loadBoardData()
+    boardDirty.value = false
+    startBoardPolling()
+  } else {
+    stopBoardPolling()
+  }
+}, { immediate: true })
+
+// 落板信号：正在看洞察 Tab 就即时换新；在其它 Tab 则记脏，回去时补拉
+let offBoardWritten: (() => void) | null = null
+/** 窗口回到前台立即对齐：隐藏时轮询主动跳过且后台定时器会被浏览器节流，回到前台不等 10s 就补一次探测 */
+function onVisibilityChange() {
+  if (!document.hidden && activeTab.value === 'insights') probeBoardRevision()
+}
+onMounted(() => {
+  offBoardWritten = onBoardWritten(() => {
+    if (activeTab.value === 'insights') loadBoardData()
+    else boardDirty.value = true
+  })
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
+onUnmounted(() => {
+  stopBoardPolling()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  offBoardWritten?.()
+  offBoardWritten = null
+})
+
+/** 共创起跳：展开 AI 面板并预填修订请求到输入框（不自动发送）；coCreate 标记使智能体轮自动升可写档以落盘 */
+function onBoardCoCreate() {
+  window.dispatchEvent(new CustomEvent('quote-to-ai', {
+    detail: { prefill: t('generating.insights.board.co_create_msg'), coCreate: true },
+  }))
+}
+
+/** 单节共创起跳：预填带节锈点 id/标题的定向修订请求，引导 AI 用 revise_insight_board_section 只改这一节 */
+function onBoardCoCreateSection(sec: { id: string; title: string }) {
+  const label = sec.title || sec.id
+  const prefill = t('generating.insights.board.co_create_section_msg', { title: label, id: sec.id })
+  window.dispatchEvent(new CustomEvent('quote-to-ai', {
+    detail: { prefill, coCreate: true },
+  }))
+}
 
 async function loadSyncStatus() {
   if (!data.task.value?.project_id || data.task.value?.status !== 'completed') {
@@ -648,8 +705,7 @@ async function onSyncToKb() {
   }
 }
 
-// 说话人关联引导弹窗不再自动弹出（默认不展示绑定横幅，不给用户待办压力），
-// 改为用户进入绑定态后点击标题旁信息图标（open-info）主动查看。
+// [状态同步] 说话人绑定采用极简内联交互：进入绑定态后直接通过 chip 关联身份，不再提供引导弹窗
 
 // [状态同步] 任务状态变化时刷新知识库同步状态（完成/关联项目时显示同步按钮）
 watch(() => data.task.value, (t) => {
@@ -823,57 +879,73 @@ function onLocateSpeaker(speakerId: number) {
   })
 }
 
-/** 转写原文面板 DOM 文本替换 / DOM text replacement in transcript panel */
-function replaceInTranscriptDom(oldText: string, newText: string) {
-  const listEl = transcriptPanelRef.value?.transcriptListEl
-  if (!listEl) return
-  const txtEls = listEl.querySelectorAll('.ts-line-body .txt')
-  for (const el of txtEls) {
-    const node = el.childNodes[0] as Text | undefined
-    if (node && node.nodeType === 3 && node.textContent?.includes(oldText)) {
-      node.textContent = node.textContent.replace(oldText, newText)
-      return
+/** 文本回溯修正：把一条误识别→正确文本映射落到本场会议的全部产物
+ *  Retroactive correction: apply one wrong→correct mapping to every artifact of this meeting.
+ *
+ * 取代旧 replaceInTranscriptDom：那个实现只在「原文 Tab 的 .txt DOM」里改第一处命中就 return，
+ * 不回写数据也不落盘，因此纪要 Tab 完全无效、一次重渲染就复原，却仍无条件报「已修正」。
+ * 现在写入权威在后端（core.text_correction），前端拿到真实命中数后从数据源重拉呈现。
+ */
+async function applyTextCorrection(oldText: string, newText: string, createdMapping = false) {
+  if (correcting.value) return
+  correcting.value = true
+  try {
+    const result = await correctTaskText(data.taskId, oldText, newText)
+    await refreshAfterCorrection()
+    const scope = createdMapping ? t('generating.correction.mapping_saved') : ''
+    if (result.replaced > 0) {
+      showToast(t('generating.correction.applied', { scope, text: newText, n: result.replaced }), 'success')
+    } else {
+      // 映射存住了，但本场会议确实没这个词：说清事实，不给假反馈
+      showToast(t('generating.correction.no_match', { scope, text: oldText }), 'warn')
     }
+  } catch (e) {
+    showToast(t('generating.correction.failed', { reason: extractErrorMessage(e) }), 'error')
+  } finally {
+    correcting.value = false
   }
 }
 
-function onSelectionAction(action: string, text: string, source: string, blockIndex: number, replacement?: string) {
-  if (action === 'rewrite') {
-    // 旧改写流程保留作为 fallback / Old rewrite flow kept as fallback
-    data.startRewrite(text, source, blockIndex); data.setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.rewrite') } }))
-  } else if (action === 'summarize') {
-    data.setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.summarize') } }))
-  } else if (action === 'extract-todo') {
-    data.setQuote(text, source, blockIndex)
-    window.dispatchEvent(new CustomEvent('quote-to-ai', { detail: { action: t('generating.ai_actions.extract_todo') } }))
-  } else if (action === 'correct' && replacement) {
-    // 转写原文面板：直接 DOM 替换 / Transcript panel: direct DOM replacement
-    replaceInTranscriptDom(text, replacement)
+/** 修正后从数据源重拉各面板 / Re-pull every panel from its source of truth after a correction. */
+async function refreshAfterCorrection() {
+  // 1. 任务主体（原文/纪要/标题/章节）走 store，计算属性链自动重渲染
+  try {
+    const updated = await fetchTask(data.taskId)
+    taskStore.patchTaskLocal(data.taskId, updated)
+  } catch { /* 保留旧视图；下一轮轮询仍会拉到新值 */ }
+  // 2. 决策项独立端点，不在 task 快照里
+  data.loadTodos().catch(() => { /* */ })
+  // 3. 随记：用户正在随记 Tab 时不覆盖其编辑中的内容（与管线完成时的既有规则一致）
+  if (data.activeTab.value !== 'notes') data.loadNotes().catch(() => { /* */ })
+  // 4. 洞察卡片：内存缓存不重拉会与新落盘的 insights.json 不一致，且切会议时会被写回覆盖
+  insights.reloadTaskMessages(data.taskId).catch(() => { /* */ })
+  // 5. 洞察板：仅在已拉取过时重拉，避免为未打开过的 Tab 白跑一次请求（脏标记属于上一个会议，先清）
+  boardDirty.value = false
+  if (boardFetched.value) loadBoardData()
+}
+
+function onSelectionAction(action: string, text: string, _source: string, _blockIndex: number, replacement?: string, createdMapping?: boolean) {
+  // 划词工具栏已下架改写/总结/提取待办，仅保留热词修正；
+  // 其余 AI 意图由用户通过「引用到 AI」自行表达
+  // Toolbar rewrite/summarize/extract retired; only hotword correction remains.
+  if (action === 'correct' && replacement) {
+    // 全量回溯修正本场会议（后端写盘 + 前端从数据源重拉） / Retroactive, persisted, then re-pulled
+    void applyTextCorrection(text, replacement, createdMapping)
   }
 }
 
 // ─── 行间编辑 / Inline edit ───
-function onInlineEditRequest(text: string, source: string, _blockIndex: number, range?: { start: number; end: number }) {
-  if (range) {
-    // textarea 面板：使用 range 模式 / textarea panels: use range mode
-    inlineEdit.startInlineEdit(text, source, range)
-  } else {
-    // 转写原文面板：使用 DOM 选区 / Transcript panel: use DOM selection
-    const sel = window.getSelection()
-    let rect: { top: number; left: number } | undefined
-    if (sel && sel.rangeCount > 0) {
-      const r = sel.getRangeAt(0).getBoundingClientRect()
-      rect = { top: r.top, left: r.left + r.width / 2 }
-    }
-    // 无 range 时用 0,0 占位（转写原文面板不走 replaceRange） / No range: use 0,0 placeholder
-    inlineEdit.startInlineEdit(text, source, { start: 0, end: text.length }, rect)
-  }
-}
-
+// 工具栏「改写」入口已下架：划词不再 emit inline-edit，onInlineEditRequest 随之移除；
+// InlineEditInput 基础设施暂保留（可见性恒为 false），待其它入口评估后统一清理
+// The toolbar rewrite entry is retired; inline-edit requests no longer fire.
+// The InlineEditInput scaffolding stays dormant (visible is always false).
 async function onInlineEditSubmit(instruction: string) {
   await inlineEdit.submitInstruction(instruction)
+}
+
+/** 回显标签起跳：更换面板外操作的默认模型（AI 算力入口治理 §5） */
+function onInlineEditGotoSettings() {
+  void router.push({ name: 'settings', query: { cat: 'ai' } })
 }
 
 
@@ -948,8 +1020,6 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', panel.onDocClickCloseSearch)
   document.removeEventListener('click', binding.onDocClickForDropdown)
-  onboarding.stopOnboardingAnim()
-  projOnboarding.stopAnim()
 })
 </script>
 

@@ -7,6 +7,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
+import { saveSummary } from '@/api/notes'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
 import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
@@ -15,6 +16,7 @@ import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAgentStore } from '@/stores/agent'
 import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
+import { isBoardWriteCall, isBoardWriteResult, notifyBoardWritten } from '@/composables/useBoardSync'
 import { showToast } from '@/composables/useToast'
 import { tt, getLocale } from '@/i18n'
 
@@ -77,15 +79,66 @@ export function useAiChat() {
 
   // ── 智能体模式（本地 CLI 引擎）/ Agent mode ──
   // 与“角色”正交：角色=人格/提示词，模式=执行引擎（方案 §3.9-8 术语消歧）
-  // 三态：qa=内置问答、agent=强制智能体、auto=规则分流（默认建议，路由结果可见回显）
-  type ChatMode = 'qa' | 'agent' | 'auto'
-  const VALID_MODES: ChatMode[] = ['qa', 'agent', 'auto']
+  // 两态：qa=内置问答、agent=智能体（AI 算力入口治理：auto 规则分流已退役，用户选择即意图）
+  type ChatMode = 'qa' | 'agent'
+  const VALID_MODES: ChatMode[] = ['qa', 'agent']
+  // 存量 'auto' 用户回落为问答（一次性迁移：非法值与 auto 均落 qa）
   const storedMode = localStorage.getItem('ai_chat_mode') as ChatMode | null
-  const chatMode = ref<ChatMode>(storedMode && VALID_MODES.includes(storedMode) ? storedMode : 'auto')
+  const chatMode = ref<ChatMode>(storedMode && VALID_MODES.includes(storedMode) ? storedMode : 'qa')
   /** 当前活跃流 id，供真取消 */
   const currentStreamId = ref<string>('')
   /** 本次回复实际使用的引擎回显（§3.9-1 路由可见） */
   const activeEngine = ref<{ display_name: string; auth_tier: string; auto_selected: boolean } | null>(null)
+  /** 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：写回权是智能体模式固有的权利，
+     不再按按钮才升档——后端 agent 轮默认落 workspace_write，前端不再传 auth_tier 特例。
+     本 flag 只承担「共创意图打标」单一职责（轮级）：入口按钮置真 → 下一轮发出即清除 →
+     done 时无任何写工具成功回传则亮「本轮未落盘」横幅（§5.4 完成护栏输入）。 */
+  const rewriteIntentPending = ref(false)
+  /** 横幅态：上一个智能体轮有改写意图但零写回 */
+  const rewriteNotPersisted = ref<{ text: string } | null>(null)
+  /** 纪要改写提案（提案式 diff）：AI 经 propose_summary 产出的待确认建议，
+     baseline=当前纪要（user_summary 优先、回退 summary），proposed=新正文；
+     用户接受才经 PUT /summary 落盘（不走后端写工具）。同一时刻只挂一个待确认提案。 */
+  const summaryProposal = ref<{ baseline: string; proposed: string } | null>(null)
+
+  /** 剥 MCP 工具全名前缀：mcp__<server>__<tool> → tool（内置引擎直接给裸名） */
+  function bareToolName(name: string): string {
+    if (!name) return ''
+    const i = name.lastIndexOf('__')
+    return i >= 0 ? name.slice(i + 2) : name
+  }
+
+  /** 接受当前纪要提案（前端直接落盘，复用用户编辑保存路径；后端不写→此处是唯一落盘点） */
+  async function acceptSummaryProposal(): Promise<boolean> {
+    const p = summaryProposal.value
+    const taskId = taskStore.currentTaskId
+    if (!p || !taskId) return false
+    try {
+      await saveSummary(taskId, p.proposed)
+      // 乐观回写本地任务→ summaryMd watcher 触发→纪要面板即时刷新
+      taskStore.patchTaskLocal(taskId, { user_summary: p.proposed } as never)
+      summaryProposal.value = null
+      showToast(tt('ai-panel.summary_proposal_applied'), 'success')
+      return true
+    } catch {
+      showToast(tt('ai-panel.chat_error_prefix') + tt('ai-panel.summary_proposal_save_failed'), 'error')
+      return false
+    }
+  }
+
+  /** 拒绝当前纪要提案：仅丢弃建议，不动数据 */
+  function rejectSummaryProposal() {
+    summaryProposal.value = null
+  }
+
+  function setRewriteIntent(v: boolean) {
+    rewriteIntentPending.value = v
+    if (!v) rewriteNotPersisted.value = null
+  }
+  /** 兼容名：洞察板共创入口沿用（语义已从"升档特权"收敛为"轮级意图打标"） */
+  function setBoardCoCreate(v: boolean) {
+    setRewriteIntent(v)
+  }
 
   function setChatMode(mode: ChatMode) {
     chatMode.value = mode
@@ -243,6 +296,9 @@ export function useAiChat() {
     aiSessions.setChatKey(taskId)
     followUps.value = []
     injectPrompt.value = null
+    rewriteIntentPending.value = false
+    rewriteNotPersisted.value = null
+    summaryProposal.value = null
   }, { immediate: true })
 
   const canSend = computed(() => !isLoading.value)
@@ -270,10 +326,26 @@ export function useAiChat() {
     // 本轮流标识（智能体模式真取消用）/ per-turn stream id for hard cancel
     const streamId = (globalThis.crypto?.randomUUID?.() ?? `s-${Date.now()}-${Math.random().toString(36).slice(2)}`)
     currentStreamId.value = streamId
+    // 轮级意图捕获：发出即消费（不常驻），避免后续闲聊轮被误标"改写意图"而横幅误报
+    const turnIntent = rewriteIntentPending.value
+    rewriteIntentPending.value = false
+    rewriteNotPersisted.value = null
+    // 新一轮开始：清上一轮遗留的纪要提案（提案卡只渲染在末条 assistant 气泡下，新轮后自然失效）
+    summaryProposal.value = null
+    let turnHasProposal = false
+    let toolWriteOk = false
 
     const loadingIdx = aiSessions.activeMessages.length
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString() }
     aiSessions.activeMessages.push(assistantMsg)
+    // 写回必须经响应式代理（数组下标读取）：直接改 push 前的 raw 引用会绕过 Vue 依赖收集，
+    // 导致流式 token 全程不触发重渲染、直到 done 才一次性出现（2026-09-29 浏览器 MutationObserver 实测）。
+    // 代理与 raw 共享同一 target，读 assistantMsg 仍能拿到最新值。
+    const liveMsg = (): ChatMessage => (aiSessions.activeMessages[loadingIdx] as ChatMessage) ?? assistantMsg
+
+    // 本轮内「写板」工具调用的 id 集（读语义不带 html，不计入）：
+    // 两引擎的 tool_result 都只带 tool_use_id（CLI 侧不带 name），故先按 call 的 args 定性、再按 id 配对结果
+    const boardWriteIds = new Set<string>()
 
     try {
       const histSlice = aiSessions.activeMessages.slice(-AI_MAX_CONTEXT)
@@ -286,6 +358,7 @@ export function useAiChat() {
         role: agentStore.activeAgent || undefined,
         current_diagram: insights.lastViewedDiagram.value || undefined,
         engine: chatMode.value === 'qa' ? undefined : chatMode.value,
+        // 模式即权限（§5.1）：不再按共创按钮传 auth_tier 特例，agent 轮由后端默认落可写档
         // 会话级模型透传（REQ-EXPERT-MODE §2.3）：'' = 跟随详情不传
         model: sessionModel.value || undefined,
         stream_id: streamId,
@@ -294,7 +367,7 @@ export function useAiChat() {
         signal: ctrl.signal,
       }, {
         onToken(token: string) {
-          assistantMsg.content += token
+          liveMsg().content += token
           isStreaming.value = true
           // 不在首个 token 时清空 stages，保留到完成后折叠 / Keep stages visible during streaming, collapse after done
         },
@@ -318,6 +391,18 @@ export function useAiChat() {
           }
         },
         onToolCall(tool) {
+          // 洞察板自动同步：记住本轮哪些调用是「写板」，待其结果成功回传时广播板已更新
+          if (isBoardWriteCall(tool.name, tool.args)) boardWriteIds.add(tool.id || `name:${tool.name}`)
+          // 纪要提案式改写：propose_summary 不落盘，只把 proposed 全文（携在 tool_call.args）+ 当前基线挂成待确认提案
+          if (bareToolName(tool.name) === 'propose_summary') {
+            const proposed = String(tool.args?.summary ?? '')
+            const ct = taskStore.currentTask as unknown as { user_summary?: string; summary?: string } | null
+            const baseline = ct ? (ct.user_summary != null ? ct.user_summary : (ct.summary || '')) : ''
+            if (proposed.trim()) {
+              summaryProposal.value = { baseline, proposed }
+              turnHasProposal = true
+            }
+          }
           // 将之前的 running 阶段标记为 done / Mark previous running stages as done
           stages.value.forEach(s => {
             if (s.status === 'running') s.status = 'done'
@@ -330,6 +415,7 @@ export function useAiChat() {
             icon: tool.icon,
             status: 'running',
             id: tool.id,
+            name: tool.name,
             detail: Object.values(tool.args || {}).join(', '),
           })
         },
@@ -342,6 +428,24 @@ export function useAiChat() {
             toolStage.status = result.success ? 'done' : 'error'
             toolStage.detail = result.summary
           }
+          // 落板成功→广播：板的写入点在后端，呈现侧（同页的洞察 Tab）此前只能人工刷新
+          if (result.success && isBoardWriteResult(result, boardWriteIds)) {
+            notifyBoardWritten({ tool: result.name })
+          }
+          // 完成护栏（§5.4）：前端侧写工具成功事实（与后端 done.rewritten 双保险，任一命中即视为落盘）
+          // tool_result 可能不带 name（CLI 侧），按 tool_use_id 回溯 tool_call 阶段的工具名后再剥 MCP 前缀
+          if (result.success) {
+            const calledStage = result.tool_use_id
+              ? [...stages.value].reverse().find(s => s.type === 'tool_call' && s.id === result.tool_use_id)
+              : undefined
+            const bare = ((result.name || calledStage?.name || '') as string).split('__').pop() || ''
+            if (bare === 'revise_insight_board') {
+              // 读写双语义：只有写板调用（boardWriteIds 在 call 阶段按 args 定性）才算落盘
+              if (isBoardWriteResult(result, boardWriteIds)) toolWriteOk = true
+            } else if (['update_summary', 'inject_items', 'revise_insight_board_section'].includes(bare)) {
+              toolWriteOk = true
+            }
+          }
         },
         onEngineRoute(info) {
           // §3.9-1 路由回显：本次由智能体引擎执行（含 auto 自动选中），静默分流摧毁信任
@@ -353,25 +457,33 @@ export function useAiChat() {
           }
         },
         onDone(data) {
-          assistantMsg.timestamp = new Date().toISOString()
-          if (data.metadata) assistantMsg.metadata = data.metadata
-          if (data.sources) assistantMsg.sources = data.sources
+          const msg = liveMsg()
+          msg.timestamp = new Date().toISOString()
+          if (data.metadata) msg.metadata = data.metadata
+          if (data.sources) msg.sources = data.sources
           // 回复尾部消费方/计费回显（与后端 routing 实际判定同源）
-          if (data.model_usage) assistantMsg.modelUsage = data.model_usage
+          if (data.model_usage) msg.modelUsage = data.model_usage
           if (data.latency_ms != null) {
-            assistantMsg.performance = {
+            msg.performance = {
               latency_ms: data.latency_ms,
-              char_count: assistantMsg.content.length,
+              char_count: msg.content.length,
               context_block_count: data.context_block_count ?? 0,
               message_count: data.message_count ?? 0,
             }
           }
           // 保存思考阶段到消息（完成后折叠显示） / Save stages to message (collapsed after done)
           if (stages.value.length > 0) {
-            assistantMsg.stages = [...stages.value]
+            msg.stages = [...stages.value]
             stages.value.forEach(s => { s.status = 'done' })
           }
           aiSessions.persist()
+
+          // 完成护栏（§5.4）：改写意图轮零写回 → 显式横幅，不让用户对着旧版本猜
+          // 例外：纪要本轮产出了 propose_summary 提案（turnHasProposal）= 已正确响应改写意图（待用户接受），不亮横幅
+          if (chatMode.value === 'agent' && turnIntent && !turnHasProposal
+              && data.metadata?.rewritten !== true && !toolWriteOk) {
+            rewriteNotPersisted.value = { text }
+          }
 
           if (data.extracted_items?.length) {
             showInjectPrompt(data.extracted_items)
@@ -380,12 +492,12 @@ export function useAiChat() {
           if (data.diagram) {
             insights.setChatDiagram(data.diagram)
           }
-          followUps.value = generateFollowUps(assistantMsg.content)
+          followUps.value = generateFollowUps(msg.content)
         },
         onError(error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) {
           // 智能体引擎错误 i18n 化：携 hint_key 时按当前 locale 翻译
           const errText = resolveEngineText(extra?.hint_key, error, extra?.hint_params)
-          if (!assistantMsg.content) {
+          if (!liveMsg().content) {
             aiSessions.activeMessages.splice(loadingIdx, 1)
             aiSessions.activeMessages.push({ role: 'assistant', content: `${tt('ai-panel.chat_error_prefix')}${errText}` })
           }
@@ -612,6 +724,8 @@ export function useAiChat() {
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast,
     chatMode, setChatMode, activeEngine, hasAgentSession,
+    rewriteIntentPending, rewriteNotPersisted, setRewriteIntent, setBoardCoCreate,
+    summaryProposal, acceptSummaryProposal, rejectSummaryProposal,
     // 使用面闭环（REQ-EXPERT-MODE §2.3） / usage-surface loop
     sessionModel, setSessionModel: engineStore.setSessionModel,
     modelCandidates, detailModelLabel, cliProbe, agentEngineEnabled, agentAvailable,

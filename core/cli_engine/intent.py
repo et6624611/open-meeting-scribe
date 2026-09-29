@@ -6,6 +6,9 @@ Rule-based intent classifier deciding built-in QA vs local CLI agent engine (aut
 创建 / Created: 2026-09-25
 版本 / Version: 1.0.0
 
+【已退役】auto 规则分流已随「AI 算力入口治理」方案下线（会话模式收敛为问答/智能体两态，
+用户选择即意图，不再替用户路由）；本模块保留供后续策略复用（如建议式路由/预检）。
+
 对应方案 / See: docs/PROPOSAL-QODER-CLI-ENGINE.md §3.5（意图分流）+ D4（误判代价不对称）。
 
 决策原则（D4 倾向）：轻请求误入 CLI 只是慢（可忍），重请求误入直连是答非所问（不可忍）；

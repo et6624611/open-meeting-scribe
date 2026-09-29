@@ -128,15 +128,13 @@
         :enabled="insights.insightsEnabled.value"
         :unread-count="insights.unreadCount.value"
         :acted-actions="actedActions"
-        :analyzing="insights.manualAnalyzing.value || insights.autoAnalyzing.value"
         :expanded="insightsExpanded"
-        :auto-freq="insights.autoFreq.value"
+        :task-id="taskId"
+        :one-page-factor="task?.one_page?.insights"
         @toggle-enabled="insights.toggleEnabled()"
         @toggle-message="insights.toggleExpanded($event)"
         @action="onInsightAction"
-        @manual-check="onInsightManualCheck"
         @toggle-expand="insightsExpanded = !insightsExpanded"
-        @update:auto-freq="insights.setAutoFreq($event)"
         @seek-to="player.seekToMs($event)"
       />
     </div>
@@ -220,7 +218,6 @@ import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
 import { useUserStore } from '@/stores/user'
 import { usePlayerStore } from '@/stores/player'
-import { useQuoteRef } from '@/composables/useQuoteRef'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
 import { usePresenceDetection } from '@/composables/usePresenceDetection'
@@ -252,7 +249,6 @@ const taskStore = useTaskStore()
 const userStore = useUserStore()
 const player = usePlayerStore()
 const layout = useLayoutStore()
-const { registerNotesAppender, registerSummaryAppender } = useQuoteRef()
 
 const taskId = computed(() => route.params.taskId as string)
 const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId.value) ?? null)
@@ -462,13 +458,7 @@ function onInsightAction(msg: InsightMessage, act: InsightAction) {
   }
 }
 
-function onInsightManualCheck() {
-  insights.runManualAnalysis(
-    wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
-    wsChapters.value.map(c => c.title),
-    wsLines.value.length
-  )
-}
+// 【已退役】onInsightManualCheck：会中手动分析触发入口随「洞察共创 · 会话驱动」下线
 
 // 存在性警告 / Presence warning
 function onPresenceContinue() { presence.acknowledge(); ws.clearPresenceWarning() }
@@ -506,15 +496,8 @@ async function onAbandon() { showAbandon.value = false; ws.disconnect(); notes.c
 
 // ── Watchers ── / ── Watchers ──
 watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.value; c < n; c++) recExpandedChapters.add(c); recAutoExpandedCount.value = n })
-// 洞察台自动触发：监听转写增长，由 composable 内部按频率/冷却/门槛节流自动产图 / Insight Deck auto trigger: watch transcript growth; composable throttles by frequency/cooldown/threshold
-watch(() => wsLines.value.length, (n) => {
-  if (n === 0) return
-  insights.maybeAutoAnalyze(
-    wsLines.value.slice(-20).map(l => ({ text: l.text, speaker_id: l.speaker_id, begin_time: l.begin_time || 0 })),
-    wsChapters.value.map(c => c.title),
-    n
-  )
-})
+// 【已退役】洞察台定时自动触发（watch wsLines.length → maybeAutoAnalyze）随「洞察共创 · 会话驱动」下线：
+// 洞察生成/修订改由会话面板中人与 AI 共创驱动，不再由时钟无人值守触发。
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
 watch(recTab, (tab) => {
@@ -527,8 +510,6 @@ watch(noteText, () => { nextTick(() => { const el = notesBarRef.value?.textareaR
 onMounted(async () => {
   const saved = localStorage.getItem('oms_rec_active_tab')
   if (saved === 'transcript' || saved === 'insights') recTab.value = saved
-  registerNotesAppender((md: string) => { noteText.value = noteText.value ? noteText.value + '\n\n' + md : md })
-  registerSummaryAppender((md: string) => { noteText.value = noteText.value ? noteText.value + '\n\n' + md : md })
   fetchProjects().then(l => { projects.value = l }).catch(() => {})
   ws.onSpeakerBound((id: number, uuid: string) => { realtimeSpeakerBindings.value[id] = uuid })
   // 注册翻译回调 / Register translation callbacks
@@ -537,6 +518,11 @@ onMounted(async () => {
   translation.loadPreferences()
   presence.start()
   const tid = taskId.value
+  // [状态同步] 进入录音页即绑定当前会议：新建录音的成功路径只做了乐观更新 + 路由跳转，
+  // 未调用 selectTask，导致右侧 AI 会话面板（依 currentTaskId 建立会话/注入上下文）没有路由到正在录制的会议。
+  // 在挂载时统一绑定，覆盖新建录音 / 刷新 / 直达 URL / 侧栏进入等所有路径。
+  // Bind the current task on mount so the AI chat panel routes to the recording meeting on every entry path.
+  if (tid) taskStore.selectTask(tid)
   if (tid) { recorder.taskId.value = tid; await recorder.checkStatus(); ws.connect(tid); try { speakers.value = await fetchSpeakers() } catch {}; notes.restoreFromStorage() }
   document.addEventListener('keydown', onKeydown)
   // 绑定当前会议，加载已有洞察消息 / Bind current task, load existing insights

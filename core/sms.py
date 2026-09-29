@@ -33,12 +33,12 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 # 云端 SMS 代理地址（代理持有阿里云 AccessKey，密钥不落地）
-# 默认值指向官方云服务，用户可在 .env 中覆盖（如自建服务器）
-SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "http://47.116.10.194:8080").rstrip("/")
+# 必须通过 .env 或桌面端 desktop-secrets.env 配置；未配置时短信功能不可用
+SMS_PROXY_URL = os.getenv("SMS_PROXY_URL", "").rstrip("/")
 
 # 代理共享密钥（用于请求签名，防止未授权调用）
-# 默认值为官方云服务密钥，用户可在 .env 中覆盖
-SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "oms-sms-proxy-secret-2026")
+# 必须与 SMS 代理服务器持有相同密钥；未配置时短信功能不可用
+SMS_PROXY_TOKEN = os.getenv("SMS_PROXY_TOKEN", "")
 
 # 签名有效期（秒），防重放
 SMS_SIGN_TTL = 300

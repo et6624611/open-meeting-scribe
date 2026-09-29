@@ -39,6 +39,8 @@ export function useAiCommandActions(
         created_at: new Date().toISOString(),
         meeting_date: new Date().toISOString().slice(0, 10),
       } as any)
+      // [状态同步] 绑定当前会议，确保右侧 AI 会话面板路由到正在录制的会议 / Bind the new task so the AI chat panel routes to the recording meeting
+      taskStore.selectTask(res.task_id)
       router.push(`/recording/${res.task_id}`)
       // [状态同步] 后台静默刷新任务列表 / Silently refresh task list in background
       taskStore.loadTasks()

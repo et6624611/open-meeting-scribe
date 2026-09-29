@@ -233,10 +233,8 @@ export function useGeneratingData(
     if (tabId === 'transcript' && flatTranscript.value.length > 0) return 'is-done'
     if (tabId === 'summary' && task.value.summary) return 'is-done'
     if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
-    if (tabId === 'insights') {
-      const msgs = insightsStore.insightMessages.value
-      if (msgs && msgs.length > 0) return 'is-done'
-    }
+    // insights 圆点不再看旧洞察消息：Tab 内容已统一为洞察板 HTML 产物，
+    // 有板才亮（由 GeneratingView 依据 board artifact 合并判断）
     return ''
   }
 
@@ -436,7 +434,8 @@ export function useGeneratingData(
   })
 
   // ─── AI 引用 / AI quote ───
-  const { setQuote, startRewrite, rewritePending, registerBlockUpdater, registerSummaryAppender, registerNotesAppender } = useQuoteRef()
+  // 插入纪要/随记已下架（2026-09）：仅保留划词改写的块更新器
+  const { setQuote, startRewrite, rewritePending, registerBlockUpdater } = useQuoteRef()
 
   // ─── 说话人列表 / Speaker list ───
   const speakers = ref<Speaker[]>([])
@@ -486,14 +485,6 @@ export function useGeneratingData(
       const source = rewritePending.value?.source || '纪要'
       if (source === '随记' && notesPanelRef.value) notesPanelRef.value.updateBlock(blockIndex, newSource)
       else if (summaryPanelRef.value) summaryPanelRef.value.updateBlock(blockIndex, newSource)
-    })
-    registerSummaryAppender((markdown: string) => {
-      const current = summaryMd.value
-      summaryMd.value = current ? current + '\n\n' + markdown : markdown
-    })
-    registerNotesAppender((markdown: string) => {
-      const current = notesContent.value
-      notesContent.value = current ? current + '\n\n' + markdown : markdown
     })
   })
 

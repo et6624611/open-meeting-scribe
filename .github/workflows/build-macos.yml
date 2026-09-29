@@ -34,6 +34,24 @@ jobs:
       run: |
         python build/convert_icon.py
 
+    - name: 注入桌面端云端服务凭据
+      # 将 GitHub Secrets 写入 desktop-secrets.env，PyInstaller 打包时嵌入到 .app 内
+      # Write GitHub Secrets to desktop-secrets.env; PyInstaller embeds it into the .app bundle
+      env:
+        OMS_CLOUD_API_URL:   ${{ secrets.OMS_CLOUD_API_URL }}
+        OMS_CLOUD_API_TOKEN: ${{ secrets.OMS_CLOUD_API_TOKEN }}
+        OMS_SMS_PROXY_URL:   ${{ secrets.OMS_SMS_PROXY_URL }}
+        OMS_SMS_PROXY_TOKEN: ${{ secrets.OMS_SMS_PROXY_TOKEN }}
+      run: |
+        if [ -z "$OMS_CLOUD_API_TOKEN" ]; then
+          echo "⚠ 未配置 OMS_CLOUD_API_TOKEN 等 GitHub Secrets，打包版云端代理功能将不可用"
+        else
+          printf 'CLOUD_API_URL=%s\nCLOUD_API_TOKEN=%s\nSMS_PROXY_URL=%s\nSMS_PROXY_TOKEN=%s\n' \
+            "$OMS_CLOUD_API_URL" "$OMS_CLOUD_API_TOKEN" "$OMS_SMS_PROXY_URL" "$OMS_SMS_PROXY_TOKEN" \
+            > desktop-secrets.env
+          echo "✓ desktop-secrets.env 已生成"
+        fi
+
     - name: PyInstaller 打包
       run: |
         pyinstaller --clean --noconfirm build/pyinstaller_macos.spec

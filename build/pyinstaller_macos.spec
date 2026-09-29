@@ -43,6 +43,15 @@ for _f in ["data/hotwords.txt", "data/philosophies.json"]:
     if _full.is_file():
         _data_files.append((str(_full), "data"))
 
+# desktop-secrets.env 包含云端服务凭据，由 CI 构建时从 GitHub Secrets 生成。
+# 本地测试时可手动创建；文件不存在时云端功能不可用，本地模式仍正常。
+_desktop_secrets = ROOT / "desktop-secrets.env"
+if _desktop_secrets.is_file():
+    _data_files.append((str(_desktop_secrets), "."))
+    print("[spec] desktop-secrets.env 已加入打包清单 ✓")
+else:
+    print("[spec] desktop-secrets.env 未找到，云端代理功能在打包版中将不可用")
+
 a = Analysis(
     [str(ROOT / "desktop.py")],  # 桌面应用入口
     pathex=[str(ROOT)],

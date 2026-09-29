@@ -46,14 +46,9 @@ export function useKeyboardShortcuts() {
         e.preventDefault()
       }
 
-      // 3. 关闭浮动选中工具栏（兜底；组件自身也有 useEscClose） / 3. Selection toolbar fallback
-      const toolbar = document.getElementById('selectionToolbar')
-      if (toolbar && toolbar.classList.contains('is-visible')) {
-        toolbar.classList.remove('is-visible')
-        e.preventDefault()
-      }
-
-      // 4. 派发全局 esc 事件（供各组件按需监听） / 4. Dispatch global esc event
+      // 3. 派发全局 esc 事件（供各组件按需监听） / 3. Dispatch global esc event
+      // （旧版对 #selectionToolbar 的剥 class 兜底已删：该遗留模板已从 App.vue 移除，
+      //   活跃工具栏 SelectionToolbar.vue 自带 useEscClose 状态级关闭）
       window.dispatchEvent(new CustomEvent('global-esc'))
       return
     }

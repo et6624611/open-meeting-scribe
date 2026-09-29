@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.store import (
     TASKS_DIR,
@@ -45,10 +45,28 @@ class TranscribeRequest(BaseModel):
     speaker_mapping: Optional[dict[str, str]] = None  # {"0": "uuid1", "1": "uuid2"} 说话人映射 / Speaker mapping
 
 
+class OnePageConfig(BaseModel):
+    """一页纸系数（会议级）：纪要/洞察各自一页、互不相加；仅改提供的键。
+    契约见 docs/API_CONTRACTS.md one_page 条目。"""
+    summary: Optional[float] = None
+    insights: Optional[float] = None
+
+    @field_validator("summary", "insights")
+    @classmethod
+    def _check_level(cls, v):
+        # 合法档位 {0.5, 1, 1.5, 2}；接受 int 形式（JSON 1 → 1.0）
+        if v is None:
+            return v
+        if v not in (0.5, 1.0, 1.5, 2.0):
+            raise ValueError("one_page 系数仅支持 0.5 / 1 / 1.5 / 2 四档")
+        return float(v)
+
+
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     meeting_date: Optional[str] = None  # "YYYY-MM-DD"，用户指定的实际开会日期 / Actual meeting date specified by user
     project_id: Optional[str] = None  # 关联的项目 ID，传空字符串表示取消关联 / Linked project ID; empty string to unlink
+    one_page: Optional[OnePageConfig] = None  # 一页纸系数（仅改提供键）/ Per-meeting one-page factors; partial update
 
 
 class BatchArchiveRequest(BaseModel):
@@ -59,6 +77,16 @@ class RetranscribeRequest(BaseModel):
     """重新识别请求体（全部字段可选，向后兼容无 body 调用）。"""
 
     engine_override: Optional[str] = None  # DEF-QA-R1-04（AC-4）：显式 "cloud"=切云端重跑；None=按当前设置
+
+
+class CorrectTextRequest(BaseModel):
+    """划词映射的全量回溯修正请求体 / Retroactive term correction request.
+
+    old 是误识别写法（映射左值），new 是正确文本（映射右值）。
+    """
+
+    old: str
+    new: str
 
 
 @router.post("/api/transcribe")
@@ -447,6 +475,26 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     return {"status": "processing", "message": _("Regenerating minutes...")}
 
 
+def _rebalance_insight_budget(task_id: str, factor) -> None:
+    """按新系数立即重排洞察卡集可见层（deferred 标记搬家，不调 LLM）。
+
+    失败不阻断 PATCH 主流程（系数已落盘，下次保存/分析路径会重新收口）。"""
+    try:
+        from app.routers.insights import _insights_file, _load_insight_messages
+        from core.fs_atomic import atomic_write_json
+        from core.insight_budget import apply_budget
+        messages = _load_insight_messages(task_id)
+        if not messages:
+            return
+        rebalanced = apply_budget(messages, factor)
+        if rebalanced != messages:
+            TASKS_DIR.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(_insights_file(task_id), {"messages": rebalanced})
+            logger.info("[一页纸系数] task=%s 洞察卡集已按系数 %s 重排", task_id[:8], factor)
+    except Exception as e:
+        logger.warning("[一页纸系数] task=%s 洞察卡集重排失败（不影响系数保存）: %s", task_id[:8], e)
+
+
 @router.patch("/api/tasks/{task_id}")
 def update_task(task_id: str, data: TaskUpdate):
     """更新任务信息（写 tasks JSON） / Update task info (write tasks JSON)"""
@@ -469,12 +517,71 @@ def update_task(task_id: str, data: TaskUpdate):
         # 空字符串 = 取消关联，非空 = 绑定项目 / Empty string = unlink; non-empty = bind project
         tasks[task_id]["project_id"] = data.project_id.strip() or None
         changed = True
+    if data.one_page is not None:
+        # 仅覆盖显式提供的键；系数变更不改纪要内容，不标 last_modified_at（避免误触发知识库重同步）
+        old = dict(tasks[task_id].get("one_page") or {})
+        new = dict(old)
+        insights_changed = False
+        for key in ("summary", "insights"):
+            if key in data.one_page.model_fields_set:
+                val = getattr(data.one_page, key)
+                if val is not None and new.get(key) != val:
+                    new[key] = val
+                    if key == "insights":
+                        insights_changed = True
+        tasks[task_id]["one_page"] = new
+        save_task_to_disk(task_id)
+        if insights_changed:
+            # 洞察改档立即重排卡集可见层（纯展示侧搬家，不耗 LLM 配额）
+            _rebalance_insight_budget(task_id, new.get("insights", 1))
     if changed:
         # 标记内容已修改，用于知识库同步脏检测 / Mark content as modified for KB sync dirty detection
         tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
         save_task_to_disk(task_id)
 
     return tasks[task_id]
+
+
+@router.post("/api/tasks/{task_id}/correct-text")
+def correct_task_text_endpoint(task_id: str, data: CorrectTextRequest):
+    """把一条「误识别→正确文本」映射全量回溯应用到本场会议 / Apply one wrong→correct mapping retroactively.
+
+    热词映射本身只在转写时刻生效（core.hotwords.apply_hotword_mappings），已存会议的旧文本
+    不受影响；本端点补上回溯这一环：任务对象 + 洞察 JSON + 洞察板 HTML + 导出纪要 md 一并改写。
+    命中明细随响应返回，前端据此报真实数量（旧实现只改 DOM 且无条件报「已修正」）。
+
+    注意：用 def（非 async def），多份文件的读写 I/O 会阻塞事件循环，
+    FastAPI 自动在线程池执行。 / Uses def so file I/O runs in the thread pool.
+    """
+    old, new = data.old.strip(), data.new.strip()
+    if not old or not new:
+        raise HTTPException(400, _("Correction source and target must not be empty"))
+    if old == new:
+        raise HTTPException(400, _("Correction source and target are identical"))
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+
+    from core.text_correction import correct_task_text
+
+    try:
+        result = correct_task_text(tasks[task_id], task_id, old, new)
+    except Exception as e:
+        logger.exception(f"[{task_id[:8]}] 文本回溯修正失败")
+        raise HTTPException(500, _("Text correction failed: {error}").format(error=e))
+
+    if result["hits"]["task"]:
+        # 任务主体确实变了才落盘；顺带置脏，让知识库同步提示跟上手改
+        # Persist only when the task body actually changed; mark dirty for KB sync.
+        tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+        save_task_to_disk(task_id)
+    if result["residual"]:
+        # 白名单没覆盖到的位置：不静默，留条痕供补录 REWRITE_KEYS
+        # Leftovers mean REWRITE_KEYS is incomplete — surface it instead of swallowing.
+        logger.warning(
+            "[%s] 文本修正后仍残留 %s 处，需补充 core.text_correction.REWRITE_KEYS",
+            task_id[:8], result["residual"],
+        )
+    return result
 
 
 @router.get("/api/tasks/{task_id}/sync-status")

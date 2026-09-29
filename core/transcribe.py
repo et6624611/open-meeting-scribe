@@ -59,10 +59,9 @@ COMMON_BIGRAMS = {
 def _get_asr_mode() -> str:
     """获取当前 ASR 接入模式（local / proxy / direct / cloud）。
 
-    T2 收口（REQ-ACCESS-MODE-CARDS AC-T2）：路由判定唯一入口为
-    `core/routing.get_routing_decision("asr")`，以 access_mode 为配置语义；
-    本函数不再独立读取 engine.mode / prefer_subscription 组合。
-    未配置（access_mode=null）时由 core/routing 按升级前逻辑等价兜底。
+    路由判定唯一入口为 `core/routing.get_routing_decision("asr")["route"]`，
+    真相源 = 逐能力来源 capability_source.asr（trial/byok/local）。
+    未设置时 route 为空串 ""（由 transcribe_audio 拦截并提示去设置）。
     """
     from core.routing import get_routing_decision
     return get_routing_decision("asr")["route"]
@@ -166,6 +165,9 @@ def transcribe_audio(
         raise RuntimeError(f"文件过大: {file_size / 1024 / 1024:.0f}MB > 1GB 上限")
 
     mode = engine_override or _get_asr_mode()
+    if not mode:
+        # 逐能力未设置：不静默兜底走 proxy，明示去设置（classify_error 归为 api_config）
+        raise RuntimeError("ASR 转写来源未设置，请在「设置 > ASR 配置」选择算力来源")
     logger.info(f"提交转写: {file_path.name} ({file_size / 1024 / 1024:.1f} MB), model={model}, mode={mode}")
 
     if mode == "local":

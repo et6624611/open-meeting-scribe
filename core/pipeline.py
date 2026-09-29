@@ -190,6 +190,7 @@ def run_pipeline_stage2(
     on_progress: Callable[[PipelineProgress], None] | None = None,
     meeting_time: str | None = None,
     user_notes: str | None = None,
+    one_page_factor: float = 1.0,
 ) -> dict:
     """
     管线第二阶段：对话稿 → 纪要 / Pipeline stage 2: dialogue → summary.
@@ -204,6 +205,7 @@ def run_pipeline_stage2(
         on_progress: 进度回调 / Progress callback
         meeting_time: 会议时间（来自音频采集时间） / Meeting time (from audio capture time), e.g. "2026-09-03 14:30"
         user_notes: 用户录音期间输入的笔记，作为纪要生成的上下文 / User notes during recording, used as context for summary generation
+        one_page_factor: 一页纸系数（会议级篇幅预算，透传给 generate_summary） / Per-meeting one-page factor
 
     Returns:
         {
@@ -252,7 +254,8 @@ def run_pipeline_stage2(
     # 6. 生成纪要 / Generate summary
     progress("summarize", "正在生成纪要...", 85)
     with perf_timer("纪要生成", category="llm_sync"):
-        summary = generate_summary(dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes)
+        summary = generate_summary(dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes,
+                                   one_page_factor=one_page_factor)
     progress("summarize", "纪要生成完成", 90)
     result["summary"] = summary
 

@@ -13,11 +13,16 @@ export interface SourceFile {
 /** LLM 响应元数据 / LLM response metadata */
 export interface LlmMetadata {
   model: string
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
-  finish_reason: string
-  id: string
+  /** 回显字段按链路而异：byok/自动改用等链路可能只回 model，usage 整体或部分缺失 */
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+  finish_reason?: string
+  id?: string
   /** 智能体模式引擎标识（回显与多轮恢复判定用） */
   engine?: string
+  /** 完成护栏（模式即权限 §5.4）：本轮写工具是否成功落过盘（仅智能体链路携带） */
+  rewritten?: boolean
+  /** 本轮实际落档（readonly|workspace_write|full_task） */
+  auth_tier?: string
 }
 
 /** 消息性能指标 / Message performance metrics */
@@ -59,6 +64,8 @@ export interface AgentStage {
   detail?: string
   /** 工具调用 id（智能体模式并行工具按此配对，不靠数组下标） */
   id?: string
+  /** 工具原始名（含 mcp__ 前缀）：完成护栏按名定性与 tool_result 不带 name 时回溯用 */
+  name?: string
   /** 英文标签（CLI 引擎工具调用双语，按当前 locale 选取） */
   label_en?: string
   /** 后端 i18n 键（ai-panel 命名空间；智能体引擎文案不硬嵌中文） */
@@ -128,8 +135,8 @@ export interface ChatOptions {
   role?: string
   /** 当前可见的 Mermaid 图源码，用于图修改上下文 / Current visible Mermaid diagram source, for diagram modification context */
   current_diagram?: string
-  /** 引擎路由：undefined/qa=内置链路；'agent'=强制本地 CLI；'auto'=规则分流（方案 §3.9-1） */
-  engine?: 'agent' | 'auto'
+  /** 引擎路由：undefined=内置链路；'agent'=本地 CLI（auto 规则分流已退役：AI 算力入口治理 §1） */
+  engine?: 'agent'
   /** 本轮流标识，供 /api/chat/cancel 真取消（§3.9-5） */
   stream_id?: string
   /** 本轮授权档覆盖（readonly|workspace_write|full_task），缺省取设置 */
@@ -184,6 +191,8 @@ export interface StreamCallbacks {
     engine?: string
     /** 本轮消费方/计费回显（与 core/routing 实际判定一致） */
     model_usage?: ModelUsage
+    /** 完成护栏：写回事实（仅智能体链路；问答路径无此字段） */
+    rewritten?: boolean
   }) => void
   onError: (error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) => void
 }
@@ -302,6 +311,8 @@ export interface InlineEditResponse {
   ok: boolean
   original: string
   edited: string
+  /** 执行回显（AI 算力入口治理 §3）：面板外函数类操作的实际消费方/计费口径 */
+  model_usage?: ModelUsage
 }
 
 /** 行间编辑：根据用户指令对选中文本进行 AI 改写 / Inline edit: rewrite selected text based on user instruction */
@@ -310,11 +321,10 @@ export async function inlineEdit(
   instruction: string,
   model?: string,
 ): Promise<InlineEditResponse> {
-  const { data } = await client.post<InlineEditResponse>('/api/inline-edit', {
-    text,
-    instruction,
-    model: model || 'qwen-plus',
-  })
+  // 仅在显式指定时才发送 model，否则后端使用设置中的配置默认値
+  const body: { text: string; instruction: string; model?: string } = { text, instruction }
+  if (model) body.model = model
+  const { data } = await client.post<InlineEditResponse>('/api/inline-edit', body)
   return data
 }
 

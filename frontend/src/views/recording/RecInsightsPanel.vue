@@ -7,6 +7,15 @@
         <span v-if="enabled && unreadCount > 0" class="rec-insights-badge">{{ unreadCount }}</span>
       </div>
       <div class="rec-insights-actions">
+        <!-- 一页纸系数角标（洞察面）：有效卡位上限，超位旧卡入「历史观察」折叠层；只读态也可改档
+             One-page badge (insights surface): active card-slot cap; overflow cards fold into history -->
+        <PageBudgetBadge
+          v-if="taskId"
+          :task-id="taskId"
+          surface="insights"
+          :factor="onePageFactor"
+          @changed="onBudgetChanged"
+        />
         <!-- 开关承载动作语义（点击切换，tooltip 提示动作）；旁边文本如实显示当前状态；会后只读态隐藏 -->
         <div
           v-if="!readonly"
@@ -26,28 +35,7 @@
           </div>
           <span class="toggle-switch-label">{{ enabled ? t('recording.insights.enabled') : t('recording.insights.disabled') }}</span>
         </div>
-        <!-- 自动频率选择（仅开启时显示）：唯一暴露给用户的旋钮；会后只读态无会中自动分析，隐藏 -->
-        <div v-if="!readonly && enabled" class="rec-insights-freq" :title="t('recording.insights.freq_tip')">
-          <button
-            v-for="opt in FREQ_OPTIONS" :key="opt"
-            class="rec-insights-freq-opt"
-            :class="{ 'is-active': autoFreq === opt }"
-            :title="t('recording.insights.freq_' + opt)"
-            @click="$emit('update:autoFreq', opt)"
-          >{{ t('recording.insights.freq_' + opt) }}</button>
-        </div>
-        <button
-          v-if="enabled || readonly"
-          class="rec-insights-btn rec-insights-analyze-btn"
-          :class="{ 'is-loading': analyzing }"
-          :disabled="analyzing"
-          :title="readonly ? t('generating.insights.analyze_tip') : t('ai-panel.insights.manual_analysis')"
-          :aria-label="readonly ? t('generating.insights.analyze') : t('ai-panel.insights.manual_analysis')"
-          @click="$emit('manualCheck')"
-        >
-          <svg v-if="!analyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-          <svg v-else class="rec-insights-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-        </button>
+        <!-- 【已退役】自动频率旋钮与分析引擎标签：洞察改由会话面板人与 AI 共创驱动，本面板仅只读呈现 -->
         <!-- 扩展/收起按钮：扩展后洞察台占满内容区域；会后只读态整页即洞察，隐藏 -->
         <button
           v-if="!readonly"
@@ -68,14 +56,11 @@
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
         <div class="rec-insights-empty-text">{{ readonly ? t('generating.insights.empty_title') : t('recording.insights.empty') }}</div>
         <div class="rec-insights-empty-hint">{{ readonly ? t('generating.insights.empty_desc') : t('recording.insights.empty_hint') }}</div>
-        <!-- 会后空态：补分析入口 / Post-meeting empty state: supplement CTA -->
-        <button v-if="readonly" class="insights-cta-btn" :disabled="analyzing" @click="$emit('manualCheck')">
-          {{ analyzing ? t('generating.insights.analyzing') : t('generating.insights.analyze') }}
-        </button>
+        <!-- 【已退役】会后补分析 CTA：触发入口随「洞察共创 · 会话驱动」下线，历史消息仍只读呈现 -->
       </div>
       <div v-else class="rec-insights-list">
         <div
-          v-for="msg in messages" :key="msg.id"
+          v-for="msg in activeMessages" :key="msg.id"
           class="rec-insight-card"
           :class="{ 'is-expanded': msg.expanded, 'is-unread': !msg.read, 'is-acknowledged': msg.acknowledged }"
         >
@@ -95,13 +80,7 @@
                 class="rec-insight-diagram rec-insight-diagram-primary"
                 @seek-to="$emit('seekTo', $event)"
               />
-              <!-- 图操作工具栏 / Diagram action toolbar -->
-              <div class="rec-insight-diagram-toolbar">
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
-                </button>
-              </div>
+              <!-- 【已退役】图重生成按钮：单轮重生成不属于共创路径，修订改由会话发起 -->
             </div>
             <!-- 洞察台画布：受约束 Mermaid 解析成功时渲染 workflow 阶段卡 / Insight Deck canvas: workflow phase cards when constrained Mermaid parses -->
             <div v-else-if="flowOf(msg)" class="rec-insight-diagram-wrap">
@@ -116,10 +95,6 @@
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
                 </button>
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
-                </button>
                 <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
@@ -133,15 +108,11 @@
                 :code="msg.diagram"
                 class="rec-insight-diagram rec-insight-diagram-primary"
               />
-              <!-- 图操作工具栏 / Diagram action toolbar -->
+              <!-- 图操作工具栏（重生成按钮已退役） / Diagram action toolbar (regenerate retired) -->
               <div class="rec-insight-diagram-toolbar">
                 <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
-                </button>
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_regenerate')" @click.stop="$emit('manualCheck')">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_regenerate') }}</span>
                 </button>
                 <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -151,6 +122,11 @@
             </div>
             <!-- 图的注释 / Diagram annotations -->
             <div class="rec-insight-body-text" v-html="renderInsightMarkdown(msg.body)"></div>
+            <!-- 备查注释层（三层信息写作）：退可忽略、进可查看 / Note layer: skippable yet answerable -->
+            <div v-if="msg.note" class="rec-insight-note">
+              <span class="rec-insight-note-label">{{ t('ai-panel.insights.note_label') }}</span>
+              <span class="rec-insight-note-text">{{ msg.note }}</span>
+            </div>
             <div v-if="msg.solution" class="rec-insight-solution">
               <span class="rec-insight-solution-label">{{ t('ai-panel.insights.expand_detail') }}</span>
               <div class="rec-insight-solution-text" v-html="renderInsightMarkdown(msg.solution)"></div>
@@ -168,6 +144,21 @@
             </div>
           </div>
         </div>
+        <!-- 历史观察折叠层：超出一页预算的降级卡（不删除，进可读退可略）
+             History layer: deferred cards beyond the one-page budget -->
+        <div v-if="deferredMessages.length > 0" class="rec-insights-deferred">
+          <button class="rec-insights-deferred-toggle" :aria-expanded="openDeferred" @click="openDeferred = !openDeferred">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline v-if="!openDeferred" points="6 9 12 15 18 9"/><polyline v-else points="18 15 12 9 6 15"/></svg>
+            {{ t('recording.insights.deferred_title', { count: deferredMessages.length }) }}
+          </button>
+          <div v-show="openDeferred" class="rec-insights-deferred-list">
+            <div v-for="msg in deferredMessages" :key="'deferred-' + msg.id" class="rec-insights-deferred-item" :title="msg.body">
+              <span class="rec-insights-deferred-dot"></span>
+              <span class="rec-insights-deferred-item-title">{{ msg.title }}</span>
+              <span class="rec-insights-deferred-time">{{ formatTime(msg.timestamp) }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <!-- 未开启时的提示 / Prompt when disabled -->
@@ -182,23 +173,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
-import type { InsightMessage, InsightAction, AutoFreq } from '@/composables/useAiInsights'
+import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
 import type { InsightFlowData } from '@/utils/parseInsightFlow'
 import { parseInsightFlow, matchPhaseDescriptions } from '@/utils/parseInsightFlow'
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
 import InsightFlow from '@/components/common/InsightFlow.vue'
+import PageBudgetBadge from '@/components/common/PageBudgetBadge.vue'
 // eslint-disable-next-line vue/multi-word-component-names -- 历史兼容组件，仅旧会话 graph 消息使用
 import InsightGraph, { type InsightLegacyGraphData } from '@/components/common/InsightGraph.vue'
 
 const { t } = useI18n()
 const insights = useAiInsights()
 
-/** 频率档位选项（从“关闭自动”到“高”） / Frequency options (from off to high) */
-const FREQ_OPTIONS: AutoFreq[] = ['off', 'low', 'normal', 'high']
+/* 【已退役】分析引擎回显标签与频率旋钮：随「洞察共创 · 会话驱动」下线 */
 
 /**
  * 将洞察台的 Markdown 文本渲染为 HTML。
@@ -262,26 +253,41 @@ const props = defineProps<{
   enabled: boolean
   unreadCount: number
   actedActions: Record<string, boolean>
-  analyzing: boolean
   expanded: boolean
-  autoFreq: AutoFreq
   /** 面板模式（REQ-INSIGHT-DECK-POSTMEETING R1 v0.2.0 契约）：
       live = 录音页会中态（默认，行为与改造前一致）；readonly = 纪要页会后只读态
       live = in-meeting (default, unchanged); readonly = post-meeting review mode */
   mode?: 'live' | 'readonly'
+  /** 一页纸系数所属任务 ID（角标 PATCH 目标） / Task id the one-page badge patches */
+  taskId?: string
+  /** 当前洞察面系数（宿主从 task.one_page.insights 解析） / Current insights-side factor */
+  onePageFactor?: number | null
 }>()
 
 /** 只读态判定（模板内沿用 readonly 语义名） / Read-only flag derived from mode */
 const readonly = computed(() => props.mode === 'readonly')
 
+/* ── 一页纸系数：有效层/历史观察层拆分 / One-page budget: active vs deferred layers ── */
+const activeMessages = computed(() => props.messages.filter(m => !m.deferred))
+const deferredMessages = computed(() => props.messages.filter(m => !!m.deferred))
+/** 历史观察层默认收起（退可略） / History layer collapsed by default */
+const openDeferred = ref(false)
+
+/** 系数同步到 composable：会中分析请求据此携带 card_slots / Sync factor so analyses carry card_slots */
+watch(() => props.onePageFactor, (f) => { insights.setOnePageInsights(f) }, { immediate: true })
+
+/** 改档后重拉消息：后端 PATCH 同请求内已重排卡集，前端取回最新 deferred 标记
+    Reload after factor change: the PATCH response already rebalanced server-side */
+function onBudgetChanged() {
+  if (props.taskId) void insights.reloadTaskMessages(props.taskId)
+}
+
 defineEmits<{
   (e: 'toggleEnabled'): void
   (e: 'toggleMessage', id: string): void
   (e: 'action', message: InsightMessage, action: InsightAction): void
-  (e: 'manualCheck'): void
   (e: 'toggleExpand'): void
   (e: 'seekTo', ms: number): void
-  (e: 'update:autoFreq', value: AutoFreq): void
 }>()
 
 /** 复制图源码到剪贴板 / Copy diagram source to clipboard */
@@ -312,32 +318,67 @@ function formatTime(ts: number): string {
 <style scoped>
 /* 会后只读态专属元素（其余样式沿用 recording-view.css 全局 .rec-insights-* 体系）
    Post-meeting read-only extras; base styles live in recording-view.css (global) */
-.insights-cta-btn {
-  margin-top: 12px;
-  padding: 6px 16px;
-  border: 1px solid var(--accent, #6366f1);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--accent, #6366f1);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.insights-cta-btn:hover:not(:disabled) {
-  background: var(--accent, #6366f1);
-  color: var(--on-accent, #fff);
-}
-.insights-cta-btn:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
 .insights-phase-badge {
   flex-shrink: 0;
   padding: 1px 6px;
   border-radius: 6px;
   font-size: 10px;
   line-height: 1.5;
-  color: var(--proactive, #a78bfa);
-  background: var(--proactive-soft, rgba(167, 139, 250, 0.12));
+  /* 用色收敛 R2：阶段标记属装饰，中性化（紫色只留给域标识与状态信号） */
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+/* ── 历史观察折叠层（一页纸系数降级卡） / Deferred history layer ── */
+.rec-insights-deferred {
+  margin-top: var(--s-2);
+  border-top: 1px dashed var(--border);
+  padding-top: var(--s-1);
+}
+.rec-insights-deferred-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--subtle);
+  font-size: var(--fs-11);
+  font-family: inherit;
+  cursor: pointer;
+}
+.rec-insights-deferred-toggle:hover {
+  color: var(--muted);
+}
+.rec-insights-deferred-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-1) 0 var(--s-1) var(--s-2);
+}
+.rec-insights-deferred-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-11);
+  color: var(--muted);
+}
+.rec-insights-deferred-dot {
+  flex-shrink: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--border-strong, var(--border));
+}
+.rec-insights-deferred-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rec-insights-deferred-time {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--subtle);
 }
 </style>

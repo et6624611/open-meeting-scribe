@@ -47,9 +47,6 @@
       </div>
     </div>
 
-    <!-- 标题存在时的正文摘要行（只读展示，编辑走下方决策正文） -->
-    <div class="db-sub" v-if="!editing && hasTitle" :title="todo.text">{{ strip(todo.text) }}</div>
-
     <!-- ⋯ 菜单进入的行内编辑态：编辑「标题 + 主文本」；正文(why)仍由下方常驻 textarea 维护 -->
     <div class="db-edit" v-if="editing">
       <label class="db-edit-field">
@@ -68,13 +65,19 @@
       <label class="db-edit-field">
         <span class="db-edit-label">{{ t('generating.todos.edit_content_label') }}</span>
         <textarea
+          ref="editAreaRef"
           class="db-edit-area"
           v-model="editText"
           rows="3"
           :placeholder="t('generating.todos.edit_content_placeholder')"
-          @keydown.meta.enter.prevent="saveEdit"
-          @keydown.ctrl.enter.prevent="saveEdit"
+          @input="onDateShortcut"
+          @keydown="onEditKeydown"
+          @blur="editMenu.onBlur"
         ></textarea>
+        <SlashDateMenu
+          :open="editMenuOpen" :items="editMenuItems" :active-index="editMenuActive" :pos="editMenuPos"
+          @select="editMenu.select" @hover="editMenu.setActive"
+        />
       </label>
       <div class="db-edit-actions">
         <button type="button" class="db-edit-btn" @click="cancelEdit">{{ t('generating.todos.edit_cancel') }}</button>
@@ -85,14 +88,20 @@
     <!-- 第二行：Markdown textarea / Row 2: Markdown textarea -->
     <div class="db-content" v-if="!editing">
       <textarea
+        ref="contentRef"
         class="db-card-textarea"
         :value="content"
         :placeholder="t('generating.todos.content_placeholder')"
         :rows="Math.max(content.split('\n').length, 2)"
         spellcheck="false"
         @input="onContentInput"
-        @blur="emit('commit-content', content)"
+        @keydown="contentOnKeydown"
+        @blur="onContentBlur"
       ></textarea>
+      <SlashDateMenu
+        :open="contentMenuOpen" :items="contentMenuItems" :active-index="contentMenuActive" :pos="contentMenuPos"
+        @select="contentMenu.select" @hover="contentMenu.setActive"
+      />
     </div>
 
     <!-- 底部：操作 / Footer: actions -->
@@ -138,7 +147,10 @@ import type { TodoPatch } from '@/api/notes'
 import { useDecisionStatuses } from '@/composables/useDecisionStatuses'
 import { useEscClose } from '@/composables/useEscClose'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useSlashDateMenu } from '@/composables/useSlashDateMenu'
 import { stripDecisionEmphasis } from '@/utils/decisionText'
+import { handleDateShortcut } from '@/utils/dateShortcuts'
+import SlashDateMenu from '@/components/SlashDateMenu.vue'
 
 const { t, locale } = useI18n()
 
@@ -183,28 +195,80 @@ const statusVarStyle = computed(() => ({
   '--db-status-soft': `color-mix(in oklch, ${colorOf(status.value)} 14%, transparent)`,
 }))
 
-// 标题 + 正文双要素：有 title 时标题占第一行，正文退为摘要行
+// 标题 + 正文双要素：有 title 时标题占第一行
+// DC-UI-02：标题下方的灰色摘要行已移除——它与下方正文重复冲突
+// 但 why 为空时 text 是唯一内容，改为落到正文位置展示，不丢信息
 // RF-F1：auto 节点文本携带纪要里的成对 markdown 强调符号，仅展示层剥除，数据不回改
-// 手动录入时内容已落在下方正文框(why)，摘要行与正文同值则不重复展示
 const strip = stripDecisionEmphasis
 const hasTitle = computed(() => Boolean(props.todo.title && props.todo.text && props.todo.text !== props.todo.why))
+
+// 决策内容（why 字段存 Markdown）；有独立标题且 why 为空时回退展示 text
+// / Decision content (Markdown in why); falls back to text when the body is empty
+const bodyContent = computed(() => props.todo.why || (hasTitle.value ? props.todo.text : ''))
+
 const displayTitle = computed(() => strip(props.todo.title || props.todo.text))
-const fullText = computed(() =>
-  hasTitle.value ? `${strip(props.todo.title || '')}：${strip(props.todo.text)}` : strip(props.todo.text))
+// tooltip 与正文取同一来源，避免悬停时重现已被收起的旧 text 摘要
+// 无独立标题的卡（多数存量）首行即 text，tooltip 仍展示完整 text
+const fullText = computed(() => {
+  if (!hasTitle.value) return strip(props.todo.text)
+  const body = strip(bodyContent.value || props.todo.text)
+  const title = strip(props.todo.title || '')
+  return body ? `${title}：${body}` : title
+})
 
 // 负责人文字标签 / Owner text label
 const ownerLabel = computed(() => t('generating.todos.owner_waiting_' + ownerType.value))
 
-// 决策内容（使用 why 字段存储 Markdown） / Decision content (stored in why field as Markdown)
-const content = ref(props.todo.why || '')
+const content = ref(bodyContent.value)
 
 // 同步外部变化 / Sync external changes
-watch(() => props.todo.why, (val: string | undefined) => {
-  content.value = val || ''
+watch(bodyContent, (val: string) => {
+  content.value = val
 })
 
 function onContentInput(e: Event) {
+  // 先就地展开日期触发词（/today 后接空格），展开后的 input 事件会再回到这里同步 content
+  handleDateShortcut(e)
   content.value = (e.target as HTMLTextAreaElement).value
+  // 未即时展开时，刷新斜杠日期候选菜单
+  contentMenuOnInput()
+}
+
+function onContentBlur() {
+  contentMenuOnBlur()
+  emit('commit-content', content.value)
+}
+
+// 编辑态 textarea 用 v-model，只需插入展开逻辑，模型同步由 v-model 接住
+function onDateShortcut(e: Event) {
+  handleDateShortcut(e)
+  editMenuOnInput()
+}
+
+// ── 斜杠日期候选菜单（常驻正文 + 编辑态各一套）──
+const contentRef = ref<HTMLTextAreaElement | null>(null)
+const editAreaRef = ref<HTMLTextAreaElement | null>(null)
+const contentMenu = useSlashDateMenu(() => contentRef.value)
+const editMenu = useSlashDateMenu(() => editAreaRef.value)
+// 解构为顶层 const，供模板自动解包 Ref（嵌套 Ref 不会自动解包）
+const {
+  open: contentMenuOpen, items: contentMenuItems, activeIndex: contentMenuActive,
+  pos: contentMenuPos, onInput: contentMenuOnInput, onKeydown: contentOnKeydown,
+  onBlur: contentMenuOnBlur,
+} = contentMenu
+const {
+  open: editMenuOpen, items: editMenuItems, activeIndex: editMenuActive,
+  pos: editMenuPos, onInput: editMenuOnInput, onKeydown: editOnKeydown,
+} = editMenu
+
+// 编辑区统一 keydown：先给菜单（纯 Enter 选中项会 preventDefault），未消费且 Cmd/Ctrl+Enter 则保存
+function onEditKeydown(e: KeyboardEvent) {
+  editOnKeydown(e)
+  if (e.defaultPrevented) return
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    saveEdit()
+  }
 }
 
 function onSelectStatus(s: string) {

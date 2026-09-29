@@ -20,6 +20,14 @@
           <button class="gen-ta-save-btn" @click="finishEdit">{{ t('common.action.save') }}</button>
           <button class="gen-ta-cancel-btn" @click="cancelEdit">{{ t('common.action.cancel') }}</button>
         </template>
+        <!-- 一页纸系数角标：纪要面预算，改档后下次生成时生效 / One-page badge (summary surface): takes effect on next generation -->
+        <PageBudgetBadge
+          v-if="taskId"
+          class="gen-ta-budget"
+          :task-id="taskId"
+          surface="summary"
+          :factor="task?.one_page?.summary"
+        />
       </div>
       <!-- Markdown textarea 编辑器 / Markdown textarea editor -->
       <div class="gen-textarea-wrap">
@@ -82,6 +90,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ProgressDialog from './ProgressDialog.vue'
+import PageBudgetBadge from '@/components/common/PageBudgetBadge.vue'
 import type { Chapter, Task } from '@/api/types'
 
 const { t } = useI18n()
@@ -116,6 +125,9 @@ function formatTimeMs(ms: number): string {
 }
 
 const loading = computed(() => props.processing)
+
+/** 角标从属的任务 ID / Task id the one-page badge belongs to */
+const taskId = computed(() => props.task?.task_id ?? '')
 
 // ── textarea 编辑状态 / textarea editing state ──
 const textareaEl = ref<HTMLTextAreaElement | null>(null)

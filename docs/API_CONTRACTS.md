@@ -3,7 +3,7 @@ title: 外部接口契约
 description: DashScope / 通义千问 API 技术细节的唯一事实源
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-27
+updated_at: 2026-09-29
 status: published
 ---
 
@@ -441,6 +441,19 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ## 14. 洞察台会后化 API（REQ-INSIGHT-DECK-POSTMEETING R2 · 已实现）
 
+### POST /api/insights/analyze（新增可选字段 existing_insights · 只读累进 Phase 1）
+
+- 请求体新增可选字段 `existing_insights?: [{title, body}]`：前端从当前卡片集构建的 title/body 结构化摘要（最近 8 条、单条 body 截 120 字、总量截 1800 字符），缺省 / 空时行为与旧版完全等价（向后兼容）。
+- 服务端经 `core.insights.run_analysis(existing_insights=...)` 渲染为 user message 中的「已产出的洞察卡片」块（同样有 8 条 / 2000 字符双层截断），并约束模型：同主题不重复建卡（除非有明确增量发现）。
+- 定位：**只读累进**——仅影响提示词输入，不改变单卡输出契约、写入模型与持久化契约（append + 前端全量覆盖语义不变）。
+
+### 洞察板 API（Phase 2 · 已实现，Board Spec 契约见 docs/INSIGHT_BOARD_SPEC_v0.md v0.3）
+
+- **GET /api/insights/board/{task_id}** → `{board: InsightBoard|null}`；无板/坏板（JSON 损坏或 schema 不合）均返回 null，前端降级到卡片视图。
+- **POST /api/insights/board/analyze/task/{task_id}** → `{ok, board, changed, errors}`。服务端单一写入（与卡片管线同模型，前端只读重拉）：读任务全文最近 K 句（`OMS_BOARD_ANALYSIS_K` 默认 60）+ 当前板摘要，LLM 输出 zone patch ops（`upsert_zone`/`replace_cells`/`settle_zone`）；**ops 全部合法才应用并落盘** `data/tasks/<task_id>.board.json`（revision +1），任一非法整次丢弃（ok=false、板保持上一版本，返 200 不阻断展示）；无板时先建骨架板（revision 0，占位 flow 主视觉）。
+- 错误：404 任务不存在；400 未完成/内容不足；**409 `board_in_flight`**（同任务修订进行中）；**504 `board_timeout`**（超时守护 `OMS_BOARD_ANALYSIS_TIMEOUT` 默认 **180s**——本地推理实测 50s+，不沿用卡片 60s 预算），超时不写盘。
+- 卡片管线（insights.json）与板管线（board.json）**并行共存、互不写入**；zone.origin 回指卡片消息 id 作收敛溯源锚点。
+
 ### POST /api/insights/analyze/task/{task_id}（会后补分析）
 
 - 无请求体。服务端从任务读取完整 `dialogue` 与 `chapters`，取时间序最近 `POST_ANALYSIS_MAX_LINES`（默认 40，环境变量 `OMS_INSIGHTS_POST_K` 可配）句构造分析输入，复用 `core.insights.run_analysis`（含角色 prompt 与 model_tier 防幻觉守卫，与无状态 `/api/insights/analyze` 对等）。
@@ -452,3 +465,55 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 - `InsightMessage.phase?: "meeting" | "post_meeting"`；存量文件缺字段一律按 `"meeting"` 读取，前端卡片对 `post_meeting` 显示「会后」徽标。
 - AI 会话上下文注入：chat qa/stream 两路径经 `core.chat_context.build_insights_context_block(task_id)` 注入「会议洞察台」块（最多 5 条 / 整块 1200 字符，diagram 源码不整段注入）；CLI 引擎工作区另导出 `context/insights.md`（全量）。
+
+## 15. 划词映射回溯修正 API（REQ-SELECTION-CORRETO · 已实现）
+
+### POST /api/tasks/{task_id}/correct-text
+
+- 请求体：`{"old": "误识别写法", "new": "正确文本"}`（两侧均 `strip()`）。
+- 语义：把一条 `错误识别→正确文本` 映射**全量回溯**应用到本场会议的**四份产物**——任务对象（转写原文 / 纪要 / 随记 / 章节 / 决策）、`<task_id>.insights.json`、`<task_id>.board.html`、`output_path` 指向的导出纪要 md。
+- 匹配口径与转写链路**同源**（复用 `core.hotwords.sub_term` 与 `ascii_term_pattern`）：纯 ASCII 词按**ASCII 邻接边界**匹配（`(?<![A-Za-z0-9])词(?![A-Za-z0-9])`，大小写不敏感），含中文串走子串替换。
+  不用 `\b`：Python Unicode 语义下汉字也算 `\w`，「与ES（」里汉字与字母之间不存在 `\b`，中文会议里最常见的「英文编码紧贴汉字」形态会全部匹配不上（ES→EAS 配了不生效）；而邻接边界既不误伤 `FILES` / `ESB` / `CH2O`。
+- 改写范围按 **键名白名单** `core.text_correction.REWRITE_KEYS` 递归判定（非按路径枚举）：新增名为 `text` 的字段自动被覆盖，而 `task_id` / `audio_path` / `*_at` / `speaker_mapping` 等标识与路径永不触碰。
+- 响应：`{ok, old, new, replaced, hits: {task, insights, board, export_md}, fields: {键名: 命中数}, residual, warnings}`。
+  - `replaced` 为四份产物总命中数；**0 也是 200**（映射已存、本场会议恰好无该词），前端据此区分「已修正 N 处」与「未出现，无需修正」，不再无条件报成功。
+  - `residual` 是白名单漏项告警：对全量产物再扫一次，`> 0` 即说明有新内容字段未进 `REWRITE_KEYS`（或受保护字段确实含词），路由层落 WARNING，不静默。
+  - `warnings` 收集旁路文件读写失败；旁路失败不回滚任务主体（已命中即已生效），仅降级为提示。
+- 落盘：任务主体仅在 `hits.task > 0` 时 `save_task_to_disk` 并刷新 `last_modified_at`（驱动知识库同步脏检测）；洞察板走 `board_html_save`（保留清洗防线 + `revision+1`）；洞察 JSON / md 用 `atomic_write_json|text`。幂等：重复调用第二次 `replaced=0`。
+- 错误：400 任一侧为空 / `old == new`；404 任务不存在；500 修正过程异常。
+- 与热词映射文件的关系：`data/hotword_mappings.txt` 仍是**转写时刻**后处理的唯一来源（`apply_hotword_mappings`），本端点不读写该文件，只消费调用方传入的一对词。
+
+## 16. 一页纸系数 API（REQ-ONE-PAGE · 第一刀：纪要正文 + 洞察卡集 · 已实现）
+
+设计共识（2026-09-29 定稿）：AI 生成内容受人脑上下文预算约束；系数从属单个会议（不进全局设置），UI 形态为面板头角标；纪要、洞察**各自一页、互不相加**；预算作用于生成侧取舍与存储侧卡位，**不是事后截断**；超限内容降级不删除（进可读、退可略）。本刀不动：决策流解析、洞察板 HTML 产物、实时增量总结、AI 对话回复长度。
+
+### 任务 JSON 新增字段 `one_page`
+
+- 结构：`"one_page": {"summary": 1, "insights": 1}`；合法档位 `{0.5, 1, 1.5, 2}`（两键独立）。
+- 兼容：旧任务无字段时读取侧一律按系数 1 处理，无需迁移；随 `data/tasks/<id>.json` 落盘。
+
+### PATCH /api/tasks/{task_id} 请求扩展 `one_page`
+
+- 语义：**部分更新**，仅覆盖显式提供的子键（Pydantic `model_fields_set`）；非法档位 422；子键为 `null` = 不变。
+- 副作用分面：`summary` 改档**仅存值**（下次生成/重生成纪要时由提示词预算块生效，不自动重算、不耗 LLM 配额；不刷 `last_modified_at`，避免误触知识库重同步）。`insights` 改档在**同请求内**对 `<task_id>.insights.json` 执行预算重排并落盘（纯展示层搬家，零 LLM）；重排失败不阻断 PATCH（下次保存/分析路径重新收口）。
+- 响应返完整 task（含合并后的 `one_page`），前端角标据此即时刷新并乐观同步 `taskStore.patchTaskLocal`。
+
+### 纪要面：篇幅预算块（core/summarize.py）
+
+- `build_page_budget_block(factor)` 在 system prompt 尾部追加（位于角色模板与 model_tier 防幻觉守卫之后，两条 prompt 路径同点位）：结论层总预算 ≈ factor×900 字；主要结论 ≤ 5×factor（四舍五入，最少 1）；待办 ≤ 4×factor；概要 ≤ 3 句（0.5 档 1 句）；0.5 档「议题归类」不独立成节并入概要。
+- 删除规则（写入 prompt）：先裁过程性描述，再裁低优先级条目；被裁内容不得转移至其他章节；内容少于预算时如实输出不注水。
+- 链路：`generate_summary(..., one_page_factor)` ← `run_pipeline_stage2(..., one_page_factor)` ← `pipeline_runner` 读 `task.one_page.summary`（缺省 1）；`retry-summary` / `regenerate-summary` 经同一 stage2 链路自动携带。
+
+### 洞察面：卡位预算（core/insight_budget.py）
+
+- 换算表（与前端 `utils/pageBudget.ts` 一致）：系数→有效卡位 0.5→1 / 1→2 / 1.5→3 / 2→4；图卡（diagram 非空）上限 = ceil(卡位/2)，即 1 页 = 2 张时图 ≤1。
+- 存储侧 `apply_budget(messages, factor)`（纯函数、返回浅拷贝新列表）：acknowledged 卡永不降级且优先占位（确认卡超容时有效层超容不强降，仅记 WARNING）；其余卡从新到旧回填卡位；未入选卡打 `deferred: true`，入选卡显式写 `deferred: false`。
+- 守门收口点（均写盘前执行）：`POST /api/insights/messages/{task_id}`（会中全量覆盖保存）与 `POST /api/insights/analyze/task/{task_id}`（会后补分析追加）；另 PATCH 改档时重排（见上）。
+- 生成侧：`run_analysis(..., card_budget={slots, active})` 非空时追加卡位短块（本轮至多新增 1 张、禁同义新开、满位默认 has_finding=false）；`InsightAnalysisRequest` 新增可选 `card_slots: int`（会中前端从 task 读取后携带；缺省不注入，旧客户端兼容）。
+- `POST /api/insights/messages/{task_id}` 响应新增 `messages`（重排后全量列表，含 deferred 标记）；前端 `persistMessages` 以重拉语义替换本地，避免陈旧内存下次整体覆盖。
+
+### AI 引用口径对齐（三处读取过滤 deferred）
+
+- `core/chat_context.build_insights_context_block`（chat qa/stream 两路径共用）与 `core/cli_engine/context_export._render_insights` 仅注入未降级卡片，使 AI 引用集合与用户可见有效卡一致；现有「最近 N 条/字符截断」保留为第二道保险。
+- 前端可见层：`RecInsightsPanel` 主卡流只渲染非 deferred 卡；deferred 卡归入底部默认收起的「历史观察」折叠组（标题+时间单行呈现）；未读计数/横幅仅统计有效层。
+- 旧任务无 `deferred` 字段时前端/后端一律按未降级处理（`m.get("deferred")` 真值判定）。

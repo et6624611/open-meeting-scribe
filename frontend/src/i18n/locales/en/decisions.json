@@ -23,7 +23,7 @@
   "error_load": "Failed to load decisions",
   "add_modal_title": "Add a decision manually",
   "add_meeting_label": "Meeting",
-  "add_text_placeholder": "Decision text",
+  "add_text_placeholder": "Decision text (type /today then space to insert a date)",
   "add_title_label": "Title",
   "add_title_placeholder": "One-line summary (optional)",
   "add_title_too_long": "Title must be within 200 characters",

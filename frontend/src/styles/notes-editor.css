@@ -175,8 +175,21 @@
   min-width: 52px; text-align: center; flex-shrink: 0;
 }
 
-/* ═══ 浮动选中操作条 ═══ */
+/* ═══ 浮动选中操作条 ═══
+   反色墨条（ink pill）：底色取 var(--fg)，与 .toast / .skip-link 同一惯例，
+   因此浅色主题下是深底、深色主题下是浅底。条内所有前景一律基于 var(--bg)
+   （墨条的反色基准）派生，明暗主题各自成立，禁止再写死 oklch 常量。 */
 .selection-toolbar {
+  --sel-ink: var(--bg);
+  --sel-ink-dim: oklch(from var(--bg) l c h / 0.72);
+  --sel-ink-faint: oklch(from var(--bg) l c h / 0.6);
+  --sel-ink-hover: oklch(from var(--bg) l c h / 0.14);
+  --sel-ink-line: oklch(from var(--bg) l c h / 0.28);
+  --sel-ink-field: oklch(from var(--bg) l c h / 0.1);
+  /* 语义色向墨条反色基准靠拢，保证 --ok / --error 在深浅两种底上都可读 */
+  --sel-ink-ok: color-mix(in oklch, var(--ok) 62%, var(--bg));
+  --sel-ink-warn: color-mix(in oklch, var(--warn) 62%, var(--bg));
+  --sel-ink-error: color-mix(in oklch, var(--error) 62%, var(--bg));
   position: fixed; display: none; align-items: center;
   flex-wrap: wrap; gap: 2px; padding: 4px; background: var(--fg);
   border-radius: var(--radius); box-shadow: var(--shadow-float);
@@ -192,15 +205,13 @@
 .sel-tool-btn {
   display: flex; align-items: center; gap: 5px;
   padding: 6px 10px; border-radius: var(--radius-sm);
-  color: oklch(85% 0 0); font-size: var(--fs-12);
+  color: var(--sel-ink); font-size: var(--fs-12);
   white-space: nowrap; transition: all 0.12s;
   cursor: pointer; border: none; background: transparent;
 }
-.sel-tool-btn:hover { background: oklch(30% 0.012 250); color: oklch(100% 0 0); }
+.sel-tool-btn:hover { background: var(--sel-ink-hover); color: var(--sel-ink); }
 .sel-tool-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
-.sel-tool-sep { width: 1px; height: 20px; background: oklch(35% 0.01 250); margin: 0 2px; }
-.sel-tool-btn.is-primary { background: var(--accent); color: var(--accent-fg); }
-.sel-tool-btn.is-primary:hover { background: oklch(52% 0.18 255); }
+.sel-tool-sep { width: 1px; height: 20px; background: var(--sel-ink-line); margin: 0 2px; }
 
 /* 热词状态标签 / Hotword status tag */
 .sel-hw-tag {
@@ -209,39 +220,41 @@
   font-size: var(--fs-11); white-space: nowrap;
 }
 .sel-hw-tag svg { width: 12px; height: 12px; flex-shrink: 0; }
-.sel-hw-tag.is-existing { background: oklch(30% 0.02 150); color: oklch(75% 0.12 150); }
-.sel-hw-tag.is-mapping { background: oklch(30% 0.02 30); color: oklch(75% 0.12 60); }
+.sel-hw-tag.is-existing { background: oklch(from var(--ok) l c h / 0.22); color: var(--sel-ink-ok); }
+.sel-hw-tag.is-mapping { background: oklch(from var(--warn) l c h / 0.22); color: var(--sel-ink-warn); }
 .sel-tool-btn.is-correct {
-  color: oklch(85% 0.12 150);
+  color: var(--sel-ink-ok);
 }
 .sel-tool-btn.is-correct:hover {
-  background: oklch(28% 0.04 150);
+  background: oklch(from var(--ok) l c h / 0.2);
 }
 
 /* 映射内联输入行 / Inline mapping input row */
 .sel-mapping-row {
   display: flex; align-items: center; gap: 4px;
   padding: 4px 6px; margin-bottom: 4px;
-  border-bottom: 1px solid oklch(35% 0.01 250);
+  border-bottom: 1px solid var(--sel-ink-line);
   width: 100%;
 }
 .sel-mapping-source {
-  font-size: var(--fs-11); color: oklch(70% 0 0);
+  font-size: var(--fs-11); color: var(--sel-ink-dim);
   max-width: 100px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; flex-shrink: 0;
 }
 .sel-mapping-arrow {
-  font-size: var(--fs-11); color: oklch(60% 0 0); flex-shrink: 0;
+  font-size: var(--fs-11); color: var(--sel-ink-faint); flex-shrink: 0;
 }
 .sel-mapping-input {
   flex: 1; min-width: 60px; padding: 3px 6px;
-  border: 1px solid oklch(40% 0.01 250); border-radius: var(--radius-sm);
-  background: oklch(22% 0.01 250); color: oklch(90% 0 0);
+  border: 1px solid var(--sel-ink-line); border-radius: var(--radius-sm);
+  background: var(--sel-ink-field); color: var(--sel-ink);
   font-size: var(--fs-11); outline: none;
 }
+.sel-mapping-input::placeholder { color: var(--sel-ink-faint); }
 .sel-mapping-input:focus { border-color: var(--accent); }
-.sel-mapping-confirm { color: oklch(75% 0.12 150) !important; padding: 3px 6px !important; }
-.sel-mapping-cancel { color: oklch(65% 0.1 25) !important; padding: 3px 6px !important; }
+.sel-mapping-input:focus-visible { outline: none; }
+.sel-mapping-confirm { color: var(--sel-ink-ok) !important; padding: 3px 6px !important; }
+.sel-mapping-cancel { color: var(--sel-ink-error) !important; padding: 3px 6px !important; }
 
 /* ═══ AI 引用块 ═══ */
 .quote-ref {
@@ -360,6 +373,44 @@
 .inline-edit-send:disabled { opacity: 0.4; cursor: not-allowed; }
 .inline-edit-send.is-loading svg { animation: inlineEditSpin 0.8s linear infinite; }
 @keyframes inlineEditSpin { to { transform: rotate(360deg); } }
+
+/* ── 改写结果确认卡（AI 算力入口治理 §3：预览 + 执行方回显 + 采纳/拒绝）── */
+.inline-edit-result {
+  display: flex; flex-direction: column; gap: 6px; min-width: 300px;
+}
+.inline-edit-result-head {
+  font-size: var(--fs-11); color: var(--surface-3); letter-spacing: 0.04em;
+}
+.inline-edit-result-body {
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg);
+  font-size: var(--fs-12); line-height: 1.6;
+  max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+}
+.inline-edit-result-foot {
+  display: flex; align-items: center; gap: 6px;
+}
+.inline-edit-result-spacer { flex: 1; }
+.inline-edit-exec-tag {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--surface-3); background: transparent;
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--surface-3); cursor: pointer; transition: all 0.12s;
+}
+.inline-edit-exec-tag:hover { color: var(--surface); border-color: var(--surface-3); }
+.inline-edit-accept {
+  padding: 3px 10px; border-radius: var(--radius-sm); border: none;
+  background: var(--accent); color: var(--accent-fg);
+  font-size: var(--fs-11); cursor: pointer; transition: opacity 0.12s;
+}
+.inline-edit-accept:hover { opacity: 0.85; }
+.inline-edit-reject {
+  padding: 3px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--surface-3); background: transparent;
+  font-size: var(--fs-11); color: var(--surface-2); cursor: pointer; transition: all 0.12s;
+}
+.inline-edit-reject:hover { color: var(--surface); border-color: var(--surface); }
 
 /* ═══ 行间编辑 Diff 视图（块内） ═══ */
 .md-inline-diff {
@@ -544,6 +595,8 @@
 
 /* ═══ Markdown textarea 编辑器（纪要/随记） ═══ */
 .gen-ta-toolbar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) 0; flex-shrink: 0; }
+/* 一页纸系数角标：工具栏最右侧，与编辑动作按亲疏分组 / One-page badge at the toolbar's far edge */
+.gen-ta-budget { margin-left: auto; }
 .gen-ta-edit-btn { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: all 0.12s; }
 .gen-ta-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
 .gen-ta-edit-btn svg { width: 13px; height: 13px; }
@@ -631,7 +684,7 @@
 .db-node:hover .db-delete-btn { opacity: 1; }
 .db-delete-btn:hover { color: oklch(0.50 0.15 25); background: oklch(0.92 0.06 25); }
 .db-delete-btn svg { width: 13px; height: 13px; }
-.db-content { margin-top: var(--s-2); }
+.db-content { margin-top: var(--s-2); position: relative; }
 .db-dot { background: var(--db-status-color, var(--muted)); }
 
 /* ═══ 决策卡 ⋯ 动作按钮 + 弹出菜单（usePopMenu 以 fixed 定位，z-index 取全局阶梯） ═══ */
@@ -668,7 +721,7 @@
 /* ═══ 决策卡行内编辑态：标题 + 主文本（正文 why 仍走常驻 textarea） ═══ */
 .db-title-spacer { flex: 1; min-width: 0; }
 .db-edit { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
-.db-edit-field { display: flex; flex-direction: column; gap: 4px; }
+.db-edit-field { display: flex; flex-direction: column; gap: 4px; position: relative; }
 .db-edit-label { font-size: var(--fs-11); color: var(--muted); }
 .db-edit-input, .db-edit-area {
   width: 100%; box-sizing: border-box; padding: var(--s-2);
@@ -699,8 +752,7 @@
 .db-row1 { display: flex; align-items: center; gap: var(--s-2); }
 .db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* 标题 + 正文双要素：正文退为摘要行（编辑走下方决策正文） */
-.db-sub { margin-top: 2px; padding-left: 18px; font-size: var(--fs-12); color: var(--muted); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 标题 + 正文双要素：正文不再退为灰色摘要行（与正文重复，已移除） */
 .db-node.is-done .db-title { text-decoration: line-through; color: var(--subtle); }
 .db-completed { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
 .flow-completed-toggle { display: flex; align-items: center; gap: 6px; padding: var(--s-2) var(--s-3); border: none; background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; width: 100%; }
@@ -712,3 +764,77 @@
 .flow-empty { text-align: center; padding: var(--s-7) var(--s-4); color: var(--muted); }
 .flow-empty-title { font-size: var(--fs-13); font-weight: 500; color: var(--fg); margin-bottom: 4px; }
 .flow-empty-hint { font-size: var(--fs-12); color: var(--subtle); }
+
+/* ════════════════════════════════════════════════════════════
+   洞察板呈现容器（HTML 产物共创版，.ib-*）
+   契约：「洞察共创 · 会话驱动」——板为 AI 直出的自包含 HTML；
+   旧 Board Spec v0.3 渲染器样式（notice/nav/zone/cell 系列）已整体退役。
+   颜色/字号/间距全部走主题 token，无硬编码。
+   ════════════════════════════════════════════════════════════ */
+.ib-root { max-width: 860px; margin: 0 auto; padding: var(--s-4) var(--s-2) var(--s-8); position: relative; }
+
+/* 板头：rev 角标 + 刷新 + 共创起跳 */
+.ib-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
+.ib-eyebrow { font-size: var(--fs-11); letter-spacing: .08em; color: var(--subtle); text-transform: uppercase; }
+.ib-rev {
+  font-size: var(--fs-11); color: var(--subtle); font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: var(--radius-pill);
+}
+/* rev 徽标脉冲（洞察板自动同步）：会话落板或轮询发现新版本、内容静默换新后闪一下作为变更痕迹 */
+@keyframes ibRevPulse {
+  0%   { background: var(--accent-soft, var(--accent)); color: var(--accent-fg, var(--accent)); transform: scale(1.06); }
+  100% { background: transparent; color: var(--subtle); transform: scale(1); }
+}
+.ib-rev.is-bumped { animation: ibRevPulse 1.4s var(--ease-out, ease-out) 1; }
+@media (prefers-reduced-motion: reduce) { .ib-rev.is-bumped { animation: none; } }
+.ib-head-spacer { flex: 1; }
+
+/* 板头工具按钮 */
+.ib-tool-btn {
+  flex: none; font: inherit; font-size: var(--fs-12); color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 2px var(--s-3); cursor: pointer; transition: all .12s; white-space: nowrap;
+}
+.ib-tool-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }
+.ib-tool-btn:disabled { opacity: .55; cursor: wait; }
+.ib-tool-btn.is-primary { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 45%, transparent); }
+
+/* HTML 产物呈现容器：AI 自包含文档的隔离区。
+   关键：在 .ib-html（比 :root 更近的祖先）就近定义主题令牌，令板内所有 var() 解析为当前主题值；
+   并为 AI 惯用的“非应用真名”令牌提供别名映射（后端已剥除 AI 自带的 :root 覆盖）。 */
+.ib-html {
+  --surface-alt: var(--surface-2);
+  --surface-card: var(--surface);
+  --fg-secondary: var(--muted);
+  --fg-muted: var(--subtle);
+  --accent-light: var(--accent-soft);
+  --success: var(--ok);
+  --success-bg: var(--ok-soft);
+  --warning: var(--warn);
+  --warning-bg: var(--warn-soft);
+  --danger: var(--error);
+  --danger-bg: var(--error-soft);
+  --info-bg: var(--info-soft);
+  --purple-bg: var(--purple-soft);
+  --shadow: var(--dropdown-shadow, 0 1px 3px oklch(0% 0 0 / .12));
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: var(--s-4); overflow-x: auto; color: var(--fg); line-height: 1.6;
+}
+.ib-html, .ib-html *, .ib-html *::before, .ib-html *::after { box-sizing: border-box; }
+.ib-html a[data-seek-ms] { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* 板内悬停工具栏：悬停某个 <section data-ib-id> 时于其右上角浮现「共创此节」 */
+.ib-sec-cocreate {
+  position: absolute; z-index: var(--z-popover, 500);
+  display: inline-flex; align-items: center; gap: 4px;
+  font: inherit; font-size: var(--fs-12); color: var(--accent-fg, #fff);
+  background: var(--accent); border: none; border-radius: var(--radius-pill);
+  padding: 3px var(--s-3); cursor: pointer; white-space: nowrap;
+  box-shadow: var(--shadow-focus, 0 2px 8px oklch(0% 0 0 / .25));
+}
+.ib-sec-cocreate:hover { filter: brightness(1.06); }
+
+/* 空态 */
+.ib-empty { text-align: center; padding: var(--s-8) var(--s-4); color: var(--muted); }
+.ib-empty-title { font-size: var(--fs-14); font-weight: 600; color: var(--fg); margin-bottom: var(--s-2); }
+.ib-empty-body { font-size: var(--fs-12); color: var(--subtle); margin-bottom: var(--s-4); max-width: 420px; margin-inline: auto; }

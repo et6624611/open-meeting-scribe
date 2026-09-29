@@ -26,6 +26,8 @@ def _isolate_settings_file(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    # 逐能力真相源：预置 LLM/ASR 来源=trial，使 chat 走默认云端代理桩链路（否则未设置会拦截）。
+    settings_store.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "trial"}})
 
 
 @pytest.fixture

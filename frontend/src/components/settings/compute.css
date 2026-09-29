@@ -108,6 +108,13 @@
 .cc-switch input:checked + .cc-switch-track::after { transform: translateX(16px); }
 .cc-switch input:focus-visible + .cc-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* 卡底统一区：即选即用 + 顺延说明 */
+.cc-ladder-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; padding-top: var(--s-4); border-top: 1px solid var(--border); margin-top: var(--s-4); }
+.cc-lf-enable { display: flex; align-items: center; gap: var(--s-3); }
+.cc-lf-label { font-family: var(--font-mono); font-size: 10px; color: var(--subtle); letter-spacing: .06em; text-transform: uppercase; }
+.cc-lf-fallback { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; line-height: 1.7; margin: 0; }
+.cc-lf-fallback b { color: var(--fg); font-weight: 500; }
+
 @media (max-width: 1080px) {
   .cc-grid-2, .cc-provider-grid { grid-template-columns: 1fr; }
 }

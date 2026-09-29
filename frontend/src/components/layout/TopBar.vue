@@ -18,8 +18,7 @@
         </template>
       </div>
       <div class="topbar-right">
-        <!-- 全局引擎状态徽章（R6）：本地引擎 / 体验代理 / 自持 Key / 未就绪 / Global engine status badge (R6) -->
-        <EngineBadge />
+        <!-- 引擎/接入状态已统一收敛至底部状态栏 footer.status（单处显示，避免顶栏与底部两处并存且表达不一致） -->
         <button class="update-badge" id="updateBadge" :title="t('common.update.title')">
           <span class="ub-dot"></span>
           <span>{{ t('common.update.available') }}</span>
@@ -179,7 +178,6 @@ import { useLayoutStore } from '@/stores/layout'
 import { usePlayerStore } from '@/stores/player'
 import IconButton from '@/components/common/IconButton.vue'
 import PlayingEq from '@/components/common/PlayingEq.vue'
-import EngineBadge from '@/components/layout/EngineBadge.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
 import { showToast } from '@/composables/useToast'

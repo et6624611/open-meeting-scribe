@@ -247,10 +247,16 @@ def get_chat_engine_config() -> dict:
         "engine_id": "qoder-cli",   # 引擎 id / engine id
         "model": None,              # CLI 侧模型（可选覆盖）/ CLI model override
         "auth_tier": "readonly",    # readonly|workspace_write|full_task（§3.9-3 授权档）
+        "auth_tier_explicit": False,# 用户是否在设置页显式声明过授权档（模式即权限：未显式=按模式派生）
         "session_persistence": True,# 是否跨轮恢复 CLI 会话（D5）
         "retention_days": 7,        # 工作区保留天数（<=0 不自动清理，R7）
         "cli_path_override": None,  # CLI 路径覆盖（高级）
       }
+      优先级链（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：请求级显式 auth_tier >
+      用户在设置页显式降级（auth_tier_explicit=true 的存量值）> 模式派生默认（agent→workspace_write）。
+      存量 settings.json 里的 auth_tier="readonly" 多为旧默认值而非用户选择，
+      故仅当 auth_tier_explicit=true（保存过设置页）时才视为显式降级。
+      Priority chain: request tier > explicit user downgrade > mode-derived default.
     """
     settings = load_settings()
     ce = settings.get("chat_engine", {}) or {}
@@ -266,6 +272,7 @@ def get_chat_engine_config() -> dict:
         "engine_id": ce.get("engine_id", "qoder-cli"),
         "model": ce.get("model") or None,
         "auth_tier": tier,
+        "auth_tier_explicit": bool(ce.get("_auth_tier_explicit", False)),
         "session_persistence": bool(ce.get("session_persistence", True)),
         "retention_days": retention,
         "cli_path_override": ce.get("cli_path_override") or None,
@@ -440,24 +447,15 @@ def get_engine_config() -> dict:
 
 
 # ============================================================
-# 接入方式（REQ-SETTINGS-IA §3.1/§4 · 决策层收敛）/ Access mode v2
+# 逐能力算力来源（唯一真相源）/ Per-capability compute source (single source of truth)
 # ============================================================
-# 用户侧决策层唯一字段：access_mode ∈ {local(离线), cloud(联网)} | None（未选态→触发引导）。
-# 体验/自带随账户降为逐能力算力来源（第 5 刀）：
-#   capability_source           当前选择值（迁移/切网时初始化，之后仅用户显式改选变动）
-#   capability_source_override  true = 用户逐能力显式覆盖过，持久化生效，
-#                               不被下次登录/账户勾选改回（AC-5）
-# 生效值 = override ? capability_source : 账户默认（prefer_subscription 开=trial / 关=byok）。
-# 旧字段（engine.mode / asr.mode）降级为 A2 投影：写路径继续同步以保持回滚能力，
-# 但不再作为路由输入（路由唯一输入 = access_mode + 逐能力生效来源，见 core/routing.py）。
+# 不再有全局 access_mode 决策层：ASR 与 LLM 各自独立选择算力来源，互不联动。
+#   capability_source.{llm,asr}  逐能力生效来源；"" = 未设置（触发逐能力引导）。
+# 旧字段（engine.mode / asr.mode）仅作回滚兼容投影，不参与路由判定（见 core/routing.py）。
 
-ACCESS_MODES = ("local", "cloud")
-# 存量枚举（已废止：仅兼容读取/迁移输入，不再是合法写入值）
-LEGACY_ACCESS_MODES = ("hosted", "byok")
-
-# 能力级算力来源（裁决-4 五词中的三项用户词；工程值 proxy/direct 仅专家注释层出现）
+# 逐能力合法来源枚举（用户词；工程值 proxy/direct 仅专家注释层出现）
 LLM_CAP_SOURCES = ("trial", "byok", "local_endpoint")
-ASR_CAP_SOURCES = ("trial", "byok")
+ASR_CAP_SOURCES = ("trial", "byok", "local")
 
 
 def _llm_base_is_localhost(settings: dict) -> bool:
@@ -473,53 +471,6 @@ _DEFAULT_EXPERT_BASELINES = {
     "llm": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
     "asr": {"base_url": "https://dashscope.aliyuncs.com", "model": "paraformer-v2"},
 }
-
-
-def _current_prefer_subscription() -> bool:
-    """读取当前登录用户的 prefer_subscription 偏好（无登录/异常 → False）。"""
-    try:
-        from core.users import get_current_user
-        user = get_current_user()
-        if user:
-            return bool(user.get("prefs", {}).get("prefer_subscription", False))
-    except Exception:
-        pass
-    return False
-
-
-def account_default_source(prefer_subscription: bool | None = None) -> str:
-    """账户「优先使用体验配额」勾选 = 详情默认值来源（第 5 刀）：开→trial，关→byok。"""
-    ps = _current_prefer_subscription() if prefer_subscription is None else bool(prefer_subscription)
-    return "trial" if ps else "byok"
-
-
-def _capability_defaults(source_seed: str | None = None, llm_localhost: bool = False) -> dict:
-    """按种子来源生成两能力初始选择值（trial/byok 直映；llm 本机端点单独识别）。"""
-    if source_seed == "trial":
-        return {"llm": "trial", "asr": "trial"}
-    if source_seed == "byok":
-        return {"llm": "local_endpoint" if llm_localhost else "byok", "asr": "byok"}
-    return {"llm": "", "asr": ""}
-
-
-def derive_access_mode(settings: dict, prefer_subscription: bool | None = None) -> str | None:
-    """旧客户端兼容窗口的反向投影（纯函数，不落盘；REQ-SETTINGS-IA §3.2 日落中）。
-
-    新口径：决策层只剩两值，任何云端传输（local 除外）一律投影为 cloud（联网）；
-    A1 裁决（direct+订阅开=托管）已废止——计费来源不再参与模式推导，
-    prefer_subscription 参数保留仅为签名兼容，不再影响结论。
-
-    | engine.mode=local                 | local |
-    | engine.mode=proxy / cloud / direct | cloud |
-    | 未配置                             | None  | → 触发引导
-    """
-    engine = settings.get("engine", {}) or {}
-    mode = engine.get("mode")
-    if mode == "local":
-        return "local"
-    if mode in ("proxy", "cloud", "direct"):
-        return "cloud"
-    return None
 
 
 def derive_expert_mode(settings: dict) -> bool:
@@ -543,150 +494,93 @@ def derive_expert_mode(settings: dict) -> bool:
     return False
 
 
-def migrate_access_mode(settings: dict, prefer_subscription: bool | None = None) -> bool:
-    """就地执行一次性迁移（REQ-SETTINGS-IA §4）：存量三值收敛为两值 + 逐能力来源初始化。
+def ensure_percap_migrated(settings: dict) -> bool:
+    """就地执行一次性逐能力迁移：把存量 access_mode 映射为 capability_source，
+    并移除 access_mode / capability_source_override 字段。幂等（_percap_migrated 标记）。
 
-    | 存量 access_mode | 迁移为 | 能力来源初始化 | A2 投影不变量 |
-    | local            | local  | —（本机接管）      | engine.mode=local |
-    | hosted           | cloud  | LLM/ASR=trial      | engine.mode=proxy |
-    | byok             | cloud  | LLM/ASR=byok（llm 本机端点识别） | engine.mode=direct |
-    | null / 未配置    | null   | 触发引导         | 不动旧字段 |
-
-    混配存量（如 hosted + asr.mode=direct）按详情层逐能力读实际值并标 override，
-    冲突明示不静默（§4）；A1 裁决已废止。
-    已迁移（`_settings_ia_migrated` 标记）则不重复推导，返回 False。
+    | 存量 access_mode | 迁移结果 capability_source |
+    | local            | asr=local；llm=local_endpoint(本机 base_url) 否则 byok |
+    | cloud/hosted     | 沿用已存值，缺项补 trial |
+    | byok             | 沿用已存值，缺项补 byok（llm 本机端点识别） |
+    | null / 缺失      | 保留已存显式值，否则 ""（触发逐能力引导） |
+    返回是否发生变更。
     """
-    if settings.get("_settings_ia_migrated"):
+    if settings.get("_percap_migrated"):
         return False
 
     legacy = settings.get("access_mode")
-    if legacy is None and "access_mode" not in settings:
-        legacy = derive_access_mode(settings, prefer_subscription)
+    cur = dict(settings.get("capability_source", {}) or {})
 
-    # 存量三值/旧字段投影 → 新两值 + 能力种子（trial/byok）
-    seed: str | None = None
     if legacy == "local":
-        seed = None
-    elif legacy in ("hosted", "byok"):
-        seed = "trial" if legacy == "hosted" else "byok"
-    elif legacy == "cloud":
-        # 已是新值（带 v1 标记的过渡态）：按旧字段反推种子
-        seed = "trial" if (settings.get("engine", {}) or {}).get("mode") in ("proxy", "cloud") else "byok"
-    settings["access_mode"] = "local" if legacy == "local" else ("cloud" if legacy else None)
-
-    if settings["access_mode"] == "cloud":
-        llm_localhost = seed == "byok" and _llm_base_is_localhost(settings)
-        sources = _capability_defaults(seed, llm_localhost=llm_localhost)
-        overrides = {"llm": False, "asr": False}
-        # 混配存量：逐能力读实际值，与顶层种子分歧的能力显式标注（不静默）
-        asr_mode = (settings.get("asr", {}) or {}).get("mode")
-        if asr_mode == "direct" and sources["asr"] == "trial":
-            sources["asr"] = "byok"
-            overrides["asr"] = True
-        elif asr_mode == "proxy" and sources["asr"] == "byok":
-            sources["asr"] = "trial"
-            overrides["asr"] = True
-        settings["capability_source"] = sources
-        settings["capability_source_override"] = overrides
+        llm = "local_endpoint" if _llm_base_is_localhost(settings) else (cur.get("llm") or "byok")
+        cur = {"llm": llm, "asr": cur.get("asr") or "local"}
+    elif legacy in ("cloud", "hosted"):
+        cur = {"llm": cur.get("llm") or ("local_endpoint" if _llm_base_is_localhost(settings) else "trial"),
+               "asr": cur.get("asr") or "trial"}
+    elif legacy == "byok":
+        cur = {"llm": cur.get("llm") or ("local_endpoint" if _llm_base_is_localhost(settings) else "byok"),
+               "asr": cur.get("asr") or "byok"}
     else:
-        settings.setdefault("capability_source", {"llm": "", "asr": ""})
-        settings.setdefault("capability_source_override", {"llm": False, "asr": False})
+        cur = {"llm": cur.get("llm", ""), "asr": cur.get("asr", "")}
 
+    settings["capability_source"] = cur
+    settings.pop("access_mode", None)
+    settings.pop("capability_source_override", None)
     if not isinstance(settings.get("expert_mode"), bool):
         settings["expert_mode"] = derive_expert_mode(settings)
-    settings["_access_mode_migrated"] = True  # v1 标记保留（回滚兼容）
-    settings["_settings_ia_migrated"] = True
+    settings["_percap_migrated"] = True
+    _project_capability_legacy(settings)
     return True
 
 
-def run_access_mode_migration() -> bool:
-    """启动时迁移入口：加载 settings.json，如需迁移则持久化。返回是否发生变更。"""
+def run_percap_migration() -> bool:
+    """启动时迁移入口：加载 settings.json，如需逐能力迁移则持久化。返回是否发生变更。"""
     settings = load_settings()
-    changed = migrate_access_mode(settings)
-    # 第 4 刀：声纹云端路径下架，存量 voiceprint 字段随保存一次性丢弃（注册表无需迁移，
-    # cam++-v1-cloud 标记特征与本机 cam++-v1 在 COMPATIBLE_VERSIONS 互兼容，见 ADR-0009）
+    changed = ensure_percap_migrated(settings)
+    # 第 4 刀：声纹云端路径下架，存量 voiceprint 字段随保存一次性丢弃
     if "voiceprint" in settings:
         settings.pop("voiceprint", None)
         changed = True
     if changed:
         save_settings_to_disk(settings)
-        logger.info(f"接入方式迁移完成: access_mode={settings.get('access_mode')}, expert_mode={settings.get('expert_mode')}, capability_source={settings.get('capability_source')}")
+        logger.info(f"逐能力迁移完成: capability_source={settings.get('capability_source')}, expert_mode={settings.get('expert_mode')}")
         return True
     return False
 
 
-def _project_legacy_fields(settings: dict, mode: str | None, sources: dict) -> None:
-    """A2 兼容窗口：将新模型投影到旧字段（仅供回滚后的旧版本读取，不参与路由判定）。"""
-    if mode is None:
-        return
+def _project_capability_legacy(settings: dict) -> None:
+    """回滚兼容投影：按逐能力来源写旧字段 engine.mode / asr.mode（不参与路由判定）。"""
+    sources = settings.get("capability_source", {}) or {}
     engine = dict(settings.get("engine", {}) or {})
     asr = dict(settings.get("asr", {}) or {})
-    if mode == "local":
+    llm_src = sources.get("llm") or ""
+    if llm_src == "trial":
+        engine["mode"] = "proxy"
+    elif llm_src in ("byok", "local_endpoint"):
+        engine["mode"] = "direct"
+    asr_src = sources.get("asr") or ""
+    if asr_src == "local":
         engine["mode"] = "local"
-    else:  # cloud：按生效来源投影传输层旧值
-        llm_src = sources.get("llm") or ""
-        if llm_src == "trial":
-            engine["mode"] = "proxy"
-        elif llm_src in ("byok", "local_endpoint"):
-            engine["mode"] = "direct"
-        asr_src = sources.get("asr") or ""
-        if asr_src == "trial":
-            asr["mode"] = "proxy"
-        elif asr_src == "byok":
-            asr["mode"] = "direct"
+    elif asr_src == "trial":
+        asr["mode"] = "proxy"
+    elif asr_src == "byok":
+        asr["mode"] = "direct"
     settings["engine"] = engine
     settings["asr"] = asr
-
-
-def get_access_mode() -> str | None:
-    """当前接入方式（路由判定唯一数据源，见 core/routing.py）。
-
-    已迁移 → 返回持久值（可能为 None=未选态，触发引导）；
-    存量遗留值（hosted/byok）→ 防御性投影为 cloud，不写盘；
-    未迁移（如 CLI 先于服务启动钩子读取）→ 惰性推导，不写盘。
-    """
-    settings = load_settings()
-    if settings.get("_settings_ia_migrated") or settings.get("_access_mode_migrated"):
-        mode = settings.get("access_mode")
-        if mode in LEGACY_ACCESS_MODES:
-            return "cloud"
-        return mode if mode in ACCESS_MODES else None
-    return derive_access_mode(settings)
 
 
 def get_capability_status(prefer_subscription: bool | None = None) -> dict:
     """逐能力算力来源快照（详情层/路由共用，纯读不写盘）。
 
-    返回 / Returns:
-      {"llm": {explicit, override, default, effective},
-       "asr": {...},
-       "account_default": "trial"|"byok"}
-    离线态（access_mode=local）下 effective 统一为 "local"（本机接管）。
+    真相源即 capability_source.{cap}（"" = 未设置）。为兼容既有前端类型，
+    仍返回 {explicit, override, default, effective} 四键（均取显式值）。
     """
     settings = load_settings()
-    default = account_default_source(prefer_subscription)
-    access = get_access_mode()
     sources = settings.get("capability_source", {}) or {}
-    overrides = settings.get("capability_source_override", {}) or {}
-    result: dict = {"account_default": default}
+    result: dict = {}
     for cap in ("llm", "asr"):
-        explicit = sources.get(cap) or ""
-        overridden = bool(overrides.get(cap, False))
-        if access == "local":
-            # 离线态：本机接管（只读），勾选不参与生效值
-            effective = "local"
-        elif overridden and explicit:
-            # 已覆盖：持久化显式值，不被登录/勾选改回（AC-5）
-            effective = explicit
-        else:
-            # 未覆盖：跟随账户默认（勾选联动的显式默认生效值）
-            effective = default
-        result[cap] = {
-            "explicit": explicit,
-            "override": overridden,
-            "default": default,
-            "effective": effective,
-        }
+        eff = sources.get(cap) or ""
+        result[cap] = {"explicit": eff, "override": bool(eff), "default": eff, "effective": eff}
     return result
 
 
@@ -699,76 +593,35 @@ def get_expert_mode() -> bool:
     return derive_expert_mode(settings)
 
 
-def apply_access_mode(
-    settings: dict,
-    mode: str | None,
-    sources: dict | None = None,
-    overrides: dict | None = None,
-    prefer_subscription: bool | None = None,
-) -> None:
-    """写入 access_mode（+ 逐能力来源）并同步 A2 投影旧字段。
-
-    mode=None 表示未选态（触发引导），仅清除选择不影响旧字段。
-    存量枚举（hosted/byok）作为旧客户端兼容输入归一化为 cloud + 对应来源，
-    不报错不静默（投影后的模式 + 默认来源与旧语义等价）。
-    sources 仅接受合法枚举；未传时切联网按账户默认初始化（override=False）。
-    """
-    if mode in LEGACY_ACCESS_MODES:
-        settings["access_mode"] = "cloud"
-        seed = "trial" if mode == "hosted" else "byok"
-        settings["capability_source"] = _capability_defaults(seed, llm_localhost=(mode == "byok" and _llm_base_is_localhost(settings)))
-        settings["capability_source_override"] = {"llm": False, "asr": False}
-    else:
-        if mode is not None and mode not in ACCESS_MODES:
-            raise ValueError(f"非法 access_mode: {mode!r}，允许值: {ACCESS_MODES}")
-        settings["access_mode"] = mode
-    settings["_access_mode_migrated"] = True
-    settings["_settings_ia_migrated"] = True
-
-    if mode == "cloud" or (mode is None and settings.get("access_mode") == "cloud"):
-        default = account_default_source(prefer_subscription)
-        cur = dict(settings.get("capability_source", {}) or {})
-        cur_ovr = dict(settings.get("capability_source_override", {}) or {"llm": False, "asr": False})
-        if sources:
-            for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
-                if cap in sources:
-                    val = sources.get(cap)
-                    if val in allowed:
-                        cur[cap] = val
-                        # 任何手动改选都视为显式覆盖（持久化，不被勾选改回）
-                        cur_ovr[cap] = bool((overrides or {}).get(cap, True))
-                    elif val is None or val == "":
-                        cur[cap] = ""
-                        cur_ovr[cap] = False
-        settings["capability_source"] = {"llm": cur.get("llm", ""), "asr": cur.get("asr", "")}
-        # 联网态下未初始化的能力补账户默认（显式联动，非静默 override）
-        if not settings["capability_source"]["llm"]:
-            settings["capability_source"]["llm"] = default
-        if not settings["capability_source"]["asr"]:
-            settings["capability_source"]["asr"] = default
-        settings["capability_source_override"] = {"llm": bool(cur_ovr.get("llm", False)), "asr": bool(cur_ovr.get("asr", False))}
-    elif mode is None:
-        return
-
-    _project_legacy_fields(settings, settings.get("access_mode"), settings.get("capability_source", {}) or {})
+def apply_capability_source(settings: dict, sources: dict) -> None:
+    """内存中逐能力写入算力来源（供事务端点先算后落）。非法值抛 ValueError，"" 允许。"""
+    if not isinstance(sources, dict):
+        raise ValueError("capability_source 必须是 dict")
+    cur = dict(settings.get("capability_source", {}) or {})
+    for cap, allowed in (("llm", LLM_CAP_SOURCES), ("asr", ASR_CAP_SOURCES)):
+        if cap in sources:
+            val = sources.get(cap)
+            if val is None:
+                val = ""
+            if val != "" and val not in allowed:
+                raise ValueError(f"非法 capability_source.{cap}: {val!r}，允许 {allowed}")
+            cur[cap] = val
+    settings["capability_source"] = {"llm": cur.get("llm", ""), "asr": cur.get("asr", "")}
+    settings["_percap_migrated"] = True
+    _project_capability_legacy(settings)
 
 
-def set_access_mode(
-    mode: str | None,
-    sources: dict | None = None,
-    overrides: dict | None = None,
-    prefer_subscription: bool | None = None,
-) -> None:
-    """持久化 access_mode（含逐能力来源与旧字段投影）。非法值抛 ValueError，不落盘。"""
+def set_capability_source(sources: dict) -> dict:
+    """持久化逐能力来源（无引擎副作用的普通写入）。返回更新后的 capability_source。"""
     settings = load_settings()
-    apply_access_mode(settings, mode, sources=sources, overrides=overrides,
-                      prefer_subscription=prefer_subscription)
+    apply_capability_source(settings, sources)
     save_settings_to_disk(settings)
+    return settings["capability_source"]
 
 
 def set_expert_mode(enabled: bool) -> None:
     """持久化 expert_mode 开关。首次写入时顺带完成迁移，避免惰性推导覆盖显式选择。"""
     settings = load_settings()
-    migrate_access_mode(settings)
+    ensure_percap_migrated(settings)
     settings["expert_mode"] = bool(enabled)
     save_settings_to_disk(settings)

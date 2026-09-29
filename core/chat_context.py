@@ -81,8 +81,10 @@ def build_insights_context_block(task_id: str | None) -> str | None:
         data = json.loads(f.read_text(encoding="utf-8"))
     except Exception:
         return None
+    # 过滤 deferred：AI 引用口径与用户可见有效卡一致（一页纸系数卡位预算，超位旧卡不入上下文）
     msgs = [m for m in data.get("messages", [])
-            if (m.get("title") or "").strip() and (m.get("body") or "").strip()]
+            if (m.get("title") or "").strip() and (m.get("body") or "").strip()
+            and not m.get("deferred")]
     if not msgs:
         return None
 
@@ -96,6 +98,11 @@ def build_insights_context_block(task_id: str | None) -> str | None:
         solution = (m.get("solution") or "").strip()
         if solution:
             entry += f"（建议：{solution[:100]}）"
+        # 备查注释随卡注入：页面可略过，追问时 AI 能补回（三层信息写作契约）
+        # note layer rides along: users may skip it on page, but AI can answer with it
+        note = (m.get("note") or "").strip()
+        if note:
+            entry += f"（注：{note[:60]}）"
         if (m.get("diagram") or "").strip():
             entry += "（该洞察附决策流图）"
         if used + len(entry) + 1 > budget:

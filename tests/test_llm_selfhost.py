@@ -93,6 +93,7 @@ class TestLlmLocalhostTolerance:
     def test_should_use_cloud_false_for_localhost(self, settings_file, monkeypatch):
         settings_file.write_text(json.dumps({
             "llm": {"base_url": "http://localhost:11434/v1", "api_key": "", "model": "qwen3:8b"},
+            "capability_source": {"llm": "local_endpoint", "asr": "trial"},
         }), encoding="utf-8")
         from core import llm as llm_mod
         # 即使云端可用也不回退 / No cloud fallback even if cloud is enabled
@@ -399,6 +400,7 @@ class TestLocalhostNoCloudFallback:
         settings_file = tmp_path / "settings.json"
         settings_file.write_text(json.dumps({
             "llm": {"base_url": "http://localhost:11434/v1", "api_key": "", "model": "qwen3:8b"},
+            "capability_source": {"llm": "local_endpoint", "asr": "trial"},
         }), encoding="utf-8")
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
@@ -429,6 +431,7 @@ class TestLocalhostNoCloudFallback:
         settings_file = tmp_path / "settings.json"
         settings_file.write_text(json.dumps({
             "llm": {"base_url": "http://127.0.0.1:1234/v1", "api_key": "", "model": "x"},
+            "capability_source": {"llm": "local_endpoint", "asr": "trial"},
         }), encoding="utf-8")
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
         monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: True, raising=False)
@@ -439,3 +442,42 @@ class TestLocalhostNoCloudFallback:
         )
         from core import llm as llm_mod
         assert llm_mod._should_use_cloud() is False
+
+
+# ============================================================
+# 云端链路模型名守护（AI 算力入口治理：体验配额卡显示 qwen3:8b 误导 bug 的根治）
+# ============================================================
+
+class TestCloudSafeModel:
+    def test_local_tag_name_falls_back(self):
+        """本机 tag 模型名（含 ':'）不得透传 DashScope，回退云端默认"""
+        from core.llm import CLOUD_FALLBACK_MODEL, _cloud_safe_model
+        assert _cloud_safe_model("qwen3:8b") == CLOUD_FALLBACK_MODEL
+        assert _cloud_safe_model("qwen2.5:7b-instruct") == CLOUD_FALLBACK_MODEL
+
+    def test_empty_or_none_falls_back(self):
+        from core.llm import CLOUD_FALLBACK_MODEL, _cloud_safe_model
+        assert _cloud_safe_model("") == CLOUD_FALLBACK_MODEL
+        assert _cloud_safe_model(None) == CLOUD_FALLBACK_MODEL
+
+    def test_cloud_names_pass_through(self):
+        from core.llm import _cloud_safe_model
+        assert _cloud_safe_model("qwen-plus") == "qwen-plus"
+        assert _cloud_safe_model("deepseek-chat") == "deepseek-chat"
+
+    def test_model_usage_meta_aligns_with_cloud_guard(self, monkeypatch):
+        """回显与实际执行一致：cloud 路由下本地模型名在 model_usage 中同样回退"""
+        import app.routers.chat as chat_mod
+        import core.routing as rt
+        monkeypatch.setattr(rt, "get_routing_decision", lambda ctx="llm": {
+            "configured_access_mode": "cloud", "expert_mode": False, "route": "cloud",
+            "source": "trial", "auto_switched": False, "route_override": False, "reason": "",
+        }, raising=True)
+        meta = chat_mod._model_usage_meta("qwen3:8b")
+        assert meta["model"] == "qwen-plus"
+        # 本机路由不受守护影响
+        monkeypatch.setattr(rt, "get_routing_decision", lambda ctx="llm": {
+            "configured_access_mode": "local", "expert_mode": False, "route": "local",
+            "source": "local_endpoint", "auto_switched": False, "route_override": False, "reason": "",
+        }, raising=True)
+        assert chat_mod._model_usage_meta("qwen3:8b")["model"] == "qwen3:8b"

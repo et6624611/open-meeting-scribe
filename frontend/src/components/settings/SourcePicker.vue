@@ -8,7 +8,7 @@
           <option v-for="s in sources" :key="s.key" :value="s.key">{{ s.idx }} {{ s.name }}</option>
         </select>
         <span class="sc-sp-state">
-          <span class="sc-pill sc-pill-accent"><span class="sc-dot"></span>{{ t('settings.compute.effective') }}</span>
+          <span class="sc-pill" :class="activeStateTone === 'warn' ? 'sc-pill-warn' : 'sc-pill-accent'"><span class="sc-dot"></span>{{ activeStateText || t('settings.compute.effective') }}</span>
           <span class="sc-sp-meta">{{ activeMeta }}</span>
         </span>
       </div>
@@ -21,16 +21,23 @@
         v-for="s in sources"
         :key="s.key"
         class="sc-tab"
-        :class="{ 'is-active': s.key === viewKey, 'is-live': s.key === activeKey, 'is-ready': s.ready && s.key !== activeKey }"
+        :class="{ 'is-active': s.key === viewKey, 'is-live': s.key === activeKey, 'is-ready': s.ready && s.key !== activeKey, 'is-down': !s.ready && s.key !== activeKey }"
         role="tab"
         :aria-selected="s.key === viewKey"
-        :title="s.key === activeKey ? t('settings.compute.effective') : (s.ready ? t('settings.compute.state_ready') : t('settings.compute.state_unset'))"
+        :title="s.key === activeKey ? t('settings.compute.effective') : (s.ready ? t('settings.compute.state_ready') : t('settings.compute.state_down'))"
         @click="emit('view', s.key)"
       >
         <span class="sc-tab-idx">{{ s.idx }}</span>
         <span class="sc-tab-name">{{ s.name }}</span>
         <span class="sc-tab-dot"></span>
       </button>
+    </div>
+
+    <!-- 颜色图例（状态不只靠颜色，色+文双通道） / Color legend: state conveyed by color + text -->
+    <div class="sc-legend">
+      <span class="sc-lg-item"><i class="sc-lg-dot live"></i>{{ t('settings.compute.effective') }}</span>
+      <span class="sc-lg-item"><i class="sc-lg-dot ok"></i>{{ t('settings.compute.state_ready') }}</span>
+      <span class="sc-lg-item"><i class="sc-lg-dot down"></i>{{ t('settings.compute.state_down') }}</span>
     </div>
   </div>
 </template>
@@ -58,6 +65,10 @@ const props = defineProps<{
   activeKey: string
   viewKey: string
   hint?: string
+  /** 当前生效来头的语气覆盖（如 trial 未登录 → warn） / Header pill tone override */
+  activeStateTone?: 'live' | 'warn'
+  /** 当前生效来头的文案覆盖（缺省为「生效中」） / Header pill text override */
+  activeStateText?: string
 }>()
 
 const emit = defineEmits<{
@@ -100,9 +111,19 @@ function onSelect(e: Event) {
 .sc-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); }
 .sc-tab.is-live .sc-tab-dot { background: var(--accent); }
 .sc-tab.is-ready .sc-tab-dot { background: var(--ok); }
+.sc-tab.is-down .sc-tab-dot { background: var(--warn); }
 
 /* 状态 pill */
 .sc-pill { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; border-radius: 5px; padding: 2px 7px; border: 1px solid var(--border-strong); color: var(--muted); background: var(--surface-2); white-space: nowrap; }
 .sc-pill .sc-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .sc-pill-accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.sc-pill-warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+
+/* 颜色图例 */
+.sc-legend { display: flex; gap: var(--s-4); margin: calc(var(--s-1) * -1) 0 var(--s-4); font-size: 11px; color: var(--subtle); }
+.sc-lg-item { display: inline-flex; align-items: center; gap: 5px; }
+.sc-lg-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.sc-lg-dot.live { background: var(--accent); }
+.sc-lg-dot.ok { background: var(--ok); }
+.sc-lg-dot.down { background: var(--warn); }
 </style>

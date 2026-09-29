@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<!--
+  洞察板 Insight Board · Board Spec v0.1 PoC
+  ============================================================
+  数据来源：data/tasks/913942e9….insights.json（真实会议「财务单据与
+  主数据对接接口方案讨论」的 10 张洞察卡片，按主题收敛为 4 个 zone）。
+  本页面 = 渲染器 + 设计令牌，全部版式信息来自下方 <script id="board-spec">
+  中的纯 JSON —— 打开页尾「查看 Board Spec」可核对：LLM 未来只需要生成那份 JSON。
+  契约文档：docs/INSIGHT_BOARD_SPEC_v0.md
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洞察板 PoC · Board Spec v0.3 · 图主导 · 单列+吸顶导航</title>
+<style>
+  /* ── 设计令牌：与应用 styles/themes 同名，PoC 取 standard-dark 近似值 ── */
+  :root {
+    --bg: oklch(17% 0.006 260);
+    --surface: oklch(21% 0.006 260);
+    --surface-2: oklch(25% 0.007 260);
+    --surface-3: oklch(29% 0.008 260);
+    --fg: oklch(93% 0.004 260);
+    --muted: oklch(72% 0.012 260);
+    --subtle: oklch(58% 0.012 260);
+    --border: oklch(32% 0.008 260);
+    --border-strong: oklch(42% 0.01 260);
+    --accent: oklch(68% 0.15 250);
+    --accent-soft: oklch(68% 0.15 250 / 0.16);
+    --ok: oklch(70% 0.14 155);
+    --warn: oklch(75% 0.14 85);
+    --purple: oklch(70% 0.13 300);
+    --info: oklch(72% 0.12 230);
+    --rec: oklch(64% 0.19 25);
+    --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px;
+    --fs-16: 16px; --fs-18: 18px; --fs-22: 22px;
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
+    --radius: 8px; --radius-lg: 12px; --radius-pill: 999px;
+    --shadow-float: 0 6px 24px oklch(0% 0 0 / 0.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: var(--fs-14)/1.65 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+    padding: var(--s-6) var(--s-5) var(--s-6);
+  }
+  .board { max-width: 900px; margin: 0 auto; }
+
+  /* ── 板头 ── */
+  .board-head { margin-bottom: var(--s-5); }
+  .board-eyebrow {
+    display: flex; align-items: center; gap: var(--s-2);
+    color: var(--subtle); font-size: var(--fs-12); letter-spacing: .04em;
+  }
+  .phase-badge {
+    padding: 1px var(--s-2); border-radius: var(--radius-pill);
+    background: var(--accent-soft); color: var(--accent); font-size: var(--fs-11);
+  }
+  .board-title { font-size: var(--fs-22); font-weight: 650; margin: var(--s-2) 0 var(--s-1); }
+  .board-summary { color: var(--muted); max-width: 720px; }
+  .board-stats {
+    display: flex; gap: var(--s-4); margin-top: var(--s-3);
+    font-size: var(--fs-12); color: var(--subtle); flex-wrap: wrap;
+  }
+  .board-stats b { color: var(--fg); font-weight: 600; }
+  .converge-note {
+    margin-top: var(--s-3); padding: var(--s-2) var(--s-3);
+    border-left: 3px solid var(--purple); background: var(--surface);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    color: var(--muted); font-size: var(--fs-12);
+  }
+
+  /* ── 区域布局（v0.3 定调）：单列纵向流，全屏不加多栏 ── */
+  .zones { display: flex; flex-direction: column; gap: var(--s-4); margin-top: var(--s-4); }
+
+  /* ── 吸顶区域导航：状态点 + 短名 chips，scroll-spy 高亮当前区 ── */
+  .zone-nav {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; gap: var(--s-2); overflow-x: auto;
+    padding: var(--s-2) 0; scrollbar-width: none;
+    background: oklch(17% 0.006 260 / 0.82); backdrop-filter: blur(10px);
+  }
+  .zone-nav::-webkit-scrollbar { display: none; }
+  .zn-chip {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: var(--fs-12); color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-pill);
+    padding: 3px var(--s-3); white-space: nowrap;
+  }
+  .zn-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+  .zn-chip.is-current { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .zn-chip .status-dot { margin-top: 0; width: 7px; height: 7px; }
+
+  .zone {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: var(--s-4) var(--s-4) var(--s-3);
+    display: flex; flex-direction: column; gap: var(--s-3);
+    scroll-margin-top: 56px; /* 锚点滚动时不被吸顶导航遮挡 */
+  }
+  .zone-head { display: flex; align-items: flex-start; gap: var(--s-2); }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .status-open     { background: var(--warn); }
+  .status-evolving { background: var(--info); }
+  .status-settled  { background: var(--ok); }
+  .zone-title { font-size: var(--fs-16); font-weight: 640; }
+  .zone-meta { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: 2px; }
+  .chip {
+    font-size: var(--fs-11); color: var(--muted); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: var(--radius-pill);
+    padding: 0 var(--s-2); line-height: 18px;
+  }
+  .chip.origin { color: var(--purple); border-color: oklch(70% 0.13 300 / .35); }
+  .zone-summary { color: var(--subtle); font-size: var(--fs-12); }
+
+  /* ── 折叠详情层：默认隐藏，主动展开可见（v0.2 图主导定调） ── */
+  .zone-details { border-top: 1px dashed var(--border); padding-top: var(--s-2); }
+  .zone-details > summary {
+    cursor: pointer; font-size: var(--fs-11); color: var(--subtle);
+    letter-spacing: .04em; user-select: none;
+  }
+  .zone-details[open] > summary { color: var(--muted); margin-bottom: var(--s-2); }
+  .zone-details .cell:first-child { border-top: none; padding-top: 0; }
+
+  /* ── 主视觉放大：第一视觉 cell 占满区域、字号升级 ── */
+  .cell-primary .stage { padding: var(--s-3); }
+  .cell-primary .stage-name { font-size: var(--fs-14); }
+  .cell-primary .step { font-size: var(--fs-13); padding: 3px var(--s-3); }
+  .cell-primary .map-node { font-size: var(--fs-13); padding: var(--s-1) var(--s-3); }
+  .cell-primary .map-edge { font-size: var(--fs-13); }
+  .diagram-src pre {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--s-3); font-size: var(--fs-11); overflow: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .diagram-note { font-size: var(--fs-11); color: var(--subtle); margin-top: var(--s-1); }
+
+  /* ── cell：flow 阶段卡 ── */
+  .cell { border-top: 1px dashed var(--border); padding-top: var(--s-3); }
+  .cell-label { font-size: var(--fs-11); color: var(--subtle); letter-spacing: .08em; margin-bottom: var(--s-2); }
+  .flow { display: flex; align-items: stretch; gap: var(--s-2); overflow-x: auto; padding-bottom: var(--s-1); }
+  .stage {
+    flex: 1 1 0; min-width: 150px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s-2) var(--s-3);
+  }
+  .stage-no { font-size: var(--fs-11); color: var(--subtle); }
+  .stage-name { font-weight: 600; font-size: var(--fs-13); margin-bottom: var(--s-2); }
+  .step {
+    display: flex; align-items: baseline; gap: var(--s-1);
+    font-size: var(--fs-12); color: var(--fg);
+    background: var(--surface-3); border-radius: var(--radius-pill);
+    padding: 2px var(--s-2); margin-top: var(--s-1);
+  }
+  .step.pending { background: transparent; border: 1px dashed var(--border-strong); color: var(--muted); }
+  .step-arrow { flex: none; align-self: center; color: var(--subtle); font-size: var(--fs-16); padding: 0 2px; }
+  .tlink {
+    flex: none; font-size: var(--fs-11); color: var(--accent); cursor: pointer;
+    font-variant-numeric: tabular-nums; margin-left: auto;
+  }
+  .tlink:hover { text-decoration: underline; }
+
+  /* ── cell：gaps 盲点 ── */
+  .gap {
+    display: flex; gap: var(--s-2); align-items: baseline;
+    font-size: var(--fs-13); color: var(--fg);
+    padding: var(--s-1) 0;
+  }
+  .gap::before { content: "?"; flex: none; width: 16px; height: 16px; border-radius: 50%;
+    border: 1px dashed var(--warn); color: var(--warn); font-size: var(--fs-11);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .gap.resolved { color: var(--subtle); text-decoration: line-through; }
+  .gap.resolved::before { content: "✓"; border-style: solid; border-color: var(--ok); color: var(--ok); text-decoration: none; }
+
+  /* ── cell：actions ── */
+  .action { display: flex; gap: var(--s-2); align-items: baseline; font-size: var(--fs-13); padding: var(--s-1) 0; }
+  .action::before { content: "□"; color: var(--accent); flex: none; }
+
+  /* ── cell：map 关系 ── */
+  .map-nodes { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+  .map-node {
+    font-size: var(--fs-12); background: var(--surface-3); border: 1px solid var(--border-strong);
+    border-radius: var(--radius); padding: 2px var(--s-2);
+  }
+  .map-edges { margin-top: var(--s-2); display: flex; flex-direction: column; gap: 2px; }
+  .map-edge { font-size: var(--fs-12); color: var(--muted); display: flex; gap: var(--s-2); align-items: baseline; }
+  .map-edge .rel { font-weight: 600; }
+  .rel.broken { color: var(--rec); }
+  .rel.dashed { color: var(--warn); }
+  .rel.link   { color: var(--ok); }
+
+  /* ── cell：note ── */
+  .note {
+    font-size: var(--fs-13); color: var(--muted); font-style: italic;
+    border-left: 3px solid var(--accent); padding-left: var(--s-3);
+    background: linear-gradient(90deg, var(--accent-soft), transparent 60%);
+    border-radius: 0 var(--radius) var(--radius) 0; padding: var(--s-2) var(--s-3);
+  }
+
+  /* ── 页尾与提示 ── */
+  .board-foot { margin-top: var(--s-6); color: var(--subtle); font-size: var(--fs-12); }
+  .board-foot details { margin-top: var(--s-3); }
+  .board-foot pre {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--s-4); overflow: auto; font-size: var(--fs-11); line-height: 1.5;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; max-height: 420px;
+  }
+  .board-foot summary { cursor: pointer; color: var(--accent); }
+  #toast {
+    position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%);
+    background: var(--surface-3); border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill); padding: var(--s-2) var(--s-4);
+    font-size: var(--fs-12); box-shadow: var(--shadow-float);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="board" id="board"></div>
+<div id="toast"></div>
+
+<!-- ══════════ Board Spec v0.1：以下 JSON 是 LLM 未来的输出物，页面唯一事实源 ══════════ -->
+<script id="board-spec" type="application/json">
+{
+  "kind": "insight-board",
+  "spec_version": "0.2",
+  "task_id": "913942e9-70e1-445d-8fdc-2a99f4d17cc0",
+  "revision": 4,
+  "phase": "post_meeting",
+  "header": {
+    "title": "财务单据与主数据对接接口方案讨论",
+    "meeting_date": "2026-09-24",
+    "summary": "接口方案之下，三类治理断点正在浮出：主数据权威源、预算控制权、单据反写闭环。",
+    "stats": { "zones": 4, "open_questions": 15, "actions": 11, "merged_cards": 10 }
+  },
+  "zones": [
+    {
+      "id": "z-fund",
+      "title": "资金归属与接口契约",
+      "status": "evolving",
+      "maturity": "forming",
+      "summary": "同一银行账号无法唯一确定业务归属，「认领」与接口层的职责边界未厘清。",
+      "origin": ["insight-…-1"],
+      "updated_at": 1759000000000,
+      "cells": [
+        { "kind": "flow", "stages": [
+          { "name": "资金场景拆分", "steps": [
+            { "label": "付款单 / 红字单 / 还款单分列", "begin_time": 84000 },
+            { "label": "「还款」语义辨析：回款还是退汇？", "begin_time": 132000 }
+          ]},
+          { "name": "凭证溯源", "steps": [
+            { "label": "原始凭证来源与业务动因", "begin_time": 208000 },
+            { "label": "审批链路与科目映射", "begin_time": null, "pending": true }
+          ]},
+          { "name": "接口字段定义", "steps": [
+            { "label": "business_line_code 必填？", "begin_time": 461000 },
+            { "label": "original_voucher_type", "begin_time": null, "pending": true }
+          ]}
+        ]},
+        { "kind": "gaps", "items": [
+          { "question": "为什么同一银行账号 / 收款单位无法唯一确定业务归属？", "begin_time": 903000, "resolved": false },
+          { "question": "「认领系统」能兜底，还是接口层必须传业务上下文（法人主体 / 费用类型）？", "begin_time": null, "resolved": false },
+          { "question": "三类单据共用一个接口结构，还是按业务语义分设？", "begin_time": null, "resolved": false }
+        ]},
+        { "kind": "actions", "items": [
+          { "text": "梳理三类资金场景：原始凭证来源 → 业务动因 → 审批链路 → 财务科目映射", "owner": null },
+          { "text": "以场景梳理结果反向定义接口必填字段（business_line_code、related_contract_id 等）", "owner": null }
+        ]}
+      ]
+    },
+    {
+      "id": "z-master-data",
+      "title": "主数据一致性",
+      "status": "open",
+      "maturity": "forming",
+      "summary": "PMS 与 ES 双编码体系并存、两套银行信息并存，权威源与同步机制未定——付款单退回只是表象。",
+      "origin": ["insight-…-2", "insight-…-3", "insight-…-4"],
+      "updated_at": 1759000000000,
+      "cells": [
+        { "kind": "map",
+          "nodes": [
+            { "id": "pms", "label": "PMS 准入 / 编码", "begin_time": 461000 },
+            { "id": "es", "label": "ES 供应商主数据", "begin_time": null },
+            { "id": "bank", "label": "银行子表（两处并存）", "begin_time": null },
+            { "id": "pay", "label": "付款单", "begin_time": 84000 }
+          ],
+          "edges": [
+            { "from": "pms", "to": "es", "label": "状态变更不感知 · 无事件机制", "kind": "broken" },
+            { "from": "bank", "to": "pay", "label": "校验取哪一处银行信息？", "kind": "dashed" },
+            { "from": "es", "to": "pay", "label": "「切换 ES 编码」触发时机未约定", "kind": "broken" }
+          ]
+        },
+        { "kind": "diagram", "format": "mermaid",
+          "source": "flowchart LR\n  subgraph 招采\n    PMS[PMS 准入审核]\n  end\n  subgraph 主数据\n    ES[ES 供应商]\n    BANK[(银行子表 ×2)]\n  end\n  PMS -.无事件机制.-> ES\n  ES -->|编码映射?| PAY[付款单]\n  BANK -.校验源未定.-> PAY" },
+        { "kind": "gaps", "items": [
+          { "question": "供应商主数据的权威源是 ES 还是 PMS？", "begin_time": null, "resolved": false },
+          { "question": "ES 停用供应商时，PMS / 苍穹能否收到带时间戳的状态事件，而非人工导表？", "begin_time": null, "resolved": false },
+          { "question": "红字冲销场景下，银行子表是回滚还是冻结？", "begin_time": null, "resolved": false },
+          { "question": "四套系统编码（EAS / 苍穹 / 招财 / PMS）如何建立可逆、可审计的映射？", "begin_time": null, "resolved": false }
+        ]},
+        { "kind": "actions", "items": [
+          { "text": "三方对齐：明确供应商主数据权威源", "owner": null },
+          { "text": "设计「供应商预检 + 轻量同步」接口：按需查 + 带版本号更新，非全量推", "owner": null },
+          { "text": "付款单提交前增加「ES 编码 - 银行信息」联合校验，失败原因结构化返回", "owner": null }
+        ]}
+      ]
+    },
+    {
+      "id": "z-budget",
+      "title": "预算治理",
+      "status": "open",
+      "maturity": "draft",
+      "summary": "预算编制、同步、校验、拦截分散在至少三个系统，「谁拥有最终否决权」在四张卡片的讨论里始终没有答案。",
+      "origin": ["insight-…-5", "insight-…-6", "insight-…-7", "insight-…-8"],
+      "updated_at": 1759000000000,
+      "cells": [
+        { "kind": "flow", "stages": [
+          { "name": "预算编制", "steps": [
+            { "label": "总部月度 vs 营销 YTD 双轨", "begin_time": 300000 }
+          ]},
+          { "name": "同步", "steps": [
+            { "label": "手工 / 半自动导入商旅", "begin_time": null, "pending": true },
+            { "label": "星汉迁入时间表？", "begin_time": null, "pending": true }
+          ]},
+          { "name": "校验", "steps": [
+            { "label": "触发点：提交时？审批时？接收时？", "begin_time": 620000 }
+          ]},
+          { "name": "拦截", "steps": [
+            { "label": "超支：拦单据还是回滚？", "begin_time": null, "pending": true }
+          ]}
+        ]},
+        { "kind": "note",
+          "text": "「控」字在讨论中高频出现，但没有人定义「控」的执行主体——PMS 称「已打通」、星汉称「未来迁入」、商旅称「手工导入」，三方对预算控制落地点的认知错位比接口缺口更危险。" },
+        { "kind": "gaps", "items": [
+          { "question": "谁拥有最终预算否决权？谁承担校验失败的后果？", "begin_time": null, "resolved": false },
+          { "question": "YTD / 月度双轨策略如何映射进「一条数据验证」的接口语义？", "begin_time": 700000, "resolved": false },
+          { "question": "YTD 校验依赖苍穹历史单据——迁移责任在谁？元数据完备性验证过吗？", "begin_time": null, "resolved": false }
+        ]},
+        { "kind": "actions", "items": [
+          { "text": "三方联合工作坊：预算编制主体 × 执行校验主体的权责矩阵", "owner": null },
+          { "text": "定义跨系统余额同步 SLA（T+0 / T+1）与超支冲突规则", "owner": null },
+          { "text": "接口契约按「单据 + 预算快照」双维度设计，而非仅传余额", "owner": null }
+        ]}
+      ]
+    },
+    {
+      "id": "z-doc-loop",
+      "title": "单据闭环",
+      "status": "settled",
+      "maturity": "confirmed",
+      "summary": "退款依赖人工勾选、反写规则配置位置被误解——跨单据反写链路与会后补分析在此收敛为一致结论。",
+      "origin": ["post-…-9", "post-…-10"],
+      "updated_at": 1759043817000,
+      "cells": [
+        { "kind": "flow", "stages": [
+          { "name": "正向链路", "steps": [
+            { "label": "报销单 → 付款单 → 收款单", "begin_time": 880000 }
+          ]},
+          { "name": "逆向退款", "steps": [
+            { "label": "收款单确认退款", "begin_time": 940000 },
+            { "label": "付款单自动反写？（现靠人工）", "begin_time": null, "pending": true },
+            { "label": "报销单未付金额刷新", "begin_time": null, "pending": true }
+          ]},
+          { "name": "规则落位", "steps": [
+            { "label": "反写规则绑定在收款单发起端", "begin_time": 1005000 }
+          ]}
+        ]},
+        { "kind": "gaps", "items": [
+          { "question": "收款单 ↔ 付款单关联是否需要双向校验？", "begin_time": null, "resolved": true },
+          { "question": "接口配置是否覆盖退款 / 退汇全部单据类型？", "begin_time": null, "resolved": false }
+        ]},
+        { "kind": "actions", "items": [
+          { "text": "验证三类单据在退款场景下的状态字段变更日志", "owner": null },
+          { "text": "测试数据跑通「收款确认退款 → 付款单反写 → 报销单刷新」全链路", "owner": null }
+        ]}
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+/* ── 渲染器：spec → DOM。纯文本消费（escapeHtml），spec 中不存在可执行内容 ── */
+const spec = JSON.parse(document.getElementById('board-spec').textContent);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtMs = ms => ms == null ? '' : `${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}`;
+const STATUS_LABEL = { open: '讨论中', evolving: '演化中', settled: '已收敛' };
+const MATURITY_LABEL = { draft: '刚冒头', forming: '成形中', confirmed: '已聊透' };
+
+function timeLink(ms) {
+  if (ms == null) return '';
+  return `<span class="tlink" data-t="${ms}" title="跳转到转写 ${fmtMs(ms)}">${fmtMs(ms)}</span>`;
+}
+
+function renderCell(cell, primary) {
+  const label = { flow: '流程结构', gaps: '盲点 · 开放问题', actions: '行动建议', map: '关系结构', diagram: '通用图', note: '' }[cell.kind];
+  let body = '';
+  if (cell.kind === 'flow') {
+    body = '<div class="flow">' + cell.stages.map((st, i) =>
+      `<div class="stage"><div class="stage-no">阶段 ${String(i+1).padStart(2,'0')}</div>
+       <div class="stage-name">${esc(st.name)}</div>
+       ${st.steps.map(s => `<div class="step${s.pending ? ' pending' : ''}"><span>${esc(s.label)}</span>${timeLink(s.begin_time)}</div>`).join('')}
+       </div>`).join('<div class="step-arrow">→</div>') + '</div>';
+  } else if (cell.kind === 'gaps') {
+    body = cell.items.map(g =>
+      `<div class="gap${g.resolved ? ' resolved' : ''}"><span>${esc(g.question)}</span>${timeLink(g.begin_time)}</div>`).join('');
+  } else if (cell.kind === 'actions') {
+    body = cell.items.map(a => `<div class="action"><span>${esc(a.text)}</span></div>`).join('');
+  } else if (cell.kind === 'map') {
+    const nodeById = Object.fromEntries(cell.nodes.map(n => [n.id, n]));
+    body = `<div class="map-nodes">${cell.nodes.map(n => `<span class="map-node">${esc(n.label)}</span>${''}`).join('')}</div>
+      <div class="map-edges">${cell.edges.map(e =>
+        `<div class="map-edge"><span>${esc(nodeById[e.from]?.label || e.from)}</span>
+         <span class="rel ${esc(e.kind)}">—${esc(e.label)}→</span>
+         <span>${esc(nodeById[e.to]?.label || e.to)}</span></div>`).join('')}</div>`;
+  } else if (cell.kind === 'diagram') {
+    body = `<div class="diagram-src"><pre>${esc(cell.source)}</pre>
+      <div class="diagram-note">diagram cell · 正式版由 MermaidDiagram.vue 渲染（PoC 离线，展示源码）</div></div>`;
+  } else if (cell.kind === 'note') {
+    body = `<div class="note">${esc(cell.text)}</div>`;
+  }
+  return `<div class="cell${primary ? ' cell-primary' : ''}">${label ? `<div class="cell-label">${label}</div>` : ''}${body}</div>`;
+}
+
+/* v0.2 图主导：每 zone 第一个视觉 cell 为主视觉全幅展示，其余（含文本层）收进折叠详情 */
+const VISUAL_KINDS = new Set(['flow', 'map', 'diagram']);
+function renderZone(z) {
+  const primary = z.cells.find(c => VISUAL_KINDS.has(c.kind)) || null;
+  const rest = z.cells.filter(c => c !== primary);
+  return `
+    <section class="zone" id="zone-${esc(z.id)}">
+      <div class="zone-head">
+        <span class="status-dot status-${esc(z.status)}" title="${STATUS_LABEL[z.status]}"></span>
+        <div>
+          <div class="zone-title">${esc(z.title)}</div>
+          <div class="zone-meta">
+            <span class="chip">${STATUS_LABEL[z.status]}</span>
+            <span class="chip">${MATURITY_LABEL[z.maturity]}</span>
+            <span class="chip origin">⇢ 由 ${z.origin.length} 张卡收敛</span>
+          </div>
+        </div>
+      </div>
+      <div class="zone-summary">${esc(z.summary)}</div>
+      ${primary ? renderCell(primary, true) : ''}
+      ${rest.length ? `<details class="zone-details"><summary>详情 · ${rest.length} 层文本与附加工（默认隐藏 · 也可直接问 AI）</summary>
+        ${rest.map(c => renderCell(c, false)).join('')}</details>` : ''}
+    </section>`;
+}
+
+document.getElementById('board').innerHTML = `
+  <header class="board-head">
+    <div class="board-eyebrow">洞察板 · INSIGHT BOARD
+      <span class="phase-badge">${spec.phase === 'post_meeting' ? '会后定稿' : '会中演化'}</span>
+      <span>revision ${spec.revision}</span>
+    </div>
+    <h1 class="board-title">${esc(spec.header.title)}</h1>
+    <div class="board-summary">${esc(spec.header.summary)}</div>
+    <div class="board-stats">
+      <span><b>${spec.header.stats.zones}</b> 个主题区</span>
+      <span><b>${spec.header.stats.open_questions}</b> 个开放问题</span>
+      <span><b>${spec.header.stats.actions}</b> 项行动建议</span>
+      <span>${esc(spec.header.meeting_date)}</span>
+    </div>
+    <div class="converge-note">这块板由该会议的 <b>${spec.header.stats.merged_cards}</b> 张洞察卡片按主题收敛而成。
+      每个区域以<b>一张图</b>为主导；盲点清单、行动建议等文本收进「详情」折叠层，默认隐藏——信息完备性由 AI 对话承担，板只负责让你看见全局。</div>
+  </header>
+  <nav class="zone-nav" id="zoneNav" aria-label="区域导航">
+    ${spec.zones.map(z => `<span class="zn-chip" data-z="${esc(z.id)}">
+      <span class="status-dot status-${esc(z.status)}"></span>${esc(z.title)}</span>`).join('')}
+  </nav>
+  <main class="zones">${spec.zones.map(renderZone).join('')}
+  </main>
+  <footer class="board-foot">
+    PoC 说明（v0.3）：单列纵向流（全屏不加多栏）；顶部吸顶区域导航 = 板的缩略图（状态点 + 短名，点击平滑滚动，scroll-spy 高亮）；
+    主视觉 = 每区第一个视觉 cell 全幅展示；文本层默认折叠；「主数据一致性」区演示多视觉 cell 规则（map 为主、diagram 进折叠层）；
+    时间徽标为桩交互；「已收敛」状态点即替代未读角标的通知语义。
+    <details><summary>查看 Board Spec JSON（LLM 未来的输出物，页面唯一事实源）</summary>
+      <pre>${esc(JSON.stringify(spec, null, 2))}</pre></details>
+  </footer>`;
+
+/* 区域导航：点击平滑滚动 + scroll-spy 高亮当前区 */
+const zoneNav = document.getElementById('zoneNav');
+const zoneSections = spec.zones.map(z => document.getElementById('zone-' + z.id));
+zoneNav.addEventListener('click', e => {
+  const chip = e.target.closest('.zn-chip');
+  if (!chip) return;
+  document.getElementById('zone-' + chip.dataset.z)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+function spyZones() {
+  let idx = 0;
+  zoneSections.forEach((s, i) => { if (s && s.getBoundingClientRect().top < 120) idx = i; });
+  zoneNav.querySelectorAll('.zn-chip').forEach((c, i) => c.classList.toggle('is-current', i === idx));
+}
+window.addEventListener('scroll', spyZones, { passive: true });
+spyZones();
+
+/* 时间徽标桩交互 */
+const toast = document.getElementById('toast');
+document.addEventListener('click', e => {
+  const t = e.target.closest('.tlink');
+  if (!t) return;
+  toast.textContent = `跳转到转写原文 ${fmtMs(+t.dataset.t)}（PoC 桩）`;
+  toast.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => toast.classList.remove('show'), 1800);
+});
+</script>
+</body>
+</html>

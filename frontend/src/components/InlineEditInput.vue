@@ -7,7 +7,7 @@
     @mousedown.stop
   >
     <!-- 快捷指令 chips / Quick action chips -->
-    <div class="inline-edit-chips">
+    <div v-if="!diffVisible" class="inline-edit-chips">
       <button
         v-for="chip in quickChips"
         :key="chip.key"
@@ -19,7 +19,7 @@
       </button>
     </div>
     <!-- 自定义指令输入 / Custom instruction input -->
-    <div class="inline-edit-input-row">
+    <div v-if="!diffVisible" class="inline-edit-input-row">
       <input
         ref="inputEl"
         class="inline-edit-field"
@@ -44,12 +44,27 @@
         </svg>
       </button>
     </div>
+    <!-- 改写结果确认卡（AI 算力入口治理 §3）：预览 + 执行方回显 + 采纳/拒绝 -->
+    <div v-else class="inline-edit-result">
+      <div class="inline-edit-result-head">{{ t('common.inline_edit_diff_title') }}</div>
+      <div class="inline-edit-result-body">{{ editedText }}</div>
+      <div class="inline-edit-result-foot">
+        <!-- 执行方回显标签：点击起跳设置页更换默认模型 -->
+        <button v-if="modelUsage" class="inline-edit-exec-tag" :data-tip="t('common.inline_edit_goto_settings')" @click="$emit('gotoSettings')">
+          {{ modelUsage.model }} · {{ srcLabel(modelUsage.source) }}
+        </button>
+        <span class="inline-edit-result-spacer"></span>
+        <button class="inline-edit-accept" @click="$emit('accept')">{{ t('common.inline_edit_accept') }}</button>
+        <button class="inline-edit-reject" @click="$emit('reject')">{{ t('common.inline_edit_reject') }}</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { ModelUsage } from '@/api/chat'
 
 const { t } = useI18n()
 
@@ -57,12 +72,29 @@ const props = defineProps<{
   visible: boolean
   loading?: boolean
   anchorRect?: { top: number; left: number } | null
+  /** 结果确认态：改写完成待采纳/拒绝 / Result confirmation phase */
+  diffVisible?: boolean
+  /** 改写结果文本 / Edited text preview */
+  editedText?: string
+  /** 执行方回显（模型·来源·计费） / Executor echo from inline-edit response */
+  modelUsage?: ModelUsage | null
 }>()
 
 const emit = defineEmits<{
   (e: 'submit', instruction: string): void
   (e: 'cancel'): void
+  (e: 'accept'): void
+  (e: 'reject'): void
+  (e: 'gotoSettings'): void
 }>()
+
+/** 算力来源短标签（与 AiChatPanel 回复尾回显同一套 i18n 键） */
+function srcLabel(source: string): string {
+  if (source === 'local' || source === 'local_endpoint') return t('ai-panel.model_src_local')
+  if (source === 'trial') return t('ai-panel.model_src_trial')
+  if (source === 'byok') return t('ai-panel.model_src_byok')
+  return source || '—'
+}
 
 const containerEl = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
@@ -77,7 +109,7 @@ const quickChips = computed(() => [
   { key: 'translate', icon: '🌐', label: t('common.selection_toolbar.inline_edit_translate'), value: 'Translate this text to English' },
 ])
 
-// 定位计算 / Position calculation
+// 定位计算 / Position calculation（input 与 result 两态切换时重新开卡都需定位）
 watch(() => props.visible, async (v) => {
   if (v) {
     inputText.value = ''

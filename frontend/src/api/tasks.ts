@@ -16,10 +16,10 @@ export async function fetchTask(taskId: string): Promise<Task> {
   return data
 }
 
-/** 更新任务（标题/日期/项目关联） / Update task (title/date/project association) */
+/** 更新任务（标题/日期/项目关联/一页纸系数） / Update task (title/date/project association/one-page factors) */
 export async function updateTask(
   taskId: string,
-  patch: { title?: string; meeting_date?: string; project_id?: string },
+  patch: { title?: string; meeting_date?: string; project_id?: string; one_page?: { summary?: number; insights?: number } },
 ): Promise<Task> {
   const { data } = await client.patch<Task>(`/api/tasks/${taskId}`, patch)
   return data
@@ -39,6 +39,35 @@ export async function retranscribe(taskId: string, options?: { engineOverride?: 
     `/api/tasks/${taskId}/retranscribe`,
     options?.engineOverride ? { engine_override: options.engineOverride } : undefined,
   )
+}
+
+/** 文本回溯修正结果 / Retroactive text-correction result */
+export interface CorrectTextResult {
+  ok: boolean
+  old: string
+  new: string
+  /** 全部产物的总命中数 / Total hits across every artifact */
+  replaced: number
+  hits: { task: number; insights: number; board: number; export_md: number }
+  /** 任务对象内按键名分布的命中数 / Per-key hit distribution inside the task payload */
+  fields: Record<string, number>
+  /** 改写后仍残留的处数；> 0 说明后端白名单需补录 / Leftovers: backend whitelist needs a new entry */
+  residual: number
+  warnings: string[]
+}
+
+/** 把一条「误识别→正确文本」映射全量回溯应用到本场会议
+ *  Apply one wrong→correct mapping across this meeting (transcript/summary/notes/decisions/board/export). */
+export async function correctTaskText(
+  taskId: string,
+  oldText: string,
+  newText: string,
+): Promise<CorrectTextResult> {
+  const { data } = await client.post<CorrectTextResult>(`/api/tasks/${taskId}/correct-text`, {
+    old: oldText,
+    new: newText,
+  })
+  return data
 }
 
 /** 纪要下载格式 / Summary export formats */

@@ -8,29 +8,15 @@
     :class="{ 'is-visible': toastVisible, ['is-' + toastVariant]: toastVariant }"
   >{{ toastMessage }}</div>
 
-  <!-- 浮动选中操作条 / Floating selection toolbar -->
-  <div class="selection-toolbar" id="selectionToolbar">
-    <button class="sel-tool-btn is-primary" data-action="quote-to-ai" :title="t('common.selection_toolbar.quote_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      {{ t('common.selection_toolbar.quote_to_ai') }}
-    </button>
-    <span class="sel-tool-sep"></span>
-    <button class="sel-tool-btn" data-action="rewrite" :title="t('common.selection_toolbar.rewrite_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      {{ t('common.selection_toolbar.rewrite') }}
-    </button>
-    <button class="sel-tool-btn" data-action="summarize" :title="t('common.selection_toolbar.summarize_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
-      {{ t('common.selection_toolbar.summarize') }}
-    </button>
-    <button class="sel-tool-btn" data-action="extract-todo" :title="t('common.selection_toolbar.extract_todo_title')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-      {{ t('common.selection_toolbar.extract_todo') }}
-    </button>
-  </div>
+  <!-- 遗留的 #selectionToolbar 死模板已移除：无任何脚本控制其可见性，
+       且改写/总结/提取决策均已从划词工具栏下架（活跃实现见 SelectionToolbar.vue） -->
 
   <div class="frame conv-layout" :class="frameClasses">
-    <!-- 系统消息横幅（参与 grid 布局，不溢出视口）；常驻渲染以保持 frame 网格行数与子元素数一致 / System message banner (participates in grid layout, doesn't overflow viewport); always rendered to keep frame grid row count consistent -->
+    <!-- 系统消息横幅；常驻渲染但隐藏时用 display:none 彻底出栈（见 topbar.css
+         .reg-guidance-banner.is-hidden）——frame 是 flex 列，仅靠 opacity:0 会让
+         隐藏行继续占位，压住左栏最上方的拉手与头部按钮，造成「点了没反应」
+         Banner is always rendered but fully out of flow when hidden; an in-flow
+         row kept alive by opacity:0 used to swallow clicks on the topmost rail. -->
     <div class="reg-guidance-banner" :class="{ 'is-hidden': !annVisible || !annMessage }">
       <div class="reg-guidance-content" v-if="annMessage">
         <svg class="reg-guidance-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -112,15 +98,16 @@
       <div class="left">
         <div
           class="item status-engine"
-          :class="statusPipClass"
+          :class="[statusPipClass, { 'is-open': statusDetailOpen }]"
           role="button"
           tabindex="0"
-          :title="statusHoverDetail"
+          :title="t('common.usage.click_detail')"
+          :aria-expanded="statusDetailOpen"
           :aria-label="engineStatusLabel"
-          @click="goToAccessSettings"
-          @keydown.enter="goToAccessSettings"
-          @keydown.space.prevent="goToAccessSettings"
-        ><span class="pip"></span> {{ engineStatusLabel }}</div>
+          @click="toggleStatusDetail"
+          @keydown.enter.prevent="toggleStatusDetail"
+          @keydown.space.prevent="toggleStatusDetail"
+        ><span class="pip"></span> {{ engineStatusLabel }}<span class="status-caret" aria-hidden="true">{{ statusDetailOpen ? '⌄' : '⌃' }}</span></div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
           <span class="usage-text" id="usageText"></span>
@@ -129,6 +116,22 @@
       <span class="philosophy-text" id="philosophyText"><template v-for="(word, wIdx) in philosophyChars" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="philosophy-char" :style="{ animationDelay: `${((wIdx > 0 ? philosophyChars.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.08}s` }">{{ ch }}</span>{{ wIdx < philosophyChars.length - 1 ? ' ' : '' }}</template></span>
       <div class="right">
         <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
+      </div>
+
+      <!-- 展开明细：逐能力来源 + 状态 + 配置入口 / Expandable per-capability detail -->
+      <div v-show="statusDetailOpen" class="status-detail" role="region" :aria-label="t('common.usage.detail_aria')">
+        <div class="sd-row">
+          <span class="sd-cap">{{ t('common.usage.status_ai') }}</span>
+          <span class="sd-src">{{ llmSourceLabel }}</span>
+          <span class="sd-st" :class="llmStatusClass">{{ llmStatusLabel }}</span>
+        </div>
+        <div class="sd-row">
+          <span class="sd-cap">{{ t('common.usage.status_asr') }}</span>
+          <span class="sd-src">{{ asrSourceLabel }}</span>
+          <span class="sd-st" :class="asrStatusClass">{{ asrStatusLabel }}</span>
+        </div>
+        <div v-if="quotaLineLabel" class="sd-quota">{{ quotaLineLabel }}</div>
+        <button class="sd-config" @click="goToAccessSettings">{{ t('common.usage.go_settings') }}</button>
       </div>
     </footer>
   </div>
@@ -199,27 +202,58 @@ const STATUS_LABEL_KEYS: Record<AccessStatusState, string> = {
   unconfigured: 'engine_status_unconfigured',
 }
 
-const engineStatusLabel = computed(() => {
-  const st = engineStore.statusState
-  if (st === 'cloud_ready') {
-    return t('common.usage.engine_status_cloud_ready', { n: fmtQuotaMinutes(engineStore.quotaRemaining) })
-  }
-  if (st === 'cloud_auto_switched') {
-    return t('common.usage.engine_status_cloud_auto_switched', { n: engineStore.autoSwitch.count })
-  }
-  return t(`common.usage.${STATUS_LABEL_KEYS[st]}`)
-})
+const engineStatusLabel = computed(() => t(`common.usage.${STATUS_LABEL_KEYS[engineStore.statusState]}`))
 
 const statusPipClass = computed(() =>
   engineStore.statusState.endsWith('ready') ? 'is-ok' : 'is-warn')
 
-/** hover 详情：模型串 + API 延迟（不再占主文案） / Hover detail: model string + latency */
-const statusHoverDetail = computed(() => {
-  const parts: string[] = []
-  if (engineStore.statusDetail) parts.push(engineStore.statusDetail)
-  if (perfMetrics.value.apiLatency !== null) parts.push(`API ${perfMetrics.value.apiLatency}ms`)
-  parts.push(t('common.usage.engine_hint'))
-  return parts.join(' · ')
+// ─── 底部状态栏可展开明细（两段式：摘要 + 逐能力来源/状态） ───
+const statusDetailOpen = ref(false)
+function toggleStatusDetail() { statusDetailOpen.value = !statusDetailOpen.value }
+
+/** 逐能力生效来源：直读 capability.effective（"" = 未设置） */
+function capSourceKey(cap: 'llm' | 'asr'): string {
+  return engineStore.capability?.[cap]?.effective || ''
+}
+function srcLabelKey(src: string): string {
+  if (src === 'trial') return 'settings.access.src_trial'
+  if (src === 'byok') return 'settings.access.src_byok'
+  if (src === 'local_endpoint') return 'settings.access.src_local_ep'
+  if (src === 'local') return 'settings.access.src_local'
+  return ''
+}
+function sourceLabelOf(cap: 'llm' | 'asr'): string {
+  const k = srcLabelKey(capSourceKey(cap))
+  return k ? t(k) : '—'
+}
+const llmSourceLabel = computed(() => sourceLabelOf('llm'))
+const asrSourceLabel = computed(() => sourceLabelOf('asr'))
+
+/** 逐能力状态：未设置 / 需登录 / 已改用 / 额度用尽 / 需配 Key / 就绪 */
+function capStatus(cap: 'llm' | 'asr'): { text: string; cls: string } {
+  const src = capSourceKey(cap)
+  const r = engineStore.routing?.[cap]
+  if (!src || r?.unconfigured) return { text: t('common.usage.st_not_set'), cls: 'is-muted' }
+  if (src === 'trial' && !userStore.isLoggedIn) return { text: t('common.usage.st_need_login'), cls: 'is-warn' }
+  if (r?.auto_switched) {
+    const to = srcLabelKey(String(r.source || ''))
+    return { text: t('common.usage.st_switched', { to: to ? t(to) : '—' }), cls: 'is-warn' }
+  }
+  if (src === 'trial' && engineStore.quotaRemaining != null && engineStore.quotaRemaining <= 0) return { text: t('common.usage.st_exhausted'), cls: 'is-warn' }
+  if (src === 'byok' && String(r?.reason || '').includes('missing')) return { text: t('common.usage.st_need_key'), cls: 'is-warn' }
+  return { text: t('common.usage.st_ready'), cls: 'is-ok' }
+}
+const llmStatus = computed(() => capStatus('llm'))
+const asrStatus = computed(() => capStatus('asr'))
+const llmStatusLabel = computed(() => llmStatus.value.text)
+const llmStatusClass = computed(() => llmStatus.value.cls)
+const asrStatusLabel = computed(() => asrStatus.value.text)
+const asrStatusClass = computed(() => asrStatus.value.cls)
+
+const quotaLineLabel = computed(() => {
+  const q = engineStore.quotaRemaining
+  if (!userStore.isLoggedIn || q == null || q < 0) return ''
+  return t('common.usage.quota_left', { n: fmtQuotaMinutes(q) })
 })
 
 function fmtQuotaMinutes(min: number | null): string {
@@ -232,7 +266,7 @@ function fmtQuotaMinutes(min: number | null): string {
   return `${Math.round(min)}m`
 }
 
-/** A3：与顶栏 EngineBadge 统一跳转同一接入方式入口 */
+/** A3：底部状态栏为接入状态唯一入口，点击跳接入方式设置（顶栏徽章已下架） */
 function goToAccessSettings() {
   router.push({ name: 'settings', query: { cat: 'access' } })
 }
@@ -248,6 +282,14 @@ watch(() => engineStore.routeOverride, (reason) => {
     sessionStorage.setItem(key, '1')
   } catch { /* 存储不可用时仍提示，仅失去判重 */ }
   showToast(t(`common.usage.auto_switch_${reason}`, { n: fmtQuotaMinutes(engineStore.quotaRemaining) }), 'warn')
+})
+
+// ─── 登录态联动（BUG-LOGOUT-QUOTA）：登录/登出后刷新 routing 快照 ───
+// 底部状态栏与 ASR/AI 配置卡的配额信息全部单源自 engineStore.routing；
+// 原实现只在启动链拉取一次，登出（或登录）后无人负责重拉，导致配额信息残留旧值。
+watch(() => userStore.isLoggedIn, () => {
+  void engineStore.loadRouting(true)
+  void engineStore.loadAccessSettings()
 })
 
 // 公告横幅 / Announcement banner
@@ -297,8 +339,7 @@ onMounted(async () => {
   checkActiveRecording()
   loadAnnouncements()
   loadPhilosophy()
-  // ─── 状态栏/接入方式单一来源启动链（AM-F1 T5）：登录态注入 → 引擎态 + 路由推导 + hover 详情 ───
-  engineStore.setUserLoggedIn(userStore.isLoggedIn)
+  // ─── 状态栏/接入方式单一来源启动链（AM-F1 T5）：引擎态 + 路由推导 + hover 详情 ───
   engineStore.load()
   void engineStore.loadRouting()
   void engineStore.loadAccessSettings().then(() => {

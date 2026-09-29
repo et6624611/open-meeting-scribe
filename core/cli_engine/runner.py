@@ -66,11 +66,15 @@ async def run_cli_agent(
     allowed_tools: list[str] | None = None,
     first_event_timeout: int = 60,
     total_timeout: int = 300,
+    on_write_success=None,
 ):
     """
     异步生成器：yield 规范 SSE 事件字典。 / Async generator yielding canonical SSE event dicts.
 
     由 chat_stream 的 event_generator 直接转发；异常以 error 事件产出而非抛出（保持 SSE 流不破）。
+
+    on_write_success：可选回调，参数为工具全名。当 tool_call 名字命中写工具（含 MCP 前缀
+    mcp__<server>__<tool>）且其 tool_result 成功时触发（完成护栏 §5.4 的 rewritten 事实源）。
     """
     manifest = load_manifest(engine_id)
     argv = manifest.get("argv", {})
@@ -130,6 +134,12 @@ async def run_cli_agent(
 
     _ACTIVE[stream_id] = proc
     got_result = False
+    # 完成护栏配对（§5.4）：tool_call 先行记录 id→name，tool_result 只带 tool_use_id，
+    # 按 id 回溯名字后才能判定"写工具成功落盘"（读写双语义工具的读调用不在写工具集，自然排除）
+    # propose_summary 是"名义 write、实际不落盘"的提案信号，必须从触发集剔除，否则纪要提案轮被误标 rewritten=true
+    from core.agent_tools.catalog import TOOL_CATALOG as _CATALOG
+    write_names = {t["name"] for t in _CATALOG if t.get("kind") == "write"} - {"propose_summary"}
+    call_names: dict[str, str] = {}
     try:
         while True:
             try:
@@ -151,6 +161,13 @@ async def run_cli_agent(
                         yield {bridge.EV_TYPE_KEY: bridge.EV_TOKEN, "content": piece}
                         await asyncio.sleep(_TYPEWRITER_DELAY)
                 else:
+                    if on_write_success is not None:
+                        if evt[bridge.EV_TYPE_KEY] == bridge.EV_TOOL_CALL and evt.get("id"):
+                            call_names[evt["id"]] = str(evt.get("name") or "")
+                        elif evt[bridge.EV_TYPE_KEY] == bridge.EV_TOOL_RESULT and evt.get("success"):
+                            bare = str(evt.get("name") or call_names.get(evt.get("tool_use_id") or "", ""))
+                            if bare.rsplit("__", 1)[-1] in write_names:
+                                on_write_success(bare)
                     if evt[bridge.EV_TYPE_KEY] in (bridge.EV_DONE, bridge.EV_ERROR):
                         got_result = True
                     yield evt

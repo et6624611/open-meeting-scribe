@@ -3,7 +3,7 @@
 - 状态：Implemented（2026-09-25 Phase 0–3 落地并实测）
 - 日期：2026-09-25
 - 决策人：Yongliang Wang（裁决 D1 正交、D3 写路径、D5 会话持久化默认开）
-- 相关：[PROPOSAL-QODER-CLI-ENGINE](../PROPOSAL-QODER-CLI-ENGINE.md)、[SPIKE-QODER-CLI-ENGINE](../SPIKE-QODER-CLI-ENGINE.md)、[ADR-0001](0001-mvp走云方案.md)、[ADR-0008](0008-ai操作结果系统校验.md)、[ADR-0012](0012-ASR转写走云端代理.md)、[ADR-0015](0015-本地优先原则重定义与引流授权服务.md)、[ADR-0017](0017-agent角色系统从硬编码提示词到md工作区.md)、[ADR-0018](0018-本地可选计算引擎与声纹离线化.md)
+- 相关：[PROPOSAL-QODER-CLI-ENGINE](../PROPOSAL-QODER-CLI-ENGINE.md)、[SPIKE-QODER-CLI-ENGINE](../SPIKE-QODER-CLI-ENGINE.md)、[ADR-0001](0001-mvp走云方案.md)、[ADR-0008](0008-ai操作结果系统校验.md)、[ADR-0012](0012-ASR转写走云端代理.md)、[ADR-0015](0015-本地优先原则重定义与引流授权服务.md)、[ADR-0017](0017-agent角色系 统从硬编码提示词到md工作区.md)、[ADR-0018](0018-本地可选计算引擎与声纹离线化.md)、[ADR-0020](0020-工程化能力收敛退役自建Agent循环.md)（后继：自建 agent_loop 退役，本文背景中的 `core/agent_loop.py` 已不存在，工具实现迁至 `core/agent_tools/impl.py`）
 
 ## 背景
 

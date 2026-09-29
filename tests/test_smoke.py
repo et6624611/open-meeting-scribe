@@ -560,7 +560,7 @@ class TestInsightPostMeeting:
         monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
         self._seed_task(monkeypatch, insights_router, "t-done")
 
-        async def fake_run_analysis(recent_lines, chapter_titles, role_name=None):
+        async def fake_run_analysis(recent_lines, chapter_titles, role_name=None, card_budget=None):
             assert len(recent_lines) <= insights_router.POST_ANALYSIS_MAX_LINES
             assert chapter_titles == ["进度回顾", "风险讨论"]
             return {"title": "资源冲突未解", "body": "图注", "solution": "建议排期",
@@ -584,7 +584,7 @@ class TestInsightPostMeeting:
         monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
         self._seed_task(monkeypatch, insights_router, "t-empty")
 
-        async def fake_none(recent_lines, chapter_titles, role_name=None):
+        async def fake_none(recent_lines, chapter_titles, role_name=None, card_budget=None):
             return {"title": "", "body": "", "solution": "", "has_finding": False, "diagram": "", "graph": None}
 
         monkeypatch.setattr(insights_router, "core_run_analysis", fake_none)
@@ -611,7 +611,7 @@ class TestInsightPostMeeting:
         monkeypatch.setattr(insights_router, "POST_ANALYSIS_TIMEOUT_SECONDS", 0.05)
         self._seed_task(monkeypatch, insights_router, "t-slow")
 
-        async def fake_slow(recent_lines, chapter_titles, role_name=None):
+        async def fake_slow(recent_lines, chapter_titles, role_name=None, card_budget=None):
             await asyncio.sleep(1)
             return {"title": "不该出现", "body": "", "solution": "", "has_finding": True, "diagram": "", "graph": None}
 

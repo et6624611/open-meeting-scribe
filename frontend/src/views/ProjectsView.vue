@@ -168,9 +168,9 @@
             <span class="pmc-date">{{ formatDate(m.meeting_date || m.created_at) }}</span>
           </div>
           <div class="pmc-meta">
-            <span v-if="m.audio_duration">{{ Math.round(m.audio_duration / 60) }} min</span>
-            <span v-if="m.speaker_count">{{ m.speaker_count }} {{ t('projects.stat_meetings_unit') }}</span>
-            <span class="pmc-status" :class="'status-' + m.status">{{ m.status }}</span>
+            <DurationDial v-if="m.audio_duration" :seconds="m.audio_duration" />
+            <span v-if="m.speaker_count">{{ m.speaker_count }} {{ t('projects.meeting_speakers_unit') }}</span>
+            <span v-if="m.status !== 'completed'" class="pmc-status" :class="'status-' + m.status">{{ formatStatus(m.status) }}</span>
           </div>
         </div>
       </div>
@@ -264,6 +264,7 @@ import type { Project, ProjectDetail, ProjectFolder, IndexedFile } from '@/api/p
 import { showToast } from '@/composables/useToast'
 import { useEscClose } from '@/composables/useEscClose'
 import { usePageBack } from '@/composables/usePageBack'
+import DurationDial from '@/components/common/DurationDial.vue'
 import FolderBrowserDialog from './projects/FolderBrowserDialog.vue'
 
 const { t } = useI18n()
@@ -565,6 +566,22 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// 状态文案与 StartView / 侧栏 TaskCard 同源（common.status.*），避免裸英文枚举 / Status labels share the common.status.* keys (same source as StartView / sidebar TaskCard)
+const statusLabels: Record<string, string> = {
+  recording: t('common.status.recording'),
+  paused: t('common.status.paused'),
+  pending: t('common.status.pending'),
+  processing: t('common.status.processing'),
+  transcribing: t('common.status.transcribing'),
+  summarizing: t('common.status.summarizing'),
+  awaiting_mapping: t('common.status.awaiting_mapping'),
+  failed: t('common.status.failed'),
+}
+
+function formatStatus(status: string): string {
+  return statusLabels[status] || status
+}
+
 function formatSize(bytes: number) {
   if (!bytes) return '—'
   if (bytes < 1024) return bytes + ' B'
@@ -673,6 +690,7 @@ onMounted(load)
 .pmc-status.status-completed { background: var(--ok-soft); color: var(--ok); }
 .pmc-status.status-processing { background: var(--warn-soft); color: var(--warn); }
 .pmc-status.status-pending { background: var(--surface-2); color: var(--subtle); }
+.pmc-status.status-failed { background: var(--error-soft); color: var(--error); }
 
 /* 文件表格 / Files table */
 .proj-files-table { width: 100%; border-collapse: collapse; font-size: 13px; }

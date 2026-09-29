@@ -9,6 +9,7 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:parser": "node --experimental-strip-types scripts/test-parse-insight-flow.ts",
+    "test:shortcuts": "node --experimental-strip-types --test scripts/test-date-shortcuts.mjs",
     "lint": "eslint 'src/**/*.vue'",
     "lint:fix": "eslint 'src/**/*.vue' --fix"
   },

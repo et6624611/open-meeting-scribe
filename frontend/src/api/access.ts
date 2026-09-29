@@ -13,10 +13,7 @@
  */
 import client from './client'
 
-/** 决策层接入方式（两卡：离线 / 联网） */
-export type AccessMode = 'local' | 'cloud'
-
-/** 逐能力算力来源（用户词五词中的三项 + 离线接管态） */
+/** 逐能力算力来源（用户词；trial/byok/local_endpoint(llm)/local(asr)，"" = 未设置） */
 export type CapSource = 'trial' | 'byok' | 'local_endpoint' | 'local' | ''
 
 /** 实际路由结论 */
@@ -30,7 +27,6 @@ export type RoutingReason =
   | 'legacy_unconfigured'
 
 export interface RouteDecision {
-  configured_access_mode: AccessMode | null
   expert_mode: boolean
   route: RouteKind
   /** 该能力实际生效的算力来源 */
@@ -40,6 +36,8 @@ export interface RouteDecision {
   /** 兼容窗口同值镜像（一个版本后随旧客户端日落删除） */
   route_override: boolean
   reason: RoutingReason | string
+  /** true = 该能力未设置来源，触发逐能力引导 */
+  unconfigured: boolean
 }
 
 export interface CapabilityEntry {
@@ -54,7 +52,6 @@ export interface CapabilityEntry {
 }
 
 export interface CapabilityStatus {
-  account_default: 'trial' | 'byok'
   llm: CapabilityEntry
   asr: CapabilityEntry
 }
@@ -79,9 +76,7 @@ export interface SettingsEvent {
 
 export interface RoutingResponse {
   ok: boolean
-  access_mode: AccessMode | null
   expert_mode: boolean
-  onboarding_required: boolean
   llm: RouteDecision
   asr: RouteDecision
   capability: CapabilityStatus
@@ -96,10 +91,9 @@ export interface RoutingResponse {
   recent_events: SettingsEvent[]
 }
 
-/** 切换事务结果（裁决-1：任一环节失败 → settings.json 零写入，保持原模式） */
-export interface SwitchAccessResult {
+/** 逐能力来源切换事务结果（失败全量回滚 → settings.json 零写入） */
+export interface SwitchCapabilityResult {
   ok: boolean
-  access_mode?: AccessMode | null
   capability?: CapabilityStatus
   llm?: RouteDecision
   asr?: RouteDecision
@@ -119,21 +113,12 @@ export async function fetchRouting(): Promise<RoutingResponse> {
 }
 
 /**
- * 接入方式切换事务（必经后果预览弹窗后调用；失败界面明示「未生效，已保持原模式」）。
+ * 逐能力算力来源切换事务（必经端点 /api/settings/capability）。
+ * ASR 进入/离开 local 时后端会启停本机引擎，失败全量回滚（不落盘）。
  */
-export async function switchAccessMode(payload: {
-  access_mode: AccessMode | null
-  capability_source?: Partial<Record<'llm' | 'asr', string>>
-}): Promise<SwitchAccessResult> {
-  const { data } = await client.post<SwitchAccessResult>('/api/settings/access-mode', payload)
+export async function saveCapabilitySource(sources: Partial<Record<'llm' | 'asr', string>>): Promise<SwitchCapabilityResult> {
+  const { data } = await client.post<SwitchCapabilityResult>('/api/settings/capability', { capability_source: sources })
   return data
-}
-
-/**
- * 逐能力算力来源显式保存（详情层来源下拉；任何手动改选后端都会标 override 持久化）。
- */
-export async function saveCapabilitySource(sources: Partial<Record<'llm' | 'asr', string>>): Promise<void> {
-  await client.post('/api/settings', { capability_source: sources })
 }
 
 /** 专家模式开关（页面级，不参与决策卡 radiogroup；写入仍走 /api/settings） */

@@ -13,6 +13,7 @@
 
 import { ref, computed } from 'vue'
 import { inlineEdit as apiInlineEdit } from '@/api/chat'
+import type { ModelUsage } from '@/api/chat'
 import { showToast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
 
@@ -34,6 +35,8 @@ const source = ref('')
 const instruction = ref('')
 const editedText = ref('')
 const anchorRect = ref<{ top: number; left: number } | null>(null)
+/** 最近一次改写的执行方回显（AI 算力入口治理 §3）：确认卡角落展示 模型·来源·计费 */
+const lastModelUsage = ref<ModelUsage | null>(null)
 
 /** 范围替换回调 / Range replacer callback */
 type RangeReplacer = (start: number, end: number, newText: string) => void
@@ -65,6 +68,7 @@ export function useInlineEdit() {
     instruction.value = ''
     editedText.value = ''
     anchorRect.value = rect || null
+    lastModelUsage.value = null
     status.value = 'input'
   }
 
@@ -76,6 +80,8 @@ export function useInlineEdit() {
     try {
       const res = await apiInlineEdit(originalText.value, instruction.value)
       editedText.value = res.edited
+      // 执行回显：后端随响应携带实际消费方；失败分支的 detail 已自带 [model · source] 标签
+      lastModelUsage.value = res.model_usage || null
       status.value = 'result'
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || String(err)
@@ -122,6 +128,7 @@ export function useInlineEdit() {
     instruction.value = ''
     editedText.value = ''
     anchorRect.value = null
+    lastModelUsage.value = null
   }
 
   return {
@@ -134,6 +141,7 @@ export function useInlineEdit() {
     instruction,
     editedText,
     anchorRect,
+    lastModelUsage,
     // 计算属性 / Computed
     showInput,
     isLoading,

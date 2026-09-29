@@ -182,22 +182,10 @@
   margin-top: 8px; margin-bottom: 8px; text-align: left;
 }
 
-/* ── 注册引导横幅（颜色从主题变量派生，与 topbar.css 一致） ─── */
-.reg-guidance-banner {
-  position: relative;
-  background: var(--ann-bg, var(--surface-2));
-  border-bottom: 1px solid var(--ann-border, var(--border));
-  padding: 10px 24px;
-  transition: opacity 0.3s ease, max-height 0.3s ease;
-  overflow: hidden;
-}
-.reg-guidance-banner.is-hidden {
-  opacity: 0;
-  max-height: 0;
-  padding: 0 24px;
-  border-bottom: none;
-  pointer-events: none;
-}
+/* ── 注册引导横幅：样式唯一来源在 topbar.css（本文件早于它之后的模块加载，
+   重复声明会按导入顺序互相覆盖，曾把隐藏态打回 opacity:0 而继续占位挡点击）
+   Single source of truth lives in topbar.css; a duplicate declaration here used
+   to win by import order and leave the hidden banner in flow. ─── */
 .reg-guidance-content {
   display: flex;
   align-items: center;

@@ -86,6 +86,10 @@ def is_transient_error(error: Exception) -> bool:
         "connection reset",
         "connection refused",
         "connection aborted",
+        # httpx/ollama 原生文案（洞察板 connect 归因实拍：All connection attempts failed / Server disconnected）
+        "connection attempts failed",
+        "server disconnected",
+        "connection error",
         "timed out",
         "timeout",
         "503",

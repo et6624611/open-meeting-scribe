@@ -45,7 +45,13 @@ a = Analysis(
         (str(ROOT / f), 'data')
         for f in ['data/hotwords.txt', 'data/philosophies.json']
         if (ROOT / f).is_file()
-    ],
+    ] + (
+        # 桌面端云端服务凭据（CI 构建时从 GitHub Secrets 生成）
+        # 本地测试时手动创建；文件不存在时云端功能不可用，本地模式仍正常
+        [(str(ROOT / 'desktop-secrets.env'), '.')]
+        if (ROOT / 'desktop-secrets.env').is_file()
+        else []
+    ),
     hiddenimports=[
         # FastAPI / uvicorn 相关
         'uvicorn.logging',

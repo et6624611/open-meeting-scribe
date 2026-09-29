@@ -59,19 +59,14 @@
     "unread_count": "{count} 条未读洞察",
     "expand": "扩展洞察台",
     "collapse": "收起洞察台",
-    "freq_label": "自动频率",
-    "freq_tip": "自动分析频率：AI 按此节奏自动绘图，辅助你思考",
-    "freq_off": "关",
-    "freq_low": "低",
-    "freq_normal": "中",
-    "freq_high": "高",
     "flow_phase_no": "阶段 {no}",
     "flow_step_owner": "讨论步骤",
     "flow_fit": "适应画布",
     "flow_zoom_in": "放大",
     "flow_zoom_out": "缩小",
     "flow_fullscreen": "全屏",
-    "flow_exit_fullscreen": "退出全屏"
+    "flow_exit_fullscreen": "退出全屏",
+    "deferred_title": "历史观察（{count}）"
   },
   "control": {
     "pause": "暂停",

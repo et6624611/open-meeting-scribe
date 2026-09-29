@@ -176,7 +176,7 @@ with sync_playwright() as pw:
     shot(page, "e3b_expert_off")
     log(f"[D-off] nav={nav_items2}")
 
-    # ═══ E. AC-T5② 两处入口统一跳 ?cat=access（evidence ④） ═══
+    # ═══ E. AC-T5② 接入状态唯一入口（底栏）跳 ?cat=access（顶栏徽章已下架） ═══
     page.goto(BASE, wait_until="networkidle"); page.wait_for_timeout(500)
     tip = page.get_attribute(".status-engine", "title")
     log(f"[E] footer hover title={tip}")
@@ -184,12 +184,9 @@ with sync_playwright() as pw:
     url_footer = page.url
     assert "cat=access" in url_footer, url_footer
     shot(page, "e4a_footer_jump_cat_access")
-    page.goto(BASE, wait_until="networkidle"); page.wait_for_timeout(500)
-    page.locator(".engine-badge").click(); page.wait_for_timeout(600)
-    url_badge = page.url
-    assert "cat=access" in url_badge, url_badge
-    shot(page, "e4b_badge_jump_cat_access")
-    log(f"[E] footer跳转={url_footer} | badge跳转={url_badge}")
+    # 顶栏引擎徽章已合并至底栏，确认 .engine-badge 不再存在
+    assert page.locator(".engine-badge").count() == 0, "顶栏引擎徽章应已下架"
+    log(f"[E] footer跳转={url_footer} | 顶栏徽章已下架 ✓")
 
     # ═══ F. D2 toast：byok + prefer_subscription → 路由切换显性告知一次且仅一次 ═══
     st["logged_in"] = True
@@ -211,15 +208,13 @@ with sync_playwright() as pw:
     log("[F] reload 后 toast 未再出现（一次且仅一次 ✓）")
     log(f"[F] byok footer={footer_text(page)}")
 
-    # ═══ G. AC-T5① 托管就绪（剩余 n）文案 + 徽章节奏 ═══
+    # ═══ G. AC-T5① 托管就绪（剩余 n）文案（底栏单处显示） ═══
     set_mock_state(page, "hosted")
     page.reload(wait_until="networkidle")
     ft = footer_text(page)
     assert "托管就绪" in ft and "剩余" in ft, ft
     log(f"[G] footer=「{ft}」")
     shot(page, "AC-T5-02_hosted_ready_remaining")
-    badge = page.inner_text(".engine-badge")
-    log(f"[G] topbar badge=「{badge}」")
 
     # ═══ H. 声纹 D3：主视图无独立「声纹服务」区块（简单模式） ═══
     page.goto(BASE + "/settings", wait_until="networkidle"); page.wait_for_timeout(500)

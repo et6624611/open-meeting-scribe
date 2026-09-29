@@ -77,10 +77,9 @@ def test_voiceprint_keys_removed_from_settings_locale():
 
 
 def test_access_mode_card_has_no_inline_autosave():
-    """AC-1：卡片内联自动保存路径已废除（grep 前端源码）。"""
-    src = (ROOT / "frontend" / "src" / "components" / "settings" / "AccessModeCards.vue").read_text(encoding="utf-8")
-    for dead in ("saveServices", "saveVoiceprint"):
-        assert dead not in src, f"AccessModeCards.vue 仍包含内联自动保存路径: {dead}"
+    """AC-1：AccessModeCards 孤儿组件已随逐能力化删除，内联自动保存路径随之消失。"""
+    path = ROOT / "frontend" / "src" / "components" / "settings" / "AccessModeCards.vue"
+    assert not path.exists(), "AccessModeCards 孤儿组件应已删除（逐能力真相源已取代它）"
 
 
 def test_settings_view_engine_mode_dropdown_is_readonly():
