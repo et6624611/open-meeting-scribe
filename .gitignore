@@ -85,12 +85,12 @@ scripts/_ssh_*.exp
 AGENTS.md
 CODEX.md
 
-# 云盘同步生成的重名副本（"xxx 2" / "xxx 2.ext" / "xxx 2/"），非人工成果，会随构建反复出现
-# 两条都要：* 2 覆盖无扩展名的文件与目录，* 2.* 覆盖带扩展名的副本
-# Cloud-sync duplicate artifacts. Both patterns are needed: "* 2" catches
-# extension-less files and directories, "* 2.*" catches ones with an extension.
-* 2
-* 2.*
+# 云盘同步生成的重名副本（"xxx 2" / "xxx 3.ext" 等数字后缀），非人工成果，会随构建反复出现
+# 两条都要：* [0-9] 覆盖无扩展名的文件与目录，* [0-9].* 覆盖带扩展名的副本
+# Cloud-sync duplicate artifacts. Both patterns are needed: "* [0-9]" catches
+# extension-less files and directories, "* [0-9].*" catches ones with an extension.
+* [0-9]
+* [0-9].*
 
 # Qoder CLI 引擎 Spike 取证与工作区（含会议上下文，禁止入库）
 # Spike evidence + agent workspace (contains meeting context; never commit)
