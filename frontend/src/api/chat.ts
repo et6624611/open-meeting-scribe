@@ -21,6 +21,12 @@ export interface LlmMetadata {
   engine?: string
   /** 完成护栏（模式即权限 §5.4）：本轮写工具是否成功落过盘（仅智能体链路携带） */
   rewritten?: boolean
+  /** 本轮实际发生过的写工具（剥 mcp__ 前缀的裸名，去重后升序） */
+  rewritten_tools?: string[]
+  /** 本轮标识：写回快照的关联键，传此 id 可整轮回滚（§5.4 恢复入口） */
+  turn_id?: string
+  /** 本轮写回发生的会议 id */
+  task_id?: string
   /** 本轮实际落档（readonly|workspace_write|full_task） */
   auth_tier?: string
 }

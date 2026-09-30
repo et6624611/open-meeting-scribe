@@ -158,12 +158,17 @@ def _proxy_request(path: str, payload: dict) -> dict:
             data = json.loads(resp.read().decode())
             return data
     except urllib.error.HTTPError as e:
-        # 尝试读取错误响应体
+        # 读取错误响应体
         try:
             err_body = json.loads(e.read().decode())
-            msg = err_body.get("message", str(e))
         except Exception:
-            msg = f"HTTP {e.code}"
+            err_body = None
+        msg = (err_body or {}).get("message", f"HTTP {e.code}")
+        # 4xx 为业务失败（如验证码错误/已过期），透传响应体交由调用方判读；
+        # 5xx 为服务异常，抛错以免被误判为核验不通过
+        if 400 <= e.code < 500 and err_body is not None and "success" in err_body:
+            logger.info(f"SMS 代理业务失败: {path} → {msg}")
+            return err_body
         logger.error(f"SMS 代理请求失败: {path} → {msg}")
         raise RuntimeError(f"短信代理返回错误: {msg}")
     except urllib.error.URLError as e:

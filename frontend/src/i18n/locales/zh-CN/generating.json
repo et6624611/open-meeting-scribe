@@ -108,7 +108,15 @@
     "todos_stat": "本次会议共产生 {total} 项决策，已完成 {done} 项",
     "view_todos": "查看决策",
     "pending": "纪要尚未生成",
-    "placeholder": "双击此处开始编辑纪要… Enter 新建块 · ↑↓ 跨块移动"
+    "placeholder": "双击此处开始编辑纪要… Enter 新建块 · ↑↓ 跨块移动",
+    "proposal_label": "纪要改写建议",
+    "proposal_stats": "{hunks} 处修改 · +{added} / −{removed} 行",
+    "proposal_pending": "AI 已产出纪要改写建议（{hunks} 处修改 · +{added} / −{removed} 行）",
+    "proposal_view": "查看修改",
+    "proposal_show_lines": "显示 {count} 行未修改内容",
+    "proposal_hint": "接受后才会写入纪要；拒绝则丢弃本次建议",
+    "proposal_accept": "接受并更新纪要",
+    "proposal_reject": "拒绝"
   },
   "block_editor": {
     "shortcut": {
@@ -131,7 +139,15 @@
   },
   "notes": {
     "placeholder": "在此记录随记… Enter 新建块 · ↑↓ 跨块移动",
-    "saved": "已保存"
+    "saved": "已保存",
+    "proposal_label": "随记改写建议",
+    "proposal_stats": "{hunks} 处修改 · +{added} / −{removed} 行",
+    "proposal_pending": "AI 已产出随记改写建议（{hunks} 处修改 · +{added} / −{removed} 行）",
+    "proposal_view": "查看修改",
+    "proposal_show_lines": "显示 {count} 行未修改内容",
+    "proposal_hint": "随记是你的原创区：只有点「接受」才会写入，拒绝则丢弃本次建议",
+    "proposal_accept": "接受并更新随记",
+    "proposal_reject": "拒绝"
   },
   "todos": {
     "stat": "共 {total} 项，已完成 {done} 项",

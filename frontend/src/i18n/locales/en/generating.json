@@ -107,7 +107,15 @@
     "todos_stat": "This meeting produced {total} decision(s), {done} completed",
     "view_todos": "View Decisions",
     "pending": "Minutes not yet generated",
-    "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate"
+    "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate",
+    "proposal_label": "Summary rewrite proposal",
+    "proposal_stats": "{hunks} changes · +{added} / −{removed} lines",
+    "proposal_pending": "AI produced a summary rewrite proposal ({hunks} changes · +{added} / −{removed} lines)",
+    "proposal_view": "View changes",
+    "proposal_show_lines": "Show {count} unchanged lines",
+    "proposal_hint": "Nothing is saved until you accept; reject discards this proposal",
+    "proposal_accept": "Accept & update summary",
+    "proposal_reject": "Reject"
   },
   "block_editor": {
     "shortcut": {
@@ -130,7 +138,15 @@
   },
   "notes": {
     "placeholder": "Take notes here… Enter for new block · ↑↓ to navigate",
-    "saved": "Saved"
+    "saved": "Saved",
+    "proposal_label": "Notes rewrite proposal",
+    "proposal_stats": "{hunks} changes · +{added} / −{removed} lines",
+    "proposal_pending": "AI produced a notes rewrite proposal ({hunks} changes · +{added} / −{removed} lines)",
+    "proposal_view": "View changes",
+    "proposal_show_lines": "Show {count} unchanged lines",
+    "proposal_hint": "Notes are your own territory: nothing is written until you Accept; Reject discards this proposal",
+    "proposal_accept": "Accept & update notes",
+    "proposal_reject": "Reject"
   },
   "todos": {
     "stat": "{total} total, {done} completed",
@@ -232,7 +248,7 @@
       "co_create_section": "Co-create section",
       "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
       "refresh": "Refresh",
-      "loading": "Loading\u2026",
+      "loading": "Loading…",
       "view_board": "Board",
       "view_cards": "Cards"
     }

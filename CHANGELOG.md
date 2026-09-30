@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: "2026-09-29"
+updated_at: "2026-09-30"
 status: published
 ---
 
@@ -12,6 +12,75 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-09-30 — 随记改写通道：propose_notes 建议模式（四域闭环）
+
+### 新增
+- **写工具 `propose_notes`（提案式，后端不落盘）**：随记是用户原创区（PROPOSAL §5.3 市场模式 D），因此与其他域不同构——工具只产出建议全文，**用户点「接受」才经 `PUT /api/tasks/{id}/notes` 落盘**，与 `propose_summary` 同一语义。只读档 403 拒绝，可写档预授权放行。
+- **随记 Tab 原位 diff 预览**：新建 `useNotesProposal.ts`（模块级单例，复用 `useSummaryProposal.buildDiffSegments` 与 `.gen-prop-*` 样式体系），提案产生即自动起跳到随记 Tab 并锁定编辑；AI 侧栏只留规模摘要 + 入口 + 拒绝（与纪要入口卡同一形状）。**接受前不写盘**（AC7）。
+- **基线漂移轻防护**：接受前先回拉服务端当前随记与提案 baseline 比对，发生过手动编辑则写入但仍 warn 提示复核，不静默吞掉用户手改。
+- **catalog 新增 `persists` 字段**：标记"名义 write、实际不落盘"的提案工具；`runner` 的完成护栏触发集改按该字段派生（不再硬写工具名），否则提案轮会被误标 `rewritten=true`。
+- **权限段与工作区声明改写**：可写档从"随记无写回工具，只能给建议文本"改为"随记改写必须走 `propose_notes`，未经接受严禁声称已写入"；`context/notes.md` 头部声明同步。
+- **AI 面板「上下文」清单补上随记一项**：清单原本只列 原文/纪要/决策/文件/相关会议，而 AI 现已能读随记 → 展示层比实际能力少报一项。现在「会议产出」区新增一行（字数 + 手写标签 + 点击跳随记 Tab），顶部概览与各项计数（`contextStats`/`contextResourceCount`/`meetingOutputCount`/`isContextEmpty`）同步计入；图标沿用组内统一的 accent 色相（不新增色相，遵守既有视觉规则）。数据取 task 快照的 `user_notes`（`/api/tasks` 返回完整任务对象），不额外发请求。实测 9-30 那场会议：清单计数 11 → 12。
+
+### 修复
+- **接受提案后旧文本回写隐患**：随记编辑器有 1s 防抖自动保存，外部重拉（接受提案/写回刷新）后旧缓冲仍会在 1s 后 `PUT` 回去、静默覆盖刚接受的内容。现 `loadNotes()` 先取消挂起定时器；`task-written` 事件也改为按受影响域（todos/notes）定向刷新，不再一律重拉。
+
+### 涉及文件
+- `core/agent_tools/catalog.py`、`core/agent_tools/impl.py`、`app/routers/agent_tools.py`、`core/cli_engine/{context_export,runner}.py`、`frontend/src/composables/{useNotesProposal.ts,useAiChat.ts,useNotesAndTodos.ts,useAiContext.ts}`、`components/layout/AIPanel.vue`、`components/layout/ai/{AiChatPanel.vue,AiContextPanel.vue}`、`views/generating/NotesPanel.vue`、`views/GeneratingView.vue`、`styles/ai-panel.css`、i18n（ai-panel/generating 中英）、`tests/test_agent_tools.py`、`tests/test_cli_engine.py`
+
+### 验证
+- pytest 692 passed（新增 5 例：注册/不落盘/只读档 403/allowlist/触发集剔除）；`vue-tsc --noEmit` 无错；ESLint 对本次改动文件零错误（AiContextPanel 余留 3 项 `no-use-v-if-with-v-for` 为存量，HEAD 版本已存在）；`npm run test:parser` 25 passed；`cli.py build` 已部署，随记提案文案与上下文清单文案均已进产物。
+- 待实机：在应用里对智能体说"把我随记里的口径整理得更条理些"→ 应弹随记 Tab 原位 diff → 接受后落盘、拒绝则丢弃。
+
+## [未发布] - 2026-09-30 — 改写通道 P2/P3：写前快照 + 决策节点按 id 改写 + 本轮撤销
+
+### 新增
+- **字段级写前快照 `core/rewrite_snapshots.py`**（PROPOSAL §5.3 快照强制契约）：`data/tasks/<task_id>.rewrites.jsonl` 追加式 sidecar，记录 task_id / target / 旧值 / turn_id / tool / ts；每 target 保留上限 N=20（超出整表原子重写裁剪），过期清理并入智能体工作区同一 `retention_days` 口径（启动时 `sweep_expired_snapshots`）。只快照 AI 写回，用户手改不快照。
+- **写工具 `update_decision_node` / `delete_decision_node`**（PROPOSAL P3）：按节点稳定 id 寻址，收口到 `notes.update_todo` / `notes.delete_todo` 同一口径（状态字典校验、`updated_at`、脏标记、`save_task_to_disk`、auto 节点防复活墓碑），**不在 `inject_items` 旁开第二套写路径**。写回前强制整节点快照；非法 status 先行 422、字段超长/枚举非法 400，**被拒的写不留空快照**。
+- **`get_meeting_todos` 下发状态字典**（`available_statuses` + `status_note`）：否则模型只能猜 status id，每写必 422。
+- **恢复入口**：`GET /api/tasks/{id}/rewrites`（只回摘要不回旧值全文）+ `POST /api/tasks/{id}/rewrites/restore`（`snapshot_id` 单点恢复或 `turn_id` 整轮**逆序**回滚）；恢复本身不再快照，避免撤销无限套娃。`inject_items` 新建节点也进快照（old_absent 语义），撤销 = 删掉新建。
+- **令牌携带 `turn_id`**：`TokenContext.turn_id` ← `build_bridge_config(turn_id=stream_id)`，写工具据此把同一轮的多次落盘归到一个回滚单元。
+- **前端「本轮已改写 + 撤销」条**：`done.metadata` 新增 `rewritten_tools / turn_id / task_id`；`AiChatPanel` 在回复尾部以 ok 绿系展示改了哪个域并提供「撤销本轮改写」（与 amber 护栏横幅形成"已成事/未成事"对偶）。
+- **写回后呈现侧即时重拉 `useTaskWrites.ts`**：沿用 `board-written` 的 CustomEvent 先例新增 `task-written` 通道；`GeneratingView` 订阅后重拉 task + `loadTodos` + 同步状态，消除"AI 说改了、页面还是旧的"。
+
+### 变更
+- 完成护栏事实从 `rewritten: bool` 扩展为带明细（`rewritten_tools`）：呈现与恢复共用一份数据源，不把"看见改了什么"和"回退"割裂（§5.4）。
+- `runner.on_write_success` 触发集由 catalog 派生，新写工具自动纳入；`inject_items` 描述改为"仅用于新增"，与 `update_decision_node` 职责分界写进工具描述与权限段。
+- 可写档权限段新增「决策推进」操作规程（先读 id 与状态字典 → 逐条 update → 不用 inject 重复追加），并要求 `restorable=false` 时如实告知不可一键回退。
+
+### 遗留（本次不做）
+- 随记 `revise_notes`（建议模式）仍待做；洞察板 HTML 未进快照体系（整份 HTML 体积大，需 gzip 与单独存储设计）。
+
+### 涉及文件
+- `core/rewrite_snapshots.py`（新增）、`app/routers/agent_tools.py`、`app/routers/notes.py`、`app/routers/chat.py`、`core/agent_tools/{catalog,impl,tokens}.py`、`core/cli_engine/{context_export,mcp_bridge}.py`、`app/server.py`、`frontend/src/composables/useTaskWrites.ts`（新增）、`useAiChat.ts`、`components/layout/ai/AiChatPanel.vue`、`views/GeneratingView.vue`、`api/{chat,notes}.ts`、i18n（ai-panel 中英）、`tests/conftest.py`、`tests/test_rewrite_snapshots.py`（新增）、`docs/PROPOSAL-AGENT-REWRITE-CHANNEL.md`
+
+### 验证
+- pytest 686 passed（唯一失败仍为存量的 `.spike_local_engine` venv 路径干扰）；新增 `tests/test_rewrite_snapshots.py` 25 例：快照追写/保留上限/过期清理/按轮逆序回滚/撤销创建/被拒写不留快照/只读档 403/端点端到端。
+- 前端 `vue-tsc --noEmit` 无错；`python3 cli.py build` 已部署，`task-written` / `rewrites/restore` / 中文文案均已进产物。
+
+## [未发布] - 2026-09-30 — 随记对 AI 从「不可见」到「可读」
+
+### 修复
+- **随记（`user_notes`）是四域中唯一对 AI 不可见的域（实测复盘：用户把共识结论写进随记要求同步决策面板，智能体回「随记内容我读不到」）**：三条读路径同时缺失——① CLI 工作区只导出 transcript/summary/todos/insights，无 notes；② 工具面无随记读入口，`get_meeting_info` 也不报随记存在性（不告知就等于不存在）；③ 内置问答路径的上下文块不含随记（仅纪要生成链路读过它）。现全部打通。
+- **AI 读到的纪要基线不取定稿口径**：工作区 `summary.md`、`get_meeting_info.summary_preview`、问答注入块均只读 `summary`（AI 初稿），用户手改存于 `user_summary` → `propose_summary` 的行级 diff 会把用户修改静默回退。现统一走新增的 `core.chat_context.task_final_summary()`（`user_summary` 存在即优先，含空串），与前端纪要 Tab 逐字节同口径。
+
+### 新增
+- **只读工具 `get_meeting_notes`**（`catalog.py` + `impl.py`，kind=read）：返随记原文（6000 字上限，超限标 `truncated`），描述里明确「用户说『写在随记里了』时先读本工具」与「只读、不得声称已改写随记」两条约束；只读档可用，MCP 预授权清单自动涵盖。
+- **`context/notes.md` 导出**（`export_context`，8000 字上限）：带「用户手写原文、可信度高于转写推断、未经确认不得改写」的头部声明，使弱模型能正确将其作为事实源。
+- **决策节点稳定 id 上工具面**：`get_meeting_todos` 输出补 `id/title/status`，清除 PROPOSAL-AGENT-REWRITE-CHANNEL §9 标记的 P3 前置缺口（此前只能按文本匹配，无法按节点寻址）。
+- **防幻觉护栏**：可写档权限段（`_build_permission_section`）新增一条：随记当前无写回工具，只能引用其内容更新纪要/决策或给出建议文本，严禁声称已写入/修改随记。
+
+### 遗留（本次不做）
+- 随记写回（`revise_notes` 建议模式）与决策节点改写/删除仍是 PROPOSAL §6 的 P3 待做：因此图中「按随记把那 4 条【待确认】决策改掉」的写侧闭环未开，AI 现只能读准随记、新增条目（`inject_items`）或给出建议文本。
+- 前端 AI 面板「上下文」资源清单未列随记（`useAiContext.ts` 的 `contextStats` 只有转写/纪要/待办/项目），展示层与读能力暂不一致。
+
+### 涉及文件
+- `core/chat_context.py`（新增 `task_final_summary`/`task_notes`）、`core/cli_engine/context_export.py`、`core/agent_tools/catalog.py`、`core/agent_tools/impl.py`、`app/routers/chat.py`、`docs/PROPOSAL-AGENT-REWRITE-CHANNEL.md`（v0.4.1）、`tests/test_cli_engine.py`、`tests/test_agent_tools.py`
+
+### 验证
+- pytest 661 passed（唯一失败 `test_model_downloader::test_worker_command_dev_mode` 为存量的 .spike_local_engine venv 路径干扰，与本次无关）；新增 8 个用例覆盖 notes 导出/读工具/存在性/节点 id/只读档放行。
+- 真实会议数据离线复核（差旅报销与预算控制机制讨论）：brief 列出 `context/notes.md`，随记三段全文入盘，`get_meeting_info` 返 `has_notes=true`，决策节点带 uuid 与 `to_decide` 状态。
 
 ## [未发布] - 2026-09-29 — 工程化能力收敛：退役自建 Agent 循环，CLI 为唯一智能体引擎
 

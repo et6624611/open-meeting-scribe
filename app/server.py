@@ -582,7 +582,11 @@ async def startup():
     try:
         from app.settings_store import get_chat_engine_config
         from core.cli_engine import sweep_expired_workspaces
-        sweep_expired_workspaces(get_chat_engine_config().get("retention_days", 7))
+        _retention = get_chat_engine_config().get("retention_days", 7)
+        sweep_expired_workspaces(_retention)
+        # AI 写回快照 sidecar 与工作区同一保留期口径（PROPOSAL §5.3）
+        from core.rewrite_snapshots import sweep_expired_snapshots
+        sweep_expired_snapshots(_retention)
     except Exception as e:
         logger.warning(f"启动清理智能体工作区失败（不影响服务）: {e}")
 

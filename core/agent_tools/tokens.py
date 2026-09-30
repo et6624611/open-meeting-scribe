@@ -3,7 +3,8 @@ core/agent_tools/tokens.py — 单轮短时工具令牌注册表 / Ephemeral per
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-25
-版本 / Version: 1.0.0
+更新 / Updated: 2026-09-30
+版本 / Version: 1.1.0
 
 职责 / Responsibilities:
   - 为每个 CLI 引擎轮次签发一个进程内短时 bearer token，绑定任务上下文与授权范围
@@ -40,6 +41,9 @@ class TokenContext:
     writable: bool               # 是否允许写类工具（由 auth_tier 推导）
     expires_at: float
     allowed_tools: tuple[str, ...] = field(default=())
+    # 轮次标识（完成护栏与按轮撤销的关联键）：写工具落盘时随快照记录 turn_id，
+    # 前端据此一次请求回滚整轮（PROPOSAL §5.4 恢复入口）。
+    turn_id: str = ""
 
 
 def _can_write(auth_tier: str) -> bool:
@@ -47,7 +51,8 @@ def _can_write(auth_tier: str) -> bool:
 
 
 def issue_token(*, task_id: str | None, project_id: str | None,
-                auth_tier: str, ttl: int = DEFAULT_TTL_SECONDS) -> TokenContext:
+                auth_tier: str, ttl: int = DEFAULT_TTL_SECONDS,
+                turn_id: str = "") -> TokenContext:
     """签发一个绑定任务上下文的短时令牌。 / Mint a short-lived, context-bound token."""
     token = secrets.token_urlsafe(32)
     ctx = TokenContext(
@@ -57,6 +62,7 @@ def issue_token(*, task_id: str | None, project_id: str | None,
         auth_tier=auth_tier,
         writable=_can_write(auth_tier),
         expires_at=time.time() + ttl,
+        turn_id=turn_id or "",
     )
     with _LOCK:
         _STORE[token] = ctx

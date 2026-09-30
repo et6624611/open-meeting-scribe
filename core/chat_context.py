@@ -3,11 +3,12 @@ core/chat_context.py — AI 对话上下文构建与注入内容提取 / AI chat
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-更新 / Updated: 2026-09-25
-版本 / Version: 1.1.0
+更新 / Updated: 2026-09-30
+版本 / Version: 1.2.0
 
 职责 / Responsibilities:
   - 页面上下文构建（_build_page_context） / Page context building (_build_page_context)
+  - 定稿纪要口径（task_final_summary） / Final summary resolution (user_summary over generated)
   - 说话人名称映射（build_speaker_name_map） / Speaker name mapping (build_speaker_name_map)
   - 洞察台注入块（build_insights_context_block） / Insight Deck injection block (build_insights_context_block)
   - 注入内容提取（extract_injectable_items） / Injectable content extraction (extract_injectable_items)
@@ -61,6 +62,27 @@ def build_speaker_name_map(task_id: str | None) -> dict:
         for s in speakers.load_speakers():
             name_map[s.speaker_id] = s.name
     return name_map
+
+
+def task_final_summary(task: dict | None) -> str:
+    """定稿纪要口径：用户编辑过（user_summary 存在，含空串）即以它为准，否则回退生成稿。
+
+    与前端纪要 Tab（useGeneratingData）逐字节同口径：AI 读到的纪要基线必须等于用户看到的纪要，
+    否则 propose_summary 的 diff 会把用户手改内容静默回退。
+    """
+    if not task:
+        return ""
+    us = task.get("user_summary")
+    if us is not None:
+        return str(us)
+    return str(task.get("summary") or "")
+
+
+def task_notes(task: dict | None) -> str:
+    """随记口径：用户录音期间手写原文（user_notes），无内容返回空串。"""
+    if not task:
+        return ""
+    return str(task.get("user_notes") or "").strip()
 
 
 def build_insights_context_block(task_id: str | None) -> str | None:

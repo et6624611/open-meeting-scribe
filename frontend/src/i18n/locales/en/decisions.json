@@ -62,5 +62,14 @@
   "sm_deleted_reassigned": "Deleted \"{name}\"; {count} decision(s) fell back to Active",
   "sm_save_failed": "Failed to save the status",
   "sm_done": "Done",
-  "add_flow_hint": "Entries join the selected meeting's decision flow and stay editable here or in the meeting minutes."
+  "add_flow_hint": "Entries join the selected meeting's decision flow and stay editable here or in the meeting minutes.",
+  "view_mode_label": "View",
+  "view_by_meeting": "By meeting",
+  "view_by_topic": "By topic",
+  "topic_count": "{count} topic(s)",
+  "topic_meetings_badge": "Across {count} meeting(s)",
+  "topic_evolution_toggle": "Evolution ({count})",
+  "topic_confidence_hint": "Auto-merged · {pct}% match",
+  "topic_view_hint": "Topic view merges the same decision across meetings into a main record; earlier entries fold into an evolution chain.",
+  "topic_goto_meeting": "Open source meeting"
 }

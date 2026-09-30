@@ -4,7 +4,7 @@ description: "把随记/纪要/决策/洞察板的会话面板改写收敛为一
 tags: ["architecture", "ai-chat", "agent", "rewrite", "permissions"]
 created_at: "2026-09-29"
 updated_at: "2026-09-30"
-version: "0.4.0"
+version: "0.6.0"
 author: "wangyongliang"
 status: "draft"
 category: "technical"
@@ -47,6 +47,17 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 | 决策 | 决策节点 | `inject_items` | 仅追加注入 todo/conclusion/decision | 不能改写/删除已有节点 |
 | 洞察板 | `.board.html` | `revise_insight_board(_section)` | 读+写双语义 + 单节 | 已是目标形状（本方案参照物） |
 
+**v0.4.1 现状更新（2026-09-30 随记读通道修复）**：上表记的是写回工具面，**读侧**的缺失已先行补齐——
+- 随记此前对 AI 完全不可见（工作区无 `context/notes.md`、工具面无读入口、`get_meeting_info` 也不报存在性），
+  现三处均已打通：新增只读工具 `get_meeting_notes`（`catalog.py`/`impl.py`）、`export_context` 导出 `context/notes.md`、
+  `get_meeting_info` 返 `has_notes/notes_preview`；内置问答路径同步新增「用户随记」注入块。
+- 纪要基线改取**定稿口径**（`core.chat_context.task_final_summary`：`user_summary` 存在即优先），
+  与前端纪要 Tab 逐字节一致；否则 `propose_summary` 的 diff 会把用户手改内容静默回退。
+- 读侧写回：决策域与随记域已于 2026-09-30 补齐（`update_decision_node` / `delete_decision_node`，
+  以及随记的提案式 `propose_notes`（即本节原拟的 `revise_notes`，按建议模式落地），见 §6 P3 实施状态）；
+  随记未接受前仍严禁声称已写入（权限段已明写）。
+- 节点寻址前置项已清：`_tool_get_meeting_todos` 现输出节点稳定 `id` 与 `title/status`（见 §9）。
+
 洞察板已验证了"正确改写通道"的形状：读基线 → 整份/单节写回 → revision 递增 → audit → CSS/HTML 契约。其余三域未收敛到此形状。
 
 ### 4.2 三层断点（叠加导致"只说不做"）
@@ -58,7 +69,6 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 ## 5. 目标架构
 
 ### 5.1 模式即权限（收敛断点 1）
-
 - **落点**：`app/routers/chat.py::_agent_engine_events`（L992）`auth_tier = data.auth_tier or cfg["auth_tier"]` 改为：**engine=agent 且未被显式降级时，默认抬到 `workspace_write`**（禁 Bash/WebFetch/WebSearch，放开工作区编辑 + 板/纪要/决策/随记写）。
 - **优先级链（v0.2.0 补，必须定义清楚）**：`请求级显式 auth_tier > 用户在设置页显式降级 > 模式派生默认（agent→workspace_write）`。⚠️ `settings_store` 现行默认 `readonly`（L249/L257）：若仍让 `cfg["auth_tier"]` 直接生效，抬档永不落地；若模式派生无条件压过配置，设置页「授权档」字段语义就从"选择"变成"降级/覆盖"。落档时必须同步修订设置页该字段的文案与交互（REQ-SETTINGS-IA 刚收敛的信息架构不得被本需求打散）。
 - **退役特例**：`frontend/src/composables/useAiChat.ts` 的 `boardCoCreate` 升档逻辑（L308）删除——不再按按钮才给权，进入智能体模式即天然可写。⚠️ `boardCoCreate` 现同时承担「升档」与「共创意图打标」双职责（L91-96），退役时**意图 flag 必须独立保留**并作为 §5.4 护栏的输入（同属 P1，需一并设计）。
@@ -90,6 +100,8 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 - **快照强制契约（v0.2.0 新增，依据 §7 事实修正）**：`write_back` 内部**强制先做字段级快照再落盘**（适配器作者无法跳过）——写回前把被写字段旧值 append 到 per-task sidecar（JSONL：task_id / target / 旧值 / turn_id / revision / ts），每字段保留上限 N 版（建议 N=20）并入现有 `retention_days` 清理。**只快照 AI 写回，用户手改不快照**（否则快照点要铺到全部 task 写入路径，成本失控）。
 - **决策域口径（v0.2.0 补）**：决策改写/删除必须挂在 DC-UNIFY-01 收口后的 `core/decision_flow.py` 共享读写口径上（决策=唯一对象「决策流节点」`task[todos]`），按**节点 id** 寻址、按节点粒度快照/撤销；不得在 `inject_items` 旁另开第二套写路径，防止刚收口的"唯一对象"再分裂。前置核实项：决策流节点稳定 id 是否已暴露给工具面（P2 开工前确认）。
 - **随记特殊口径（v0.2.0 补，市场模式 D）**：`user_notes` 是**用户原创区**，与纪要（AI 产物）性质不同。`revise_notes` 不做与其他域同构的直接写回，而做成**建议模式**：工具产出 Diff/预览，用户确认后才落盘（市面纪要类产品均不让 AI 直写用户原创区）。§5.3 的"四域同一 write_back 语义"因此在随记域有一处有意的例外。
+  **v0.6.0 落地说明**：工具定名 `propose_notes`（与 `propose_summary` 同一命名与实现形状：kind=write 但 `persists=False`、后端不落盘），
+  建议全文经 `tool_call.args.notes` 回前端，在随记 Tab 原位行级 diff 预览，接受才走 `PUT /notes`；因此不写 AI 写回快照（写回人是用户自己）。
 
 ### 5.4 完成护栏（收敛断点 3，正交不可省）
 
@@ -107,6 +119,20 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 | **P2 收敛** | 5.3 `RewriteTarget` 注册表，四域适配器化；**含 §5.3 快照强制契约（字段级写前快照 + 保留上限）与 §5.4 恢复入口/按轮撤销 UI**（v0.2.0 调整） | 单一改写抽象，消除四套机制；AI 误写可回退 | `catalog.py`、`app/routers/agent_tools.py`、`core/insight_board.py`、`core/rewrite_snapshots.py`（新增）、`notes.py`、前端恢复/diff 呈现 |
 | **P3 补齐** | 随记 `revise_notes`（**建议模式**，见 §5.3）、决策改写/删除节点（**按节点 id、走 `core/decision_flow.py` 口径**，见 §5.3） | 四域全部可对话改写 | `catalog.py`、`agent_tools.py`、`notes.py`、决策落库路径、前端四 Tab 共创入口 |
 
+**P2/P3 实施状态（v0.5.0，2026-09-30）**：决策域与快照体系已落地——
+- **P2 快照强制契约**：新建 `core/rewrite_snapshots.py`（per-task `.rewrites.jsonl` sidecar，字段/节点粒度旧值 + `turn_id` + revision 上下文；每 target N=20 裁剪；过期清理并入 `retention_days`）。
+  快照在 `_dispatch_write` 内于落盘前强制执行，且**被校验拒绝的写不留空快照**（status 先行 422、字段非法 400）。
+- **P3 决策改写/删除**：`update_decision_node` / `delete_decision_node` 按节点 id 寻址，收口到 `notes.update_todo`/`delete_todo`
+  （DC-UNIFY-01 单一写路径，未开第二套）；`get_meeting_todos` 同时下发 `available_statuses`，否则模型只能猜 status id。
+- **§5.4 恢复入口**：`GET /api/tasks/{id}/rewrites` + `POST /api/tasks/{id}/rewrites/restore`（`turn_id` 整轮**逆序**回滚，
+  恢复本身不再快照）；`done.metadata` 新增 `rewritten_tools/turn_id/task_id`，`AiChatPanel` 回复尾部挂「撤销本轮改写」；
+  新增 `task-written` 事件通道（沿用 `board-written` 先例）使呈现侧即时重拉。
+- **P3 随记建议模式**（v0.6.0，2026-09-30）：`propose_notes` 已落地——后端不落盘（`persists=False`，不进完成护栏触发集），
+  前端 `useNotesProposal` 单例 + 随记 Tab 原位 diff 预览（复用纪要的 `.gen-prop-*` 样式与 `buildDiffSegments`），
+  接受才经 `PUT /notes` 落盘；接受前比对服务端当前随记做基线漂移轻防护。至此四域全部可对话改写（随记为建议式）。
+- **仍未做**：`RewriteTarget` 统一注册表（现为各写分支内联快照，抽象层待 P2 收尾）；
+  洞察板 HTML 快照（整份 HTML 体积大，需 gzip 与单独存储设计）；§5.1(b) add_dirs 可写性 SPIKE。
+
 先做 P1 即可解决"重新生成不生效"的直接问题并验证方向；P2/P3 是结构性收敛与能力补齐。
 
 **P1 实施状态（v0.3.0，2026-09-29）**：已落地——后端 `chat.py` 授权档优先级链（请求级 > 显式降级 > 模式派生默认 workspace_write，显式降级由 `chat_engine._auth_tier_explicit` 标记承接）、`context_export._build_permission_section` 按档注入权限段、`runner.on_write_success` → `done.metadata.rewritten`；前端 `useAiChat` 轮级意图 flag（rewriteIntentPending）+ 未落盘横幅（AiChatPanel `.guard-notice`）+ 重新执行入口；设置页授权档文案改为覆盖/降级语义。P1 待办：§5.1(b) add_dirs 可写性 SPIKE。
@@ -117,6 +143,8 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 
 - **绝不静默上云（PRD R7）** 不受影响：改写走本地任务数据写盘，与引擎无关。
 - **写回可回退（v0.2.0 事实勘误）**：⚠️ **现状四域均不可回退**。洞察板的 `revision` 只是单调计数器（`core/insight_board.py` L664-668：读旧版本号+1、整份 HTML 直接覆盖，无任何历史正文留存），其用途是前端轮询比对"变没变"，**不是版本库**；纪要/决策/随记同样整篇覆盖。因此"误写可回到上一版"不是既有能力，而是 **P2 交付项**（§5.3 快照强制契约 + §5.4 恢复入口）；P2 前各域仅有 audit 追溯、无内容恢复。
+  **v0.5.0 更新（2026-09-30）**：决策节点（含 `inject_items` 新建）、纪要（`update_summary`）已接入写前快照与按轮/按条撤销（`core/rewrite_snapshots.py`）；
+  随记无写工具、洞察板仍未进快照体系，此两域暂依旧只有 audit 追溯。
 - **向后兼容**：`auth_tier` 显式传入优先于模式派生默认，旧客户端不传时按模式安全回退；`AiSession.role` 等遗留字段不动。
 - **单轮上限/防穿越**：写工具沿用现有 `items[:50]` 上限、`agent-tools` 短时令牌与路径 resolve 校验，不放宽。
 
@@ -127,14 +155,14 @@ related_docs: ["PROPOSAL-QODER-CLI-ENGINE.md", "INSIGHT_BOARD_SPEC_v0.md"]
 3. 构造"AI 只报计划未落盘"场景（弱模型），前端出现"本轮未落盘"横幅而非静默显示旧版本。
 4. 划词改写/一键洞察分析等函数类操作行为不变（仍恒走内置、亚秒级、不升智能体档）。
 5. 四域写回均产生 `[agent-engine]` 审计条目，前端脏标记与只读重拉正常。
-6. **（P2 后生效，v0.2.0 新增）**对任一域 AI 写回后执行"撤销本轮改写"，被写字段回到本轮之前内容，且 audit 产生恢复条目；快照不越过保留上限（每字段 N 版 / retention_days）。
-7. **（v0.2.0 新增）**随记改写仅产生"建议/Diff 预览"，未经用户确认不写盘。
+6. **（P2 后生效，v0.2.0 新增）**对任一域 AI 写回后执行"撤销本轮改写"，被写字段回到本轮之前内容，且 audit 产生恢复条目；快照不越过保留上限（每字段 N 版 / retention_days）。**v0.5.0：决策/纪要域已可测**（`tests/test_rewrite_snapshots.py`），恢复落 `[agent-engine] restore_rewrites` 审计条目；随记/洞察板两域待接入。
+7. **（v0.2.0 新增）**随记改写仅产生"建议/Diff 预览"，未经用户确认不写盘。**v0.6.0 已满足**（`propose_notes` 不落盘、`useNotesProposal` 只在接受时 `PUT /notes`；后端用例 `test_propose_notes_does_not_persist`）。
 8. **（v0.3.0 拆分原 AC8，拆为两条可测断言）**a) 智能体轮内用文件编辑工具写 `output/` 产物成功；b) 任务数据四域（task JSON/板文件）的任何变更在后端审计中必对应一次 `kind=write` 工具调用（无工具回执的内容变更即视为异常）。注：任务数据物理上在工作区外、直写本已不可达（§5.1 v0.3.0 事实修正），本条验收的是"变更必经工具通道"的审计可追溯性，而非新增拦截机制；add_dirs 项目目录可写性另由 §5.1(b) SPIKE 核实。
 9. **（v0.3.0 新增）**轮级意图 flag：点共创后的下一轮未落盘→横幅；后续无意图的闲聊轮→不亮横幅。
 
 ## 9. 待决问题（2026-09-29 产品评审已给裁决建议，待方案作者/项目方确认）
 
-- 决策域"改写/删除已有节点"的目标寻址方式：按节点 id 还是按文本匹配？——**评审建议：id**。且快照/撤销粒度必须与寻址单元一致（节点级），实现收口到 `core/decision_flow.py`（DC-UNIFY-01 唯一对象口径），见 §5.3。**v0.3.0 核实结果（已坐实为缺口）**：节点稳定 id 存在于 `make_todo_node`（uuid4），但工具面未暴露——`core/agent_tools/impl.py::_tool_get_meeting_todos`（L186-200）只回 `text/done/assignee` 不含 `id`。P3 开工前必须先扩该读工具输出（含对应契约测试同步）。
+- 决策域"改写/删除已有节点"的目标寻址方式：按节点 id 还是按文本匹配？——**评审建议：id**。且快照/撤销粒度必须与寻址单元一致（节点级），实现收口到 `core/decision_flow.py`（DC-UNIFY-01 唯一对象口径），见 §5.3。**v0.3.0 核实结果（已坐实为缺口）**：节点稳定 id 存在于 `make_todo_node`（uuid4），但工具面未暴露——`core/agent_tools/impl.py::_tool_get_meeting_todos`（L186-200）只回 `text/done/assignee` 不含 `id`。P3 开工前必须先扩该读工具输出（含对应契约测试同步）。**v0.4.1 更新：该前置项已完成**——读工具现输出 `id/title/status/text/done/assignee`，契约测试 `tests/test_agent_tools.py::TestMeetingNotesTool::test_todos_tool_exposes_node_ids`。
 - 完成护栏的"改写意图"如何可靠识别：靠共创按钮入口显式打标（推荐），还是靠 NLU 检测用户消息？——**评审建议：显式打标**。NLU 误报与横幅"宁可漏报不可误报"的体验相悖；注意 §5.1 退役 boardCoCreate 时意图 flag 需独立承接。
 
 ## 10. 产品评审与修订记录（v0.1.0 → v0.2.0，2026-09-29，评审人：产品经理）

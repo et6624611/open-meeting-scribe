@@ -123,6 +123,17 @@ export function useAiContext() {
 
   const MAX_VISIBLE_MEETINGS = 5
 
+  // ── 随记 / Quick notes ──
+  // task 快照本身携带 user_notes（/api/tasks 返回完整任务对象），无需额外回拉。
+  // AI 侧三条读路径（工作区 context/notes.md、get_meeting_notes、问答注入块）已接入，
+  // 上下文清单必须同步列出，否则展示层比实际能力少报一项。
+  const notesText = computed(() => {
+    const raw = (taskStore.currentTask as unknown as { user_notes?: string } | null)?.user_notes
+    return typeof raw === 'string' ? raw.trim() : ''
+  })
+  const hasNotes = computed(() => notesText.value.length > 0)
+  const notesCharCount = computed(() => notesText.value.length)
+
   // ── 计算属性 / Computed ──
   const visibleRelatedMeetings = computed(() =>
     showAllMeetings.value ? relatedMeetings.value : relatedMeetings.value.slice(0, MAX_VISIBLE_MEETINGS)
@@ -131,6 +142,7 @@ export function useAiContext() {
   const contextStats = computed(() => ({
     transcript: taskStore.currentTask && dialogueLines.value.length > 0 ? 1 : 0,
     summary: taskStore.currentTask?.summary ? 1 : 0,
+    notes: hasNotes.value ? 1 : 0,
     todos: todoStats.value?.total || 0,
     files: linkedProject.value ? 1 : 0,
   }))
@@ -138,13 +150,15 @@ export function useAiContext() {
   const contextResourceCount = computed(() =>
     contextStats.value.transcript +
     contextStats.value.summary +
+    contextStats.value.notes +
     contextStats.value.todos +
     contextStats.value.files +
     relatedMeetings.value.length
   )
 
   const meetingOutputCount = computed(() =>
-    contextStats.value.transcript + contextStats.value.summary + (contextStats.value.todos > 0 ? 1 : 0)
+    contextStats.value.transcript + contextStats.value.summary +
+    contextStats.value.notes + (contextStats.value.todos > 0 ? 1 : 0)
   )
 
   const relatedMeetingCount = computed(() => relatedMeetings.value.length)
@@ -178,6 +192,7 @@ export function useAiContext() {
   const isContextEmpty = computed(() =>
     contextStats.value.transcript === 0 &&
     contextStats.value.summary === 0 &&
+    contextStats.value.notes === 0 &&
     contextStats.value.todos === 0 &&
     !linkedProject.value &&
     relatedMeetings.value.length === 0
@@ -202,6 +217,12 @@ export function useAiContext() {
   function goToSummary() {
     if (taskStore.currentTask?.task_id) {
       layoutStore.pendingGenTab = 'summary'
+    }
+  }
+
+  function goToNotes() {
+    if (taskStore.currentTask?.task_id) {
+      layoutStore.pendingGenTab = 'notes'
     }
   }
 
@@ -249,6 +270,8 @@ export function useAiContext() {
     speakerCount: speakerCountDisplay,
     chapterCount: chapterCountDisplay,
     hasSummary,
+    hasNotes,
+    notesCharCount,
     todoCount,
     todoPending,
     todoDone,
@@ -258,6 +281,7 @@ export function useAiContext() {
     linkRelatedMeeting,
     goToTranscript,
     goToSummary,
+    goToNotes,
     goToTodos,
     goToProject,
     goToMeeting,

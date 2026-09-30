@@ -1,8 +1,42 @@
 <template>
   <!-- 随记面板 / Quick notes panel -->
   <div class="gen-panel" :class="{ hidden: !visible }">
-    <!-- 编辑器工具栏 / Editor toolbar -->
-    <div class="gen-ta-toolbar">
+    <!-- 随记改写提案（propose_notes）提示条：与纪要提案同一交互语义——改动在哪就在哪确认 -->
+    <div class="gen-prop-bar" v-if="proposal && !previewMode">
+      <svg class="gen-prop-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span class="gen-prop-bar-text">{{ t('generating.notes.proposal_pending', { hunks: statsSafe.hunks, added: statsSafe.added, removed: statsSafe.removed }) }}</span>
+      <button class="gen-prop-bar-btn" @click="emit('open-preview')">{{ t('generating.notes.proposal_view') }}</button>
+    </div>
+    <!-- 原位 diff 预览态：IDE 式锁定编辑，接受/拒绝在文内操作条完成；
+         随记是用户原创区，未经点「接受」不会写入任何内容 -->
+    <div class="gen-prop-preview" v-if="proposal && previewMode">
+      <div class="gen-prop-preview-header">
+        <span class="gen-prop-preview-title">{{ t('generating.notes.proposal_label') }}</span>
+        <span class="gen-prop-preview-stats">{{ t('generating.notes.proposal_stats', { hunks: statsSafe.hunks, added: statsSafe.added, removed: statsSafe.removed }) }}</span>
+      </div>
+      <div class="gen-prop-diff">
+        <template v-for="seg in segments" :key="seg.key">
+          <button v-if="seg.kind === 'gap'" class="gen-prop-gap" @click="emit('toggle-gap', seg.gapKey!)">
+            {{ t('generating.notes.proposal_show_lines', { count: seg.gapCount }) }}
+          </button>
+          <template v-else>
+            <div v-for="line in seg.lines" :key="line.key" class="gen-prop-line" :class="line.type === 'add' ? 'is-add' : (line.type === 'del' ? 'is-del' : 'is-same')">{{ line.text || '\u00A0' }}</div>
+          </template>
+        </template>
+      </div>
+      <div class="gen-prop-suggestion-bar">
+        <span class="gen-prop-hint">{{ t('generating.notes.proposal_hint') }}</span>
+        <div class="gen-prop-actions">
+          <button class="diff-accept-btn" @click="emit('accept')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+            {{ t('generating.notes.proposal_accept') }}
+          </button>
+          <button class="diff-reject-btn" @click="emit('reject')">{{ t('generating.notes.proposal_reject') }}</button>
+        </div>
+      </div>
+    </div>
+    <!-- 编辑器工具栏 / Editor toolbar（预览态下隐去，避免两套操作入口并存） -->
+    <div class="gen-ta-toolbar" v-if="!(proposal && previewMode)">
       <button v-if="!isEditing" class="gen-ta-edit-btn" @click="startEdit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         {{ t('generating.toolbar.edit') }}
@@ -13,7 +47,7 @@
       </template>
     </div>
     <!-- Markdown textarea 编辑器 / Markdown textarea editor -->
-    <div class="gen-textarea-wrap">
+    <div class="gen-textarea-wrap" v-if="!(proposal && previewMode)">
       <textarea
         ref="textareaEl"
         class="gen-textarea-editor"
@@ -34,6 +68,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { DiffSegment } from '@/composables/useSummaryProposal'
 
 const { t } = useI18n()
 
@@ -41,13 +76,28 @@ const props = defineProps<{
   visible: boolean
   markdown: string
   notesSaved: boolean
+  /** 随记改写提案（propose_notes，未落盘）：baseline=当前随记，proposed=AI 建议全文 */
+  proposal?: { baseline: string; proposed: string } | null
+  /** 原位 diff 预览态（锁定编辑） */
+  previewMode?: boolean
+  /** diff 渲染段（由 useNotesProposal 派生，与纪要预览同一构造器） */
+  segments?: DiffSegment[]
+  /** 提案规模摘要（变更块数 + 增/删行数） */
+  stats?: { hunks: number; added: number; removed: number }
 }>()
 
 const emit = defineEmits<{
   (e: 'change', md: string): void
+  (e: 'open-preview'): void
+  (e: 'accept'): void
+  (e: 'reject'): void
+  (e: 'toggle-gap', gapKey: number): void
 }>()
 
 // ── textarea 编辑状态 / textarea editing state ──
+/** 提案规模默认零值：stats 为可选 prop，模板不能直接取不存在的字段 */
+const statsSafe = computed(() => props.stats || { hunks: 0, added: 0, removed: 0 })
+
 const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const isEditing = ref(false)
 const editBuffer = ref('')

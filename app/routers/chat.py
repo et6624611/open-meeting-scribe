@@ -37,6 +37,8 @@ from core.chat_context import (
     build_speaker_name_map,
     extract_injectable_items,
     is_joblog_intent,
+    task_final_summary,
+    task_notes,
 )
 from core.chat_edits import (  # noqa: F401
     _sanitize_edit_ops,
@@ -449,10 +451,15 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
             meta_lines.append(f"- 错误信息：{task['error']}")
         context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
 
-        summary = task.get("summary") or ""
+        # 纪要取定稿口径（用户编辑过则为编辑版），与前端纪要 Tab 一致
+        summary = task_final_summary(task)
         is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
         if summary and not is_summary_error:
             context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
+        # 随记：用户手写要点，此前只有纪要生成链路能读到，会话侧一直缺失（2026-09-30 复盘）
+        notes = task_notes(task)
+        if notes:
+            context_blocks.append(f"## 用户随记（录音期间手写原文，可信度高于转写推断）\n{notes[:2000]}")
         if task.get("dialogue") and not realtime_entries:
             all_lines = []
             idx = 0
@@ -1019,6 +1026,8 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
            "auth_tier": resolved_tier, "session_id": session_id, "auto_selected": auto_selected}
 
     # ④ MCP 桥：签发单轮短时令牌 + 写临时 mcp-config（回连 base_url），轮次结束回收
+    # turn_id 先于令牌确定：写工具落盘时随快照记录本轮标识，前端才能一键「撤销本轮改写」
+    stream_id = data.stream_id or session_id or f"adhoc-{id(data)}"
     mcp_config_path: str | None = None
     bridge_token: str | None = None
     allowed_tools: list[str] = []
@@ -1026,14 +1035,14 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         try:
             mcp_config_path, tok_ctx, allowed_tools = build_bridge_config(
                 task_id=data.task_id, project_id=resolved_project_id,
-                auth_tier=resolved_tier, base_url=base_url)
+                auth_tier=resolved_tier, base_url=base_url, turn_id=stream_id)
             bridge_token = tok_ctx.token
         except Exception as e:  # noqa: BLE001 - 桥不可用不阻断只读深度问答
             logger.warning("[智能体模式] MCP 桥初始化失败（降级为无工具）：%s", e)
 
-    stream_id = data.stream_id or session_id or f"adhoc-{id(data)}"
-    # 完成护栏（§5.4）：本轮写工具是否成功落过盘 → done.metadata.rewritten，前端据此判"只说不做"
-    write_ok = {"rewritten": False}
+    # 完成护栏（§5.4）：本轮写工具是否成功落过盘 → done.metadata.rewritten，前端据此判"只说不做"；
+    # 同时留下改写明细（哪个域、几次），呈现与恢复共用同一事实源，不把"看见改了什么"和"回退"割裂
+    written_tools: list[str] = []
     try:
         async for evt in run_cli_agent(
             stream_id=stream_id, engine_id=cfg["engine_id"], cli_path=probe_result["path"],
@@ -1041,13 +1050,17 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
             auth_tier=resolved_tier, model=cfg.get("model"), session_id=session_id,
             resume=bool(data.resume_session and session_id),
             mcp_config=mcp_config_path, allowed_tools=allowed_tools,
-            on_write_success=lambda _tool_name: write_ok.__setitem__("rewritten", True),
+            on_write_success=lambda tool_name: written_tools.append(
+                str(tool_name).rsplit("__", 1)[-1]),
         ):
             if evt.get("type") == "done":
                 evt.setdefault("metadata", {})
                 evt["metadata"]["engine"] = cfg["engine_id"]
-                # 写回事实随 done 下发：呈现与审计同一数据源，不把"看见改了什么"和"回退"割裂
-                evt["metadata"]["rewritten"] = write_ok["rewritten"]
+                evt["metadata"]["rewritten"] = bool(written_tools)
+                evt["metadata"]["rewritten_tools"] = sorted(set(written_tools))
+                evt["metadata"]["turn_id"] = stream_id
+                # 写回发生在哪场会议：前端「撤销本轮改写」据此定位，不依赖当前选中态
+                evt["metadata"]["task_id"] = data.task_id or ""
                 evt["metadata"]["auth_tier"] = resolved_tier
             yield evt
     except CliAgentError as e:

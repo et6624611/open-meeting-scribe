@@ -57,13 +57,16 @@ def _tool_allowlist(auth_tier: str) -> list[str]:
 
 
 def build_bridge_config(*, task_id: str | None, project_id: str | None,
-                        auth_tier: str, base_url: str) -> tuple[str, TokenContext, list[str]]:
+                        auth_tier: str, base_url: str,
+                        turn_id: str = "") -> tuple[str, TokenContext, list[str]]:
     """
     签发令牌并写出 mcp-config，返回 (config_path, token_ctx, tool_allowlist)。
 
     调用方（chat 事件生成器，运行于服务端进程）负责在轮次结束调用 teardown_bridge。
+    turn_id：本轮会话流标识，写工具据此落快照 → 支持「撤销本轮改写」整轮回滚。
     """
-    ctx = issue_token(task_id=task_id, project_id=project_id, auth_tier=auth_tier)
+    ctx = issue_token(task_id=task_id, project_id=project_id, auth_tier=auth_tier,
+                      turn_id=turn_id)
 
     config = {
         "mcpServers": {

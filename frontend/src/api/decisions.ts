@@ -68,3 +68,25 @@ export async function fetchFlowGroups(by: 'meeting' | 'date', q: FlowQuery = {})
   })
   return data.groups || []
 }
+
+/** 议题归并簇（group_by=topic）：主记录 + 折叠的历史演变链（DEBRISH-P2 全局视角） */
+export interface TopicGroup {
+  topic_key: string
+  kb_id: string | null
+  kb_name: string | null
+  title: string
+  main: FlowNode
+  history: FlowNode[]
+  size: number
+  meeting_count: number
+  /** 簇置信度 0~1：除主记录外与主记录的最小相似度（自动归并强度） */
+  confidence: number
+}
+
+/** 跨会议决策流议题归并结果（group_by=topic） */
+export async function fetchFlowTopics(q: FlowQuery = {}): Promise<TopicGroup[]> {
+  const { data } = await client.get<{ topics: TopicGroup[]; total: number }>('/api/decisions', {
+    params: { ...toParams(q), group_by: 'topic' },
+  })
+  return data.topics || []
+}

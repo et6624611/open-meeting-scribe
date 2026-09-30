@@ -85,3 +85,42 @@ export async function updateTodo(
 ): Promise<void> {
   await client.put(`/api/tasks/${taskId}/todos/${todoId}`, patch)
 }
+
+// ─── AI 写回快照与撤销 / AI write-back snapshots & undo（PROPOSAL §5.4） ───
+
+/** 一条 AI 写回快照的摘要（不回旧值全文） */
+export interface RewriteSnapshot {
+  id: string
+  target: string
+  tool?: string
+  turn_id?: string
+  ts?: string
+  description?: string
+}
+
+/** 列出本会议的 AI 写回快照，可按节点/本轮过滤 */
+export async function fetchTaskRewrites(
+  taskId: string,
+  filter?: { target?: string; turnId?: string },
+): Promise<RewriteSnapshot[]> {
+  const { data } = await client.get<{ snapshots: RewriteSnapshot[] }>(
+    `/api/tasks/${taskId}/rewrites`,
+    { params: { target: filter?.target, turn_id: filter?.turnId } },
+  )
+  return data.snapshots || []
+}
+
+/**
+ * 撤销 AI 写回：传 turnId 整轮逆序回滚，传 snapshotId 单点恢复。
+ * 返回后端恢复条数与明细（供 toast 与重拉判定）。
+ */
+export async function restoreTaskRewrites(
+  taskId: string,
+  target: { turnId?: string; snapshotId?: string },
+): Promise<{ ok: boolean; restored: number; detail?: string[] }> {
+  const { data } = await client.post(`/api/tasks/${taskId}/rewrites/restore`, {
+    turn_id: target.turnId,
+    snapshot_id: target.snapshotId,
+  })
+  return data
+}

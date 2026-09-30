@@ -62,5 +62,14 @@
   "sm_deleted_reassigned": "已删除「{name}」，{count} 条决策回到生效中",
   "sm_save_failed": "状态保存失败",
   "sm_done": "完成",
-  "add_flow_hint": "补录内容会进入所选会议的决策流，可在决策中心或会议纪要的「决策」页随时编辑。"
+  "add_flow_hint": "补录内容会进入所选会议的决策流，可在决策中心或会议纪要的「决策」页随时编辑。",
+  "view_mode_label": "视图",
+  "view_by_meeting": "按会议",
+  "view_by_topic": "按议题",
+  "topic_count": "共 {count} 个议题",
+  "topic_meetings_badge": "跨 {count} 场会议",
+  "topic_evolution_toggle": "演变链（{count}）",
+  "topic_confidence_hint": "自动归并 · 相关度 {pct}%",
+  "topic_view_hint": "议题视图将跨会议的同类决策归并为主记录，历史条目折叠为演变链。",
+  "topic_goto_meeting": "查看来源会议"
 }

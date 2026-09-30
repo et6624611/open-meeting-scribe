@@ -6,9 +6,13 @@
     <div class="dc-header-bar">
       <div class="dc-title-group">
         <h1>{{ t('decisions.title') }}</h1>
-        <span class="dc-count" v-if="!loading && !error">{{ t('decisions.count', { count: effectiveRows.length + ineffectiveRows.length }) }}</span>
+        <span class="dc-count" v-if="!loading && !error">{{ viewMode === 'topic' ? t('decisions.topic_count', { count: visibleTopics.length }) : t('decisions.count', { count: effectiveRows.length + ineffectiveRows.length }) }}</span>
       </div>
       <div class="dc-header-actions">
+        <div class="dc-seg" role="group" :aria-label="t('decisions.view_mode_label')">
+          <button type="button" class="dc-seg-btn" :class="{ active: viewMode === 'meeting' }" @click="viewMode = 'meeting'">{{ t('decisions.view_by_meeting') }}</button>
+          <button type="button" class="dc-seg-btn" :class="{ active: viewMode === 'topic' }" @click="viewMode = 'topic'">{{ t('decisions.view_by_topic') }}</button>
+        </div>
         <button class="dc-add-btn" @click="showAdd = true">+ {{ t('decisions.add_manual') }}</button>
       </div>
     </div>
@@ -69,13 +73,13 @@
     </div>
 
     <!-- 空态：无数据 vs 筛选无结果 / Two empty flavors -->
-    <div v-else-if="!visibleGroups.length" class="dc-empty">
+    <div v-else-if="(viewMode === 'meeting' ? !visibleGroups.length : !visibleTopics.length)" class="dc-empty">
       <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M8 21h8"/><path d="M5 7h14"/><path d="M5 7 2.5 13a3 3 0 0 0 5 0L5 7z"/><path d="M19 7l-2.5 6a3 3 0 0 0 5 0L19 7z"/></svg>
       <p>{{ showFilteredEmpty ? t('decisions.empty_filtered') : t('decisions.empty_all') }}</p>
     </div>
 
-    <!-- 列表主体：固定按会议分组，卡片即纪要页同款可交互决策流节点 -->
-    <section v-else class="dc-groups">
+    <!-- 列表主体（按会议）：固定按会议分组，卡片即纪要页同款可交互决策流节点 -->
+    <section v-else-if="viewMode === 'meeting'" class="dc-groups">
       <div v-for="g in visibleGroups" :key="g.taskId" class="dc-group">
         <div class="dc-group-head">
           <button class="dc-group-toggle" :aria-expanded="!collapsed.has(g.taskId)" @click="toggleGroup(g.taskId)">
@@ -119,7 +123,47 @@
       </div>
     </section>
 
-    <!-- 弹层 / Dialogs -->
+    <!-- 列表主体（按议题 · 全局视角）：跨会议同议题归并为主记录，历史折叠为演变链 -->
+    <section v-else class="dc-topics">
+      <p class="dc-topic-hint">{{ t('decisions.topic_view_hint') }}</p>
+      <div v-for="g in visibleTopics" :key="g.topic_key" class="dc-topic">
+        <div class="dc-topic-head">
+          <button class="dc-group-toggle" :aria-expanded="!collapsedTopics.has(g.topic_key)" @click="toggleTopic(g.topic_key)">
+            <svg class="dc-chev" :class="{ open: !collapsedTopics.has(g.topic_key) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <span class="dc-topic-title">{{ g.title }}</span>
+          <span v-if="g.meeting_count > 1" class="dc-topic-badge">{{ t('decisions.topic_meetings_badge', { count: g.meeting_count }) }}</span>
+          <span v-if="g.history.length" class="dc-topic-conf" :title="t('decisions.topic_confidence_hint', { pct: Math.round(g.confidence * 100) })">{{ t('decisions.topic_confidence_hint', { pct: Math.round(g.confidence * 100) }) }}</span>
+          <span v-if="g.kb_name" class="dc-topic-kb">{{ g.kb_name }}</span>
+        </div>
+        <div v-show="!collapsedTopics.has(g.topic_key)" class="db-flow dc-flow">
+          <!-- 主记录：纪要页同款可交互卡片（写操作仍落回自身节点） -->
+          <DecisionNode
+            :todo="g.main"
+            @select-status="(s) => saveStatus(g.main, s)"
+            @select-owner="(o) => savePatch(g.main, { owner_type: o })"
+            @commit-content="(c) => savePatch(g.main, { why: c })"
+            @patch="(p) => savePatch(g.main, p)"
+            @delete="removeNode(g.main)"
+          />
+          <!-- 演变链：历史同类记录（只读，回跳来源会议） -->
+          <div v-if="g.history.length" class="dc-ineffective">
+            <button class="flow-completed-toggle dc-ineff-toggle" :aria-expanded="openEvo.has(g.topic_key)" @click="toggleEvo(g.topic_key)">
+              <svg class="chev" :class="{ open: openEvo.has(g.topic_key) }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              {{ t('decisions.topic_evolution_toggle', { count: g.history.length }) }}
+            </button>
+            <ul v-show="openEvo.has(g.topic_key)" class="dc-evo-list">
+              <li v-for="h in g.history" :key="h.id" class="dc-evo-item">
+                <span class="dc-evo-dot" :style="{ background: h.status_color }"></span>
+                <RouterLink class="dc-evo-title" :to="{ name: 'generating', params: { taskId: h.task_id }, query: { tab: 'todos' } }" :title="h.title || h.text">{{ h.title || h.text }}</RouterLink>
+                <span class="dc-evo-meta">{{ h.meeting_title }} · {{ h.meeting_date || '' }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <StatusManagerDialog v-model="showStatusMgr" :statuses="statuses" @changed="onStatusesChanged" />
     <AddDecisionDialog ref="addDialogRef" v-model="showAdd" @submit="onAddSubmit" />
   </div>
@@ -129,7 +173,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractErrorMessage } from '@/api/client'
-import { fetchFlowNodes, type FlowNode } from '@/api/decisions'
+import { fetchFlowNodes, fetchFlowTopics, type FlowNode, type TopicGroup } from '@/api/decisions'
 import { createTodo, deleteTodo, updateTodo, type TodoCreatePayload, type TodoPatch } from '@/api/notes'
 import { fetchStatuses, statusLabel, type DecisionStatusItem } from '@/api/decisionStatuses'
 import { refreshDecisionStatuses } from '@/composables/useDecisionStatuses'
@@ -150,6 +194,10 @@ usePageBack()
 
 // ─── 数据 / Data ───
 const rows = ref<FlowNode[]>([])
+/** 议题归并簇（全局视角）：与 rows 同步拉取，切换视图无需往返 */
+const topics = ref<TopicGroup[]>([])
+/** 视图模式：按会议（默认）/ 按议题（跨会议归并） */
+const viewMode = ref<'meeting' | 'topic'>('meeting')
 /** 全量引用池（不带筛选）：用于判断空态是"没有数据"还是"筛没了" */
 const pool = ref<FlowNode[]>([])
 const projects = ref<Project[]>([])
@@ -236,7 +284,9 @@ async function load() {
   error.value = null
   try {
     // 状态字典可自定义后不再按状态多次往返：一次拉全量，状态筛选在客户端完成
-    rows.value = await fetchFlowNodes({ since: sinceDate(), kb_id: kbId.value || undefined, q: keyword.value || undefined })
+    const q = { since: sinceDate(), kb_id: kbId.value || undefined, q: keyword.value || undefined }
+    rows.value = await fetchFlowNodes(q)
+    topics.value = await fetchFlowTopics(q)
     if (!pool.value.length) pool.value = await fetchFlowNodes()
   } catch (e) {
     error.value = extractErrorMessage(e, t('decisions.error_load'))
@@ -287,6 +337,27 @@ const visibleGroups = computed<MeetingGroup[]>(() => {
   for (const d of ineffectiveRows.value) ensure(d).ineffective.push(d)
   return [...map.values()]
 })
+
+// 议题视图可见集：主记录状处于可见状态集才展示（与按会议一致的“只看非闭档”默认口径）
+const visibleTopics = computed<TopicGroup[]>(() =>
+  topics.value.filter(g => visibleStatusIds.value.has(g.main?.status || '')),
+)
+
+// 议题/演变链折叠态 / Topic & evolution collapse state
+const collapsedTopics = ref(new Set<string>())
+function toggleTopic(key: string) {
+  const next = new Set(collapsedTopics.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  collapsedTopics.value = next
+}
+const openEvo = ref(new Set<string>())
+function toggleEvo(key: string) {
+  const next = new Set(openEvo.value)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  openEvo.value = next
+}
 
 // ─── 折叠状态 / Collapse state ───
 const collapsed = ref(new Set<string>())
@@ -413,4 +484,20 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 /* 闭档沉底折叠区：复用 flow-completed-toggle 基元 */
 .dc-ineffective { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px dashed var(--border); }
 .dc-ineff-toggle { margin-bottom: var(--s-2); }
+
+/* 议题视图（全局视角） / Topic (global) view */
+.dc-topics { display: flex; flex-direction: column; gap: var(--s-5); }
+.dc-topic-hint { font-size: var(--fs-12, 12px); color: var(--muted); margin: 0 0 var(--s-2); line-height: 1.5; }
+.dc-topic { display: flex; flex-direction: column; }
+.dc-topic-head { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: var(--s-2) 0; }
+.dc-topic-title { font-size: var(--fs-14); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.dc-topic-badge { flex-shrink: 0; font-size: var(--fs-11, 11px); color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.dc-topic-conf { flex-shrink: 0; font-size: var(--fs-11, 11px); color: var(--subtle); white-space: nowrap; }
+.dc-topic-kb { margin-left: auto; flex-shrink: 0; font-size: var(--fs-11, 11px); color: var(--muted); white-space: nowrap; }
+.dc-evo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.dc-evo-item { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-12, 12px); }
+.dc-evo-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transform: translateY(-1px); }
+.dc-evo-title { color: var(--fg); text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-evo-title:hover { color: var(--accent); text-decoration: underline; }
+.dc-evo-meta { margin-left: auto; flex-shrink: 0; color: var(--subtle); font-size: var(--fs-11, 11px); white-space: nowrap; }
 </style>

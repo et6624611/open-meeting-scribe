@@ -334,9 +334,15 @@
         :has-summary="!!task?.summary"
         :todos-count="todos.length"
         :todos-done-count="todos.filter(x => x.done).length"
+        :proposal="sp.summaryProposal.value"
+        :preview-mode="sp.summaryPreviewMode.value"
         @change="onSummaryChange"
         @toggle-chapter="toggleSummaryChapter"
         @switch-tab="switchTab"
+        @open-preview="sp.openSummaryPreview()"
+        @accept="sp.acceptSummaryProposal()"
+        @reject="sp.rejectSummaryProposal()"
+        @toggle-gap="sp.toggleGapExpanded"
       />
 
       <NotesPanel
@@ -344,7 +350,15 @@
         :visible="activeTab === 'notes'"
         :markdown="notesContent"
         :notes-saved="notesSaved"
+        :proposal="np.notesProposal.value"
+        :preview-mode="np.notesPreviewMode.value"
+        :segments="np.notesProposalSegments.value"
+        :stats="np.notesProposalStats.value"
         @change="onNotesChange"
+        @open-preview="np.openNotesPreview()"
+        @accept="np.acceptNotesProposal()"
+        @reject="np.rejectNotesProposal()"
+        @toggle-gap="np.toggleNotesGapExpanded"
       />
 
       <DecisionFlowPanel
@@ -446,6 +460,7 @@ import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
 import InsightBoard from './generating/InsightBoard.vue'
 import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
 import { onBoardWritten } from '@/composables/useBoardSync'
+import { onTaskWritten } from '@/composables/useTaskWrites'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
@@ -460,6 +475,8 @@ import { useSpeakerPanel } from '@/composables/useSpeakerPanel'
 import { usePlaybackFollow } from '@/composables/usePlaybackFollow'
 import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
 import { useInlineEdit } from '@/composables/useInlineEdit'
+import { useSummaryProposal } from '@/composables/useSummaryProposal'
+import { useNotesProposal } from '@/composables/useNotesProposal'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
 
@@ -502,6 +519,10 @@ const notes = useNotesAndTodos(
 )
 
 const inlineEdit = useInlineEdit()
+/** 纪要改写提案（原位 diff 预览 Layer 1）：共享单例状态，接受/拒绝由 SummaryPanel 操作条发起 */
+const sp = useSummaryProposal()
+// 随记改写提案（propose_notes）：与纪要同一机制，在随记 Tab 原位预览，用户接受才落盘
+const np = useNotesProposal()
 /** 洞察消息的跨组件共享状态（仅用于修正后强制重拉，不让陈内存写回覆盖新落盘的文本） */
 const insights = useAiInsights()
 /** 回溯修正进行中：一次请求会同时改写任务/洞察/洞察板/导出件四份产物，不允并发提交 */
@@ -535,7 +556,7 @@ const {
 } = panel
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
-  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, loadTodos,
+  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, loadTodos, loadNotes,
 } = notes
 
 // ─── 添加决策：复用决策中心「手动补录决策」弹层（DC-UNIFY-01 样式/数据统一） ───
@@ -645,6 +666,7 @@ watch(activeTab, (tab) => {
 
 // 落板信号：正在看洞察 Tab 就即时换新；在其它 Tab 则记脏，回去时补拉
 let offBoardWritten: (() => void) | null = null
+let offTaskWritten: (() => void) | null = null
 /** 窗口回到前台立即对齐：隐藏时轮询主动跳过且后台定时器会被浏览器节流，回到前台不等 10s 就补一次探测 */
 function onVisibilityChange() {
   if (!document.hidden && activeTab.value === 'insights') probeBoardRevision()
@@ -654,6 +676,19 @@ onMounted(() => {
     if (activeTab.value === 'insights') loadBoardData()
     else boardDirty.value = true
   })
+  // AI 会话写回任务数据（决策节点/纪要/注入）→ 呈现侧即时对齐（§5.4）：
+  // 写点在后端工具落盘，本页不在实时通道上，不重拉就是"AI 说改了、页面还是旧的"
+  offTaskWritten = onTaskWritten(async ({ domains }) => {
+    const all = !domains || domains.length === 0
+    try {
+      const updated = await fetchTask(data.taskId)
+      taskStore.patchTaskLocal(data.taskId, updated)
+    } catch { /* 保留旧视图，切 Tab 时 loadTodos 仍会重拉 */ }
+    if (all || domains?.includes('todos')) void data.loadTodos()
+    // 随记：接受 AI 提案或 AI 写回后以服务端为准刷新（用 notes 版 loadNotes，它会取消挂起的自动保存）
+    if (all || domains?.includes('notes')) void loadNotes()
+    void loadSyncStatus()
+  })
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 onUnmounted(() => {
@@ -661,6 +696,8 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   offBoardWritten?.()
   offBoardWritten = null
+  offTaskWritten?.()
+  offTaskWritten = null
 })
 
 /** 共创起跳：展开 AI 面板并预填修订请求到输入框（不自动发送）；coCreate 标记使智能体轮自动升可写档以落盘 */

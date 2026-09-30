@@ -136,9 +136,11 @@ async def run_cli_agent(
     got_result = False
     # 完成护栏配对（§5.4）：tool_call 先行记录 id→name，tool_result 只带 tool_use_id，
     # 按 id 回溯名字后才能判定"写工具成功落盘"（读写双语义工具的读调用不在写工具集，自然排除）
-    # propose_summary 是"名义 write、实际不落盘"的提案信号，必须从触发集剔除，否则纪要提案轮被误标 rewritten=true
+    # persists=False 的是"名义 write、实际不落盘"的提案信号（propose_summary / propose_notes），
+    # 必须从触发集剔除，否则提案轮被误标 rewritten=true；集合由 catalog 派生，不再硬写工具名
     from core.agent_tools.catalog import TOOL_CATALOG as _CATALOG
-    write_names = {t["name"] for t in _CATALOG if t.get("kind") == "write"} - {"propose_summary"}
+    write_names = {t["name"] for t in _CATALOG
+                   if t.get("kind") == "write" and t.get("persists", True)}
     call_names: dict[str, str] = {}
     try:
         while True:

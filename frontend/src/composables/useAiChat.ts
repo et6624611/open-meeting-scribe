@@ -7,7 +7,6 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
-import { saveSummary } from '@/api/notes'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
 import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
@@ -16,7 +15,11 @@ import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAgentStore } from '@/stores/agent'
 import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
+import { useSummaryProposal } from '@/composables/useSummaryProposal'
+import { useNotesProposal } from '@/composables/useNotesProposal'
+import { fetchNotes } from '@/api/notes'
 import { isBoardWriteCall, isBoardWriteResult, notifyBoardWritten } from '@/composables/useBoardSync'
+import { notifyTaskWritten, writeDomainsOf } from '@/composables/useTaskWrites'
 import { showToast } from '@/composables/useToast'
 import { tt, getLocale } from '@/i18n'
 
@@ -69,6 +72,9 @@ export function useAiChat() {
   const agentStore = useAgentStore()
   const engineStore = useEngineStore()
   const insights = useAiInsights()
+  // 纪要改写提案：模块级单例状态（原位 diff 预览 Layer 1），与 GeneratingView/SummaryPanel 共享
+  const proposal = useSummaryProposal()
+  const notesProposalStore = useNotesProposal()
 
   const isLoading = ref(false)
   const isStreaming = ref(false)
@@ -96,39 +102,17 @@ export function useAiChat() {
   const rewriteIntentPending = ref(false)
   /** 横幅态：上一个智能体轮有改写意图但零写回 */
   const rewriteNotPersisted = ref<{ text: string } | null>(null)
-  /** 纪要改写提案（提案式 diff）：AI 经 propose_summary 产出的待确认建议，
-     baseline=当前纪要（user_summary 优先、回退 summary），proposed=新正文；
-     用户接受才经 PUT /summary 落盘（不走后端写工具）。同一时刻只挂一个待确认提案。 */
-  const summaryProposal = ref<{ baseline: string; proposed: string } | null>(null)
+  /** 纪要改写提案（提案式 diff）状态已下沉 useSummaryProposal 模块级单例（原位预览需跨组件共享），
+     本 composable 只负责在 propose_summary 工具调用时置入、新一轮/切任务时清空。 */
+  const summaryProposal = proposal.summaryProposal
+  /** 随记改写提案（propose_notes）：同一机制的单例下沉（随记 Tab 原位预览），用户接受才落盘 */
+  const notesProposal = notesProposalStore.notesProposal
 
   /** 剥 MCP 工具全名前缀：mcp__<server>__<tool> → tool（内置引擎直接给裸名） */
   function bareToolName(name: string): string {
     if (!name) return ''
     const i = name.lastIndexOf('__')
     return i >= 0 ? name.slice(i + 2) : name
-  }
-
-  /** 接受当前纪要提案（前端直接落盘，复用用户编辑保存路径；后端不写→此处是唯一落盘点） */
-  async function acceptSummaryProposal(): Promise<boolean> {
-    const p = summaryProposal.value
-    const taskId = taskStore.currentTaskId
-    if (!p || !taskId) return false
-    try {
-      await saveSummary(taskId, p.proposed)
-      // 乐观回写本地任务→ summaryMd watcher 触发→纪要面板即时刷新
-      taskStore.patchTaskLocal(taskId, { user_summary: p.proposed } as never)
-      summaryProposal.value = null
-      showToast(tt('ai-panel.summary_proposal_applied'), 'success')
-      return true
-    } catch {
-      showToast(tt('ai-panel.chat_error_prefix') + tt('ai-panel.summary_proposal_save_failed'), 'error')
-      return false
-    }
-  }
-
-  /** 拒绝当前纪要提案：仅丢弃建议，不动数据 */
-  function rejectSummaryProposal() {
-    summaryProposal.value = null
   }
 
   function setRewriteIntent(v: boolean) {
@@ -299,6 +283,7 @@ export function useAiChat() {
     rewriteIntentPending.value = false
     rewriteNotPersisted.value = null
     summaryProposal.value = null
+    notesProposal.value = null
   }, { immediate: true })
 
   const canSend = computed(() => !isLoading.value)
@@ -332,6 +317,7 @@ export function useAiChat() {
     rewriteNotPersisted.value = null
     // 新一轮开始：清上一轮遗留的纪要提案（提案卡只渲染在末条 assistant 气泡下，新轮后自然失效）
     summaryProposal.value = null
+    notesProposal.value = null
     let turnHasProposal = false
     let toolWriteOk = false
 
@@ -403,6 +389,19 @@ export function useAiChat() {
               turnHasProposal = true
             }
           }
+          // 随记提案式改写（propose_notes）：后端不落盘，只把建议全文挂成待确认提案。
+          // 基线取服务端 user_notes（task 快照不含随记），因此需一次异步回拉；回拉失败按空基线降级，
+          // 宁可 diff 多显示几行也不能不给出建议
+          if (bareToolName(tool.name) === 'propose_notes') {
+            const proposed = String(tool.args?.notes ?? '')
+            const taskId = taskStore.currentTaskId
+            if (proposed.trim() && taskId) {
+              turnHasProposal = true
+              void fetchNotes(taskId)
+                .then((b) => { notesProposal.value = { baseline: b || '', proposed } })
+                .catch(() => { notesProposal.value = { baseline: '', proposed } })
+            }
+          }
           // 将之前的 running 阶段标记为 done / Mark previous running stages as done
           stages.value.forEach(s => {
             if (s.status === 'running') s.status = 'done'
@@ -442,7 +441,12 @@ export function useAiChat() {
             if (bare === 'revise_insight_board') {
               // 读写双语义：只有写板调用（boardWriteIds 在 call 阶段按 args 定性）才算落盘
               if (isBoardWriteResult(result, boardWriteIds)) toolWriteOk = true
-            } else if (['update_summary', 'inject_items', 'revise_insight_board_section'].includes(bare)) {
+            } else if (writeDomainsOf(bare)) {
+              // 任务数据写回（决策节点/纪要/注入）：除完成护栏事实外，还广播呈现侧重拉，
+              // 不让用户看着 AI 说"已更新"却对着旧数据（§5.4）
+              toolWriteOk = true
+              notifyTaskWritten({ tool: bare })
+            } else if (['revise_insight_board_section'].includes(bare)) {
               toolWriteOk = true
             }
           }
@@ -725,7 +729,11 @@ export function useAiChat() {
     doInjectAll, clearConversation, retryLast,
     chatMode, setChatMode, activeEngine, hasAgentSession,
     rewriteIntentPending, rewriteNotPersisted, setRewriteIntent, setBoardCoCreate,
-    summaryProposal, acceptSummaryProposal, rejectSummaryProposal,
+    summaryProposal, acceptSummaryProposal: proposal.acceptSummaryProposal, rejectSummaryProposal: proposal.rejectSummaryProposal,
+    openSummaryPreview: proposal.openSummaryPreview,
+    notesProposal, acceptNotesProposal: notesProposalStore.acceptNotesProposal,
+    rejectNotesProposal: notesProposalStore.rejectNotesProposal,
+    openNotesPreview: notesProposalStore.openNotesPreview,
     // 使用面闭环（REQ-EXPERT-MODE §2.3） / usage-surface loop
     sessionModel, setSessionModel: engineStore.setSessionModel,
     modelCandidates, detailModelLabel, cliProbe, agentEngineEnabled, agentAvailable,

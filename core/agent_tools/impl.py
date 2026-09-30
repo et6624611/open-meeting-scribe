@@ -3,7 +3,8 @@ core/agent_tools/impl.py — 会议域工具实现（唯一来源） / Meeting-d
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-29
-版本 / Version: 1.0.0
+更新 / Updated: 2026-09-30
+版本 / Version: 1.1.0
 
 自 core/agent_loop.py 迁入（工程化能力收敛决策：自建 ReAct 循环退役，CLI 为唯一智能体引擎）：
   - MCP 桥读工具经 app/routers/agent_tools.py 分发到这里的 execute_tool
@@ -17,18 +18,29 @@ import logging
 
 from app.store import tasks
 from core import hotwords as hw_module
+from core.chat_context import task_final_summary, task_notes
+from core.decision_flow import status_of
+from core.decision_status import load_statuses
 from core.project_index import get_project_context_for_chat
 
 logger = logging.getLogger(__name__)
+
+# 随记读工具正文上限（字符）：用户手写区，超长截断并标注
+_NOTES_MAX_CHARS = 6000
 
 # 工具名 → 中文标签（供前端显示） / Tool name → Chinese label for frontend display
 TOOL_LABELS = {
     "get_meeting_info": "获取会议信息",
     "get_meeting_transcript": "读取会议转写",
+    "get_meeting_notes": "读取会议随记",
     "get_meeting_todos": "查询待办事项",
     "search_project_files": "搜索项目资料",
     "get_hotwords": "获取热词列表",
     "get_system_settings": "获取系统设置",
+    "update_decision_node": "改写决策节点",
+    "delete_decision_node": "删除决策节点",
+    "propose_notes": "提出随记改写建议",
+    "propose_summary": "提出纪要改写建议",
     "revise_insight_board": "修订洞察板",
     "revise_insight_board_section": "修订洞察板单节",
 }
@@ -36,10 +48,15 @@ TOOL_LABELS = {
 TOOL_ICONS = {
     "get_meeting_info": "📋",
     "get_meeting_transcript": "💬",
+    "get_meeting_notes": "📝",
     "get_meeting_todos": "✅",
     "search_project_files": "📂",
     "get_hotwords": "🔤",
     "get_system_settings": "⚙️",
+    "update_decision_node": "✏️",
+    "delete_decision_node": "🗑️",
+    "propose_notes": "🗒️",
+    "propose_summary": "📝",
     "revise_insight_board": "🖋️",
     "revise_insight_board_section": "📝",
 }
@@ -57,6 +74,8 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             return _tool_get_meeting_info(task_id)
         elif name == "get_meeting_transcript":
             return _tool_get_meeting_transcript(task_id, arguments.get("limit", 20))
+        elif name == "get_meeting_notes":
+            return _tool_get_meeting_notes(task_id)
         elif name == "get_meeting_todos":
             return _tool_get_meeting_todos(task_id)
         elif name == "search_project_files":
@@ -103,8 +122,16 @@ def _tool_get_meeting_info(task_id: str | None) -> str:
         "speaker_count": task.get("speaker_count"),
         "created_at": task.get("created_at", ""),
     }
-    if task.get("summary"):
-        info["summary_preview"] = task["summary"][:300]
+    # 纪要预览取定稿口径（与前端纪要 Tab 同源）：只读 AI 产物会让改写基线落在用户手改之前
+    summary = task_final_summary(task).strip()
+    if summary:
+        info["summary_preview"] = summary[:300]
+    # 随记：用户手写区，不告知存在性就等于不存在（2026-09-30 复盘）
+    notes = task_notes(task)
+    if notes:
+        info["has_notes"] = True
+        info["notes_preview"] = notes[:300]
+        info["notes_note"] = "随记为用户手写原文，需全文调 get_meeting_notes；按随记更新纪要/决策时以随记为准"
     # 录音中 dialogue 尚未交棒，补充实时转写句数，避免工具面谎报"无内容"
     if not (task.get("dialogue") or []):
         rt = _realtime_sentences(task_id)
@@ -183,6 +210,22 @@ def _tool_get_meeting_transcript(task_id: str | None, limit: int) -> str:
     return json.dumps({"transcript_lines": lines, "total": count}, ensure_ascii=False)
 
 
+def _tool_get_meeting_notes(task_id: str | None) -> str:
+    """读取用户手写的会议随记（user_notes）。
+    随记是用户原创区：本工具只读，任何改写须经用户在前端确认，不经工具落盘。"""
+    if not task_id or task_id not in tasks:
+        return json.dumps({"info": "当前没有关联的会议"}, ensure_ascii=False)
+    notes = task_notes(tasks[task_id])
+    if not notes:
+        return json.dumps({"info": "该会议暂无随记内容", "notes": "", "characters": 0},
+                          ensure_ascii=False)
+    out = {"notes": notes[:_NOTES_MAX_CHARS], "characters": len(notes),
+           "note": "以下为用户录音期间手写的随记原文（非 AI 产物），可信度高于转写推断"}
+    if len(notes) > _NOTES_MAX_CHARS:
+        out["truncated"] = True
+    return json.dumps(out, ensure_ascii=False)
+
+
 def _tool_get_meeting_todos(task_id: str | None) -> str:
     if not task_id or task_id not in tasks:
         return json.dumps({"info": "当前没有关联的会议"}, ensure_ascii=False)
@@ -192,12 +235,28 @@ def _tool_get_meeting_todos(task_id: str | None) -> str:
         return json.dumps({"info": "该会议暂无待办事项", "count": 0}, ensure_ascii=False)
     items = []
     for t in todos:
+        if not isinstance(t, dict):
+            continue
         items.append({
+            # 节点稳定 id：供按节点寻址改写/删除（PROPOSAL-AGENT-REWRITE-CHANNEL §9 前置项）
+            "id": t.get("id", ""),
             "text": t.get("text", ""),
+            "title": t.get("title", ""),
+            "status": status_of(t),
             "done": t.get("done", False),
             "assignee": t.get("assignee", "未分配"),
         })
-    return json.dumps({"todos": items, "count": len(items)}, ensure_ascii=False)
+    # 状态字典随列表下发：否则模型只能猜 status id（update_decision_node 会 422）
+    try:
+        statuses = [{"id": s["id"], "name": s["name"], "closing": bool(s.get("closing"))}
+                    for s in load_statuses()]
+    except Exception:  # noqa: BLE001 - 字典不可用不影响节点读取
+        statuses = []
+    return json.dumps({"todos": items, "count": len(items),
+                       "available_statuses": statuses,
+                       "status_note": "改写状态时 status 只能取 available_statuses 中的 id；"
+                                      "用户已拍板的决策应推进到 closing=true 的状态"},
+                      ensure_ascii=False)
 
 
 def _tool_search_project_files(project_id: str | None, query: str) -> str:

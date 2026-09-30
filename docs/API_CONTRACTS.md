@@ -3,7 +3,7 @@ title: 外部接口契约
 description: DashScope / 通义千问 API 技术细节的唯一事实源
 author: Yongliang Wang
 created_at: 2026-09-03
-updated_at: 2026-09-29
+updated_at: 2026-09-30
 status: published
 ---
 
@@ -301,7 +301,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 - **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流五态；系统锚点只有 `done`（完成），不可改名不可删除，其余四态用户可维护。
 - **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底，同时驱动 `done=true`；读侧 `status` 缺省时由 `done` 推导（历史 task JSON 零迁移）。
-- **自动生成口径（项目方裁决）**：纪要「主要结论」/「决策」章节的条目自动解析为决策流节点，**统一落在 `to_confirm`（待确认）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。
+- **自动生成口径（项目方裁决）**：纪要「主要结论」章节的条目自动解析为决策流节点（模板 v1.4.0 已下线「决策」章节、改为单通道 + 终态归并；解析器仍兼容存量纪要的「决策」章节）；自动节点**统一落在 `to_decide`（待决策）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。
 - **重新生成纪要**：只覆盖 `source=auto` 节点，手动/注入节点保留；命中 `task["decision_deletions"]` 墓碑（按归一化文本）的 auto 节点不复活（DC-R2-BE）。
 - **执行人以说话人档案为权威**：`owner_id` 可解析且档案名非占位串 ⇒ 展示名取档案名（改名全局生效）；档案缺失时回退 `assignee` 快照，不报 422。
 - **旧任务 JSON 无 `todos` 字段** ⇒ 读写路径按 `[]` 处理；无 `title`/`owner_id` 键 ⇒ 读侧按 `""`/`null` 给出，展示层降级为「正文即标题」。
@@ -336,13 +336,18 @@ recognition.stop()  # 阻塞直到所有结果返回
 | `status` | 状态字典 id 精确过滤（非封闭枚举）；非法值 422 |
 | `q` | `text` / `title` / `why` 子串匹配（区分大小写） |
 | `task_id` | 限定单场会议（纪要页快照用）；缺省为全量 |
-| `group_by` | `meeting`\|`date`；缺省返回平铺列表 |
+| `group_by` | `meeting`\|`date`\|`topic`；缺省返回平铺列表 |
 
 响应：行 = 决策流节点 + 状态字典元信息 + 来源会议元信息（`meeting_title` / `meeting_date` / `kb_id` / `kb_name`），分组结构与旧版一致。
 
 - **状态元信息随行下发**：`status_name` / `status_name_en` / `status_color` / `status_closing` 由后端从字典解析，前端色点、徽标与沉底分层全部配置驱动（不写死 `st-*` 类名）；字典中查不到的历史 status 降级为首个开放态。
 - 平铺与组内均按 `meeting_date` 倒序（无日期沉底）；默认视图「只看非闭档」由前端本地筛选（后端不默认过滤）。
 - 数据源为后端内存任务表（桌面单机量级），无分页契约；`total` 随列表长度给出。
+- **`group_by=topic`（DEBRISH-P2 全局视角）**：响应为 `{"topics": [TopicGroup…], "total": 参与归并的节点数, "topic_count": n}`。
+  算法：同 `kb_id`（未关联归为 `null` 同桶）内、以「议题指纹」（`title`，无则正文首句）的字符二元组**重合度** ≥ 0.6 聚为同簇（`core/decision_topic`，确定性、零 LLM）。
+  每簇 `TopicGroup = { topic_key, kb_id, kb_name, title, main, history[], size, meeting_count, confidence }`：
+  - `main` = 最新非闭档节点（否则最新），`history` = 其余按时间倒序；`confidence` = 除 leader 外成员与 leader 的最小相似度（自动归并强度）。
+  - **仅视图归并，不改数据**：`main`/`history` 都是各自会议独立的决策流节点（完整 FlowNode 形状），写操作仍走 §12.1 任务级端点；议题视图不引入新的持久化对象。
 
 ### 12.4 状态字典 CRUD（DC-R2-c · `data/decision_statuses.json`）
 
@@ -366,6 +371,25 @@ recognition.stop()  # 阻塞直到所有结果返回
 - **`color` 允许 CSS 变量表达式**（如 `var(--accent)`）或十六进制色值，前端内联使用以随主题联动。
 - **`name_en` 仅内置状态有独立英文名**；自定义状态的 `name_en` 与 `name` 同值。
 - **删除自定义状态的联动**：引用该状态的**决策流节点（todos）**当场回落到删后字典的首个开放态并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
+
+### 12.5 AI 写回快照与撤销（PROPOSAL-AGENT-REWRITE-CHANNEL §5.3/§5.4 · 已实现）
+
+| 方法与路径 | 请求体 / 参数 | 响应 | 错误 |
+|---|---|---|---|
+| `GET /api/tasks/{task_id}/rewrites` | `target?`、`turn_id?` | `{"snapshots": [{id, target, tool, turn_id, ts, description}…]}` | 404 任务不存在 |
+| `POST /api/tasks/{task_id}/rewrites/restore` | `{snapshot_id?: str(≤64), turn_id?: str(≤128)}`（二者传其一） | `{ok: true, restored: n, detail: [文本…], skipped: [文本…]}` | 404 任务/快照/本轮不存在；400 两者均缺或无可回滚内容 |
+
+- **快照存储**：`data/tasks/<task_id>.rewrites.jsonl`（追加式 sidecar，与任务 JSON 同目录），每 target 保留上限 **N=20** 版；
+  过期清理与智能体工作区共用 `chat_engine.retention_days` 口径（启动时 `sweep_expired_snapshots`）。
+- **target 定名**：`decision_node:<nodeId>`（节点粒度，与 DC-UNIFY-01 唯一对象同寻址单元）/ `summary` / `notes`。
+- **写入时机**：仅 **AI 会话写回**（`update_decision_node` / `delete_decision_node` / `inject_items` 新建 / `update_summary`）在落盘前强制快照；
+  用户在前端的手动编辑不快照。被参数校验拒绝（400/422）的写**不留快照**。
+- **列表只回摘要不回旧值全文**（`description` 为一行人类可读描述）；`restore` 按 `turn_id` 时**逆序**回滚整轮，
+  恢复本身不再写快照（避免撤销无限套娃），但落 `[agent-engine] restore_rewrites` 审计条目。
+- **工具面配套**：`get_meeting_todos` 除节点 `id/title/status` 外同时下发 `available_statuses`（`{id,name,closing}[]`）与 `status_note`，
+  否则模型无合法 status 可用；`done.metadata` 携带 `rewritten / rewritten_tools / turn_id / task_id` 作为“本轮改了什么 + 能否撤销”的事实源。
+- **前端联动**：写回成功后 AI 面板广播 `task-written` CustomEvent，会议详情页据此重拉 task 与决策列表；
+  回复尾部展示「本轮已改写：{域}」并提供「撤销本轮改写」（转 `POST …/rewrites/restore`）。
 
 ---
 ## 13. 接入方式路由契约（REQ-ACCESS-MODE-CARDS · AM-B1 后端交付 · AM-F1 前端派工依据）

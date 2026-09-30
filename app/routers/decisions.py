@@ -28,6 +28,7 @@ from typing import Literal
 from app.store import tasks
 from core.decision_flow import enrich_todo, status_of
 from core.decision_status import known_ids, load_statuses
+from core.decision_topic import cluster_topics
 from core.i18n import _
 from core.speakers import get_speaker_name_map
 
@@ -52,13 +53,15 @@ def list_all_decisions(
     status: str | None = Query(default=None, max_length=32),
     q: str | None = Query(default=None, max_length=500),
     task_id: str | None = Query(default=None, max_length=100),
-    group_by: Literal["meeting", "date"] | None = Query(default=None),
+    group_by: Literal["meeting", "date", "topic"] | None = Query(default=None),
 ):
     """跨会议决策流聚合（决策中心数据源）/ Cross-meeting decision-flow aggregation.
 
     遍历内存任务表聚合（桌面单机数据量可承受，不引入数据库）。
     DC-R2-c：`status` 取值为状态字典 id（非封闭枚举）；每行附 status_name/color/closing 元信息。
     DC-UNIFY-01：数据源为 `task["todos"]`，行形状即决策流节点（text/title/assignee/why/how/outcome…）。
+    DEBRISH-P2：`group_by=topic` 返回跨会议议题归并簇（全局视角）：同知识库下语义相近的
+    节点聚为议题簇，主记录=最新非闭档，其余折叠为演变链；仅供展示，不改数据与写路径。
     """
     since = _validate_date(since, "since")
     until = _validate_date(until, "until")
@@ -111,6 +114,11 @@ def list_all_decisions(
 
     if not group_by:
         return {"decisions": rows, "total": len(rows)}
+
+    # DEBRISH-P2：议题归并（全局视角）——对已过筛的平铺行做跨会议聚类
+    if group_by == "topic":
+        topics = cluster_topics(rows)
+        return {"topics": topics, "total": len(rows), "topic_count": len(topics)}
 
     groups: dict[str, dict] = {}
     for row in rows:

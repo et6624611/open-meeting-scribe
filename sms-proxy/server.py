@@ -255,6 +255,15 @@ def sms_verify(req: SmsVerifyRequest, request: Request):
             )
 
     except Exception as e:
+        err = str(e)
+        # 阿里云以异常形式抛出 isv.ValidateFail（HTTP 400）：表示验证码错误/已过期/已被使用，
+        # 属于核验失败而非服务异常，需映射为 400，避免客户端误报"验证服务异常"
+        if "isv.ValidateFail" in err:
+            logger.info(f"验证码核验失败(ValidateFail): phone={req.phone[:3]}****{req.phone[-4:]}")
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "验证码错误或已过期"},
+            )
         logger.error(f"PNVS 核验 API 调用异常: {e}")
         return JSONResponse(
             status_code=500,

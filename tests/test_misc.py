@@ -208,6 +208,31 @@ class TestSmsCheckVerifyCode:
         assert passed is False
         assert reason == "验证服务异常，请稍后重试"
 
+    def test_proxy_4xx_business_failure_surfaces_message(self, monkeypatch):
+        """回归：代理返回 400（验证码错误/已过期）应透传真实原因，
+        而非被 check_verify_code 吞成"验证服务异常"。
+        """
+        import io
+        import json
+        import urllib.error
+        from core import sms
+
+        monkeypatch.setattr(sms, "SMS_PROXY_URL", "https://sms.test")
+        monkeypatch.setattr(sms, "SMS_PROXY_TOKEN", "testtoken")
+
+        body = json.dumps({"success": False, "message": "验证码错误或已过期"}).encode()
+
+        def fake_urlopen(req, timeout=None):
+            raise urllib.error.HTTPError(
+                url="https://sms.test/sms/verify", code=400, msg="Bad Request",
+                hdrs=None, fp=io.BytesIO(body),
+            )
+
+        monkeypatch.setattr(sms.urllib.request, "urlopen", fake_urlopen)
+        passed, reason = sms.check_verify_code("13312343103", "000000")
+        assert passed is False
+        assert reason == "验证码错误或已过期"
+
 
 # ============================================================
 # 认证路由（auth）

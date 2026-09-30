@@ -8,6 +8,19 @@
       <div v-if="msg.role === 'assistant' && msg.modelUsage" class="ai-usage-echo">
         {{ t('ai-panel.usage_echo', { model: msg.modelUsage.model, src: srcLabel(msg.modelUsage.source), billing: billingLabel(msg.modelUsage.billing) }) }}<span v-if="msg.modelUsage.auto_switched">{{ t('ai-panel.usage_echo_auto_switched') }}</span>
       </div>
+      <!-- 本轮改写事实 + 恢复入口（模式即权限 §5.4）：说清改了哪个域，并给一键回退，
+           不让用户对着已变化的数据猜“是谁改的、能不能改回去" -->
+      <div v-if="msg.role === 'assistant' && msg.metadata?.rewritten && msg.metadata?.turn_id" class="rewrite-notice" :class="{ 'is-undone': undoneTurns.has(msg.metadata.turn_id) }">
+        <span class="rewrite-text">{{ undoneTurns.has(msg.metadata.turn_id)
+          ? t('ai-panel.chat_rewritten_undone_label')
+          : t('ai-panel.chat_rewritten', { tools: rewriteLabel(msg.metadata.rewritten_tools) }) }}</span>
+        <button
+          v-if="!undoneTurns.has(msg.metadata.turn_id)"
+          class="rewrite-undo"
+          :disabled="!!undoingTurn"
+          @click="onUndoTurn(msg.metadata.task_id || '', msg.metadata.turn_id || '')"
+        >{{ undoingTurn === msg.metadata.turn_id ? t('ai-panel.chat_rewritten_undoing') : t('ai-panel.chat_rewritten_undo') }}</button>
+      </div>
       <!-- 消息时间戳 / Message timestamp（空占位消息不显示，避免与用户消息时间重复出现） -->
       <div v-if="msg.timestamp && msg.content" class="ai-msg-ts">{{ fmtTime(msg.timestamp) }}</div>
       <!-- 截断警告 / Truncation warning -->
@@ -71,20 +84,31 @@
           <button class="diff-reject-btn" @click="$emit('clearRewrite')">{{ t('ai-panel.reject_rewrite') }}</button>
         </div>
       </div>
-      <!-- 纪要提案式 diff（propose_summary，未落盘） / Summary proposal diff (accept to persist) -->
+      <!-- 纪要提案入口卡（propose_summary，未落盘）：完整 diff 已搬入原文面板原位预览（Layer 1），
+           侧栏只留规模摘要 + 起跳入口 + 拒绝，避免两处渲染 diff 不一致 /
+           Proposal entry card: full diff lives in the summary panel's in-place preview now. -->
       <div v-if="summaryProposal && i === messages.length - 1 && msg.role === 'assistant'" class="sum-prop-view">
         <div class="diff-header"><span>{{ t('ai-panel.summary_proposal_label') }}</span></div>
-        <div class="sum-prop-body">
-          <template v-for="(line, li) in summaryProposalDiff" :key="li">
-            <div v-if="line.type !== 'same'" class="sum-prop-line" :class="line.type === 'add' ? 'is-add' : 'is-del'">{{ line.text || '\u00A0' }}</div>
-          </template>
-        </div>
-        <p class="sum-prop-hint">{{ t('ai-panel.summary_proposal_hint') }}</p>
+        <p class="sum-prop-summary">{{ t('ai-panel.summary_proposal_summary', { hunks: summaryProposalStats.hunks, added: summaryProposalStats.added, removed: summaryProposalStats.removed }) }}</p>
         <div class="diff-actions">
-          <IconButton class="diff-accept-btn" :label="t('ai-panel.summary_proposal_accept')" show-label @click="$emit('acceptSummary')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-          </IconButton>
+          <button class="diff-accept-btn" @click="$emit('openSummaryPreview')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            {{ t('ai-panel.summary_proposal_view') }}
+          </button>
           <button class="diff-reject-btn" @click="$emit('rejectSummary')">{{ t('ai-panel.summary_proposal_reject') }}</button>
+        </div>
+      </div>
+      <!-- 随记提案入口卡（propose_notes，未落盘）：随记是用户原创区，AI 只能建议；
+           完整 diff 在随记 Tab 原位预览，侧栏只留规模摘要 + 起跳 + 拒绝（与纪要入口卡同一形状） -->
+      <div v-if="notesProposal && i === messages.length - 1 && msg.role === 'assistant'" class="sum-prop-view">
+        <div class="diff-header"><span>{{ t('ai-panel.notes_proposal_label') }}</span></div>
+        <p class="sum-prop-summary">{{ t('ai-panel.notes_proposal_summary', { hunks: notesProposalStats.hunks, added: notesProposalStats.added, removed: notesProposalStats.removed }) }}</p>
+        <div class="diff-actions">
+          <button class="diff-accept-btn" @click="$emit('openNotesPreview')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            {{ t('ai-panel.notes_proposal_view') }}
+          </button>
+          <button class="diff-reject-btn" @click="$emit('rejectNotes')">{{ t('ai-panel.notes_proposal_reject') }}</button>
         </div>
       </div>
       <!-- AI 操作校验结果展示 / AI action verification results -->
@@ -293,9 +317,14 @@ import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import { escapeHtml } from '@/utils/sanitize'
 import { lucideIcon, type IconDef } from '@/utils/lucideIcons'
-import { diffLines, type DiffLine } from '@/utils/textDiff'
 import type { AiCommand } from '@/composables/useAiCommands'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useSummaryProposal } from '@/composables/useSummaryProposal'
+import { useNotesProposal } from '@/composables/useNotesProposal'
+import { showToast } from '@/composables/useToast'
+import { notifyTaskWritten } from '@/composables/useTaskWrites'
+import { restoreTaskRewrites } from '@/api/notes'
+import { extractErrorMessage } from '@/api/client'
 
 
 const { t } = useI18n()
@@ -349,6 +378,8 @@ const props = defineProps<{
   rewriteNotPersisted: { text: string } | null
   /** 纪要提案式 diff（提案式，未落盘）：baseline=当前纪要，proposed=AI 建议全文 */
   summaryProposal: { baseline: string; proposed: string } | null
+  /** 随记提案式 diff（propose_notes，未落盘）：完整 diff 在随记 Tab 原位预览，侧栏只留入口 */
+  notesProposal: { baseline: string; proposed: string } | null
 }>()
 
 const emit = defineEmits<{
@@ -362,6 +393,10 @@ const emit = defineEmits<{
   (e: 'dismissNotPersisted'): void
   (e: 'acceptSummary'): void
   (e: 'rejectSummary'): void
+  (e: 'openSummaryPreview'): void
+  (e: 'acceptNotes'): void
+  (e: 'rejectNotes'): void
+  (e: 'openNotesPreview'): void
   (e: 'clearQuote'): void
   (e: 'runCommand', cmd: AiCommand): void
   (e: 'inputKey', ev: KeyboardEvent): void
@@ -376,12 +411,11 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const feedRef = ref<HTMLElement | null>(null)
 const barRef = ref<HTMLElement | null>(null)
 
-/** 纪要提案的行级 diff（供 diff 卡渲染）；无提案时空数组 */
-const summaryProposalDiff = computed<DiffLine[]>(() => {
-  const p = props.summaryProposal
-  if (!p) return []
-  return diffLines(p.baseline, p.proposed)
-})
+/** 提案规模摘要（入口卡文案用）；diff 本体已在原文面板原位预览渲染 */
+const summaryProposalSingleton = useSummaryProposal()
+const summaryProposalStats = computed(() => summaryProposalSingleton.summaryProposalStats.value)
+const notesProposalSingleton = useNotesProposal()
+const notesProposalStats = computed(() => notesProposalSingleton.notesProposalStats.value)
 
 // ─── Composer 尺寸契约（2026-09-29）：输入区高度与控制行高度解耦，两个高度由同一组 CSS 变量推导 ───
 // 行盒必须取整数（--composer-line: 20px）。原先 line-height:1.6 = 20.8px，任何高度都落在半行上，
@@ -528,6 +562,43 @@ const modeIconBody = computed(() => MODE_ICONS[props.chatMode].body)
 
 /** 每条消息展开的详情面板类型 / Expanded detail panel type per message index */
 const detailOpen = ref<Record<number, string | null>>({})
+
+/** 本轮改写事实的呈现与撤销（PROPOSAL §5.4 恢复入口） */
+const REWRITE_TOOL_KEYS: Record<string, string> = {
+  update_decision_node: 'ai-panel.rewrite_tool_decision_node',
+  delete_decision_node: 'ai-panel.rewrite_tool_decision_node',
+  inject_items: 'ai-panel.rewrite_tool_inject',
+  update_summary: 'ai-panel.rewrite_tool_summary',
+  revise_insight_board: 'ai-panel.rewrite_tool_board',
+  revise_insight_board_section: 'ai-panel.rewrite_tool_board',
+}
+
+/** 写工具集 → 人类可读的域名称列表（同域多工具去重） */
+function rewriteLabel(tools?: string[]): string {
+  const names = new Set((tools || [])
+    .map(x => (REWRITE_TOOL_KEYS[x] ? t(REWRITE_TOOL_KEYS[x]) : x))
+    .filter(Boolean))
+  return names.size ? Array.from(names).join('、') : t('ai-panel.rewrite_tool_generic')
+}
+
+const undoingTurn = ref('')
+const undoneTurns = ref<Set<string>>(new Set())
+
+/** 撤销本轮改写：整轮逆序回滚后广播重拉，本轮条目标为已撤销（不可重复点） */
+async function onUndoTurn(taskId: string, turnId: string) {
+  if (!taskId || !turnId || undoingTurn.value) return
+  undoingTurn.value = turnId
+  try {
+    const res = await restoreTaskRewrites(taskId, { turnId })
+    undoneTurns.value = new Set(undoneTurns.value).add(turnId)
+    notifyTaskWritten({ turnId })
+    showToast(t('ai-panel.chat_rewritten_undone', { n: res.restored ?? 0 }), 'success')
+  } catch (e) {
+    showToast(t('ai-panel.chat_rewritten_undo_failed', { reason: extractErrorMessage(e, '') }), 'error')
+  } finally {
+    undoingTurn.value = ''
+  }
+}
 
 /** 刚复制过的消息下标：图标短暂切换为对钩作反馈（剪贴板不可用时静默降级） */
 const copiedIdx = ref<number | null>(null)
@@ -1078,6 +1149,40 @@ const probeHintText = computed(() => {
   white-space: nowrap;
   cursor: pointer;
 }
+/* ── 本轮改写事实（§5.4 恢复入口）：ok 绿系，与 amber 护栏横幅形成"已成事/未成事"的对偶 ── */
+.rewrite-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ok, #1c6b45);
+  background: var(--ok-soft, #e7f4ec);
+  border: 1px solid var(--ok-border, rgba(28, 107, 69, 0.22));
+  border-radius: var(--radius-sm, 6px);
+}
+.rewrite-notice .rewrite-text { flex: 1 1 auto; }
+.rewrite-notice .rewrite-undo {
+  border: 1px solid var(--ok-border, rgba(28, 107, 69, 0.3));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.rewrite-notice .rewrite-undo:hover:not(:disabled) { background: var(--ok-border, rgba(28, 107, 69, 0.12)); }
+.rewrite-notice .rewrite-undo:disabled { opacity: 0.55; cursor: default; }
+.rewrite-notice.is-undone {
+  color: var(--muted, #888);
+  background: transparent;
+  border-color: var(--border, rgba(0, 0, 0, 0.12));
+}
+
 /* ── 完成护栏横幅（模式即权限 §5.4）： amber 系，与探针警告同一视觉语言 ── */
 .guard-notice {
   display: flex;
@@ -1113,24 +1218,19 @@ const probeHintText = computed(() => {
   cursor: pointer;
   padding: 2px 4px;
 }
-/* ── 纪要提案式 diff（sum-prop，复用 diff-header/diff-actions 全局类） ── */
+/* ── 纪要提案入口卡（sum-prop，复用 diff-header/diff-actions 全局类）：
+   diff 本体已迁至原文面板原位预览（Layer 1），侧栏只留规模摘要与起跳 ── */
 .sum-prop-view {
   margin-top: var(--s-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
-.sum-prop-body {
-  max-height: 220px;
-  overflow-y: auto;
+.sum-prop-summary {
+  margin: 0;
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
+  color: var(--fg);
 }
-.sum-prop-line { padding: 1px 4px; border-radius: 2px; }
-.sum-prop-line.is-add { background: var(--diff-add, oklch(92% 0.08 155)); color: var(--diff-add-fg, oklch(30% 0.1 155)); }
-.sum-prop-line.is-del { background: var(--diff-del, oklch(94% 0.06 25)); color: var(--diff-del-fg, oklch(40% 0.12 25)); text-decoration: line-through; }
-.sum-prop-hint { margin: 0; padding: 4px 10px 8px; font-size: 11px; color: var(--muted); font-style: italic; }
 </style>

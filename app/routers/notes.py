@@ -1,7 +1,16 @@
 """
-app/routers/notes.py — 笔记 + AI 注入 + 待办 / Notes + AI injection + todos
+app/routers/notes.py — 笔记 + AI 注入 + 待办 + 改写撤销 / Notes + AI injection + todos + rewrite undo
+
+端点清单：
+  GET/PUT  /api/tasks/{id}/notes                随记读写
+  PUT      /api/tasks/{id}/summary              纪要定稿写入
+  GET/POST /api/tasks/{id}/injections[...]      AI 注入条目
+  GET/POST/PUT/DELETE /api/tasks/{id}/todos[...] 决策流节点
+  GET      /api/tasks/{id}/rewrites             AI 写回快照列表（PROPOSAL §5.4）
+  POST     /api/tasks/{id}/rewrites/restore     按快照/按轮撤销 AI 写回
 """
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -17,6 +26,8 @@ from core.i18n import _
 from core.speakers import get_speaker_name_map
 
 router = APIRouter(tags=["notes"])
+# 语义审计专用（与 server.py 的 audit 同名 logger 共享 logs/audit.log handler）
+audit_logger = logging.getLogger("audit")
 
 
 def _mark_modified(task_id: str) -> None:
@@ -173,6 +184,60 @@ def delete_injection(task_id: str, injection_id: str):
     _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
+
+
+# ============================================================
+# AI 改写快照与撤销 / AI Rewrite Snapshots & Undo
+# （PROPOSAL-AGENT-REWRITE-CHANNEL §5.3 快照强制契约 + §5.4 恢复入口）
+# ============================================================
+
+class RewriteRestoreRequest(BaseModel):
+    snapshot_id: str | None = Field(default=None, max_length=64)
+    turn_id: str | None = Field(default=None, max_length=128)
+
+
+@router.get("/api/tasks/{task_id}/rewrites")
+def list_task_rewrites(task_id: str, target: str | None = None,
+                       turn_id: str | None = None):
+    """列出本会议的 AI 写回快照（只回摘要不回旧值全文，避免响应体膨胀）。"""
+    if not tasks.get(task_id):
+        raise HTTPException(404, _("Task not found"))
+    from core import rewrite_snapshots as rsv
+    snaps = rsv.list_snapshots(task_id, target=target, turn_id=turn_id)
+    return {"snapshots": [{
+        "id": s.get("id"),
+        "target": s.get("target"),
+        "tool": s.get("tool"),
+        "turn_id": s.get("turn_id") or "",
+        "ts": s.get("ts"),
+        "description": rsv.describe_change(s),
+    } for s in snaps]}
+
+
+@router.post("/api/tasks/{task_id}/rewrites/restore")
+def restore_task_rewrites(task_id: str, req: RewriteRestoreRequest):
+    """
+    撤销 AI 写回：传 snapshot_id 单点恢复，传 turn_id 整轮逆序回滚（二者必传其一）。
+
+    恢复后走同一落盘口径（save_task_to_disk + 脏标记），知识库同步与只读重拉自然生效。
+    """
+    if not tasks.get(task_id):
+        raise HTTPException(404, _("Task not found"))
+    if not (req.snapshot_id or req.turn_id):
+        raise HTTPException(400, {"error": "missing_target",
+                                  "message": _("Provide snapshot_id or turn_id")})
+    from core import rewrite_snapshots as rsv
+    result = rsv.restore_task(task_id, snapshot_id=req.snapshot_id, turn_id=req.turn_id)
+    if not result.get("ok"):
+        err = result.get("error") or "restore_failed"
+        code = 404 if err in ("task_not_found", "snapshot_not_found", "turn_not_found") else 400
+        raise HTTPException(code, {"error": err, "message": result.get("message", "")})
+    _mark_modified(task_id)
+    # 恢复也是内容变更，必须留下审计迹（AC5/AC6：无审计条目的变更视为异常）
+    audit_logger.info("[agent-engine] restore_rewrites task=%s scope=%s restored=%d detail=%s",
+                      task_id, req.snapshot_id or f"turn:{req.turn_id}",
+                      result.get("restored", 0), "; ".join(result.get("detail") or []))
+    return result
 
 
 # ============================================================

@@ -471,6 +471,7 @@
 /* 子项图标颜色按分组统一（会议产出=accent，知识库=warn，相关会议=purple），色相只在组间使用 */
 /* Item icons inherit the group hue; hue distinguishes groups, never items within a group */
 .ctx-item-icon.type-transcript,
+.ctx-item-icon.type-notes,
 .ctx-item-icon.type-summary,
 .ctx-item-icon.type-todo {
   background: var(--accent-soft);

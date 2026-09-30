@@ -42,6 +42,7 @@
       <div class="ctx-overview">
         <div v-if="stats.transcript > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.transcript }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_transcript') }}</div></div>
         <div v-if="stats.summary > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.summary }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_summary') }}</div></div>
+        <div v-if="stats.notes > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.notes }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_notes') }}</div></div>
         <div v-if="stats.todos > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.todos }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_todos') }}</div></div>
         <div v-if="stats.files > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.files }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_files') }}</div></div>
         <div v-if="relatedMeetingCount > 0" class="ctx-stat"><div class="ctx-stat-num">{{ relatedMeetingCount }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_related') }}</div></div>
@@ -64,6 +65,11 @@
             <div class="ctx-item-icon type-transcript"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
             <div class="ctx-item-body"><div class="ctx-item-title">{{ t('ai-panel.context.transcript_title') }}</div><div class="ctx-item-meta"><span>{{ currentTaskDuration }}</span><span class="dot"></span><span>{{ speakerCount }} {{ t('ai-panel.context.speakers_unit') }}</span></div></div>
             <span class="ctx-item-tag">{{ t('ai-panel.context.tag_transcript') }}</span>
+          </div>
+          <div class="ctx-item" @click="$emit('goNotes')" :title="t('ai-panel.context.notes_title')">
+            <div class="ctx-item-icon type-notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+            <div class="ctx-item-body"><div class="ctx-item-title">{{ t('ai-panel.context.notes_title') }}</div><div class="ctx-item-meta"><span>{{ notesCharCount }} {{ t('ai-panel.context.notes_unit') }}</span></div></div>
+            <span class="ctx-item-tag">{{ t('ai-panel.context.tag_notes') }}</span>
           </div>
           <div class="ctx-item" @click="$emit('goSummary')" :title="t('ai-panel.context.summary_title')">
             <div class="ctx-item-icon type-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="10" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
@@ -145,12 +151,16 @@ const sectionTitleChars = computed(() => {
 
 const props = defineProps<{
   isEmpty: boolean
-  stats: { transcript: number; summary: number; todos: number; files: number }
+  stats: { transcript: number; summary: number; notes: number; todos: number; files: number }
   meetingOutputCount: number
   currentTaskDuration: string
   speakerCount: number
   chapterCount: number
   hasSummary: boolean
+  /** 随记是否已有内容（AI 三条读路径已接入，清单需同步列出） */
+  hasNotes: boolean
+  /** 随记字数（取 task 快照的 user_notes） */
+  notesCharCount: number
   todoCount: number
   todoPending: number
   todoDone: number
@@ -171,6 +181,7 @@ defineEmits<{
   (e: 'linkMeeting'): void
   (e: 'goTranscript'): void
   (e: 'goSummary'): void
+  (e: 'goNotes'): void
   (e: 'goTodos'): void
   (e: 'goProject'): void
   (e: 'goMeeting', meetingId: string): void

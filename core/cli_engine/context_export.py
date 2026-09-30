@@ -4,8 +4,8 @@ Serialize meeting context into the CLI agent workspace (files, not one giant pro
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-25
-更新 / Updated: 2026-09-25
-版本 / Version: 1.1.0
+更新 / Updated: 2026-09-30
+版本 / Version: 1.2.0
 
 职责 / Responsibilities:
   - 把四维会议上下文落成工作区文件，供 CLI 用自身检索能力按需读取（方案 §3.1）
@@ -32,6 +32,7 @@ WORKSPACE_ROOT = REPO_ROOT / "agent-workspace"
 # 单文件体量上限（字符），超限截断并标注，避免工作区无限膨胀（R4）
 _MAX_TRANSCRIPT_CHARS = 40000
 _MAX_SUMMARY_CHARS = 8000
+_MAX_NOTES_CHARS = 8000      # 随记（用户手写原文）
 _MAX_HISTORY_CHARS = 6000       # 对话历史整块字符上限
 _MAX_HISTORY_TURNS = 10         # 最多保留前 N 轮对话
 
@@ -189,8 +190,13 @@ def _build_permission_section(auth_tier: str | None) -> str:
             "仅在对话里描述计划、读取基线后就收尾，不算完成。\n"
             "- 纪要（summary）改写例外：必须调用 propose_summary 产出待确认提案，由用户在前端接受后才落盘；"
             "不得直接调用 update_summary 覆盖纪要。\n"
+            "- 决策推进（如「这些条已确认/定为结论」）：先 get_meeting_todos 取节点 id 与状态字典，"
+            "再逐条调 update_decision_node（status 只取字典里的 id）；已有节点不得用 inject_items 重复追加。\n"
+            "- 随记（notes）是用户原创区：改写必须调用 propose_notes 产出待确认提案，由用户在前端点「接受」后才落盘；"
+            "未经接受，严禁声称已写入或修改随记。也不要把随记内容当纪要写（纪要走 propose_summary）。\n"
             "- 改写前先读基线（如 revise_insight_board 不带 html 即读当前板；纪要覆盖前先从工作区读回原文）。\n"
-            "- 落盘成功后，回复中必须明确告知用户改了哪个域、对应版本/条数。\n"
+            "- 落盘成功后，回复中必须明确告知用户改了哪个域、对应版本/条数；"
+            "工具回执中 restorable=false 表示本轮未能建立撤销快照，需如实告知用户改动不可一键回退。\n"
             "- 直写边界：文件编辑工具只允许写 output/ 产物区；任务数据（纪要/随记/决策/洞察板）"
             "必须经集成工具落盘，严禁绕过工具直接改工作区外数据文件。\n")
     return (
@@ -233,6 +239,8 @@ def export_context(
     ws = workspace_dir(engine_id, workspace_key or task_id)
     ctx = ws / "context"
     speaker_map = speaker_map or {}
+    # 定稿口径与会话/前端同源（局部 import：CLI 引擎不在后端进程预热 core.chat_context）
+    from core.chat_context import task_final_summary, task_notes
 
     written: list[str] = []
 
@@ -249,11 +257,26 @@ def export_context(
                                                encoding="utf-8")
             written.append("context/transcript.md")
 
-        summary = (task.get("summary") or "").strip()
+        summary = task_final_summary(task).strip()
         if summary and "内容过短" not in summary and "无法生成有效纪要" not in summary:
             (ctx / "summary.md").write_text(
-                "# 当前会议纪要\n\n" + summary[:_MAX_SUMMARY_CHARS], encoding="utf-8")
+                "# 当前会议纪要（用户已编辑时为编辑后版本）\n\n" + summary[:_MAX_SUMMARY_CHARS],
+                encoding="utf-8")
             written.append("context/summary.md")
+
+        # 随记：四域中唯一的用户原创区，此前从未导出给 CLI——用户把共识结论写进随记
+        # 要求同步决策面板时，工作区里没有 notes，AI 只能报「读不到」（2026-09-30 复盘）
+        notes = task_notes(task)
+        if notes:
+            body = notes[:_MAX_NOTES_CHARS]
+            if len(notes) > _MAX_NOTES_CHARS:
+                body += '\n…（随记过长已截断）'
+            (ctx / 'notes.md').write_text(
+                '# 会议随记（用户手写原文，非 AI 产物）\n\n'
+                '> 随记是用户本人记录的会议要点，可信度高于转写推断。当用户要求'
+                '「按随记更新纪要/决策」时，以随记表述为准；随记属用户原创区，'
+                '如需改写只能走 propose_notes 提案通道（用户接受后才落盘）。\n\n' + body, encoding='utf-8')
+            written.append('context/notes.md')
 
         todos = task.get("todos") or []
         if todos:

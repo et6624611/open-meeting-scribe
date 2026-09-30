@@ -25,6 +25,7 @@ from core.summarize import (
     decision_text_key,
     merge_flow_after_regen,
     parse_decisions_with_status,
+    split_decision_title,
 )
 
 SUMMARY = """# 会议纪要
@@ -116,6 +117,47 @@ def test_negative_conclusion_is_normal_empty_not_degradation():
 def test_missing_section_reports_degradation():
     nodes, degrade = parse_decisions_with_status("# 纪要\n没有结论章节")
     assert nodes == [] and degrade == "missing_section"
+
+
+# ---- DEBRISH-F1：[待确认] 与加粗标题混写的解析（模板 v1.3.0 实测碎屑回归） ----
+
+SUMMARY_PENDING_MIXED = """## 二、主要结论
+1. **控制系统与报表分离**：清洗单据不得写入控制系统
+2. **[待确认] 预算复核**：需财务复核后定案
+3. **[待确认] 版本管理规则**：留存策略尚未敲定
+"""
+
+
+def test_split_decision_title_handles_pending_markers():
+    # 内层写法（v1.3.0 实测产出）：标记被正则消费，不丢 ** 碎片
+    assert split_decision_title("**[待确认] 版本管理规则**：留存策略尚未敲定") == ("版本管理规则", "留存策略尚未敲定")
+    # 外层写法：仍正常拆分
+    assert split_decision_title("[待确认] **预算复核**：需财务复核") == ("预算复核", "需财务复核")
+    # 普通两要素 / 裸行：既有行为不变
+    assert split_decision_title("**方案选型**：采用方案A") == ("方案选型", "采用方案A")
+    assert split_decision_title("裸行叙述不拆分")[0] == ""
+
+
+def test_pending_marker_inside_bold_parsed_with_title_and_flag():
+    nodes, degrade = parse_decisions_with_status(SUMMARY_PENDING_MIXED)
+    assert degrade is None and len(nodes) == 3
+    assert nodes[0]["title"] == "控制系统与报表分离" and nodes[0]["pending_confirmation"] is False
+    # 两种前缀写法都必须：拆出干净标题（无 ** 碎片）+ pending 态正确
+    assert nodes[1]["title"] == "预算复核" and nodes[1]["pending_confirmation"] is True
+    assert nodes[2]["title"] == "版本管理规则" and nodes[2]["pending_confirmation"] is True
+    for n in nodes[1:]:
+        assert "**" not in n["text"] and "待确认" not in n["title"]
+
+
+def test_dedup_distinguishes_pending_from_decided():
+    # 同文不同态：已定结论与待确认提案不互相吞并（待确认用外层裸前缀写法）
+    summary = """## 二、主要结论
+1. **同一议题**：采用方案A
+2. [待确认] **同一议题**：采用方案A
+"""
+    nodes, _ = parse_decisions_with_status(summary)
+    assert len(nodes) == 2
+    assert {n["pending_confirmation"] for n in nodes} == {True, False}
 
 
 # ============================================================
@@ -370,3 +412,63 @@ def test_delete_status_reassigns_flow_nodes(client, task_factory, store, monkeyp
     assert resp.status_code == 200 and resp.json()["reassigned"] == 1
     # 被删状态下的节点回落到删后字典的首个开放态
     assert tasks[tid]["todos"][0]["status"] == "to_decide"
+
+
+# ============================================================
+# 7. 跨会议议题归并（DEBRISH-P2 全局视角）
+# ============================================================
+
+def _flow_row(nid, title, kb, task_id, ts):
+    return {"id": nid, "title": title, "text": title, "kb_id": kb,
+            "task_id": task_id, "meeting_title": "M", "meeting_date": ts[:10],
+            "status_closing": False, "created_at": ts, "updated_at": ts}
+
+
+def test_cluster_topics_merges_cross_meeting_same_topic():
+    from core.decision_topic import cluster_topics
+    # 同知识库、跨会议的同议题重述（措辞详略不同）应归为一簇
+    rows = [
+        _flow_row("a", "差旅预算调整流程需重构以支持组织变更场景", "kb1", "tA", "2026-09-10T10:00:00"),
+        _flow_row("b", "差旅预算调整流程归属", "kb1", "tB", "2026-09-20T10:00:00"),
+        # 弱相关议题不主动归入
+        _flow_row("c", "上线时间定在下季度", "kb1", "tC", "2026-09-21T10:00:00"),
+    ]
+    groups = cluster_topics(rows)
+    ab = [g for g in groups if {m["id"] for m in [g["main"], *g["history"]]} >= {"a", "b"}]
+    assert len(ab) == 1
+    g = ab[0]
+    assert g["size"] == 2 and g["meeting_count"] == 2
+    assert g["main"]["id"] == "b"              # 最新记录作主记录
+    assert g["confidence"] >= 0.6
+    assert "c" not in {m["id"] for m in [g["main"], *g["history"]]}
+
+
+def test_cluster_topics_isolates_different_kb():
+    from core.decision_topic import cluster_topics
+    same_text = "预提科目体系需重构为一级费用科目结构"
+    rows = [
+        _flow_row("a", same_text, "kb1", "tA", "2026-09-10T10:00:00"),
+        _flow_row("b", same_text, "kb2", "tB", "2026-09-20T10:00:00"),
+    ]
+    groups = cluster_topics(rows)
+    # 同文本但跨知识库：不合并，各自单簇
+    assert len(groups) == 2 and all(g["size"] == 1 for g in groups)
+
+
+def test_aggregation_group_by_topic(client, task_factory, store):
+    store.load_statuses()
+    kb = "proj-shared"
+    task_factory(project_id=kb, todos=[
+        {"id": "x1", "title": "预算调整需支持跨组织跨期间", "text": "预算调整需支持跨组织跨期间",
+         "source": "auto", "status": "in_progress", "created_at": "2026-09-05T10:00:00"},
+    ])
+    task_factory(project_id=kb, todos=[
+        {"id": "x2", "title": "预算调整功能必须支持跨组织、跨期间操作", "text": "预算调整功能必须支持跨组织、跨期间操作",
+         "source": "auto", "status": "to_decide", "created_at": "2026-09-25T10:00:00"},
+    ])
+    data = client.get("/api/decisions", params={"group_by": "topic"}).json()
+    assert "topics" in data
+    hit = [g for g in data["topics"] if {g["main"]["id"], *(m["id"] for m in g["history"])} >= {"x1", "x2"}]
+    assert len(hit) == 1 and hit[0]["meeting_count"] == 2
+    # 主记录为更新的一条（x2），演变链挂 x1
+    assert hit[0]["main"]["id"] == "x2" and hit[0]["history"][0]["id"] == "x1"

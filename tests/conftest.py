@@ -64,6 +64,12 @@ def _isolate_tasks_dir(tmp_path_factory):
         targets.append((insight_board, "BOARD_TASKS_DIR"))
     except Exception:
         pass
+    try:
+        # AI 写回快照 sidecar（<task_id>.rewrites.jsonl）与任务 JSON 同目录，一并隔离
+        import core.rewrite_snapshots as rewrite_snapshots
+        targets.append((rewrite_snapshots, "SNAPSHOT_DIR"))
+    except Exception:
+        pass
 
     originals = [(mod, attr, getattr(mod, attr)) for mod, attr in targets]
     for mod, attr in targets:

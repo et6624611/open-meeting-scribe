@@ -344,6 +344,39 @@ class TestContextExport:
         assert (tmp_path / "agent-workspace" / "qoder-cli" / "general" / "AGENTS.md").is_file()
         assert "你是谁" in meta["brief"]
 
+    def test_export_includes_notes_and_final_summary(self, monkeypatch, tmp_path):
+        """随记（user_notes）必须入工作区；纪要取定稿口径（user_summary 优先）。"""
+        from core.cli_engine import context_export as ce
+        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        task = {
+            "dialogue": [{"speaker_name": "张三", "sentences": [{"text": "预算口径待定", "begin_time": 0}]}],
+            "summary": "AI 初稿纪要",
+            "user_summary": "用户手改后的纪要：以 PMS 可用额度为准",
+            "user_notes": "共识：星瀚标品预算模块作为差旅预算主控平台",
+            "todos": [],
+        }
+        meta = ce.export_context(engine_id="qoder-cli", task=task, task_id="t-notes",
+                                 user_message="按随记更新决策")
+        notes_md = (tmp_path / "agent-workspace" / "qoder-cli" / "t-notes"
+                    / "context" / "notes.md")
+        assert notes_md.is_file()
+        text = notes_md.read_text(encoding="utf-8")
+        assert "星瀚标品预算模块" in text and "用户手写原文" in text
+        assert "context/notes.md" in meta["brief"]
+        # 纪要基线等于用户看到的定稿，而非 AI 初稿
+        summary_md = (tmp_path / "agent-workspace" / "qoder-cli" / "t-notes"
+                      / "context" / "summary.md").read_text(encoding="utf-8")
+        assert "以 PMS 可用额度为准" in summary_md and "AI 初稿纪要" not in summary_md
+
+    def test_export_skips_notes_when_absent(self, monkeypatch, tmp_path):
+        from core.cli_engine import context_export as ce
+        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        meta = ce.export_context(engine_id="qoder-cli", task={"dialogue": [], "summary": ""},
+                                 task_id="t-nonotes", user_message="你好")
+        assert "context/notes.md" not in meta["brief"]
+        assert not (tmp_path / "agent-workspace" / "qoder-cli" / "t-nonotes"
+                    / "context" / "notes.md").exists()
+
     def test_export_writes_insights_md(self, monkeypatch, tmp_path):
         """REQ-INSIGHT-DECK-POSTMEETING R3：有洞察时导出 context/insights.md，无则不生成"""
         from core.cli_engine import context_export as ce
@@ -444,12 +477,17 @@ class TestOnWriteSuccess:
         assert "get_hotwords" not in write_names
 
     def test_propose_summary_excluded_from_rewritten_trigger(self):
-        """propose_summary 不落盘，runner 的触发集必须剔除它，否则纪要提案轮被误标 rewritten=true。"""
+        """提案工具（propose_summary / propose_notes）不落盘，runner 按 persists 剔除，
+        否则提案轮被误标 rewritten=true（完成护栏谎报）。"""
         from core.agent_tools.catalog import TOOL_CATALOG
-        trigger = {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"} - {"propose_summary"}
-        assert "propose_summary" in {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"}
-        assert "propose_summary" not in trigger
-        assert {"update_summary", "inject_items", "revise_insight_board"} <= trigger
+        writes = {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"}
+        # 与 runner.write_names 同一派生规约（不再硬写工具名）
+        trigger = {t["name"] for t in TOOL_CATALOG
+                   if t.get("kind") == "write" and t.get("persists", True)}
+        assert {"propose_summary", "propose_notes"} <= writes
+        assert not {"propose_summary", "propose_notes"} & trigger
+        assert {"update_summary", "inject_items", "revise_insight_board",
+                "update_decision_node", "delete_decision_node"} <= trigger
 
 
 # ============================================================

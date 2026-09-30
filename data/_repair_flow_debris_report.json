@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-09-30T16:00:43.058824",
+  "mode": "apply",
+  "total_scanned": 111,
+  "tasks_repaired": 3,
+  "nodes_fixed": 18,
+  "nodes_needs_review": 7,
+  "tasks": [
+    {
+      "task_id": "0b9720f5-ea87-44d9-b91b-f3e954b3e9c5",
+      "title": "管理报告与事项库的定位与协同方案",
+      "fixed": 0,
+      "needs_review": 3
+    },
+    {
+      "task_id": "3b4f6722-1ebf-40f4-8372-7f3076b02599",
+      "title": "主数据治理与物料编码标准化研讨会",
+      "fixed": 0,
+      "needs_review": 3
+    },
+    {
+      "task_id": "8d8a3f34-bcf0-4ab6-82cd-e0297b8507ac",
+      "title": "差旅报销与预算控制机制讨论",
+      "fixed": 4,
+      "needs_review": 0
+    },
+    {
+      "task_id": "a35d0f1a-0e68-4d2a-8f9e-b4418ec8e5a4",
+      "title": "供应商系统功能限制与对接讨论",
+      "fixed": 0,
+      "needs_review": 1
+    },
+    {
+      "task_id": "ba026924-50d6-4f24-bfed-9a8c10bd4c50",
+      "title": "暂估科目调整与账务处理优化会议",
+      "fixed": 5,
+      "needs_review": 0
+    },
+    {
+      "task_id": "dbab5117-0127-4064-9fad-a4dd0ec77cbf",
+      "title": "仓穹系统预算同步与控制方案讨论",
+      "fixed": 9,
+      "needs_review": 0
+    }
+  ]
+}

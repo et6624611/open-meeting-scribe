@@ -16,11 +16,13 @@ core/agent_tools/catalog.py — 反向工具目录（单一来源） / Reverse t
 from __future__ import annotations
 
 # 每项：name / description / input_schema(JSON Schema) / kind(read|write) / needs_task(bool)
+# 可选字段 persists（仅对 kind=write 有意义）：False = 名义可写、实际不落盘（提案信号），
+# 必须从完成护栏的 rewritten 触发集中剔除（runner 据此字段派生，不再硬写工具名）。
 TOOL_CATALOG: list[dict] = [
     # ── 读工具（实现在 core/agent_tools/impl.py，单一来源） ──
     {
         "name": "get_meeting_info", "kind": "read", "needs_task": True,
-        "description": "获取当前会议的结构化元信息与纪要摘要。",
+        "description": "获取当前会议的结构化元信息与纪要摘要（含随记存在性与预览）。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -32,8 +34,18 @@ TOOL_CATALOG: list[dict] = [
         },
     },
     {
+        # 随记（user_notes）：四域中唯一的用户原创区，此前工具面/工作区都读不到（2026-09-30 复盘）
+        "name": "get_meeting_notes", "kind": "read", "needs_task": True,
+        "description": (
+            "获取用户在会议期间手写的随记原文（user_notes）。随记是用户原创区、可信度高于转写推断："
+            "当用户说「我写在随记里了」「按随记更新纪要/决策」时，先调本工具读随记再动手。"
+            "本工具只读，不得用它声称已改写随记（随记改写需用户在前端确认）。"
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "get_meeting_todos", "kind": "read", "needs_task": True,
-        "description": "获取当前会议的待办/决策事项列表。",
+        "description": "获取当前会议的待办/决策事项列表（含节点稳定 id 与状态，供按节点寻址）。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -64,7 +76,7 @@ TOOL_CATALOG: list[dict] = [
         # 纪要改写的唯一会话通道（提案式，不落盘）：产出一条待用户确认的建议，
         # proposed 正文经 tool_call 事件回前端 diff 卡，用户接受后才经 PUT /summary 落盘。
         # 实现在 app/routers/agent_tools.py（不写 task），mcp_bridge 按 kind=write 预授权。
-        "name": "propose_summary", "kind": "write", "needs_task": True,
+        "name": "propose_summary", "kind": "write", "needs_task": True, "persists": False,
         "description": (
             "对会议纪要提出改写建议（提案式，不会立即写入）。这是纪要改写的唯一通道："
             "先用工作区内的基线纪要（context/summary.md）做增量，summary 传入修订后的完整纪要正文（Markdown），"
@@ -78,8 +90,26 @@ TOOL_CATALOG: list[dict] = [
         },
     },
     {
+        # 随记改写的唯一会话通道（提案式，不落盘）：user_notes 是用户原创区（PROPOSAL §5.3 市场模式 D），
+        # 与其他域不同构：工具只产出建议，前端行级 diff 预览，用户点「接受」才经 PUT /notes 落盘。
+        # 实现在 app/routers/agent_tools.py（不写 task）；mcp_bridge 按 kind=write 预授权。
+        "name": "propose_notes", "kind": "write", "needs_task": True, "persists": False,
+        "description": (
+            "对用户随记提出改写建议（提案式，不会立即写入）。这是随记改写的唯一通道："
+            "先读工作区 context/notes.md（或调 get_meeting_notes）拿到用户原文，在其基础上做增量，"
+            "notes 传入修订后的**完整随记正文**（纯文本，保留用户自己的口吻与条目写法）。"
+            "系统会向用户展示旧/新行级 diff，由用户点「接受」才真正落盘、「拒绝」则丢弃。"
+            "严禁在提案被接受前声称已写入随记；也不要拿随记去覆盖纪要（纪要走 propose_summary）。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"notes": {"type": "string", "description": "建议的新随记正文（完整替换；未经用户确认不落盘）"}},
+            "required": ["notes"],
+        },
+    },
+    {
         "name": "inject_items", "kind": "write", "needs_task": True,
-        "description": "向会议注入结构化条目（待办 todo / 结论 conclusion / 决策 decision），逐条落库并进入决策中心。",
+        "description": "向会议注入结构化条目（待办 todo / 结论 conclusion / 决策 decision），逐条落库并进入决策中心。仅用于新增；修改已有节点请改用 update_decision_node。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -97,6 +127,44 @@ TOOL_CATALOG: list[dict] = [
                 }
             },
             "required": ["items"],
+        },
+    },
+    {
+        # 决策节点改写（P3）：按节点 id 寻址，收口到 notes.update_todo 同一口径（DC-UNIFY-01）。
+        # 写回前强制字段级快照（core.rewrite_snapshots），因此“AI 误写可回退”成立。
+        "name": "update_decision_node", "kind": "write", "needs_task": True,
+        "description": (
+            "改写已有的决策流节点（按节点 id 精准定位，不新建第二条）。"
+            "必先调 get_meeting_todos 拿到节点 id、当前状态与可用状态字典（status 只能取其中的 id）。"
+            "只传需要改的字段：title（一句话结论）、text（决策正文）、status（如用户已拍板→推进到闭档态）、"
+            "why（依据）、outcome（结果）、owner_type（推进方）。"
+            "用户说「按随记/纪要把这几条定为已确认」类需求时，逐条按 id 更新，不要用 inject_items 重复追加。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "node_id": {"type": "string", "description": "节点稳定 id（来自 get_meeting_todos）"},
+                "title": {"type": "string", "description": "新标题（一句话结论）"},
+                "text": {"type": "string", "description": "新的决策正文"},
+                "status": {"type": "string", "description": "状态字典中的 id（如 to_decide / done）"},
+                "why": {"type": "string", "description": "决策依据"},
+                "outcome": {"type": "string", "description": "执行结果/落地情况"},
+                "owner_type": {"type": "string", "enum": ["self", "agent", "colleague", "enterprise"]},
+            },
+            "required": ["node_id"],
+        },
+    },
+    {
+        # 决策节点删除（P3）：复用 notes.delete_todo，auto 节点同步落防复活墓碑。
+        "name": "delete_decision_node", "kind": "write", "needs_task": True,
+        "description": (
+            "按节点 id 删除一条决策流节点（仅当用户明确要求删除/合并时）。"
+            "删前建议先 get_meeting_todos 确认对象；删错可由本轮快照撤销。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"node_id": {"type": "string", "description": "待删除节点的稳定 id"}},
+            "required": ["node_id"],
         },
     },
     {

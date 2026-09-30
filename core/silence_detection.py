@@ -15,9 +15,11 @@ core/silence_detection.py — 静默检测与用户存在性感知 / Silence det
 """
 
 import asyncio
+import functools
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 
 from app.store import (
     get_silence_detection_config,
@@ -42,6 +44,18 @@ from core.audio import is_stream_recording, stop_recording_with_stream
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
+
+
+def _log_pipeline_dispatch_result(task_id: str, future) -> None:
+    """记录自动关停后管线派发结果（异常仅记日志，不冒泡回事件循环）。"""
+    try:
+        exc = future.exception()
+        if exc is not None:
+            logger.error(f"[静默检测] 自动关停后管线执行异常: task={task_id[:8]}: {exc}", exc_info=exc)
+        else:
+            logger.info(f"[静默检测] 自动关停后纪要管线执行完毕: task={task_id[:8]}")
+    except asyncio.CancelledError:
+        logger.warning(f"[静默检测] 自动关停后纪要管线任务被取消: task={task_id[:8]}")
 
 
 def cleanup_silence_detection(task_id: str) -> None:
@@ -195,9 +209,16 @@ async def auto_stop_recording(task_id: str, reason: str = "unknown") -> None:
         push_realtime_msg(task_id, {"type": "auto_stopped", "reason": reason, "duration": duration, "message": _("Recording automatically stopped due to prolonged inactivity (saved {dur:.0f}s of audio)").format(dur=duration)})
         push_realtime_msg(task_id, {"type": "ended"})
 
-        asyncio.get_event_loop().call_soon(
-            lambda: asyncio.ensure_future(run_pipeline_task(task_id, audio_path, tasks[task_id]["audio_name"], None, None))
+        # run_pipeline_task 是同步阻塞函数，必须走线程池派发（与 record.py / task_store.py 一致）。
+        # 预先取好 audio_name，避免回调执行时 tasks 条目已被清理触发 KeyError。
+        # Fire the summary pipeline via executor: run_pipeline_task is sync/blocking,
+        # so asyncio.ensure_future would raise TypeError (auto_stop callback crash, 09-30).
+        audio_name = tasks.get(task_id, {}).get("audio_name", Path(audio_path).name)
+        loop = asyncio.get_running_loop()
+        pipeline_future = loop.run_in_executor(
+            None, run_pipeline_task, task_id, audio_path, audio_name, None, None
         )
+        pipeline_future.add_done_callback(functools.partial(_log_pipeline_dispatch_result, task_id))
 
         realtime_queues.pop(task_id, None)
         cleanup_silence_detection(task_id)

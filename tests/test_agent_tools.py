@@ -168,6 +168,49 @@ class TestInvokeEndpoint:
         assert "propose_summary" in " ".join(mb._tool_allowlist("workspace_write"))
         assert "propose_summary" not in " ".join(mb._tool_allowlist("readonly"))
 
+    # ── 随记提案式改写（propose_notes）：用户原创区，名义 write、实际不落盘 ──
+    def test_propose_notes_is_registered_write_tool(self):
+        t = TOOLS_BY_NAME.get("propose_notes")
+        assert t and t["kind"] == "write" and t["needs_task"] is True
+        assert t.get("persists") is False, "不落盘的提案工具必须标 persists=False"
+        assert any(s["name"] == "propose_notes" for s in mcp_tool_specs())
+
+    def test_propose_notes_does_not_persist(self, client):
+        from app.store import tasks
+        tid = "propntest-0001"
+        tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "旧随记", "todos": []}
+        try:
+            ctx = self._issue("workspace_write", task_id=tid)
+            r = client.post("/api/agent-tools/invoke",
+                            json={"name": "propose_notes", "arguments": {"notes": "新随记提案"}},
+                            headers={"Authorization": f"Bearer {ctx.token}"})
+            assert r.status_code == 200
+            body = r.json()
+            assert body["ok"] is True and body["result"]["proposed"] is True
+            # 关键：后端不写 task，user_notes 仍为用户原文（落盘由接受时的 PUT /notes 完成）
+            assert tasks[tid]["user_notes"] == "旧随记"
+        finally:
+            tasks.pop(tid, None)
+
+    def test_propose_notes_denied_in_readonly(self, client):
+        ctx = self._issue("readonly", task_id="t1")
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": "propose_notes", "arguments": {"notes": "x"}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert r.status_code == 403
+
+    def test_propose_notes_in_allowlist_only_when_writable(self):
+        assert "propose_notes" in " ".join(mb._tool_allowlist("workspace_write"))
+        assert "propose_notes" not in " ".join(mb._tool_allowlist("readonly"))
+
+    def test_proposal_tools_excluded_from_rewritten_trigger(self):
+        """完成护栏触发集按 persists 派生：两个提案工具不得被当作"已落盘"。"""
+        from core.agent_tools.catalog import TOOL_CATALOG
+        trigger = {t["name"] for t in TOOL_CATALOG
+                   if t.get("kind") == "write" and t.get("persists", True)}
+        assert "propose_summary" not in trigger and "propose_notes" not in trigger
+        assert {"update_decision_node", "delete_decision_node", "inject_items"} <= trigger
+
     # ── 洞察共创板工具（读写双语义） / Insight board co-create tool ──
     def test_board_read_allowed_in_readonly(self, client, monkeypatch, tmp_path):
         # 不带 html = 读基线，只读档放行（写档门控的例外）
@@ -349,6 +392,88 @@ class TestInProgressRealtimeFallback:
         assert "录音进行中" in text
         assert "李工：我们讨论一下标准方案的选型" in text  # speaker_mapping 解析 id→名
         assert "王工：标准方案采用星三架构" in text  # 条目自带实名优先
+
+
+# ============================================================
+# 随记读工具（2026-09-30 复盘：用户把共识结论写进随记，AI 读不到导致无法同步决策面板）
+# ============================================================
+
+class TestMeetingNotesTool:
+    def test_get_meeting_notes_registered_as_read(self):
+        t = TOOLS_BY_NAME.get("get_meeting_notes")
+        assert t and t["kind"] == "read" and t["needs_task"] is True
+        assert any(s["name"] == "get_meeting_notes" for s in mcp_tool_specs())
+
+    def test_read_tool_returns_user_notes(self):
+        from app.store import tasks
+        from core.agent_tools import impl
+        tid = "notestool-1"
+        tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "共识：预算主控放在星瀚"}
+        try:
+            out = json.loads(impl.execute_tool("get_meeting_notes", {}, task_id=tid))
+            assert "预算主控放在星瀚" in out["notes"]
+            assert out["characters"] == len("共识：预算主控放在星瀚")
+            assert "truncated" not in out
+        finally:
+            tasks.pop(tid, None)
+
+    def test_empty_notes_reports_absent_not_error(self):
+        from app.store import tasks
+        from core.agent_tools import impl
+        tid = "notestool-2"
+        tasks[tid] = {"task_id": tid, "status": "completed"}
+        try:
+            out = json.loads(impl._tool_get_meeting_notes(tid))
+            assert "暂无随记" in out["info"] and out["characters"] == 0
+        finally:
+            tasks.pop(tid, None)
+
+    def test_meeting_info_admits_notes_exist(self):
+        """get_meeting_info 必须报出随记存在性与预览，否则模型不会知道去读。"""
+        from app.store import tasks
+        from core.agent_tools import impl
+        tid = "notestool-3"
+        tasks[tid] = {"task_id": tid, "status": "completed", "summary": "AI 初稿",
+                      "user_summary": "用户定稿纪要", "user_notes": "最终结论：手工补入抵消灭失"}
+        try:
+            info = json.loads(impl._tool_get_meeting_info(tid))
+            assert info["has_notes"] is True
+            assert "最终结论" in info["notes_preview"]
+            assert "get_meeting_notes" in info["notes_note"]
+            # 纪要预览同取定稿口径，与前端纪要 Tab 一致
+            assert info["summary_preview"] == "用户定稿纪要"
+        finally:
+            tasks.pop(tid, None)
+
+    def test_notes_tool_allowed_in_readonly_via_invoke(self, client):
+        from app.store import tasks
+        tid = "notestool-4"
+        tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "只读档也要能读随记"}
+        try:
+            ctx = tk.issue_token(task_id=tid, project_id=None, auth_tier="readonly")
+            r = client.post("/api/agent-tools/invoke",
+                            json={"name": "get_meeting_notes", "arguments": {}},
+                            headers={"Authorization": f"Bearer {ctx.token}"})
+            assert r.status_code == 200
+            assert "只读档也要能读随记" in json.loads(r.json()["result"])["notes"]
+        finally:
+            tasks.pop(tid, None)
+
+    def test_todos_tool_exposes_node_ids(self):
+        """决策节点稳定 id 必须回给工具面（改写/删除按 id 寻址的前置项）。"""
+        from app.store import tasks
+        from core.agent_tools import impl
+        tid = "notestool-5"
+        tasks[tid] = {"task_id": tid, "status": "completed",
+                      "todos": [{"id": "node-1", "text": "预算版本双轨", "title": "版本双轨",
+                                  "status": "to_decide", "done": False, "assignee": "张三"}]}
+        try:
+            out = json.loads(impl._tool_get_meeting_todos(tid))
+            item = out["todos"][0]
+            assert item["id"] == "node-1" and item["status"] == "to_decide"
+            assert item["title"] == "版本双轨"
+        finally:
+            tasks.pop(tid, None)
 
 
 # ============================================================

@@ -21,7 +21,12 @@ export function useNotesAndTodos(
   let notesTimer: ReturnType<typeof setTimeout> | null = null
   let summaryTimer: ReturnType<typeof setTimeout> | null = null
 
-  async function loadNotes() { notesContent.value = await (await import('@/api/notes')).fetchNotes(taskId) }
+  async function loadNotes() {
+    // 外部重拉（AI 提案被接受 / 写回后刷新）以服务端为准：先取消挂起的防抖自动保存，
+    // 否则旧文本会在 1s 后回写、静默吞掉刚接受的提案内容
+    if (notesTimer) { clearTimeout(notesTimer); notesTimer = null }
+    notesContent.value = await (await import('@/api/notes')).fetchNotes(taskId)
+  }
   async function loadTodos() { todos.value = await fetchTodos(taskId) }
 
   async function onSaveNotes() {

@@ -50,8 +50,19 @@
         </button>
       </div>
     </div>
-    <!-- 消息流 / Message stream（只读态无视能开关，始终展示历史） -->
-    <div class="rec-insights-body" v-if="readonly || enabled">
+    <!-- 消息流 / Message stream（只读态无视能开关，始终展示历史；已有板时不受开关遮挡） -->
+    <div class="rec-insights-body" v-if="readonly || enabled || board.html">
+      <!-- 洞察板产物优先：会话「画入洞察台」落板的 HTML 直接呈现，卡片流降为后备
+           Board artifact takes priority: the co-created HTML renders here; card stream is the fallback -->
+      <InsightBoard
+        v-if="board.html"
+        :artifact="board"
+        :loading="boardLoading"
+        @seek="$emit('seekTo', $event)"
+        @refresh="loadBoardData"
+        @co-create="onBoardCoCreate"
+      />
+      <template v-else>
       <div v-if="messages.length === 0" class="rec-insights-empty">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
         <div class="rec-insights-empty-text">{{ readonly ? t('generating.insights.empty_title') : t('recording.insights.empty') }}</div>
@@ -160,6 +171,7 @@
           </div>
         </div>
       </div>
+      </template>
     </div>
     <!-- 未开启时的提示 / Prompt when disabled -->
     <div class="rec-insights-body" v-else>
@@ -173,11 +185,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
+import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
+import { onBoardWritten } from '@/composables/useBoardSync'
+import InsightBoard from '../generating/InsightBoard.vue'
 import type { InsightFlowData } from '@/utils/parseInsightFlow'
 import { parseInsightFlow, matchPhaseDescriptions } from '@/utils/parseInsightFlow'
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
@@ -289,6 +304,63 @@ defineEmits<{
   (e: 'toggleExpand'): void
   (e: 'seekTo', ms: number): void
 }>()
+
+/* ── 洞察板产物呈现 / Board artifact（会中「画入洞察台」的落点） ──
+   板唯一写入点在后端会话工具；本面板只读重拉——挂载即拉、board-written 即时重拉、
+   10s 轻量版本探测盖住「写板发生在其它窗口」的缝隙（与 GeneratingView 洞察 Tab 同机制）。 */
+const EMPTY_BOARD: BoardArtifact = { html: null, revision: 0, updated_at: null }
+const board = ref<BoardArtifact>({ ...EMPTY_BOARD })
+const boardLoading = ref(false)
+const BOARD_POLL_MS = 10_000
+let boardPollTimer: ReturnType<typeof setInterval> | null = null
+let offBoardWritten: (() => void) | null = null
+
+async function loadBoardData() {
+  if (!props.taskId) return
+  boardLoading.value = true
+  try {
+    board.value = await loadBoard(props.taskId)
+  } catch {
+    // 读板失败静默降级卡片视图 / Load failure silently falls back to cards
+  } finally {
+    boardLoading.value = false
+  }
+}
+
+/** 轻量版本探测：版本号前进（或无板→有板）才拉整份正文 */
+async function probeBoardRevision() {
+  if (boardLoading.value || document.hidden || !props.taskId) return
+  try {
+    const meta = await loadBoardMeta(props.taskId)
+    if (meta.revision !== board.value.revision || (meta.exists && !board.value.html)) {
+      await loadBoardData()
+    }
+  } catch { /* 探测失败静默跳过 / Probe failure is silent */ }
+}
+
+/** 全文共创起跳：预填修订请求到 AI 面板输入框（与纪要页同文案） */
+function onBoardCoCreate() {
+  window.dispatchEvent(new CustomEvent('quote-to-ai', {
+    detail: { prefill: t('generating.insights.board.co_create_msg'), coCreate: true },
+  }))
+}
+
+onMounted(() => {
+  loadBoardData()
+  boardPollTimer = setInterval(probeBoardRevision, BOARD_POLL_MS)
+  offBoardWritten = onBoardWritten(() => { loadBoardData() })
+})
+
+onUnmounted(() => {
+  if (boardPollTimer) clearInterval(boardPollTimer)
+  if (offBoardWritten) offBoardWritten()
+})
+
+// 切换任务（重新挂载路由复用组件等场景）时重置并重拉
+watch(() => props.taskId, () => {
+  board.value = { ...EMPTY_BOARD }
+  loadBoardData()
+})
 
 /** 复制图源码到剪贴板 / Copy diagram source to clipboard */
 async function onCopyDiagram(code: string | undefined) {

@@ -622,6 +622,29 @@
 }
 .gen-textarea-editor::placeholder { color: var(--subtle); }
 
+/* ═══ 纪要改写提案：原位 diff 预览（Layer 1） ═══
+   提案状态下沉 useSummaryProposal 单例；预览态锁定编辑（与 IDE diff 视图一致），
+   接受/拒绝在底部操作条完成；颜色沿用 AiChatPanel 同款 --diff-add/--diff-del 变量。 */
+.gen-prop-bar { display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px; margin-bottom: var(--s-2); border: 1px solid var(--accent-soft); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--fg); font-size: var(--fs-12); }
+.gen-prop-bar-icon { width: 13px; height: 13px; flex: 0 0 auto; color: var(--accent); }
+.gen-prop-bar-text { flex: 1 1 auto; min-width: 0; }
+.gen-prop-bar-btn { flex: 0 0 auto; padding: 3px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: var(--fs-12); cursor: pointer; }
+.gen-prop-bar-btn:hover { background: var(--accent); color: var(--accent-fg); }
+.gen-prop-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.gen-prop-preview-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
+.gen-prop-preview-title { font-size: var(--fs-12); font-weight: 600; color: var(--fg); }
+.gen-prop-preview-stats { font-size: var(--fs-11); color: var(--muted); }
+.gen-prop-diff { flex: 1; min-height: 0; overflow-y: auto; font-family: var(--font-mono); font-size: var(--fs-13); line-height: 1.8; padding: var(--s-2) 0; }
+.gen-prop-line { white-space: pre-wrap; word-break: break-word; padding: 0 var(--s-4); }
+.gen-prop-line.is-same { color: var(--muted); }
+.gen-prop-line.is-add { background: var(--diff-add, oklch(92% 0.08 155)); color: var(--diff-add-fg, oklch(30% 0.1 155)); }
+.gen-prop-line.is-del { background: var(--diff-del, oklch(94% 0.06 25)); color: var(--diff-del-fg, oklch(40% 0.12 25)); text-decoration: line-through; }
+.gen-prop-gap { display: block; width: 100%; margin: 4px 0; padding: 3px 0; border: none; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); background: var(--surface-2); color: var(--muted); font-size: var(--fs-11); cursor: pointer; }
+.gen-prop-gap:hover { color: var(--accent); background: var(--accent-soft); }
+.gen-prop-suggestion-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
+.gen-prop-hint { font-size: var(--fs-11); color: var(--muted); font-style: italic; flex: 1 1 auto; min-width: 0; }
+.gen-prop-actions { display: flex; align-items: center; gap: var(--s-2); flex-shrink: 0; }
+
 /* ═══ 决策卡片内嵌 textarea ═══ */
 .db-card-textarea {
   width: 100%; min-height: 48px; padding: var(--s-2);
