@@ -79,15 +79,31 @@ TOTAL_SIZE_REQUIRED_BYTES = sum(m["size_bytes"] for m in MODEL_MANIFEST if not m
 
 
 def get_model_dir() -> Path:
-    """模型存储目录（settings engine.local.model_dir，默认 data/models/）。
-    Configurable model storage directory (default data/models/).
+    """模型存储目录（B-2 修复，D-G3 (a)）。
+
+    解析优先级：
+      1. ``MODELSCOPE_CACHE`` 环境变量——引擎子进程内与宿主一致
+         （宿主经 ``build_worker_env()`` 注入，冻结态引擎包无宿主 settings 可读）；
+      2. settings ``engine.local.model_dir`` 显式配置；
+      3. 平台默认锚点（``core.engine_paths.get_default_model_dir``）：
+         开发态 ``data/models/``；冻结态 Win ``%LOCALAPPDATA%\\OpenMeetingScribe\\models``、
+         mac ``~/Library/Application Support/OpenMeetingScribe/models``。
+         冻结态禁止相对路径（会解析进只读 ``sys._MEIPASS`` bundle）。
     """
+    import os
+
+    env_dir = os.environ.get("MODELSCOPE_CACHE", "").strip()
+    if env_dir:
+        return Path(env_dir).expanduser()
     try:
         from app.settings_store import get_engine_config
         model_dir = get_engine_config()["local"]["model_dir"]
     except Exception:
-        model_dir = "data/models/"
-    return Path(model_dir).expanduser()
+        model_dir = ""
+    if model_dir:
+        return Path(model_dir).expanduser()
+    from core.engine_paths import get_default_model_dir
+    return get_default_model_dir()
 
 
 def get_model_root(model_key: str) -> Path:

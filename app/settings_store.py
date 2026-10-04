@@ -399,16 +399,33 @@ def save_record_device(device: str) -> None:
     save_settings_to_disk(settings)
 
 
-# 本地引擎默认模型存储目录（gitignored，见 .gitignore data/models/）
-# Default local-engine model storage directory
+# 本地引擎默认模型存储目录（开发态；gitignored，见 .gitignore data/models/）
+# 冻结态按平台锚点（D-G3 (a)，B-2 修复：相对路径会解析进只读 bundle）——见 default_model_dir()
 DEFAULT_MODEL_DIR = "data/models/"
+
+
+def default_model_dir() -> str:
+    """平台感知默认模型目录 / Platform-aware default model directory.
+
+    开发态 → ``data/models/``；冻结态 → ``core.engine_paths.get_default_model_dir()``
+    （Win ``%LOCALAPPDATA%\\OpenMeetingScribe\\models``、mac
+    ``~/Library/Application Support/OpenMeetingScribe/models``）。
+    """
+    try:
+        from core.engine_paths import get_default_model_dir, is_frozen
+        if is_frozen():
+            return str(get_default_model_dir())
+    except Exception:
+        pass
+    # 开发态保持历史字面量（含尾部斜杠，settings.json 持久化值与旧版一致）
+    return DEFAULT_MODEL_DIR
 
 
 def get_engine_config() -> dict:
     """
     获取计算引擎配置（从 settings.json） / Get compute-engine config (from settings.json).
 
-    R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier}。
+    R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier, engine_dir}。
     R9/D-I3（REQ-LOCAL-REALTIME-INCR §6）：engine.local.realtime_segments 分段增量
     上屏参数——段长不拍固定数值，全部可配置。WP-I 验收后默认 enabled=true
     （本地模式即逐句上屏，无用户侧开关；仅保留 settings.json 显式置 false 的
@@ -418,14 +435,15 @@ def get_engine_config() -> dict:
       {
         "mode": "cloud",            # cloud | proxy | direct | local（默认 cloud，本地引擎为显式选择）
         "local": {
-          "model_dir": "data/models/",   # 模型权重存储目录 / Model weights directory
+          "model_dir": "<平台默认锚点>",  # 模型权重存储目录（未配置→default_model_dir()）
           "model_tier": "auto",          # auto | conservative | standard（R4 小模型提示词档）
           "realtime_segments": {         # R9 分段增量上屏（WP-I 验收后默认开启）
             "enabled": True,             # 本地模式默认逐句上屏；显式置 false 回到录音后批转写
             "min_segment_s": 5.0,        # 段最短时长（低于此值不闭合，等待更多音频）
             "min_silence_s": 0.8,        # 判定段边界的静音时长（能量 VAD）
             "max_segment_s": 30.0        # 段最长时长（到达即强制闭合）
-          }
+          },
+          "engine_dir": ""              # 引擎组件目录显式覆盖（D-G1 搜索序②，空=自动定位）
         }
       }
     """
@@ -437,7 +455,8 @@ def get_engine_config() -> dict:
     return {
         "mode": mode,
         "local": {
-            "model_dir": local.get("model_dir", DEFAULT_MODEL_DIR),
+            # 未配置/空值 → 平台默认锚点（冻结态禁止相对路径，B-2 / D-G3）
+            "model_dir": local.get("model_dir") or default_model_dir(),
             "model_tier": local.get("model_tier", "auto"),
             "realtime_segments": {
                 "enabled": bool(segments.get("enabled", True)),
@@ -445,6 +464,9 @@ def get_engine_config() -> dict:
                 "min_silence_s": float(segments.get("min_silence_s", 0.8)),
                 "max_segment_s": float(segments.get("max_segment_s", 30.0)),
             },
+            "engine_dir": local.get("engine_dir", ""),
+            # 引擎组件包下载 URL 覆盖（政企内网源；空=GitHub Release 约定，G-4b）
+            "component_url": local.get("component_url", ""),
         },
     }
 
