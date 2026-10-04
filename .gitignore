@@ -1,5 +1,6 @@
 # 密钥（严禁入库）
 .env
+desktop-secrets.env
 
 # 运行时数据
 data/output/
@@ -14,12 +15,15 @@ data/meeting_mappings.json
 data/hotword_mappings.txt
 data/voiceprint_registry.json
 data/settings.json
+data/decision_statuses.json
 data/philosophies.json
 data/hotwords.txt
 data/usage/
+data/chat_attachments/
 data/downloads/
 data/models/
 data/remote_config.json
+data/settings_events.json
 data/*.wav
 data/*.mp3
 data/*.m4a
@@ -54,6 +58,7 @@ logs/
 
 # 截图（调试/测试用，不入库）
 /*.png
+qa-evidence/
 /docs/screenshots/
 .cu_shots/
 browser/
@@ -74,6 +79,7 @@ build/pyinstaller_macos/
 
 # AI 生成的文档索引（可随时重建，不入库）
 .qoder/
+.trae/
 
 # SSH 自动化脚本（私人运维工具）
 scripts/_ssh_*.exp
@@ -82,12 +88,17 @@ scripts/_ssh_*.exp
 AGENTS.md
 CODEX.md
 
-# 云盘同步生成的重名副本（"xxx 2" / "xxx 2.ext" / "xxx 2/"），非人工成果，会随构建反复出现
-# 两条都要：* 2 覆盖无扩展名的文件与目录，* 2.* 覆盖带扩展名的副本
-# Cloud-sync duplicate artifacts. Both patterns are needed: "* 2" catches
-# extension-less files and directories, "* 2.*" catches ones with an extension.
-* 2
-* 2.*
+# 云盘同步生成的重名副本（"xxx 2" / "xxx 3.ext" 等数字后缀），非人工成果，会随构建反复出现
+# 两条都要：* [0-9] 覆盖无扩展名的文件与目录，* [0-9].* 覆盖带扩展名的副本
+# Cloud-sync duplicate artifacts. Both patterns are needed: "* [0-9]" catches
+# extension-less files and directories, "* [0-9].*" catches ones with an extension.
+* [0-9]
+* [0-9].*
+
+# Qoder CLI 引擎 Spike 取证与工作区（含会议上下文，禁止入库）
+# Spike evidence + agent workspace (contains meeting context; never commit)
+.spike_qoder/
+agent-workspace/
 
 # R8 Spike 隔离环境（venv/模型权重/冻结产物，本地位于工作区内但不入库）
 .spike_local_engine/
