@@ -124,29 +124,35 @@ def _switched_to_available_fallback(context: str, expert: bool) -> tuple[str, st
     return None
 
 
-def _trial_route(context: str, expert: bool, quota_state) -> dict:
-    """体验配额来源：平台代付（消耗分钟数）。未登录/配额耗尽 → 明示自动改用。"""
+def _trial_route(context: str, expert: bool, quota_state, allow_fallback: bool) -> dict:
+    """体验配额来源：平台代付（消耗分钟数）。未登录/配额耗尽 → 按用户同意决定是否自动改用。
+
+    allow_fallback=False（默认）：不替用户切换，保持 trial 并明示原因，
+    由界面引导用户手动切换或开启自动改用。
+    """
     logged_in, quota = quota_state
 
     if not logged_in:
-        fb = _switched_to_available_fallback(context, expert)
-        if fb:
-            route, target = fb
-            _record_switch_once(context, "trial", target, "trial_requires_login")
-            return _decision(expert, route, source=target,
-                             auto_switched=True, reason="trial_requires_login")
-        # 无替代：保持体验路由（将因登录门槛失败），原因明示供 L1 行内常驻
+        if allow_fallback:
+            fb = _switched_to_available_fallback(context, expert)
+            if fb:
+                route, target = fb
+                _record_switch_once(context, "trial", target, "trial_requires_login")
+                return _decision(expert, route, source=target,
+                                 auto_switched=True, reason="trial_requires_login")
+        # 未同意（或无替代）：保持体验路由（将因登录门槛失败），原因明示供界面常驻
         transport = "cloud" if context == "llm" else _hosted_transport()
         return _decision(expert, transport, source="trial",
                          reason="trial_requires_login")
 
     if quota is not None and quota <= 0:
-        fb = _switched_to_available_fallback(context, expert)
-        if fb:
-            route, target = fb
-            _record_switch_once(context, "trial", target, "trial_quota_exhausted")
-            return _decision(expert, route, source=target,
-                             auto_switched=True, reason="trial_quota_exhausted")
+        if allow_fallback:
+            fb = _switched_to_available_fallback(context, expert)
+            if fb:
+                route, target = fb
+                _record_switch_once(context, "trial", target, "trial_quota_exhausted")
+                return _decision(expert, route, source=target,
+                                 auto_switched=True, reason="trial_quota_exhausted")
         transport = "cloud" if context == "llm" else _hosted_transport()
         return _decision(expert, transport, source="trial",
                          reason="trial_quota_exhausted_no_fallback")
@@ -208,7 +214,7 @@ def get_routing_decision(context: str = "asr") -> dict:
         "unconfigured": bool,   # True = 该能力未设置来源，触发逐能力引导
       }
     """
-    from app.settings_store import get_capability_status, get_expert_mode
+    from app.settings_store import get_auto_fallback, get_capability_status, get_expert_mode
 
     expert = get_expert_mode()
     try:
@@ -216,13 +222,18 @@ def get_routing_decision(context: str = "asr") -> dict:
         source = (cap.get(context) or {}).get("effective") or ""
     except Exception:
         source = ""
+    # 自动改用需用户逐能力显式同意（默认关；不静默替用户花钱）
+    try:
+        allow_fallback = bool(get_auto_fallback().get(context, False))
+    except Exception:
+        allow_fallback = False
 
     if not source:
         # 逐能力未设置：不静默兜底，明示 unconfigured 供界面引导
         return _decision(expert, "", source="", reason="source_not_set", unconfigured=True)
 
     if source == "trial":
-        return _trial_route(context, expert, _trial_gate_state())
+        return _trial_route(context, expert, _trial_gate_state(), allow_fallback)
 
     if source == "local_endpoint":
         # 仅 LLM 提供本机端点；localhost 端点零出网且不计量
@@ -237,19 +248,20 @@ def get_routing_decision(context: str = "asr") -> dict:
             return _decision(expert, "local", source="local")
         return _decision(expert, "local", source="local", reason="local_unsupported")
 
-    # byok（自带 Key）：Key 缺失不再静默改走平台计费，而是明示自动改用（有条件才切）
+    # byok（自带 Key）：Key 缺失时仅在用户同意后才明示改用体验；否则保持并明示
     if context == "llm":
         if _is_localhost_base_url(_llm_base_url()) or _llm_key_available():
             return _decision(expert, "direct", source="byok")
-        logged_in, quota = _trial_gate_state()
-        if logged_in and (quota is None or quota > 0) and _cloud_available():
-            _record_switch_once("llm", "byok", "trial", "byok_key_missing")
-            return _decision(expert, "cloud", source="trial",
-                             auto_switched=True, reason="byok_key_missing")
+        if allow_fallback:
+            logged_in, quota = _trial_gate_state()
+            if logged_in and (quota is None or quota > 0) and _cloud_available():
+                _record_switch_once("llm", "byok", "trial", "byok_key_missing")
+                return _decision(expert, "cloud", source="trial",
+                                 auto_switched=True, reason="byok_key_missing")
         return _decision(expert, "direct", source="byok",
                          reason="byok_key_missing_cloud_unavailable")
 
-    # ASR byok：有可用 Key → direct；否则若体验可用明示改用体验，都不可用则保持并明示
+    # ASR byok：有可用 Key → direct；否则按同意决定是否改用体验，都不可用则保持并明示
     try:
         cfg = _asr_config()
         asr_key = cfg.get("api_key", "") or _env_dashscope_key()
@@ -257,11 +269,12 @@ def get_routing_decision(context: str = "asr") -> dict:
         cfg, asr_key = {}, ""
     if asr_key and not is_placeholder_key(asr_key):
         return _decision(expert, "direct", source="byok")
-    logged_in, quota = _trial_gate_state()
-    if logged_in and (quota is None or quota > 0) and _cloud_available():
-        _record_switch_once("asr", "byok", "trial", "byok_key_missing")
-        return _decision(expert, "cloud", source="trial",
-                         auto_switched=True, reason="byok_key_missing")
+    if allow_fallback:
+        logged_in, quota = _trial_gate_state()
+        if logged_in and (quota is None or quota > 0) and _cloud_available():
+            _record_switch_once("asr", "byok", "trial", "byok_key_missing")
+            return _decision(expert, "cloud", source="trial",
+                             auto_switched=True, reason="byok_key_missing")
     return _decision(expert, cfg.get("mode", "proxy"), source="byok",
                      reason="byok_key_missing_cloud_unavailable")
 

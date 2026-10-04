@@ -62,6 +62,10 @@ def test_realtime_fallback_hits_with_sentences(monkeypatch, tmp_path):
     monkeypatch.setattr(pr, "tasks", fake_tasks)
     monkeypatch.setattr(pr, "save_task_to_disk", lambda t: None)
     monkeypatch.setattr(pr, "_cleanup_normalized_intermediate", lambda t: None)
+    # 绑定存 UUID，stage2 前翻译为真名（2026-10-01 修复：UUID 直接落 speaker_mapping 导致显示异常）
+    from types import SimpleNamespace
+    monkeypatch.setattr(pr.speakers, "get_speaker_by_id",
+                        lambda u: SimpleNamespace(name="张三") if u == "uuid-a" else None)
     stage2_calls = []
     monkeypatch.setattr(pr, "_run_stage2_for_task", lambda t, p, m=None: stage2_calls.append((t, m)))
 
@@ -71,9 +75,9 @@ def test_realtime_fallback_hits_with_sentences(monkeypatch, tmp_path):
     assert task["transcript_source"] == "realtime_fallback"
     assert len(task["dialogue"]) == 2
     assert stage2_calls, "应触发 stage2 生成纪要"
-    # 绑定键转 int 传入 stage2
+    # 绑定键转 int、UUID 翻译为真名后传入 stage2
     _, mapping = stage2_calls[0]
-    assert mapping == {0: "uuid-a"}
+    assert mapping == {0: "张三"}
 
 
 def test_realtime_fallback_no_data_returns_false(monkeypatch, tmp_path):

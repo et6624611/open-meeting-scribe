@@ -7,10 +7,22 @@ import { ref, onUnmounted } from 'vue'
 import { useRealtimeStore } from '@/stores/realtime'
 import { getLocale } from '@/i18n'
 
+/** 口语清理单条规则流水（与后端 core.transcript_cleanup 的 ops 契约一致） / One cleanup op record */
+export interface CleanOp {
+  /** filler=填充词删除 dup=口吃合并 punct=标点整理 */
+  r: 'filler' | 'dup' | 'punct'
+  n: number
+  items?: string[]
+}
+
 export interface TranscriptLine {
   speaker_id: number
   speaker_name: string
+  /** 逐字稿原文，永不改写（引用/追责锚点） / Verbatim text, never rewritten */
   text: string
+  /** 本地规则清理版（仅发生变化的句子/段落才挂键） / Local-rule cleaned text (only present when changed) */
+  clean_text?: string
+  clean_ops?: CleanOp[]
   begin_time?: number
   end_time?: number
   isFinal: boolean
@@ -151,6 +163,17 @@ export function useWebSocketTranscript() {
     const type = msg.type as string
     const rtStore = useRealtimeStore()
 
+    // 取清理层字段（仅后端实际挂键时透传） / Pick cleanup-layer fields only when backend sends them
+    const pickClean = (): Pick<TranscriptLine, 'clean_text' | 'clean_ops'> => {
+      if (typeof msg.clean_text === 'string') {
+        return {
+          clean_text: msg.clean_text,
+          ...(Array.isArray(msg.clean_ops) ? { clean_ops: msg.clean_ops as CleanOp[] } : {}),
+        }
+      }
+      return {}
+    }
+
     switch (type) {
       case 'history':
         rtStore.push({
@@ -167,6 +190,7 @@ export function useWebSocketTranscript() {
           begin_time: msg.begin_time as number,
           end_time: msg.end_time as number,
           isFinal: true,
+          ...pickClean(),
         })
         break
 
@@ -196,6 +220,7 @@ export function useWebSocketTranscript() {
           begin_time: msg.begin_time as number,
           end_time: msg.end_time as number,
           isFinal: true,
+          ...pickClean(),
         })
         break
 
@@ -297,8 +322,18 @@ export function useWebSocketTranscript() {
       (newLine.begin_time - (last.end_time || 0)) < PARAGRAPH_MERGE_GAP_MS
     ) {
       // 合并到上一段落（追加文本 + 更新时间戳） / Merge into previous paragraph (append text + update timestamps)
+      const prevRaw = last.text
       last.text += newLine.text
       last.end_time = newLine.end_time
+      // 清理层按句拼接：只要任一句有清理结果，段落即挂 clean_text；
+      // 未变化的句子用其原文参与拼接 / Clean layer is joined per-sentence;
+      // an unchanged sentence contributes its verbatim text.
+      if (last.clean_text !== undefined || newLine.clean_text !== undefined) {
+        last.clean_text = (last.clean_text ?? prevRaw) + (newLine.clean_text ?? newLine.text)
+        const mergedOps: CleanOp[] = [...(last.clean_ops ?? []), ...(newLine.clean_ops ?? [])]
+        if (mergedOps.length) last.clean_ops = mergedOps
+        else delete last.clean_ops
+      }
     } else {
       lines.value.push(newLine)
     }

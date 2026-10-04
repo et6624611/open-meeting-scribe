@@ -50,6 +50,27 @@ export interface ChatMessage {
   stages?: AgentStage[]
   /** 本轮实际消费方与计费回显（REQ-EXPERT-MODE §2.3，与 routing 判定一致） */
   modelUsage?: ModelUsage
+  /** 发送时快照（编辑再发送回填用）：模式 + 问答模型 + 智能体引擎模型 */
+  sendOptions?: SendSnapshot
+  /** 用户本轮 @附件 上传的附件（仅用户消息） / Attachments uploaded with this turn (user messages only) */
+  attachments?: AttachmentMeta[]
+}
+
+/** AI 会话附件元数据 / AI chat attachment metadata */
+export interface AttachmentMeta {
+  id: string
+  filename: string
+  size: number
+  content_type: string
+}
+
+/** 用户消息发送时的参数快照 / Snapshot of options when the user message was sent */
+export interface SendSnapshot {
+  mode: 'qa' | 'agent'
+  /** 问答模式 LLM 模型（'' = 跟随详情） */
+  model?: string
+  /** 智能体模式 CLI 引擎模型（'' = 引擎默认） */
+  agentModel?: string
 }
 
 /** 回复尾部使用回显：模型 · 算力来源 · 计费口径 */
@@ -151,6 +172,10 @@ export interface ChatOptions {
   resume_session?: boolean
   /** 面板会话标签 id，令 CLI 会话与面板会话对齐（同标签多轮自然延续） */
   chat_session_id?: string
+  /** 智能体轮级 CLI 模型覆盖（编辑再发送），缺省后端读 chat_engine.model */
+  agentModel?: string
+  /** 当前轮 @附件 引用，仅当前轮展开 / Attachments for this turn only */
+  attachments?: AttachmentMeta[]
   signal?: AbortSignal
 }
 
@@ -229,6 +254,8 @@ export async function sendMessageStream(
       auth_tier: options?.auth_tier,
       resume_session: options?.resume_session,
       chat_session_id: options?.chat_session_id,
+      agent_model: options?.agentModel,
+      attachments: options?.attachments,
     }),
     signal: options?.signal,
   })
@@ -310,6 +337,36 @@ export async function cleanupAgentWorkspace(chatSessionId: string, taskId?: stri
   } catch {
     return false
   }
+}
+
+/** 会话自动命名（AI 命名，仅此一种来源）：首轮完成后后台调用。
+ *  失败/异常静默回空串，调用方保留默认名，不打断用户。 */
+export async function generateChatTitle(firstMessage: string, reply: string): Promise<string> {
+  try {
+    const { data } = await client.post<{ ok: boolean; title: string }>('/api/chat/title', {
+      first_message: firstMessage,
+      reply,
+    })
+    return data.ok ? (data.title || '') : ''
+  } catch {
+    return ''
+  }
+}
+
+/** @附件：上传本地文件与图片，返回服务端元数据 / Upload local files & images for @附件 */
+export async function uploadChatAttachments(files: File[]): Promise<AttachmentMeta[]> {
+  const form = new FormData()
+  files.forEach(f => form.append('files', f))
+  const { data } = await client.post<{ attachments: AttachmentMeta[] }>(
+    '/api/chat/attachments', form,
+    { headers: { 'Content-Type': 'multipart/form-data' } })
+  return data.attachments
+}
+
+/** @附件：预览/下载地址 / Attachment preview or download URL */
+export function attachmentUrl(meta: AttachmentMeta, download = false): string {
+  const base = (client.defaults as { baseURL?: string }).baseURL || ''
+  return `${base}/api/chat/attachments/${meta.id}${download ? '?download=1' : ''}`
 }
 
 /** 行间编辑响应 / Inline edit response */

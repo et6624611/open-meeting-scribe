@@ -20,6 +20,11 @@ export interface AiSession {
   messages: ChatMessage[]
   /** Agent 角色标识 / Agent role identifier */
   role?: string
+  /** 会话开始时锁定的授权档快照（会话级，档位下沉面板后唯一生效口径） */
+  authTier?: string
+  /** 自动命名三态：undefined=未被命名过（默认序号名，可被 AI 命名）；
+   *  true=名字来自 AI 生成；false=用户手动改过名，AI 命名永久让位 */
+  autoTitled?: boolean
 }
 
 interface SessionBucket {
@@ -93,14 +98,34 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
     }
   }
 
-  function createNewSession(): AiSession {
+  /** 新建会话并锁定授权档快照（档位：会中改档只对待生效值负责，新会话才应用） */
+  function createNewSession(authTier?: string): AiSession {
     const bucket = currentBucket.value
     const idx = bucket.sessions.length + 1
     const session = createSession(idx)
+    if (authTier) session.authTier = authTier
     bucket.sessions.push(session)
     bucket.activeSessionId = session.id
     persist()
     return session
+  }
+
+  /** 给历史会话补盖快照戳（首次使用时按当前待生效档锁定，只盖一次） */
+  function stampActiveSessionTier(authTier: string): boolean {
+    const session = activeSession.value
+    if (!session || session.authTier) return false
+    session.authTier = authTier
+    persist()
+    return true
+  }
+
+  /** 会中改档：覆盖当前会话锁定档（改完即生效，下一轮起用新档） */
+  function updateActiveSessionTier(authTier: string): boolean {
+    const session = activeSession.value
+    if (!session) return false
+    session.authTier = authTier
+    persist()
+    return true
   }
 
   function switchTo(sessionId: string) {
@@ -133,8 +158,21 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
     const trimmed = name.trim()
     if (trimmed) {
       session.name = trimmed
+      // 用户命名权最高：改名后 AI 自动命名永久让位
+      session.autoTitled = false
       persist()
     }
+  }
+
+  /** AI 自动命名落名（仅当会话从未被命名过：autoTitled 为 undefined）。
+   *  接收会话对象本身而非 id：命名请求跨桶在途返回时仍落在正确的会话上。 */
+  function applyAutoTitle(session: AiSession, title: string) {
+    if (session.autoTitled !== undefined) return
+    const trimmed = title.trim()
+    if (!trimmed) return
+    session.name = trimmed
+    session.autoTitled = true
+    persist()
   }
 
   function persist() {
@@ -192,7 +230,7 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
   return {
     activeKey, historyMap,
     sessions, activeSession, activeMessages, currentBucket,
-    setChatKey, createNewSession, switchTo, deleteSession, renameSession,
+    setChatKey, createNewSession, stampActiveSessionTier, updateActiveSessionTier, switchTo, deleteSession, renameSession, applyAutoTitle,
     persist, restore, clearCurrentSession,
   }
 })

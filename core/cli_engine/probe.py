@@ -58,6 +58,8 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
     result = {
         "available": False, "reason": "probe_error", "path": None,
         "version": None, "logged_in": False, "display_name": display_name, "hint": "",
+        # 登录段被显式跳过（login_cmd=null）：可用性只代表路径+版本，登录缺失由运行期错误浮现
+        "login_skipped": False,
         # 引擎展示名的 i18n 键（品牌名不翻译；含本地化后缀的引擎由前端按键翻译）
         "name_key": manifest.get("name_key", ""),
         # 三段探针失败段定位（REQ-EXPERT-MODE §2.2：详情卡/对话面板直接可见哪段挂了）
@@ -99,7 +101,16 @@ def probe_engine(manifest: dict, cli_path_override: str | None = None) -> dict:
         return result
 
     # ③ 登录态校验（探针命令均来自受控 manifest，无用户输入）
-    login_cmd = manifest.get("probe", {}).get("login_cmd") or [binary, "status"]
+    # 显式 "login_cmd": null = 该 CLI 无安全的无头登录探针（如 traecli/kimi 仅交互式 /login），
+    # 跳过登录段：可用性以路径+版本为准，绝不伪造已登录，登录缺失由运行期错误事件浮现
+    probe_cfg = manifest.get("probe", {})
+    if "login_cmd" in probe_cfg and probe_cfg["login_cmd"] is None:
+        result["available"] = True
+        result["reason"] = "ok"
+        result["logged_in"] = None
+        result["login_skipped"] = True
+        return result
+    login_cmd = probe_cfg.get("login_cmd") or [binary, "status"]
     login_cmd = [path if c == binary else c for c in login_cmd]
     signature = manifest.get("probe", {}).get("login_signature", "Username:")
     try:

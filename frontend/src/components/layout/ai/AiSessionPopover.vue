@@ -1,6 +1,5 @@
 <template>
-  <!-- 会话入口：Tab 行右端的气泡图标触发，弹出式会话列表（取代原常驻标签栏）
-       Session entry: bubble trigger at the right end of the Tab row + popover conversation list -->
+  <!-- 会话入口：头部右侧时钟图标触发（历史任务语义），弹出式会话列表内置检索 -->
   <IconButton
     ref="triggerComp"
     class="ai-session-trigger"
@@ -9,7 +8,11 @@
     v-bind="triggerAttrs"
     @click="toggle"
   >
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+      <path d="M3 3v5h5"/>
+      <path d="M12 7v5l4 2"/>
+    </svg>
   </IconButton>
   <div
     ref="menuEl"
@@ -18,7 +21,7 @@
     class="ai-session-popover"
     :aria-label="t('ai-panel.sessions')"
   >
-    <!-- 顶行：标题 + 计数 + 清空 + 新建 -->
+    <!-- 顶行：标题 + 计数 + 清空（新建入口已在面板头部） -->
     <div class="asp-head">
       <span class="asp-head-title">{{ t('ai-panel.sessions_title') }}</span>
       <span class="asp-head-count">{{ sessions.length }}</span>
@@ -28,10 +31,6 @@
           tip-position="bottom" :disabled="activeEmpty" @click="confirmClear = !confirmClear"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </IconButton>
-        <IconButton class="asp-new" :label="t('ai-panel.new_session')" show-label @click="onNewSession">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          <template #label>{{ t('ai-panel.sessions_create') }}</template>
         </IconButton>
       </span>
     </div>
@@ -130,9 +129,8 @@ const triggerComp = ref<InstanceType<typeof IconButton> | null>(null)
 const triggerEl = ref<HTMLElement | null>(null)
 const menuEl = ref<HTMLElement | null>(null)
 onMounted(() => { triggerEl.value = (triggerComp.value?.$el as HTMLElement) ?? null })
-// align end（默认）+ gap 14：触发按钮在 52px 的 Tab 行内上下各占 11px，
-// 4px 默认间距会让弹层压住 Tab 行下边线，取 14px 使弹层整块落在行下方
-const { visible, toggle, close, triggerAttrs, menuAttrs } = usePopMenu(menuEl, triggerEl, { gap: 14 })
+// 触发按钮在 47px 头部行内居中（30px 高，上下各余约 8px），gap 8 使弹层落在行下方
+const { visible, toggle, close, triggerAttrs, menuAttrs } = usePopMenu(menuEl, triggerEl, { gap: 8 })
 
 const query = ref('')
 const searchRef = ref<HTMLInputElement | null>(null)
@@ -193,14 +191,11 @@ watch(() => props.renamingId, (id) => {
   })
 })
 
-/** 切换/新建后收起面板；删除保持展开以便连续清理 */
+/** 切换后收起面板；删除保持展开以便连续清理。
+    新建由面板头部的圈加号承担，本弹层不再触发 newSession（emit 保留给父层契约） */
 function onSwitch(id: string) {
   if (id === props.activeSessionId) { close(); return }
   emit('switch', id)
-  close()
-}
-function onNewSession() {
-  emit('newSession')
   close()
 }
 

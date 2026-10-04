@@ -56,6 +56,56 @@
     "create_named": "新建",
     "create": "+ 新建人员"
   },
+  "layer": {
+    "picker_label": "原文类型",
+    "formal": "书面版",
+    "clean": "清理版",
+    "raw": "原文",
+    "formal_idle_title": "书面版尚未生成",
+    "formal_idle_desc": "AI 书面化把口语改写为规范书面表达，只生成独立版本，不修改逐字稿原文；引用与追责始终以原文为准。",
+    "formal_generate": "生成书面版",
+    "formal_starting": "正在提交…",
+    "formal_regenerate": "重新生成",
+    "formal_retry": "重试",
+    "formal_estimate": "预计约 {tokens} tokens（估算，以实际消耗为准）",
+    "formal_cost_cloud": "将消耗模型额度",
+    "formal_cost_local": "本机算力，不消耗云额度",
+    "formal_auto": "会议结束后自动生成书面版",
+    "formal_auto_short": "自动生成",
+    "formal_running_title": "正在生成书面版…",
+    "formal_progress": "已处理 {done}/{total} 句",
+    "formal_error_title": "书面版生成失败",
+    "formal_stale_title": "原文已更新，书面版已过期",
+    "formal_stale_desc": "检测到逐字稿原文在上次生成后发生变化，请重新生成；引用前请先核对。",
+    "formal_meta_tokens": "{tokens} tokens",
+    "formal_tone_count": "语气存疑 {n} 句",
+    "formal_tone_tag": "⚠ 语气存疑",
+    "formal_tone_warn": "该句语气被弱化或存在反转风险，引用结论时请以原文为准",
+    "formal_tag_compare": "对照原文",
+    "formal_compare_label": "书面版 / 原文对照 · 只读",
+    "formal_compare_formal": "书面版",
+    "formal_compare_raw": "原文",
+    "formal_blocked": "当前无法生成：{reason}。请在设置中检查模型配置与额度。",
+    "formal_blocked_generic": "当前无法生成，请稍后重试或检查模型设置。",
+    "formal_block_reason": {
+      "source_not_set": "未配置模型",
+      "trial_requires_login": "试用需先登录",
+      "trial_quota_exhausted": "试用额度已用完",
+      "trial_quota_exhausted_no_fallback": "试用额度已用完且无可用模型",
+      "byok_key_missing_cloud_unavailable": "模型密钥缺失且云端不可用",
+      "local_endpoint_misconfigured": "本机模型地址配置有误",
+      "local_unsupported": "本机模型不支持该能力"
+    },
+    "tag_cleaned": "已清理 · 原文",
+    "tag_cleaned_title": "查看逐字稿原文与清理明细",
+    "peek_label": "逐字稿原文 · 只读",
+    "op_filler": "移除语气词 {n}",
+    "op_dup": "合并重复 {n}",
+    "op_punct": "标点整理 {n} 处",
+    "op_items": "（{items}）",
+    "op_join": "、",
+    "op_sep": "；"
+  },
   "transcript": {
     "show": "显示原文",
     "hide": "隐藏原文",
@@ -71,6 +121,7 @@
   },
   "chapter": {
     "overview_label": "章节",
+    "toggle_all_transcripts": "展开 / 收起全部章节",
     "index_prefix": "第",
     "index_suffix": "章 / 共 {count} 章",
     "dividing": "章节划分中...",
@@ -140,6 +191,9 @@
   "notes": {
     "placeholder": "在此记录随记… Enter 新建块 · ↑↓ 跨块移动",
     "saved": "已保存",
+    "empty_title": "随手记，不用整理",
+    "empty_body": "灵感、待办、原话、链接……都可以先扔在这里。点击开始写，支持 Markdown；会后也可让 AI 帮你整理成要点与待办。",
+    "empty_foot": "开始输入后此提示自动消失",
     "proposal_label": "随记改写建议",
     "proposal_stats": "{hunks} 处修改 · +{added} / −{removed} 行",
     "proposal_pending": "AI 已产出随记改写建议（{hunks} 处修改 · +{added} / −{removed} 行）",
@@ -231,27 +285,16 @@
     "insights": "洞察"
   },
   "insights": {
-    "analyze": "分析本场会议",
-    "analyze_tip": "基于完整纪要内容再跑一轮全局观察；每次分析可能产生新的发现",
-    "analyzing": "分析中…",
-    "analyze_none": "本场会议暂未发现新的洞察要点。",
-    "analyze_failed": "会后洞察分析失败，请稍后重试。",
-    "analyze_in_flight": "该会议正在分析中，请稍候。",
-    "empty_title": "本场会议还没有洞察",
-    "empty_desc": "洞察台是 AI 的过程观察，不属于纪要内容；点击下方按钮可基于全文产生新的观察。",
-    "phase_post": "会后",
     "board": {
       "eyebrow": "洞察板",
       "empty_title": "尚无洞察板",
       "empty_body": "洞察板是一份人与 AI 共创的全局视图：在 AI 对话的「智能体」模式中说「为本次会议生成洞察板」，AI 会读取转写与当前板、产出整份 HTML 并落盘。",
       "co_create": "在对话中共创",
-      "co_create_msg": "请读取当前会议的洞察板（如尚无则基于转写与章节新建），与我一起生成或修订它。",
+      "co_create_msg": "请基于本次会议的转写与章节生成或修订洞察板：不要复述决策、议题归类、待办分工和谁说了什么（纪要页与决策中心已经承载）；只针对会上悬而未决的困境，调用你的外部行业知识与成熟实践，给出会上没人想到的最优解法。板是图不是文章：每个困境一节，先画后主文，用内置组件画主视觉（流程链路 .ib-flow、分发聚合 .ib-tree、现状目标对照 .ib-compare、并列机制 .ib-grid），再配简短图文、.ib-roadmap 落地路线和 .ib-tradeoff 取舍，不要用纯文字列表堆成文章。",
       "co_create_section": "共创此节",
-      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
+      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，按「困境条 .ib-dilemma → 主视觉 .ib-visual（.ib-flow/.ib-tree/.ib-compare/.ib-grid 之一，不可缺）→ 简短图文 → .ib-roadmap 落地 → .ib-tradeoff 取舍」重写，不要放决策/议题/待办清单、发言人记录或纯文字列表，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
       "refresh": "刷新",
-      "loading": "加载中…",
-      "view_board": "板视图",
-      "view_cards": "卡片视图"
+      "loading": "加载中…"
     }
   },
   "ai_actions": {
@@ -299,9 +342,20 @@
     "person_suffix": "人参会",
     "add_inline_placeholder": "添加…",
     "pick_speaker": "添加参会人",
-    "auto_tag": "自动",
     "search_placeholder": "搜索人员…",
     "create_hint": "新建「{name}」"
+  },
+  "voiceprint": {
+    "run": "运行声纹识别",
+    "running": "识别中…",
+    "failed": "识别失败",
+    "tag_matched": "声纹相似度 {pct}%",
+    "tag_unmatched": "最高相似度 {pct}%",
+    "adopt_name": "采纳建议：{name}",
+    "inline_suggest": "建议 {name} {pct}%",
+    "inline_weak": "无匹配（{pct}%）",
+    "suggest_badge": "声纹 {pct}%",
+    "dismiss": "忽略建议"
   },
   "pipeline": {
     "completed": "纪要已生成"

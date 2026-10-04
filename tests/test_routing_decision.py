@@ -41,8 +41,9 @@ def cap(monkeypatch):
     """设置逐能力生效来源桩（隔离文件系统与 users）。
 
     llm_src/asr_src 即 capability.effective；"" 表示未设置。
+    fallback = 自动改用同意开关（逐能力，默认关，与生产缺省一致）。
     """
-    def _set(expert=False, llm_src="", asr_src=""):
+    def _set(expert=False, llm_src="", asr_src="", fallback=False):
         monkeypatch.setattr(ss, "get_expert_mode", lambda: expert)
 
         def _capstatus(prefer_subscription=None):
@@ -52,6 +53,8 @@ def cap(monkeypatch):
             }
 
         monkeypatch.setattr(ss, "get_capability_status", _capstatus)
+        monkeypatch.setattr(ss, "get_auto_fallback",
+                            lambda: {"llm": bool(fallback), "asr": bool(fallback)})
     return _set
 
 
@@ -202,7 +205,7 @@ class TestTrialSource:
         assert d["route"] in ("proxy", "cloud") and d["source"] == "trial"
 
     def test_trial_quota_exhausted_auto_switches_with_event(self, cap, keys, cloud, user_state, events):
-        cap(llm_src="trial")
+        cap(llm_src="trial", fallback=True)
         keys(llm_key=VALID_KEY)
         cloud(True)
         user_state(quota=0)
@@ -221,7 +224,7 @@ class TestTrialSource:
         assert d["reason"] == "trial_quota_exhausted_no_fallback"
 
     def test_trial_not_logged_in_auto_switches(self, cap, keys, cloud, user_state):
-        cap(llm_src="trial")
+        cap(llm_src="trial", fallback=True)
         keys(llm_key=VALID_KEY)
         cloud(True)
         user_state(logged_in=False)
@@ -245,7 +248,7 @@ class TestByokSource:
         assert rt.get_routing_decision("asr")["route"] == "direct"
 
     def test_byok_missing_key_switches_to_trial_explicitly(self, cap, keys, cloud, user_state, events):
-        cap(llm_src="byok")
+        cap(llm_src="byok", fallback=True)
         keys(llm_key="")
         cloud(True)
         user_state(quota=100)
@@ -271,7 +274,7 @@ class TestByokSource:
 
 class TestCompatMirror:
     def test_route_override_mirrors_auto_switched(self, cap, keys, cloud, user_state):
-        cap(llm_src="trial")
+        cap(llm_src="trial", fallback=True)
         keys(llm_key=VALID_KEY)
         cloud(True)
         user_state(quota=0)
@@ -279,10 +282,56 @@ class TestCompatMirror:
         assert d["route_override"] == d["auto_switched"] is True
 
     def test_event_recorded_only_on_transition(self, cap, keys, cloud, user_state, events):
-        cap(llm_src="trial")
+        cap(llm_src="trial", fallback=True)
         keys(llm_key=VALID_KEY)
         cloud(True)
         user_state(quota=0)
         for _ in range(3):
             rt.get_routing_decision("llm")
         assert len([e for e in events if e.get("reason") == "trial_quota_exhausted"]) == 1
+
+
+# ============================================================
+# 自动改用同意开关：默认关闭，即使有已配置替代也不替用户切换
+# ============================================================
+
+
+class TestFallbackConsent:
+    def test_trial_exhausted_consent_off_keeps_trial(self, cap, keys, cloud, user_state, events):
+        """有可用 BYOK 替代但用户未同意 → 保持 trial，不自动改用、不落切换事件。"""
+        cap(llm_src="trial", fallback=False)
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(quota=0)
+        d = rt.get_routing_decision("llm")
+        assert d["source"] == "trial" and d["auto_switched"] is False
+        assert d["reason"] == "trial_quota_exhausted_no_fallback"
+        assert events == []
+
+    def test_trial_not_logged_in_consent_off_keeps_trial(self, cap, keys, cloud, user_state):
+        cap(llm_src="trial", fallback=False)
+        keys(llm_key=VALID_KEY)
+        cloud(True)
+        user_state(logged_in=False)
+        d = rt.get_routing_decision("llm")
+        assert d["source"] == "trial" and d["auto_switched"] is False
+        assert d["reason"] == "trial_requires_login"
+
+    def test_byok_missing_key_consent_off_keeps_byok(self, cap, keys, cloud, user_state):
+        """BYOK 缺 Key 且体验可用，但未同意 → 保持 byok 并明示，不静默切回平台计费。"""
+        cap(asr_src="byok", fallback=False)
+        keys(asr_mode="direct", asr_key="")
+        cloud(True)
+        user_state(quota=100)
+        d = rt.get_routing_decision("asr")
+        assert d["source"] == "byok" and d["auto_switched"] is False
+        assert d["reason"] == "byok_key_missing_cloud_unavailable"
+
+    def test_consent_on_allows_switch_again(self, cap, keys, cloud, user_state):
+        cap(asr_src="byok", fallback=True)
+        keys(asr_mode="direct", asr_key="")
+        cloud(True)
+        user_state(quota=100)
+        d = rt.get_routing_decision("asr")
+        assert d["source"] == "trial" and d["auto_switched"] is True
+        assert d["reason"] == "byok_key_missing"

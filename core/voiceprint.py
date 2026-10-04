@@ -14,10 +14,13 @@ v2.0 重构：按职责拆分为两个子模块 / v2.0 refactor: split by respon
 
 # 管线层：自动识别 + 绑定注册 / Pipeline layer: auto-identification + binding registration
 from core.voiceprint_identify import (  # noqa: F401
+    CHUNK_SEC,
+    GROUP_MAJORITY_RATIO,
     AutoMatchResult,
     auto_identify_speakers,
     build_auto_mapping,
     extract_speaker_embedding,
+    extract_speaker_embedding_group,
     merge_embeddings,
     register_from_binding,
 )
@@ -28,9 +31,15 @@ from core.voiceprint_registry import (  # noqa: F401
     DATA_DIR,
     EMBEDDING_DIM,
     MATCH_THRESHOLD,
+    MAX_SAMPLES_PER_MEETING,
+    MAX_SAMPLES_PER_SPEAKER,
     MAX_SEC_PER_SPEAKER,
     MIN_MATCH_MARGIN,
     MIN_REGISTER_SEC,
+    PERSONAL_THR_CAP,
+    PERSONAL_THR_FLOOR,
+    PERSONAL_THR_MIN_SAMPLES,
+    PERSONAL_THR_STD_K,
     REGISTRY_FILE,
     SAMPLE_RATE,
     VOICEPRINT_MODEL_VERSION,
@@ -48,5 +57,6 @@ from core.voiceprint_registry import (  # noqa: F401
     match_voiceprint,
     match_voiceprint_detail,
     register_voiceprint,
+    register_voiceprint_samples,
     save_registry,
 )

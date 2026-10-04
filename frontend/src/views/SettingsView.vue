@@ -629,6 +629,7 @@ const featureFlags = reactive<FeatureFlags>({
   realtime_summary_interval: 60,
   update_check: true,
   voiceprint_auto_match: false,
+  chrome_autohide: true,
 })
 
 // ─── 分离 / Diarization ───
@@ -793,6 +794,7 @@ async function loadSettingsIntoReactive() {
       realtime_summary_interval: s.feature_flags.realtime_summary_interval || 60,
       update_check: s.feature_flags.update_check !== false,
       voiceprint_auto_match: s.feature_flags.voiceprint_auto_match === true,
+      chrome_autohide: s.feature_flags.chrome_autohide !== false,
     })
   }
   if (s.diarization) Object.assign(diarizationInfo, s.diarization)

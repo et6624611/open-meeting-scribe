@@ -1,6 +1,6 @@
 <template>
   <!-- 决策流卡片（唯一决策对象的交互载体）/ Decision-flow card: the one and only decision object -->
-  <div class="db-node" :class="{ 'is-done': closing }" :style="statusVarStyle">
+  <div class="db-node" :data-todo-id="todo.id" :class="{ 'is-done': closing }" :style="statusVarStyle">
     <!-- 第一行：状态点 + 标题 + 状态下拉 + 负责人下拉 / Row 1: dot + title + status dropdown + owner dropdown -->
     <div class="db-row1">
       <span class="db-dot"></span>
@@ -92,7 +92,7 @@
         class="db-card-textarea"
         :value="content"
         :placeholder="t('generating.todos.content_placeholder')"
-        :rows="Math.max(content.split('\n').length, 2)"
+        rows="2"
         spellcheck="false"
         @input="onContentInput"
         @keydown="contentOnKeydown"
@@ -226,6 +226,22 @@ watch(bodyContent, (val: string) => {
   content.value = val
 })
 
+// ── 正文框高度随内容自适应：rows 只统计硬换行，长段落软折行时框高不会增长 ──
+function autoGrowContent() {
+  const el = contentRef.value
+  // 分组折叠（display:none）下测量为 0，跳过；展开时 ResizeObserver 会补算
+  if (!el || el.offsetWidth === 0) return
+  el.style.height = 'auto'
+  // border-box 下 scrollHeight 不含上下 border，直接赋值会稳定差出 2px
+  const cs = getComputedStyle(el)
+  const borderY = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+  el.style.height = el.scrollHeight + borderY + 'px'
+}
+// 输入、斜杠日期展开、外部数据回流都经 content，统一在这里重算
+watch(content, () => { void nextTick(autoGrowContent) })
+
+let contentResizeObs: ResizeObserver | undefined
+
 function onContentInput(e: Event) {
   // 先就地展开日期触发词（/today 后接空格），展开后的 input 事件会再回到这里同步 content
   handleDateShortcut(e)
@@ -340,6 +356,23 @@ function onDocClick(e: MouseEvent) {
   if (ownerDropRef.value && !ownerDropRef.value.contains(e.target as Node)) ownerOpen.value = false
 }
 
-onMounted(() => document.addEventListener('click', onDocClick, true))
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
+onMounted(() => {
+  document.addEventListener('click', onDocClick, true)
+  void nextTick(autoGrowContent)
+  // 宽度变化（窗口缩放）与分组 v-show 折叠/展开都会触发，按新尺寸重算折行高度
+  contentResizeObs = new ResizeObserver(() => autoGrowContent())
+  if (contentRef.value) contentResizeObs.observe(contentRef.value)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick, true)
+  contentResizeObs?.disconnect()
+})
+
+// 编辑态（v-if）结束后正文 textarea 是重新挂载的节点，需补测并重新挂观察
+watch(editing, (v) => {
+  if (!v) void nextTick(() => {
+    autoGrowContent()
+    if (contentResizeObs && contentRef.value) contentResizeObs.observe(contentRef.value)
+  })
+})
 </script>

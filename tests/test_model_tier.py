@@ -5,7 +5,6 @@ tests/test_model_tier.py — R4 model_tier 档位判定与防幻觉提示词接�
   pytest tests/test_model_tier.py -v
 """
 
-import asyncio
 import json
 
 import pytest
@@ -150,44 +149,3 @@ class TestSummarizeWiring:
         # 一页纸系数上线后的新不变量：标准档 = 基座提示词 + 默认 1 页预算块（防幻觉守卫仍为空）
         assert captured["system"] == summarize.SYSTEM_PROMPT + summarize.build_page_budget_block(1.0)
         assert model_tier.CONSERVATIVE_PROMPT_GUARD not in captured["system"]
-
-
-# ============================================================
-# 洞察管线接入（core/insights.py）
-# ============================================================
-
-class TestInsightsWiring:
-    def test_conservative_guard_injected(self, settings_file, monkeypatch):
-        _write_settings(settings_file, {"llm": {"model": "qwen3:8b"}})
-        import core.insights as insights
-
-        captured = {}
-
-        async def fake_async_chat_completion(messages, model=None, **kwargs):
-            captured["system"] = messages[0]["content"]
-            return json.dumps({"title": "t", "body": "b", "solution": "s", "has_finding": True, "diagram": ""})
-
-        monkeypatch.setattr(insights, "async_chat_completion", fake_async_chat_completion)
-        result = asyncio.run(insights.run_analysis(
-            recent_lines=[{"text": "下周三发布", "speaker_id": 0, "begin_time": 0}],
-            chapter_titles=["发布计划"],
-        ))
-        assert result["has_finding"] is True
-        assert model_tier.CONSERVATIVE_PROMPT_GUARD in captured["system"]
-
-    def test_standard_prompt_unchanged(self, settings_file, monkeypatch):
-        _write_settings(settings_file, {"llm": {"model": "qwen-plus"}})
-        import core.insights as insights
-
-        captured = {}
-
-        async def fake_async_chat_completion(messages, model=None, **kwargs):
-            captured["system"] = messages[0]["content"]
-            return json.dumps({"title": "t", "body": "b", "solution": "s", "has_finding": False, "diagram": ""})
-
-        monkeypatch.setattr(insights, "async_chat_completion", fake_async_chat_completion)
-        asyncio.run(insights.run_analysis(
-            recent_lines=[{"text": "下周三发布", "speaker_id": 0, "begin_time": 0}],
-            chapter_titles=["发布计划"],
-        ))
-        assert captured["system"] == insights.INSIGHT_ANALYSIS_PROMPT

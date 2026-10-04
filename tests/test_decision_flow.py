@@ -319,16 +319,17 @@ def test_decision_injection_joins_the_flow(client, task_factory):
 
 
 # ============================================================
-# 6. 状态字典：三态默认 / 锚点 / 旧结构迁移 / 删除回落
+# 6. 状态字典：默认状态 / 锚点 / 旧结构迁移 / 删除回落
 # ============================================================
 
-def test_dictionary_seeds_three_flow_statuses_with_single_anchor(store):
+def test_dictionary_seeds_flow_statuses_with_two_closing_anchors(store):
     ids = [s["id"] for s in store.load_statuses()]
-    assert ids == ["to_decide", "in_progress", "done"]
+    assert ids == ["to_decide", "in_progress", "superseded", "done"]
     by_id = {s["id"]: s for s in store.load_statuses()}
     assert by_id["done"]["system"] is True and by_id["done"]["closing"] is True
+    assert by_id["superseded"]["system"] is True and by_id["superseded"]["closing"] is True
     assert all(not by_id[k]["system"] for k in ("to_decide", "in_progress"))
-    assert store.SYSTEM_ANCHORS == ("done",)
+    assert store.SYSTEM_ANCHORS == ("done", "superseded")
 
 
 def test_legacy_dictionary_is_migrated_once_and_persisted(store):
@@ -339,9 +340,12 @@ def test_legacy_dictionary_is_migrated_once_and_persisted(store):
     ]
     store.STATUSES_FILE.write_text(json.dumps(legacy), encoding="utf-8")
     ids = [s["id"] for s in store.load_statuses()]
-    # 未改名的遗留态被剪除，三态种子补齐且完成态保持沉底
-    assert "active" not in ids and "superseded" not in ids
-    assert ids == ["to_decide", "in_progress", "done"]
+    # 未改名的遗留态被剪除（active、旧 superseded），默认种子补齐；
+    # superseded 以新系统锚点「已替代」补回，排在开放态之后、完成之前
+    assert "active" not in ids
+    assert ids == ["to_decide", "in_progress", "superseded", "done"]
+    by_id = {s["id"]: s for s in store.load_statuses()}
+    assert by_id["superseded"]["name"] == "已替代" and by_id["superseded"]["system"] is True
     on_disk = json.loads(store.STATUSES_FILE.read_text(encoding="utf-8"))
     assert [s["id"] for s in on_disk] == ids
 
@@ -355,6 +359,29 @@ def test_user_renamed_legacy_status_survives_migration(store):
     ids = [s["id"] for s in store.load_statuses()]
     assert "active" in ids          # 被用户改过名 → 保留，不静默丢失
     assert "to_decide" in ids       # 三态种子照样补齐
+
+
+def test_legacy_hex_colors_normalize_to_theme_tokens(store):
+    """旧色板 hex 一次性归一为主题令牌；非表内 hex 保留；再读幂等不重复回写。"""
+    legacy = [
+        {"id": "to_decide", "name": "待决策", "name_en": "To decide", "color": "var(--st-decide)", "closing": False},
+        {"id": "in_progress", "name": "进行中", "name_en": "In progress", "color": "var(--accent)", "closing": False},
+        {"id": "done", "name": "已完成", "name_en": "Done", "color": "var(--st-done)", "closing": True, "system": True},
+        {"id": "st-blocked", "name": "阻塞中", "name_en": "阻塞中", "color": "#D97706", "closing": False},
+        {"id": "st-custom", "name": "自定义", "name_en": "自定义", "color": "#123456", "closing": False},
+    ]
+    store.STATUSES_FILE.write_text(json.dumps(legacy), encoding="utf-8")
+    by_id = {s["id"]: s for s in store.load_statuses()}
+    # 大写 hex 大小写不敏感命中归一；非系统色板 hex 原样保留
+    assert by_id["st-blocked"]["color"] == "var(--warn)"
+    assert by_id["st-custom"]["color"] == "#123456"
+    on_disk = {s["id"]: s for s in json.loads(store.STATUSES_FILE.read_text(encoding="utf-8"))}
+    assert on_disk["st-blocked"]["color"] == "var(--warn)"
+
+    # 幂等：归一完成后 mtime 内容不再变化
+    before = store.STATUSES_FILE.read_text(encoding="utf-8")
+    store.load_statuses()
+    assert store.STATUSES_FILE.read_text(encoding="utf-8") == before
 
 
 def test_anchor_protection_and_custom_status_crud(client, store):
@@ -397,8 +424,8 @@ def test_backfill_script_writes_flow_and_is_idempotent():
 
 
 def test_delete_status_reassigns_flow_nodes(client, task_factory, store, monkeypatch):
-    import core.decision_status as ds
     import app.routers.decision_statuses as dst
+    import core.decision_status as ds
     monkeypatch.setattr(ds, "STATUSES_FILE", store.STATUSES_FILE)
     monkeypatch.setattr(ds, "DATA_DIR", store.STATUSES_FILE.parent)
     monkeypatch.setattr(dst, "STATUSES_FILE", store.STATUSES_FILE, raising=False)
@@ -472,3 +499,164 @@ def test_aggregation_group_by_topic(client, task_factory, store):
     assert len(hit) == 1 and hit[0]["meeting_count"] == 2
     # 主记录为更新的一条（x2），演变链挂 x1
     assert hit[0]["main"]["id"] == "x2" and hit[0]["history"][0]["id"] == "x1"
+
+
+# ============================================================
+# 7. 决策演变链：标记/撤销「已被替代」 + 单任务演变归属
+# ============================================================
+
+def _evolution_pair(task_factory, *, old_status="to_decide"):
+    """两场会议、同 kb、同议题的一对节点（x1 旧 / x2 新）。
+
+    标题带用例唯一 token：写盘的任务会被后续用例 TestClient startup 重载，
+    同标题会跨用例吸附成大簇，token 保证聚类只发生在本对之间。
+    """
+    token = uuid.uuid4().hex[:8]
+    kb = f"proj-evo-{token}"
+    t1 = task_factory(
+        project_id=kb, title="旧会议", meeting_date="2026-09-05",
+        todos=[{"id": "x1", "title": f"{token}预算调整需支持跨组织跨期间",
+                "text": f"{token}预算调整需支持跨组织跨期间", "source": "auto",
+                "status": old_status, "done": old_status == "done",
+                "created_at": "2026-09-05T10:00:00"}])
+    t2 = task_factory(project_id=kb, title="新会议", meeting_date="2026-09-25",
+                      todos=[{"id": "x2", "title": f"{token}预算调整功能必须支持跨组织、跨期间操作",
+                              "text": f"{token}预算调整功能必须支持跨组织、跨期间操作", "source": "auto",
+                              "status": "to_decide", "created_at": "2026-09-25T10:00:00"}])
+    return t1, t2
+
+
+def test_supersede_marks_closing_with_snapshot_and_changes_main(client, task_factory, store):
+    store.load_statuses()
+    t1, t2 = _evolution_pair(task_factory, old_status="in_progress")
+
+    resp = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                       json={"by_task_id": t2, "by_todo_id": "x2"})
+    assert resp.status_code == 200
+    node = resp.json()["todo"]
+    assert node["status"] == "superseded" and node["done"] is True
+    link = node["superseded_by"]
+    assert link["task_id"] == t2 and link["todo_id"] == "x2"
+    assert link["prev_status"] == "in_progress" and link["marked_at"]
+    assert "预算调整功能" in link["title"] and link["meeting_title"] == "新会议"
+
+    # 任务级读侧随行带出关系
+    got = client.get(f"/api/tasks/{t1}/todos").json()["todos"]
+    assert got[0]["superseded_by"]["todo_id"] == "x2"
+    assert got[0]["status_closing"] is True
+
+    # 议题主记录仍是新节点；旧节点闭档沉在演变链
+    data = client.get("/api/decisions", params={"group_by": "topic"}).json()
+    hit = [g for g in data["topics"] if g["main"]["id"] == "x2"][0]
+    assert hit["history"][0]["id"] == "x1"
+    assert hit["history"][0]["status_closing"] is True
+
+
+def test_supersede_conflicts(client, task_factory, store):
+    store.load_statuses()
+    t1, t2 = _evolution_pair(task_factory)
+
+    # 自身不能替代自身
+    assert client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                       json={"by_task_id": t1, "by_todo_id": "x1"}).status_code == 422
+    # 目标不存在
+    assert client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                       json={"by_task_id": t2, "by_todo_id": "nope"}).status_code == 404
+    # 节点不存在
+    assert client.post(f"/api/tasks/{t1}/todos/nope/supersede",
+                       json={"by_task_id": t2, "by_todo_id": "x2"}).status_code == 404
+
+    ok = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                     json={"by_task_id": t2, "by_todo_id": "x2"})
+    assert ok.status_code == 200
+    # 重复标记 → 409 契约 {code, reason}
+    again = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                        json={"by_task_id": t2, "by_todo_id": "x2"})
+    assert again.status_code == 409
+    assert again.json()["detail"]["code"] == "already_superseded"
+
+
+def test_revert_supersede_restores_prev_status(client, task_factory, store):
+    store.load_statuses()
+    t1, t2 = _evolution_pair(task_factory, old_status="in_progress")
+    client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                json={"by_task_id": t2, "by_todo_id": "x2"})
+
+    resp = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    assert resp.status_code == 200
+    node = resp.json()["todo"]
+    assert node["status"] == "in_progress" and node["done"] is False
+    assert "superseded_by" not in node
+
+    # 非替代态撤销 → 409
+    conflict = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "not_superseded"
+
+
+def test_task_evolution_reports_cluster_membership(client, task_factory, store):
+    store.load_statuses()
+    t1, t2 = _evolution_pair(task_factory)
+
+    evo_old = client.get("/api/decisions/evolution", params={"task_id": t1}).json()["evolution"]
+    assert evo_old["x1"]["role"] == "history"
+    assert evo_old["x1"]["meeting_count"] == 2
+    assert evo_old["x1"]["latest"]["task_id"] == t2
+    assert evo_old["x1"]["latest"]["todo_id"] == "x2"
+
+    evo_new = client.get("/api/decisions/evolution", params={"task_id": t2}).json()["evolution"]
+    assert evo_new["x2"]["role"] == "main"
+
+    # 未知任务 404
+    assert client.get("/api/decisions/evolution", params={"task_id": "nope"}).status_code == 404
+
+
+def test_revert_supersede_falls_back_when_prev_status_deleted(client, task_factory, store):
+    """原状态在替代期间被用户从字典删除 → 撤销降级 to_decide，不复活非法状态。"""
+    store.load_statuses()
+    # 自定义开放态
+    created = client.post("/api/decision-statuses", json={"name": "复核中"})
+    assert created.status_code == 200
+    custom_id = created.json()["status"]["id"]
+
+    t1, t2 = _evolution_pair(task_factory)
+    put = client.put(f"/api/tasks/{t1}/todos/x1", json={"status": custom_id})
+    assert put.status_code == 200
+
+    client.post(f"/api/tasks/{t1}/todos/x1/supersede",
+                json={"by_task_id": t2, "by_todo_id": "x2"})
+    # 替代期间用户删掉原状态（节点当前为 superseded，不被删除联动重指派）
+    gone = client.delete(f"/api/decision-statuses/{custom_id}")
+    assert gone.status_code == 200
+
+    resp = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    assert resp.status_code == 200
+    node = resp.json()["todo"]
+    assert node["status"] == "to_decide" and node["done"] is False
+    assert "superseded_by" not in node
+
+
+def test_evolution_main_shifts_when_main_node_superseded(client, task_factory, store):
+    """把簇内主记录标为被旧节点替代 → 选主跳过闭档自动前移，evolution 角色随之反转。"""
+    store.load_statuses()
+    t1, t2 = _evolution_pair(task_factory)
+
+    # 反向标记：新节点（当前 main）被旧节点替代（手动路径不做时序限制）
+    resp = client.post(f"/api/tasks/{t2}/todos/x2/supersede",
+                       json={"by_task_id": t1, "by_todo_id": "x1"})
+    assert resp.status_code == 200
+
+    # 聚合视图主记录前移为 x1，x2 闭档沉入演变链
+    data = client.get("/api/decisions", params={"group_by": "topic"}).json()
+    hit = [g for g in data["topics"] if {g["main"]["id"], *(m["id"] for m in g["history"])} >= {"x1", "x2"}]
+    assert len(hit) == 1
+    assert hit[0]["main"]["id"] == "x1"
+    assert hit[0]["history"][0]["id"] == "x2"
+    assert hit[0]["history"][0]["status"] == "superseded"
+
+    # 归属角色同步反转：latest 指向旧会议节点
+    evo_new = client.get("/api/decisions/evolution", params={"task_id": t2}).json()["evolution"]
+    assert evo_new["x2"]["role"] == "history"
+    assert evo_new["x2"]["latest"]["todo_id"] == "x1"
+    evo_old = client.get("/api/decisions/evolution", params={"task_id": t1}).json()["evolution"]
+    assert evo_old["x1"]["role"] == "main"

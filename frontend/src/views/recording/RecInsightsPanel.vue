@@ -4,7 +4,6 @@
       <div class="rec-insights-title">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
         {{ t('recording.insights.title') }}
-        <span v-if="enabled && unreadCount > 0" class="rec-insights-badge">{{ unreadCount }}</span>
       </div>
       <div class="rec-insights-actions">
         <!-- 一页纸系数角标（洞察面）：有效卡位上限，超位旧卡入「历史观察」折叠层；只读态也可改档
@@ -16,29 +15,8 @@
           :factor="onePageFactor"
           @changed="onBudgetChanged"
         />
-        <!-- 开关承载动作语义（点击切换，tooltip 提示动作）；旁边文本如实显示当前状态；会后只读态隐藏 -->
-        <div
-          v-if="!readonly"
-          class="toggle-switch"
-          :class="{ 'is-on': enabled }"
-          role="switch"
-          tabindex="0"
-          :aria-checked="enabled"
-          :title="enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off')"
-          :aria-label="enabled ? t('ai-panel.insights.toggle_on') : t('ai-panel.insights.toggle_off')"
-          @click="$emit('toggleEnabled')"
-          @keydown.enter.prevent="$emit('toggleEnabled')"
-          @keydown.space.prevent="$emit('toggleEnabled')"
-        >
-          <div class="toggle-switch-track">
-            <div class="toggle-switch-knob"></div>
-          </div>
-          <span class="toggle-switch-label">{{ enabled ? t('recording.insights.enabled') : t('recording.insights.disabled') }}</span>
-        </div>
-        <!-- 【已退役】自动频率旋钮与分析引擎标签：洞察改由会话面板人与 AI 共创驱动，本面板仅只读呈现 -->
-        <!-- 扩展/收起按钮：扩展后洞察台占满内容区域；会后只读态整页即洞察，隐藏 -->
+        <!-- 扩展/收起按钮：扩展后洞察台占满内容区域 / Expand/collapse: expanded deck fills the content area -->
         <button
-          v-if="!readonly"
           class="rec-insights-btn rec-insights-expand-btn"
           :class="{ 'is-expanded': expanded }"
           :title="expanded ? t('recording.insights.collapse') : t('recording.insights.expand')"
@@ -50,8 +28,8 @@
         </button>
       </div>
     </div>
-    <!-- 消息流 / Message stream（只读态无视能开关，始终展示历史；已有板时不受开关遮挡） -->
-    <div class="rec-insights-body" v-if="readonly || enabled || board.html">
+    <!-- 消息流 / Message stream（洞察默认即开；历史消息始终可读） -->
+    <div class="rec-insights-body">
       <!-- 洞察板产物优先：会话「画入洞察台」落板的 HTML 直接呈现，卡片流降为后备
            Board artifact takes priority: the co-created HTML renders here; card stream is the fallback -->
       <InsightBoard
@@ -65,19 +43,17 @@
       <template v-else>
       <div v-if="messages.length === 0" class="rec-insights-empty">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <div class="rec-insights-empty-text">{{ readonly ? t('generating.insights.empty_title') : t('recording.insights.empty') }}</div>
-        <div class="rec-insights-empty-hint">{{ readonly ? t('generating.insights.empty_desc') : t('recording.insights.empty_hint') }}</div>
-        <!-- 【已退役】会后补分析 CTA：触发入口随「洞察共创 · 会话驱动」下线，历史消息仍只读呈现 -->
+        <div class="rec-insights-empty-text">{{ t('recording.insights.empty') }}</div>
+        <div class="rec-insights-empty-hint">{{ t('recording.insights.empty_hint') }}</div>
       </div>
       <div v-else class="rec-insights-list">
         <div
           v-for="msg in activeMessages" :key="msg.id"
           class="rec-insight-card"
-          :class="{ 'is-expanded': msg.expanded, 'is-unread': !msg.read, 'is-acknowledged': msg.acknowledged }"
+          :class="{ 'is-expanded': msg.expanded, 'is-acknowledged': msg.acknowledged }"
         >
           <div class="rec-insight-card-header" @click="$emit('toggleMessage', msg.id)">
             <span class="rec-insight-cat">{{ msg.category || t('ai-panel.insights.cat_insight') }}</span>
-            <span v-if="msg.phase === 'post_meeting'" class="insights-phase-badge">{{ t('generating.insights.phase_post') }}</span>
             <span class="rec-insight-card-title">{{ msg.title }}</span>
             <svg v-if="!msg.expanded" class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
             <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
@@ -132,7 +108,16 @@
               </div>
             </div>
             <!-- 图的注释 / Diagram annotations -->
-            <div class="rec-insight-body-text" v-html="renderInsightMarkdown(msg.body)"></div>
+            <div
+              class="rec-insight-body-text"
+              :class="{ 'is-clamped': isLongBody(msg) && !fullBodyIds.has(msg.id) }"
+              v-html="renderInsightMarkdown(msg.body)"
+            ></div>
+            <button
+              v-if="isLongBody(msg)"
+              class="rec-insight-body-toggle"
+              @click.stop="toggleFullBody(msg.id)"
+            >{{ fullBodyIds.has(msg.id) ? t('ai-panel.insights.collapse_full') : t('ai-panel.insights.expand_full') }}</button>
             <!-- 备查注释层（三层信息写作）：退可忽略、进可查看 / Note layer: skippable yet answerable -->
             <div v-if="msg.note" class="rec-insight-note">
               <span class="rec-insight-note-label">{{ t('ai-panel.insights.note_label') }}</span>
@@ -173,14 +158,6 @@
       </div>
       </template>
     </div>
-    <!-- 未开启时的提示 / Prompt when disabled -->
-    <div class="rec-insights-body" v-else>
-      <div class="rec-insights-empty">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <div class="rec-insights-empty-text">{{ t('recording.insights.empty') }}</div>
-        <div class="rec-insights-empty-hint">{{ t('recording.insights.empty_hint') }}</div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -198,26 +175,21 @@ import { parseInsightFlow, matchPhaseDescriptions } from '@/utils/parseInsightFl
 import MermaidDiagram from '@/components/common/MermaidDiagram.vue'
 import InsightFlow from '@/components/common/InsightFlow.vue'
 import PageBudgetBadge from '@/components/common/PageBudgetBadge.vue'
-// eslint-disable-next-line vue/multi-word-component-names -- 历史兼容组件，仅旧会话 graph 消息使用
 import InsightGraph, { type InsightLegacyGraphData } from '@/components/common/InsightGraph.vue'
 
 const { t } = useI18n()
 const insights = useAiInsights()
 
-/* 【已退役】分析引擎回显标签与频率旋钮：随「洞察共创 · 会话驱动」下线 */
-
 /**
  * 将洞察台的 Markdown 文本渲染为 HTML。
- * 先 escapeHtml 防 XSS，再还原基础 Markdown 格式（标题/列表/粗体/斜体/换行）。
+ * 先 escapeHtml 防 XSS，再还原基础 Markdown 格式（标题降级为加粗段首/列表/粗体/斜体/换行）。
  * AI 生成内容可信，无需处理链接/图片等复杂语法。
  */
 function renderInsightMarkdown(md: string): string {
   if (!md) return ''
   let html = escapeHtml(md)
-  // 标题（### → h3, ## → h2, # → h1）
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+  // 标题降级为加粗段首：卡内不允许出现文档级标题字号（防长文把卡撑成墙）
+  html = html.replace(/^#{1,3} (.+)$/gm, '<strong class="rec-insight-md-head">$1</strong>')
   // 粗体 / 斜体
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -231,6 +203,16 @@ function renderInsightMarkdown(md: string): string {
 }
 
 const panelRef = ref<HTMLElement | null>(null)
+
+/* ── 超长 body 截断+折叠：卡规格为 1-3 句图注，存量/手动长文不撑版 ── */
+const BODY_CLAMP_LEN = 280
+const fullBodyIds = ref<Set<string>>(new Set())
+function isLongBody(msg: { body?: string }): boolean { return (msg.body || '').length > BODY_CLAMP_LEN }
+function toggleFullBody(id: string) {
+  const s = new Set(fullBodyIds.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  fullBodyIds.value = s
+}
 
 /* 画布解析结果缓存：按消息对象引用复用，避免列表重渲染时重复解析
    Flow parse cache: keyed by message object identity, survives list re-renders */
@@ -265,31 +247,19 @@ function flowOf(msg: InsightMessage): InsightFlowData | null {
 
 const props = defineProps<{
   messages: InsightMessage[]
-  enabled: boolean
-  unreadCount: number
   actedActions: Record<string, boolean>
   expanded: boolean
-  /** 面板模式（REQ-INSIGHT-DECK-POSTMEETING R1 v0.2.0 契约）：
-      live = 录音页会中态（默认，行为与改造前一致）；readonly = 纪要页会后只读态
-      live = in-meeting (default, unchanged); readonly = post-meeting review mode */
-  mode?: 'live' | 'readonly'
   /** 一页纸系数所属任务 ID（角标 PATCH 目标） / Task id the one-page badge patches */
   taskId?: string
   /** 当前洞察面系数（宿主从 task.one_page.insights 解析） / Current insights-side factor */
   onePageFactor?: number | null
 }>()
 
-/** 只读态判定（模板内沿用 readonly 语义名） / Read-only flag derived from mode */
-const readonly = computed(() => props.mode === 'readonly')
-
 /* ── 一页纸系数：有效层/历史观察层拆分 / One-page budget: active vs deferred layers ── */
 const activeMessages = computed(() => props.messages.filter(m => !m.deferred))
 const deferredMessages = computed(() => props.messages.filter(m => !!m.deferred))
 /** 历史观察层默认收起（退可略） / History layer collapsed by default */
 const openDeferred = ref(false)
-
-/** 系数同步到 composable：会中分析请求据此携带 card_slots / Sync factor so analyses carry card_slots */
-watch(() => props.onePageFactor, (f) => { insights.setOnePageInsights(f) }, { immediate: true })
 
 /** 改档后重拉消息：后端 PATCH 同请求内已重排卡集，前端取回最新 deferred 标记
     Reload after factor change: the PATCH response already rebalanced server-side */
@@ -298,7 +268,6 @@ function onBudgetChanged() {
 }
 
 defineEmits<{
-  (e: 'toggleEnabled'): void
   (e: 'toggleMessage', id: string): void
   (e: 'action', message: InsightMessage, action: InsightAction): void
   (e: 'toggleExpand'): void
@@ -388,20 +357,6 @@ function formatTime(ts: number): string {
 </script>
 
 <style scoped>
-/* 会后只读态专属元素（其余样式沿用 recording-view.css 全局 .rec-insights-* 体系）
-   Post-meeting read-only extras; base styles live in recording-view.css (global) */
-.insights-phase-badge {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 6px;
-  font-size: 10px;
-  line-height: 1.5;
-  /* 用色收敛 R2：阶段标记属装饰，中性化（紫色只留给域标识与状态信号） */
-  color: var(--muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
 /* ── 历史观察折叠层（一页纸系数降级卡） / Deferred history layer ── */
 .rec-insights-deferred {
   margin-top: var(--s-2);

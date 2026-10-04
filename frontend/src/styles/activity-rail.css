@@ -4,13 +4,16 @@
   flex: 0 0 52px;
   width: 52px;
   min-width: 52px;
-  background: var(--bg);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-lg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: var(--s-2) 0;
-  z-index: 12;
+  /* z-dock(600) > z-popover(500)：浮层定位失误横压 rail 时图标仍可点；
+     < z-modal(1000)，遮罩类弹窗仍盖住整窗。 */
+  z-index: var(--z-dock, 600);
   position: relative;
 }
 
@@ -78,82 +81,6 @@
   outline: none;
 }
 
-/* ─── 洞察台指示器 ─── */
-.ar-insights {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--subtle);
-  border: none;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-.ar-insights:hover {
-  background: var(--proactive-soft);
-  color: var(--proactive);
-}
-/* 启用态：低频呼吸光晕 */
-.ar-insights.is-enabled {
-  background: var(--proactive-mid);
-  color: var(--proactive);
-  box-shadow: 0 0 0 1px var(--proactive-mid);
-  animation: ar-insights-glow 3.5s ease-in-out infinite;
-}
-@keyframes ar-insights-glow {
-  0%, 100% { box-shadow: 0 0 0 1px var(--proactive-mid), 0 0 0 2px oklch(62% 0.20 270 / 0); }
-  50%      { box-shadow: 0 0 0 1px var(--proactive-mid), 0 0 6px 3px oklch(62% 0.20 270 / 0.25); }
-}
-/* 未读态：心跳脉冲 */
-.ar-insights.has-unread {
-  background: var(--proactive);
-  color: var(--surface);
-  animation: ar-proactive-heartbeat 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-@keyframes ar-proactive-heartbeat {
-  0%        { box-shadow: 0 0 0 0 oklch(62% 0.20 270 / 0.5); transform: scale(1); }
-  8%        { box-shadow: 0 0 0 4px oklch(62% 0.20 270 / 0.35); transform: scale(1.1); }
-  16%       { box-shadow: 0 0 0 7px oklch(62% 0.20 270 / 0.1); transform: scale(1); }
-  24%       { box-shadow: 0 0 0 5px oklch(62% 0.20 270 / 0.25); transform: scale(1.06); }
-  32%, 100% { box-shadow: 0 0 0 0 oklch(62% 0.20 270 / 0); transform: scale(1); }
-}
-.ar-insights svg { width: 18px; height: 18px; }
-/* 会后静态态：保留色彩语义但停用呼吸/心跳动效，避免误读为仍在录音 /
-   Post-meeting static: keep color semantics, kill pulsing animations */
-.ar-insights.is-static {
-  animation: none;
-}
-/* 同 .ar-btn：hover / is-enabled / has-unread 已提供充分视觉反馈 */
-.ar-insights:focus-visible {
-  outline: none;
-}
-/* 未读角标 */
-.ar-insights-badge {
-  position: absolute;
-  top: -3px; right: -3px;
-  min-width: 14px; height: 14px;
-  padding: 0 3px;
-  font-size: 9px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--surface);
-  background: var(--proactive);
-  border: 2px solid var(--bg);
-  border-radius: 999px;
-  display: grid; place-items: center;
-  line-height: 1;
-  animation: ar-badge-breathe 2s ease-in-out infinite;
-}
-@keyframes ar-badge-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-}
-
 /* ─── 折叠/展开按钮箭头旋转 ─── */
 .ar-toggle-arrow {
   transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1);
@@ -161,9 +88,4 @@
 }
 .ar-toggle-btn.is-collapsed .ar-toggle-arrow {
   transform: rotate(180deg);
-}
-
-/* ─── Reduced motion ─── */
-@media (prefers-reduced-motion: reduce) {
-  .ar-insights, .ar-insights-badge { animation: none !important; }
 }

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from core.speakers import normalize_speaker_name
@@ -219,6 +220,7 @@ def export_context(
     history: list[dict] | None = None,
     realtime_entries: list[dict] | None = None,
     auth_tier: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
     """
     将会议上下文写入工作区文件，返回调用元数据。 / Write context files, return invocation metadata.
@@ -298,6 +300,29 @@ def export_context(
         (ctx / "history.md").write_text(history_md, encoding="utf-8")
         written.append("context/history.md")
 
+    # @附件：用户本轮显式上传的本地文件与图片，原样复制到 context/attachments/
+    # （智能体具备文件读取/解析能力，不在后端预抽取，避免与内置链路重复实现解析）
+    attachment_lines: list[str] = []
+    if attachments:
+        from app.chat_attachment_store import load_bytes  # 局部 import：避免 core→app 模块级依赖
+
+        attach_dir = ctx / "attachments"
+        attach_dir.mkdir(parents=True, exist_ok=True)
+        used_names: set[str] = set()
+        for i, ref in enumerate(attachments):
+            try:
+                meta, blob = load_bytes(str(ref.get("id", "")))
+            except Exception:  # noqa: BLE001 - 单个附件缺失不阻断其余上下文
+                continue
+            safe = re.sub(r"[^\w.\-\u4e00-\u9fff]+", "_", meta["filename"]).strip("._") or f"file_{i}"
+            if safe in used_names:
+                safe = f"{i}_{safe}"
+            used_names.add(safe)
+            (attach_dir / safe).write_bytes(blob)
+            attachment_lines.append(
+                f"- context/attachments/{safe}（{meta['content_type']}，{meta['size']} 字节）")
+            written.append(f"context/attachments/{safe}")
+
     # 页面上下文 + 角色说明 → AGENTS.md（CLI 启动自动读取，替代巨型 prompt 注入）
     agents_parts = ["# 会议助手工作区\n"]
     if role_prompt:
@@ -306,6 +331,11 @@ def export_context(
         agents_parts.append("## 环境\n" + page_context.strip() + "\n")
     # 模式即权限（§5.2）：按本轮落档注入权限段，置于角色段之后（后声明者胜）
     agents_parts.append(_build_permission_section(auth_tier))
+    if attachment_lines:
+        agents_parts.append(
+            "## 用户本轮上传的附件\n以下文件为用户显式提供，可用你的文件读取能力直接解析"
+            "（文本/表格/PDF/图片）。引用其内容时标注文件名；读不到或无法解析时明说，禁止臆测。\n"
+            + "\n".join(attachment_lines) + "\n")
     agents_parts.append(
         "## 说明\n本工作区由 OpenMeetingScribe 自动生成。"
         "context/ 目录为会议只读上下文，output/ 目录为你的可写产物区。"

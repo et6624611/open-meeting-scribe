@@ -93,21 +93,42 @@
       <AIPanel />
     </div>
 
-    <!-- 底部状态栏 / Bottom status bar -->
-    <footer class="status">
+    <!-- 底部状态栏（B 案：零高度挂载点 + hover 上浮；任一能力非就绪时 is-pinned 常驻） -->
+    <div class="chrome-btm" ref="chromeBtmEl" :class="{ 'is-pinned': statusPinned }">
+      <div class="bb-hotzone" aria-hidden="true"></div>
+      <div class="bb-clip">
+    <footer class="status" ref="statusBarEl" :class="statusCapsMode === 'full' ? '' : 'is-' + statusCapsMode">
       <div class="left">
-        <div
-          class="item status-engine"
-          :class="[statusPipClass, { 'is-open': statusDetailOpen }]"
-          role="button"
-          tabindex="0"
-          :title="t('common.usage.click_detail')"
-          :aria-expanded="statusDetailOpen"
-          :aria-label="engineStatusLabel"
-          @click="toggleStatusDetail"
-          @keydown.enter.prevent="toggleStatusDetail"
-          @keydown.space.prevent="toggleStatusDetail"
-        ><span class="pip"></span> {{ engineStatusLabel }}<span class="status-caret" aria-hidden="true">{{ statusDetailOpen ? '⌄' : '⌃' }}</span></div>
+        <div class="caps" ref="statusCapsEl" data-od-id="statusbar-caps" aria-live="polite">
+          <button
+            type="button"
+            class="cap"
+            data-od-id="status-cap-llm"
+            :aria-label="llmCapAria"
+            :title="llmCapAria"
+            @click="goToAccessSettings('llm')"
+          >
+            <span class="cap-dot" :class="llmDotClass"></span>
+            <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_ai') }}</span><span class="cap-name-short">{{ t('common.usage.cap_ai_short') }}</span></span>
+            <span class="cap-src">{{ llmSourceLabel }}</span>
+            <span class="cap-st" :class="llmStatusClass">{{ llmStatusLabel }}</span>
+            <span v-if="quotaShortLabel" class="cap-quota">{{ quotaShortLabel }}</span>
+          </button>
+          <span class="cap-sep" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="cap"
+            data-od-id="status-cap-asr"
+            :aria-label="asrCapAria"
+            :title="asrCapAria"
+            @click="goToAccessSettings('asr')"
+          >
+            <span class="cap-dot" :class="asrDotClass"></span>
+            <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_asr') }}</span><span class="cap-name-short">{{ t('common.usage.cap_asr_short') }}</span></span>
+            <span class="cap-src">{{ asrSourceLabel }}</span>
+            <span class="cap-st" :class="asrStatusClass">{{ asrStatusLabel }}</span>
+          </button>
+        </div>
         <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
           <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
           <span class="usage-text" id="usageText"></span>
@@ -117,23 +138,9 @@
       <div class="right">
         <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
       </div>
-
-      <!-- 展开明细：逐能力来源 + 状态 + 配置入口 / Expandable per-capability detail -->
-      <div v-show="statusDetailOpen" class="status-detail" role="region" :aria-label="t('common.usage.detail_aria')">
-        <div class="sd-row">
-          <span class="sd-cap">{{ t('common.usage.status_ai') }}</span>
-          <span class="sd-src">{{ llmSourceLabel }}</span>
-          <span class="sd-st" :class="llmStatusClass">{{ llmStatusLabel }}</span>
-        </div>
-        <div class="sd-row">
-          <span class="sd-cap">{{ t('common.usage.status_asr') }}</span>
-          <span class="sd-src">{{ asrSourceLabel }}</span>
-          <span class="sd-st" :class="asrStatusClass">{{ asrStatusLabel }}</span>
-        </div>
-        <div v-if="quotaLineLabel" class="sd-quota">{{ quotaLineLabel }}</div>
-        <button class="sd-config" @click="goToAccessSettings">{{ t('common.usage.go_settings') }}</button>
-      </div>
     </footer>
+      </div>
+    </div>
   </div>
 
   <!-- 登录遮罩层 / Login modal overlay -->
@@ -141,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore } from '@/stores/theme'
@@ -150,7 +157,7 @@ import { useUserStore } from '@/stores/user'
 import { useLayoutStore } from '@/stores/layout'
 import { useWatermarkStore } from '@/stores/watermark'
 import { useAgentStore } from '@/stores/agent'
-import { useEngineStore, type AccessStatusState } from '@/stores/engine'
+import { useEngineStore } from '@/stores/engine'
 import { useDivider } from '@/composables/useDivider'
 import { useToast, showToast } from '@/composables/useToast'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
@@ -190,26 +197,8 @@ if (typeof window !== 'undefined') {
 }
 const perfMetrics = ref<{ apiLatency: number | null }>({ apiLatency: null })
 
-// ─── 底部状态栏：结论 + 原因 + 动作（REQ-SETTINGS-IA §3.1 改版） ───
-// 状态推导全部收敛在 stores/engine.ts（单一来源）；模型串与延迟降级到 hover 详情。
-const STATUS_LABEL_KEYS: Record<AccessStatusState, string> = {
-  local_ready: 'engine_status_local_ready',
-  local_pending: 'engine_status_local_pending',
-  cloud_ready: 'engine_status_cloud_ready',
-  cloud_needs_login: 'engine_status_cloud_login',
-  cloud_needs_key: 'engine_status_cloud_key',
-  cloud_auto_switched: 'engine_status_cloud_auto_switched',
-  unconfigured: 'engine_status_unconfigured',
-}
-
-const engineStatusLabel = computed(() => t(`common.usage.${STATUS_LABEL_KEYS[engineStore.statusState]}`))
-
-const statusPipClass = computed(() =>
-  engineStore.statusState.endsWith('ready') ? 'is-ok' : 'is-warn')
-
-// ─── 底部状态栏可展开明细（两段式：摘要 + 逐能力来源/状态） ───
-const statusDetailOpen = ref(false)
-function toggleStatusDetail() { statusDetailOpen.value = !statusDetailOpen.value }
+// ─── 底部状态栏：逐能力常驻明细（方案 B） ───
+// 状态推导全部收敛在 stores/engine.ts（单一来源）；来源与状态常驻底栏，chip 本身即入口。
 
 /** 逐能力生效来源：直读 capability.effective（"" = 未设置） */
 function capSourceKey(cap: 'llm' | 'asr'): string {
@@ -233,7 +222,7 @@ const asrSourceLabel = computed(() => sourceLabelOf('asr'))
 function capStatus(cap: 'llm' | 'asr'): { text: string; cls: string } {
   const src = capSourceKey(cap)
   const r = engineStore.routing?.[cap]
-  if (!src || r?.unconfigured) return { text: t('common.usage.st_not_set'), cls: 'is-muted' }
+  if (!src || r?.unconfigured) return { text: t('common.usage.st_not_set'), cls: 'is-off' }
   if (src === 'trial' && !userStore.isLoggedIn) return { text: t('common.usage.st_need_login'), cls: 'is-warn' }
   if (r?.auto_switched) {
     const to = srcLabelKey(String(r.source || ''))
@@ -250,11 +239,89 @@ const llmStatusClass = computed(() => llmStatus.value.cls)
 const asrStatusLabel = computed(() => asrStatus.value.text)
 const asrStatusClass = computed(() => asrStatus.value.cls)
 
-const quotaLineLabel = computed(() => {
+/** 点色：就绪=绿（默认）/ 待办=琥珀 / 未设置=灰 */
+const llmDotClass = computed(() => (llmStatusClass.value === 'is-ok' ? '' : llmStatusClass.value))
+const asrDotClass = computed(() => (asrStatusClass.value === 'is-ok' ? '' : asrStatusClass.value))
+
+/** B2：任一能力非「就绪」→ 底栏常驻（异常本应打断聚焦） / Any capability not ready pins the status bar */
+const statusPinned = computed(() => llmStatusClass.value !== 'is-ok' || asrStatusClass.value !== 'is-ok')
+
+/** 配额短标：仅 AI 走体验配额且已登录时展示 */
+const quotaShortLabel = computed(() => {
   const q = engineStore.quotaRemaining
-  if (!userStore.isLoggedIn || q == null || q < 0) return ''
-  return t('common.usage.quota_left', { n: fmtQuotaMinutes(q) })
+  if (capSourceKey('llm') !== 'trial' || !userStore.isLoggedIn || q == null || q < 0) return ''
+  return t('common.usage.quota_left_short', { n: fmtQuotaMinutes(q) })
 })
+
+/** chip 无障碍文本：来源与状态不随宽度降级丢失（隐藏部分只影响视觉） */
+function capAria(cap: 'llm' | 'asr'): string {
+  const llm = cap === 'llm'
+  const base = t('common.usage.cap_aria', {
+    cap: t(llm ? 'common.usage.status_ai' : 'common.usage.status_asr'),
+    src: llm ? llmSourceLabel.value : asrSourceLabel.value,
+    st: llm ? llmStatusLabel.value : asrStatusLabel.value,
+  })
+  const quota = llm ? quotaShortLabel.value : ''
+  return quota ? `${base}，${quota}` : base
+}
+const llmCapAria = computed(() => capAria('llm'))
+const asrCapAria = computed(() => capAria('asr'))
+
+// ─── 宽度降级：满配放不下时依次隐藏来源/配额、缩写能力名 ───
+type CapsMode = 'full' | 'mid' | 'narrow'
+const statusBarEl = ref<HTMLElement | null>(null)
+const statusCapsEl = ref<HTMLElement | null>(null)
+const statusCapsMode = ref<CapsMode>('full')
+const chromeBtmEl = ref<HTMLElement | null>(null)
+let capsRaf = 0
+let capsMeasuring = false
+let capsObserver: ResizeObserver | null = null
+
+function scheduleCapsMeasure() {
+  if (capsRaf) cancelAnimationFrame(capsRaf)
+  capsRaf = requestAnimationFrame(() => { capsRaf = 0; void measureCaps() })
+}
+
+async function measureCaps() {
+  const bar = statusBarEl.value
+  const caps = statusCapsEl.value
+  if (!bar || !caps) return
+  capsMeasuring = true
+  // 预留：中部 philosophy 与右侧系统状态各占一档
+  const avail = bar.clientWidth - 220
+  statusCapsMode.value = 'full'
+  await nextTick()
+  let next: CapsMode = 'full'
+  if (caps.getBoundingClientRect().width > avail) {
+    statusCapsMode.value = 'mid'
+    await nextTick()
+    next = caps.getBoundingClientRect().width > avail ? 'narrow' : 'mid'
+  }
+  statusCapsMode.value = next
+  await nextTick()
+  capsMeasuring = false
+}
+
+watch([llmStatusLabel, asrStatusLabel, llmSourceLabel, asrSourceLabel, quotaShortLabel], scheduleCapsMeasure)
+
+onMounted(() => {
+  if (statusBarEl.value && typeof ResizeObserver !== 'undefined') {
+    capsObserver = new ResizeObserver(() => { if (!capsMeasuring) scheduleCapsMeasure() })
+    capsObserver.observe(statusBarEl.value)
+  }
+  scheduleCapsMeasure()
+})
+
+onBeforeUnmount(() => {
+  capsObserver?.disconnect()
+  capsObserver = null
+  if (capsRaf) cancelAnimationFrame(capsRaf)
+})
+
+/** A3：底栏 chip 为接入状态唯一入口，按能力直达设置分类（顶栏徽章已下架） */
+function goToAccessSettings(cap: 'llm' | 'asr') {
+  router.push({ name: 'settings', query: { cat: cap === 'asr' ? 'asr' : 'ai' } })
+}
 
 function fmtQuotaMinutes(min: number | null): string {
   if (min == null) return '—'
@@ -264,11 +331,6 @@ function fmtQuotaMinutes(min: number | null): string {
     return m > 0 ? `${h}h${m}m` : `${h}h`
   }
   return `${Math.round(min)}m`
-}
-
-/** A3：底部状态栏为接入状态唯一入口，点击跳接入方式设置（顶栏徽章已下架） */
-function goToAccessSettings() {
-  router.push({ name: 'settings', query: { cat: 'access' } })
 }
 
 // ─── 兜底告知（REQ-SETTINGS-IA §3.5 第 5 刀）：主路径已升为设置页 L1/L2/L3 常驻提示，
@@ -320,6 +382,8 @@ useCompletionWatch()
 
 const frameClasses = computed(() => ({
   'is-start-mode': themeStore.isStartMode,
+  // 逃生通道（J4）：settings.json feature_flags.chrome_autohide=false 时四栏全部常驻
+  'chrome-pinned': engineStore.accessSettings?.feature_flags?.chrome_autohide === false,
 }))
 
 // body 类名：驱动侧边栏/AI 面板折叠（与 legacy CSS 类名对齐） / Body classes: drive sidebar/AI panel collapse (aligned with legacy CSS class names)
@@ -441,10 +505,4 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 底部状态栏接入结论态（T5）：就绪=ok / 待办=warn */
-.status-engine { cursor: pointer; user-select: none; }
-.status-engine:hover { text-decoration: underline; }
-.status-engine:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.status-engine.is-ok .pip { background: var(--ok); }
-.status-engine.is-warn .pip { background: var(--warn); }
 </style>

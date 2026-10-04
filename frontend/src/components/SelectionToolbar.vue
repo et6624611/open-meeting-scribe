@@ -46,6 +46,18 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       {{ t('common.selection_toolbar.quote_to_ai') }}
     </button>
+    <!-- AI 书面化选区（WP-3）：仅当选区覆盖转写句时出现；任务未完成（会中/处理中）禁用
+         Formalize selection (WP-3): shown only when the selection covers transcript sentences; disabled before completion -->
+    <button
+      v-if="selectedSentenceIds.length > 0"
+      class="sel-tool-btn sel-formal-btn"
+      :disabled="!formalizeEnabled"
+      :title="formalizeEnabled ? t('common.selection_toolbar.formalize_title') : t('common.selection_toolbar.formalize_disabled_title')"
+      @click="onFormalizeSelection"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>
+      {{ t('common.selection_toolbar.formalize_selection', { n: selectedSentenceIds.length }) }}
+    </button>
   </div>
 </template>
 
@@ -56,6 +68,7 @@ import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useHotwords } from '@/composables/useHotwords'
 import { showToast } from '@/composables/useToast'
 import { useEscClose } from '@/composables/useEscClose'
+import { getDockBounds, positionAroundAnchor } from '@/utils/popoverPosition'
 
 const { t } = useI18n()
 
@@ -64,6 +77,8 @@ const props = defineProps<{
   /** 可划词的 textarea 选择器列表：由宿主页面传入，覆盖小结/备注/决策卡等编辑区
    *  Selectable textarea selectors supplied by the host view (summary/notes/decision cards) */
   textareaSelectors?: string[]
+  /** 选区书面化是否可用（仅会后 completed 任务；WP-3）/ Whether selection formalize is available (post-meeting only) */
+  formalizeEnabled?: boolean
 }>()
 
 // 缺省仍只认小结/备注编辑器；决策卡正文与行内编辑区由 GeneratingView 显式接入
@@ -71,6 +86,8 @@ const DEFAULT_TEXTAREA_SELECTORS = ['textarea.gen-textarea-editor']
 
 const emit = defineEmits<{
   (e: 'action', action: string, text: string, source: string, blockIndex: number, replacement?: string, createdMapping?: boolean): void
+  /** 选区书面化：携带选区覆盖的 sentence_id 集合（WP-3）/ Formalize the sentences covered by the selection */
+  (e: 'formalize-selection', sentenceIds: number[]): void
 }>()
 
 const { setQuote } = useQuoteRef()
@@ -88,6 +105,8 @@ const mappingInputEl = ref<HTMLInputElement | null>(null)
 const selectedTextRef = ref('')
 const showMappingInput = ref(false)
 const mappingTarget = ref('')
+/** 选区覆盖的转写句 id（WP-3；空数组＝选区不在转写区）/ Sentence ids covered by the selection (empty = not in transcript) */
+const selectedSentenceIds = ref<number[]>([])
 let sourceLabel = ''
 let blockIndex = -1
 
@@ -149,19 +168,11 @@ async function positionAndShow(anchor: { top: number; left: number; width: numbe
   // Step 2: 测量工具栏实际尺寸 / Measure actual toolbar dimensions
   const w = toolbarEl.value?.offsetWidth || 400
   const h = toolbarEl.value?.offsetHeight || 40
-  const anchorBottom = anchor.top + anchor.height
 
-  // Step 3: 计算位置——优先选区上方居中 / Calculate position — prefer centered above selection
-  let top = anchor.top - h - 8
-  let left = anchor.left + anchor.width / 2 - w / 2
-
-  // 上方溢出 → 翻到下方 / Top overflow → flip below
-  if (top < 8) top = anchorBottom + 8
-  // 左右边界保护 / Left-right boundary protection
-  if (left < 8) left = 8
-  if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8
-
-  toolbarStyle.value = { top: `${top}px`, left: `${left}px` }
+  // Step 3: 统一走浮层定位真源：上方居中、空间不足翻下方、左右避让停靠栏。
+  // Position via the shared helper: above/centered, flip below, dock-aware clamps.
+  const { x, y } = positionAroundAnchor(anchor, w, h, getDockBounds())
+  toolbarStyle.value = { top: `${y}px`, left: `${x}px` }
 
   // Step 4: 定位完成，移除 measuring 触发入场动画 / Positioning done, remove measuring to trigger animation
   measuring.value = false
@@ -186,6 +197,7 @@ function onMouseUp(e: MouseEvent) {
     const text = textareaEl.value.slice(start, end).trim()
     if (!text) { visible.value = false; return }
     selectedTextRef.value = text
+    selectedSentenceIds.value = []
     showMappingInput.value = false
     mappingTarget.value = ''
     // 决策卡内的划词标注来源为「决策」，其余编辑器沿用「纪要」
@@ -209,6 +221,7 @@ function onMouseUp(e: MouseEvent) {
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || !sel.toString().trim()) {
     visible.value = false
+    selectedSentenceIds.value = []
     return
   }
 
@@ -239,11 +252,38 @@ function onMouseUp(e: MouseEvent) {
 
   // 获取选区矩形并一步定位 / Get selection rect and position in one step
   try {
-    const selRect = sel.getRangeAt(0).getBoundingClientRect()
+    const range = sel.getRangeAt(0)
+    selectedSentenceIds.value = collectSentenceIds(range, container)
+    const selRect = range.getBoundingClientRect()
     positionAndShow({ top: selRect.top, left: selRect.left, width: selRect.width, height: selRect.height })
   } catch {
     visible.value = false
   }
+}
+
+// ── WP-3 选区书面化 / Selection formalize (WP-3) ──
+/** 收集选区相交的转写行 sentence_id（去重、按文档序排序）
+ *  Collect sentence_ids of transcript lines intersecting the range (deduped, document order) */
+function collectSentenceIds(range: Range, container: Element | null): number[] {
+  if (!container) return []
+  const ids = new Set<number>()
+  for (const el of container.querySelectorAll('.ts-line[data-sentence-id]')) {
+    try {
+      if (range.intersectsNode(el)) {
+        const v = Number(el.getAttribute('data-sentence-id'))
+        if (Number.isInteger(v)) ids.add(v)
+      }
+    } catch { /* 节点游离时 intersectsNode 可能抛错，跳过该行 */ }
+  }
+  return [...ids].sort((a, b) => a - b)
+}
+
+function onFormalizeSelection() {
+  if (!props.formalizeEnabled || !selectedSentenceIds.value.length) return
+  emit('formalize-selection', [...selectedSentenceIds.value])
+  visible.value = false
+  selectedSentenceIds.value = []
+  window.getSelection()?.removeAllRanges()
 }
 
 function onMouseDown(e: MouseEvent) {

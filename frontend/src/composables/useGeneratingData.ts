@@ -119,7 +119,14 @@ export function useGeneratingData(
     for (const d of dialogue.value) {
       if (!d.sentences) continue
       for (const s of d.sentences) {
-        all.push({ begin_time: s.begin_time, end_time: s.end_time, text: s.text, speaker_id: s.speaker_id, sentence_id: s.sentence_id })
+        all.push({
+          begin_time: s.begin_time, end_time: s.end_time, text: s.text,
+          speaker_id: s.speaker_id, sentence_id: s.sentence_id,
+          // 清理层为响应级富化字段，仅在后端实际挂键时透传 / Cleanup layer passes through only when present
+          ...(typeof s.clean_text === 'string'
+            ? { clean_text: s.clean_text, ...(Array.isArray(s.clean_ops) ? { clean_ops: s.clean_ops } : {}) }
+            : {}),
+        })
       }
     }
     all.sort((a, b) => a.begin_time - b.begin_time)

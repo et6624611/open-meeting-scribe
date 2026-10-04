@@ -34,6 +34,7 @@ from app.store import (
     resolve_realtime_speaker_name,
 )
 from core.i18n import _, set_current_locale
+from core.transcript_cleanup import enrich_sentence
 from core.translate import RealtimeTranslator
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,10 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
     通过 ?locale=zh_CN 查询参数传递语言偏好。 / Pass language preference via ?locale=zh_CN query parameter.
     消息格式（下行）： / Message format (downstream):
       {"type": "partial", "text": "...", "speaker_id": N, "speaker_name": "..."}    临时结果 / Partial result
-      {"type": "sentence", "text": "...", "speaker_id": N, "speaker_name": "..."}   定稿句子 / Finalized sentence
+      {"type": "sentence", "text": "原文", "clean_text": "清理版?", "clean_ops": [...], ...}
+          定稿句子 / Finalized sentence。text 恒为逐字稿原文；clean_text/clean_ops 为可选
+          派生字段（口语清理开启且有变化时存在；清理后为空串表示纯语气词句）。
+      {"type": "history", ...}                                                      历史回放，字段同 sentence（clean_text 由回放时派生）
       {"type": "speaker_bound", "speaker_id": N, "speaker_name": "..."}             说话人绑定更新 / Speaker binding update
       {"type": "translation_update", "translations": [...]}                          批量译文推送 / Batch translation push
       {"type": "translation_status", "status": "...", "target_lang": "..."}          翻译状态同步 / Translation status sync
@@ -72,17 +76,26 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
     logger.info(f"[WebSocket] 实时转写连接: task={task_id[:8]}")
 
     # 回放全量历史句子 / Replay full history sentences
+    # 缓存只存原文（AI 对话上下文的事实源）；回放时按当前清理开关派生 clean_text。
+    try:
+        from app.settings_store import get_transcript_config
+        _replay_cleanup = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
+    except Exception:
+        _replay_cleanup = True
     history = realtime_full_transcripts.get(task_id, [])
     if history:
         logger.info(f"[WebSocket] 回放历史: task={task_id[:8]}, {len(history)} 条句子")
         for item in history:
             sid = item.get("speaker_id", 0)
             speaker_name = resolve_realtime_speaker_name(task_id, sid) if sid else ""
-            await websocket.send_json({
+            history_msg = {
                 "type": "history", "text": item.get("text", ""),
                 "speaker_id": sid, "speaker_name": speaker_name,
                 "begin_time": item.get("begin_time", 0), "end_time": item.get("end_time", 0),
-            })
+            }
+            if _replay_cleanup:
+                enrich_sentence(history_msg)
+            await websocket.send_json(history_msg)
 
     # 回放实时总结 / Replay realtime summary
     summarizer = realtime_summarizers.get(task_id)

@@ -1,0 +1,72 @@
+{
+  "engine_id": "codex",
+  "display_name": "Codex CLI",
+  "name_key": "cliengine_engine_codex",
+  "binary": "codex",
+  "install_url": "https://developers.openai.com/codex/cli",
+  "min_version": "0.40.0",
+  "probe": {
+    "path_cmd": ["which", "codex"],
+    "version_cmd": ["codex", "--version"],
+    "login_cmd": ["codex", "login", "status"],
+    "login_signature": "Logged in",
+    "login_probe_note": "codex login status 为官方只读登录态命令（输出 Logged in using …）；未取证输出文案变体时签名可能需校准"
+  },
+  "capabilities": {
+    "stream_json": true,
+    "session_resume": false,
+    "mcp_injection": false,
+    "pre_authorization": true,
+    "add_dir": true,
+    "system_prompt_append": false
+  },
+  "capabilities_note": "codex exec 不支持自定义新会话 id（resume 是子命令 `codex exec resume <id>`，放不进统一标志位），故不做会话恢复——多轮上下文由 brief 内嵌历史承载；无 --append-system-prompt（提示词即正文）；mcp 只走 config.toml，不注入",
+  "argv": {
+    "base": ["exec", "--json", "--skip-git-repo-check"],
+    "workspace_flag": "--cd",
+    "add_dir_flag": "--add-dir",
+    "session_new_flag": null,
+    "session_resume_flag": null,
+    "no_persist_flag": "--ephemeral",
+    "permission_flag": "--sandbox",
+    "disallowed_flag": null,
+    "allowed_tools_flag": null,
+    "strict_mcp_flag": null,
+    "mcp_config_flag": null,
+    "model_flag": "--model",
+    "system_prompt_flag": null,
+    "prompt_separator": null
+  },
+  "auth_tiers": {
+    "readonly": {
+      "permission_mode": "read-only"
+    },
+    "workspace_write": {
+      "permission_mode": "workspace-write"
+    },
+    "full_task": {
+      "permission_mode": "danger-full-access"
+    }
+  },
+  "auth_tiers_note": "codex exec 非交互下审批自动拒绝，沙箱档即真实约束面（read-only 只读 / workspace-write 工作区可写 / danger-full-access 全任务）",
+  "event_schema": {
+    "schema_note": "codex exec --json 为 thread/turn/item JSONL：item.completed 且 item.type=agent_message 时 item.text 是正文；turn.completed=完成；turn.failed/error=失败（error.message）",
+    "type_path": "type",
+    "text_path": "item.text",
+    "text_when": { "path": "item.type", "equals": "agent_message" },
+    "done_types": ["turn.completed"],
+    "error_types": ["turn.failed", "error"],
+    "error_path": "error.message"
+  },
+  "error_codes": {},
+  "ignore_subtypes": [],
+  "noise_types": [],
+  "tool_labels": {
+    "_mcp": { "zh": "调用集成工具", "en": "Call integration tool", "icon": "plug" },
+    "_unknown": { "zh": "执行工具", "en": "Run tool", "icon": "wrench" }
+  },
+  "timeout": {
+    "first_event_seconds": 60,
+    "total_seconds": 300
+  }
+}

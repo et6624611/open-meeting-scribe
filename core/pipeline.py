@@ -32,6 +32,7 @@ from .hotwords import get_or_create_vocabulary
 from .perf import perf_timer
 from .summarize import generate_summary, generate_title, save_summary
 from .transcribe import transcribe_audio
+from .transcript_cleanup import clean_dialogue_for_consumers
 
 logger = logging.getLogger(__name__)
 
@@ -251,10 +252,19 @@ def run_pipeline_stage2(
 
     result["dialogue"] = dialogue
 
+    # 转写分层（PLAN-TRANSCRIPT-LAYERING）：纪要/标题/章节吃「清理版」深拷贝，
+    # result["dialogue"] 与 save_summary 导出仍是逐字稿原文。
+    try:
+        from app.store import get_transcript_config
+        _cleanup_enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
+    except Exception:
+        _cleanup_enabled = True
+    consumer_dialogue = clean_dialogue_for_consumers(dialogue, enabled=_cleanup_enabled)
+
     # 6. 生成纪要 / Generate summary
     progress("summarize", "正在生成纪要...", 85)
     with perf_timer("纪要生成", category="llm_sync"):
-        summary = generate_summary(dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes,
+        summary = generate_summary(consumer_dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes,
                                    one_page_factor=one_page_factor)
     progress("summarize", "纪要生成完成", 90)
     result["summary"] = summary
@@ -262,14 +272,14 @@ def run_pipeline_stage2(
     # 6.5 生成标题 / Generate title
     progress("title", "正在生成标题...", 92)
     with perf_timer("标题生成", category="llm_sync"):
-        title = generate_title(dialogue, model=cfg["llm_model"])
+        title = generate_title(consumer_dialogue, model=cfg["llm_model"])
     progress("title", f"标题生成完成: {title}", 93)
     result["title"] = title
 
     # 6.6 生成章节 / Generate chapters
     progress("chapters", "正在划分章节...", 94)
     with perf_timer("章节生成", category="llm_sync"):
-        chapters = generate_chapters(dialogue, model=cfg["llm_model"])
+        chapters = generate_chapters(consumer_dialogue, model=cfg["llm_model"])
     progress("chapters", f"章节划分完成: {len(chapters)} 个章节", 96)
     result["chapters"] = chapters
 

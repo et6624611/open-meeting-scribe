@@ -68,15 +68,14 @@
   50% { transform: scale(1.2); opacity: 0.35; }
 }
 
-/* 内容层 — 占据上方可用空间，内部垂直居中 */
+/* 内容层 — 占满「最近会议」之上的整块区域，内容在其中几何居中（背景波形保持原位） */
 .start-page-content {
   max-width: 640px; width: 100%; text-align: center;
   position: relative; z-index: 1;
-  margin-bottom: auto;
   display: flex; flex-direction: column; align-items: center;
   min-height: 260px;
   justify-content: center;
-  flex-shrink: 0;
+  flex: 1 0 auto;
   opacity: 0; transform: translateY(6px);
   transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s,
               transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s,

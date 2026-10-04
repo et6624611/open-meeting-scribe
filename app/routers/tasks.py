@@ -6,6 +6,7 @@ app/routers/tasks.py — 转录提交 + 任务 CRUD + 音频/下载 / Transcript
 版本 / Version: 1.0.0
 """
 
+import copy
 import json
 import logging
 import uuid
@@ -14,12 +15,13 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, field_validator
 
 from app.store import (
     TASKS_DIR,
     UPLOAD_DIR,
+    get_transcript_config,
     run_pipeline_task,
     run_stage2_task,
     save_task_to_disk,
@@ -28,6 +30,7 @@ from app.store import (
 from core.audio import get_stream_recording_info, is_stream_recording
 from core.fs_atomic import stream_save_upload
 from core.i18n import _
+from core.transcript_cleanup import enrich_sentence
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,11 @@ router = APIRouter(tags=["tasks"])
 
 class TranscribeRequest(BaseModel):
     speaker_mapping: Optional[dict[str, str]] = None  # {"0": "uuid1", "1": "uuid2"} 说话人映射 / Speaker mapping
+
+
+class FormalizeRequest(BaseModel):
+    """AI 书面化（PLAN-TRANSCRIPT-LAYERING WP-2）：sentence_ids 省略＝整场。"""
+    sentence_ids: Optional[list[int]] = None
 
 
 class OnePageConfig(BaseModel):
@@ -175,9 +183,51 @@ async def create_transcribe_task(
     return {"task_id": task_id, "status": "pending"}
 
 
+def _with_transcript_layers(task: dict) -> dict:
+    """响应级附加转写分层（PLAN-TRANSCRIPT-LAYERING）：深拷贝 dialogue 富化 clean_text，
+    加 transcript_layers 信封；绝不写回内存 task / 磁盘。列表与详情端点共用。"""
+    try:
+        cleanup_enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
+    except Exception:
+        cleanup_enabled = True
+    response = {"transcript_layers": {"cleanup": cleanup_enabled}}
+    if cleanup_enabled:
+        enriched_dialogue = copy.deepcopy(task.get("dialogue") or [])
+        for block in enriched_dialogue:
+            if not isinstance(block, dict):
+                continue
+            for sentence in block.get("sentences") or []:
+                if isinstance(sentence, dict):
+                    enrich_sentence(sentence)
+        response["dialogue"] = enriched_dialogue
+    return {**task, **response}
+
+
+# 轻量列表（完成侦测器 5s 轮询用）：只回状态与标识字段，不含 dialogue/chapters/todos
+# Lite list for the completion watcher poll: status/identity fields only, no heavy artifacts.
+_LIST_LITE_FIELDS = (
+    "task_id", "status", "progress", "message", "title", "audio_name",
+    "meeting_date", "created_at", "archived_at",
+    "error", "error_category", "error_suggestion", "failed_stage", "retry_count",
+)
+
+
+def _json_default(obj):
+    """直出序列化兜底：bytes 按 FastAPI 旧 jsonable_encoder 口径 decode，其余 str 化。"""
+    if isinstance(obj, (bytes, bytearray)):
+        return bytes(obj).decode("utf-8", errors="replace")
+    return str(obj)
+
+
 @router.get("/api/tasks")
-async def list_tasks():
-    """获取任务列表 / Get task list"""
+def list_tasks(view: str = "full"):
+    """获取任务列表 / Get task list.
+
+    view=lite：仅状态字段（供高频状态轮询，响应体小、不做转写富化）。 /
+    view=lite: status fields only (for frequent status polling; small payload, no transcript enrichment).
+    同步 def：重活（富化/序列化大对象）放线程池，不阻塞事件循环上的其他请求。 /
+    sync def: heavy work runs in the worker threadpool instead of blocking the event loop.
+    """
     task_list = sorted(
         tasks.values(),
         key=lambda x: (
@@ -186,7 +236,16 @@ async def list_tasks():
         ),
         reverse=True,
     )
-    return {"tasks": task_list}
+    if view == "lite":
+        payload = [{k: t.get(k) for k in _LIST_LITE_FIELDS if k in t} for t in task_list]
+    else:
+        payload = [_with_transcript_layers(task) for task in task_list]
+    # 预序列化直出：默认 FastAPI jsonable_encoder 会逐元素校验整棵转写树（实测 36MB/76 场耗时 3~8s），
+    # 任务数据来自 JSON 落盘，原生可序列化；bytes（个别运行时字段）按旧编码器口径 decode 兜底。
+    body = json.dumps(
+        {"tasks": payload}, ensure_ascii=False, separators=(",", ":"), default=_json_default,
+    ).encode("utf-8")
+    return Response(content=body, media_type="application/json")
 
 
 @router.get("/api/tasks/{task_id}")
@@ -217,9 +276,14 @@ def get_task(task_id: str):
 
             def _backfill_chapters():
                 try:
-                    from app.store import get_llm_config
+                    from app.store import get_llm_config, get_transcript_config
+                    from core.transcript_cleanup import clean_dialogue_for_consumers
                     model = get_llm_config().get("model", "qwen-plus")
-                    chapters = generate_chapters(dialogue, model=model)
+                    # PLAN-TRANSCRIPT-LAYERING：章节吃清理版（深拷贝），task.dialogue 原文不动
+                    enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
+                    chapters = generate_chapters(
+                        clean_dialogue_for_consumers(dialogue, enabled=enabled), model=model
+                    )
                     tasks[task_id]["chapters"] = chapters
                     save_task_to_disk(task_id)
                     logger.info(f"[{task_id[:8]}] 补生成 {len(chapters)} 个章节")
@@ -228,7 +292,58 @@ def get_task(task_id: str):
                 finally:
                     _chapters_backfill_inflight.discard(task_id)
             threading.Thread(target=_backfill_chapters, daemon=True).start()
-    return task
+
+    # 转写分层（PLAN-TRANSCRIPT-LAYERING）：响应级富化清理版，绝不写回内存 task / 磁盘。
+    # 热词回溯修正原文后，下次读取自动重算；存量会议零迁移。
+    return _with_transcript_layers(task)
+
+
+@router.post("/api/tasks/{task_id}/formalize")
+def formalize_task(task_id: str, data: FormalizeRequest, background_tasks: BackgroundTasks):
+    """AI 书面化（PLAN-TRANSCRIPT-LAYERING WP-2）：仅会后；先写 running sidecar，后台生成。
+
+    sentence_ids 省略＝整场；带 id＝选区（WP-3，同端点 upsert）。
+    会中/任务不存在/路由不可用/已有任务在跑 → 409（detail 带 code/reason）。
+    """
+    from core.transcript_formal import (
+        FormalizeError,
+        generate_formal_version,
+        prepare_formalize,
+    )
+
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+
+    ids = data.sentence_ids
+    if ids is not None:
+        if not ids or any(not isinstance(i, int) for i in ids):
+            raise HTTPException(422, "sentence_ids must be a non-empty list of integers")
+        ids = ids[:2000]  # 上限保护 / Upper bound guard
+
+    try:
+        prepare_formalize(task_id, ids)
+    except FormalizeError as e:
+        raise HTTPException(
+            status_code=e.http_status,
+            detail={"code": e.code, "reason": e.reason},
+        )
+
+    background_tasks.add_task(generate_formal_version, task_id, ids, _reserve=False)
+    logger.info(f"[书面版] task={task_id[:8]} 已排队 scope={'selection' if ids else 'full'}")
+    return {"status": "running", "scope": "selection" if ids else "full"}
+
+
+@router.get("/api/tasks/{task_id}/formal")
+def get_formal(task_id: str):
+    """读取书面版 sidecar（实时 staleness 判定）；从未生成 → 404。"""
+    from core.transcript_formal import load_formal
+
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+    doc = load_formal(task_id, tasks[task_id].get("dialogue"))
+    if doc is None:
+        raise HTTPException(404, "formal version not found")
+    return doc
 
 
 @router.get("/api/download/{task_id}")
@@ -453,6 +568,7 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(404, _("Recording file not found"))
 
     # 只重置 stage2 相关字段 / Only reset stage2-related fields
+    # 保留旧 summary/title/output_path：重生成失败时旧产物不丢（模型误拒曾覆盖好纪要）
     tasks[task_id]["status"] = "processing"
     tasks[task_id]["progress"] = 75
     tasks[task_id]["message"] = _("Regenerating minutes...")
@@ -461,9 +577,6 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     tasks[task_id]["error_suggestion"] = None
     tasks[task_id]["failed_stage"] = None
     tasks[task_id]["retry_count"] = 0
-    tasks[task_id]["summary"] = None
-    tasks[task_id]["output_path"] = None
-    tasks[task_id]["title"] = None
     save_task_to_disk(task_id)
 
     # 恢复说话人映射，后台重新生成纪要 / Restore speaker mapping, regenerate summary in background

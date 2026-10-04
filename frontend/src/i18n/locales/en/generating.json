@@ -56,6 +56,56 @@
     "create_named": "Create",
     "create": "+ New person"
   },
+  "layer": {
+    "picker_label": "Transcript view",
+    "formal": "Formal",
+    "clean": "Cleaned",
+    "raw": "Verbatim",
+    "formal_idle_title": "Formal version not generated yet",
+    "formal_idle_desc": "AI rewrite turns spoken language into formal prose as a separate version without touching the verbatim transcript; quotes and accountability always anchor to verbatim.",
+    "formal_generate": "Generate formal version",
+    "formal_starting": "Submitting…",
+    "formal_regenerate": "Regenerate",
+    "formal_retry": "Retry",
+    "formal_estimate": "Est. ~{tokens} tokens (rough estimate, actual usage prevails)",
+    "formal_cost_cloud": "Consumes model quota",
+    "formal_cost_local": "Runs on this machine, no cloud quota used",
+    "formal_auto": "Auto-generate the formal version after each meeting",
+    "formal_auto_short": "Auto",
+    "formal_running_title": "Generating formal version…",
+    "formal_progress": "Processed {done}/{total} sentences",
+    "formal_error_title": "Formal-version generation failed",
+    "formal_stale_title": "Verbatim changed — formal version is stale",
+    "formal_stale_desc": "The verbatim transcript changed after the last formal run. Regenerate before quoting.",
+    "formal_meta_tokens": "{tokens} tokens",
+    "formal_tone_count": "{n} tone-flagged",
+    "formal_tone_tag": "⚠ Tone flagged",
+    "formal_tone_warn": "Tone may be weakened or reversed in this sentence. Anchor to verbatim when quoting conclusions.",
+    "formal_tag_compare": "Compare",
+    "formal_compare_label": "Formal / Verbatim · read-only",
+    "formal_compare_formal": "Formal",
+    "formal_compare_raw": "Verbatim",
+    "formal_blocked": "Cannot generate right now: {reason}. Check model settings and quota.",
+    "formal_blocked_generic": "Cannot generate right now. Retry later or check model settings.",
+    "formal_block_reason": {
+      "source_not_set": "No model configured",
+      "trial_requires_login": "Sign in to use the trial",
+      "trial_quota_exhausted": "Trial quota exhausted",
+      "trial_quota_exhausted_no_fallback": "Trial quota exhausted, no fallback model",
+      "byok_key_missing_cloud_unavailable": "Missing model key and cloud unavailable",
+      "local_endpoint_misconfigured": "Local model endpoint misconfigured",
+      "local_unsupported": "Local model does not support this capability"
+    },
+    "tag_cleaned": "Cleaned · Verbatim",
+    "tag_cleaned_title": "View verbatim transcript and cleanup details",
+    "peek_label": "Verbatim transcript · read-only",
+    "op_filler": "Removed {n} filler(s)",
+    "op_dup": "Merged {n} repetition(s)",
+    "op_punct": "{n} punctuation fix(es)",
+    "op_items": " ({items})",
+    "op_join": ", ",
+    "op_sep": "; "
+  },
   "transcript": {
     "show": "Show Transcript",
     "hide": "Hide Transcript",
@@ -71,6 +121,7 @@
   },
   "chapter": {
     "overview_label": "Chapters",
+    "toggle_all_transcripts": "Expand / collapse all chapters",
     "index_prefix": "Ch.",
     "index_suffix": "of {count}",
     "dividing": "Dividing chapters...",
@@ -139,6 +190,9 @@
   "notes": {
     "placeholder": "Take notes here… Enter for new block · ↑↓ to navigate",
     "saved": "Saved",
+    "empty_title": "Jot freely, no tidying needed",
+    "empty_body": "Ideas, to-dos, quotes, links — drop them all here first. Click to write in Markdown; after the meeting, AI can organize them into key points and action items.",
+    "empty_foot": "This hint disappears once you start typing",
     "proposal_label": "Notes rewrite proposal",
     "proposal_stats": "{hunks} changes · +{added} / −{removed} lines",
     "proposal_pending": "AI produced a notes rewrite proposal ({hunks} changes · +{added} / −{removed} lines)",
@@ -230,27 +284,16 @@
     "insights": "Insights"
   },
   "insights": {
-    "analyze": "Analyze This Meeting",
-    "analyze_tip": "Runs another global observation over the full minutes; each analysis may surface new findings",
-    "analyzing": "Analyzing…",
-    "analyze_none": "No new insight highlights found for this meeting.",
-    "analyze_failed": "Post-meeting insight analysis failed. Please try again later.",
-    "analyze_in_flight": "An analysis for this meeting is already running. Please wait.",
-    "empty_title": "No insights for this meeting yet",
-    "empty_desc": "The Insight Deck holds AI process observations, not minutes content. Click below to generate new observations from the full transcript.",
-    "phase_post": "Post-meeting",
     "board": {
       "eyebrow": "Insight Board",
       "empty_title": "No insight board yet",
       "empty_body": "The board is a human-AI co-created global view: in Agent mode of the chat panel, ask AI to generate the board for this meeting — it reads the transcript and the current board, then produces the full HTML artifact.",
       "co_create": "Co-create in Chat",
-      "co_create_msg": "Read the insight board of this meeting (or create one from the transcript and chapters if none exists) and co-create / revise it with me.",
+      "co_create_msg": "Generate or revise the insight board from this meeting's transcript and chapters: do NOT recap decisions, topic groups, todo assignments, or who said what (the minutes and Decision Center already carry those). Address only the meeting's unresolved dilemmas, draw on external industry knowledge and proven practices, and provide the best solutions nobody raised in the room. The board is a diagram-first artifact, not an essay: each dilemma is one section drawn before the prose — a .ib-visual built only from built-in components (.ib-flow for flows/chains, .ib-tree for fan-out/aggregation, .ib-compare for now-vs-goal, .ib-grid for parallel mechanisms) — followed by brief notes, a .ib-roadmap rollout timeline, and a .ib-tradeoff callout. Never stack plain text lists as the section body.",
       "co_create_section": "Co-create section",
-      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
+      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, rewrite it as «.ib-dilemma bar → one mandatory .ib-visual (.ib-flow / .ib-tree / .ib-compare / .ib-grid) → brief notes → .ib-roadmap rollout → .ib-tradeoff callout» with no decision/topic/todo lists, speaker records, or plain-text walls, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
       "refresh": "Refresh",
-      "loading": "Loading…",
-      "view_board": "Board",
-      "view_cards": "Cards"
+      "loading": "Loading…"
     }
   },
   "ai_actions": {
@@ -298,9 +341,20 @@
     "person_suffix": " attending",
     "add_inline_placeholder": "Add…",
     "pick_speaker": "Add attendee",
-    "auto_tag": "auto",
     "search_placeholder": "Search people…",
     "create_hint": "Create \"{name}\""
+  },
+  "voiceprint": {
+    "run": "Run voiceprint match",
+    "running": "Matching…",
+    "failed": "Match failed",
+    "tag_matched": "Voiceprint similarity {pct}%",
+    "tag_unmatched": "Highest similarity {pct}%",
+    "adopt_name": "Adopt suggestion: {name}",
+    "inline_suggest": "Suggest: {name} {pct}%",
+    "inline_weak": "No match ({pct}%)",
+    "suggest_badge": "voiceprint {pct}%",
+    "dismiss": "Ignore suggestion"
   },
   "pipeline": {
     "completed": "Minutes ready"

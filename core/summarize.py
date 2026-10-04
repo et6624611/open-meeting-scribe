@@ -24,6 +24,32 @@ from .llm import chat_completion
 logger = logging.getLogger(__name__)
 
 
+class SummaryRefusalError(RuntimeError):
+    """模型对充足对话输出拒答话术（按瞬时错误走自动重试）"""
+
+
+# 角色模板含「内容不足如实说明」出口；长对话被模型误判时会原样复述该话术，
+# 直接落盘会用 16 字拒答覆盖既有好纪要（2026-10-01 实测：235 句对话遭误拒）。
+_REFUSAL_MARKERS = (
+    "对话内容过短",
+    "无法生成有效纪要",
+    "无法生成有效笔记",
+    "内容不足，无法生成",
+)
+_REFUSAL_MIN_SENTENCES = 10  # 低于此句数拒答可能为真，不拦截（本地 <3 句守卫先行返回）
+_REFUSAL_MAX_LEN = 200       # 正常纪要不会低于此长度且带拒答话术
+
+
+def is_summary_refusal(summary: str | None, total_sentences: int) -> bool:
+    """判断模型输出是否为误拒：对话充足却返回空串或带拒答话术的短文。"""
+    if total_sentences < _REFUSAL_MIN_SENTENCES:
+        return False
+    text = (summary or "").strip()
+    if not text:
+        return True
+    return len(text) < _REFUSAL_MAX_LEN and any(m in text for m in _REFUSAL_MARKERS)
+
+
 # 标题生成系统提示词
 TITLE_SYSTEM_PROMPT = """你是一位专业的会议标题生成助手。根据会议对话内容，生成一个简洁、概括性的会议标题。
 
@@ -326,6 +352,25 @@ def generate_summary(
 
     logger.info(f"生成纪要: {unique_speaker_count} 位说话人（{len(dialogue)} 条对话）, 会议时间={meeting_time}")
     summary = chat_completion(messages, model=model)
+
+    if is_summary_refusal(summary, total_sentences):
+        # 误拒二次机会：模板「内容不足如实说明」出口被模型套用到转写不清晰的充足对话上
+        # （2026-10-01 实测 235 句对话 4/4 次稳定误拒）。显式声明句数并要求照常生成。
+        logger.warning(
+            f"模型误拒纪要生成（{total_sentences} 句对话返回 {len(summary or '')} 字符），追加澄清重试: {(summary or '')[:60]}"
+        )
+        retry_messages = messages + [
+            {"role": "assistant", "content": summary or ""},
+            {"role": "user", "content": _(
+                "The dialogue contains {count} sentences — the content is sufficient. "
+                "Even if some sentences are unclear due to transcription quality, "
+                "generate the minutes based on the recognizable content. Do not refuse."
+            ).format(count=total_sentences)},
+        ]
+        summary = chat_completion(retry_messages, model=model)
+
+    if is_summary_refusal(summary, total_sentences):
+        raise SummaryRefusalError(f"模型误判对话内容不足（实际 {total_sentences} 句）: {(summary or '')[:60]}")
 
     # 后处理兜底：如果 LLM 仍输出"未提供"，用实际值替换
     if meeting_time and summary:

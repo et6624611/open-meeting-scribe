@@ -547,7 +547,8 @@ class TestEngineRegistry:
         monkeypatch.setattr(_shutil, "which", lambda x: None)  # 全部未安装：探针落 path 失败段，不触 subprocess
         resp = st.get_chat_engine_status()
         ids = {e["engine_id"] for e in resp["engines"]}
-        assert {"qoder-cli", "qoder-cli-cn", "claude-code"} <= ids
+        assert {"qoder-cli", "qoder-cli-cn", "claude-code",
+                "codebuddy", "trae-cli", "kimi-code", "codex"} <= ids
         cc = next(e for e in resp["engines"] if e["engine_id"] == "claude-code")
         assert cc["display_name"] == "Claude Code" and cc["installed"] is False
         assert cc["name_key"] == "cliengine_engine_claude_code"

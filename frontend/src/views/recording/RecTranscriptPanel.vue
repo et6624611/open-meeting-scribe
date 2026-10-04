@@ -16,6 +16,41 @@
           @seek-to-time="onSeekToTime"
         />
         <div class="rec-transcript-actions">
+        <!-- 三层分段控件：书面版（会中锁定）/ 清理版（默认）/ 原文 / Layer segmented control: formal (locked live) / cleaned (default) / verbatim -->
+        <div class="rec-layer-seg" role="tablist" :aria-label="t('recording.layer.list_label')" @keydown="onSegKeydown">
+          <button
+            type="button"
+            role="tab"
+            ref="segFormalBtn"
+            class="rec-layer-btn"
+            :class="{ 'is-active': layerView === 'formal' }"
+            :aria-selected="layerView === 'formal'"
+            @click="layerView = 'formal'"
+          >
+            <svg v-if="!formalUnlocked" class="rec-layer-lock" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            {{ t('recording.layer.formal') }}
+            <span class="rec-layer-ai">AI</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            ref="segCleanBtn"
+            class="rec-layer-btn"
+            :class="{ 'is-active': layerView === 'clean' }"
+            :aria-selected="layerView === 'clean'"
+            :disabled="!cleanupEnabled"
+            @click="layerView = 'clean'"
+          >{{ t('recording.layer.clean') }}</button>
+          <button
+            type="button"
+            role="tab"
+            ref="segRawBtn"
+            class="rec-layer-btn"
+            :class="{ 'is-active': layerView === 'raw' }"
+            :aria-selected="layerView === 'raw'"
+            @click="layerView = 'raw'"
+          >{{ t('recording.layer.raw') }}</button>
+        </div>
         <!-- 显示/隐藏原文 / Show/hide transcript -->
         <button class="action-btn" :class="{ 'is-active': showTranscript }" @click="$emit('update:showTranscript', !showTranscript)" :title="showTranscript ? t('recording.transcript.hide_title') : t('recording.transcript.show_title')">
           <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -55,16 +90,52 @@
                   <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
               </template>
+              <!-- 文本处理 / Text processing -->
+              <div class="transcript-more-sep" role="separator"></div>
+              <div class="transcript-more-label">{{ t('recording.layer.more_section') }}</div>
+              <!-- 口语清理开关（本地规则，默认开，逃生通道）/ Spoken cleanup toggle (local rules, default on, escape hatch) -->
+              <div class="transcript-more-item transcript-more-toggle">
+                <div
+                  class="toggle-switch"
+                  role="menuitemcheckbox"
+                  tabindex="0"
+                  :aria-checked="cleanupEnabled"
+                  :class="{ 'is-on': cleanupEnabled }"
+                  @click="toggleCleanup"
+                  @keydown.enter.prevent="toggleCleanup"
+                  @keydown.space.prevent="toggleCleanup"
+                >
+                  <div class="toggle-switch-track">
+                    <div class="toggle-switch-knob"></div>
+                  </div>
+                  <span class="toggle-switch-label">
+                    {{ t('recording.layer.cleanup_name') }}
+                    <span class="transcript-more-side">{{ t('recording.layer.cleanup_side') }}</span>
+                  </span>
+                </div>
+              </div>
+              <div class="transcript-more-sub">{{ t('recording.layer.cleanup_sub') }}</div>
+              <!-- AI 书面化：会中禁用，仅会后可用 / AI formal rewrite: disabled live, post-meeting only -->
+              <button class="transcript-more-item transcript-more-item-disabled" type="button" disabled :aria-disabled="true">
+                <span class="transcript-more-item-text">
+                  <span class="transcript-more-item-name">
+                    {{ t('recording.layer.formal_name') }}
+                    <span class="transcript-more-side">{{ t('recording.layer.formal_side') }}</span>
+                  </span>
+                  <span class="transcript-more-sub">{{ t('recording.layer.formal_sub') }}</span>
+                </span>
+                <span class="transcript-more-go">{{ t('recording.layer.formal_post_only') }}</span>
+              </button>
             </div>
           </Teleport>
         </div>
         </div>
       </div>
     </div>
-    <!-- 本地模式声明：WP-I（分段增量上屏）已验收，文案切增量口径 / Local mode notice: WP-I segmented-incremental shipped, wording now reflects sentence-by-sentence display -->
-    <div v-if="engineStore.status?.mode === 'local'" class="rec-local-batch-banner" role="status">
+    <!-- 本地模式声明：按 realtime_segments 开关区分「逐句上屏」与「录音后本机批转写」两种口径 / Local mode notice: copy follows the realtime_segments flag — incremental display vs. post-recording on-device batch -->
+    <div v-if="isLocalMode" class="rec-local-batch-banner" role="status">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <span>{{ t('recording.transcript.local_batch_notice') }}</span>
+      <span>{{ t(localSegmentsEnabled ? 'recording.transcript.local_realtime_notice' : 'recording.transcript.local_batch_notice') }}</span>
     </div>
     <!-- 章节条 / Chapter strip -->
     <div class="rec-chapter-strip" v-if="chapters.length > 0">
@@ -74,8 +145,14 @@
         <span class="rec-chapter-title">{{ chapters[chapters.length - 1]?.title || t('recording.chapter.discussing') }}</span>
       </div>
     </div>
+    <!-- 书面版视图（WP-1 会中锁定引导；生成能力属 WP-2） / Formal view (locked-live notice in WP-1; generation lands in WP-2) -->
+    <div v-if="layerView === 'formal'" class="rec-formal-lock">
+      <svg class="rec-formal-lock-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <div class="rec-formal-lock-title">{{ t('recording.layer.formal_locked_title') }}</div>
+      <div class="rec-formal-lock-desc">{{ t('recording.layer.formal_locked_desc') }}</div>
+    </div>
     <!-- 转写列表（含 listening 指示器 / 空状态，统一虚拟滚动） / Transcript list (with listening indicator / empty state, unified virtual scroll) -->
-    <div class="rec-scroll-wrap">
+    <div v-else class="rec-scroll-wrap">
       <DynamicScroller
         ref="scrollerRef"
         class="rec-transcript-body"
@@ -89,7 +166,7 @@
           <DynamicScrollerItem
             :item="item"
             :active="active"
-            :size-dependencies="[item.type === 'chapter' && expandedChapters.has(item.chapterIdx), showTranscript, markerMode]"
+            :size-dependencies="[item.type === 'chapter' && expandedChapters.has(item.chapterIdx), showTranscript, markerMode, layerView, cleanupEnabled, item.type === 'line' && peeked.has(item.lineIdx)]"
             :data-index="index"
           >
             <div class="rec-transcript-item">
@@ -117,10 +194,25 @@
               <div class="rec-line-head">
                 <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ getSpeakerName(lineOf(item)) }}</span>
                 <button v-if="!locateId || locateId === lineOf(item).speaker_id" class="rec-line-locate-btn" @click.stop="$emit('toggleLocate', lineOf(item).speaker_id)" :title="t('recording.speaker.locate')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+                <!-- 清理视图：已清理行的原文回览入口 / Clean view: peek-verbatim entry on cleaned lines -->
+                <button
+                  v-if="isCleanedView(lineOf(item))"
+                  type="button"
+                  class="rec-line-clean-tag"
+                  :aria-expanded="peeked.has(item.lineIdx)"
+                  :title="t('recording.layer.tag_cleaned_title')"
+                  @click.stop="togglePeek(item.lineIdx)"
+                >{{ t('recording.layer.tag_cleaned') }}</button>
               </div>
               <div class="rec-line-body">
-                <span v-if="translationDisplay !== 'translation'" class="rec-line-text">{{ lineOf(item).text }}</span>
+                <span v-if="translationDisplay !== 'translation'" class="rec-line-text">{{ displayText(lineOf(item)) }}</span>
                 <span v-if="translationDisplay !== 'original' && translationMap.get(item.lineIdx)" class="rec-line-translation">{{ translationMap.get(item.lineIdx) }}</span>
+              </div>
+              <!-- 原文回览块（只读原文 + 清理明细）/ Verbatim peek block (read-only raw + cleanup detail) -->
+              <div v-if="isCleanedView(lineOf(item)) && peeked.has(item.lineIdx)" class="rec-peek">
+                <div class="rec-peek-label">{{ t('recording.layer.peek_label') }}</div>
+                <div class="rec-peek-text">{{ lineOf(item).text }}</div>
+                <div v-if="cleanupRuleText(lineOf(item).clean_ops)" class="rec-peek-rule">{{ cleanupRuleText(lineOf(item).clean_ops) }}</div>
               </div>
               <div v-if="notesByLine[item.lineIdx]" class="note-inline-card">
                 <span class="note-inline-text">{{ notesByLine[item.lineIdx] }}</span>
@@ -138,10 +230,10 @@
               <div class="rec-line-body"><span class="rec-line-text rec-line-text--listening">{{ t('recording.transcript.listening') }}</span></div>
             </div>
           </div>
-          <!-- 空状态 / Empty state -->
+          <!-- 空状态（本地批转写降级时换口径：会中不出字属正常） / Empty state (batch-degraded local mode: no live text by design) -->
           <div v-else-if="item.type === 'empty'" class="rec-empty">
-            <p>{{ t('recording.transcript.empty') }}</p>
-            <p class="rec-empty-hint">{{ t('recording.transcript.empty_hint') }}</p>
+            <p>{{ t(localBatchDegraded ? 'recording.transcript.batch_empty' : 'recording.transcript.empty') }}</p>
+            <p class="rec-empty-hint">{{ t(localBatchDegraded ? 'recording.transcript.batch_empty_hint' : 'recording.transcript.empty_hint') }}</p>
           </div>
             </div>
           </DynamicScrollerItem>
@@ -166,12 +258,99 @@ import { usePopMenu } from '@/composables/usePopMenu'
 import { useEngineStore } from '@/stores/engine'
 import type { TranscriptLine } from '@/composables/useWebSocket'
 import type { SupportedLanguage } from '@/composables/useTranslation'
+import { fetchSettings, saveSettings } from '@/api/settings'
+import { cleanupRuleText as formatCleanupRule, segKeydownHandler } from '@/utils/transcriptLayers'
 
 const { t } = useI18n()
 
-// 本地模式降级横幅判定（R5 / PRD 非目标节） / Local-mode degradation banner (R5)
+// 本地模式口径判定：mode + realtime_segments.enabled 双因子（WP-I 开启＝逐句上屏；
+// 关闭＝WP-H 设计内降级，录音后本机统一批转写，会中不出字）/ Local-mode wording
+// driven by mode + realtime_segments.enabled (WP-I on = incremental; off = WP-H batch)
 const engineStore = useEngineStore()
-onMounted(() => { engineStore.load() })
+
+// ── 转写三层视图（PLAN-TRANSCRIPT-LAYERING WP-1） ──
+// formal=书面版（WP-1 会中恒锁定，WP-2 接入会后生成）；clean=本地清理版（默认）；raw=逐字稿原文
+type LayerView = 'formal' | 'clean' | 'raw'
+const layerView = ref<LayerView>('clean')
+const cleanupEnabled = ref(true)
+const cleanupSaving = ref(false)
+// WP-1：会中面板书面版永不解锁 / WP-1: formal layer stays locked on the live panel
+const formalUnlocked = false
+const peeked = ref<Set<number>>(new Set())
+
+// 分段控件按钮 refs（键盘导航用） / Segmented-control button refs (keyboard nav)
+const segFormalBtn = ref<HTMLButtonElement | null>(null)
+const segCleanBtn = ref<HTMLButtonElement | null>(null)
+const segRawBtn = ref<HTMLButtonElement | null>(null)
+
+onMounted(() => {
+  engineStore.load()
+  // 读入口语清理开关（失败按默认开静默处理）/ Load cleanup escape-hatch state (default-on on failure)
+  fetchSettings()
+    .then((s) => {
+      const enabled = s.transcript?.cleanup?.enabled
+      if (typeof enabled === 'boolean') {
+        cleanupEnabled.value = enabled
+        if (!enabled && layerView.value === 'clean') layerView.value = 'raw'
+      }
+    })
+    .catch(() => {})
+})
+
+// 关闭清理：收敛回原文视图并清空原文回览 / When cleanup is off, collapse to verbatim and close peeks
+watch(cleanupEnabled, (on) => {
+  if (!on) {
+    peeked.value = new Set()
+    if (layerView.value === 'clean') layerView.value = 'raw'
+  }
+})
+
+/** 乐观更新口语清理开关，失败回滚（会中只改显示；后端按会话快照继续推送）
+ *  Optimistic cleanup toggle with rollback (live: display-only; backend keeps session snapshot) */
+async function toggleCleanup() {
+  if (cleanupSaving.value) return
+  const prev = cleanupEnabled.value
+  const next = !prev
+  cleanupEnabled.value = next
+  cleanupSaving.value = true
+  try {
+    await saveSettings({ transcript: { cleanup: { enabled: next } } })
+  } catch (err) {
+    cleanupEnabled.value = prev
+    console.error('[transcript] save cleanup preference failed:', err)
+  } finally {
+    cleanupSaving.value = false
+  }
+}
+
+function togglePeek(idx: number) {
+  const next = new Set(peeked.value)
+  if (next.has(idx)) next.delete(idx)
+  else next.add(idx)
+  peeked.value = next
+}
+
+/** 当前行是否处于「已清理」展示态（清理视图 + 开关开 + 该行确有清理版） */
+function isCleanedView(line: TranscriptLine): boolean {
+  return layerView.value === 'clean' && cleanupEnabled.value && typeof line.clean_text === 'string'
+}
+
+/** 行的展示文本：清理视图取 clean_text（无则回落原文），其余恒原文 */
+function displayText(line: TranscriptLine): string {
+  if (isCleanedView(line)) return line.clean_text as string
+  return line.text
+}
+
+/** 清理明细：按规则聚合 ops 为一句可读说明 / Aggregate cleanup ops into a human-readable line */
+function cleanupRuleText(ops?: TranscriptLine['clean_ops']): string {
+  return formatCleanupRule(t, ops, 'recording')
+}
+
+/** tablist 键盘导航（←/→ 循环跳过禁用项，Home/End，自动激活）/ Tablist keyboard nav */
+const onSegKeydown = segKeydownHandler([segFormalBtn, segCleanBtn, segRawBtn])
+const isLocalMode = computed(() => engineStore.status?.mode === 'local')
+const localSegmentsEnabled = computed(() => engineStore.status?.realtime_segments_enabled === true)
+const localBatchDegraded = computed(() => isLocalMode.value && !localSegmentsEnabled.value)
 
 // ── 更多菜单 / More menu ──
 const moreBtn = ref<HTMLElement | null>(null)
@@ -245,10 +424,15 @@ function estimateLineHeight(idx: number): number {
   // head(18px) + gap(4px) + 气泡：border(2) + padding-v(16) + 文本行高 / head(18px) + gap(4px) + bubble: border(2) + padding-v(16) + text line height
   let h = 32 + 10 + 18 + 4
 
-  // 气泡：border(2) + padding-v(16) + 文本行高 / Bubble: border(2) + padding-v(16) + text line height
+  // 气泡：border(2) + padding-v(16) + 文本行高（按当前分层视图展示文本估算）/ Bubble height (estimate by the active layer's displayed text)
   const textLineH = 13 * 1.6           // fs-13 × line-height 1.6 ≈ 20.8
-  const textLines = estTextLines(line.text)
+  const textLines = estTextLines(displayText(line))
   h += 2 + 16 + textLines * textLineH
+
+  // 原文回览块展开：margin(8) + label(14) + 原文行 + 明细行(≤1) + 内边距(~20) / Expanded verbatim peek block
+  if (isCleanedView(line) && peeked.value.has(idx)) {
+    h += 8 + 14 + estTextLines(line.text) * textLineH + (line.clean_ops?.length ? 18 : 0) + 20
+  }
 
   // 翻译行（双语或纯译文模式下追加） / Translation line (appended in bilingual or translation-only mode)
   if (props.translationDisplay !== 'original') {
@@ -414,6 +598,17 @@ watch(
     nextTick(() => scrollToBottom())
   }
 )
+
+// 分层视图/清理开关切换：展示文本与 peek 块改变行高，强制重测并校正贴底
+// Layer/cleanup switching changes line heights — force remeasure and re-attach to bottom.
+watch([layerView, cleanupEnabled, peeked], () => {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      ;(scrollerRef.value as any)?.updateVisibleItems?.(true)
+      if (autoFollow.value) scrollToBottom()
+    })
+  })
+})
 
 // ── 辅助函数 / Helper functions ──
 function lineOf(item: MixedItem): TranscriptLine {

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>洞察方案画布 · 真实会议三例（新规则）</title>
+<style>
+  :root{
+    --bg:#0b0e13; --grid:#1b1f27; --card-border:#313644; --card-bg:#14161d;
+    --chip-bg:#1e222b; --chip-border:#333846; --text:#e6e8ec; --dim:#8b919c;
+    --accent:#7c83c4;
+    --c-measure:#4d8cf0;   /* 举措-蓝 */
+    --c-milestone:#4caf74; /* 里程碑-绿 */
+    --c-mechanism:#9a7ae0; /* 机制-紫 */
+    --c-assume:#e0a54a;    /* 假设-琥珀 */
+    --c-risk:#e06b5a;      /* 风险/代价-红 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+
+  .topbar{display:flex;align-items:center;gap:12px;padding:11px 20px;background:#0f1217;border-bottom:1px solid var(--card-border);position:sticky;top:0;z-index:20}
+  .topbar h1{font-size:14px;font-weight:600}
+  .topbar .sub{color:var(--dim);font-size:12px}
+  .spacer{flex:1}
+  .legend{display:flex;gap:13px}
+  .legend span{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--dim)}
+  .dot{width:8px;height:8px;border-radius:2px}
+
+  .tabs{display:flex;gap:7px;padding:9px 20px;background:#0e1015;border-bottom:1px solid var(--card-border)}
+  .tab{padding:6px 14px;border:1px solid var(--card-border);border-radius:8px;background:var(--card-bg);color:var(--dim);font-size:12px;cursor:pointer;font-family:inherit}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--text);border-color:var(--accent)}
+
+  .page{display:none;padding:16px 20px 28px}
+  .page.active{display:block}
+
+  /* 困境 + 目标 固定区块 */
+  .framing{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .frame-card{border:1px solid var(--card-border);border-radius:10px;padding:12px 14px;background:var(--card-bg)}
+  .frame-card .lab{font-size:11px;letter-spacing:.6px;color:var(--dim);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  .frame-card .lab .badge{font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(224,107,90,.15);color:var(--c-risk)}
+  .frame-card.goal .lab .badge{background:rgba(76,175,116,.15);color:var(--c-milestone)}
+  .frame-card p{font-size:13px}
+  .frame-card .metrics{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+  .frame-card .metric{font-size:11px;color:var(--dim)}
+  .frame-card .metric b{display:block;font-size:15px;color:var(--text);font-weight:600}
+
+  .sec-label{font-size:11px;letter-spacing:.6px;color:var(--dim);margin:4px 2px 8px}
+
+  .canvas{position:relative;height:560px;overflow:hidden;border:1px solid var(--card-border);border-radius:12px;
+    background-color:#0a0d12;
+    background-image:radial-gradient(var(--grid) 1.2px,transparent 1.2px);
+    background-size:22px 22px}
+  svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  .phase{position:absolute;width:226px;background:var(--card-bg);border:1px solid var(--card-border);
+    border-radius:10px;padding:12px 13px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+  .phase .no{font-size:11px;color:var(--dim);letter-spacing:.5px}
+  .phase .ptitle{font-size:14px;font-weight:600;margin:2px 0 4px}
+  .phase .pdesc{font-size:12px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px}
+  .phase .period{font-size:10.5px;color:#5f6a8f;margin-bottom:2px}
+
+  .chip{display:block;background:var(--chip-bg);border:1px solid var(--chip-border);border-left:3px solid var(--chip-border);
+    border-radius:7px;padding:6px 9px;margin-top:7px;cursor:default}
+  .chip:hover{background:#242934}
+  .chip .t{font-size:12.5px;line-height:1.4}
+  .chip .s{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:10.5px;color:var(--dim)}
+  .chip .s .seek{margin-left:auto;color:#5f6a8f}
+  .tag{font-size:10px;padding:1px 5px;border-radius:3px}
+  .tag-measure{background:rgba(77,140,240,.15);color:var(--c-measure)}
+  .tag-milestone{background:rgba(76,175,116,.15);color:var(--c-milestone)}
+  .tag-mechanism{background:rgba(154,122,224,.15);color:var(--c-mechanism)}
+  .tag-assume{background:rgba(224,165,74,.15);color:var(--c-assume)}
+  .tag-risk{background:rgba(224,107,90,.15);color:var(--c-risk)}
+
+  .chip[data-tip]:hover::after{
+    content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 6px);z-index:30;
+    background:#232833;color:#eef0f4;border:1px solid var(--card-border);border-radius:6px;
+    padding:7px 10px;font-size:12px;white-space:normal;width:270px;line-height:1.5;
+    box-shadow:0 8px 24px rgba(0,0,0,.55)}
+
+  /* 效果与代价 */
+  .outcomes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+  .out-card{border:1px solid var(--card-border);border-radius:10px;padding:11px 13px;background:var(--card-bg)}
+  .out-card .lab{font-size:11px;color:var(--dim);margin-bottom:6px;letter-spacing:.5px}
+  .out-card ul{list-style:none}
+  .out-card li{font-size:12px;color:var(--dim);padding:3px 0 3px 14px;position:relative}
+  .out-card li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:2px}
+  .out-card.gain li::before{background:var(--c-milestone)}
+  .out-card.cost li::before{background:var(--c-risk)}
+  .out-card.dep li::before{background:var(--c-assume)}
+
+  .foot-note{margin-top:12px;font-size:12px;color:var(--dim)}
+  .foot-note b{color:var(--text);font-weight:500}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>洞察方案画布 · 真实会议三例</h1>
+  <span class="sub">AI 针对会议困境给出的解决方案，非会议记录</span>
+  <span class="spacer"></span>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--c-measure)"></i>举措</span>
+    <span><i class="dot" style="background:var(--c-milestone)"></i>里程碑</span>
+    <span><i class="dot" style="background:var(--c-mechanism)"></i>机制</span>
+    <span><i class="dot" style="background:var(--c-assume)"></i>假设</span>
+    <span><i class="dot" style="background:var(--c-risk)"></i>风险/代价</span>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-t="0">① 主数据治理研讨会 · 81min</button>
+  <button class="tab" data-t="1">② 差旅报销预算讨论 · 55min</button>
+  <button class="tab" data-t="2">③《蜗居》叙事分析 · 4.5min</button>
+</div>
+
+<!-- ================= 例1 主数据治理 ================= -->
+<div class="page active">
+  <div class="framing">
+    <div class="frame-card">
+      <div class="lab">困境界定 <span class="badge">问题</span></div>
+      <p>物料主数据 12 万条，一物多名、编码无规则、无归口部门；现有新增流程无任何校验，脏数据持续产生，数仓与 AI 应用失去数据基础。</p>
+    </div>
+    <div class="frame-card goal">
+      <div class="lab">方案目标 <span class="badge">12 个月</span></div>
+      <p>以「增量先止血、存量再清洗、机制终固化」三步，把主数据从无人管理变为有标准、有主人、有系统拦截。</p>
+      <div class="metrics">
+        <span class="metric"><b>&lt;3%</b>重复物料率</span>
+        <span class="metric"><b>&gt;98%</b>新增一次录入准确率</span>
+        <span class="metric"><b>5 万</b>活跃物料完成治理</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">解决路径 · 从现状到目标</div>
+  <div class="canvas">
+    <svg class="wires" stroke="#424a5c" stroke-width="1.5">
+      <path d="M 252 180 H 280 V 420 H 306"/>
+      <path d="M 532 470 H 560 V 180 H 586"/>
+      <path d="M 812 180 H 840 V 420 H 866"/>
+      <path d="M 1092 470 H 1120 V 180 H 1146"/>
+    </svg>
+
+    <div class="phase" style="left:14px;top:60px">
+      <div class="no">阶段 01</div>
+      <div class="ptitle">现状止血</div>
+      <div class="period">第 0–1 月</div>
+      <div class="pdesc">先堵住脏数据入口，避免边清洗边新增</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="立即收紧 OA 物料发起：非必要新增一律先走「查重申请」，由物管科一人终审">
+        <div class="t">冻结自由新增入口，改单人终审</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="新增前必须填写名称/规格/用途/拟用归口，四项不齐不进审批流">
+        <div class="t">建立新增「四项必填」临时规则</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)" data-tip="衡量标准：新发起单据查重率 100%，无标准物料入库">
+        <div class="t">止血完成：零无校验新增</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:306px;top:300px">
+      <div class="no">阶段 02</div>
+      <div class="ptitle">标准立规</div>
+      <div class="period">第 1–3 月</div>
+      <div class="pdesc">没有统一标准，清洗无从下手；先立法再动手</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="按设备配件/实验试剂/原料/耗材等域建分类树；「手套」按用途入不同树，解决同名冲突">
+        <div class="t">制定物料分类标准（含用途维度）</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="归口矩阵：设备配件→设备管理部，试剂→研究院，原料/耗材→采购；信息部终审编码">
+        <div class="t">发布归口责任矩阵与编码规则</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-assume)" data-tip="前提：高层牵头授权；会议已指出无高层介入则归口矩阵无法落地">
+        <div class="t">假设：获得高层牵头授权</div>
+        <div class="s"><span class="tag tag-assume">假设</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">标准文件正式发布执行</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:586px;top:60px">
+      <div class="no">阶段 03</div>
+      <div class="ptitle">存量清洗</div>
+      <div class="period">第 3–9 月</div>
+      <div class="pdesc">只治 5 万活跃物料，相似度引擎 + 人工复核</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="以近三年采购入库单圈定约 5 万活跃物料，按采购频次排序分批，历史冗余先冻结不删">
+        <div class="t">分四批清洗活跃物料</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="用名称/规格文本相似度聚类（如改锥=螺丝刀），系统出候选合并组，归口部门确认">
+        <div class="t">部署相似度聚类辅助合并</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-risk)" data-tip="风险：专业物料误合并。对策：只做候选推荐，合并决定权 100% 在归口业务方">
+        <div class="t">风险：误合并专业物料</div>
+        <div class="s"><span class="tag tag-risk">风险</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">5 万活跃物料重复率 &lt;3%</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:866px;top:300px">
+      <div class="no">阶段 04</div>
+      <div class="ptitle">机制固化</div>
+      <div class="period">第 6–12 月</div>
+      <div class="pdesc">治理成果靠系统机制维持，不靠一次性运动</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="录入时实时检索系统内相似物料并弹出候选，从源头阻断重复——会议明确指出当前系统缺此能力">
+        <div class="t">上线新增前相似物料拦截</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="建立创建/变更/停用全生命周期流程与月度主数据质量看板，质量纳入归口部门考核">
+        <div class="t">建生命周期闭环与质量看板</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-assume)" data-tip="研究院等部门系统与主库的双向联动在本次会议无结论；方案按「先单向同步、后双向」推进">
+        <div class="t">假设：跨库联动可分阶段实现</div>
+        <div class="s"><span class="tag tag-assume">假设</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">新增准确率 &gt;98%，机制自转</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcomes">
+    <div class="out-card gain">
+      <div class="lab">预期效果</div>
+      <ul>
+        <li>数仓/AI 获得可信物料主数据</li>
+        <li>采购可合并重复品项、降低成本</li>
+        <li>票据与物料可追溯，对账效率提升</li>
+      </ul>
+    </div>
+    <div class="out-card cost">
+      <div class="lab">代价与风险</div>
+      <ul>
+        <li>需投入相似度工具与 6 个月人力</li>
+        <li>归口部门配合度决定进度</li>
+        <li>误合并会影响生产与库存</li>
+      </ul>
+    </div>
+    <div class="out-card dep">
+      <div class="lab">待验证假设</div>
+      <ul>
+        <li>高层牵头授权到位</li>
+        <li>相似度模型误判率可控</li>
+        <li>跨库同步技术路径可行</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-note">与纪要的区别：纪要记录了「问题是什么、会上提了什么建议」；<b>这份方案给出了会上没人完整给出的东西——12 个月路线、系统拦截机制、质量指标和假设清单</b>。</div>
+</div>
+<!-- ================= 例2 差旅报销预算 ================= -->
+<div class="page">
+  <div class="framing">
+    <div class="frame-card">
+      <div class="lab">困境界定 <span class="badge">问题</span></div>
+      <p>报销与预算在多套系统中并行，控制逻辑不一致；数据时效性被误解、预算调整主责未定，整合方向在「自研查询」与「标准模块」之间摇摆。</p>
+    </div>
+    <div class="frame-card goal">
+      <div class="lab">方案目标 <span class="badge">6 个月</span></div>
+      <p>建立「星瀚为主、留存值为准、接口同步」的统一预算管控，消除双系统口径冲突，实现切换期零差错。</p>
+      <div class="metrics">
+        <span class="metric"><b>100%</b>报销预算校验覆盖</span>
+        <span class="metric"><b>0</b>系统间口径差异</span>
+        <span class="metric"><b>T+1</b>数据同步时效</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">解决路径 · 从现状到目标</div>
+  <div class="canvas">
+    <svg class="wires" stroke="#424a5c" stroke-width="1.5">
+      <path d="M 252 200 H 280 V 430 H 306"/>
+      <path d="M 532 480 H 560 V 200 H 586"/>
+      <path d="M 812 200 H 840 V 430 H 866"/>
+      <path d="M 1092 480 H 1120 V 200 H 1146"/>
+    </svg>
+
+    <div class="phase" style="left:14px;top:80px">
+      <div class="no">阶段 01</div>
+      <div class="ptitle">口径统一</div>
+      <div class="period">第 0–1 月</div>
+      <div class="pdesc">先把概念厘清，防止系统建在错误假设上</div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="明文区分两个控制点：①报销单提交时校验余额；②预算调整是独立审批动作。写成管控口径文件下发">
+        <div class="t">固化「两控制点」口径文件</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="确认接口只提供已发生事实（含 2021 历史数据），不含预测；在接口文档标注数据语义边界">
+        <div class="t">标注接口数据语义与时效边界</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">各方书面确认统一口径</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:306px;top:310px">
+      <div class="no">阶段 02</div>
+      <div class="ptitle">架构定责</div>
+      <div class="period">第 1–2 月</div>
+      <div class="pdesc">回答会上没定的问题：谁是主系统、谁负责写回</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="确定星瀚标准预算模块为主控；差旅预算整建制导入，非差旅部分本期不纳入，避免两套控制逻辑并存">
+        <div class="t">定星瀚为唯一主控系统</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="签订数据主责矩阵：星瀚负责预算结果，商旅负责单据与占用，调整入口唯一，写回责任到系统">
+        <div class="t">建立数据主责与流向矩阵</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-assume)" data-tip="会议遗留：调整操作放哪边未定。方案默认星瀚侧调整、接口回写，需双方团队确认">
+        <div class="t">假设：星瀚侧调整获双方认可</div>
+        <div class="s"><span class="tag tag-assume">假设</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">架构与主责矩阵获批</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:586px;top:80px">
+      <div class="no">阶段 03</div>
+      <div class="ptitle">接口集成</div>
+      <div class="period">第 2–4 月</div>
+      <div class="pdesc">不做实时全量查询，用留存占用值 + 事件同步</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="明确否决「实时全量查询」方案（性能与口径双风险）；以单据提交/驳回/修改事件驱动占用与释放，使用留存值">
+        <div class="t">建事件驱动的占用/释放接口</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="总部科目级拆分、营销项目级分类（含培训差旅），用空值兼容与映射表双向转换">
+        <div class="t">建总部/营销维度映射层</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-risk)" data-tip="风险：映射规则不全导致费用错配。对策：映射表双签 + 每轮全量对账，差异不为零不放行">
+        <div class="t">风险：映射失真、费用错配</div>
+        <div class="s"><span class="tag tag-risk">风险</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">接口联调对账差异为零</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:866px;top:310px">
+      <div class="no">阶段 04</div>
+      <div class="ptitle">切换上线</div>
+      <div class="period">第 4–6 月</div>
+      <div class="pdesc">灰度切换、双写对账、可回退</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="先营销差旅单业务线灰度，双写双算一周，逐业务线扩大；旧系统保留只读三个月">
+        <div class="t">灰度双写，逐线切换</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="建立每日自动对账与异常熔断：差异超阈值自动停止新链路并告警，防止错误扩散">
+        <div class="t">建对账熔断兜底机制</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-assume)" data-tip="前提：自研接口开发资源按 4 月到位；若延期，切换顺延而非压缩灰度期">
+        <div class="t">假设：开发资源按期到位</div>
+        <div class="s"><span class="tag tag-assume">假设</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">全量上线，旧链路下线</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcomes">
+    <div class="out-card gain">
+      <div class="lab">预期效果</div>
+      <ul>
+        <li>报销校验实时、口径全局一致</li>
+        <li>预算占用可追溯、释放无遗漏</li>
+        <li>编制与执行在星瀚闭环管理</li>
+      </ul>
+    </div>
+    <div class="out-card cost">
+      <div class="lab">代价与风险</div>
+      <ul>
+        <li>接口开发与双写期运维投入</li>
+        <li>切换期双系统并行成本</li>
+        <li>映射/主责争议可能拖期</li>
+      </ul>
+    </div>
+    <div class="out-card dep">
+      <div class="lab">待验证假设</div>
+      <ul>
+        <li>星瀚侧调整方案获双方认可</li>
+        <li>开发资源按期到位</li>
+        <li>映射规则覆盖全部费用场景</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-note">与纪要的区别：纪要罗列了 6 段讨论与会上结论；<b>方案补上了会上缺失的决策——主责矩阵、灰度切换、熔断兜底，并把「不做全量查询」从口头观点变成架构决策</b>。</div>
+</div>
+<!-- ================= 例3 蜗居叙事分析 ================= -->
+<div class="page">
+  <div class="framing">
+    <div class="frame-card">
+      <div class="lab">困境界定 <span class="badge">问题</span></div>
+      <p>不对等关系中的渐进操控，被叙事以「成熟魅力」「说话艺术」浪漫化包装；受众——尤其缺少社会经验的年轻人——无法识别，甚至把套路当作范本。</p>
+    </div>
+    <div class="frame-card goal">
+      <div class="lab">方案目标 <span class="badge">内容+教育</span></div>
+      <p>不做道德批判，而做能力建设：产出一套可复用的「体面操控」识别框架与干预方案，让受众看得穿、守得住。</p>
+      <div class="metrics">
+        <span class="metric"><b>1 套</b>识别框架</span>
+        <span class="metric"><b>10+</b>典型案例拆解</span>
+        <span class="metric"><b>3 步</b>边界应对动作</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-label">解决路径 · 从看得见到守得住</div>
+  <div class="canvas" style="height:500px">
+    <svg class="wires" stroke="#424a5c" stroke-width="1.5">
+      <path d="M 252 170 H 280 V 380 H 306"/>
+      <path d="M 532 430 H 560 V 170 H 586"/>
+      <path d="M 812 170 H 840 V 380 H 866"/>
+    </svg>
+
+    <div class="phase" style="left:14px;top:50px">
+      <div class="no">阶段 01</div>
+      <div class="ptitle">操控拆解</div>
+      <div class="pdesc">先把手法显性化：套路见光即失效一半</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="梳理剧中三步接触链：话题建立认同→制造肢体接近→以「试用/帮忙」铺台阶送贵重物，标注每步的借口设计">
+        <div class="t">建渐进操控步骤模型</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="拆解中间人的作用：制造「体面的亲密场景」、让目标误以为是关怀；识别中间人是关键预警信号">
+        <div class="t">补充中间人推手模式</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">完成操控手法图谱</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:306px;top:260px">
+      <div class="no">阶段 02</div>
+      <div class="ptitle">框架构建</div>
+      <div class="pdesc">把剧情知识变成普通人可用的判断工具</div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="输出识别清单：每步是否有「无法拒绝的借口」、对方是否承担对等成本、是否存在中间人推动、节奏是否超出关系阶段">
+        <div class="t">建「体面操控」识别清单</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="设计三步应对：放慢节奏（不现场回应）→对等化（要求对方承担公开成本）→引入第三方视角验证">
+        <div class="t">设计三步边界应对动作</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-assume)" data-tip="假设：识别框架对真实关系有效——剧中信息完整，现实中信息模糊；需在真实访谈中验证清单可用性">
+        <div class="t">假设：框架在现实场景可用</div>
+        <div class="s"><span class="tag tag-assume">假设</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">框架通过小范围用户测试</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+
+    <div class="phase" style="left:586px;top:50px">
+      <div class="no">阶段 03</div>
+      <div class="ptitle">场景干预</div>
+      <div class="pdesc">框架要进入真实场景才产生价值</div>
+      <div class="chip" style="border-left-color:var(--c-measure)" data-tip="以影视片段为素材做案例库（10+），每个案例标注操控点与识别清单对应项，用于高校/新人培训">
+        <div class="t">建案例库与教育课程包</div>
+        <div class="s"><span class="tag tag-measure">举措</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-mechanism)" data-tip="面向内容平台提出「浪漫化操控」标注倡议：同类剧情补充边界提示，而非审查内容">
+        <div class="t">推动内容侧提示倡议</div>
+        <div class="s"><span class="tag tag-mechanism">机制</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-risk)" data-tip="风险一：框架被反向当作「操控教程」；对策：清单只写识别信号，不写操作细节。风险二：讨论滑向道德审判，偏离能力建设目标">
+        <div class="t">风险：被当话术 / 道德化</div>
+        <div class="s"><span class="tag tag-risk">风险</span></div>
+      </div>
+      <div class="chip" style="border-left-color:var(--c-milestone)">
+        <div class="t">首批工作坊落地运行</div>
+        <div class="s"><span class="tag tag-milestone">里程碑</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="outcomes">
+    <div class="out-card gain">
+      <div class="lab">预期效果</div>
+      <ul>
+        <li>年轻人获得可操作的识别工具</li>
+        <li>边界教育从说教变为方法训练</li>
+        <li>同类内容讨论有共同框架</li>
+      </ul>
+    </div>
+    <div class="out-card cost">
+      <div class="lab">代价与风险</div>
+      <ul>
+        <li>课程设计与推广需要持续投入</li>
+        <li>框架可能被误读或反向利用</li>
+        <li>议题敏感，传播尺度难把握</li>
+      </ul>
+    </div>
+    <div class="out-card dep">
+      <div class="lab">待验证假设</div>
+      <ul>
+        <li>识别清单在现实关系中有效</li>
+        <li>教育干预能改变实际应对行为</li>
+        <li>平台愿意配合内容提示</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-note">与纪要的区别：纪要复述了剧情和「浪漫化」这一判断；<b>方案把判断转成了可执行的解法——识别清单、应对动作、课程与倡议，这是会议完全没有涉及的层</b>。</div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('#tabs .tab');
+  const pages = document.querySelectorAll('.page');
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabs.forEach(b => b.classList.remove('active'));
+      pages.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      pages[Number(btn.dataset.t)].classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

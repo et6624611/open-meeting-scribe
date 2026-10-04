@@ -6,12 +6,13 @@
  */
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { sendMessageStream, injectItems, cancelStream } from '@/api/chat'
-import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
+import { sendMessageStream, injectItems, cancelStream, generateChatTitle } from '@/api/chat'
+import type { AttachmentMeta, ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
 import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useAiSessionsStore } from '@/stores/aiSessions'
+import type { AiSession } from '@/stores/aiSessions'
 import { useAgentStore } from '@/stores/agent'
 import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
@@ -25,6 +26,9 @@ import { tt, getLocale } from '@/i18n'
 
 const AI_MAX_CONTEXT = 20
 
+/** 授权档位（与后端 _VALID_TIERS 对齐）：只读 / 提案写入 / 完全任务 */
+export type AuthTier = 'readonly' | 'workspace_write' | 'full_task'
+
 interface FollowUpSuggestion {
   text: string
   icon: string
@@ -37,6 +41,13 @@ interface VerifiedChange {
   old: unknown
   new: unknown
   verified: boolean
+}
+
+/** 轮级发送覆盖（已发消息编辑再发送）：仅作用本轮，不写全局设置 */
+interface SendOverride {
+  mode?: 'qa' | 'agent'
+  model?: string
+  agentModel?: string
 }
 
 const ICON_PLUS = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h8M8 4v8"/></svg>'
@@ -127,6 +138,94 @@ export function useAiChat() {
   function setChatMode(mode: ChatMode) {
     chatMode.value = mode
     localStorage.setItem('ai_chat_mode', mode)
+  }
+
+  /** 取会话的首轮问答对（仅未被命名过的会话才有命名资格） */
+  function titlePairOf(session: AiSession) {
+    if (session.autoTitled !== undefined) return null
+    const firstUser = session.messages.find(m => m.role === 'user' && m.content.trim())
+    const firstReply = session.messages.find(m => m.role === 'assistant' && m.content.trim())
+    return firstUser && firstReply ? { firstUser, firstReply } : null
+  }
+
+  /** AI 命名单个会话：失败/空标题静默保留默认名（autoTitled 仍为 undefined，可被后续重试） */
+  async function titleSession(session: AiSession) {
+    const pair = titlePairOf(session)
+    if (!pair) return
+    const title = await generateChatTitle(pair.firstUser.content, pair.firstReply.content.slice(0, 300))
+    if (title) aiSessions.applyAutoTitle(session, title)
+  }
+
+  /** 首轮完成后的自动命名（AI 命名，仅此一种来源） */
+  function maybeAutoTitle(session: AiSession | undefined) {
+    if (session) void titleSession(session)
+  }
+
+  // 模块级标记：存量命名回填每次启动只跑一轮（composable 可能被多次实例化）
+  let titleBackfillStarted = false
+
+  /** 存量会话命名回填：遍历所有任务桶，对未被命名过且已有完整首轮的会话逐个 AI 命名。
+   *  串行执行避免突发请求；单条失败静默跳过，下次启动自愈重试。 */
+  function backfillSessionTitles() {
+    if (titleBackfillStarted) return
+    titleBackfillStarted = true
+    void (async () => {
+      for (const bucket of Object.values(aiSessions.historyMap)) {
+        for (const session of bucket.sessions) {
+          await titleSession(session)
+        }
+      }
+    })()
+  }
+
+  // ── 授权档位（会话级；档位入口下沉到 ComposerBar，不再放设置页） ──
+  // 改档即生效：选档同时更新 pendingAuthTier（全局期望+新会话默认）和当前会话锁定档。
+  const VALID_TIERS: AuthTier[] = ['readonly', 'workspace_write', 'full_task']
+  const TIER_STORAGE_KEY = 'ai_auth_tier'
+  function normalizeTier(v: unknown): AuthTier | null {
+    return typeof v === 'string' && (VALID_TIERS as string[]).includes(v) ? (v as AuthTier) : null
+  }
+  /** 待生效授权档；与后端 agent 轮默认一致，首次使用落 workspace_write（提案写入） */
+  const pendingAuthTier = ref<AuthTier>(
+    normalizeTier(localStorage.getItem(TIER_STORAGE_KEY)) ?? 'workspace_write',
+  )
+  function setPendingAuthTier(tier: AuthTier) {
+    if (!VALID_TIERS.includes(tier) || pendingAuthTier.value === tier) return
+    pendingAuthTier.value = tier
+    localStorage.setItem(TIER_STORAGE_KEY, tier)
+    // 会中改档即时生效：覆盖当前会话锁定档，下一轮即按新档发送
+    aiSessions.updateActiveSessionTier(tier)
+  }
+  /** 本会话锁定档：历史会话无戳时按当前待生效档补盖一次（首次使用即锁定） */
+  function ensureSessionTier() {
+    const s = aiSessions.activeSession
+    if (s && !normalizeTier(s.authTier)) {
+      aiSessions.stampActiveSessionTier(pendingAuthTier.value)
+    }
+  }
+  const sessionAuthTier = computed<AuthTier>(() =>
+    normalizeTier(aiSessions.activeSession?.authTier) ?? pendingAuthTier.value)
+  // 切任务桶 / 切会话：新激活会话若无戳立即补盖，保证发送时口径确定
+  watch(() => aiSessions.activeSession?.id, () => { ensureSessionTier() }, { immediate: true })
+
+  /** 拒绝卡：本轮智能体工具被档位拦截（tool_result read_only）时呈现，下轮自动清 */
+  const tierDenial = ref<{ tool: string; summary: string } | null>(null)
+  /** 档位菜单外部唤起信号（403 拒绝卡「提升档位」）：自增进而 ComposerBar watch 打开 */
+  const tierMenuSignal = ref(0)
+  function requestTierMenu(preset?: AuthTier) {
+    if (preset) setPendingAuthTier(preset)
+    tierMenuSignal.value += 1
+  }
+  /** 开新会话（头部新建与弹层脚钮共用） */
+  function startNewSession() {
+    aiSessions.createNewSession(pendingAuthTier.value)
+    followUps.value = []
+    injectPrompt.value = null
+    rewriteIntentPending.value = false
+    rewriteNotPersisted.value = null
+    summaryProposal.value = null
+    notesProposal.value = null
+    tierDenial.value = null
   }
 
   // ── 会话级模型选择器（REQ-EXPERT-MODE §2.3：默认跟随详情，后端零改造透传 model） ──
@@ -245,6 +344,8 @@ export function useAiChat() {
   // 面板挂载即拉一次（探针/候选不阻塞对话）；模型候选随详情源变化重标
   void loadCliProbe()
   void loadModelCandidates()
+  // 存量会话一次性批量命名（串行、静默；每次启动一轮）
+  backfillSessionTitles()
   // 详情层来源变化 → 重新按当前 provider 派生候选（模型集与来源标签同步刷新）
   watch(() => engineStore.capability?.llm?.effective, () => { void loadModelCandidates() })
   // 切到智能体模式且尚无模型清单 → 懒加载 --list-models（immediate 覆盖初始即 agent 态）
@@ -288,15 +389,38 @@ export function useAiChat() {
 
   const canSend = computed(() => !isLoading.value)
 
-  /** 发送原始文本消息（流式输出） / Send raw text message (streaming output) */
-  async function sendRaw(text: string) {
-    if (!text || isLoading.value) return
+  /** 发送原始文本消息（流式输出） / Send raw text message (streaming output)
+   *  override：编辑再发送时的轮级覆盖，缺省取全局模式与模型，且不回写全局 */
+  async function sendRaw(text: string, override?: SendOverride, attachments?: AttachmentMeta[]) {
+    if ((!text && (!attachments || attachments.length === 0)) || isLoading.value) return
+
+    // 本轮实际生效口径：override 优先于全局（轮级覆盖，退出后全局不变）
+    const effectiveMode: 'qa' | 'agent' = override?.mode ?? chatMode.value
+    const effectiveQaModel = override?.model ?? sessionModel.value
+    const effectiveAgentModel = override?.agentModel ?? agentEngineModel.value
+    // 会话级授权快照：发送前确保本会话已锁定档位（同一场纪要不允许前后口径不一）
+    if (effectiveMode === 'agent') ensureSessionTier()
+    const effectiveTier = sessionAuthTier.value
 
     const msgs = aiSessions.activeMessages
-    msgs.push({ role: 'user', content: text, timestamp: new Date().toISOString() })
+    msgs.push({
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+      // @附件 随消息落库：气泡渲染与编辑再发送都能复用
+      attachments: attachments && attachments.length ? attachments : undefined,
+      // 发送快照落消息：下次编辑直接回填，旧消息无快照走推断
+      sendOptions: {
+        mode: effectiveMode,
+        model: effectiveMode === 'qa' ? effectiveQaModel : '',
+        agentModel: effectiveMode === 'agent' ? effectiveAgentModel : '',
+      },
+    })
     if (msgs.length > AI_MAX_CONTEXT * 2) {
       aiSessions.activeMessages = msgs.slice(-AI_MAX_CONTEXT * 2)
     }
+    // 捕获发送时的会话对象：命名请求在途期间用户可能切桶，落名仍须落在正确的会话上
+    const sessionAtSend = aiSessions.activeSession
 
     isLoading.value = true
     isStreaming.value = false
@@ -305,6 +429,8 @@ export function useAiChat() {
     injectPrompt.value = null
     stages.value = []
     activeEngine.value = null
+    // 新一轮清上轮拒绝卡（卡片只属于最近一个智能体轮）
+    tierDenial.value = null
 
     const ctrl = new AbortController()
     abortController.value = ctrl
@@ -343,13 +469,17 @@ export function useAiChat() {
         current_page: (route.name as string) || undefined,
         role: agentStore.activeAgent || undefined,
         current_diagram: insights.lastViewedDiagram.value || undefined,
-        engine: chatMode.value === 'qa' ? undefined : chatMode.value,
-        // 模式即权限（§5.1）：不再按共创按钮传 auth_tier 特例，agent 轮由后端默认落可写档
+        engine: effectiveMode === 'qa' ? undefined : effectiveMode,
+        // 授权档位（会话快照）：仅智能体轮透传，后端请求级优先级最高；问答轮无工具，档位不参与
+        auth_tier: effectiveMode === 'agent' ? effectiveTier : undefined,
         // 会话级模型透传（REQ-EXPERT-MODE §2.3）：'' = 跟随详情不传
-        model: sessionModel.value || undefined,
+        model: effectiveMode === 'qa' ? (effectiveQaModel || undefined) : undefined,
+        // 智能体轮级 CLI 模型覆盖：正常发送恒为 undefined（后端读全局），编辑再发送才带值
+        agentModel: effectiveMode === 'agent' ? (effectiveAgentModel || undefined) : undefined,
         stream_id: streamId,
         chat_session_id: aiSessions.currentBucket.activeSessionId || undefined,
-        resume_session: chatMode.value !== 'qa' && hasAgentSession.value,
+        resume_session: effectiveMode !== 'qa' && hasAgentSession.value,
+        attachments,
         signal: ctrl.signal,
       }, {
         onToken(token: string) {
@@ -427,6 +557,13 @@ export function useAiChat() {
             toolStage.status = result.success ? 'done' : 'error'
             toolStage.detail = result.summary
           }
+          // 档位拦截（403 read_only）：MCP 桥把 HTTP 403 正文放进 tool_result，拒绝不静默——
+          // 挂拒绝卡，给出就地升档/新会话入口（见 AiChatPanel 末条气泡下的 ai-tier-deny）
+          if (!result.success && /read_only|read-only|forbidden/i.test(result.summary)) {
+            const deniedName = (result.name || toolStage?.name || 'tool')
+              .split('__').pop() || 'tool'
+            tierDenial.value = { tool: deniedName, summary: result.summary }
+          }
           // 落板成功→广播：板的写入点在后端，呈现侧（同页的洞察 Tab）此前只能人工刷新
           if (result.success && isBoardWriteResult(result, boardWriteIds)) {
             notifyBoardWritten({ tool: result.name })
@@ -484,7 +621,7 @@ export function useAiChat() {
 
           // 完成护栏（§5.4）：改写意图轮零写回 → 显式横幅，不让用户对着旧版本猜
           // 例外：纪要本轮产出了 propose_summary 提案（turnHasProposal）= 已正确响应改写意图（待用户接受），不亮横幅
-          if (chatMode.value === 'agent' && turnIntent && !turnHasProposal
+          if (effectiveMode === 'agent' && turnIntent && !turnHasProposal
               && data.metadata?.rewritten !== true && !toolWriteOk) {
             rewriteNotPersisted.value = { text }
           }
@@ -496,6 +633,8 @@ export function useAiChat() {
           if (data.diagram) {
             insights.setChatDiagram(data.diagram)
           }
+          // 首轮完成后尝试 AI 自动命名（失败静默降级，用户手动改名后永不触发）
+          maybeAutoTitle(sessionAtSend)
           followUps.value = generateFollowUps(msg.content)
         },
         onError(error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) {
@@ -723,11 +862,24 @@ export function useAiChat() {
     await sendRaw(originalText)
   }
 
+  /** 编辑已发消息后再发送：截断该消息（含）之后全部内容，以轮级覆盖重发，不改全局设置。
+      原消息附件随消息保留重发（截断前捕获）。 */
+  async function editAndResend(index: number, text: string, override?: SendOverride) {
+    if (isLoading.value) return
+    if (index < 0 || index >= aiSessions.activeMessages.length) return
+    const originalAttachments = aiSessions.activeMessages[index]?.attachments
+    aiSessions.activeMessages.splice(index)
+    await sendRaw(text, override, originalAttachments)
+  }
+
   return {
     messages, isLoading, isStreaming, thinkingElapsed, stages, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
     sendRaw, sendWithQuote, stopGeneration, executeAction,
-    doInjectAll, clearConversation, retryLast,
+    doInjectAll, clearConversation, retryLast, editAndResend,
     chatMode, setChatMode, activeEngine, hasAgentSession,
+    // 授权档位（会话快照；ComposerBar 档位菜单 + 403 拒绝卡）
+    pendingAuthTier, sessionAuthTier, tierDenial, tierMenuSignal,
+    setPendingAuthTier, startNewSession, requestTierMenu,
     rewriteIntentPending, rewriteNotPersisted, setRewriteIntent, setBoardCoCreate,
     summaryProposal, acceptSummaryProposal: proposal.acceptSummaryProposal, rejectSummaryProposal: proposal.rejectSummaryProposal,
     openSummaryPreview: proposal.openSummaryPreview,

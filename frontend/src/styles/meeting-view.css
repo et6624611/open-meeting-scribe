@@ -198,6 +198,83 @@
 .ts-line.is-me .txt { background: var(--mine-soft); border: 1px solid var(--mine); border-radius: var(--radius); text-align: left; max-width: 70%; }
 .ts-line.is-me .spk { color: var(--mine); }
 
+/* ═══ 转写三层（PLAN-TRANSCRIPT-LAYERING WP-1/WP-2）══
+   选择器UI：tab 栏右侧下拉（.gen-layer-picker），面板内不再有固定分段控件 */
+.gen-layer-picker { margin-left: auto; flex-shrink: 0; }
+.gen-layer-trigger {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px; border-radius: var(--radius-sm);
+  border: none; background: transparent; color: var(--muted);
+  font-size: var(--fs-12); cursor: pointer; transition: color 0.12s, background 0.12s;
+}
+.gen-layer-trigger:hover { color: var(--fg); background: var(--surface-2); }
+.gen-layer-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gen-layer-trigger .rec-layer-ai { margin-top: -1px; }
+.gen-layer-chevron { width: 14px; height: 14px; transition: transform 0.15s; }
+.gen-layer-trigger[aria-expanded="true"] .gen-layer-chevron { transform: rotate(180deg); }
+.gen-layer-menu { min-width: 132px; }
+.gen-layer-menu .gen-toolbar-more-item { justify-content: flex-start; }
+.gen-layer-menu .gen-toolbar-more-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.gen-layer-menu .gen-toolbar-more-item.is-selected { color: var(--accent); font-weight: 600; }
+.gen-formal-idle { margin: var(--s-4); gap: 8px; }
+.gen-peek { max-width: 85%; }
+.ts-line.is-me .gen-peek { align-self: flex-end; }
+
+/* ── WP-2 书面版状态卡 ── */
+.gen-formal-card { margin: var(--s-4); }
+.gen-formal-card.is-error { border-color: var(--warn); }
+.gen-formal-card.is-stale { border-style: solid; border-color: var(--warn); }
+.gen-formal-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  animation: gen-formal-spin 0.8s linear infinite;
+}
+@keyframes gen-formal-spin { to { transform: rotate(360deg); } }
+.gen-formal-bar { width: 100%; max-width: 320px; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.gen-formal-bar-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.gen-formal-estimate { font-size: var(--fs-12); color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.gen-formal-cost-note { color: var(--subtle); }
+.gen-formal-action-err { font-size: var(--fs-12); color: var(--warn); line-height: 1.5; }
+.gen-formal-action-err.is-banner { margin: 0 var(--s-4) var(--s-3); padding: 6px 10px; background: var(--warn-soft); border-radius: var(--radius-sm); }
+.gen-formal-btn {
+  align-self: flex-start; padding: 4px 14px; font-size: var(--fs-13);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--fg); cursor: pointer;
+}
+.gen-formal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.gen-formal-btn:disabled { opacity: 0.6; cursor: default; }
+.gen-formal-btn.is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.gen-formal-btn.is-primary:hover { color: #fff; opacity: 0.92; }
+.gen-formal-auto { display: flex; align-items: center; gap: 6px; margin: 0 var(--s-4) var(--s-4); font-size: var(--fs-12); color: var(--muted); cursor: pointer; }
+.gen-formal-auto.is-inline { margin: 0 0 0 auto; }
+.gen-formal-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: var(--s-3) var(--s-4) 0; padding: 6px 10px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  font-size: var(--fs-12); color: var(--muted);
+}
+.gen-formal-meta-item { color: var(--fg); }
+.gen-formal-meta-sep { color: var(--subtle); }
+.gen-formal-meta-tone { color: var(--warn); font-weight: 600; }
+.gen-formal-regen {
+  margin-left: 4px; padding: 2px 10px; font-size: var(--fs-12);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.gen-formal-regen:hover { border-color: var(--accent); color: var(--accent); }
+.gen-formal-regen:disabled { opacity: 0.6; cursor: default; }
+.gen-formal-tone-tag {
+  font-size: 11px; font-weight: 600; color: var(--warn);
+  background: var(--warn-soft); border-radius: var(--radius-sm); padding: 0 6px;
+}
+.txt.is-tone { color: var(--warn); }
+.gen-formal-compare-tag { color: var(--accent); }
+.gen-formal-peek { display: flex; flex-direction: column; gap: 4px; }
+.gen-formal-peek-warn { font-size: var(--fs-12); color: var(--warn); line-height: 1.5; }
+.gen-formal-peek-row { display: flex; gap: 8px; font-size: var(--fs-13); line-height: 1.6; }
+.gen-formal-peek-k { flex: none; color: var(--subtle); min-width: 44px; }
+.gen-formal-peek-v { color: var(--fg); }
+
 /* ═══ 内联章节分隔卡片（嵌入转写流） ═══ */
 .chapter-divider {
   margin: var(--s-2) 0;
@@ -474,56 +551,137 @@
 .gs-roster-chip:hover { background: var(--surface-3); }
 .gs-roster-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; border: none; background: transparent; color: var(--subtle); cursor: pointer; padding: 0; transition: color 0.12s; }
 .gs-roster-chip-x:hover { color: var(--error); }
-/* 绑定自动加入的参会人标记 / Auto-added member tag */
-.gs-roster-chip.is-auto { background: var(--accent-soft); border-color: transparent; }
-.gs-roster-auto-tag { font-size: 9px; color: var(--accent); font-weight: 500; opacity: 0.7; }
 /* 绑定态底部文本输入 / Binding state text input */
 
 /* ─── 统一进度面板（REQ-TRANSCRIBE-PROGRESS P0） / Unified progress panel ─── */
-.tp-panel { display: flex; flex-direction: column; gap: var(--s-5); padding: var(--s-4) 0; }
+/* 视觉与书面版生成卡统一（rec-formal-lock + gen-formal-spinner/bar）；步骤信息压成文本，无圆点步骤条 */
+.tp-panel { margin: var(--s-4); }
+.tp-panel--error { border-color: var(--warn); }
 
-/* 4 步步骤条：圆点 + 连接线 */
-.tp-steps { display: flex; align-items: flex-start; list-style: none; margin: 0; padding: 0; gap: 0; }
-.tp-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); position: relative; font-size: var(--fs-12); color: var(--muted); min-width: 0; }
-/* 连接线：从前一节点圆心到本节点圆心 */
-.tp-step + .tp-step::before { content: ''; position: absolute; top: 11px; right: 50%; left: calc(-50%); height: 2px; background: var(--border); z-index: 0; }
-.tp-step.is-done + .tp-step::before, .tp-step.is-active + .tp-step::before { background: var(--accent-soft); }
-.tp-step.is-done + .tp-step::before { background: var(--ok); opacity: 0.45; }
-.tp-step::after { content: none; }
-.tp-step-marker { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface-2); border: 2px solid var(--border); color: var(--muted); font-size: var(--fs-11); font-weight: 600; position: relative; z-index: 1; box-sizing: border-box; }
-.tp-step-marker svg { width: 13px; height: 13px; }
-.tp-step-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.tp-step.is-done { color: var(--ok); }
-.tp-step.is-done .tp-step-marker { background: var(--ok); border-color: var(--ok); color: #fff; }
-.tp-step.is-active { color: var(--accent); font-weight: 600; }
-.tp-step.is-active .tp-step-marker { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); animation: tp-pulse 1.6s ease-in-out infinite; }
-.tp-step.is-failed { color: var(--rec); font-weight: 600; }
-.tp-step.is-failed .tp-step-marker { background: var(--rec); border-color: var(--rec); color: #fff; animation: none; }
-@keyframes tp-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px transparent; } }
-@media (prefers-reduced-motion: reduce) { .tp-step.is-active .tp-step-marker { animation: none; } }
+/* 描述行：第 n/4 步 · 百分比 · 已用时长 · ETA */
+.tp-meta-row { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
+.tp-percent { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tp-sep { color: var(--subtle); }
+.tp-eta-unknown { color: var(--subtle); }
+.tp-stagnation { color: var(--warn); }
 
-/* 百分比进度条（宽度由 JS 缓动驱动，CSS 不再加 transition 避免双重动画） */
-.tp-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
-.tp-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent) 60%, var(--ok)); min-width: 2px; }
-.tp-panel--compact .tp-bar { display: none; }
-
-/* 计时行：百分比 + 已用时长 + ETA */
-.tp-meta-row { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; font-size: var(--fs-13); color: var(--muted); }
-.tp-percent { font-size: var(--fs-18); font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
-.tp-elapsed, .tp-eta { font-variant-numeric: tabular-nums; }
-.tp-eta { color: var(--fg); }
-.tp-sep { color: var(--border); }
-.tp-eta-unknown { font-style: italic; }
-.tp-stagnation { margin: 0; font-size: var(--fs-13); color: var(--warn); }
-
-/* 安心文案 */
-.tp-reassure { margin: 0; font-size: var(--fs-12); color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
-.tp-reassure::before { content: ''; width: 12px; height: 12px; flex-shrink: 0; border-radius: 50%; background: var(--ok); opacity: 0.5; }
+/* 进度条：宽度由 JS rAF 缓动驱动，禁用 CSS transition 避免双重动画 */
+.tp-bar .gen-formal-bar-fill { transition: none; }
 
 /* 失败态（R4-简） */
-.tp-failed-caption { margin: 0; font-size: var(--fs-14); color: var(--rec); font-weight: 600; }
-.tp-retry-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-4); border-radius: 8px; border: 1px solid var(--rec); background: transparent; color: var(--rec); font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
-.tp-retry-btn:hover { background: var(--rec); color: #fff; }
-.tp-retry-btn:focus-visible { outline: 2px solid var(--rec); outline-offset: 2px; }
-.tp-retry-btn svg { width: 14px; height: 14px; }
-.tp-panel--compact { gap: var(--s-3); padding: var(--s-2) 0; }
+.tp-failed-desc { color: var(--warn); }
+.tp-retry-btn { display: inline-flex; align-items: center; gap: 6px; }
+.tp-retry-btn svg { width: 13px; height: 13px; }
+
+/* compact：整页失败卡片内嵌单行说明 */
+.tp-compact-caption { margin: 0; font-size: var(--fs-12); color: var(--warn); }
+
+/* ═══ 声纹识别（融入人员栏） / Voiceprint match embedded in personnel bar ═══ */
+.gs-vp-btn,
+.gs-roster-vp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: var(--radius-xs);
+}
+.gs-vp-btn:hover,
+.gs-roster-vp-btn:hover { color: var(--accent); }
+.gs-roster-vp-btn { margin-left: 4px; }
+.gs-vp-spin {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: gs-vp-rot 0.7s linear infinite;
+}
+@keyframes gs-vp-rot { to { transform: rotate(360deg); } }
+
+/* chip 上的相似度标记 / Similarity tag on chip */
+.gs-vp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 0 5px;
+  height: 15px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.gs-vp-tag.is-matched {
+  color: var(--ok);
+  background: color-mix(in oklch, var(--ok) 12%, transparent);
+}
+.gs-vp-tag.is-weak {
+  color: var(--muted);
+  background: var(--border);
+}
+
+/* 一键采纳钮 / One-click adopt button */
+.gs-vp-adopt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 1px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+.gs-vp-adopt:hover { color: var(--ok); }
+
+/* 紧凑态折叠项内的行内建议 / Inline suggestion inside compact unbound dropdown */
+/* 左组：识别对象 + 说话时长，定宽让各行竖线对齐 / Group A fixed width so dividers align */
+.gs-ub-who { display: inline-flex; align-items: center; gap: 6px; min-width: 112px; flex-shrink: 0; }
+/* 组间竖线 / Vertical divider between the two groups */
+.gs-ub-divider { width: 1px; height: 12px; background: var(--border-strong); flex-shrink: 0; }
+/* 右组：声纹建议 + 操作 / Group B: suggestion + adopt/dismiss */
+.gs-ub-vp-group { display: inline-flex; align-items: center; gap: 5px; }
+.gs-ub-vp-group .gs-ub-vp { margin-left: 0; }
+.gs-ub-vp-group .gs-vp-adopt { margin-left: 0; }
+.gs-ub-vp-group .gs-vp-x { margin-left: 0; margin-right: 0; }
+.gs-ub-vp {
+  font-size: var(--fs-12);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.gs-ub-vp.is-matched { color: var(--ok); }
+.gs-ub-vp.is-weak { color: var(--muted); }
+
+/* 绑定下拉里的声纹徽标 / Voiceprint badge in binding dropdown */
+.bt-vp-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+}
+.bt-dropdown-item.is-vp-suggest .bt-di-name { font-weight: 600; }
+
+/* 建议标记内的忽略 × / Dismiss x inside suggestion tag */
+.gs-vp-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 1px;
+  margin-right: -2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+.gs-vp-x:hover { opacity: 1; }

@@ -56,9 +56,32 @@
               class="gs-unbound-item"
               @click="locateUnbound(sp.sid)"
             >
-              <span class="gs-compact-label-dot" :style="{ background: sp.color }"></span>
-              <span class="gs-compact-label-name" :style="{ color: sp.color }">{{ sp.displayName }}</span>
-              <span class="gs-compact-label-bar"><span class="gs-compact-label-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
+              <!-- 左组：识别对象 + 说话时长 / Group A: speaker + talk-time bar -->
+              <span class="gs-ub-who">
+                <span class="gs-compact-label-dot" :style="{ background: sp.color }"></span>
+                <span class="gs-compact-label-name" :style="{ color: sp.color }">{{ sp.displayName }}</span>
+                <span class="gs-compact-label-bar"><span class="gs-compact-label-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
+              </span>
+              <!-- 右组：竖线 + 声纹建议百分比 + 采纳/忽略 / Group B: divider + suggestion + actions -->
+              <span v-if="vpItem(sp.sid)" class="gs-ub-vp-group">
+                <span class="gs-ub-divider" aria-hidden="true"></span>
+                <span class="gs-ub-vp" :class="vpItem(sp.sid)!.status === 'matched' ? 'is-matched' : 'is-weak'">
+                  {{ vpItem(sp.sid)!.status === 'matched'
+                    ? t('generating.voiceprint.inline_suggest', { name: vpItem(sp.sid)!.matched_name!, pct: vpPct(vpItem(sp.sid)!.similarity) })
+                    : t('generating.voiceprint.inline_weak', { pct: vpPct(vpItem(sp.sid)!.similarity) }) }}
+                </span>
+                <button
+                  v-if="canAdoptVp(vpItem(sp.sid)!)"
+                  class="gs-vp-adopt"
+                  :title="t('generating.voiceprint.adopt_name', { name: vpItem(sp.sid)!.matched_name! })"
+                  @click.stop="emit('apply-voiceprint', sp.sid, vpItem(sp.sid)!.matched_uuid!)"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button class="gs-vp-x" :title="t('generating.voiceprint.dismiss')" @click.stop="emit('dismiss-voiceprint', sp.sid)">
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                </button>
+              </span>
             </div>
           </div>
         </div>
@@ -67,11 +90,11 @@
         <span class="gs-compact-sep"></span>
 
         <!-- 参会人 chip 列表 + 选择器 + 内联输入 / Roster chips + picker + inline input -->
+        <!-- 前后互斥：已绑定说话人已在主显区展示，参会人区不再重复显示 / Bound names live in the primary zone; roster shows the rest only -->
         <div class="gs-compact-roster">
-          <span v-for="(name, idx) in roster" :key="idx" class="gs-roster-chip" :class="{ 'is-auto': isAutoMember(name) }">
-            {{ name }}
-            <span v-if="isAutoMember(name)" class="gs-roster-auto-tag">{{ t('generating.roster.auto_tag') }}</span>
-            <button v-else class="gs-roster-chip-x" :title="t('generating.roster.remove')" @click="emit('roster-remove', idx)">
+          <span v-for="item in visibleRoster" :key="item.idx" class="gs-roster-chip">
+            {{ item.name }}
+            <button class="gs-roster-chip-x" :title="t('generating.roster.remove')" @click="emit('roster-remove', item.idx)">
               <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>
             </button>
           </span>
@@ -110,6 +133,11 @@
               </div>
             </div>
           </span>
+          <!-- 声纹识别触发（紧凑态） / Voiceprint trigger in compact bar -->
+          <button class="gs-roster-vp-btn" :title="t('generating.voiceprint.run')" @click.stop="emit('run-voiceprint')">
+            <span v-if="voiceprintRunning" class="gs-vp-spin" aria-hidden="true"></span>
+            <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 0 0 8 11a4 4 0 1 1 8 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 0 0 0 15.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 0 0 8 4.07M3 15.364c.64-1.319 1 2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+          </button>
         </div>
       </div>
     </template>
@@ -123,6 +151,11 @@
       <div class="gs-body">
         <div class="gbb-title-row">
           <span class="gbb-title">{{ mode === 'complete' ? t('generating.binding.title_all_bound') : t('generating.binding.title') }}</span>
+          <!-- 声纹识别：触发/重跑，运行中转圈 / Voiceprint trigger -->
+          <button class="gs-vp-btn" :title="t('generating.voiceprint.run')" @click.stop="emit('run-voiceprint')">
+            <span v-if="voiceprintRunning" class="gs-vp-spin" aria-hidden="true"></span>
+            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 0 0 8 11a4 4 0 1 1 8 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0 0 15.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 0 0 8 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+          </button>
         </div>
 
         <div class="gs-chips">
@@ -136,6 +169,30 @@
           >
             <span class="gs-chip-head">
               <span class="gs-name" :class="{ 'gs-unbound': !sp.bound }" :style="{ color: sp.color }">{{ sp.displayName }}</span>
+              <!-- 声纹相似度标记 / Voiceprint similarity tag -->
+              <span
+                v-if="vpItem(sp.sid)"
+                class="gs-vp-tag"
+                :class="vpItem(sp.sid)!.status === 'matched' ? 'is-matched' : 'is-weak'"
+                :title="vpItem(sp.sid)!.status === 'matched'
+                  ? t('generating.voiceprint.tag_matched', { pct: vpPct(vpItem(sp.sid)!.similarity) })
+                  : t('generating.voiceprint.tag_unmatched', { pct: vpPct(vpItem(sp.sid)!.similarity) })"
+              >
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 0 0 8 11a4 4 0 1 1 8 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0 0 15.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 0 0 8 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
+                {{ vpPct(vpItem(sp.sid)!.similarity) }}%
+                <button class="gs-vp-x" :title="t('generating.voiceprint.dismiss')" @click.stop="emit('dismiss-voiceprint', sp.sid)">
+                  <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                </button>
+              </span>
+              <!-- 一键采纳声纹建议 / One-click adopt -->
+              <button
+                v-if="vpItem(sp.sid) && canAdoptVp(vpItem(sp.sid)!)"
+                class="gs-vp-adopt"
+                :title="t('generating.voiceprint.adopt_name', { name: vpItem(sp.sid)!.matched_name! })"
+                @click.stop="emit('apply-voiceprint', sp.sid, vpItem(sp.sid)!.matched_uuid!)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
               <svg v-if="!sp.bound" class="bl-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               <svg v-else class="bl-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
               <span class="bl-locate" :title="t('generating.binding.locate')" @click.stop="emit('locate-speaker', sp.sid)">
@@ -146,13 +203,12 @@
           </span>
         </div>
 
-        <!-- 底部参会人 / Roster at bottom -->
-        <div class="gs-roster-section" v-if="roster.length > 0">
-          <span class="gs-roster-label">{{ t('generating.roster.title') }} ({{ roster.length }})</span>
-          <span v-for="(name, idx) in roster" :key="idx" class="gs-roster-chip" :class="{ 'is-auto': isAutoMember(name) }">
-            {{ name }}
-            <span v-if="isAutoMember(name)" class="gs-roster-auto-tag">{{ t('generating.roster.auto_tag') }}</span>
-            <button v-else class="gs-roster-chip-x" :title="t('generating.roster.remove')" @click="emit('roster-remove', idx)">
+        <!-- 底部参会人 / Roster at bottom（前后互斥：已绑定名字由上方绑定 chips 主显，不重复） -->
+        <div class="gs-roster-section" v-if="visibleRoster.length > 0">
+          <span class="gs-roster-label">{{ t('generating.roster.title') }} ({{ visibleRoster.length }})</span>
+          <span v-for="item in visibleRoster" :key="item.idx" class="gs-roster-chip">
+            {{ item.name }}
+            <button class="gs-roster-chip-x" :title="t('generating.roster.remove')" @click="emit('roster-remove', item.idx)">
               <svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>
             </button>
           </span>
@@ -185,15 +241,28 @@
           </div>
           <div class="bt-dd-sep"></div>
         </template>
+        <!-- 声纹建议置顶项 / Voiceprint suggestion pinned to top -->
+        <div
+          v-if="vpItem(dropdown.speakerId)?.status === 'matched'"
+          class="bt-dropdown-item is-vp-suggest"
+          @click="emit('select', dropdown.speakerId, vpItem(dropdown.speakerId)!.matched_uuid!)"
+        >
+          <span class="bt-di-name">
+            {{ vpItem(dropdown.speakerId)!.matched_name }}
+            <span class="bt-vp-badge">{{ t('generating.voiceprint.suggest_badge', { pct: vpPct(vpItem(dropdown.speakerId)!.similarity) }) }}</span>
+          </span>
+        </div>
         <template v-if="filteredSpeakers.length > 0">
-          <div
-            v-for="(s, idx) in filteredSpeakers" :key="s.id"
-            class="bt-dropdown-item"
-            :class="{ 'is-selected': currentMapping[dropdown.speakerId] === s.id, 'is-focused': dropdown.focusIdx === idx }"
-            @click="emit('select', dropdown.speakerId, s.id)"
-          >
-            <span class="bt-di-name" :style="{ color: currentMapping[dropdown.speakerId] === s.id ? getSpeakerColor(String(dropdown.speakerId)) : undefined }">{{ s.name }}<span v-if="s.role" class="bt-di-role">({{ s.role }})</span></span>
-          </div>
+          <template v-for="(s, idx) in filteredSpeakers" :key="s.id">
+            <div
+              v-if="s.id !== vpItem(dropdown.speakerId)?.matched_uuid"
+              class="bt-dropdown-item"
+              :class="{ 'is-selected': currentMapping[dropdown.speakerId] === s.id, 'is-focused': dropdown.focusIdx === idx }"
+              @click="emit('select', dropdown.speakerId, s.id)"
+            >
+              <span class="bt-di-name" :style="{ color: currentMapping[dropdown.speakerId] === s.id ? getSpeakerColor(String(dropdown.speakerId)) : undefined }">{{ s.name }}<span v-if="s.role" class="bt-di-role">({{ s.role }})</span></span>
+            </div>
+          </template>
         </template>
         <div v-else class="bt-dd-empty">{{ t('generating.binding.no_match') }}</div>
       </div>
@@ -212,6 +281,7 @@ import { useI18n } from 'vue-i18n'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useEscClose } from '@/composables/useEscClose'
 import { createSpeaker, type Speaker } from '@/api/speakers'
+import type { VoiceprintMatchItem } from '@/api/types'
 
 interface ZoneSpeaker {
   sid: number
@@ -241,6 +311,10 @@ const props = defineProps<{
   roster: string[]
   boundNames: string[]
   allSpeakers: Speaker[]
+  /** 声纹识别明细（可空） / Voiceprint match items */
+  voiceprintItems: VoiceprintMatchItem[] | null
+  /** 识别运行中 / Match in progress */
+  voiceprintRunning: boolean
 }>()
 
 const emit = defineEmits<{
@@ -256,11 +330,42 @@ const emit = defineEmits<{
   (e: 'update:dropdown-search', value: string): void
   (e: 'roster-add', name: string): void
   (e: 'roster-remove', index: number): void
+  /** 运行/重跑声纹识别 / Run or rerun voiceprint match */
+  (e: 'run-voiceprint'): void
+  /** 采纳声纹建议（直接绑定） / Adopt voiceprint suggestion */
+  (e: 'apply-voiceprint', speakerId: number, uuid: string): void
+  /** 忽略声纹建议（本场不再显示） / Dismiss voiceprint suggestion */
+  (e: 'dismiss-voiceprint', speakerId: number): void
 }>()
 
 const { t } = useI18n()
 
 const interactive = computed(() => props.mode === 'actionable')
+
+// ─── 声纹建议（融入人员栏） / Voiceprint suggestions embedded in personnel bar ───
+const vpMap = computed(() => {
+  const m = new Map<number, VoiceprintMatchItem>()
+  for (const it of props.voiceprintItems || []) m.set(it.speaker_id, it)
+  return m
+})
+
+/** 该说话人的声纹建议（未绑定且命中）/ Adoptable suggestion for a speaker */
+function vpItem(sid: number): VoiceprintMatchItem | undefined {
+  return vpMap.value.get(sid)
+}
+
+/** 是否可一键采纳：命中、当前未绑定或绑的不是同一人 / Adoptable when matched and not already bound to them */
+function canAdoptVp(it: VoiceprintMatchItem): boolean {
+  return it.status === 'matched' && !!it.matched_uuid && currentBindingOf(it.speaker_id) !== it.matched_uuid
+}
+
+function currentBindingOf(sid: number): string | undefined {
+  return props.currentMapping[sid]
+}
+
+function vpPct(v: number): number {
+  return Math.round(v * 100)
+}
 
 // ─── 未关联说话人折叠 / Unbound speakers collapse ───
 // 紧凑态下未关联说话人显示名趋同，逐枚展示信息冗余，收拢为一条可展开的折叠条
@@ -278,10 +383,13 @@ function locateUnbound(speakerId: number) {
   emit('locate-speaker', speakerId)
 }
 
-// ─── 参会人 auto/manual 判断 / Roster auto/manual detection ───
-function isAutoMember(name: string): boolean {
-  return props.boundNames.includes(name)
-}
+// ─── 参会人展示口径（前后互斥）/ Visible roster (mutually exclusive with primary bound display) ───
+// 已绑定说话人由主显区（紧凑态标签 / 绑定 chips）承载，参会人区只展示其余名字；idx 保留原列表下标供删除
+const visibleRoster = computed(() =>
+  props.roster
+    .map((name, idx) => ({ name, idx }))
+    .filter(item => !props.boundNames.includes(item.name))
+)
 
 // ─── 说话人选择器（紧凑态参会人添加） / Speaker picker (compact roster add) ───
 const rosterPickerOpen = ref(false)

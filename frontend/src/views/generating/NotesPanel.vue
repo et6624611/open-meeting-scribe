@@ -54,12 +54,24 @@
         :class="{ 'is-readonly': !isEditing }"
         :value="displayContent"
         :readonly="!isEditing"
-        :placeholder="t('generating.notes.placeholder')"
+        :placeholder="showNotesEmpty ? '' : t('generating.notes.placeholder')"
         spellcheck="false"
         @input="onInput"
         @mouseup="onSelectionChange"
         @keyup="onSelectionChange"
       ></textarea>
+      <!-- 空内容引导：透明热区铺满编辑区（点击任意处进编辑态），视觉卡片收缩为内容宽并居中；
+           开始输入后随编辑态消失 -->
+      <div v-if="showNotesEmpty" class="notes-empty-sheet" @click="startEdit">
+        <div class="notes-empty-guide">
+          <div class="neg-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <div class="neg-title">{{ t('generating.notes.empty_title') }}</div>
+          <div class="neg-body">{{ t('generating.notes.empty_body') }}</div>
+          <div class="neg-foot">{{ t('generating.notes.empty_foot') }}</div>
+        </div>
+      </div>
     </div>
     <span class="task-notes-saved" :class="{ show: notesSaved }">{{ t('generating.notes.saved') }}</span>
   </div>
@@ -102,6 +114,8 @@ const textareaEl = ref<HTMLTextAreaElement | null>(null)
 const isEditing = ref(false)
 const editBuffer = ref('')
 const displayContent = computed(() => isEditing.value ? editBuffer.value : props.markdown)
+/** 空内容引导：非编辑态且内容为空白时才浮在编辑器内；进编辑态（开始输入）立即消失 */
+const showNotesEmpty = computed(() => !isEditing.value && displayContent.value.trim().length === 0)
 
 function startEdit() {
   editBuffer.value = props.markdown

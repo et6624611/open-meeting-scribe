@@ -276,6 +276,32 @@ class TestChatMissingMessage:
         assert resp.status_code == 422
 
 
+class TestAgentSystemPromptInsightContract:
+    """智能体系统提示词必须全程携带角色的洞察板解法契约（insights.md），
+    不依赖模型是否决定调用 revise_insight_board。"""
+
+    def test_default_role_includes_insight_board_contract(self):
+        from app.routers.chat import _agent_system_prompt
+        prompt = _agent_system_prompt(None)  # 默认角色 meeting-minutes
+        # 来自 AGENT.md
+        assert "AI 会议助手" in prompt
+        # 来自 insights.md 的解法契约关键锚点
+        assert "会上没人想到" in prompt
+        assert "禁止入板" in prompt or "一律不写进洞察板" in prompt
+        assert "board_is_recap" in prompt
+
+    def test_unknown_role_falls_back_without_insight_contract(self):
+        from app.routers.chat import CHAT_SYSTEM_PROMPT, _agent_system_prompt
+        prompt = _agent_system_prompt("role-that-does-not-exist-xyz")
+        assert prompt == CHAT_SYSTEM_PROMPT
+        assert "board_is_recap" not in prompt
+
+    def test_qa_prompt_does_not_carry_board_contract(self):
+        # 问答模式无工具调用权，不承载洞察板写板职责
+        from app.routers.chat import CHAT_QA_SYSTEM_PROMPT
+        assert "board_is_recap" not in CHAT_QA_SYSTEM_PROMPT
+
+
 class TestListModels:
     """GET /api/models 返回模型列表"""
 
@@ -293,6 +319,55 @@ class TestOptimizeEmptyText:
 
     def test_empty_text_rejected(self, client):
         resp = client.post("/api/optimize", json={"text": "   "})
+        assert resp.status_code == 400
+
+
+# ============================================================
+# 会话自动命名（/api/chat/title）
+# ============================================================
+
+class TestChatTitle:
+    """POST /api/chat/title：生成 + 清洗 + 失败静默降级"""
+
+    def test_sanitize_strips_quotes_and_punct(self):
+        from app.routers.chat import _sanitize_chat_title
+        assert _sanitize_chat_title('"项目排期讨论"。') == "项目排期讨论"
+        assert _sanitize_chat_title("《预算评审》\n第二行忽略") == "预算评审"
+        assert _sanitize_chat_title("   ") == ""
+        assert _sanitize_chat_title("") == ""
+        assert _sanitize_chat_title("这是一个非常非常非常非常长的会话标题超出限制") == "这是一个非常非常非常非常长的会话标题超出"
+
+    def test_title_ok(self, client, monkeypatch):
+        import app.routers.chat as chat_mod
+
+        async def fake_llm(messages, **kwargs):
+            return '"待办核对与责任人确认"'
+
+        monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
+        resp = client.post("/api/chat/title", json={
+            "first_message": "帮我把待办里的责任人核对一下",
+            "reply": "已核对，共 3 处不一致……",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["title"] == "待办核对与责任人确认"
+
+    def test_title_llm_failure_degrades_silently(self, client, monkeypatch):
+        import app.routers.chat as chat_mod
+
+        async def boom(messages, **kwargs):
+            raise RuntimeError("llm down")
+
+        monkeypatch.setattr(chat_mod, "async_chat_completion", boom)
+        resp = client.post("/api/chat/title", json={"first_message": "总结一下会议"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert data["title"] == ""
+
+    def test_empty_first_message_rejected(self, client):
+        resp = client.post("/api/chat/title", json={"first_message": "  "})
         assert resp.status_code == 400
 
 
@@ -541,3 +616,247 @@ class TestDecisionFlowTodos:
         todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
         resp = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "not_a_status"})
         assert resp.status_code == 422
+
+
+# ============================================================
+# @ 引用令牌（用户显式引用，升级替换自动采样口径）
+# ============================================================
+
+class TestMentionContext:
+    """@原文/@纪要/@随记 令牌：全量显式块注入、升级替换采样块、缺失说明块、无令牌回归"""
+
+    @staticmethod
+    def _make_task(dialogue=None, summary=None, notes=None):
+        task = {"title": "测试会议", "status": "completed"}
+        if dialogue is not None:
+            task["dialogue"] = dialogue
+        if summary is not None:
+            task["summary"] = summary
+        if notes is not None:
+            task["user_notes"] = notes
+        return task
+
+    @staticmethod
+    def _build(message, task=None, realtime=None, monkeypatch=None):
+        import app.routers.chat as chat_mod
+        from app.routers.chat import ChatRequest, _build_chat_context_blocks
+        if monkeypatch is not None:
+            if task is not None:
+                monkeypatch.setitem(chat_mod.tasks, "t1", task)
+            else:
+                monkeypatch.delitem(chat_mod.tasks, "t1", raising=False)
+            if realtime is not None:
+                monkeypatch.setitem(chat_mod.realtime_transcript_buffers, "t1", realtime)
+            else:
+                monkeypatch.delitem(chat_mod.realtime_transcript_buffers, "t1", raising=False)
+        data = ChatRequest(message=message, task_id="t1" if (task is not None or realtime is not None) else None)
+        return _build_chat_context_blocks(data, is_qa_mode=True)[0]
+
+    def test_scan_tokens(self):
+        from app.routers.chat import _scan_mention_tokens
+        assert _scan_mention_tokens("@原文 谁说的") == {"@原文"}
+        assert _scan_mention_tokens("对比 @纪要 和 @随记") == {"@纪要", "@随记"}
+        # 英文环境令牌别名：归一为中文令牌（大小写不敏感）
+        assert _scan_mention_tokens("@transcript who said that") == {"@原文"}
+        assert _scan_mention_tokens("Compare @Summary and @NOTES") == {"@纪要", "@随记"}
+        # 边界：@ 前无空白/行首不触发（与前端词边界规则一致）
+        assert _scan_mention_tokens("邮箱是a@原文.com") == set()
+        assert _scan_mention_tokens("mail me at a@transcript.com") == set()
+        # 残缺令牌忽略
+        assert _scan_mention_tokens("看 @原 这段") == set()
+        assert _scan_mention_tokens("see @tran") == set()
+
+    def test_transcript_full_replaces_sampling(self, monkeypatch):
+        dialogue = [
+            {"speaker_name": "张三", "sentences": [{"text": "第一句关于预算", "begin_time": 1000}]},
+            {"speaker_name": "李四", "sentences": [{"text": "第二句关于排期", "begin_time": 2000}]},
+            {"speaker_name": "张三", "sentences": [{"text": "第三句关于验收", "begin_time": 3000}]},
+        ]
+        blocks = self._build("@原文 预算是谁提的", task=self._make_task(dialogue=dialogue, summary="纪要"), monkeypatch=monkeypatch)
+        full = [b for b in blocks if b.startswith("## 用户显式引用（@原文）")]
+        assert len(full) == 1
+        assert "第一句关于预算" in full[0] and "第二句关于排期" in full[0] and "第三句关于验收" in full[0]
+        # 升级替换：采样时间轴块不得同时出现
+        assert not any("智能采样" in b for b in blocks)
+
+    def test_transcript_cap_truncates(self, monkeypatch):
+        from app.routers.chat import MENTION_TRANSCRIPT_CAP
+        long_text = "长" * (MENTION_TRANSCRIPT_CAP + 500)
+        dialogue = [{"speaker_name": "张三", "sentences": [{"text": long_text, "begin_time": 1000}]}]
+        blocks = self._build("@原文 概述一下", task=self._make_task(dialogue=dialogue), monkeypatch=monkeypatch)
+        full = [b for b in blocks if b.startswith("## 用户显式引用（@原文）")][0]
+        assert "已截断至前" in full and len(full) < MENTION_TRANSCRIPT_CAP + 200
+
+    def test_transcript_realtime_full(self, monkeypatch):
+        realtime = [
+            {"speaker_id": "spk1", "text": "会中发言一", "begin_time": 1000},
+            {"speaker_id": "spk2", "text": "会中发言二", "begin_time": 2000},
+        ]
+        blocks = self._build("@原文 刚才说了什么", realtime=realtime, monkeypatch=monkeypatch)
+        full = [b for b in blocks if b.startswith("## 用户显式引用（@原文）")]
+        assert len(full) == 1 and "会中发言一" in full[0] and "会中发言二" in full[0]
+        # 升级替换：自动「最近发言」块不得出现
+        assert not any("最近发言" in b for b in blocks)
+
+    def test_transcript_missing_notice(self, monkeypatch):
+        blocks = self._build("@原文 有哪些结论", task=self._make_task(), monkeypatch=monkeypatch)
+        assert any("@原文" in b and "暂无逐字稿原文" in b for b in blocks)
+
+    def test_summary_full_replaces_cap(self, monkeypatch):
+        tail = "尾部关键结论" * 50
+        summary = "开头" + "填充" * 1500 + tail  # > 2000 字
+        blocks = self._build("@纪要 结论是什么", task=self._make_task(summary=summary), monkeypatch=monkeypatch)
+        full = [b for b in blocks if b.startswith("## 用户显式引用（@纪要）")]
+        assert len(full) == 1 and tail in full[0]
+        # 升级替换：采样口径纪要块不得同时出现
+        assert not any(b.startswith("## 当前会议纪要") for b in blocks)
+
+    def test_summary_missing_notice(self, monkeypatch):
+        blocks = self._build("@纪要 总结一下", task=self._make_task(dialogue=[{"speaker_name": "张三", "sentences": [{"text": "x", "begin_time": 0}]}]), monkeypatch=monkeypatch)
+        assert any("@纪要" in b and "暂无可用纪要" in b for b in blocks)
+
+    def test_notes_full_and_missing(self, monkeypatch):
+        tail = "随记尾部要点" * 50
+        notes = "随记开头" + "记" * 2200 + tail
+        blocks = self._build("@随记 我记了什么", task=self._make_task(notes=notes), monkeypatch=monkeypatch)
+        full = [b for b in blocks if b.startswith("## 用户显式引用（@随记）")]
+        assert len(full) == 1 and tail in full[0]
+        assert not any(b.startswith("## 用户随记（录音期间手写原文") for b in blocks)
+        # 缺失 → 说明块
+        blocks2 = self._build("@随记 我记了什么", task=self._make_task(), monkeypatch=monkeypatch)
+        assert any("@随记" in b and "暂无用户随记" in b for b in blocks2)
+
+    def test_multi_tokens_combined(self, monkeypatch):
+        dialogue = [{"speaker_name": "张三", "sentences": [{"text": "对话内容", "begin_time": 1000}]}]
+        task = self._make_task(dialogue=dialogue, notes="手写要点")
+        blocks = self._build("@原文 @随记 都看看", task=task, monkeypatch=monkeypatch)
+        assert any(b.startswith("## 用户显式引用（@原文）") and "对话内容" in b for b in blocks)
+        assert any(b.startswith("## 用户显式引用（@随记）") and "手写要点" in b for b in blocks)
+
+    def test_no_tokens_behavior_unchanged(self, monkeypatch):
+        dialogue = [{"speaker_name": "张三", "sentences": [{"text": "普通句子", "begin_time": 1000}]}]
+        blocks = self._build("总结一下", task=self._make_task(dialogue=dialogue, summary="短纪要"), monkeypatch=monkeypatch)
+        assert any(b.startswith("## 当前会议对话时间轴") and "普通句子" in b for b in blocks)
+        assert any(b.startswith("## 当前会议纪要") for b in blocks)
+        assert not any("用户显式引用" in b for b in blocks)
+
+
+# ============================================================
+# @附件：本地文件与图片
+# ============================================================
+class TestAttachment:
+    """附件存储、内容展开与端点。"""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_attachments_dir(self, tmp_path, monkeypatch):
+        import app.chat_attachment_store as store_mod
+        monkeypatch.setattr(store_mod, "ATTACHMENTS_DIR", tmp_path / "attachments")
+        store_mod.ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ── 存储层 ──
+    def test_store_save_and_load(self):
+        from app.chat_attachment_store import get_meta, load_bytes, save_attachment
+        meta = save_attachment("笔记.txt", "text/plain", b"hello")
+        assert meta["filename"] == "笔记.txt" and meta["size"] == 5
+        loaded_meta, data = load_bytes(meta["id"])
+        assert loaded_meta["id"] == meta["id"] and data == b"hello"
+        assert get_meta(meta["id"])["content_type"] == "text/plain"
+
+    def test_store_rejects_empty_and_oversize(self):
+        from app.chat_attachment_store import ATTACHMENT_MAX_BYTES, AttachmentError, save_attachment
+        with pytest.raises(AttachmentError):
+            save_attachment("x.txt", "text/plain", b"")
+        with pytest.raises(AttachmentError):
+            save_attachment("big.bin", "application/octet-stream", b"x" * (ATTACHMENT_MAX_BYTES + 1))
+
+    def test_store_invalid_id_and_delete(self):
+        from app.chat_attachment_store import AttachmentError, delete_attachment, get_meta
+        with pytest.raises(AttachmentError):
+            get_meta("../evil")
+        with pytest.raises(AttachmentError):
+            get_meta("nonexistent")
+        delete_attachment("nonexistent")  # 静默
+
+    # ── 内容展开 ──
+    def test_image_part_base64(self):
+        from app.chat_attachment_store import save_attachment
+        from app.routers.chat import _build_attachment_parts
+        # 最小 PNG 字节（1x1 透明）
+        png = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+            "0000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082")
+        meta = save_attachment("图.png", "image/png", png)
+        parts, notice = _build_attachment_parts([{"id": meta["id"]}])
+        assert len(parts) == 1 and parts[0]["type"] == "image_url"
+        assert parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+        assert "图.png" in notice and "1 张图片" in notice
+
+    def test_text_file_extracted(self):
+        from app.chat_attachment_store import save_attachment
+        from app.routers.chat import _build_attachment_parts
+        meta = save_attachment("资料.md", "text/markdown", "# 标题\n正文内容".encode())
+        parts, notice = _build_attachment_parts([{"id": meta["id"]}])
+        assert len(parts) == 1 and parts[0]["type"] == "text"
+        assert "正文内容" in parts[0]["text"] and "资料.md" in parts[0]["text"]
+
+    def test_text_cap_truncates(self):
+        from app.chat_attachment_store import save_attachment
+        from app.routers.chat import ATTACHMENT_TEXT_CAP, _build_attachment_parts
+        long = ("字" * (ATTACHMENT_TEXT_CAP + 200)).encode()
+        meta = save_attachment("long.txt", "text/plain", long)
+        parts, _ = _build_attachment_parts([{"id": meta["id"]}])
+        assert "已截断" in parts[0]["text"]
+
+    def test_unreadable_binary_notice(self):
+        from app.chat_attachment_store import save_attachment
+        from app.routers.chat import _build_attachment_parts
+        # .xlsx 无解析库；且伪造字节不是有效 zip
+        meta = save_attachment("表格.xlsx",
+                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               b"\x00\x01\x02binary")
+        parts, notice = _build_attachment_parts([{"id": meta["id"]}])
+        assert "无法解析" in parts[0]["text"] and "表格.xlsx" in parts[0]["text"]
+        assert "禁止" in parts[0]["text"]
+
+    def test_missing_attachment_raises(self):
+        from app.chat_attachment_store import AttachmentError
+        from app.routers.chat import _build_attachment_parts
+        with pytest.raises(AttachmentError):
+            _build_attachment_parts([{"id": "deadbeef"}])
+
+    # ── 端点 ──
+    def test_upload_endpoint(self, client):
+        resp = client.post(
+            "/api/chat/attachments",
+            files=[("files", ("a.txt", b"content", "text/plain")),
+                   ("files", ("b.txt", b"more", "text/plain"))])
+        assert resp.status_code == 200
+        metas = resp.json()["attachments"]
+        assert len(metas) == 2
+        assert {m["filename"] for m in metas} == {"a.txt", "b.txt"}
+
+    def test_upload_oversize_413(self, client):
+        big = b"x" * (10 * 1024 * 1024 + 10)
+        resp = client.post("/api/chat/attachments",
+                           files=[("files", ("big.bin", big, "application/octet-stream"))])
+        assert resp.status_code == 413
+
+    def test_fetch_attachment_endpoint(self, client):
+        up = client.post("/api/chat/attachments",
+                         files=[("files", ("读我.txt", "原文".encode(), "text/plain"))])
+        attach_id = up.json()["attachments"][0]["id"]
+        resp = client.get(f"/api/chat/attachments/{attach_id}")
+        assert resp.status_code == 200 and resp.content == "原文".encode()
+        # 不存在 → 404
+        assert client.get("/api/chat/attachments/nope123").status_code == 404
+
+    def test_stream_missing_attachment_400(self, client):
+        resp = client.post("/api/chat/stream", json={
+            "message": "问题", "attachments": [{"id": "nonexistent"}]})
+        assert resp.status_code == 400
+
+    def test_stream_too_many_attachments_400(self, client):
+        resp = client.post("/api/chat/stream", json={
+            "message": "问题",
+            "attachments": [{"id": str(i)} for i in range(7)]})
+        assert resp.status_code == 400

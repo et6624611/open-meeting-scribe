@@ -210,8 +210,11 @@
   cursor: pointer; border: none; background: transparent;
 }
 .sel-tool-btn:hover { background: var(--sel-ink-hover); color: var(--sel-ink); }
+.sel-tool-btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
 .sel-tool-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 .sel-tool-sep { width: 1px; height: 20px; background: var(--sel-ink-line); margin: 0 2px; }
+.sel-formal-btn { color: var(--accent); }
+.sel-formal-btn:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* 热词状态标签 / Hotword status tag */
 .sel-hw-tag {
@@ -603,7 +606,7 @@
 .gen-ta-save-btn { padding: 4px 10px; border: none; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-fg); font-size: var(--fs-12); font-weight: 500; cursor: pointer; }
 .gen-ta-cancel-btn { padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
 .gen-ta-cancel-btn:hover { background: var(--surface-2); }
-.gen-textarea-wrap { flex: 1; min-height: 0; display: flex; }
+.gen-textarea-wrap { flex: 1; min-height: 0; display: flex; position: relative; }
 .gen-textarea-editor {
   width: 100%; height: 100%; min-height: 120px;
   font-family: var(--font-mono); font-size: var(--fs-13); line-height: 1.8;
@@ -621,6 +624,34 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .gen-textarea-editor::placeholder { color: var(--subtle); }
+
+/* ─── 随记空内容引导：透明热区铺满编辑区（保留整区点击进编辑），虚线卡片收缩为内容宽并居中 ─── */
+.notes-empty-sheet {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s-4);
+  cursor: text;
+}
+/* 空态给编辑区一个能容纳卡片的最小高度，避免卡片溢出压到上方工具栏；有内容时此规则不生效 */
+.gen-textarea-wrap:has(.notes-empty-sheet) { min-height: 220px; }
+.notes-empty-guide {
+  width: min(440px, 100%);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 28px 32px; text-align: center;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-lg, 12px);
+  background: var(--surface);
+}
+.notes-empty-sheet:hover .notes-empty-guide { border-color: var(--accent-mid, var(--border-strong)); }
+.neg-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: grid; place-items: center; margin-bottom: 4px;
+  background: var(--surface-2); color: var(--subtle);
+}
+.neg-icon svg { width: 19px; height: 19px; }
+.neg-title { font-size: var(--fs-13, 13px); font-weight: 600; color: var(--fg); }
+.neg-body { font-size: var(--fs-12, 12px); line-height: 1.7; color: var(--muted); max-width: 360px; }
+.neg-foot { margin-top: 4px; font-size: var(--fs-11, 11px); color: var(--subtle); }
 
 /* ═══ 纪要改写提案：原位 diff 预览（Layer 1） ═══
    提案状态下沉 useSummaryProposal 单例；预览态锁定编辑（与 IDE diff 视图一致），
@@ -651,7 +682,10 @@
   font-family: var(--font-mono); font-size: var(--fs-12); line-height: 1.7;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--fg);
-  resize: vertical; outline: none; tab-size: 2;
+  resize: none; outline: none; tab-size: 2;
+  /* 长 URL/长英文串必须断行：横向滚动条会侵占纵向高度，导致自适应高度永远差一截 */
+  overflow-y: hidden; overflow-x: hidden;
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
   transition: border-color 0.12s;
 }
 .db-card-textarea:focus { border-color: var(--accent); }
@@ -844,6 +878,8 @@
   padding: var(--s-4); overflow-x: auto; color: var(--fg); line-height: 1.6;
 }
 .ib-html, .ib-html *, .ib-html *::before, .ib-html *::after { box-sizing: border-box; }
+/* 节间距兜底：顶层 section 节奏由应用持有，不依赖 AI 是否写 margin */
+.ib-html > section[data-ib-id] + section[data-ib-id] { margin-top: var(--s-5); }
 .ib-html a[data-seek-ms] { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
 /* 板内悬停工具栏：悬停某个 <section data-ib-id> 时于其右上角浮现「共创此节」 */
@@ -858,6 +894,142 @@
 .ib-sec-cocreate:hover { filter: brightness(1.06); }
 
 /* 空态 */
-.ib-empty { text-align: center; padding: var(--s-8) var(--s-4); color: var(--muted); }
-.ib-empty-title { font-size: var(--fs-14); font-weight: 600; color: var(--fg); margin-bottom: var(--s-2); }
-.ib-empty-body { font-size: var(--fs-12); color: var(--subtle); margin-bottom: var(--s-4); max-width: 420px; margin-inline: auto; }
+.ib-empty { display: flex; align-items: center; justify-content: center; min-height: 46vh; }
+.ib-empty .empty-hint { height: auto; margin: 0 auto; }
+
+/* ============================================================
+   洞察板图形组件库 v1（AI 只填内容、不自带同名 <style>，视觉语言全局统一）
+   每节固定骨架：节标题 h3 → .ib-dilemma 困境条 → .ib-visual 主视觉
+   → .ib-kicker + 图文详解 → .ib-roadmap 落地 → .ib-tradeoff 取舍
+   ============================================================ */
+
+/* 节内节奏 */
+.ib-html > section[data-ib-id] > h3 { margin: 0 0 var(--s-3); font-size: var(--fs-16); }
+.ib-html > section[data-ib-id] h4 { margin: var(--s-4) 0 var(--s-2); font-size: var(--fs-14); }
+.ib-html > section[data-ib-id] p { margin: var(--s-2) 0; }
+
+/* 困境条：一句话界定问题与代价（error 语义） */
+.ib-html .ib-dilemma {
+  display: flex; gap: var(--s-2); align-items: baseline;
+  background: var(--error-soft); border-left: 3px solid var(--error);
+  border-radius: var(--radius); padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-13); margin: 0 0 var(--s-3);
+}
+.ib-html .ib-dilemma::before { content: "困境"; flex: none; font-size: var(--fs-12); font-weight: 600; color: var(--error); }
+.ib-html .ib-dilemma a[data-seek-ms] { white-space: nowrap; }
+
+/* 主视觉容器：所有图统一外套（轻底+内边距，图与文分区） */
+.ib-html .ib-visual {
+  background: var(--bg, var(--surface-2));
+  border: 1px dashed var(--border); border-radius: var(--radius-lg);
+  padding: var(--s-4); margin: var(--s-2) 0 var(--s-3);
+  display: flex; flex-direction: column; gap: var(--s-3);
+}
+
+/* 通用节点 / 箭头 / 小标签 */
+.ib-html .ib-node {
+  position: relative; flex: none;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 12px;
+  font-size: var(--fs-13); line-height: 1.45; text-align: center; min-width: 96px; max-width: 240px;
+}
+.ib-html .ib-node small { display: block; margin-top: 2px; font-size: var(--fs-12); color: var(--muted); }
+.ib-html .ib-node.is-bad { border-color: color-mix(in oklch, var(--error) 45%, transparent); background: var(--error-soft); }
+.ib-html .ib-node.is-bad small { color: var(--error); }
+.ib-html .ib-node.is-block { border-color: var(--error); background: var(--error); color: #fff; font-weight: 600; }
+.ib-html .ib-node.is-block small { color: color-mix(in oklch, #fff 75%, transparent); }
+.ib-html .ib-node.is-good { border-color: color-mix(in oklch, var(--ok) 50%, transparent); background: var(--ok-soft); }
+.ib-html .ib-node.is-new { border-color: color-mix(in oklch, var(--accent) 55%, transparent); background: var(--accent-soft); font-weight: 600; }
+.ib-html .ib-node.is-hub { border-color: color-mix(in oklch, var(--purple) 55%, transparent); background: var(--purple-soft); font-weight: 600; }
+.ib-html .ib-node.is-auto { border-style: dashed; }
+.ib-html .ib-arrow { flex: none; color: var(--subtle); font-size: var(--fs-16); line-height: 1; padding: 0 2px; }
+.ib-html .ib-arrow.is-down { transform: rotate(90deg); }
+
+/* 流程图 / 链路图：横向自动换行，超窄可滚动 */
+.ib-html .ib-flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--s-2); }
+.ib-html .ib-flow.is-stack { flex-direction: column; align-items: center; }
+.ib-html .ib-flow.is-stack .ib-node { max-width: 420px; width: 100%; }
+
+/* 分支树：一个 hub 向下分发多个节点（ESB/聚合平台类） */
+.ib-html .ib-tree { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); }
+.ib-html .ib-branches {
+  display: flex; justify-content: center; gap: var(--s-4); flex-wrap: wrap;
+  width: 100%; padding-top: var(--s-3); position: relative;
+}
+.ib-html .ib-branches::before {
+  content: ""; position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
+  background: var(--border-strong, var(--border));
+}
+.ib-html .ib-branch { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); position: relative; }
+.ib-html .ib-branch::before {
+  content: ""; position: absolute; top: calc(-1 * var(--s-3)); left: 50%; width: 1px; height: var(--s-3);
+  background: var(--border-strong, var(--border));
+}
+.ib-html .ib-branch-label { font-size: var(--fs-12); color: var(--muted); }
+
+/* 现状 vs 目标 双泳道对照 */
+.ib-html .ib-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-3); }
+.ib-html .ib-col {
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--s-3);
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
+.ib-html .ib-col-head {
+  font-size: var(--fs-12); font-weight: 600; text-align: center;
+  border-radius: var(--radius-pill); padding: 2px var(--s-3); align-self: center;
+}
+.ib-html .ib-col.is-now { border-color: color-mix(in oklch, var(--error) 35%, var(--border)); }
+.ib-html .ib-col.is-now .ib-col-head { background: var(--error-soft); color: var(--error); }
+.ib-html .ib-col.is-goal { border-color: color-mix(in oklch, var(--ok) 40%, var(--border)); }
+.ib-html .ib-col.is-goal .ib-col-head { background: var(--ok-soft); color: var(--ok); }
+.ib-html .ib-col .ib-flow { flex-direction: column; gap: 6px; }
+.ib-html .ib-col .ib-flow .ib-arrow.is-down { transform: none; }
+
+/* 落地路线图：短/中/长期时间线 */
+.ib-html .ib-roadmap {
+  list-style: none; margin: var(--s-2) 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-3);
+}
+.ib-html .ib-phase {
+  position: relative; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: var(--s-3);
+}
+.ib-html .ib-phase::before {
+  content: ""; position: absolute; top: var(--s-3); left: -7px;
+  width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ib-html .ib-when { display: inline-block; font-size: var(--fs-12); font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+.ib-html .ib-what { font-size: var(--fs-13); line-height: 1.55; }
+
+/* 并列方案卡片网格 */
+.ib-html .ib-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s-3); }
+.ib-html .ib-sol {
+  background: var(--surface); border: 1px solid var(--border);
+  border-top: 2px solid var(--accent); border-radius: var(--radius); padding: var(--s-3);
+}
+.ib-html .ib-sol-h { font-weight: 600; font-size: var(--fs-13); margin-bottom: 4px; }
+.ib-html .ib-sol p { font-size: var(--fs-13); margin: 0; }
+
+/* 小标签 */
+.ib-html .ib-chip {
+  display: inline-block; font-size: var(--fs-12); line-height: 1;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 3px 9px; margin: 2px 4px 2px 0; color: var(--muted); background: var(--surface);
+}
+.ib-html .ib-chip.is-ok { color: var(--ok); border-color: color-mix(in oklch, var(--ok) 45%, transparent); background: var(--ok-soft); }
+.ib-html .ib-chip.is-new { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 45%, transparent); background: var(--accent-soft); }
+.ib-html .ib-chip.is-warn { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 45%, transparent); background: var(--warn-soft); }
+
+/* 小节眉标 */
+.ib-html .ib-kicker {
+  display: block; font-size: var(--fs-12); font-weight: 600; letter-spacing: .04em;
+  color: var(--accent); margin: var(--s-4) 0 var(--s-1);
+}
+
+/* 取舍 / 风险提示 */
+.ib-html .ib-tradeoff {
+  background: var(--warn-soft); border-left: 3px solid var(--warn);
+  border-radius: var(--radius); padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-13); margin: var(--s-3) 0 0;
+}
+.ib-html .ib-tradeoff::before { content: "取舍 · 风险"; display: block; font-size: var(--fs-12); font-weight: 600; color: var(--warn); margin-bottom: 2px; }

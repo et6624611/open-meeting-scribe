@@ -4,9 +4,14 @@
 import client from './client'
 import type { Task } from './types'
 
-/** 获取任务列表 / Fetch task list */
-export async function fetchTasks(): Promise<Task[]> {
-  const { data } = await client.get<{ tasks: Task[] }>('/api/tasks')
+/**
+ * 获取任务列表 / Fetch task list
+ * @param lite 仅状态字段（完成侦测器高频轮询用，响应体小） / status fields only (small payload for watcher polling)
+ */
+export async function fetchTasks(lite = false): Promise<Task[]> {
+  const { data } = await client.get<{ tasks: Task[] }>('/api/tasks', {
+    params: lite ? { view: 'lite' } : undefined,
+  })
   return data.tasks
 }
 

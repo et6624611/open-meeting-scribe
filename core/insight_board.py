@@ -29,6 +29,7 @@ import json
 import logging
 import re
 import time
+from html import unescape as _html_unescape
 from pathlib import Path
 
 from core.fs_atomic import atomic_write_json, atomic_write_text
@@ -429,8 +430,13 @@ BOARD_ANALYSIS_PROMPT = """你是一位资深会议顾问，负责维护一块�
 无可修订内容时返回 {"ops": []}。zone id 用 z- 前缀小写短横线命名。"""
 
 
+def _fmt_ms(ms: int) -> str:
+    """毫秒转 mm:ss 展示格式 / Format milliseconds as mm:ss display."""
+    total_sec = int(ms) // 1000
+    return f"{total_sec // 60:02d}:{total_sec % 60:02d}"
+
+
 def _build_board_user_message(recent_lines, chapter_titles, digest: str) -> str:
-    from core.insights import _fmt_ms  # 复用毫秒格式化，保持两管线口径一致
     transcript = "\n".join(
         f"[说话人{ln.get('speaker_id', 0) + 1}] ({_fmt_ms(ln.get('begin_time', 0))}) {ln.get('text', '')}"
         for ln in recent_lines
@@ -596,6 +602,136 @@ def sanitize_board_html(html: str) -> tuple[str, list[str]]:
     return out, removed
 
 
+# ============================================================
+# 内容底线：退化为会议复述即拒收 / Recap floor
+# ============================================================
+#
+# 洞察板唯一任务是「针对会议暴露的困境给出 AI 最优解法」；决策清单、议题归类、
+# 待办分工、谁说了什么已由逐字稿、纪要页、决策中心承载。模型的保守倾向是把
+# 会议内容结构化再抄一遍，故落盘前做启发式兜底：命中复述骨架即整份拒收，
+# 理由经工具结果回传 AI 形成自纠循环；旧板不动（拒收不写盘，原子语义）。
+
+# (节标题命中模式, 人话解释) / (bad section-title pattern, human label)
+_RECAP_TITLE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
+    (re.compile(r"决策流|待确认决策|决策清单|决策列表|决议事项|决议清单"), "决策清单（决策中心已承载）"),
+    (re.compile(r"议题归类|议题梳理|议题清单|议题列表|讨论议题"), "议题归类（纪要章节已承载）"),
+    (re.compile(r"待办追踪|待办事项|待办清单|待办列表|行动项清单|任务分工|人员分工|分工表"), "待办/分工清单（纪要待办已承载）"),
+    (re.compile(r"会议全景|会议概览|会议纪要|纪要概览|会议总结|会议摘要"), "会议全景/纪要复述"),
+    (re.compile(r"风险与未决|风险清单|风险梳理|未决事项"), "风险罗列式节（困境必须紧跟解法，不许只罗列）"),
+)
+# 标题含解法向信号时豁免标题扣分（如「风险与解法」）/ Solution-flavoured titles are exempt
+_SOLUTION_TITLE_HINT = re.compile(r"解法|解决方案|对策|破局|锦囊|最优方案")
+_TITLE_ATTR_RE = re.compile(r'data-ib-title=["\']([^"\']+)["\']', re.IGNORECASE)
+_HEADING_RE = re.compile(r"<h[1-4]\b[^>]*>(.*?)</h[1-4]>", re.IGNORECASE | re.DOTALL)
+_TAG_RE = re.compile(r"<[^>]+>")
+_DC_CODE_RE = re.compile(r"DC[-－\s]*\d", re.IGNORECASE)
+_TOPIC_CODE_RE = re.compile(r"议题\s*[0-9０-９]")
+_SPEAKER_REF_RE = re.compile(r"说话人\s*[0-9０-９]|Speaker\s*[0-9]", re.IGNORECASE)
+_EVIDENCE_RE = re.compile(r"依据[：:][^。；\n]{0,40}(?:说话人|Speaker)", re.IGNORECASE)
+_DEADLINE_RE = re.compile(r"截止|deadline|\d{1,2}\s*月\s*\d{1,2}\s*日", re.IGNORECASE)
+_RECAP_STAT_LABELS = ("待确认决策", "议题归类", "待办事项")
+
+# 文字墙检测：顶层节与其主视觉标记 / Section + diagram-marker extraction
+_SECTION_RE = re.compile(r"<section\b[^>]*\bdata-ib-id\b[^>]*>(.*?)</section>",
+                         re.IGNORECASE | re.DOTALL)
+_VISUAL_MARK_RE = re.compile(
+    r'class=["\'][^"\']*\b(?:ib-flow|ib-tree|ib-compare|ib-grid|ib-visual)\b|<svg\b',
+    re.IGNORECASE)
+
+_TEXT_WALL_GUIDANCE = (
+    "洞察板是图不是文章：每个困境一节，先画后主文，纯文字段落/列表组成的节不允许落盘。"
+    "请为每个节补一个主视觉（div.ib-visual），只能使用应用内置组件："
+    "流程/链路用 .ib-flow（.ib-node+.ib-arrow，节点状态 is-bad/is-block/is-good/is-new/is-hub/is-auto）、"
+    "分发聚合用 .ib-tree（.ib-node.is-hub + .ib-branches>.ib-branch）、"
+    "现状目标对照用 .ib-compare（.ib-col.is-now/.ib-col.is-goal）、并列机制用 .ib-grid>.ib-sol；"
+    "落地步骤改为 .ib-roadmap>.ib-phase，取舍放 .ib-tradeoff，关键数字用 .ib-chip。"
+    "节点文字≤12 字、每图≤8 节点；禁止自带 <style> 重定义这些类，禁止 mermaid/图片/外链。"
+    "完整骨架见角色 insights.md，改完整份重新提交。"
+)
+
+_RECAP_GUIDANCE = (
+    "洞察板的唯一任务是针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法"
+    "（你被授权调用外部行业知识、标准实践、成熟架构来构造解法），而不是整理会议内容。"
+    "请重做整份 HTML：每节按「困境（一句话界定）→ 外部最优解法（具体可执行，附原理或出处）→ 落地步骤与取舍」组织；"
+    "删除决策清单（含 DC 编号）、议题/章节归类、待办分工（谁做什么、截止日期）、参会人立场与「谁说了什么」、"
+    "带说话人/时间戳的依据流水、会议概览与摘要复述——这些逐字稿、纪要页、决策中心已经承载；"
+    "风险与未决项每条必须紧跟一个可落地解法，不许只罗列问题。"
+    "若读取到的旧基线本身就是复述结构，直接推倒重做为解法结构，不受版式继承条款约束。"
+)
+
+
+def _board_text_and_titles(board_html: str) -> tuple[str, list[str]]:
+    """提取板纯文本与节标题（data-ib-title 属性 + h1-h4）/ Plain text + section titles."""
+    titles = [m.strip() for m in _TITLE_ATTR_RE.findall(board_html) if m.strip()]
+    for raw in _HEADING_RE.findall(board_html):
+        t = _TAG_RE.sub("", raw).strip()
+        if t:
+            titles.append(t)
+    text = _html_unescape(_TAG_RE.sub(" ", board_html))
+    return re.sub(r"\s+", " ", text), titles
+
+
+def detect_recap_floor(board_html: str) -> list[str]:
+    """启发式检测板是否退化为会议复述；返回拒收理由（空列表 = 通过）。
+    Detect meeting-recap degeneration; non-empty reasons reject the save.
+
+    五类互相独立的复述信号各计 1 分，≥2 分才拒收：单一弱信号（如一节标题
+    起得像待办、正文却是解法）不阻断，避免误伤真正的解法型板。
+    """
+    text, titles = _board_text_and_titles(board_html or "")
+    score = 0
+    reasons: list[str] = []
+
+    bad_titles: list[str] = []
+    for t in titles:
+        if _SOLUTION_TITLE_HINT.search(t):
+            continue
+        for pat, label in _RECAP_TITLE_PATTERNS:
+            if pat.search(t):
+                bad_titles.append(f"「{t[:20]}」={label}")
+                break
+    if bad_titles:
+        score += 1
+        reasons.append("复述型节标题 " + "；".join(dict.fromkeys(bad_titles))[:300])
+
+    if len(_DC_CODE_RE.findall(text)) >= 2 or len(_TOPIC_CODE_RE.findall(text)) >= 2:
+        score += 1
+        reasons.append("DC/议题编号罗列（DC-1、议题1 等——决策与纪要已有各自编号体系）")
+
+    stat_hits = [w for w in _RECAP_STAT_LABELS if w in text]
+    if len(stat_hits) >= 2:
+        score += 1
+        reasons.append("决策/议题/待办统计徽标：" + "、".join(stat_hits))
+
+    speaker_hits = len(_SPEAKER_REF_RE.findall(text))
+    evidence_hits = len(_EVIDENCE_RE.findall(text))
+    if speaker_hits + evidence_hits >= 4:
+        score += 1
+        reasons.append(
+            f"密集记录发言人（说话人/Speaker 引用 {speaker_hits} 处、依据句 {evidence_hits} 处）"
+            "——板不应记录谁说了什么")
+
+    if speaker_hits >= 3 and _DEADLINE_RE.search(text):
+        score += 1
+        reasons.append("按人派活+截止日期的待办分工表")
+
+    return reasons if score >= 2 else []
+
+
+def detect_text_wall(board_html: str) -> tuple[int, int]:
+    """检测板是否退化为纯文字墙；返回 (节总数, 含主视觉的节数)。
+
+    仅统计顶层 <section data-ib-id> 节（节不嵌套是共创契约）。判定阈值由调用方
+    持有：n==0（自由片段，非节式板）不阻断；n==1 该节必须有图；n>=2 允许
+    至多 1 节无图（内容确不适合成图时的容错），否则拒收。
+    """
+    sections = _SECTION_RE.findall(board_html or "")
+    if not sections:
+        return 0, 0
+    visual = sum(1 for body in sections if _VISUAL_MARK_RE.search(body))
+    return len(sections), visual
+
+
 def _board_html_path(task_id: str) -> Path:
     return BOARD_TASKS_DIR / f"{task_id}.board.html"
 
@@ -646,8 +782,12 @@ def board_html_meta(task_id: str) -> dict | None:
             "exists": _board_html_path(task_id).exists()}
 
 
-def board_html_save(task_id: str, html: str) -> dict:
+def board_html_save(task_id: str, html: str, *, content_floor: bool = True) -> dict:
     """清洗后整份落盘（revision+1）；非法输入不落盘 / Sanitize-then-save, revision+1.
+
+    content_floor=True（默认，AI 共创路径）：额外执行复述/文字墙内容底线校验；
+    content_floor=False：仅安全清洗，供系统级机械改写（如错字纠正回写）使用——
+    旧板的内容形态不应在机械替换时被新规则否决。
 
     返回 / Returns: {ok, revision?, html?, removed?, error?}
     写入方唯一（后端），对话侧只提交整份文本，不存在并发合并问题。
@@ -661,6 +801,20 @@ def board_html_save(task_id: str, html: str) -> dict:
     cleaned, removed = sanitize_board_html(html)
     if not cleaned.strip():
         return {"ok": False, "error": "html_empty_after_sanitize", "removed": removed}
+    # 内容底线：复述型板整份拒收，理由回传 AI 自纠（旧板保持不动）/ Recap floor
+    recap_reasons = detect_recap_floor(cleaned)
+    if recap_reasons:
+        logger.info("[洞察板] 复述底线拒收 task=%s: %s", task_id, recap_reasons)
+        return {"ok": False, "error": "board_is_recap", "reasons": recap_reasons,
+                "guidance": _RECAP_GUIDANCE, "removed": removed}
+    # 图形化底线：节式板必须先画后主文，纯文字墙拒收 / Diagram-first floor
+    total_sec, visual_sec = detect_text_wall(cleaned)
+    if total_sec and visual_sec < (1 if total_sec == 1 else total_sec - 1):
+        logger.info("[洞察板] 文字墙拒收 task=%s sections=%d visuals=%d",
+                    task_id, total_sec, visual_sec)
+        return {"ok": False, "error": "board_is_text_wall",
+                "reasons": [f"{total_sec} 个节中仅 {visual_sec} 个含主视觉（.ib-flow/.ib-tree/.ib-compare/.ib-grid）"],
+                "guidance": _TEXT_WALL_GUIDANCE, "removed": removed}
     # 取上一版本号只读旁路 meta，不必读回整份 HTML 正文
     prev = board_html_meta(task_id)
     revision = (prev["revision"] if prev else 0) + 1

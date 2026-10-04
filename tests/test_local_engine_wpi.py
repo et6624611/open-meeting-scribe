@@ -12,9 +12,9 @@ tests/test_local_engine_wpi.py — WP-I（R9 分段增量上屏，引擎侧）�
 - AC-I5: 热词映射每段闭合时都过一遍
 - AC-I6: D-I2 定稿——transcript_finalized_incremental 任务跳过 stage1 全量重跑，
          以 realtime_full_transcript 拼接定稿；增量内容为空时回退 stage1 兜底
-- AC-I7: flag 默认关（enabled=False，段参数临时默认 5/0.8/30）；关闭时 local 录音
-         仍走 RealtimeTranscriber → realtime_degraded_to_batch 状态声明（WP-H 行为）；
-         开启时选用 LocalSegmentTranscriber
+- AC-I7: flag 默认开（WP-I 验收后 enabled=True，段参数默认 5/0.8/30）；显式关闭时
+         local 录音仍走 RealtimeTranscriber → realtime_degraded_to_batch 状态声明
+         （WP-H 逃生通道）；默认/开启时选用 LocalSegmentTranscriber
 - AC-I8: 内存纪律——段闭合即释放缓冲；待推理队列有界，超限丢最旧段
 
 打桩约定沿用 tests/test_local_engine_r1r2r3.py（主 venv 无 funasr/torch）。
@@ -467,14 +467,25 @@ class TestIncrementalFinalization:
 # ============================================================
 
 class TestConfigAndWiring:
-    def test_segments_disabled_by_default_with_temp_defaults(self, monkeypatch):
-        """AC-I7/D-I3：默认 enabled=False；段参数临时默认 5/0.8/30（待真机校准）。"""
+    def test_segments_enabled_by_default(self, monkeypatch):
+        """AC-I7/D-I3：WP-I 验收后默认 enabled=True；段参数默认 5/0.8/30（可经配置覆盖）。"""
         import app.settings_store as ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
         monkeypatch.setattr(ss, "load_settings", lambda: {})
         cfg = ss.get_engine_config()["local"]["realtime_segments"]
-        assert cfg == {"enabled": False, "min_segment_s": 5.0, "min_silence_s": 0.8, "max_segment_s": 30.0}
+        assert cfg == {"enabled": True, "min_segment_s": 5.0, "min_silence_s": 0.8, "max_segment_s": 30.0}
+
+    def test_segments_explicit_opt_out_preserved(self, monkeypatch):
+        """逃生通道：settings.json 显式 enabled=false 时回到 WP-H 批转写口径。"""
+        import app.settings_store as ss
+
+        monkeypatch.delenv("ENGINE_MODE", raising=False)
+        monkeypatch.setattr(ss, "load_settings", lambda: {
+            "engine": {"mode": "local", "local": {"realtime_segments": {"enabled": False}}},
+        })
+        cfg = ss.get_engine_config()["local"]["realtime_segments"]
+        assert cfg["enabled"] is False
 
     def test_segments_override_from_settings(self, monkeypatch):
         """AC-I7/D-I3：段参数可经 settings.json 覆盖（段长不拍死）。"""
@@ -562,7 +573,7 @@ class TestConfigAndWiring:
         return result, pushed, constructed, done, _cleanup_record_state
 
     def test_flag_off_keeps_degraded_status_declaration(self, monkeypatch, tmp_path):
-        """AC-I7：flag 默认关 → local 录音仍走 RealtimeTranscriber 降级状态声明（WP-H 行为）。"""
+        """AC-I7：flag 显式关闭（逃生通道）→ local 录音走 RealtimeTranscriber 降级状态声明（WP-H 行为）。"""
         result, pushed, constructed, done, cleanup = self._run_start_record(
             monkeypatch, tmp_path, segments_enabled=False)
         try:

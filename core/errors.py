@@ -66,6 +66,11 @@ def is_transient_error(error: Exception) -> bool:
     if error_type in ("Timeout", "ConnectionError", "ConnectTimeout", "ReadTimeout"):
         return True
 
+    # 模型误拒（充足对话被判内容不足）：重试大概率成功，且可避免拒答话术覆盖既有纪要
+    # Model mis-refusal on substantial dialogue: retry likely succeeds; prevents refusal text overwriting good minutes
+    if error_type == "SummaryRefusalError":
+        return True
+
     # HTTP 状态码 / HTTP status codes
     status_code = getattr(error, "response", None)
     if status_code is not None:

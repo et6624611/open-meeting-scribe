@@ -143,7 +143,7 @@
           <span class="gen-meta-sep"></span>
           <span class="gen-meta-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            <span class="gen-meta-val">{{ speakerNames.length }}</span> {{ t('generating.meta.person') }}
+            <span class="gen-meta-val">{{ speakerCount }}</span> {{ t('generating.meta.person') }}
           </span>
           <span class="gen-meta-sep"></span>
           <span class="gen-meta-item">
@@ -246,6 +246,11 @@
       @update:dropdown-search="bindingDropdown.search = $event"
       @roster-add="rosterComposable.addMember($event)"
       @roster-remove="rosterComposable.removeMember($event)"
+      :voiceprint-items="visibleVoiceprintItems"
+      :voiceprint-running="voiceprintRunning"
+      @run-voiceprint="runVoiceprint"
+      @apply-voiceprint="onVoiceprintApply"
+      @dismiss-voiceprint="onVoiceprintDismiss"
     />
 
     <!-- 控制区：Tab / Control zone: Tabs -->
@@ -259,12 +264,37 @@
           </button>
         </div>
       </div>
+      <!-- 原文三层视图下拉（仅原文 tab 显示；替代原面板内固定分段控件）/ Transcript layer dropdown (transcript tab only; replaces the in-panel segmented control) -->
+      <div class="gen-layer-picker" v-if="activeTab === 'transcript'">
+        <button
+          ref="layerPickerBtn" class="gen-layer-trigger" v-bind="layerPickerTriggerAttrs"
+          :aria-label="t('generating.layer.picker_label')" :title="t('generating.layer.picker_label')"
+          @click="toggleLayerPicker"
+        >
+          <span>{{ t(`generating.layer.${layerView}`) }}</span>
+          <span v-if="layerView === 'formal'" class="rec-layer-ai">AI</span>
+          <svg class="gen-layer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div ref="layerPickerMenu" class="gen-toolbar-more-menu gen-layer-menu" v-bind="layerPickerMenuAttrs" :class="{ 'is-open': showLayerPicker }" :aria-label="t('generating.layer.picker_label')">
+          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'formal' }" role="menuitem" @click="selectLayer('formal')">
+            {{ t('generating.layer.formal') }}
+            <span class="rec-layer-ai">AI</span>
+          </button>
+          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'clean' }" role="menuitem" :disabled="!cleanupAvailable" @click="selectLayer('clean')">
+            {{ t('generating.layer.clean') }}
+          </button>
+          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'raw' }" role="menuitem" @click="selectLayer('raw')">
+            {{ t('generating.layer.raw') }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 内容区（子组件） / Content area (sub-components) -->
     <div class="gen-content">
       <TranscriptPanel
         ref="transcriptPanelRef"
+        v-model:layer-view="layerView"
         :visible="activeTab === 'transcript'"
         :transcript-items="transcriptItems"
         :chapters="chapters"
@@ -365,6 +395,8 @@
         :visible="activeTab === 'todos'"
         :task-id="data.taskId"
         :todos="todos"
+        :anchor-todo-id="anchorTodoId"
+        :from-evolution="route.query.from === 'evolution'"
         @delete="onDeleteTodo"
         @update="onEditTodo"
         @status-change="onStatusChange"
@@ -387,7 +419,9 @@
     <SelectionToolbar
       container-selector=".gen-content"
       :textarea-selectors="['textarea.gen-textarea-editor', 'textarea.db-card-textarea', 'textarea.db-edit-area']"
+      :formalize-enabled="task?.status === 'completed'"
       @action="onSelectionAction"
+      @formalize-selection="(ids) => transcriptPanelRef?.formalizeSelection(ids)"
     />
     <!-- 行间编辑浮动输入框（input 态 + result 确认态共用，确认卡带执行方回显） -->
     <InlineEditInput
@@ -448,8 +482,10 @@ import { useTaskStore } from '@/stores/task'
 import { isPlaceholderName } from '@/utils/speakerDisplay'
 import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject, fetchTask, correctTaskText } from '@/api/tasks'
 import type { SyncStatus } from '@/api/tasks'
+import type { VoiceprintMatchItem } from '@/api/types'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useDropdownPopup } from '@/composables/useDropdownPopup'
+import type { LayerView } from '@/utils/transcriptLayers'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
@@ -457,11 +493,13 @@ import SummaryPanel from './generating/SummaryPanel.vue'
 import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
+import { parseAnchorTodoId } from './decisionEvolutionNav'
 import InsightBoard from './generating/InsightBoard.vue'
 import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
 import { onBoardWritten } from '@/composables/useBoardSync'
 import { onTaskWritten } from '@/composables/useTaskWrites'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
+import { dismissVoiceprintSuggestion, runVoiceprintMatch } from '@/api/voiceprint'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
@@ -805,8 +843,25 @@ const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
 const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore, triggerAttrs: genMoreTriggerAttrs, menuAttrs: genMoreMenuAttrs } = usePopMenu(genMoreDropdown, genMoreBtn)
 
+// ─── 原文三层视图下拉（tab 栏右侧；真源在此，TranscriptPanel prop 消费）/ Transcript layer dropdown (tab-bar right; source of truth here) ──
+const layerView = ref<LayerView>('clean')
+const cleanupAvailable = computed(() => task.value?.transcript_layers?.cleanup === true)
+const layerPickerBtn = ref<HTMLElement | null>(null)
+const layerPickerMenu = ref<HTMLElement | null>(null)
+const { visible: showLayerPicker, toggle: toggleLayerPicker, close: closeLayerPicker, triggerAttrs: layerPickerTriggerAttrs, menuAttrs: layerPickerMenuAttrs } = usePopMenu(layerPickerMenu, layerPickerBtn)
+function selectLayer(v: LayerView) {
+  layerView.value = v
+  closeLayerPicker()
+}
+
 // ─── 工具栏操作 / Toolbar actions ───
 function onEditSummary() { closeGenMore(); data.switchTab('summary') }
+
+/**
+ * 决策中心演变链跳转锚点：?tab=todos&todo=<id>&from=evolution
+ * 切到决策面板后由 DecisionFlowPanel 自行展开闭档组、滚动高亮并显示来源横幅。
+ */
+const anchorTodoId = computed(() => parseAnchorTodoId(route.query))
 
 /**
  * 决策中心跳转锚点：?tab=summary&dq=<决策文本> → 切到纪要页并在正文中定位选区高亮。
@@ -839,9 +894,27 @@ function anchorFromDecisionCenter() {
 }
 async function onRetrySummary() {
   closeGenMore()
-  await retrySummary(data.taskId)
-  await taskStore.loadTasks()
+  // 乐观切进行态：点击即有反馈，不等待慢列表（全量列表 35MB，曾稳定 2.8s 白屏）。
+  // 详情轮询立即启动接管真实状态；列表刷新只服务会议库，后台进行不阻塞 UI。
+  taskStore.patchTaskLocal(data.taskId, {
+    status: 'processing',
+    progress: 75,
+    error: undefined,
+    error_category: undefined,
+    error_suggestion: undefined,
+    failed_stage: undefined,
+  })
   data.startPolling()
+  try {
+    await retrySummary(data.taskId)
+    void taskStore.loadTasks()
+  } catch (e) {
+    // 提交失败：回拉详情恢复真实状态，防乐观态卡死在处理中
+    console.error('retry summary failed:', e)
+    try {
+      taskStore.patchTaskLocal(data.taskId, await fetchTask(data.taskId))
+    } catch { /* 保留乐观态，等下次轮询纠偏 */ }
+  }
 }
 async function onRetranscribe() { closeGenMore(); await retranscribe(data.taskId); router.push({ name: 'generating', params: { taskId: data.taskId } }) }
 
@@ -891,6 +964,59 @@ async function onArchiveDone() {
   if (data.isArchived.value) {
     // 归档后跳转至会议库 / Redirect to library after archiving
     router.push('/library')
+  }
+}
+
+// ─── 声纹识别：人员栏内触发，结果落本地 / Voiceprint match triggered within personnel bar ───
+const voiceprintRunning = ref(false)
+
+/** 过滤已忽略建议后的可见项 / Visible items after dismissed filtering */
+const visibleVoiceprintItems = computed<VoiceprintMatchItem[] | null>(() => {
+  const items = task.value?.voiceprint_match ?? null
+  if (!items) return null
+  const dismissed = new Set(task.value?.voiceprint_dismissed ?? [])
+  return dismissed.size ? items.filter(it => !dismissed.has(it.speaker_id)) : items
+})
+
+async function runVoiceprint() {
+  if (voiceprintRunning.value || !canBind.value || flatTranscript.value.length === 0) return
+  voiceprintRunning.value = true
+  try {
+    const res = await runVoiceprintMatch(data.taskId)
+    taskStore.patchTaskLocal(data.taskId, {
+      voiceprint_match: res.results,
+      voiceprint_auto_mapping: res.auto_mapping,
+      voiceprint_dismissed: [],
+    })
+  } catch {
+    showToast(t('generating.voiceprint.failed'), 'error')
+  } finally {
+    voiceprintRunning.value = false
+  }
+}
+
+async function onVoiceprintApply(speakerId: number, uuid: string) {
+  await selectBinding(speakerId, uuid)
+}
+
+async function onVoiceprintDismiss(speakerId: number) {
+  // 若当前绑定正来自这条声纹建议，忽略即一并撤销；手工改绑他人则保留
+  const item = (task.value?.voiceprint_match ?? []).find(it => it.speaker_id === speakerId)
+  if (
+    item?.status === 'matched' && item.matched_uuid
+    && binding.currentBindingMapping[speakerId] === item.matched_uuid
+  ) {
+    await selectBinding(speakerId, '')
+  }
+  const dismissed = new Set(task.value?.voiceprint_dismissed ?? [])
+  dismissed.add(speakerId)
+  taskStore.patchTaskLocal(data.taskId, {
+    voiceprint_dismissed: [...dismissed].sort((a, b) => a - b),
+  })
+  try {
+    await dismissVoiceprintSuggestion(data.taskId, speakerId)
+  } catch {
+    showToast(t('generating.voiceprint.failed'), 'error')
   }
 }
 
@@ -1007,9 +1133,12 @@ const speakerZoneMode = computed<'readonly' | 'actionable' | 'complete'>(() => {
 })
 const breadcrumbs = computed(() => data.computeBreadcrumbs(data.projects.value))
 const currentProjectName = computed(() => data.computeCurrentProjectName(data.projects.value))
-const speakerNames = computed(() => {
+// 口径：speaker_mapping 的键数（未命名空串也计数），与人员栏「未关联 N」同源——
+// 顶部显示实际说话人数，而非已命名人数 / Count mapping keys (unnamed included),
+// aligned with the personnel bar's unbound count.
+const speakerCount = computed(() => {
   const m = data.task.value?.speaker_mapping
-  return m ? Object.values(m).filter(Boolean) : []
+  return m ? Object.keys(m).length : 0
 })
 
 // ─── 生命周期 / Lifecycle ───

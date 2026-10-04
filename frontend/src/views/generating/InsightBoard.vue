@@ -13,13 +13,18 @@
       </button>
     </header>
 
-    <!-- 空态：引导进入会话共创 / Empty state: guide into chat co-creation -->
-    <div v-else class="ib-empty">
-      <div class="ib-empty-title">{{ t('generating.insights.board.empty_title') }}</div>
-      <div class="ib-empty-body">{{ t('generating.insights.board.empty_body') }}</div>
-      <button class="btn btn-primary" @click="emit('coCreate')">
-        {{ t('generating.insights.board.co_create') }}
-      </button>
+    <!-- 空态：统一 EmptyHint，保留「共创」引导按钮（四面板中唯一带动作的空态） -->
+    <div v-if="!artifact.html" class="ib-empty">
+      <EmptyHint card :title="t('generating.insights.board.empty_title')" :body="t('generating.insights.board.empty_body')">
+        <template #icon>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.35"/></svg>
+        </template>
+        <template #action>
+          <button class="btn btn-primary" @click="emit('coCreate')">
+            {{ t('generating.insights.board.co_create') }}
+          </button>
+        </template>
+      </EmptyHint>
     </div>
 
     <!-- HTML 产物呈现容器：后端已清洗（剥离 script/on*/危险 URL/全局 :root），此处仅静态渲染 -->
@@ -48,6 +53,7 @@
  */
 import { ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import EmptyHint from '@/components/common/EmptyHint.vue'
 import type { BoardArtifact } from '@/api/board'
 
 const { t } = useI18n()

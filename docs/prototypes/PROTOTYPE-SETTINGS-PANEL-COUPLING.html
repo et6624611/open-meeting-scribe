@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 会话面板 · 授权档位入口原型</title>
+<style>
+  :root{
+    --bg:#f3f4f7;
+    --surface:#ffffff;
+    --surface-2:#f6f7f9;
+    --surface-3:#eef0f3;
+    --border:#e5e7eb;
+    --border-strong:#d3d7de;
+    --fg:#1f2430;
+    --muted:#5d6573;
+    --subtle:#9aa1ad;
+    --accent:#2f6fed;
+    --accent-soft:#eaf1fe;
+    --ok:#1a8a4f;
+    --ok-soft:#e8f5ee;
+    --ok-border:#bfe4cc;
+    --warn:#8a5800;
+    --warn-soft:#fdf3df;
+    --warn-border:#ecd9ae;
+    --err:#c23a3a;
+    --err-soft:#fbeaea;
+    --err-border:#eccaca;
+    --radius:10px;
+    --radius-sm:6px;
+    --radius-lg:12px;
+    --s-2:8px;
+    --composer-line:20px;
+    --composer-bar-h:34px;
+    --composer-gap:16px;
+    --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    color:var(--fg);
+    font-size:13px;
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:28px 16px;
+  }
+  button{font-family:inherit}
+
+  /* ════════ 面板舞台 ════════ */
+  .stage{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .stage-note{font-size:11.5px;color:var(--subtle);max-width:400px;text-align:center;line-height:1.6}
+  .stage-note b{color:var(--muted)}
+
+  .ai{
+    width:400px;
+    height:760px;
+    max-height:calc(100vh - 80px);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:0 18px 50px rgba(24,32,56,.14);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    position:relative;
+  }
+
+  /* ── 头部（照 AIPanel.vue：左标题，右三图标） ── */
+  .ai-header{
+    height:48px;flex:0 0 auto;
+    display:flex;align-items:center;gap:8px;
+    padding:0 10px 0 12px;
+    border-bottom:1px solid var(--border);
+  }
+  .ai-h-avatar{
+    width:24px;height:24px;border-radius:7px;
+    background:var(--fg);color:var(--surface);
+    display:grid;place-items:center;flex-shrink:0;
+  }
+  .ai-h-avatar svg{width:14px;height:14px}
+  .ai-h-title{font-size:13px;font-weight:650;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ai-h-icon{
+    width:30px;height:30px;border:none;background:transparent;border-radius:var(--radius-sm);
+    color:var(--muted);display:grid;place-items:center;cursor:pointer;flex-shrink:0;
+  }
+  .ai-h-icon:hover{background:var(--surface-2);color:var(--fg)}
+  .ai-h-icon svg{width:16px;height:16px}
+
+  /* ── 消息流 ── */
+  .feed{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+  .feed::-webkit-scrollbar{width:6px}
+  .feed::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:3px}
+  .msg{max-width:92%;font-size:12.5px;line-height:1.62;border-radius:11px;padding:9px 12px;white-space:normal;word-break:break-word}
+  .msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+  .msg.ai{align-self:flex-start;background:var(--surface-2);color:var(--fg);border-bottom-left-radius:4px;border:1px solid var(--border)}
+  .msg.ai strong{font-weight:650}
+  .ts{align-self:flex-end;font-size:10px;color:var(--subtle);margin-top:-5px}
+
+  .tool-line{align-self:flex-start;display:flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;color:var(--muted);
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 10px}
+  .tool-line .g{width:5px;height:5px;border-radius:50%;background:var(--ok)}
+
+  /* 提案入口卡（照 AiChatPanel sum-prop-view：摘要 + 查看 / 拒绝） */
+  .prop-card{align-self:flex-start;max-width:96%;width:96%;border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--surface);box-shadow:0 2px 10px rgba(20,30,50,.05);overflow:hidden}
+  .prop-head{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--border);
+    background:var(--surface-2);font-size:12px;font-weight:650}
+  .prop-head .src{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--subtle);font-weight:400}
+  .prop-body{padding:10px 12px;font-size:11.5px;color:var(--muted);line-height:1.6}
+  .diff-stats{display:flex;gap:8px;margin-bottom:7px;font-family:var(--font-mono);font-size:10.5px}
+  .diff-stats .add{color:var(--ok)}
+  .diff-stats .del{color:var(--err)}
+  .prop-actions{display:flex;gap:8px;padding:0 12px 10px}
+  .btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-strong);background:var(--surface);color:var(--fg);
+    border-radius:var(--radius-sm);padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--surface-2)}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.pri:hover{filter:brightness(1.05);background:var(--accent)}
+  .btn.ghost{border-color:transparent;color:var(--muted);font-weight:500;background:transparent}
+  .btn.ghost:hover{background:var(--surface-2);color:var(--fg)}
+
+  /* 403 拒绝卡 */
+  .deny-card{align-self:flex-start;max-width:96%;width:96%;border:1px solid var(--err-border);background:var(--err-soft);
+    border-radius:var(--radius);padding:11px 12px}
+  .dc-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:650;color:var(--err)}
+  .dc-h svg{width:15px;height:15px;flex-shrink:0}
+  .dc-b{font-size:11.5px;color:#8f3030;line-height:1.6;margin:6px 0 9px}
+  .dc-b code{font-family:var(--font-mono);font-size:10.5px;background:rgba(194,58,58,.08);padding:0 4px;border-radius:3px}
+  .dc-a{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* 思考指示 */
+  .thinking{align-self:flex-start;display:flex;align-items:center;gap:7px;color:var(--subtle);font-size:11.5px;padding:4px 6px}
+  .thinking .spin{width:13px;height:13px;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── 输入区 ── */
+  .input-zone{flex:0 0 auto;padding:0 10px 10px;display:flex;flex-direction:column}
+
+  /* 探针警告（照 .ai-cli-probe-warn：amber，不用红） */
+  .probe-warn{display:none;align-items:flex-start;gap:7px;margin-bottom:6px;padding:7px 10px;
+    border-radius:var(--radius-sm);font-size:12px;line-height:1.5;color:var(--warn);
+    background:var(--warn-soft);border:1px solid var(--warn-border)}
+  .probe-warn.on{display:flex}
+  .probe-warn svg{width:13px;height:13px;flex-shrink:0;margin-top:2px}
+  .probe-warn .sw{color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap;margin-left:4px}
+
+  .composer-card{position:relative;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);
+    padding:8px 12px 0;transition:border-color .15s,box-shadow .15s}
+  .composer-card:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .composer-input{width:100%;border:0;background:transparent;resize:none;outline:none;font:inherit;font-size:13px;
+    line-height:var(--composer-line);min-height:calc(var(--composer-line) * 1.4);max-height:120px;
+    color:var(--fg);padding:0;overflow-y:auto}
+  .composer-input::placeholder{color:var(--subtle)}
+
+  /* ── Composer 控制行（严格照 ComposerBar.vue：34px 单行） ── */
+  .composer-bar{
+    display:flex;align-items:center;gap:6px;
+    height:var(--composer-bar-h);min-height:var(--composer-bar-h);
+    margin-top:8px;position:relative;
+  }
+  .composer-bar::before{content:"";position:absolute;left:0;right:0;top:-9px;height:1px;background:var(--border)}
+  .cb-wrap{position:relative;display:flex;flex:0 0 auto}
+  .cb-wrap.model{flex:1 1 auto;min-width:0}
+
+  .ac-trigger{
+    display:inline-flex;align-items:center;gap:6px;min-width:0;
+    height:var(--composer-bar-h);padding:0 8px;
+    border:1px solid var(--border);border-radius:var(--radius-sm);
+    background:var(--surface-2);color:var(--fg);cursor:pointer;
+    transition:background .14s,border-color .14s;
+  }
+  .ac-trigger:hover{background:var(--surface-3);border-color:var(--border-strong)}
+  .ac-trigger.is-open{background:var(--surface-3);border-color:var(--fg)}
+  .ac-trigger.is-icon{width:var(--composer-bar-h);max-width:var(--composer-bar-h);padding:0;justify-content:center}
+  .ac-tr-icon{width:16px;height:16px;color:var(--muted);flex-shrink:0}
+  .ac-trigger.is-open .ac-tr-icon{color:var(--fg)}
+  .ac-tr-txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.25;min-width:0}
+  .ac-tr-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .ac-tr-sub{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .ac-chev{width:12px;height:12px;color:var(--subtle);flex-shrink:0;transition:transform .14s}
+  .ac-trigger.is-open .ac-chev{transform:rotate(180deg)}
+
+  /* 档位图标钮：形状与模式钮完全同款，只用图标颜色区分档位；待生效蓝点 */
+  .tier-trigger .ac-tr-icon{color:var(--subtle)}
+  .tier-trigger.t-ro .ac-tr-icon{color:var(--subtle)}
+  .tier-trigger.t-wr .ac-tr-icon{color:var(--ok)}
+  .tier-trigger.t-full .ac-tr-icon{color:var(--warn)}
+  .tier-dot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--accent);
+    border:1.5px solid var(--surface);display:none}
+  .tier-trigger.pending .tier-dot{display:block}
+  /* 问答模式下档位不生效：置灰但可点开看，hover 说明 */
+  body.qa-mode .tier-trigger{opacity:.42;cursor:pointer}
+  body.qa-mode .tier-trigger .ac-tr-icon{color:var(--subtle) !important}
+
+  /* 发送钮（照 .composer-send：实底 fg，icon 34×34） */
+  .cb-right{margin-left:auto;display:flex;flex:0 0 auto}
+  .send-btn{width:var(--composer-bar-h);height:var(--composer-bar-h);border-radius:var(--radius-sm);
+    border:1px solid transparent;background:var(--fg);color:var(--surface);display:grid;place-items:center;cursor:pointer}
+  .send-btn:hover{opacity:.85}
+  .send-btn:disabled{background:var(--surface-3);color:var(--subtle);cursor:not-allowed;opacity:1}
+  .send-btn svg{width:15px;height:15px}
+
+  /* ── 弹出菜单（照 .ac-menu / usePopMenu：向上弹，z 500） ── */
+  .ac-menu{
+    position:absolute;bottom:calc(100% + 6px);left:0;z-index:500;
+    width:288px;max-height:420px;overflow-y:auto;
+    background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-lg);
+    box-shadow:0 12px 32px rgba(20,30,50,.16),0 2px 6px rgba(20,30,5,.06);
+    padding:6px;display:none;
+  }
+  .cb-wrap.model .ac-menu{left:0;width:300px}
+  .ac-menu.open{display:block}
+  .ac-label{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px 4px;
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;color:var(--subtle)}
+  .ac-row{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:8px;width:100%;text-align:left;
+    min-height:40px;padding:6px 8px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--fg);cursor:pointer}
+  .ac-row:hover{background:var(--surface-3)}
+  .ac-row.is-sel{background:var(--accent-soft)}
+  .ac-row.is-disabled{opacity:.45;cursor:not-allowed}
+  .ac-row.is-disabled:hover{background:transparent}
+  .ac-badge{width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--border);
+    border-radius:var(--radius-sm);background:var(--surface-2);color:var(--muted)}
+  .ac-badge svg{width:14px;height:14px}
+  .ac-row.is-sel .ac-badge{background:var(--surface);border-color:var(--border-strong);color:var(--fg)}
+  .ac-badge.t-ro{color:var(--subtle)}
+  .ac-badge.t-wr{color:var(--ok);border-color:var(--ok-border);background:var(--ok-soft)}
+  .ac-badge.t-full{color:var(--warn);border-color:var(--warn-border);background:var(--warn-soft)}
+  .ac-it{min-width:0}
+  .ac-it-name{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;line-height:1.35;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ac-it-sub{display:block;font-size:11px;color:var(--muted);margin-top:1px;line-height:1.4}
+  .rec-tag{font-size:9.5px;font-weight:600;background:var(--accent);color:#fff;border-radius:9px;padding:0 6px}
+  .ac-check{width:14px;height:14px;color:var(--accent)}
+  .ac-hint{padding:2px 8px 5px;font-size:11px;color:var(--muted);font-style:italic;line-height:1.5}
+
+  /* 档位菜单：锁定注记 + 新会话应用脚钮 */
+  .tier-lock{display:flex;align-items:flex-start;gap:6px;margin:4px 2px 0;padding:8px 8px 4px;
+    border-top:1px dashed var(--border);font-size:11px;color:var(--muted);line-height:1.55}
+  .tier-lock svg{width:12px;height:12px;flex-shrink:0;margin-top:2px;color:var(--subtle)}
+  .ac-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;width:calc(100% - 12px);
+    margin:4px 6px 0;padding:9px 8px;border:none;border-top:1px solid var(--border);
+    background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer}
+  .ac-foot:hover{color:var(--fg)}
+  .ac-foot svg{width:13px;height:13px}
+  .ac-foot.is-ready{color:var(--accent)}
+  .ac-foot.is-disabled{opacity:.5;pointer-events:none}
+
+  /* 模型菜单分组 */
+  .ac-group + .ac-group{border-top:1px solid var(--border);margin-top:6px;padding-top:6px}
+  .ac-note{padding:4px 8px 2px;font-size:10.5px;color:var(--subtle);line-height:1.5}
+
+  /* 斜杠菜单（复用 ac-menu 形状，锚定输入卡上方） */
+  .slash-menu{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:400;
+    background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-lg);
+    box-shadow:0 12px 32px rgba(20,30,50,.14);padding:6px;display:none;max-height:280px;overflow-y:auto}
+  .slash-menu.open{display:block}
+  .sm-group{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;color:var(--subtle);padding:7px 9px 3px}
+  .sm-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:var(--radius-sm);cursor:pointer}
+  .sm-item:hover,.sm-item.is-active{background:var(--surface-3)}
+  .sm-k{font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--accent);width:74px;flex-shrink:0}
+  .sm-d{font-size:12px;color:var(--fg);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sm-tag{font-size:9.5px;color:var(--ok);border:1px solid var(--ok-border);background:var(--ok-soft);
+    border-radius:9px;padding:1px 7px;flex-shrink:0}
+
+  /* toast */
+  #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(8px);
+    background:var(--fg);color:var(--surface);font-size:12px;border-radius:8px;padding:8px 14px;
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:999;max-width:340px;text-align:center}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="ai" id="panel">
+
+    <!-- 头部（照真实 AIPanel.vue：位置标题 + 上下文/历史/新建，无锁标） -->
+    <header class="ai-header">
+      <div class="ai-h-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+      </div>
+      <span class="ai-h-title">产品周会 · 10-01</span>
+      <button class="ai-h-icon" title="上下文">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 0 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/></svg>
+      </button>
+      <button class="ai-h-icon" title="历史会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+      <button class="ai-h-icon" id="newSessionTop" title="新建会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M12 8.5v7"/><path d="M8.5 12h7"/></svg>
+      </button>
+    </header>
+
+    <!-- 消息流 -->
+    <div class="feed" id="feed">
+      <div class="msg user">把刚才的讨论整理成纪要，正式一点</div>
+      <div class="ts">10:24</div>
+      <div class="tool-line"><span class="g"></span>propose_summary · 提案待确认</div>
+      <div class="msg ai">已按讨论顺序整理为三段：**结论 / 分歧 / 待办**。改动以提案形式给出，你确认后才写入纪要。</div>
+      <div class="prop-card">
+        <div class="prop-head">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          纪要改写提案<span class="src">propose_summary</span>
+        </div>
+        <div class="prop-body">
+          <div class="diff-stats"><span class="add">+ 12 行</span><span class="del">− 3 行</span><span>· 3 处变更</span></div>
+          完整 diff 已在纪要原文处高亮预览，侧栏只保留入口，避免两处不一致。
+        </div>
+        <div class="prop-actions">
+          <button class="btn pri" id="acceptProp">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            查看并接受
+          </button>
+          <button class="btn ghost" id="rejectProp">拒绝</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-zone">
+
+      <!-- 弱模型探针警告 -->
+      <div class="probe-warn" id="probeWarn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>当前模型不支持工具调用，智能体模式不可用，问答可正常使用<a class="sw" id="switchQa">改用问答</a></span>
+      </div>
+
+      <div class="composer-card" id="composerCard">
+
+        <!-- 斜杠菜单 -->
+        <div class="slash-menu" id="slashMenu">
+          <div class="sm-group">会议动作</div>
+          <div class="sm-item is-active"><span class="sm-k">/record</span><span class="sm-d">开始 / 暂停 / 停止录音</span><span class="sm-tag">状态可用</span></div>
+          <div class="sm-item"><span class="sm-k">/tasks</span><span class="sm-d">查看当前会议信息</span></div>
+          <div class="sm-item"><span class="sm-k">/speakers</span><span class="sm-d">查看 / 添加参会人</span></div>
+          <div class="sm-group">提示词模板</div>
+          <div class="sm-item"><span class="sm-k">/待办</span><span class="sm-d">从讨论中提取待办清单</span></div>
+          <div class="sm-item"><span class="sm-k">/结论</span><span class="sm-d">提炼已达成的结论</span></div>
+          <div class="sm-item"><span class="sm-k">/发言</span><span class="sm-d">按人整理发言要点</span></div>
+        </div>
+
+        <textarea class="composer-input" id="input" rows="1" placeholder="输入消息，/ 唤起会议动作，⏎ 发送"></textarea>
+
+        <!-- 控制行：[模式] [档位] [模型] …… [发送]（位置照真实 ComposerBar.vue） -->
+        <div class="composer-bar">
+
+          <!-- 模式 -->
+          <div class="cb-wrap">
+            <button class="ac-trigger is-icon" id="modeTrigger" aria-label="对话模式" title="对话模式">
+              <svg class="ac-tr-icon" id="modeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></svg>
+            </button>
+            <div class="ac-menu" id="modeMenu" style="width:288px">
+              <div class="ac-label"><span>对话模式</span><span>2</span></div>
+              <button class="ac-row" data-mode="qa">
+                <span class="ac-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.35-1 .9-1 1.7"/><path d="M12 17h.01"/></svg></span>
+                <span class="ac-it"><span class="ac-it-name">问答</span><span class="ac-it-sub">只答不改；任何操作由你亲手点</span></span>
+                <span class="ac-check-slot"></span>
+              </button>
+              <button class="ac-row" data-mode="agent" id="agentRow">
+                <span class="ac-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h4"/></svg></span>
+                <span class="ac-it"><span class="ac-it-name">智能体</span><span class="ac-it-sub">可调用会议工具，按授权档位行动</span></span>
+                <span class="ac-check-slot"></span>
+              </button>
+              <div class="ac-hint" id="agentHint" style="display:none">当前模型不支持工具调用，可在右侧模型选择器更换</div>
+            </div>
+          </div>
+
+          <!-- 授权档位：与模式钮同款的图标触发器，盾牌颜色表达档位，蓝点表达待生效 -->
+          <div class="cb-wrap">
+            <button class="ac-trigger is-icon tier-trigger t-wr" id="tierTrigger" aria-label="授权档位" title="模型在本会话中被允许做到哪一步">
+              <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span class="tier-dot"></span>
+            </button>
+            <div class="ac-menu" id="tierMenu" style="width:288px">
+              <div class="ac-label"><span>模型授权档位</span><span>会话级</span></div>
+              <div class="ac-hint" id="tierQaHint" style="display:none">当前为问答模式，模型不会调用工具，档位暂不生效；切到智能体后按此档位行动。仍可预选，新会话保留。</div>
+
+              <button class="ac-row" data-tier="readonly">
+                <span class="ac-badge t-ro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                <span class="ac-it"><span class="ac-it-name">只读</span><span class="ac-it-sub">可读会议信息、转写、随记；不能改写</span></span>
+                <span class="ac-check-slot"></span>
+              </button>
+              <button class="ac-row" data-tier="workspace_write">
+                <span class="ac-badge t-wr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+                <span class="ac-it"><span class="ac-it-name">提案写入 <span class="rec-tag">推荐</span></span><span class="ac-it-sub">可提出纪要 / 随记改写，你接受后才落盘</span></span>
+                <span class="ac-check-slot"></span>
+              </button>
+              <button class="ac-row" data-tier="full_task">
+                <span class="ac-badge t-full"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></span>
+                <span class="ac-it"><span class="ac-it-name">完全任务</span><span class="ac-it-sub">含删除等高危动作，仍逐次弹确认</span></span>
+                <span class="ac-check-slot"></span>
+              </button>
+
+              <div class="tier-lock">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span id="tierLockText">本会话已锁定：提案写入。会话中改档只记为待生效，下一场会话才应用——同一场纪要不允许前后口径不一。</span>
+              </div>
+              <button class="ac-foot" id="applyTierBtn">
+                <span id="applyTierText">开新会话应用</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- 模型提供方 -->
+          <div class="cb-wrap model">
+            <button class="ac-trigger" id="modelTrigger" style="width:100%;max-width:none" aria-label="模型">
+              <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 3v3M14 3v3M10 18v3M14 18v3M3 10h3M3 14h3M18 10h3M18 14h3"/></svg>
+              <span class="ac-tr-txt">
+                <span class="ac-tr-name" id="modelName">Qoder CLI 默认模型</span>
+                <span class="ac-tr-sub" id="modelSub">Qoder CLI · 本地</span>
+              </span>
+              <svg class="ac-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="ac-menu" id="modelMenu">
+              <div class="ac-group">
+                <div class="ac-label"><span>Qoder CLI</span><span>1</span></div>
+                <button class="ac-row is-sel" data-provider="qoder-cli">
+                  <span class="ac-badge">C</span>
+                  <span class="ac-it"><span class="ac-it-name">Qoder CLI 默认模型</span><span class="ac-it-sub">支持工具调用 · MCP 回连 · 消耗你的 Qoder 额度</span></span>
+                  <span class="ac-check-slot"></span>
+                </button>
+              </div>
+              <div class="ac-group">
+                <div class="ac-label"><span>云端 API</span><span>2</span></div>
+                <button class="ac-row" data-provider="qwen-plus">
+                  <span class="ac-badge">云</span>
+                  <span class="ac-it"><span class="ac-it-name">Qwen3.7-Plus</span><span class="ac-it-sub">支持工具调用 · 体验额度</span></span>
+                  <span class="ac-check-slot"></span>
+                </button>
+                <button class="ac-row" data-provider="qwen-chat">
+                  <span class="ac-badge">云</span>
+                  <span class="ac-it"><span class="ac-it-name">轻量对话模型</span><span class="ac-it-sub">无工具调用，只能问答 · 体验额度</span></span>
+                  <span class="ac-check-slot"></span>
+                </button>
+              </div>
+              <div class="ac-note">提供方 ≠ 模式。这里只决定连谁、花谁的额度、模型会不会调用工具。</div>
+            </div>
+          </div>
+
+          <!-- 发送 -->
+          <div class="cb-right">
+            <button class="send-btn" id="sendBtn" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-note">
+    授权档位入口在输入框控制行：<b>模式钮右侧、模型选择器左侧</b>，与模式同为 34×34 图标钮、同款向上弹层——
+    位置照真实代码 <b>ComposerBar.vue</b>，不进设置、不占头部。
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+
+  function toast(msg){
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2200);
+  }
+
+  /* ── 状态 ── */
+  let mode = 'agent';                 // qa | agent
+  let sessionTier = 'workspace_write';
+  let pendingTier = 'workspace_write';
+  const PROVIDERS = {
+    'qoder-cli':  { name:'Qoder CLI 默认模型', sub:'Qoder CLI · 本地',       tools:true  },
+    'qwen-plus':  { name:'Qwen3.7-Plus',        sub:'云端 API · 体验额度',    tools:true  },
+    'qwen-chat':  { name:'轻量对话模型',         sub:'云端 API · 体验额度',    tools:false },
+  };
+  let provider = 'qoder-cli';
+
+  const TIER_META = {
+    readonly:        { name:'只读',     btnCls:'t-ro'   },
+    workspace_write: { name:'提案写入', btnCls:'t-wr'   },
+    full_task:       { name:'完全任务', btnCls:'t-full' },
+  };
+  const MODE_ICONS = {
+    qa:    '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.35-1 .9-1 1.7"/><path d="M12 17h.01"/>',
+    agent: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h4"/>',
+  };
+  const CHECK_SVG = '<svg class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>';
+
+  /* ── 菜单开合（三菜单互斥；fixed 同位的简化版：外部点击/Esc 关） ── */
+  const menus = { mode: $('#modeMenu'), tier: $('#tierMenu'), model: $('#modelMenu'), slash: $('#slashMenu') };
+  const triggers = { mode: $('#modeTrigger'), tier: $('#tierTrigger'), model: $('#modelTrigger') };
+  function closeAll(except){
+    Object.keys(menus).forEach(k=>{
+      if(k === except) return;
+      menus[k].classList.remove('open');
+    });
+    Object.keys(triggers).forEach(k=>{
+      if(k === except) return;
+      triggers[k].classList.remove('is-open');
+    });
+  }
+  function toggleMenu(name){
+    const open = menus[name].classList.contains('open');
+    closeAll();
+    if(!open){ menus[name].classList.add('open'); triggers[name].classList.add('is-open'); }
+  }
+  triggers.mode.addEventListener('click', e=>{ e.stopPropagation(); toggleMenu('mode'); });
+  triggers.tier.addEventListener('click', e=>{ e.stopPropagation(); toggleMenu('tier'); });
+  triggers.model.addEventListener('click', e=>{ e.stopPropagation(); toggleMenu('model'); });
+  document.addEventListener('click', e=>{
+    if(!e.target.closest('.ac-menu') && !e.target.closest('.ac-trigger')) closeAll();
+    if(!e.target.closest('#slashMenu') && !e.target.closest('#composerCard')) menus.slash.classList.remove('open');
+  });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeAll(); });
+
+  /* ── 渲染 ── */
+  function renderMode(){
+    $('#modeIcon').innerHTML = MODE_ICONS[mode];
+    $('#modeTrigger').title = mode === 'qa' ? '问答' : '智能体';
+    $$('#modeMenu .ac-row').forEach(r=>{
+      const sel = r.dataset.mode === mode;
+      r.classList.toggle('is-sel', sel);
+      r.querySelector('.ac-check-slot').innerHTML = sel ? CHECK_SVG : '';
+    });
+    const weak = !PROVIDERS[provider].tools;
+    $('#agentRow').classList.toggle('is-disabled', weak);
+    $('#agentHint').style.display = weak ? 'block' : 'none';
+    // 问答模式：档位钮置灰，档位仅对智能体生效
+    document.body.classList.toggle('qa-mode', mode === 'qa');
+    $('#tierQaHint').style.display = mode === 'qa' ? 'block' : 'none';
+    $('#tierTrigger').title = mode === 'qa'
+      ? '问答模式下档位不生效（仅智能体调用工具时受限）'
+      : '授权档位 · ' + TIER_META[pendingTier].name + (pendingTier !== sessionTier ? '（待生效）' : '');
+  }
+
+  function renderProvider(){
+    const p = PROVIDERS[provider];
+    $('#modelName').textContent = p.name;
+    $('#modelSub').textContent = p.sub + (p.tools ? '' : ' · 无工具调用');
+    $$('#modelMenu .ac-row').forEach(r=>{
+      const sel = r.dataset.provider === provider;
+      r.classList.toggle('is-sel', sel);
+      r.querySelector('.ac-check-slot').innerHTML = sel ? CHECK_SVG : '';
+    });
+    // 弱模型：强制回问答 + 探针条
+    if(!p.tools && mode === 'agent'){ mode = 'qa'; }
+    $('#probeWarn').classList.toggle('on', !p.tools);
+    renderMode();
+  }
+
+  function renderTier(){
+    // 图标钮显示待生效档位；蓝点 = 与本会话不同
+    const t = TIER_META[pendingTier];
+    const btn = $('#tierTrigger');
+    btn.classList.remove('t-ro','t-wr','t-full','pending');
+    btn.classList.add(t.btnCls);
+    btn.classList.toggle('pending', pendingTier !== sessionTier);
+    btn.title = mode === 'qa'
+      ? '问答模式下档位不生效（仅智能体调用工具时受限）'
+      : '授权档位 · ' + t.name + (pendingTier !== sessionTier ? '（待生效）' : '');
+    // 菜单选中态
+    $$('#tierMenu .ac-row').forEach(r=>{
+      const sel = r.dataset.tier === pendingTier;
+      r.classList.toggle('is-sel', sel);
+      r.querySelector('.ac-check-slot').innerHTML = sel ? CHECK_SVG : '';
+    });
+    // 锁定注记
+    const changed = pendingTier !== sessionTier;
+    $('#tierLockText').textContent = changed
+      ? '本会话已锁定：' + TIER_META[sessionTier].name + '。已改选「' + TIER_META[pendingTier].name + '」，下一场会话才应用。'
+      : '本会话已锁定：' + TIER_META[sessionTier].name + '。会话中改档只记为待生效，下一场会话才应用——同一场纪要不允许前后口径不一。';
+    const foot = $('#applyTierBtn');
+    foot.classList.toggle('is-ready', changed);
+    foot.classList.toggle('is-disabled', !changed);
+    $('#applyTierText').textContent = changed ? '开新会话应用「' + TIER_META[pendingTier].name + '」' : '已是当前档位';
+  }
+
+  /* ── 菜单选择 ── */
+  $$('#modeMenu .ac-row').forEach(r=>r.addEventListener('click', ()=>{
+    const m = r.dataset.mode;
+    if(m === 'agent' && !PROVIDERS[provider].tools){ toast('当前模型不支持工具调用 · 先在模型选择器更换'); return; }
+    mode = m; renderMode(); closeAll();
+    toast(m === 'agent' ? '智能体模式 · 按授权档位行动' : '问答模式 · 只答不改');
+  }));
+  $$('#tierMenu .ac-row').forEach(r=>r.addEventListener('click', ()=>{
+    pendingTier = r.dataset.tier; renderTier();
+  }));
+  $$('#modelMenu .ac-row').forEach(r=>r.addEventListener('click', ()=>{
+    provider = r.dataset.provider; renderProvider(); closeAll();
+    toast(PROVIDERS[provider].tools ? '已切换：' + PROVIDERS[provider].name : '该模型只能问答 · 智能体已置灰');
+  }));
+  $('#applyTierBtn').addEventListener('click', ()=>{
+    if(pendingTier === sessionTier) return;
+    applyNewSession();
+    closeAll();
+  });
+  $('#switchQa').addEventListener('click', e=>{ e.preventDefault(); mode = 'qa'; renderMode(); });
+
+  /* ── 新会话 ── */
+  function applyNewSession(silent){
+    sessionTier = pendingTier;
+    $('#feed').innerHTML = '';
+    $('#input').value = '';
+    renderTier();
+    if(!silent) toast('已开始新会话 · 档位：' + TIER_META[sessionTier].name);
+  }
+  $('#newSessionTop').addEventListener('click', ()=>applyNewSession());
+
+  /* ── 斜杠菜单 ── */
+  const input = $('#input'), slash = menus.slash;
+  input.addEventListener('input', ()=>{
+    slash.classList.toggle('open', input.value.trim() === '/');
+  });
+  input.addEventListener('focus', ()=>{
+    if(input.value.trim() === '/') slash.classList.add('open');
+  });
+  $$('.sm-item').forEach(it=>it.addEventListener('click', ()=>{
+    const k = it.querySelector('.sm-k').textContent.trim();
+    if(k.startsWith('/待') || k.startsWith('/结') || k.startsWith('/发')){
+      input.value = k + ' ';
+      toast('模板已填入，由你编辑后发送（模型不被直接触发）');
+    } else {
+      toast('执行会议动作：' + k + '（与按钮同路，不经模型）');
+      input.value = '';
+    }
+    slash.classList.remove('open');
+    input.focus();
+  }));
+
+  /* ── 发送：按模式 × 档位决定结果 ── */
+  function pushUser(text){
+    const u = document.createElement('div');
+    u.className = 'msg user'; u.textContent = text;
+    $('#feed').appendChild(u);
+  }
+  function scrollBottom(){ const f = $('#feed'); f.scrollTop = f.scrollHeight; }
+
+  function send(){
+    const text = input.value.trim();
+    if(!text) return;
+    slash.classList.remove('open');
+    pushUser(text); input.value = ''; scrollBottom();
+
+    if(mode === 'qa'){
+      const t = document.createElement('div');
+      t.className = 'thinking';
+      t.innerHTML = '<svg class="spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>思考中';
+      $('#feed').appendChild(t); scrollBottom();
+      setTimeout(()=>{
+        t.remove();
+        const a = document.createElement('div');
+        a.className = 'msg ai';
+        a.innerHTML = '问答模式不会改动任何数据。以上问题的建议是：先确认待办责任人，再决定是否切到智能体让我直接生成提案。';
+        $('#feed').appendChild(a); scrollBottom();
+      }, 700);
+      return;
+    }
+
+    // agent 模式
+    if(sessionTier === 'readonly'){
+      const t = document.createElement('div');
+      t.className = 'thinking';
+      t.innerHTML = '<svg class="spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>调用工具中';
+      $('#feed').appendChild(t); scrollBottom();
+      setTimeout(()=>{
+        t.remove();
+        const d = document.createElement('div');
+        d.className = 'deny-card';
+        d.innerHTML =
+          '<div class="dc-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>当前会话为只读，模型无法改写纪要</div>'
+          + '<div class="dc-b"><code>propose_summary</code> 被授权档拦截（403 · read_only）。会话中不改变档位，以免一场纪要前后口径不一。</div>'
+          + '<div class="dc-a"><button class="btn pri" data-act="raise">提升档位</button><button class="btn ghost" data-act="new">选好后开新会话</button></div>';
+        d.querySelector('[data-act=raise]').addEventListener('click', ()=>{
+          closeAll();
+          setTimeout(()=>toggleMenu('tier'), 30);
+          $('#tierTrigger').animate(
+            [{boxShadow:'0 0 0 0 rgba(47,111,237,.45)'},{boxShadow:'0 0 0 5px rgba(47,111,237,0)'},{boxShadow:'0 0 0 0 rgba(47,111,237,0)'}],
+            {duration:1400});
+        });
+        d.querySelector('[data-act=new]').addEventListener('click', ()=>{
+          pendingTier = 'workspace_write'; renderTier();
+          closeAll();
+          setTimeout(()=>toggleMenu('tier'), 30);
+          toast('已预选提案写入 · 在弹层内开新会话');
+        });
+        $('#feed').appendChild(d); scrollBottom();
+      }, 700);
+      return;
+    }
+
+    // 可写档：工具行 + 结果
+    const line = document.createElement('div');
+    line.className = 'tool-line';
+    line.innerHTML = '<span class="g"></span>' + (sessionTier === 'full_task' ? 'execute_task · 执行中（高危动作将逐次确认）' : 'propose_summary · 提案待确认');
+    $('#feed').appendChild(line); scrollBottom();
+    setTimeout(()=>{
+      const a = document.createElement('div');
+      a.className = 'msg ai';
+      a.textContent = sessionTier === 'full_task'
+        ? '已按完全任务档执行；删除等高危动作仍会逐个弹确认，不会静默发生。'
+        : '已生成改写提案，接受后才落盘——你始终拥有最后一下。';
+      $('#feed').appendChild(a); scrollBottom();
+    }, 700);
+  }
+  $('#sendBtn').addEventListener('click', send);
+  input.addEventListener('keydown', e=>{
+    if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+  });
+
+  /* 首屏提案卡按钮（演示用，走 toast 即可） */
+  $('#acceptProp').addEventListener('click', ()=>toast('跳转纪要原文处预览完整 diff（产品内行为）'));
+  $('#rejectProp').addEventListener('click', ()=>{ $('.prop-card').style.display = 'none'; toast('已拒绝提案，纪要未改动'); });
+
+  renderMode(); renderProvider(); renderTier();
+})();
+</script>
+</body>
+</html>

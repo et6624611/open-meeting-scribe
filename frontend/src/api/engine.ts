@@ -59,6 +59,14 @@ export interface EngineModelsOverview {
   downloads: DownloadJob[]
 }
 
+/** R9/WP-I 本地分段增量上屏配置 / Local segmented incremental transcription config */
+export interface RealtimeSegmentsConfig {
+  enabled: boolean
+  min_segment_s: number
+  min_silence_s: number
+  max_segment_s: number
+}
+
 export interface EngineHostStatus {
   mode: EngineMode
   model_dir: string
@@ -68,6 +76,7 @@ export interface EngineHostStatus {
   models_ready: boolean
   missing_models: string[]
   tampered_models: string[]
+  realtime_segments?: RealtimeSegmentsConfig
 }
 
 export interface EngineActionResult {
@@ -90,6 +99,8 @@ export interface EngineStatus {
   tampered_models: string[]
   /** 当前身份是否可操作变更面（本地单机模式或管理员） / Whether the current identity may perform mutations (local single-user or admin) */
   can_manage: boolean
+  /** 本地模式分段增量上屏是否开启（关：录音后本机统一批转写，会中不出字） / Local segmented incremental display enabled (off: on-device batch transcription only after recording) */
+  realtime_segments_enabled: boolean
   /** 数据来源：api=后端状态接口 / settings=占位回退 / Data source: api=status endpoint / settings=placeholder fallback */
   source: 'api' | 'settings'
 }
@@ -116,6 +127,7 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
         missing_models: data.missing_models || [],
         tampered_models: data.tampered_models || [],
         can_manage: data.can_manage === true,
+        realtime_segments_enabled: data.realtime_segments?.enabled === true,
         source: 'api',
       }
     }
@@ -137,6 +149,7 @@ export async function fetchEngineStatus(): Promise<EngineStatus> {
     missing_models: [],
     tampered_models: [],
     can_manage: false,
+    realtime_segments_enabled: false,
     source: 'settings',
   }
 }

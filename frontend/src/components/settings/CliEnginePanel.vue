@@ -41,21 +41,12 @@
       </label>
     </div>
 
-    <div class="cc-grid-2">
-      <div class="cc-field">
-        <label class="cc-field-label" for="cli-engine-select">{{ t('settings.cliengine_engine') }}</label>
-        <select id="cli-engine-select" v-model="form.engine_id" class="cc-select">
-          <option v-for="e in engines" :key="e.engine_id" :value="e.engine_id">{{ engineLabel(e) }}</option>
-        </select>
-      </div>
-      <div class="cc-field">
-        <label class="cc-field-label" for="cli-tier-select">{{ t('settings.cliengine_tier') }}</label>
-        <select id="cli-tier-select" v-model="form.auth_tier" class="cc-select">
-          <option value="readonly">{{ t('settings.cliengine_tier_readonly') }}</option>
-          <option value="workspace_write">{{ t('settings.cliengine_tier_workspace_write') }}</option>
-          <option value="full_task">{{ t('settings.cliengine_tier_full_task') }}</option>
-        </select>
-      </div>
+    <!-- 授权档位已下沉到 AI 对话 ComposerBar（会话级选择），设置页不再提供全局档位入口 -->
+    <div class="cc-field">
+      <label class="cc-field-label" for="cli-engine-select">{{ t('settings.cliengine_engine') }}</label>
+      <select id="cli-engine-select" v-model="form.engine_id" class="cc-select">
+        <option v-for="e in engines" :key="e.engine_id" :value="e.engine_id">{{ engineLabel(e) }}</option>
+      </select>
     </div>
 
     <div class="cc-field">
@@ -98,7 +89,6 @@ const saveError = ref(false)
 const form = reactive({
   enabled: false,
   engine_id: 'qoder-cli',
-  auth_tier: 'readonly',
   cli_path_override: '',
 })
 
@@ -143,7 +133,7 @@ async function load() {
     if (c) {
       form.enabled = !!c.enabled
       form.engine_id = c.engine_id || 'qoder-cli'
-      form.auth_tier = c.auth_tier || 'readonly'
+      // auth_tier 不再由此页读写：档位是会话级口径，入口在 AI ComposerBar
       form.cli_path_override = c.cli_path_override || ''
     }
   } catch { /* 静默：面板显示占位 */ }
@@ -185,7 +175,7 @@ async function onSave() {
       chat_engine: {
         enabled: form.enabled,
         engine_id: form.engine_id,
-        auth_tier: form.auth_tier,
+        // 不传 auth_tier：避免保存引擎设置时误置 _auth_tier_explicit（档位由会话级管理）
         cli_path_override: form.cli_path_override || null,
       },
     } as any)

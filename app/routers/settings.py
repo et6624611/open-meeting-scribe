@@ -550,6 +550,7 @@ def get_chat_engine_status(engine: str | None = None):
         return {"ok": True, "config": cfg, "engines": engines, "probe": {
             "available": False, "reason": "not_installed", "display_name": probe_engine_id,
             "name_key": "", "hint": "chatEngine.notInstalled", "path": None, "version": None, "logged_in": False,
+            "login_skipped": False,
         }}
     pr = probe_engine(manifest, cli_path_override=cfg.get("cli_path_override") if probe_engine_id == cfg["engine_id"] else None)
     return {"ok": True, "config": cfg, "engines": engines, "probe": pr}

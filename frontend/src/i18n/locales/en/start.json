@@ -27,12 +27,12 @@
   "privacy": {
     "disclaimer_title": "Data Privacy Notice",
     "disclaimer_local": "Recordings, meeting notes and other data are stored on your device",
-    "disclaimer_cloud": "Speech recognition and summary generation require cloud AI services",
-    "disclaimer_warn": "This means your meeting audio and transcripts will be sent to the cloud.",
+    "disclaimer_cloud": "AI processing can run entirely on this device (FunASR transcription, CAM++ voiceprint, local LLM); cloud compute is used only when the trial quota or your own cloud API Key is enabled",
+    "disclaimer_warn": "When cloud capabilities are enabled, meeting audio and transcripts are sent to the cloud; in full on-device mode data never leaves the device.",
     "disclaimer_region": "SMS login is for internal testing in mainland China only. Other users please configure your own API Key.",
     "disclaimer_prohibit": "Do not use for classified information, core trade secrets, or highly sensitive personal privacy.",
     "disclaimer_acknowledge": "I Understand, Continue",
     "disclaimer_detail": "See SECURITY.md for detailed data flow description.",
-    "check_participants": "I confirm that all participants have been informed that this recording will undergo cloud AI processing"
+    "check_participants": "I confirm that all participants have been informed this recording will undergo AI transcription and summarization; if cloud capabilities are enabled, related data will be sent to the cloud"
   }
 }

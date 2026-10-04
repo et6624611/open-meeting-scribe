@@ -2,6 +2,27 @@
  * 声纹 API 封装 / Voiceprint API wrapper
  */
 import client from './client'
+import type { VoiceprintMatchItem } from './types'
+
+export interface VoiceprintMatchResponse {
+  task_id: string
+  results: VoiceprintMatchItem[]
+  auto_mapping: Record<string, string>
+  summary: string
+}
+
+/** 对会议执行声纹自动识别（后端落盘并返回明细） / Run voiceprint auto-match for a meeting */
+export async function runVoiceprintMatch(taskId: string): Promise<VoiceprintMatchResponse> {
+  const { data } = await client.post<VoiceprintMatchResponse>(
+    `/api/voiceprint/tasks/${taskId}/match`, {},
+  )
+  return data
+}
+
+/** 忽略某说话人的声纹建议（本场不再显示，重跑识别自动清空） / Dismiss a voiceprint suggestion */
+export async function dismissVoiceprintSuggestion(taskId: string, speakerId: number): Promise<void> {
+  await client.post(`/api/voiceprint/tasks/${taskId}/dismiss`, { speaker_id: speakerId })
+}
 
 export interface VoiceprintStatus {
   speaker_uuid: string

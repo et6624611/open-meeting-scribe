@@ -24,6 +24,7 @@
  *   Items need role="menuitem"; non-native ones get a programmatic tabindex.
  */
 import { computed, onUnmounted, ref, type Ref } from 'vue'
+import { getDockBounds, positionDropdown } from '@/utils/popoverPosition'
 
 export interface PopMenuOptions {
   /** 菜单对齐触发按钮的哪一侧，默认 'end'（右对齐，更多按钮的惯例） / Which side to align with trigger; default 'end' (right-aligned, common for action buttons) */
@@ -64,34 +65,21 @@ export function usePopMenu(
     el.focus()
   }
 
-  /** 计算菜单位置：空间不足翻转 + 左右回缩，禁止溢出视口 / Position menu: flip when space insufficient + retract left/right; never overflow viewport */
+  /** 计算菜单位置：空间不足翻转 + 左右回缩，禁止溢出视口与停靠栏 / Position menu: flip when space insufficient; never overflow viewport or docks */
   function position() {
-    const el = menu.value
-    const btn = trigger.value
-    if (!el || !btn) return
-    // nextTick 只等 Vue DOM 更新，不等浏览器布局；必须等 rAF 后测量才可靠 / nextTick only waits for Vue DOM update, not browser layout; must wait for rAF for reliable measurement
+    // nextTick 只等 Vue DOM 更新，不等浏览器布局；必须等 rAF 后测量才可靠 / nextTick only waits for Vue DOM update, not browser layout; must wait rAF for reliable measurement
     requestAnimationFrame(() => {
-      const vw = window.innerWidth
-      const vh = window.innerHeight
-      const tr = btn.getBoundingClientRect()
-      const mw = el.offsetWidth
-      const mh = el.offsetHeight
-      const spaceBelow = vh - tr.bottom
-      const spaceAbove = tr.top
-
-      let top: number
-      if (spaceBelow >= mh + gap || spaceBelow >= spaceAbove) {
-        top = tr.bottom + gap
-      } else {
-        top = Math.max(margin, tr.top - mh - gap)
-      }
-
-      let left = options.align === 'start' ? tr.left : tr.right - mw
-      if (left < margin) left = margin
-      if (left + mw > vw - margin) left = vw - mw - margin
-
-      el.style.top = `${top}px`
-      el.style.left = `${left}px`
+      if (!menu.value || !trigger.value) return
+      const tr = trigger.value.getBoundingClientRect()
+      const { x, y } = positionDropdown(
+        { top: tr.top, left: tr.left, width: tr.width, height: tr.height },
+        menu.value.offsetWidth,
+        menu.value.offsetHeight,
+        getDockBounds(),
+        { gap, margin, align: options.align ?? 'end' },
+      )
+      menu.value.style.top = `${y}px`
+      menu.value.style.left = `${x}px`
     })
   }
 

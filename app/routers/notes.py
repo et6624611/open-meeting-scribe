@@ -20,8 +20,15 @@ from pydantic import BaseModel, Field
 
 from app.store import save_task_to_disk, tasks
 from core import users as user_module
-from core.decision_flow import enrich_todo, first_open_status, make_todo_node, resolve_owner
-from core.decision_status import StatusError, is_closing, load_statuses, validate_status_id
+from core.decision_flow import enrich_todo, first_open_status, make_todo_node, resolve_owner, status_of
+from core.decision_status import (
+    StatusError,
+    SUPERSEDED_STATUS_ID,
+    is_closing,
+    known_ids,
+    load_statuses,
+    validate_status_id,
+)
 from core.i18n import _
 from core.speakers import get_speaker_name_map
 
@@ -399,3 +406,84 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
             save_task_to_disk(task_id)
             return {"todo": todo}
     raise HTTPException(404, _("To-do not found"))
+
+
+# ============================================================
+# 决策演变链：标记 / 撤销「已被替代」 / Supersede flow
+# ============================================================
+# 关系只能由用户手动建立（读时议题聚类仅做展示，永不写状态）。
+# 旧节点闭档为系统态 superseded，并冗余新决策标题/会议名快照防死链；
+# 撤销时恢复标记前的原状态（prev_status），不丢用户中间修改。
+
+class SupersedeRequest(BaseModel):
+    by_task_id: str = Field(..., min_length=1, max_length=100)
+    by_todo_id: str = Field(..., min_length=1, max_length=100)
+
+
+def _find_todo(task_id: str, todo_id: str) -> tuple[dict, dict] | None:
+    task = tasks.get(task_id)
+    if not isinstance(task, dict):
+        return None
+    for todo in task.get("todos", []):
+        if isinstance(todo, dict) and todo.get("id") == todo_id:
+            return task, todo
+    return None
+
+
+@router.post("/api/tasks/{task_id}/todos/{todo_id}/supersede")
+def supersede_todo(task_id: str, todo_id: str, req: SupersedeRequest):
+    """把旧决策标记为已被另一会议（或同会议）的新决策替代 / Mark a node superseded."""
+    found = _find_todo(task_id, todo_id)
+    if not found:
+        raise HTTPException(404, _("To-do not found"))
+    task, todo = found
+
+    if status_of(todo) == SUPERSEDED_STATUS_ID:
+        raise HTTPException(409, detail={"code": "already_superseded",
+                                         "reason": "Decision is already marked as superseded"})
+    if req.by_task_id == task_id and req.by_todo_id == todo_id:
+        raise HTTPException(422, _("A decision cannot supersede itself"))
+
+    target = _find_todo(req.by_task_id, req.by_todo_id)
+    if not target:
+        raise HTTPException(404, _("Superseding decision not found"))
+    target_task, target_todo = target
+
+    prev = status_of(todo)
+    todo["superseded_by"] = {
+        "task_id": req.by_task_id,
+        "todo_id": req.by_todo_id,
+        "title": str(target_todo.get("title") or target_todo.get("text") or "")[:200],
+        "meeting_title": str(target_task.get("title") or "")[:200],
+        "prev_status": prev,
+        "marked_at": datetime.now().isoformat(),
+    }
+    _apply_status(todo, SUPERSEDED_STATUS_ID)
+    todo["updated_at"] = datetime.now().isoformat()
+    _mark_modified(task_id)
+    save_task_to_disk(task_id)
+    audit_logger.info("decision_superseded task=%s todo=%s by_task=%s by_todo=%s",
+                      task_id, todo_id, req.by_task_id, req.by_todo_id)
+    return {"todo": todo}
+
+
+@router.delete("/api/tasks/{task_id}/todos/{todo_id}/supersede")
+def revert_supersede(task_id: str, todo_id: str):
+    """撤销「已被替代」：恢复标记前状态 / Revert a superseded marking."""
+    found = _find_todo(task_id, todo_id)
+    if not found:
+        raise HTTPException(404, _("To-do not found"))
+    task, todo = found
+
+    if status_of(todo) != SUPERSEDED_STATUS_ID:
+        raise HTTPException(409, detail={"code": "not_superseded",
+                                         "reason": "Decision is not marked as superseded"})
+    prev = str((todo.get("superseded_by") or {}).get("prev_status") or "")
+    todo.pop("superseded_by", None)
+    # 原状态若已被用户从字典删除，降级到开放首态，避免复活非法状态
+    restore = prev if prev in known_ids() else "to_decide"
+    _apply_status(todo, restore)
+    todo["updated_at"] = datetime.now().isoformat()
+    _mark_modified(task_id)
+    save_task_to_disk(task_id)
+    return {"todo": todo}

@@ -47,11 +47,72 @@
         <label class="lib-filter-label">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </label>
-        <select v-model="filterSpeakerId" class="lib-speaker-select">
-          <option value="">{{ t('library.filter_speaker_all') }}</option>
-          <option v-for="name in allSpeakerNames" :key="name" :value="name">{{ name }}</option>
-          <option v-if="libraryHasUnidentified" :value="UNID_FILTER">{{ t('library.filter_speaker_unidentified') }}</option>
-        </select>
+        <button
+          ref="speakerTriggerRef"
+          type="button"
+          class="lib-speaker-select lib-speaker-trigger"
+          v-bind="speakerTriggerAttrs"
+          @click="toggleSpeakerMenu"
+        >
+          <span class="lib-speaker-trigger-text" :class="{ 'is-placeholder': !filterSpeakerId }">
+            {{ speakerTriggerLabel }}
+          </span>
+          <svg class="lib-speaker-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <Teleport to="body">
+          <div
+            v-if="speakerMenuVisible"
+            ref="speakerMenuRef"
+            v-bind="speakerMenuAttrs"
+            class="pop-menu lib-speaker-menu"
+          >
+            <div class="lib-speaker-search">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                ref="speakerSearchRef"
+                v-model="speakerSearchQuery"
+                type="text"
+                class="lib-speaker-search-input"
+                :placeholder="t('library.filter_speaker_search')"
+              />
+            </div>
+            <div class="lib-speaker-list">
+              <button
+                type="button"
+                role="menuitem"
+                class="lib-speaker-item"
+                :class="{ 'is-active': filterSpeakerId === '' }"
+                @click="selectSpeaker('')"
+              >
+                {{ t('library.filter_speaker_all') }}
+              </button>
+              <button
+                v-for="name in filteredSpeakerNames"
+                :key="name"
+                type="button"
+                role="menuitem"
+                class="lib-speaker-item"
+                :class="{ 'is-active': filterSpeakerId === name }"
+                @click="selectSpeaker(name)"
+              >
+                {{ name }}
+              </button>
+              <button
+                v-if="libraryHasUnidentified && unidVisible"
+                type="button"
+                role="menuitem"
+                class="lib-speaker-item"
+                :class="{ 'is-active': filterSpeakerId === UNID_FILTER }"
+                @click="selectSpeaker(UNID_FILTER)"
+              >
+                {{ t('library.filter_speaker_unidentified') }}
+              </button>
+              <div v-if="!filteredSpeakerNames.length && !unidVisible" class="lib-speaker-empty">
+                {{ t('library.filter_speaker_empty') }}
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </div>
       <div v-if="hasActiveFilter" class="lib-filter-actions">
         <button class="lib-filter-clear" @click="clearAllFilters">
@@ -240,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
@@ -254,6 +315,7 @@ import { useContainerSize } from '@/composables/useContainerSize'
 import { usePageBack } from '@/composables/usePageBack'
 import { useDialog } from '@/composables/useDialog'
 import { showToast } from '@/composables/useToast'
+import { usePopMenu } from '@/composables/usePopMenu'
 import { downloadSummaryUrl, type SummaryFormat } from '@/api/tasks'
 import { matchTask, matchesTitle, highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
@@ -276,6 +338,54 @@ const dateTo = ref('')
 
 // ─── 说话人筛选 / Speaker filter ───
 const filterSpeakerId = ref('')
+
+/** 人员下拉菜单：搜索 + 选择 / Speaker dropdown: search + select */
+const speakerTriggerRef = ref<HTMLElement | null>(null)
+const speakerMenuRef = ref<HTMLElement | null>(null)
+const speakerSearchRef = ref<HTMLInputElement | null>(null)
+const speakerSearchQuery = ref('')
+const {
+  visible: speakerMenuVisible,
+  toggle: toggleSpeakerMenu,
+  close: closeSpeakerMenu,
+  triggerAttrs: speakerTriggerAttrs,
+  menuAttrs: speakerMenuAttrs,
+} = usePopMenu(speakerMenuRef, speakerTriggerRef, { align: 'start' })
+
+/** 触发按钮文案 / Trigger button label */
+const speakerTriggerLabel = computed(() => {
+  if (!filterSpeakerId.value) return t('library.filter_speaker_all')
+  if (filterSpeakerId.value === UNID_FILTER) return t('library.filter_speaker_unidentified')
+  return filterSpeakerId.value
+})
+
+/** 搜索后过滤的人员列表（不含「全部人员」与「未识别」特殊项） / Filtered names excluding special items */
+const filteredSpeakerNames = computed(() => {
+  const q = speakerSearchQuery.value.trim().toLowerCase()
+  if (!q) return allSpeakerNames.value
+  return allSpeakerNames.value.filter(n => n.toLowerCase().includes(q))
+})
+
+/** 「未识别」项是否应出现在当前搜索结果中 / Whether the unidentified item passes the search filter */
+const unidVisible = computed(() => {
+  const q = speakerSearchQuery.value.trim().toLowerCase()
+  if (!q) return true
+  return t('library.filter_speaker_unidentified').toLowerCase().includes(q)
+})
+
+function selectSpeaker(value: string) {
+  filterSpeakerId.value = value
+  closeSpeakerMenu()
+}
+
+/** 打开菜单时聚焦搜索框并重置查询 / Focus search input and reset query when menu opens */
+watch(speakerMenuVisible, async (v) => {
+  if (v) {
+    speakerSearchQuery.value = ''
+    await nextTick()
+    speakerSearchRef.value?.focus()
+  }
+})
 
 /** 从全部任务中收集去重的说话人名称列表 / Collect deduplicated speaker names from all tasks
  *  REQ-SPK-RN Q2/D6：仅枚举真名，占位名一律不入选项；未绑定走「未识别」特殊项（设计稿 §4） */
@@ -866,9 +976,7 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
   gap: var(--s-4);
   margin-bottom: var(--s-4);
   padding: var(--s-2) var(--s-3);
-  background: color-mix(in oklch, var(--surface) 70%, transparent);
-  backdrop-filter: var(--glass-blur-lg);
-  -webkit-backdrop-filter: var(--glass-blur-lg);
+  background: transparent;
   transition: border-color 0.15s;
   flex-wrap: wrap;
 }
@@ -920,6 +1028,87 @@ function getSpeakerList(task: Task): SpeakerInfo[] {
 .lib-speaker-select:focus {
   border-bottom-color: var(--accent);
   box-shadow: 0 1px 0 0 var(--accent);
+}
+/* 触发按钮 / Trigger button */
+.lib-speaker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.lib-speaker-trigger-text.is-placeholder {
+  color: var(--muted);
+}
+.lib-speaker-caret {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+/* 下拉菜单 / Dropdown menu */
+.lib-speaker-menu {
+  position: fixed;
+  z-index: var(--z-popover);
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--popover-bg, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.lib-speaker-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.lib-speaker-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+.lib-speaker-search-input::placeholder {
+  color: var(--subtle);
+}
+.lib-speaker-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.lib-speaker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.lib-speaker-item:hover,
+.lib-speaker-item:focus-visible {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.12));
+  outline: none;
+}
+.lib-speaker-item.is-active {
+  color: var(--accent);
+  font-weight: 500;
+}
+.lib-speaker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
 }
 .lib-filter-actions {
   display: flex;

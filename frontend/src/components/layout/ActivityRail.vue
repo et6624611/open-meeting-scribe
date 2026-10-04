@@ -74,27 +74,8 @@
       </IconButton>
     </div>
 
-    <!-- 底部：洞察台指示器 + 设置 / Bottom: Insight Deck indicator + settings -->
+    <!-- 底部：设置 / Bottom: settings -->
     <div class="ar-bottom">
-      <!-- 洞察台指示器（会中或有未读会后会话时显示） / Insight Deck indicator (recording, or post-meeting with unread insights) -->
-      <button
-        v-if="insights.insightsEnabled.value && showInsightsIndicator"
-        class="ar-insights"
-        :class="{
-          'is-enabled': insights.unreadCount.value === 0,
-          'has-unread': insights.unreadCount.value > 0,
-          'is-static': !isRealtimeState,
-        }"
-        :title="insights.unreadCount.value > 0 ? t('ai-panel.insights.sidebar_indicator_tip', { count: insights.unreadCount.value }) : t('ai-panel.insights.sidebar_indicator')"
-        :aria-label="t('ai-panel.insights.sidebar_indicator')"
-        @click="onInsightsClick"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-        </svg>
-        <span v-if="insights.unreadCount.value > 0" class="ar-insights-badge">{{ insights.unreadCount.value }}</span>
-      </button>
       <!-- 设置按钮（tooltip 含版本号） / Settings button (tooltip includes version) -->
       <IconButton
         class="ar-btn ar-settings"
@@ -110,12 +91,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
-import { useTaskStore } from '@/stores/task'
-import { useAiInsights } from '@/composables/useAiInsights'
 import IconButton from '@/components/common/IconButton.vue'
 import { modKey } from '@/utils/platform'
 
@@ -123,36 +102,9 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const layout = useLayoutStore()
-const taskStore = useTaskStore()
-const insights = useAiInsights()
 
 /** 应用版本号（与 Sidebar 原版本号一致） / App version (consistent with Sidebar version) */
 const appVersion = 'v2.0.0'
-
-/** 当前是否有活跃录音 / Whether there is an active recording */
-const activeRecordingTaskId = computed(() => {
-  const task = taskStore.tasks.find(t => t.status === 'recording' || t.status === 'paused')
-  return task?.task_id ?? ''
-})
-
-/**
- * 是否展示洞察指示器：会中录音，或当前查看的会后会话已有洞察消息。
- * Show indicator: active recording, or the currently-viewed completed meeting already has insights.
- * 仅“已有洞察”时展示，不因会后未读而凭空浮现入口（入口靠纪要页 Tab）。
- * Only when insights already exist — unread alone won't surface a phantom entry (Tab is the primary path).
- */
-const showInsightsIndicator = computed(() => {
-  if (activeRecordingTaskId.value) return true
-  const cur = taskStore.currentTaskId
-  if (!cur) return false
-  return insights.insightMessages.value.length > 0
-})
-
-/**
- * 实时态（录音页）才保留呼吸/心跳动效；会后会话态静态展示，避免误读为“仍在录音”。
- * Animated only on the live recording page; static post-meeting to avoid misreading.
- */
-const isRealtimeState = computed(() => route.name === 'recording')
 
 /** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
 const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/settings'])
@@ -186,24 +138,5 @@ function navigate(path: string) {
     previousRoute.value = route.fullPath
   }
   router.push(path).catch(() => {})
-}
-
-/** 点击洞察指示器：会中直达录音页洞察面板；会后直达纪要页洞察 Tab / Click indicator: recording insights panel, or summary insights tab */
-function onInsightsClick() {
-  const recTaskId = activeRecordingTaskId.value
-  if (recTaskId) {
-    taskStore.selectTask(recTaskId)
-    router.push({
-      name: 'recording',
-      params: { taskId: recTaskId },
-      query: { tab: 'insights' },
-    }).catch(() => {})
-    return
-  }
-  const cur = taskStore.currentTaskId
-  if (cur) {
-    layout.pendingGenTab = 'insights'
-    router.push({ name: 'generating', params: { taskId: cur } }).catch(() => {})
-  }
 }
 </script>

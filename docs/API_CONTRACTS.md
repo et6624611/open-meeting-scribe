@@ -287,8 +287,9 @@ recognition.stop()  # 阻塞直到所有结果返回
   "assignee": "执行人展示名（快照；有 owner_id 时读侧以说话人档案为权威解析）",
   "owner_id": "执行人说话人档案 uuid，未指派为 null",
   "owner_type": "self | agent | colleague | enterprise（等待谁推进，展示用）",
-  "status": "状态字典 id（内置五态 to_decide/to_start/in_progress/to_confirm/done；用户可增删改）",
+  "status": "状态字典 id（默认六态 to_decide/to_start/in_progress/to_confirm/superseded/done；用户可增删改）",
   "done": false,               // 兼容字段：等价于 status 属于闭档（完成类）态
+  "superseded_by": null,       // 手动「已替代」快照：{task_id, todo_id, title, meeting_title, prev_status, marked_at}；未标记为 null
   "why": "决策正文（Markdown）",
   "how": ["执行步骤…"],         // 缺省视为 [text]
   "outcome": "完成后带来什么",
@@ -299,7 +300,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 }
 ```
 
-- **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流五态；系统锚点只有 `done`（完成），不可改名不可删除，其余四态用户可维护。
+- **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01 + DEBRISH-EVO）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流六态；系统锚点为 `done`（完成）与 `superseded`（已替代，闭档但语义不同于完成，专用于演变链手动替代，详见 §12.6），均不可改名不可删除，其余四态用户可维护。
 - **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底，同时驱动 `done=true`；读侧 `status` 缺省时由 `done` 推导（历史 task JSON 零迁移）。
 - **自动生成口径（项目方裁决）**：纪要「主要结论」章节的条目自动解析为决策流节点（模板 v1.4.0 已下线「决策」章节、改为单通道 + 终态归并；解析器仍兼容存量纪要的「决策」章节）；自动节点**统一落在 `to_decide`（待决策）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。
 - **重新生成纪要**：只覆盖 `source=auto` 节点，手动/注入节点保留；命中 `task["decision_deletions"]` 墓碑（按归一化文本）的 auto 节点不复活（DC-R2-BE）。
@@ -315,6 +316,8 @@ recognition.stop()  # 阻塞直到所有结果返回
 | `PUT /api/tasks/{task_id}/todos/{todo_id}` | `{text?, title?, assignee?, owner_id?, why?, how?, outcome?, status?, owner_type?}`（仅更新携带字段） | `{"todo": node}` | 404 任务/节点不存在；422 status 非法 |
 | `DELETE /api/tasks/{task_id}/todos/{todo_id}` | — | `{"ok": true}`（auto 节点同时落墓碑） | 404 |
 | `POST /api/tasks/{task_id}/todos/{todo_id}/toggle` | `{done: bool}` | `{"todo": node}` | 404 |
+| `POST /api/tasks/{task_id}/todos/{todo_id}/supersede` | `{by_task_id: str, by_todo_id: str}`（替代者节点） | `{"todo": node}`（status=`superseded`，写入 `superseded_by` 快照，原 status 存 `prev_status`） | 404 节点/替代者不存在；422 自身替代；409 已是 superseded（`detail.code=already_superseded`） |
+| `DELETE /api/tasks/{task_id}/todos/{todo_id}/supersede` | — | `{"todo": node}`（恢复 `prev_status`；该状态已不在字典则降级首个开放态；清除快照） | 404；409 当前非 superseded（`detail.code=not_superseded`） |
 
 写操作（POST/PUT/DELETE/toggle）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
 
@@ -366,8 +369,8 @@ recognition.stop()  # 阻塞直到所有结果返回
   "color": "var(--st-confirm)", "closing": false, "system": false }
 ```
 
-- **首次读取即迁移**：文件不存在时自动写入内置五态（`to_decide`/`to_start`/`in_progress`/`to_confirm` + `done` 锚点）；已存在旧结构（以 decision 对象为中心的 active/superseded/revoked）时自动补齐缺失的五态种子、剪除未被改过名的遗留态并回写。文件缺 `done` 锚点或脏数据时整体回退默认集，不阻断决策中心。
-- **系统锚点只有 `done`**（D6）：不可改名、不可删除、不可改闭档位；其余四态（含五态中的非锚点项）用户可改名/标色/排序/删除。
+- **首次读取即迁移**：文件不存在时自动写入内置六态（`to_decide`/`to_start`/`in_progress`/`to_confirm`/`superseded` + `done` 锚点，`superseded` 位于 `done` 前）；已存在旧结构（以 decision 对象为中心的 active/superseded/revoked）时自动补齐缺失种子、剪除未被改过名的遗留态并回写。文件缺 `done` 锚点或脏数据时整体回退默认集，不阻断决策中心。
+- **系统锚点为 `done` 与 `superseded`**（D6 + DEBRISH-EVO）：均不可改名、不可删除、不可改闭档位（两者默认 `closing=true`）；其余四态用户可改名/标色/排序/删除。
 - **`color` 允许 CSS 变量表达式**（如 `var(--accent)`）或十六进制色值，前端内联使用以随主题联动。
 - **`name_en` 仅内置状态有独立英文名**；自定义状态的 `name_en` 与 `name` 同值。
 - **删除自定义状态的联动**：引用该状态的**决策流节点（todos）**当场回落到删后字典的首个开放态并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
@@ -390,6 +393,55 @@ recognition.stop()  # 阻塞直到所有结果返回
   否则模型无合法 status 可用；`done.metadata` 携带 `rewritten / rewritten_tools / turn_id / task_id` 作为“本轮改了什么 + 能否撤销”的事实源。
 - **前端联动**：写回成功后 AI 面板广播 `task-written` CustomEvent，会议详情页据此重拉 task 与决策列表；
   回复尾部展示「本轮已改写：{域}」并提供「撤销本轮改写」（转 `POST …/rewrites/restore`）。
+
+### 12.6 决策演变链（DEBRISH-EVO · 手动替代 + 跨会议归属）
+
+设计裁决：**聚类永不自动写状态**；演变关系只由用户在演变链历史项上**逐条手动标记**，不提供自动/批量替代。
+旧决策被标记后进入系统闭档态 `superseded`，离开待办（默认视图隐藏、沉底），但保留只读快照与动作出口。
+
+**替代端点**：见 §12.1 表尾两行（`POST/DELETE /api/tasks/{task_id}/todos/{todo_id}/supersede`）。
+标记成功后写入节点字段 `superseded_by`：
+
+```jsonc
+{
+  "task_id": "替代者所在任务",
+  "todo_id": "替代者节点 id（快照；若被删除前端降级为「原决策已被删除」）",
+  "title": "替代者标题快照",
+  "meeting_title": "替代者会议标题快照",
+  "prev_status": "标记前的状态 id（撤销时恢复；已被字典删除则降级首个开放态）",
+  "marked_at": "ISO 8601"
+}
+```
+
+**归属查询**（纪要页节点角标数据源）：
+
+`GET /api/decisions/evolution?task_id=<id>`（未知 task 404）
+
+```jsonc
+{
+  "task_id": "<id>",
+  "evolution": {
+    "<todo_id>": {
+      "topic_key": "议题指纹（与 §12.3 group_by=topic 同算法同 key，可回跳决策中心定位）",
+      "topic_title": "议题展示标题",
+      "role": "main | history",   // main=本节点即该簇最新非闭档节点；history=最新推进在另一场会议
+      "meeting_count": 3,
+      "latest": { "task_id": "...", "todo_id": "...", "title": "...", "meeting_title": "..." }
+    }
+  }
+}
+```
+
+- **必须全量 rows 聚类后再按 task 过滤**（先过滤则跨会议簇不成立）；单节点簇不返回（无演变语义）。
+- 归属为读时计算（`core/decision_topic`，零持久化）；节点进入 superseded 后，簇主记录选取（跳过闭档）自动前移，前端下次 reload 即一致。
+
+**前端路由锚点契约**：
+
+| 入口 | 路由 | 行为 |
+|---|---|---|
+| 演变链节点「查看来源会议」 | `generating?tab=todos&todo=<id>&from=evolution` | 切决策面板；闭档组自动展开；节点滚动居中并闪烁 3 次；顶部来源横幅（可关闭） |
+| 纪要页角标「议题全貌」 | `decisions?view=topic&topic=<topic_key>` | 切议题视图；展开该议题与其演变链；滚动定位 |
+| history 角标「最新推进」 | 同第一条（指向 latest 节点） | 同上 |
 
 ---
 ## 13. 接入方式路由契约（REQ-ACCESS-MODE-CARDS · AM-B1 后端交付 · AM-F1 前端派工依据）
@@ -423,10 +475,13 @@ recognition.stop()  # 阻塞直到所有结果返回
 { "access_mode": "local|hosted|byok|null", "expert_mode": true }
 ```
 
+另：响应含顶层 `transcript` 块，契约见 §17.1。
+
 ### 13.4 `POST /api/settings` 请求扩展
 
 - 可选 `access_mode`：`"local"|"hosted"|"byok"|null`。非法值忽略并记日志（与 engine.mode 白名单口径一致）。写入时后端同步旧字段：local→`engine.mode=local`；hosted→`engine.mode=proxy`+`asr.mode=proxy`；byok→`engine.mode=direct`+`asr.mode=direct`（A2 回滚窗口）。
 - 可选 `expert_mode`：仅接受布尔。
+- 可选 `transcript`（部分合并，只传单块即可，契约见 §17.1）。
 - 兼容窗口：旧客户端只写 `engine`/`asr` 时，后端按 13.2 映射**重对齐** `access_mode`，保证判定单源不漂移。
 
 ### 13.5 新端点 `GET /api/settings/routing`（路由结论查询，D2/AC-T2③）
@@ -541,3 +596,103 @@ recognition.stop()  # 阻塞直到所有结果返回
 - `core/chat_context.build_insights_context_block`（chat qa/stream 两路径共用）与 `core/cli_engine/context_export._render_insights` 仅注入未降级卡片，使 AI 引用集合与用户可见有效卡一致；现有「最近 N 条/字符截断」保留为第二道保险。
 - 前端可见层：`RecInsightsPanel` 主卡流只渲染非 deferred 卡；deferred 卡归入底部默认收起的「历史观察」折叠组（标题+时间单行呈现）；未读计数/横幅仅统计有效层。
 - 旧任务无 `deferred` 字段时前端/后端一律按未降级处理（`m.get("deferred")` 真值判定）。
+
+---
+
+## 17. 转写三层分层契约（PLAN-TRANSCRIPT-LAYERING · WP-1 口语清理层，已实现）
+
+三层语义：**原文**（`text`/`dialogue`，永不改写，引用/追责锚点）｜**清理版**（`clean_text`，本地确定性规则派生：语气词、叠词、标点规整，默认开）｜**书面版**（AI 仅会后生成，WP-2；WP-1 前端仅锁定/未生成占位，无任何端点）。清理规则与红线见 `core/transcript_cleanup.py`（否定/自我纠正/句尾情态不动，幂等）。
+
+### 17.1 设置 `transcript` 块（`data/settings.json`）
+
+`GET /api/settings` 响应与 `POST /api/settings` 请求均含顶层：
+
+```json
+{ "transcript": { "cleanup": { "enabled": true }, "formal": { "auto_generate": false } } }
+```
+
+- `cleanup.enabled`（缺省 `true`）：口语清理总开关。POST 为**部分合并**，只传 `{"transcript":{"cleanup":{"enabled":false}}}` 即只改此键。
+- `formal.auto_generate`（缺省 `false`）：WP-2 预留，WP-1 无消费方。
+- 进行中的录制在启动时取**会话级快照**；录制途中改开关只影响新会话与历史回放富化，不回改已推消息（预期行为）。
+
+### 17.2 WebSocket `/ws/transcript/{task_id}` 消息扩展
+
+- `sentence`（定稿）：`text` 永远为原文；当前会话快照开启清理且规则命中时**附加** `clean_text`（清理后文本）与 `clean_ops`（命中明细）。清理结果为空（纯语气词句）时不附加，且该句只上屏、不喂下游。
+- `history`（回放）：缓存只存原文，发送前按**当前**设置派生；命中时同样附加 `clean_text`/`clean_ops`，开关关则与旧客户端消息完全一致。
+- `clean_ops` 为数组，元素 `{r, n, items?}`：
+
+  | `r` | 含义 | `n` | `items` |
+  | --- | --- | --- | --- |
+  | `filler` | 删除语气词 | 删除次数 | 被删词列表 |
+  | `dup` | 合并叠词/重复片段 | 合并次数 | 被合并片段列表 |
+  | `punct` | 标点规整（含句首悬挂标点剥离） | 规整次数 | 无 |
+
+  清理结果与原文相同（幂等无变更）时整个句子不带 clean 字段。
+
+### 17.3 `GET /api/tasks/{task_id}` 响应级富化
+
+- 顶层附加信封 `transcript_layers: {"cleanup": bool}`（当前设置快照）。
+- `cleanup=true` 时返回的 `dialogue` 为**响应级深拷贝**，每个 `sentences[]` 命中清理则附加 `clean_text`/`clean_ops`（规则同上）；`cleanup=false` 时 dialogue 原样返回。
+- **绝不写回**内存 task 与磁盘：热词回溯修正原文后下次读取自动重算，存量会议零迁移。
+
+### 17.4 下游消费口径（清理版进下游，导出/缓存留原文）
+
+- 吃清理版：会中实时摘要、实时章节、实时翻译的 feed（`feed_text`，空串句跳过）；会后纪要/标题/章节生成（`pipeline.stage2` 深拷贝 `consumer_dialogue`）、章节补生成 `_backfill_chapters`。
+- 吃原文：md/docx 导出、`realtime_full_transcripts` 缓存（会中 AI 对话上下文事实源）、`save_summary` 落盘的 `dialogue`。
+- 书面版（WP-2）不提供单句采纳写回；WP-1 无书面版读写端点。
+
+## 17.5 转写三层分层契约（PLAN-TRANSCRIPT-LAYERING · WP-2 AI 书面版，已实现）
+
+书面版是**会后**对整场转写逐句 AI 书面化的独立产物，落 sidecar 文件 `data/tasks/{task_id}.formal.json`，**绝不写回** `task.dialogue`。没有单句采纳/回写端点；md/docx 导出仍只吃原文。实现见 `core/transcript_formal.py`。
+
+### 端点
+
+**`POST /api/tasks/{task_id}/formalize`** — 触发书面化（后台任务，立即返回）。
+
+- 请求体（可空＝整场）：`{"sentence_ids": [12, 13]}`。`sentence_ids` 须为整数数组；空列表/非整数 → 422；长度截断 2000。WP-3 前端划词工具条对选区覆盖句发该字段；省略＝整场。
+- 闸门：任务不存在 → 404；任务未完成（会中）→ 409；算力路由复用 `get_routing_decision("llm")` 判定，不新增静默付费：trial 未登录/额度尽、BYOK 缺 key 且云端不可用、本机端点配置错/不支持等 → 409。
+- 409 响应体：`{"detail": {"code": str, "reason": str}}`，`reason` 机器可读（如 `formalize_requires_postmeeting`、`formalize_already_running`、`formalize_route_unavailable`、`formalize_no_sentences`，路由原因另带底层 reason）。
+- 成功：`200 {"status": "running", "scope": "full" | "selection"}`，生成在 BackgroundTasks 中执行；同一任务并发第二发 → 409 `formalize_already_running`。
+- 整场重生成以当前 dialogue 重算签名并整文件替换；选区按 `sentence_id` upsert（仅当源签名未变时以旧 items 为基底）。
+
+**`GET /api/tasks/{task_id}/formal`** — 读取书面版 sidecar。
+
+- 从未生成 → 404。sidecar 文件损坏 → 200 返回 `status:"error"`、`error:"formal_sidecar_corrupt"` 占位。
+- `status:"done"` 时实时重算源签名比对；原文被热词回溯修正等改写后返回 `status:"stale"`（stale 为读取派生态，不落盘），items 仍随响应返回供对照。
+
+### sidecar 结构
+
+```json
+{
+  "version": 1,
+  "status": "running|done|error",
+  "scope": "full|selection",
+  "auto": false,
+  "source_sig": { "count": 218, "hash": "sha1(...)" },
+  "model": "qwen-plus",
+  "source": "trial|byok|local_endpoint",
+  "usage": { "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0 },
+  "created_at": "2025-07-02T10:00:00",
+  "finished_at": "",
+  "error": "",
+  "progress": { "done": 50, "total": 218 },
+  "items": [ { "sentence_id": 0, "text": "…", "tone_flag": "weakened" } ]
+}
+```
+
+- 源签名：对扁平句序列 `sentence_id|begin_ms|text\n` 求 sha1；`count` 为句数。锚点是 `sentence_id`（批转写/本地转写的扁平句下标，merge_fragments 后保留）。
+- `items[].tone_flag` 为 `"weakened"` 或 `null`：模型不确定是否弱化了勉强/反转语气时也必须置标；前端对该句强制展示「⚠ 语气存疑」警示并支持逐句对照原文。
+- 生成按 25 句/块调用同步 `chat_completion_full`（`core/llm.py`，temperature 0.2），每块严格校验返回 JSON 数组的 id 集合/数量/顺序；一块重试 1 次仍失败则整场置 `error`，items 回退基底不留半截；每块进度落盘。云端代理路径 usage 记 0（与异步通道同口径）。
+- 前端 2s 轮询 GET；`running` 时 `progress.done/total` 驱动进度条。
+
+### 自动钩子与设置
+
+- `settings.transcript.formal.auto_generate=true`（缺省 false，§17.1 已登记）时，`pipeline.stage2` 落盘任务后由 daemon 线程触发整场书面化（`maybe_auto_formalize`）；任何异常仅记日志，不影响转写产物。
+- 自动触发同样过路由闸门；不可用时静默跳过（无 sidecar），用户在面板手动点生成时才看到 409 原因。
+
+### 选区书面化（WP-3 前端行为）
+
+- 仅会后任务（`status:"completed"`）工具条按钮可用；会中/处理中划词按钮禁用（title 提示「会议完成后可用」），后端同有 409 兜底。
+- 划词选区按 DOM Range 与 `.ts-line[data-sentence-id]` 的相交关系收集 `sentence_id`（去重、文档序排序）；纪要/备注/决策卡等 textarea 选区不出现该按钮。
+- 触发后前端自动切到书面层 tab 并复用整场同一状态机（running 轮询 / done 留痕 / stale / error）；done 态仅选区覆盖句显示书面句与对照块，其余行回退显示清理版/原文（`formalMap` 未命中即回退，不产生占位文本）。
+- 选区结果与整场共用同一 sidecar：选区按 sid upsert 累积；整场重新生成整文件替换。

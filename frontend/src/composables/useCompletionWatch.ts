@@ -46,7 +46,8 @@ export function useCompletionWatch() {
   async function tick() {
     const before = new Map(prevStatus)
     try {
-      await taskStore.loadTasks()
+      // lite：5s 高频轮询只取状态字段（全量列表携带全部转写，曾达 35MB 并阻塞后端事件循环）
+      await taskStore.loadTasks(true)
     } catch { return } // loadTasks 内部已兜底 loadError
     snapshot(taskStore.tasks)
     for (const task of taskStore.tasks) {

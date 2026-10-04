@@ -73,6 +73,7 @@ from core.realtime_asr import RealtimeTranscriber
 from core.realtime_chapters import RealtimeChapterGenerator
 from core.realtime_summary import RealtimeSummarizer
 from core.silence_detection import cleanup_silence_detection, silence_monitor_loop
+from core.transcript_cleanup import derive_layers
 
 logger = logging.getLogger(__name__)
 
@@ -386,10 +387,21 @@ def start_record(background_tasks: BackgroundTasks):
 
         # 启动实时转写（优雅降级：失败不影响录音） / Start realtime transcription (graceful degradation: failure doesn't affect recording)
         # 注意：start() 可能阻塞（等待连接 + 重试），放到后台线程避免阻塞事件循环 / Note: start() may block (wait for connection + retry); run in background thread to avoid blocking event loop
+
+        # 转写分层（PLAN-TRANSCRIPT-LAYERING）：口语清理开关做「会话级快照」，
+        # 整场录制固定同一口径，避免一场纪要前后规则不一致。
+        try:
+            from app.settings_store import get_transcript_config
+            _cleanup_enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
+        except Exception as e:
+            logger.warning(f"[录制] 读取转写清理配置失败（按开启处理）: {e}")
+            _cleanup_enabled = True
+
         def _on_sentence_end(s: dict) -> None:
             """定稿句子回调：推送 WebSocket + 送入实时总结 / Finalized sentence callback: push WebSocket + feed realtime summary"""
             # 过滤空文本（无人说话时 ASR 可能返回空句子） / Filter empty text (ASR may return empty sentences when no one speaks)
-            if not s.get("text", "").strip():
+            raw_text = s.get("text", "")
+            if not raw_text.strip():
                 logger.debug(f"[录制] 跳过空句子: speaker={s.get('begin_time')}")
                 return
             speaker_id = diarizer.get_speaker(
@@ -398,21 +410,36 @@ def start_record(background_tasks: BackgroundTasks):
             )
             # 解析说话人姓名（从实时绑定映射中查找） / Resolve speaker name (from realtime binding map)
             speaker_name = resolve_realtime_speaker_name(task_id, speaker_id)
-            push_realtime_msg(task_id, {
+
+            # 口语清理（本地确定性规则，契约见 core.transcript_cleanup.derive_layers）：
+            # - WS 消息 text 永远是原文，另附 clean_text/clean_ops（上屏可切视图）；
+            # - 下游摘要/章节/翻译吃 clean（无事实内容的纯语气词句跳过）；
+            # - realtime_store 缓存只取 text 白名单，AI 对话上下文仍是原文。
+            layers = derive_layers(raw_text, enabled=_cleanup_enabled)
+            ws_msg = {
                 "type": "sentence",
-                "text": s["text"],
+                "text": raw_text,
                 "begin_time": s.get("begin_time", 0),
                 "end_time": s.get("end_time", 0),
                 "speaker_id": speaker_id,
                 "speaker_name": speaker_name,
-            })
+            }
+            if layers["clean_text"] is not None:
+                ws_msg["clean_text"] = layers["clean_text"]
+                ws_msg["clean_ops"] = layers["clean_ops"]
+            feed_text = layers["feed_text"]
+            push_realtime_msg(task_id, ws_msg)
             # 更新最后定稿句子时间戳（供静默检测使用） / Update last finalized sentence timestamp (for silence detection)
             realtime_last_sentence[task_id] = time.time()
+            # 清理后无事实内容（纯语气词句）：只上屏留痕，不喂下游
+            if not feed_text.strip():
+                return
             # 送入实时总结器（含说话人姓名） / Feed realtime summarizer (with speaker name)
             _summarizer = summarizer_ref.get(None)
             if _summarizer:
                 _summarizer.feed_sentence({
                     **s,
+                    "text": feed_text,
                     "speaker_name": speaker_name,
                 })
             # 送入实时章节生成器 / Feed realtime chapter generator
@@ -420,23 +447,25 @@ def start_record(background_tasks: BackgroundTasks):
             if _chapter_gen:
                 _chapter_gen.feed_sentence({
                     **s,
+                    "text": feed_text,
                     "speaker_name": speaker_name,
                 })
             # 送入实时翻译器（若已启用） / Feed realtime translator (if enabled)
             translator = realtime_translators.get(task_id)
             if translator and translator.is_running:
-                logger.debug(f"[录制] 句子送入翻译器: task={task_id[:8]}, text={s['text'][:40]}")
+                logger.debug(f"[录制] 句子送入翻译器: task={task_id[:8]}, text={feed_text[:40]}")
                 translator.feed_sentence({
-                    "text": s["text"],
+                    "text": feed_text,
                     "speaker_id": speaker_id,
                     "speaker_name": speaker_name,
                     "begin_time": s.get("begin_time", 0),
                     "end_time": s.get("end_time", 0),
                 })
 
-        # R9（WP-I）：local 模式且分段增量上屏开启时用 LocalSegmentTranscriber；
-        # 其余模式保持 RealtimeTranscriber（local 未开启分段时其 start() 抛
-        # realtime_degraded_to_batch 降级声明，见 WP-H / core/realtime_asr.py）。
+        # R9（WP-I）：local 模式默认用 LocalSegmentTranscriber 分段逐句上屏
+        # （realtime_segments.enabled 默认 true）；仅显式关闭（逃生通道）时退回
+        # RealtimeTranscriber，其 start() 抛 realtime_degraded_to_batch 降级声明
+        # （WP-H，见 core/realtime_asr.py）；其余云端模式同样走 RealtimeTranscriber。
         _asr_mode_now = realtime_asr._get_asr_mode()
         _segments_cfg: dict = {}
         if _asr_mode_now == "local":

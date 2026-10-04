@@ -135,12 +135,18 @@ def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
         f"本地增量转写定稿（{len(full_transcript)} 句，未重跑全量）",
     )
 
-    # 复用实时阶段的说话人绑定作为姓名映射（键转 int） / Reuse realtime speaker binding (keys to int)
+    # 复用实时阶段的说话人绑定作为姓名映射（键转 int，UUID 翻译成真名） / Reuse realtime speaker binding (keys to int, UUID translated to real name)
     speaker_mapping = None
     binding = tasks[task_id].get("realtime_speaker_binding")
     if binding:
         try:
-            speaker_mapping = {int(k): v for k, v in binding.items()}
+            speaker_mapping = {}
+            for k, uuid in binding.items():
+                spk = speakers.get_speaker_by_id(uuid)
+                if spk:
+                    speaker_mapping[int(k)] = spk.name
+            if not speaker_mapping:
+                speaker_mapping = None
         except (ValueError, TypeError):
             speaker_mapping = None
 
@@ -177,12 +183,18 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
         f"批转写无有效语音，降级使用实时转写结果（{len(full_transcript)} 句）", level="warn",
     )
 
-    # 复用实时阶段的说话人绑定作为姓名映射（键转 int） / Reuse realtime speaker binding as name mapping (keys to int)
+    # 复用实时阶段的说话人绑定作为姓名映射（键转 int，UUID 翻译成真名） / Reuse realtime speaker binding as name mapping (keys to int, UUID translated to real name)
     speaker_mapping = None
     binding = tasks[task_id].get("realtime_speaker_binding")
     if binding:
         try:
-            speaker_mapping = {int(k): v for k, v in binding.items()}
+            speaker_mapping = {}
+            for k, uuid in binding.items():
+                spk = speakers.get_speaker_by_id(uuid)
+                if spk:
+                    speaker_mapping[int(k)] = spk.name
+            if not speaker_mapping:
+                speaker_mapping = None
         except (ValueError, TypeError):
             speaker_mapping = None
 
@@ -382,9 +394,16 @@ def run_pipeline_task(
                 if vp_enabled and normalized_path and dialogue:
                     try:
                         vp_start = time.perf_counter()
+                        # 锚点：文本桥接已命中或本场已确认绑定的注册人不参与声纹分配
+                        locked = {
+                            str(u) for u in auto_mapping.values() if u
+                        } | {
+                            str(u) for u in (tasks[task_id].get("speaker_uuid_mapping") or {}).values() if u
+                        }
                         vp_results = voiceprint.auto_identify_speakers(
                             audio_path=normalized_path,
                             dialogue=dialogue,
+                            exclude_uuids=locked or None,
                         )
                         vp_elapsed = time.perf_counter() - vp_start
                         vp_mapping = voiceprint.build_auto_mapping(vp_results)
@@ -422,25 +441,10 @@ def run_pipeline_task(
                         f"来源: {', '.join(match_sources)}"
                     )
 
-                if auto_mapping:
-                    # 有自动匹配结果，自动注册/更新声纹（时长加权）
-                    if normalized_path and dialogue:
-                        try:
-                            reg_results = voiceprint.register_from_binding(
-                                audio_path=normalized_path,
-                                dialogue=dialogue,
-                                mapping=auto_mapping,
-                                meeting_id=task_id,
-                            )
-                            reg_ok = sum(1 for r in reg_results.values() if r["status"] == "registered")
-                            if reg_ok > 0:
-                                logger.info(
-                                    f"[{task_id[:8]}] 自动匹配后声纹更新: "
-                                    f"{reg_ok}/{len(auto_mapping)} 位说话人"
-                                )
-                        except Exception as e:
-                            logger.warning(f"[{task_id[:8]}] 自动声纹更新失败（不影响主流程）: {e}")
-                else:
+                # 声纹底库只接受用户手工确认的绑定（见 speakers.py set_speaker_mapping
+                # → _register_voiceprints_bg）；P0 文本桥接 / P1 声纹等自动识别命中
+                # 不回写声纹，防止误识别结果自我强化、污染底库。
+                if not auto_mapping:
                     # 无自动匹配：不阻塞管线，纪要先以通用说话人标签生成；
                     # 前端绑定栏保留，用户确认关联后按真实身份重新生成纪要
                     joblog.append_event(
@@ -627,6 +631,14 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
             save_task_to_disk(task_id)
+
+            # 转写分层 WP-2：设置开启且 llm 路由可用时，会后自动生成书面版。
+            # 守护线程执行；跳过/失败均仅日志，sidecar error 自描述，不影响会议产物。
+            try:
+                from core.transcript_formal import maybe_auto_formalize
+                maybe_auto_formalize(task_id)
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 自动书面化钩子异常（不影响产物）: {e}")
 
             # [管线] 首次完成后自动同步到知识库文件夹（仅当关联项目且启用同步时） /
             # Auto-sync to knowledge base folder on first completion (only when project linked and sync enabled)

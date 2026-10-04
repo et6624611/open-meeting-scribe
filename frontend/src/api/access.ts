@@ -81,6 +81,8 @@ export interface RoutingResponse {
   asr: RouteDecision
   capability: CapabilityStatus
   quota: RoutingQuota | null
+  /** 逐能力自动改用同意开关（缺省均为 false） */
+  auto_fallback?: { llm: boolean; asr: boolean }
   /** 'low' = 剩余 ≤10 分钟预警（Q3 终裁阈值） */
   quota_warning: string | null
   auto_switch: {
@@ -124,4 +126,12 @@ export async function saveCapabilitySource(sources: Partial<Record<'llm' | 'asr'
 /** 专家模式开关（页面级，不参与决策卡 radiogroup；写入仍走 /api/settings） */
 export async function saveExpertMode(on: boolean): Promise<void> {
   await client.post('/api/settings', { expert_mode: on })
+}
+
+/**
+ * 逐能力自动改用同意开关（默认关）。
+ * 开启后 routing 才允许在当前来源不可用时改用其他已配置来源；关闭则保持并明示。
+ */
+export async function saveAutoFallback(vals: Partial<Record<'llm' | 'asr', boolean>>): Promise<void> {
+  await client.post('/api/settings', { auto_fallback: vals })
 }

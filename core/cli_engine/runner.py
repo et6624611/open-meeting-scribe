@@ -81,8 +81,9 @@ async def run_cli_agent(
     caps = manifest.get("capabilities", {}) or {}
 
     cmd: list[str] = [cli_path, *argv.get("base", ["-p", "--output-format", "stream-json"])]
-    if model:
-        cmd += [argv.get("model_flag", "-m"), model]
+    model_flag = argv.get("model_flag", "-m")
+    if model and model_flag:
+        cmd += [model_flag, model]
     # 工作区定位：有标志则传参，无标志（如 Claude Code）则用进程 cwd 兜底
     proc_cwd: str | None = None
     workspace_flag = argv.get("workspace_flag")
@@ -90,26 +91,35 @@ async def run_cli_agent(
         cmd += [workspace_flag, str(_resolve(workspace))]
     else:
         proc_cwd = str(_resolve(workspace))
-    if caps.get("add_dir", True):
+    add_dir_flag = argv.get("add_dir_flag", "--add-dir")
+    if caps.get("add_dir", True) and add_dir_flag:
         for d in add_dirs or []:
-            cmd += [argv.get("add_dir_flag", "--add-dir"), str(_resolve(d))]
-    # 会话生命周期按 capability 分支；对应标志缺失时静默跳过（不硬塞未知参数）
-    if resume and session_id and caps.get("session_resume", True):
-        cmd += [argv.get("session_resume_flag", "-r"), session_id]
-    elif session_id:
-        cmd += [argv.get("session_new_flag", "--session-id"), session_id]
+            cmd += [add_dir_flag, str(_resolve(d))]
+    # 会话生命周期按 capability 分支；对应标志缺失（null）时静默跳过（不硬塞未知参数）
+    resume_flag = argv.get("session_resume_flag")
+    new_flag = argv.get("session_new_flag")
+    if resume and session_id and caps.get("session_resume", True) and resume_flag:
+        cmd += [resume_flag, session_id]
+    elif session_id and new_flag:
+        cmd += [new_flag, session_id]
     elif argv.get("no_persist_flag"):
-        cmd += [argv.get("no_persist_flag")]
+        cmd += [argv["no_persist_flag"]]
     cmd += compile_auth_argv(manifest, auth_tier)
     if mcp_config and caps.get("mcp_injection"):
-        cmd += [argv.get("strict_mcp_flag", "--strict-mcp-config"),
-                argv.get("mcp_config_flag", "--mcp-config"), str(_resolve(mcp_config))]
+        strict_flag = argv.get("strict_mcp_flag", "--strict-mcp-config")
+        if strict_flag:
+            cmd.append(strict_flag)
+        cmd += [argv.get("mcp_config_flag", "--mcp-config"), str(_resolve(mcp_config))]
     # 预授权本轮 MCP 工具（SPIKE §2：--allowed-tools 对 mcp__ 工具生效，消除运行时询问）
-    for tool in allowed_tools or []:
-        cmd += [argv.get("allowed_tools_flag", "--allowed-tools"), tool]
+    allowed_flag = argv.get("allowed_tools_flag", "--allowed-tools")
+    if allowed_flag:
+        for tool in allowed_tools or []:
+            cmd += [allowed_flag, tool]
     # 轻量任务说明追加到系统提示词（重内容已在工作区）；引擎不支持则跳过
     if caps.get("system_prompt_append", True):
-        cmd += [argv.get("system_prompt_flag", "--append-system-prompt"), brief]
+        sp_flag = argv.get("system_prompt_flag", "--append-system-prompt")
+        if sp_flag:
+            cmd += [sp_flag, brief]
     # prompt 置于末尾；分隔符（如 "--"）由 manifest 声明，Claude 等直接尾传位置参数
     separator = argv.get("prompt_separator")
     if separator:

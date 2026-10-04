@@ -14,7 +14,7 @@ import {
   startEngine, stopEngine, setEngineStorage,
   type EngineStatus, type EngineMode, type EngineModelsOverview, type DownloadJob, type EngineActionResult,
 } from '@/api/engine'
-import { fetchRouting, saveExpertMode, saveCapabilitySource, type CapabilityStatus, type RoutingResponse } from '@/api/access'
+import { fetchRouting, saveExpertMode, saveAutoFallback, saveCapabilitySource, type CapabilityStatus, type RoutingResponse } from '@/api/access'
 import { fetchSettings, type Settings } from '@/api/settings'
 
 /**
@@ -55,6 +55,11 @@ export const useEngineStore = defineStore('engine', () => {
   const accessSettings = ref<Settings | null>(null)
 
   const expertMode = computed(() => routing.value?.expert_mode === true)
+  /** 逐能力自动改用同意（后端缺省 false；不静默替用户花钱） */
+  const autoFallback = computed<{ llm: boolean; asr: boolean }>(() => ({
+    llm: routing.value?.auto_fallback?.llm ?? false,
+    asr: routing.value?.auto_fallback?.asr ?? false,
+  }))
   /** 逐能力算力来源快照（详情层三态徽章/联动单源） */
   const capability = computed<CapabilityStatus | null>(() => routing.value?.capability ?? null)
   /** 明示自动改用聚合（L2 横幅 / L3 联网卡角标单源） */
@@ -159,6 +164,12 @@ export const useEngineStore = defineStore('engine', () => {
   async function applyExpertMode(on: boolean) {
     await saveExpertMode(on)
     routing.value = routing.value ? { ...routing.value, expert_mode: on } : routing.value
+    await loadRouting(true)
+  }
+
+  /** 自动改用同意开关（逐能力；失败抛错由调用方回滚 UI 态） */
+  async function applyAutoFallback(cap: 'llm' | 'asr', on: boolean) {
+    await saveAutoFallback({ [cap]: on })
     await loadRouting(true)
   }
 
@@ -285,6 +296,7 @@ export const useEngineStore = defineStore('engine', () => {
       missing_models: status.value?.missing_models ?? [],
       tampered_models: status.value?.tampered_models ?? [],
       can_manage: status.value?.can_manage ?? false,
+      realtime_segments_enabled: status.value?.realtime_segments_enabled ?? false,
       source: status.value?.source ?? 'settings',
     }
     void loadRouting(true)
@@ -296,8 +308,8 @@ export const useEngineStore = defineStore('engine', () => {
     loadOverview, stopPolling, download, cancel, verify, start, stop, saveStorage,
     // 逐能力算力来源 / Per-capability compute source
     routing, accessSettings, expertMode, statusState, statusDetail,
-    quotaRemaining, routeOverride, autoSwitch, capability, loadRouting, loadAccessSettings,
-    applyCapabilitySource, applyExpertMode,
+    quotaRemaining, routeOverride, autoSwitch, capability, autoFallback, loadRouting, loadAccessSettings,
+    applyCapabilitySource, applyExpertMode, applyAutoFallback,
     sessionModel, setSessionModel,
   }
 })

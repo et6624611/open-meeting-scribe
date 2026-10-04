@@ -13,6 +13,7 @@ import { fetchTasks, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask,
 import client, { extractErrorMessage } from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
 import { matchTask } from '@/utils/search'
+import { mergeTaskLists } from '@/utils/taskListMerge'
 import { useI18n } from 'vue-i18n'
 
 export const useTaskStore = defineStore('task', () => {
@@ -165,11 +166,16 @@ export const useTaskStore = defineStore('task', () => {
 
   // ─── 操作 / Actions ───
 
-  /** 从后端拉取任务列表 / Fetch task list from backend */
-  async function loadTasks() {
-    loading.value = true
+  /**
+   * 从后端拉取任务列表 / Fetch task list from backend
+   * @param lite 仅合并状态字段（完成侦测器高频轮询）；不全量替换、不删任务、不翻 loading
+   *             lite: merge status fields only for frequent watcher polling
+   */
+  async function loadTasks(lite = false) {
+    if (!lite) loading.value = true
     try {
-      tasks.value = await fetchTasks()
+      const incoming = await fetchTasks(lite)
+      tasks.value = mergeTaskLists(tasks.value, incoming, lite)
       loadError.value = null
     } catch (e) {
       // 失败必须落到界面上：只写 console 会让「加载失败」被用户读作「没有会议」
@@ -177,7 +183,7 @@ export const useTaskStore = defineStore('task', () => {
       console.error('[TaskStore] 加载任务列表失败:', e)
       loadError.value = extractErrorMessage(e) || t('common.error.load_failed')
     } finally {
-      loading.value = false
+      if (!lite) loading.value = false
     }
   }
 

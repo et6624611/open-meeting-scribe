@@ -12,16 +12,19 @@ v2.0 重构：业务逻辑已拆分至 core 层子模块，本文件仅保留端
 """
 
 import asyncio
+import base64
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app import chat_attachment_store
 from app.store import (  # noqa: F401
     REALTIME_BUFFER_MAX,
     TASKS_DIR,
@@ -92,6 +95,138 @@ def _format_time_ms(ms: int | float) -> str:
     if h > 0:
         return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"
+
+
+# ── @ 引用令牌（用户显式引用，升级替换自动采样口径） / @ mention tokens (explicit citation overrides sampled auto-injection) ──
+# 令牌随消息进 history 不展开（防每轮重复注入全文）；只扫当前轮 user_message。
+# 英文环境前端插入英文别名（@transcript/@summary/@notes），扫描后归一为中文令牌。
+_MENTION_TOKEN_RE = re.compile(r"(?:^|\s)@(原文|纪要|随记|transcript|summary|notes)", re.IGNORECASE)
+_MENTION_TOKEN_ALIASES = {"transcript": "原文", "summary": "纪要", "notes": "随记"}
+# @原文 全量原文封顶 / @纪要·@随记 全量文档封顶（字符）
+MENTION_TRANSCRIPT_CAP = 20000
+MENTION_DOC_CAP = 12000
+
+
+def _scan_mention_tokens(user_message: str) -> set[str]:
+    """扫描当前轮用户消息中的 @ 引用令牌，返回含 @ 的完整令牌集（如 {'@原文'}）。
+    英文别名归一为中文令牌；残缺令牌如 @原 忽略。"""
+    return {f"@{_MENTION_TOKEN_ALIASES.get(t.lower(), t)}" for t in _MENTION_TOKEN_RE.findall(user_message)}
+
+
+def _truncate_mention_text(text: str, cap: int, label: str) -> str:
+    """全量引用块封顶截断，尾注声明截断事实（防模型把截断当全量）。"""
+    if len(text) <= cap:
+        return text
+    return text[:cap] + f"\n…（{label}过长，已截断至前 {cap} 字）"
+
+
+def _flatten_dialogue_entries(task: dict) -> list[tuple[int, str, str, int]]:
+    """展平任务对话为 (begin_time, 行文本, 说话人, 句序) 列表，按时间排序。
+
+    采样时间轴块与 @原文 全量块共用此展平结果，避免两处各写一套遍历。
+    """
+    all_lines: list[tuple[int, str, str, int]] = []
+    idx = 0
+    for item in task.get("dialogue") or []:
+        # BE-R3：归一后空名走中性措辞
+        name = normalize_speaker_name(item.get("speaker_name")) or "未识别发言人"
+        sents = item.get("sentences") or []
+        for s in sents:
+            text = s.get("text", "").strip()
+            if text:
+                ts = _format_time_ms(s.get("begin_time", 0))
+                prefix = f"[{ts}] " if ts else ""
+                all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
+                idx += 1
+        if not sents:
+            text = item.get("text", "").strip()
+            if text:
+                all_lines.append((0, f"{name}：{text}", name, idx))
+                idx += 1
+    all_lines.sort(key=lambda x: x[0])
+    return all_lines
+
+
+# ============================================================
+# @附件：本地文件与图片展开（当前轮） / @attachment: local files & images (current turn only)
+# ============================================================
+# 可直接当文本读取的扩展名（UTF-8 解码失败则降级为不可读声明）
+_ATTACHMENT_TEXT_EXTS = {
+    ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".log", ".xml",
+    ".yaml", ".yml", ".ini", ".conf", ".py", ".js", ".ts", ".html", ".css",
+    ".java", ".go", ".rs", ".c", ".h", ".cpp", ".sh", ".sql",
+}
+ATTACHMENT_TEXT_CAP = 8000  # 单个非图片附件抽取文本封顶（字符）
+
+
+def _extract_attachment_text(filename: str, data: bytes) -> str | None:
+    """抽取附件文本；无法解析的类型返回 None。"""
+    ext = Path(filename).suffix.lower()
+    try:
+        if ext in _ATTACHMENT_TEXT_EXTS:
+            return data.decode("utf-8", errors="strict")
+        if ext == ".docx":
+            import io
+
+            from docx import Document  # python-docx
+            doc = Document(io.BytesIO(data))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        if ext == ".pdf":
+            import io
+
+            from PyPDF2 import PdfReader
+            reader = PdfReader(io.BytesIO(data))
+            return "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as e:  # 解码/解析失败：不可读，不编造
+        logger.info("附件文本抽取失败 name=%s: %s", filename, e)
+        return None
+    return None
+
+
+def _build_attachment_parts(attachment_refs: list[dict]) -> tuple[list[dict], str]:
+    """把当前轮附件展开为 OpenAI 风格 user content parts，并返回系统侧说明块。
+
+    - 图片：image_url + base64 data URI（要求视觉模型）
+    - 可抽取文本：text part（封顶，带截断声明）
+    - 不可读：text part 仅声明文件名/类型/大小，要求模型不臆测内容
+    """
+    parts: list[dict] = []
+    listed: list[str] = []
+    image_count = 0
+
+    for ref in attachment_refs:
+        meta, data = chat_attachment_store.load_bytes(str(ref.get("id", "")))
+        name, ctype, size = meta["filename"], meta["content_type"], meta["size"]
+        listed.append(f"- {name}（{ctype}，{size} 字节）")
+
+        if ctype.startswith("image/"):
+            b64 = base64.b64encode(data).decode("ascii")
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{ctype};base64,{b64}"},
+            })
+            image_count += 1
+            continue
+
+        text = _extract_attachment_text(name, data)
+        if text is not None and text.strip():
+            body = text
+            if len(body) > ATTACHMENT_TEXT_CAP:
+                body = body[:ATTACHMENT_TEXT_CAP] + f"\n…（附件 {name} 内容过长，已截断至前 {ATTACHMENT_TEXT_CAP} 字）"
+            parts.append({"type": "text", "text": f"[用户附件 {name} 的内容]\n{body}"})
+        else:
+            parts.append({"type": "text", "text": (
+                f"[用户附件 {name}] 类型 {ctype}，大小 {size} 字节，系统无法解析其内容。"
+                "你看不到该文件的实际内容，禁止根据文件名臆测或编造其内容。")})
+
+    notice = (
+        "## 用户本轮上传的附件（用户显式提供，优先级高于猜测）\n"
+        + "\n".join(listed)
+        + (f"\n其中 {image_count} 张图片以视觉内容直接提供；其余可解析附件内容随本轮用户消息展开，"
+           "标注「无法解析」的文件只有文件名——禁止编造其内容。" if image_count
+           else "\n可解析附件内容随本轮用户消息展开；标注「无法解析」的文件只有文件名——禁止编造其内容。")
+    )
+    return parts, notice
 
 
 # ============================================================
@@ -230,6 +365,8 @@ class ChatRequest(BaseModel):
     auth_tier: Optional[str] = None         # 本轮授权档覆盖（可选，缺省取设置）
     resume_session: Optional[bool] = None   # 是否恢复上一 CLI 会话（多轮深度对话）
     chat_session_id: Optional[str] = None   # 面板会话标签 id，令 CLI 会话与面板会话对齐（方案 §3.6）
+    agent_model: Optional[str] = None       # 智能体轮级模型覆盖（已发消息编辑再发送），缺省取 chat_engine.model
+    attachments: Optional[list[dict]] = None  # 当前轮 @附件 引用（每项至少 {"id": ...}），仅当前轮展开
 
 
 class OptimizeRequest(BaseModel):
@@ -240,6 +377,12 @@ class OptimizeRequest(BaseModel):
 class InlineEditRequest(BaseModel):
     text: str           # 选中的原文 / Selected original text
     instruction: str    # 用户指令（如"润色"、"补充预算相关内容"） / User instruction
+    model: Optional[str] = None
+
+
+class ChatTitleRequest(BaseModel):
+    first_message: str                    # 会话首条用户消息 / First user message of the session
+    reply: Optional[str] = ""             # 首轮 AI 回复（截断后片段） / First AI reply snippet
     model: Optional[str] = None
 
 
@@ -366,6 +509,24 @@ CHAT_QA_SYSTEM_PROMPT = """<role>
 </output_format>
 """
 
+
+def _agent_system_prompt(role_name: str | None) -> str:
+    """组装智能体模式系统提示词：角色 AGENT.md + 角色洞察板职责补充（insights.md）。
+
+    洞察板内容契约放在角色文件中、随每次智能体会话全程可见，而非只在模型决定
+    调用 revise_insight_board 时经工具描述看到；自定义角色无 insights.md 时自然降级。
+    问答模式不走此函数（无工具调用权，不承载洞察板职责）。
+    """
+    role = resolve_agent_role(role_name)
+    if not role:
+        return CHAT_SYSTEM_PROMPT
+    prompt = role["agent_md"]
+    insight_prompt = (role.get("extra_files") or {}).get("insights.md")
+    if insight_prompt:
+        prompt += "\n\n---\n\n" + insight_prompt
+    return prompt
+
+
 OPTIMIZE_SYSTEM_PROMPT = """你是一位专业的中文文稿润色助手。请对用户提供的文本进行优化，遵循以下原则：
 
 1. **保持原意**：不改变原文的核心意思和观点
@@ -390,6 +551,16 @@ INLINE_EDIT_SYSTEM_PROMPT = """你是一位专业的文稿编辑助手。用户�
 - 如果指令不明确，尽量保持原文不变
 - 改写后的文本应当可以直接替换原文，无需额外处理"""
 
+TITLE_SYSTEM_PROMPT = """你为一段简短的 AI 对话生成一个会话标题。
+
+规则：
+1. 只输出标题文本，不要引号、编号、解释
+2. 标题不超过 12 个汉字（或 20 个英文字符），越短越好
+3. 与对话使用同一语言；优先提取用户原始问题的核心词，不要过度包装
+4. 如果内容涉及会议，直接提取主题（如"项目排期"、"预算评审"）
+5. 严禁使用"关于"、"针对"等前缀，不要用"问题"、"话题"等泛化词结尾
+6. 仅返回一行标题，不要换行"""
+
 
 # ============================================================
 # 共享上下文构建 / Shared Context Building
@@ -407,6 +578,11 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
     context_blocks: list[str] = []
     source_files: list[dict] = []
 
+    # ── 维度 0: @ 引用令牌 / @ mention tokens ──
+    # 用户显式引用升级替换自动采样口径：@原文 跳过采样时间轴与实时 10 句块，@纪要/@随记 全量。
+    mention_tokens = _scan_mention_tokens(user_message)
+    full_transcript_emitted = False  # @原文 全量块是否已注入（会中实时流优先，落空则回退落盘对话）
+
     # ── 维度 1: 实时转写流 / Realtime transcript stream ──
     # 后端内存缓冲优先（SDK 回调线程持续写入，不受前端上报滞后/缺漏影响），前端快照兜底
     realtime_entries = []
@@ -417,18 +593,34 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
 
     if realtime_entries:
         speaker_name_map = build_speaker_name_map(data.task_id) if data.task_id else {}
-        lines = []
-        for entry in realtime_entries[-10:]:
-            sid = entry.get("speaker_id")
-            # BE-R3：删除 Speaker N 兑底字面量，未命名走中性措辞（聊天回复不复读编号）
-            name = normalize_speaker_name(speaker_name_map.get(sid)) or "未识别发言人"
-            text = entry.get("text", "").strip()
-            ts = _format_time_ms(entry.get("begin_time", 0))
-            if text:
-                prefix = f"[{ts}] " if ts else ""
-                lines.append(f"{prefix}{name}：{text}")
-        if lines:
-            context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
+        if "@原文" in mention_tokens:
+            # 显式引用 @原文（会中）：实时流全量入场，替代自动注入的最近 10 句
+            lines = []
+            for entry in realtime_entries:
+                sid = entry.get("speaker_id")
+                name = normalize_speaker_name(speaker_name_map.get(sid)) or "未识别发言人"
+                text = entry.get("text", "").strip()
+                ts = _format_time_ms(entry.get("begin_time", 0))
+                if text:
+                    prefix = f"[{ts}] " if ts else ""
+                    lines.append(f"{prefix}{name}：{text}")
+            if lines:
+                full_text = _truncate_mention_text("\n".join(lines), MENTION_TRANSCRIPT_CAP, "逐字稿原文")
+                context_blocks.append(f"## 用户显式引用（@原文）——全量实时转写，优先于采样摘要\n{full_text}")
+                full_transcript_emitted = True
+        else:
+            lines = []
+            for entry in realtime_entries[-10:]:
+                sid = entry.get("speaker_id")
+                # BE-R3：删除 Speaker N 兑底字面量，未命名走中性措辞（聊天回复不复读编号）
+                name = normalize_speaker_name(speaker_name_map.get(sid)) or "未识别发言人"
+                text = entry.get("text", "").strip()
+                ts = _format_time_ms(entry.get("begin_time", 0))
+                if text:
+                    prefix = f"[{ts}] " if ts else ""
+                    lines.append(f"{prefix}{name}：{text}")
+            if lines:
+                context_blocks.append("## 实时会议对话（最近发言，含时间戳）\n" + "\n".join(lines))
 
     # ── 维度 2: 当前会议上下文 / Current meeting context ──
     if data.task_id and data.task_id in tasks:
@@ -451,36 +643,45 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
             meta_lines.append(f"- 错误信息：{task['error']}")
         context_blocks.append("## 当前会议信息\n" + "\n".join(meta_lines))
 
-        # 纪要取定稿口径（用户编辑过则为编辑版），与前端纪要 Tab 一致
+        # 纪要取定稿口径（用户编辑过则为编辑版），与前端纪要 Tab 一致；
+        # @纪要 显式引用时取全量（升级替换采样截断口径）
         summary = task_final_summary(task)
         is_summary_error = "内容过短" in summary or "无法生成有效纪要" in summary
         if summary and not is_summary_error:
-            context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
-        # 随记：用户手写要点，此前只有纪要生成链路能读到，会话侧一直缺失（2026-09-30 复盘）
+            if "@纪要" in mention_tokens:
+                context_blocks.append(
+                    "## 用户显式引用（@纪要）——全量纪要，优先于采样摘要\n"
+                    + _truncate_mention_text(summary, MENTION_DOC_CAP, "纪要")
+                )
+            else:
+                context_blocks.append(f"## 当前会议纪要\n{summary[:2000]}")
+        elif "@纪要" in mention_tokens:
+            context_blocks.append("## 用户显式引用（@纪要）\n当前会议暂无可用纪要。直接如实告知用户，不要编造纪要内容。")
+        # 随记：用户手写要点，此前只有纪要生成链路能读到，会话侧一直缺失（2026-09-30 复盘）；
+        # @随记 显式引用时取全量（升级替换采样截断口径）
         notes = task_notes(task)
         if notes:
-            context_blocks.append(f"## 用户随记（录音期间手写原文，可信度高于转写推断）\n{notes[:2000]}")
-        if task.get("dialogue") and not realtime_entries:
-            all_lines = []
-            idx = 0
-            for item in task["dialogue"]:
-                # BE-R3：同上，归一后空名走中性措辞
-                name = normalize_speaker_name(item.get("speaker_name")) or "未识别发言人"
-                sents = item.get("sentences") or []
-                for s in sents:
-                    text = s.get("text", "").strip()
-                    if text:
-                        ts = _format_time_ms(s.get("begin_time", 0))
-                        prefix = f"[{ts}] " if ts else ""
-                        all_lines.append((s.get("begin_time", 0), f"{prefix}{name}：{text}", name, idx))
-                        idx += 1
-                if not sents:
-                    text = item.get("text", "").strip()
-                    if text:
-                        all_lines.append((0, f"{name}：{text}", name, idx))
-                        idx += 1
+            if "@随记" in mention_tokens:
+                context_blocks.append(
+                    "## 用户显式引用（@随记）——全量随记，优先于采样摘要\n"
+                    + _truncate_mention_text(notes, MENTION_DOC_CAP, "随记")
+                )
+            else:
+                context_blocks.append(f"## 用户随记（录音期间手写原文，可信度高于转写推断）\n{notes[:2000]}")
+        elif "@随记" in mention_tokens:
+            context_blocks.append("## 用户显式引用（@随记）\n当前会议暂无用户随记。直接如实告知用户，不要编造随记内容。")
+        if "@原文" in mention_tokens and not full_transcript_emitted:
+            # 显式引用 @原文（会后或实时流为空回退）：落盘对话全量入场，替代智能采样块；无落盘对话给说明块
+            all_lines = _flatten_dialogue_entries(task)
             if all_lines:
-                all_lines.sort(key=lambda x: x[0])
+                dialogue_text = _truncate_mention_text(
+                    "\n".join(line for _, line, _spk, _li in all_lines), MENTION_TRANSCRIPT_CAP, "逐字稿原文")
+                context_blocks.append(f"## 用户显式引用（@原文）——全量对话时间轴，优先于采样摘要\n{dialogue_text}")
+            else:
+                context_blocks.append("## 用户显式引用（@原文）\n当前会议暂无逐字稿原文。直接如实告知用户，不要编造原文内容。")
+        elif task.get("dialogue") and not realtime_entries:
+            all_lines = _flatten_dialogue_entries(task)
+            if all_lines:
                 seen_speakers = set()
                 first_per_speaker = []
                 for ts_ms, line, spk, li in all_lines:
@@ -617,9 +818,8 @@ async def chat(data: ChatRequest):
     if is_qa_mode:
         system_prompt = CHAT_QA_SYSTEM_PROMPT
     else:
-        # Agent 角色工作区：优先从 .md 文件加载，回退到硬编码常量 / Agent workspace: prefer .md files, fallback to hardcoded constant
-        role = resolve_agent_role(data.role)
-        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
+        # Agent 角色工作区：AGENT.md + 洞察板职责补充，缺失时回退硬编码常量 / Agent workspace role files, fallback to hardcoded constant
+        system_prompt = _agent_system_prompt(data.role)
     context_blocks = []
     action_result: dict | None = None
     chat_model = data.model or _chat_model_default()
@@ -765,8 +965,7 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
     if is_qa_mode:
         system_prompt = CHAT_QA_SYSTEM_PROMPT
     else:
-        role = resolve_agent_role(data.role)
-        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
+        system_prompt = _agent_system_prompt(data.role)
     context_blocks: list[str] = []
     chat_model = data.model or _chat_model_default()
 
@@ -1003,6 +1202,10 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     speaker_map = build_speaker_name_map(data.task_id) if data.task_id else {}
     role = resolve_agent_role(data.role)
     role_prompt = role["agent_md"] if role else ""
+    # 洞察板职责补充一并写入工作区 AGENTS.md，与内置智能体会话口径一致（无该文件时自然跳过）
+    role_insight_prompt = (role or {}).get("extra_files", {}).get("insights.md", "")
+    if role_prompt and role_insight_prompt:
+        role_prompt += "\n\n---\n\n" + role_insight_prompt
     page_ctx = build_page_context(data.current_page) if data.current_page else ""
 
     # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档优先级链落档
@@ -1015,6 +1218,8 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         history=data.history,
         # 会中透传实时句（前端快照）：dialogue 落盘前由 export_context 用它渲染 transcript.md
         realtime_entries=data.realtime_transcripts,
+        # @附件：原文件复制进工作区，由 CLI 自行解析
+        attachments=data.attachments,
         # 模式即权限（§5.2）：按本轮实际落档在 AGENTS.md 注入权限段（置于角色段之后，覆写旧禁令）
         auth_tier=resolved_tier))
 
@@ -1047,7 +1252,7 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         async for evt in run_cli_agent(
             stream_id=stream_id, engine_id=cfg["engine_id"], cli_path=probe_result["path"],
             workspace=export["workspace"], add_dirs=export["add_dirs"], brief=export["brief"],
-            auth_tier=resolved_tier, model=cfg.get("model"), session_id=session_id,
+            auth_tier=resolved_tier, model=data.agent_model or cfg.get("model"), session_id=session_id,
             resume=bool(data.resume_session and session_id),
             mcp_config=mcp_config_path, allowed_tools=allowed_tools,
             on_write_success=lambda tool_name: written_tools.append(
@@ -1081,6 +1286,51 @@ async def chat_cancel(data: dict):
     return {"ok": True, "cancelled": hit, "stream_id": stream_id}
 
 
+# ============================================================
+# @附件 上传 / 读取端点 / Attachment upload & fetch endpoints
+# ============================================================
+
+@router.post("/api/chat/attachments")
+async def upload_chat_attachments(files: list[UploadFile] = File(...)):
+    """上传 AI 会话附件（本地文件与图片），返回元数据列表。"""
+    if not files:
+        raise HTTPException(400, _("No files uploaded"))
+    if len(files) > chat_attachment_store.ATTACHMENT_MAX_COUNT:
+        raise HTTPException(400, _("Too many attachments (max {max})").format(
+            max=chat_attachment_store.ATTACHMENT_MAX_COUNT))
+
+    saved: list[dict] = []
+    try:
+        for f in files:
+            data = await f.read()
+            saved.append(chat_attachment_store.save_attachment(
+                f.filename or "untitled", f.content_type, data))
+    except chat_attachment_store.AttachmentError as e:
+        for meta in saved:  # 部分失败：回滚已存附件
+            chat_attachment_store.delete_attachment(meta["id"])
+        status = 413 if str(e) == "file too large" else 400
+        if status == 413:
+            raise HTTPException(status, _("File too large (max {max} MB)").format(max=10))
+        raise HTTPException(status, _("Invalid file"))
+    return {"attachments": saved}
+
+
+@router.get("/api/chat/attachments/{attach_id}")
+async def fetch_chat_attachment(attach_id: str, download: int = 0):
+    """读取附件（默认内联预览，download=1 强制下载）。"""
+    try:
+        meta, data = chat_attachment_store.load_bytes(attach_id)
+    except chat_attachment_store.AttachmentError:
+        raise HTTPException(404, _("Attachment not found"))
+    disposition = "attachment" if download else "inline"
+    from urllib.parse import quote
+    return StreamingResponse(
+        iter([data]),
+        media_type=meta["content_type"],
+        headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(meta['filename'])}"},
+    )
+
+
 @router.post("/api/chat/stream")
 async def chat_stream(data: ChatRequest, request: Request):
     """AI 对话流式端点（SSE）。 / AI chat streaming endpoint (SSE).
@@ -1104,11 +1354,24 @@ async def chat_stream(data: ChatRequest, request: Request):
     if is_qa_mode:
         system_prompt = CHAT_QA_SYSTEM_PROMPT
     else:
-        role = resolve_agent_role(data.role)
-        system_prompt = role["agent_md"] if role else CHAT_SYSTEM_PROMPT
+        system_prompt = _agent_system_prompt(data.role)
 
     # 使用共享函数构建上下文并注入系统提示词 / Use shared function to build context and inject into system prompt
     context_blocks, source_files = _build_chat_context_blocks(data, is_qa_mode)
+
+    # @附件：校验引用存在性/数量，展开内容 parts + 系统说明块（仅当前轮，不进 history）
+    attachment_refs = data.attachments or []
+    attachment_parts: list[dict] = []
+    if attachment_refs:
+        if len(attachment_refs) > chat_attachment_store.ATTACHMENT_MAX_COUNT:
+            raise HTTPException(400, _("Too many attachments (max {max})").format(
+                max=chat_attachment_store.ATTACHMENT_MAX_COUNT))
+        try:
+            attachment_parts, attachment_notice = _build_attachment_parts(attachment_refs)
+        except chat_attachment_store.AttachmentError:
+            raise HTTPException(400, _("Attachment not found or unavailable"))
+        context_blocks.append(attachment_notice)
+
     if context_blocks:
         system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
 
@@ -1146,7 +1409,11 @@ async def chat_stream(data: ChatRequest, request: Request):
                 content = msg.get("content", "")
                 if content:
                     messages.append({"role": role, "content": content})
-            messages.append({"role": "user", "content": user_message})
+            if attachment_parts:
+                messages.append({"role": "user", "content": [
+                    {"type": "text", "text": user_message}, *attachment_parts]})
+            else:
+                messages.append({"role": "user", "content": user_message})
 
             stage_evt = {"type": "stage", "stage": "generating", "label": "生成回复..."}
             yield f"data: {json.dumps(stage_evt, ensure_ascii=False)}\n\n"
@@ -1265,6 +1532,57 @@ async def inline_edit(data: InlineEditRequest):
     except Exception as e:
         logger.error("行间编辑失败: %s", e)
         raise HTTPException(500, _("Inline edit failed: {err}").format(err=e) + " " + _executor_tag(model))
+
+
+# ============================================================
+# 会话自动命名端点 / Session Auto-Title Endpoint
+# ============================================================
+
+def _sanitize_chat_title(raw: str) -> str:
+    """清洗 LLM 返回的会话标题：取首行、去引号包裹、去结尾标点、硬限长。
+
+    模型不守规矩时（多行/带引号/带句号）兜底，保证标题可直接落 UI。
+    """
+    if not raw:
+        return ""
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    line = stripped.splitlines()[0]
+    # 引号包裹与结尾标点可能嵌套（如 "标题"。），循环剥离直至稳定
+    prev = None
+    while prev != line:
+        prev = line
+        line = line.strip("\"'「」『』《》“”‘’ ")
+        line = line.rstrip("。！？!?.,，、；;：:…—~ ")
+    return line[:20]
+
+
+@router.post("/api/chat/title")
+async def chat_title(data: ChatTitleRequest):
+    """会话自动命名（首轮完成后前端后台调用）。
+
+    失败不回 5xx：命名是锦上添花，异常时回 ok=false 让前端静默保留默认名，
+    避免后台任务把「AI 不可用」的错误横幅糊到用户脸上。
+    """
+    first = data.first_message.strip()
+    if not first:
+        raise HTTPException(400, _("Message cannot be empty"))
+    model = data.model or _chat_model_default()
+    user_content = f"用户提问：{first[:500]}"
+    reply_snippet = (data.reply or "").strip()[:500]
+    if reply_snippet:
+        user_content += f"\n\nAI 回复：{reply_snippet}"
+    messages = [
+        {"role": "system", "content": TITLE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
+    ]
+    try:
+        raw = await async_chat_completion(messages, model=model, max_tokens=40, temperature=0.3)
+        return {"ok": True, "title": _sanitize_chat_title(raw)}
+    except Exception as e:  # noqa: BLE001 - 命名失败静默降级，见端点 docstring
+        logger.warning("[会话命名] 生成失败: %s", e)
+        return {"ok": False, "title": ""}
 
 
 # ============================================================

@@ -125,13 +125,10 @@
       <!-- 右栏：洞察台（宽屏并排，窄屏由 CSS tab-insights 切换） / Right: Insight Deck (side-by-side on wide, CSS tab on narrow) -->
       <RecInsightsPanel
         :messages="insights.insightMessages.value"
-        :enabled="insights.insightsEnabled.value"
-        :unread-count="insights.unreadCount.value"
         :acted-actions="actedActions"
         :expanded="insightsExpanded"
         :task-id="taskId"
         :one-page-factor="task?.one_page?.insights"
-        @toggle-enabled="insights.toggleEnabled()"
         @toggle-message="insights.toggleExpanded($event)"
         @action="onInsightAction"
         @toggle-expand="insightsExpanded = !insightsExpanded"
@@ -527,13 +524,6 @@ onMounted(async () => {
   document.addEventListener('keydown', onKeydown)
   // 绑定当前会议，加载已有洞察消息 / Bind current task, load existing insights
   await insights.setCurrentTask(taskId.value)
-  // 处理从侧边栏跳转过来时自动切换到洞察 tab / Auto-switch to insights tab when navigating from sidebar
-  if (route.query.tab === 'insights') {
-    recTab.value = 'insights'
-    insights.markAllRead()
-    const firstUnread = insights.getFirstUnread()
-    if (firstUnread && !firstUnread.expanded) insights.toggleExpanded(firstUnread.id)
-  }
 })
 
 onUnmounted(() => {

@@ -363,6 +363,73 @@ def _chat_completion_raw(
 
 
 # ============================================================
+# 同步完整版（含 usage 元数据，供后台线程的留痕场景，如书面版 sidecar）
+# ============================================================
+
+
+def chat_completion_full(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+) -> LlmResult:
+    """同步调用 LLM 并返回完整结果（含 usage/finish_reason，供后台线程使用）。
+
+    云端代理路径不回传 token 用量（与 async_chat_completion_full 同口径，usage 记 0）。
+    必须在后台线程中调用；从事件循环线程调用时委托线程池（见 chat_completion 守卫）。
+    """
+    def _run() -> LlmResult:
+        if _should_use_cloud():
+            content = _try_cloud_llm(messages, model, temperature, max_tokens)
+            return LlmResult(
+                content=content,
+                model=model or "qwen-plus",
+                usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                finish_reason="stop",
+                id="cloud-proxy",
+            )
+        base_url = _get_base_url()
+        headers = _get_headers()
+        body = _build_request_body(messages, model, temperature, max_tokens)
+        logger.info(f"调用 LLM（同步-完整）: url={base_url}, model={body['model']}, messages={len(messages)}")
+        start = time.perf_counter()
+        try:
+            resp = requests.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json=body,
+                timeout=120,
+            )
+            resp.raise_for_status()
+            result = _extract_full_result(resp.json())
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"[PERF] LLM 同步调用(完整): {elapsed:.3f}s, {len(result.content)} 字符, "
+                f"tokens={result.usage.get('total_tokens', 0)}"
+            )
+            return result
+        except requests.exceptions.Timeout:
+            raise RuntimeError("LLM 调用超时")
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else "?"
+            raise RuntimeError(f"LLM 调用失败: HTTP {status}")
+        except Exception as e:
+            raise RuntimeError(f"LLM 调用失败: {e}")
+
+    _in_loop_thread = False
+    try:
+        asyncio.get_running_loop()
+        _in_loop_thread = threading.current_thread() is threading.main_thread()
+    except RuntimeError:
+        pass
+    if _in_loop_thread:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(_run).result()
+    return _run()
+
+
+# ============================================================
 # 异步版（供 FastAPI async 端点使用，不阻塞事件循环）
 # ============================================================
 

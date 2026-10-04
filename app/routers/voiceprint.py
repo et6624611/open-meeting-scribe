@@ -7,6 +7,7 @@ app/routers/voiceprint.py — 声纹管理 API / Voiceprint management API
   POST   /api/voiceprint/register          — 从音频片段注册声纹 / Register voiceprint from audio clip
   DELETE /api/voiceprint/{uuid}            — 删除声纹 / Delete voiceprint
   POST   /api/tasks/{task_id}/voiceprint-match — 自动声纹匹配 / Auto voiceprint matching
+  POST   /api/voiceprint/tasks/{task_id}/dismiss — 忽略声纹建议 / Dismiss voiceprint suggestion
 """
 
 import logging
@@ -218,9 +219,11 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
     if not speaker:
         raise HTTPException(404, _("Speaker not found"))
 
-    embeddings = []
+    # v2.1：每场会议切多个 chunk 样本（带会议标签），整体替换写入。
+    # 跨会议多 chunk 既覆盖信道变异，又让个人阈值有足够样本可标定。
+    samples: list[tuple] = []
     total_sec = 0.0
-    source_meetings = []
+    source_meetings: list[str] = []
     for task_id, task in tasks.items():
         if task.get("status") != "completed":
             continue
@@ -240,43 +243,45 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
         if not normalized_path:
             continue
         dialogue = task.get("dialogue") or []
+        got_any_in_task = False
         for sid in sids:
-            embedding, used_sec = voiceprint.extract_speaker_embedding(
+            group, _total = voiceprint.extract_speaker_embedding_group(
                 normalized_path, dialogue, sid
             )
-            if embedding is not None:
-                embeddings.append(embedding)
+            for embedding, used_sec in group:
+                samples.append((embedding, used_sec, task_id))
                 total_sec += used_sec
-                source_meetings.append(task_id)
+                got_any_in_task = True
+        if got_any_in_task:
+            source_meetings.append(task_id)
 
-    if not embeddings:
+    if not samples:
         raise HTTPException(
             400,
             _("This speaker has insufficient speech audio in all linked meetings (at least {min} sec per meeting)").format(min=voiceprint.MIN_REGISTER_SEC),
         )
 
-    merged = voiceprint.merge_embeddings(embeddings)
-    record = voiceprint.register_voiceprint(
+    record = voiceprint.register_voiceprint_samples(
         speaker_uuid,
-        merged,
-        source_meeting_id=source_meetings[-1],
+        samples,
+        meeting_id=source_meetings[-1],
         accumulate=False,
-        sample_count=len(embeddings),
     )
 
     logger.info(
         f"[声纹] 跨会议重建: speaker={speaker_uuid[:8]}..., "
-        f"{len(embeddings)} 场会议, 共 {total_sec:.1f}s"
+        f"{len(source_meetings)} 场会议, {len(samples)} 个样本, 共 {total_sec:.1f}s"
     )
     return {
         "speaker_uuid": speaker_uuid,
         "speaker_name": speaker.name,
-        "meeting_count": len(embeddings),
+        "meeting_count": len(source_meetings),
         "source_meetings": source_meetings,
-        "duration_sec": round(total_sec, 1),
+        # 以裁剪后实际入库样本时长为准（端点扫描的 total_sec 可能超出全局上限）
+        "duration_sec": round(record.total_sample_duration, 1),
         "sample_count": record.sample_count,
         "updated_at": record.updated_at,
-        "message": _("Voiceprint rebuilt from {count} meeting(s): {name}").format(count=len(embeddings), name=speaker.name),
+        "message": _("Voiceprint rebuilt from {count} meeting(s): {name}").format(count=len(source_meetings), name=speaker.name),
     }
 
 
@@ -307,19 +312,29 @@ def auto_match_task_voiceprint(task_id: str, req: Optional[VoiceprintMatchTask] 
 
     threshold = req.threshold if req else None
 
+    # 锚点排除：本场已确认绑定的注册人不再参与声纹建议（一人不可占两位）/
+    # Anchor exclusion: speakers already bound in this meeting are not candidates.
+    uuid_mapping = task.get("speaker_uuid_mapping") or {}
+    locked_uuids = {str(u) for u in uuid_mapping.values() if u}
+    # 已绑定的 ASR 说话人本身也不再识别（不给已确认的人产出反向建议）
+    bound_sids = {int(k) for k in uuid_mapping.keys() if str(k).lstrip("-").isdigit()}
+
     # 执行自动匹配 / Execute auto matching
     results = voiceprint.auto_identify_speakers(
         audio_path=normalized_path,
         dialogue=dialogue,
         threshold=threshold,
+        exclude_uuids=locked_uuids or None,
+        bound_sids=bound_sids or None,
     )
 
     # 构建自动映射 / Build auto mapping
     auto_mapping = voiceprint.build_auto_mapping(results)
 
-    # 将匹配结果写入任务 / Write match results to task
+    # 将匹配结果写入任务（重跑视为重新评估，清空历史忽略记录） / Write results (rerun = fresh evaluation, reset dismissals)
     task["voiceprint_match"] = [r.to_dict() for r in results]
     task["voiceprint_auto_mapping"] = {str(k): v for k, v in auto_mapping.items()}
+    task["voiceprint_dismissed"] = []
     save_task_to_disk(task_id)
 
     matched_count = sum(1 for r in results if r.status == "matched")
@@ -331,3 +346,29 @@ def auto_match_task_voiceprint(task_id: str, req: Optional[VoiceprintMatchTask] 
         "auto_mapping": {str(k): v for k, v in auto_mapping.items()},
         "summary": f"{matched_count}/{total} 位说话人自动识别成功",
     }
+
+
+class VoiceprintDismissRequest(BaseModel):
+    """忽略声纹建议请求 / Dismiss voiceprint suggestion request."""
+    speaker_id: int
+
+
+@router.post("/tasks/{task_id}/dismiss")
+def dismiss_voiceprint_suggestion(task_id: str, req: VoiceprintDismissRequest):
+    """
+    忽略指定说话人的声纹建议（本场会议不再显示） / Dismiss voiceprint suggestion for a speaker.
+
+    仅影响建议展示，不改动任何绑定 / Only affects suggestion display, never touches bindings.
+    重跑识别时自动清空 / Reset automatically on rerun.
+    """
+    from app.store import save_task_to_disk, tasks
+
+    if task_id not in tasks:
+        raise HTTPException(404, _("Task not found"))
+    task = tasks[task_id]
+    dismissed = task.get("voiceprint_dismissed") or []
+    if req.speaker_id not in dismissed:
+        dismissed = sorted({*dismissed, req.speaker_id})
+        task["voiceprint_dismissed"] = dismissed
+        save_task_to_disk(task_id)
+    return {"task_id": task_id, "dismissed": dismissed}

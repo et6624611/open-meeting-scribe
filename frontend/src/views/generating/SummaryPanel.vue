@@ -246,6 +246,12 @@ watch(() => props.summaryMd, (val) => {
 // 面板可见时自适应高度 / Auto-grow when panel becomes visible
 watch(() => props.visible, (v) => { if (v) nextTick(autoGrow) })
 
+// textarea 重挂载时重新自适应：loading/预览态切换会卸载正文框（v-if/v-else），
+// 挂载后无任何时机触发 autoGrow，高度停在默认值出现滚动条（重新生成纪要后必现）
+// Re-run autoGrow when the textarea remounts: loading/preview toggles unmount it via
+// v-if/v-else, and no hook fires after remount — height stays at the CSS default.
+watch(textareaEl, (el) => { if (el) nextTick(autoGrow) })
+
 // ── 选区追踪（行间编辑用） / Selection tracking (for inline edit) ──
 function onSelectionChange() {
   const el = textareaEl.value

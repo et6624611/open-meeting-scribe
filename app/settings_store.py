@@ -303,6 +303,8 @@ def get_feature_flags() -> dict:
         "realtime_summary_interval": ff.get("realtime_summary_interval", 60),
         "update_check": ff.get("update_check", True),
         "voiceprint_auto_match": ff.get("voiceprint_auto_match", False),
+        "voiceprint_v2": ff.get("voiceprint_v2", True),
+        "chrome_autohide": ff.get("chrome_autohide", True),
     }
 
 
@@ -408,8 +410,9 @@ def get_engine_config() -> dict:
 
     R4/R5（PRD-LOCAL-ENGINE §9）：engine.mode 与 engine.local.{model_dir, model_tier}。
     R9/D-I3（REQ-LOCAL-REALTIME-INCR §6）：engine.local.realtime_segments 分段增量
-    上屏参数——段长不拍固定数值，全部可配置；默认值为临时口径（enabled=false，
-    待真机 20s/60s 各一场会带回延迟分布后由产品定默认值并开启）。
+    上屏参数——段长不拍固定数值，全部可配置。WP-I 验收后默认 enabled=true
+    （本地模式即逐句上屏，无用户侧开关；仅保留 settings.json 显式置 false 的
+    逃生通道，回到 WP-H 录音后批转写降级口径）。
 
     返回格式 / Returns:
       {
@@ -417,8 +420,8 @@ def get_engine_config() -> dict:
         "local": {
           "model_dir": "data/models/",   # 模型权重存储目录 / Model weights directory
           "model_tier": "auto",          # auto | conservative | standard（R4 小模型提示词档）
-          "realtime_segments": {         # R9 分段增量上屏（D-I3：可配置，默认值为临时口径）
-            "enabled": False,            # 默认关闭：未开启时本地模式保持 WP-H 降级状态声明
+          "realtime_segments": {         # R9 分段增量上屏（WP-I 验收后默认开启）
+            "enabled": True,             # 本地模式默认逐句上屏；显式置 false 回到录音后批转写
             "min_segment_s": 5.0,        # 段最短时长（低于此值不闭合，等待更多音频）
             "min_silence_s": 0.8,        # 判定段边界的静音时长（能量 VAD）
             "max_segment_s": 30.0        # 段最长时长（到达即强制闭合）
@@ -437,11 +440,37 @@ def get_engine_config() -> dict:
             "model_dir": local.get("model_dir", DEFAULT_MODEL_DIR),
             "model_tier": local.get("model_tier", "auto"),
             "realtime_segments": {
-                "enabled": bool(segments.get("enabled", False)),
+                "enabled": bool(segments.get("enabled", True)),
                 "min_segment_s": float(segments.get("min_segment_s", 5.0)),
                 "min_silence_s": float(segments.get("min_silence_s", 0.8)),
                 "max_segment_s": float(segments.get("max_segment_s", 30.0)),
             },
+        },
+    }
+
+
+def get_transcript_config() -> dict:
+    """
+    获取转写文本分层配置（从 settings.json） / Get transcript layering config.
+
+    详见 / See docs/PLAN-TRANSCRIPT-LAYERING.md。
+
+    返回格式 / Returns:
+      {
+        "cleanup": {"enabled": True},        # 口语清理（本地规则），默认开；显式 false 为逃生通道
+        "formal":  {"auto_generate": False}  # 会后自动生成 AI 书面版，默认关
+      }
+    """
+    settings = load_settings()
+    tr = settings.get("transcript", {}) or {}
+    cleanup = tr.get("cleanup", {}) or {}
+    formal = tr.get("formal", {}) or {}
+    return {
+        "cleanup": {
+            "enabled": bool(cleanup.get("enabled", True)),
+        },
+        "formal": {
+            "auto_generate": bool(formal.get("auto_generate", False)),
         },
     }
 
@@ -591,6 +620,34 @@ def get_expert_mode() -> bool:
         em = settings.get("expert_mode")
         return bool(em) if isinstance(em, bool) else derive_expert_mode(settings)
     return derive_expert_mode(settings)
+
+
+# ============================================================
+# 自动改用同意开关（逐能力，默认关闭）/ Auto-fallback consent (per capability, default off)
+# ============================================================
+# 用户显式选择一个来源后，该来源不可用时是否允许自动改用其他已配置来源。
+# 默认 False：不替用户做主（尤其不静默切到用户的付费 Key）；
+# 关闭时 routing 保持原来源并明示不可用原因，由用户手动切换或开启开关。
+
+
+def get_auto_fallback(settings: dict | None = None) -> dict:
+    """读取逐能力自动改用同意：{llm: bool, asr: bool}，缺省均为 False（纯读不写盘）。"""
+    s = settings if settings is not None else load_settings()
+    cur = s.get("auto_fallback", {}) or {}
+    if not isinstance(cur, dict):
+        cur = {}
+    return {"llm": bool(cur.get("llm", False)), "asr": bool(cur.get("asr", False))}
+
+
+def apply_auto_fallback(settings: dict, vals: dict) -> None:
+    """内存中合并自动改用开关（供 /api/settings 先合后落）。非布尔值忽略。"""
+    if not isinstance(vals, dict):
+        raise ValueError("auto_fallback 必须是 dict")
+    cur = dict(settings.get("auto_fallback", {}) or {})
+    for cap in ("llm", "asr"):
+        if cap in vals and isinstance(vals[cap], bool):
+            cur[cap] = vals[cap]
+    settings["auto_fallback"] = {"llm": bool(cur.get("llm", False)), "asr": bool(cur.get("asr", False))}
 
 
 def apply_capability_source(settings: dict, sources: dict) -> None:

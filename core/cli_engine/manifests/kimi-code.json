@@ -1,0 +1,69 @@
+{
+  "engine_id": "kimi-code",
+  "display_name": "Kimi Code CLI",
+  "name_key": "cliengine_engine_kimi_code",
+  "binary": "kimi",
+  "install_url": "https://moonshotai.github.io/kimi-code/zh/guides/getting-started.html",
+  "min_version": "1.0.0",
+  "probe": {
+    "path_cmd": ["which", "kimi"],
+    "version_cmd": ["kimi", "--version"],
+    "login_cmd": null,
+    "login_probe_note": "kimi 登录走交互式 /login（OAuth 验证码或 API Key），无文档化的无头登录态命令；跳过登录段，认证失败时 kimi 以退出码 1 终结、由运行期 EOF 兜底"
+  },
+  "capabilities": {
+    "stream_json": true,
+    "session_resume": true,
+    "mcp_injection": false,
+    "pre_authorization": false,
+    "add_dir": true,
+    "system_prompt_append": false
+  },
+  "capabilities_note": "kimi 非交互模式（-p/--prompt）恒为 auto 审批且与 --yolo/--auto/--plan 互斥（官方冲突规则），授权档位无法约束其内置写/Bash 工具——选择此引擎即接受全自动执行；mcp 虽有 --mcp-config-file，但 stream-json 的 Message 形状无法映射工具事件（看不见写入、完成护栏恒未改写），v1 不挂桥",
+  "argv": {
+    "base": ["--output-format", "stream-json"],
+    "workspace_flag": null,
+    "add_dir_flag": "--add-dir",
+    "session_new_flag": "--session",
+    "session_resume_flag": "--session",
+    "no_persist_flag": null,
+    "permission_flag": null,
+    "disallowed_flag": null,
+    "allowed_tools_flag": null,
+    "strict_mcp_flag": null,
+    "mcp_config_flag": "--mcp-config-file",
+    "model_flag": "-m",
+    "system_prompt_flag": null,
+    "prompt_separator": "-p",
+    "prompt_separator_note": "kimi 的提示词是 -p/--prompt 的选项值而非位置参数，借 prompt_separator 槽位把 -p 注到提示词前"
+  },
+  "auth_tiers": {
+    "readonly": {},
+    "workspace_write": {},
+    "full_task": {}
+  },
+  "auth_tiers_note": "三档均无法编译为 kimi 标志（打印模式恒 auto），保留空档只为让档位选择不报错；语义上不生效",
+  "event_schema": {
+    "schema_note": "kimi stream-json 为 OpenAI 风格 Message JSONL（官方文档已取证）：assistant.content=正文、assistant.tool_calls=工具调用（v1 不映射）、role=tool=工具结果（text_when 排除）；无 done/error 事件，终结靠 EOF 合成 done，失败看退出码（0/1/75）",
+    "type_path": "role",
+    "text_path": "content",
+    "text_when": { "path": "role", "equals": "assistant" },
+    "done_types": [],
+    "error_types": []
+  },
+  "error_codes": {},
+  "ignore_subtypes": [],
+  "noise_types": [],
+  "tool_labels": {
+    "Shell": { "zh": "执行命令", "en": "Run command", "icon": "terminal" },
+    "Read": { "zh": "读取文件", "en": "Read file", "icon": "file-text" },
+    "Write": { "zh": "写入文件", "en": "Write file", "icon": "pen-line" },
+    "Edit": { "zh": "编辑文件", "en": "Edit file", "icon": "pencil" },
+    "_mcp": { "zh": "调用集成工具", "en": "Call integration tool", "icon": "plug" },
+    "_unknown": { "zh": "执行工具", "en": "Run tool", "icon": "wrench" }
+  },
+  "timeout": {
+    "first_event_seconds": 60,
+    "total_seconds": 300
+  }
+}

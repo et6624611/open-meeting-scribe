@@ -1,0 +1,73 @@
+{
+  "engine_id": "trae-cli",
+  "display_name": "TRAE CLI",
+  "name_key": "cliengine_engine_trae_cli",
+  "binary": "traecli",
+  "install_url": "https://docs.trae.cn/cli/get-started-with-trae-cli",
+  "min_version": "1.0.0",
+  "probe": {
+    "path_cmd": ["which", "traecli"],
+    "version_cmd": ["traecli", "--version"],
+    "login_cmd": null,
+    "login_probe_note": "traecli 仅提供交互式 /login（企业/个人账号授权页），无文档化的无头登录态命令；跳过登录段，以路径+版本判定可用，登录缺失由运行期错误浮现"
+  },
+  "capabilities": {
+    "stream_json": false,
+    "session_resume": true,
+    "mcp_injection": false,
+    "pre_authorization": false,
+    "add_dir": true,
+    "system_prompt_append": false
+  },
+  "capabilities_note": "官方文档未列 --permission-mode/--append-system-prompt/--mcp-config；--json 为结束时整包 JSON 而非 NDJSON 流（无公开事件样例，event_schema 未取证）；打印模式权限只有 --yolo 全放或默认（可能阻塞询问，首帧超时兜底），档位仅靠 --disallowed-tools 禁用面表达",
+  "argv": {
+    "base": ["-p", "--json"],
+    "workspace_flag": null,
+    "add_dir_flag": "--add-dir",
+    "session_new_flag": "--session-id",
+    "session_resume_flag": "--resume",
+    "no_persist_flag": null,
+    "permission_flag": null,
+    "disallowed_flag": "--disallowed-tools",
+    "allowed_tools_flag": "--allowed-tool",
+    "strict_mcp_flag": null,
+    "mcp_config_flag": null,
+    "model_flag": null,
+    "system_prompt_flag": null,
+    "prompt_separator": null
+  },
+  "auth_tiers": {
+    "readonly": {
+      "disallowed_tools": ["Bash", "Edit", "MultiEdit", "Write", "Replace"]
+    },
+    "workspace_write": {
+      "disallowed_tools": ["Bash"]
+    },
+    "full_task": {}
+  },
+  "auth_tiers_note": "traecli 无权限模式标志：readonly/工作区档=禁用写与命令工具（工具名为官方文档示例口径）；full_task 不加约束，若该版本打印模式对未预授权工具阻塞询问，将由首帧超时兜底报错",
+  "event_schema": {
+    "schema_note": "--json 整包字段未经真机取证（官方文档仅描述含 System Prompt/工具调用/执行过程/最终结果）；text_path 不中时退化为 EOF 合成 done、回复为空，需真机校准",
+    "type_path": "type",
+    "text_path": "result",
+    "done_types": [],
+    "error_types": []
+  },
+  "error_codes": {},
+  "ignore_subtypes": [],
+  "noise_types": [],
+  "tool_labels": {
+    "Read": { "zh": "读取文件", "en": "Read file", "icon": "file-text" },
+    "Write": { "zh": "写入文件", "en": "Write file", "icon": "pen-line" },
+    "Edit": { "zh": "编辑文件", "en": "Edit file", "icon": "pencil" },
+    "MultiEdit": { "zh": "批量编辑", "en": "Multi-edit", "icon": "pencil" },
+    "Replace": { "zh": "替换内容", "en": "Replace content", "icon": "pencil" },
+    "Bash": { "zh": "执行命令", "en": "Run command", "icon": "terminal" },
+    "_mcp": { "zh": "调用集成工具", "en": "Call integration tool", "icon": "plug" },
+    "_unknown": { "zh": "执行工具", "en": "Run tool", "icon": "wrench" }
+  },
+  "timeout": {
+    "first_event_seconds": 60,
+    "total_seconds": 300
+  }
+}

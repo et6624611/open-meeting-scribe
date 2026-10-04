@@ -165,6 +165,8 @@ export interface ChatEngineProbe {
   path?: string | null
   version?: string | null
   logged_in?: boolean
+  /** 登录段被显式跳过（manifest login_cmd=null）：可用性仅代表路径+版本，登录缺失由运行期浮现 */
+  login_skipped?: boolean
   /** 失败段定位（EXPERT-MODE 三段探针回显）：null=全通过 */
   failed_stage?: 'path' | 'version' | 'login' | null
 }

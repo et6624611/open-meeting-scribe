@@ -10,42 +10,66 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
     <div class="ai-collapsed-strip">
-      <div class="ai-collapsed-icon" :class="{ 'is-insight': insights.unreadCount.value > 0 }" @click="layout.toggleAi()" style="position:relative">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <span v-if="insights.unreadCount.value > 0" class="breathing-dot"></span>
+      <div class="ai-collapsed-icon" @click="layout.toggleAi()" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
       </div>
       <span class="ai-collapsed-label">{{ t('ai-panel.collapsed_label') }}</span>
     </div>
+    <!-- 极简顶部：左侧位置标题，右侧三图标（上下文 / 历史任务 / 新建）。
+         对话与上下文不再用 Tab 行：点脑形图标整区切换，图标在上下文态变形为返回箭头 -->
     <div class="ai-panel-header">
       <div class="ai-panel-header-left">
-        <div class="ai-header-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
-        <span class="ai-header-title">{{ t('ai-panel.title') }}</span>
+        <div class="ai-header-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg></div>
+        <span class="ai-header-title" :title="contextLabel">{{ contextLabel }}</span>
       </div>
-      <!-- 头部右侧不再放操作：头部在 conv-layout 下不可见，清空/新建已收进会话弹层顶行 -->
-    </div>
-    <div class="ai-panel-context"><span>{{ contextLabel }}</span></div>
-    <!-- Tab 栏 / Tab bar（会话入口常驻此行右端：面板头部在 conv-layout 下被隐藏，Tab 行才是可见顶部） -->
-    <div class="ai-panel-tabs">
-      <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'chat' }" @click="aiTab = 'chat'">{{ t('ai-panel.tab_chat') }}</button>
-      <button class="ai-panel-tab" :class="{ 'is-active': aiTab === 'context' }" @click="aiTab = 'context'">
-        {{ t('ai-panel.tab_context') }}
-        <span v-if="ctx.contextResourceCount.value > 0" class="tab-badge">{{ ctx.contextResourceCount.value }}</span>
-      </button>
-      <AiSessionPopover
-        v-if="aiTab === 'chat'"
-        :sessions="aiSessions.sessions"
-        :active-session-id="aiSessions.currentBucket.activeSessionId"
-        :renaming-id="renamingId"
-        :rename-input="renameInput"
-        @switch="onSwitchSession"
-        @new-session="onNewSession"
-        @start-rename="startRename"
-        @delete="onDeleteSession"
-        @confirm-rename="confirmRename"
-        @cancel-rename="cancelRename"
-        @clear="onClearCurrent"
-        @update:rename-input="renameInput = $event"
-      />
+      <div class="ai-panel-header-right">
+        <!-- 上下文：对话态脑形，上下文态同槽位变形为返回箭头 -->
+        <button
+          class="ai-header-icon"
+          :class="{ 'is-ctx': aiTab === 'context' }"
+          :title="aiTab === 'context' ? t('ai-panel.back_to_chat') : t('ai-panel.tab_context')"
+          :aria-label="aiTab === 'context' ? t('ai-panel.back_to_chat') : t('ai-panel.tab_context')"
+          :aria-pressed="aiTab === 'context'"
+          @click="toggleContext"
+        >
+          <svg class="ic-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 0 12 18Z"/>
+            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/>
+            <path d="M17.6 6.5a3 3 0 0 0 .4-1.4"/><path d="M6 5.1A3 3 0 0 0 6.4 6.5"/>
+            <path d="M6 18a4 4 0 0 1-2-.5"/><path d="M20 17.5A4 4 0 0 1 18 18"/>
+          </svg>
+          <svg class="ic-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m15 18-6-6 6-6"/>
+          </svg>
+        </button>
+        <AiSessionPopover
+          :sessions="aiSessions.sessions"
+          :active-session-id="aiSessions.currentBucket.activeSessionId"
+          :renaming-id="renamingId"
+          :rename-input="renameInput"
+          @switch="onSwitchSession"
+          @new-session="onNewSession"
+          @start-rename="startRename"
+          @delete="onDeleteSession"
+          @confirm-rename="confirmRename"
+          @cancel-rename="cancelRename"
+          @clear="onClearCurrent"
+          @update:rename-input="renameInput = $event"
+        />
+        <!-- 新建任务：圈内加号 -->
+        <button
+          class="ai-header-icon"
+          :title="t('ai-panel.new_session')"
+          :aria-label="t('ai-panel.new_session')"
+          @click="onNewSession"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9.2"/>
+            <path d="M12 8.5v7"/><path d="M8.5 12h7"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- 对话 Tab / Chat Tab -->
@@ -68,9 +92,18 @@
       :cmd-open="cmds.cmdOpen.value"
       :cmd-index="cmds.cmdIndex.value"
       :filtered-cmds="filteredCmds"
+      :mention-open="mentions.mentionOpen.value"
+      :mention-index="mentions.mentionIndex.value"
+      :filtered-mentions="filteredMentions"
+      :pending-attachments="pendingAttachments"
+      :uploading-attachments="uploadingAttachments"
       :input-text="inputText"
       :format-change="chat.formatChangeDescription"
       :chat-mode="chat.chatMode.value"
+      :session-tier="chat.sessionAuthTier.value"
+      :pending-tier="chat.pendingAuthTier.value"
+      :tier-menu-signal="chat.tierMenuSignal.value"
+      :tier-denial="chat.tierDenial.value"
       :active-engine="chat.activeEngine.value"
       :session-model="chat.sessionModel.value"
       :model-options="chat.modelCandidates.value"
@@ -98,12 +131,19 @@
       @open-notes-preview="chat.openNotesPreview()"
       @clear-quote="quoteRef.clearQuote"
       @run-command="runCommand"
+      @select-mention="selectMention"
+      @remove-attachment="removePendingAttachment"
       @input-key="handleInputKey"
       @input-change="handleInputChange"
       @update:input-text="inputText = $event"
       @update:chat-mode="chat.setChatMode($event)"
+      @update:pending-tier="chat.setPendingAuthTier($event)"
+      @apply-new-session="onTierApplyNewSession"
+      @raise-tier="chat.requestTierMenu()"
+      @raise-tier-preset="chat.requestTierMenu('workspace_write')"
       @update:session-model="chat.setSessionModel($event)"
       @update:agent-model="chat.setAgentModel($event)"
+      @edit-resend="chat.editAndResend"
     />
 
     <!-- 上下文 Tab / Context Tab -->
@@ -144,6 +184,16 @@
       :message="t('ai-panel.delete_task_confirm', { id: cmdActions.pendingDeleteTaskId.value?.slice(0, 8) ?? '' })"
       @confirm="cmdActions.confirmDeleteTask()"
     />
+
+    <!-- @附件：隐藏的系统文件选择器（图片多选 + 常见文档类型） -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      accept="image/*,.pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.log,.xml,.yaml,.yml,.xlsx,.pptx"
+      style="display:none"
+      @change="onFilesPicked"
+    />
   </div>
 </template>
 
@@ -154,11 +204,14 @@ import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
 import { useTaskStore } from '@/stores/task'
 import { useAiChat } from '@/composables/useAiChat'
-import { cleanupAgentWorkspace } from '@/api/chat'
+import { cleanupAgentWorkspace, uploadChatAttachments } from '@/api/chat'
+import type { AttachmentMeta } from '@/api/chat'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useAiSessionsStore } from '@/stores/aiSessions'
 import { useAiCommands } from '@/composables/useAiCommands'
 import type { AiCommand } from '@/composables/useAiCommands'
+import { useAiMentions, MENTION_SOURCES, parseMention, mentionToken } from '@/composables/useAiMentions'
+import type { MentionSource } from '@/composables/useAiMentions'
 import { showToast } from '@/composables/useToast'
 import { beginResize } from '@/composables/useDivider'
 
@@ -172,7 +225,7 @@ import AiSessionPopover from './ai/AiSessionPopover.vue'
 import AiChatPanel from './ai/AiChatPanel.vue'
 import AiContextPanel from './ai/AiContextPanel.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const route = useRoute()
 const layout = useLayoutStore()
 const taskStore = useTaskStore()
@@ -185,6 +238,7 @@ const chat = useAiChat()
 const quoteRef = useQuoteRef()
 const aiSessions = useAiSessionsStore()
 const cmds = useAiCommands()
+const mentions = useAiMentions()
 const insights = useAiInsights()
 
 // 上下文 Tab 数据 / Context Tab data
@@ -196,7 +250,55 @@ const cmdActions = useAiCommandActions(chat, inputRef)
 
 // ── 本地状态 / Local state ──
 const aiTab = ref('chat')
+/** 上下文整区切换：脑形图标即开关，上下文态图标变形为返回箭头 */
+function toggleContext() {
+  aiTab.value = aiTab.value === 'context' ? 'chat' : 'context'
+}
+/** Esc 从上下文视图返回对话（对话视图的 Esc 由指令面板/编辑态自行处理） */
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && aiTab.value === 'context') aiTab.value = 'chat'
+}
 const inputText = ref('')
+// ── @附件：待发送附件（上传成功后挂起，发送随当前轮消费） / Pending @附件 attachments ──
+const pendingAttachments = ref<AttachmentMeta[]>([])
+const uploadingAttachments = ref(false)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+/** 唤起系统文件选择器 */
+function openFilePicker() {
+  // 允许总数不超过 6（含已挂起）
+  if (pendingAttachments.value.length >= 6) {
+    showToast(t('ai-panel.attachment_limit', { max: 6 }), 'warn')
+    return
+  }
+  fileInputRef.value?.click()
+}
+
+/** 文件选定 → 立即上传 → 挂起；失败 toast，不残留 */
+async function onFilesPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+  input.value = ''  // 重置，允许重复选同一文件
+  if (!files.length) return
+  const room = 6 - pendingAttachments.value.length
+  const picked = files.slice(0, room)
+  if (files.length > room) showToast(t('ai-panel.attachment_limit', { max: 6 }), 'warn')
+
+  uploadingAttachments.value = true
+  try {
+    const metas = await uploadChatAttachments(picked)
+    pendingAttachments.value.push(...metas)
+  } catch {
+    showToast(t('ai-panel.attachment_upload_failed'), 'warn')
+  } finally {
+    uploadingAttachments.value = false
+  }
+}
+
+/** 发送前移除单个挂起附件（服务端文件暂不物理删除，属临时数据） */
+function removePendingAttachment(id: string) {
+  pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id)
+}
 const renamingId = ref<string | null>(null)
 const renameInput = ref('')
 const chatPanelRef = ref<InstanceType<typeof AiChatPanel> | null>(null)
@@ -237,7 +339,26 @@ const currentStatus = computed(() => {
 
 const filteredCmds = computed(() => {
   if (!inputText.value.startsWith('/')) return []
-  return cmds.filterCommands(inputText.value.slice(1).toLowerCase(), currentStatus.value)
+  return cmds.filterCommands(inputText.value.slice(1), currentStatus.value)
+})
+
+// ── @ 引用面板：与 / 指令面板同构互斥（parseMention 只认尾部 @query） ──
+const filteredMentions = computed<MentionSource[]>(() => {
+  const m = parseMention(inputText.value)
+  if (!m) return []
+  const task = taskStore.currentTask
+  const recording = task?.status === 'recording' || task?.status === 'paused'
+  // 可用性跟当前任务数据走：原文=已落盘对话或录音中；纪要/随记按上下文口径
+  const availability: Record<string, boolean> = {
+    '@原文': (task?.dialogue?.length ?? 0) > 0 || !!recording,
+    '@纪要': ctx.hasSummary.value,
+    '@随记': ctx.hasNotes.value,
+    // 附件随时可上传，不依赖会议数据
+    '@附件': true,
+  }
+  const q = m.query.toLowerCase()
+  // 过滤按当前语言令牌匹配（英文环境输入 @tra 命中 @transcript）
+  return MENTION_SOURCES.filter(s => availability[s.token] && mentionToken(s, locale.value).slice(1).toLowerCase().includes(q))
 })
 
 const quoteSourceLabel = computed(() => {
@@ -249,7 +370,10 @@ const quoteSourceLabel = computed(() => {
 })
 
 // ── 会话管理 / Session management ──
-function onNewSession() { aiSessions.createNewSession(); nextTick(() => scrollFeed()) }
+// 新建即锁定当前待生效档位（chat.startNewSession 内 createNewSession(pendingTier)）
+function onNewSession() { chat.startNewSession(); nextTick(() => scrollFeed()) }
+/** 档位弹层「开新会话应用」：与头部新建同一路径 */
+function onTierApplyNewSession() { onNewSession() }
 function onSwitchSession(id: string) { chat.followUps.value = []; chat.injectPrompt.value = null; aiSessions.switchTo(id); nextTick(() => scrollFeed()) }
 // 重命名的聚焦/全选由 AiSessionPopover 内部完成
 function startRename(id: string) {
@@ -262,25 +386,53 @@ function cancelRename() { renamingId.value = null }
 function onClearCurrent() { chat.clearConversation(); nextTick(() => scrollFeed()) }
 function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); void cleanupAgentWorkspace(id, taskStore.currentTaskId || undefined); nextTick(() => scrollFeed()) }
 
+/**
+ * 斜杠串统一执行入口：精确解析（含行内参数，如 /speakers add 张三）→ 面板高亮候选 → 未知拦截。
+ * 未知串只 toast 不发送，绝不让 `/foo` 落进模型。返回 true=已消费（含未知），调用方应中止发送。
+ */
+function tryRunSlashCommand(raw: string): boolean {
+  const resolved = cmds.resolveCommand(raw, currentStatus.value)
+  if (resolved) { runCommand(resolved.cmd, resolved.args); return true }
+  const items = filteredCmds.value
+  const picked = items[cmds.cmdIndex.value >= 0 ? cmds.cmdIndex.value : 0]
+  if (picked) { runCommand(picked); return true }
+  showToast(t('ai-panel.cmd_unknown', { cmd: raw.trim().split(/\s/)[0] }), 'warn')
+  return true
+}
+
 // ── 发送消息 / Send message ──
 async function onSend() {
   const text = inputText.value.trim()
-  if ((!text && !quoteRef.quoteRef.value) || chat.isLoading.value) return
-  inputText.value = ''; autoResize()
+  // 斜杠开头一律走指令链路（含未知串拦截），不进入普通消息发送
+  if (text.startsWith('/')) { tryRunSlashCommand(text); return }
+  if ((!text && !quoteRef.quoteRef.value && pendingAttachments.value.length === 0) || chat.isLoading.value) return
+  const attachments = pendingAttachments.value.slice()
+  inputText.value = ''; pendingAttachments.value = []; autoResize()
   let fullText = text
   const qctx = quoteRef.getQuoteContext()
   if (qctx) fullText = text ? qctx.context + '\n' + t('ai-panel.user_instruction') + text : qctx.context + '\n' + t('ai-panel.process_quote')
-  await chat.sendRaw(fullText); await scrollFeed()
+  await chat.sendRaw(fullText, undefined, attachments); await scrollFeed()
 }
 
 // ── 输入处理 / Input handling ──
 function handleInputKey(e: KeyboardEvent) {
-  const isOpen = cmds.cmdOpen.value && filteredCmds.value.length > 0
-  if (isOpen) {
+  // IME 组合期不接管任何键（ Enter 是选字确认，不是发送/选中）
+  if (e.isComposing) return
+  const isCmdOpen = cmds.cmdOpen.value && filteredCmds.value.length > 0
+  const isMentionOpen = mentions.mentionOpen.value && filteredMentions.value.length > 0
+  if (isMentionOpen) {
+    const items = filteredMentions.value
+    if (e.key === 'ArrowDown') { e.preventDefault(); mentions.moveDown(items.length) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); mentions.moveUp() }
+    else if (e.key === 'Enter') { e.preventDefault(); if (mentions.mentionIndex.value >= 0 && items[mentions.mentionIndex.value]) selectMention(items[mentions.mentionIndex.value]) }
+    else if (e.key === 'Escape') { e.preventDefault(); mentions.close() }
+    return
+  }
+  if (isCmdOpen) {
     const items = filteredCmds.value
     if (e.key === 'ArrowDown') { e.preventDefault(); cmds.moveDown(items.length) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); cmds.moveUp() }
-    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (cmds.cmdIndex.value >= 0 && items[cmds.cmdIndex.value]) runCommand(items[cmds.cmdIndex.value]) }
+    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tryRunSlashCommand(inputText.value) }
     else if (e.key === 'Escape') { e.preventDefault(); cmds.close() }
     return
   }
@@ -290,9 +442,48 @@ function handleInputKey(e: KeyboardEvent) {
 function handleInputChange() {
   autoResize()
   if (inputText.value.startsWith('/')) {
-    const filtered = cmds.getAvailable(currentStatus.value).filter(c => c.key.slice(1).toLowerCase().includes(inputText.value.slice(1).toLowerCase()))
-    filtered.length > 0 ? cmds.open() : cmds.close()
-  } else cmds.close()
+    mentions.close()
+    // 单一数据源：候选只认 filteredCmds；输入精确等于（或是某指令的带参数形式）时高亮定位到该项
+    const items = filteredCmds.value
+    if (items.length) {
+      cmds.open()
+      const q = inputText.value.slice(1).trim().toLowerCase()
+      const exact = items.findIndex((c) => {
+        const head = c.key.slice(1).toLowerCase()
+        return q === head || q.startsWith(head + ' ')
+      })
+      cmds.setIndex(exact >= 0 ? exact : 0)
+    } else {
+      cmds.close()
+    }
+  } else {
+    cmds.close()
+    // @ 引用面板：尾部存在 @query 即激活（无可用源时保持关闭，不挡输入）
+    parseMention(inputText.value) && filteredMentions.value.length > 0 ? mentions.open() : mentions.close()
+  }
+}
+
+/** 选中引用源：尾部 @query 替换为完整令牌，面板关闭，焦点留在输入框。
+    @附件 不插令牌——唤起文件选择器，尾部残留的 @附 等残缺串清掉。 */
+function selectMention(src: MentionSource) {
+  mentions.close()
+  if (src.token === '@附件') {
+    const m = parseMention(inputText.value)
+    if (m) inputText.value = inputText.value.slice(0, m.at)
+    autoResize()
+    openFilePicker()
+    nextTick(() => chatPanelRef.value?.inputRef?.focus())
+    return
+  }
+  inputText.value = mentions.applyMention(inputText.value, mentionToken(src, locale.value))
+  autoResize()
+  nextTick(() => {
+    const ta = chatPanelRef.value?.inputRef
+    if (ta) {
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    }
+  })
 }
 
 /** 输入区高度重算：交给 AiChatPanel 的唯一入口（行数 × 整数行盒，上限转区内滚动）。
@@ -309,7 +500,7 @@ async function scrollFeed() {
   if (feed) feed.scrollTop = feed.scrollHeight
 }
 
-function runCommand(cmd: AiCommand) { cmds.close(); inputText.value = ''; cmd.action() }
+function runCommand(cmd: AiCommand, args?: string) { cmds.close(); inputText.value = ''; autoResize(); cmd.action(args) }
 
 // ── 引用操作 / Quote operations ──
 // 插入纪要/随记已下架（2026-09）：仅保留划词改写的替换原文入口
@@ -320,10 +511,12 @@ onMounted(() => {
   cmds.registerCommands(cmdActions.buildCommands())
   window.addEventListener('quote-to-ai', onQuoteToAiEvent)
   window.addEventListener('global-ai-focus', onGlobalAiFocus)
+  window.addEventListener('keydown', onKeydown)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('quote-to-ai', onQuoteToAiEvent)
   window.removeEventListener('global-ai-focus', onGlobalAiFocus)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 function onGlobalAiFocus() { aiTab.value = 'chat'; nextTick(() => chatPanelRef.value?.inputRef?.focus()) }
