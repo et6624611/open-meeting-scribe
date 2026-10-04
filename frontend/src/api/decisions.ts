@@ -90,3 +90,35 @@ export async function fetchFlowTopics(q: FlowQuery = {}): Promise<TopicGroup[]> 
   })
   return data.topics || []
 }
+
+// ── 单会议节点的跨会议演变归属（纪要页角标数据源） ──
+
+/** 演变链指向的最新节点（标题/会议名为冗余快照，目标删除后仍可展示） */
+export interface NodeEvolutionLatest {
+  task_id: string
+  todo_id: string
+  title: string
+  meeting_title: string
+}
+
+/** 单个节点的跨会议议题归属：main=本节点即最新推进；history=新讨论在别处 */
+export interface NodeEvolution {
+  topic_key: string
+  topic_title: string
+  role: 'main' | 'history'
+  meeting_count: number
+  /** role=history 时指向簇内主记录；main 时为节点自身 */
+  latest: NodeEvolutionLatest
+}
+
+/**
+ * 拉取某会议全部决策节点的跨会议演变归属。
+ * 仅包含跨会议议题簇的节点（单会议节点不出角标）；失败由调用方静默降级。
+ */
+export async function fetchTaskEvolution(taskId: string): Promise<Record<string, NodeEvolution>> {
+  const { data } = await client.get<{ evolution: Record<string, NodeEvolution> }>(
+    '/api/decisions/evolution',
+    { params: { task_id: taskId } },
+  )
+  return data.evolution || {}
+}

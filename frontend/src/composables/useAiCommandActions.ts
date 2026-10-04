@@ -126,8 +126,8 @@ export function useAiCommandActions(
     } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
-  async function onSpeakersAdd() {
-    const name = prompt('输入人员姓名：')
+  async function onSpeakersAdd(nameArg?: string) {
+    const name = nameArg?.trim() || prompt('输入人员姓名：')
     if (!name?.trim()) return
     try {
       const { createSpeaker } = await import('@/api/speakers')
@@ -136,8 +136,8 @@ export function useAiCommandActions(
     } catch (e: any) { showToast(extractErrorMessage(e), 'error') }
   }
 
-  async function onHotwordsAdd() {
-    const input = prompt('输入热词（多个用空格或逗号分隔）：')
+  async function onHotwordsAdd(inputArg?: string) {
+    const input = inputArg?.trim() || prompt('输入热词（多个用空格或逗号分隔）：')
     if (!input?.trim()) return
     try {
       const { fetchHotwords, saveHotwords } = await import('@/api/hotwords')
@@ -156,27 +156,27 @@ export function useAiCommandActions(
   /** 构建指令列表 / Build command list */
   function buildCommands(): AiCommand[] {
     return [
-      { key: '/transcribe', desc: '转写音频 + 生成纪要', when: 'all', action: () => router.push('/') },
-      { key: '/normalize', desc: '归一化音频（16kHz/单声道）', when: 'all', action: () => showToast('CLI 专用命令：python cli.py normalize <音频文件>', 'warn') },
-      { key: '/upload', desc: '上传音频到 DashScope（测试用）', when: 'all', action: () => showToast('CLI 专用命令：python cli.py upload <音频文件>', 'warn') },
-      { key: '/server', desc: '启动 Web UI 服务', when: 'all', action: () => showToast('CLI 专用命令：python cli.py server', 'warn') },
-      { key: '/build', desc: '构建前端（Vue 3 + Vite）', when: 'all', action: () => showToast('CLI 专用命令：python cli.py build', 'warn') },
-      { key: '/admin', desc: '启动管理后台', when: 'all', action: () => showToast('CLI 专用命令：python cli.py admin', 'warn') },
-      { key: '/record start', desc: '开始录音', when: 'all', action: onRecordStart },
-      { key: '/record stop', desc: '停止录音', when: 'all', action: onRecordStop },
-      { key: '/record pause', desc: '暂停录音', when: 'all', action: onRecordPause },
-      { key: '/record resume', desc: '恢复录音', when: 'all', action: onRecordResume },
-      { key: '/record status', desc: '查看录音状态', when: 'all', action: onRecordStatus },
-      { key: '/tasks list', desc: '列出所有任务', when: 'all', action: () => router.push('/library') },
-      { key: '/tasks show', desc: '查看任务详情', when: 'all', action: onTasksShow },
-      { key: '/tasks delete', desc: '删除任务', when: 'all', action: onTasksDelete },
-      { key: '/speakers list', desc: '列出所有人员', when: 'all', action: () => router.push('/speakers') },
-      { key: '/speakers add', desc: '添加人员', when: 'all', action: onSpeakersAdd },
-      { key: '/hotwords list', desc: '列出热词', when: 'all', action: () => router.push('/hotwords') },
-      { key: '/hotwords add', desc: '添加热词', when: 'all', action: onHotwordsAdd },
-      { key: '/settings show', desc: '查看设置', when: 'all', action: () => router.push('/settings') },
-      { key: '/settings set', desc: '修改设置', when: 'all', action: () => router.push('/settings') },
-      { key: '/chat', desc: 'AI 对话（直接输入消息发送）', when: 'all', action: () => inputRef.value?.focus() },
+      { key: '/transcribe', desc: '转写音频 + 生成纪要', descKey: 'cmd_transcribe', when: 'all', action: () => router.push('/') },
+      { key: '/normalize', desc: '归一化音频（16kHz/单声道）', descKey: 'cmd_normalize', when: 'all', action: () => showToast('CLI 专用命令：python cli.py normalize <音频文件>', 'warn') },
+      { key: '/upload', desc: '上传音频到 DashScope（测试用）', descKey: 'cmd_upload', when: 'all', action: () => showToast('CLI 专用命令：python cli.py upload <音频文件>', 'warn') },
+      { key: '/server', desc: '启动 Web UI 服务', descKey: 'cmd_server', when: 'all', action: () => showToast('CLI 专用命令：python cli.py server', 'warn') },
+      { key: '/build', desc: '构建前端（Vue 3 + Vite）', descKey: 'cmd_build', when: 'all', action: () => showToast('CLI 专用命令：python cli.py build', 'warn') },
+      { key: '/admin', desc: '启动管理后台', descKey: 'cmd_admin', when: 'all', action: () => showToast('CLI 专用命令：python cli.py admin', 'warn') },
+      { key: '/record start', desc: '开始录音', descKey: 'cmd_record_start', when: 'all', action: onRecordStart },
+      { key: '/record stop', desc: '停止录音', descKey: 'cmd_record_stop', when: 'all', action: onRecordStop },
+      { key: '/record pause', desc: '暂停录音', descKey: 'cmd_record_pause', when: 'all', action: onRecordPause },
+      { key: '/record resume', desc: '恢复录音', descKey: 'cmd_record_resume', when: 'all', action: onRecordResume },
+      { key: '/record status', desc: '查看录音状态', descKey: 'cmd_record_status', when: 'all', action: onRecordStatus },
+      { key: '/tasks list', desc: '列出所有任务', descKey: 'cmd_tasks_list', when: 'all', action: () => router.push('/library') },
+      { key: '/tasks show', desc: '查看任务详情', descKey: 'cmd_tasks_show', when: 'all', action: onTasksShow },
+      { key: '/tasks delete', desc: '删除任务', descKey: 'cmd_tasks_delete', when: 'all', action: onTasksDelete },
+      { key: '/speakers list', desc: '列出所有人员', descKey: 'cmd_speakers_list', when: 'all', action: () => router.push('/speakers') },
+      { key: '/speakers add', desc: '添加人员', descKey: 'cmd_speakers_add', when: 'all', action: onSpeakersAdd },
+      { key: '/hotwords list', desc: '列出热词', descKey: 'cmd_hotwords_list', when: 'all', action: () => router.push('/hotwords') },
+      { key: '/hotwords add', desc: '添加热词', descKey: 'cmd_hotwords_add', when: 'all', action: onHotwordsAdd },
+      { key: '/settings show', desc: '查看设置', descKey: 'cmd_settings', when: 'all', action: () => router.push('/settings') },
+      { key: '/settings set', desc: '修改设置', descKey: 'cmd_settings', when: 'all', action: () => router.push('/settings') },
+      { key: '/chat', desc: 'AI 对话（直接输入消息发送）', descKey: 'cmd_chat', when: 'all', action: () => inputRef.value?.focus() },
     ]
   }
 

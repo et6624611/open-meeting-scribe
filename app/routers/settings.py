@@ -48,6 +48,7 @@ from app.store import (
     get_feature_flags,
     get_llm_config,
     get_storage_config,
+    get_transcript_config,
     load_settings,
     mask_api_key,
     save_settings_to_disk,
@@ -191,6 +192,7 @@ def get_settings():
         "engine": get_engine_config(),
         "feature_flags": feature_flags,
         "storage": get_storage_config(),
+        "transcript": get_transcript_config(),
         "disabled_commands": settings.get("disabled_commands", []),
         "active_agent": settings.get("active_agent", "meeting-minutes"),
         "chat_engine": get_chat_engine_config(),
@@ -282,6 +284,9 @@ def save_settings(data: dict):
     existing_ff = existing.get("feature_flags", {})
     existing_engine = existing.get("engine", {}) or {}
     existing_engine_local = existing_engine.get("local", {}) or {}
+    existing_tr = existing.get("transcript", {}) or {}
+    existing_tr_cleanup = existing_tr.get("cleanup", {}) or {}
+    existing_tr_formal = existing_tr.get("formal", {}) or {}
 
     # ── LLM 配置 / LLM config ──
     new_llm = data.get("llm", {})
@@ -346,6 +351,17 @@ def save_settings(data: dict):
             "realtime_summary_interval": data.get("feature_flags", {}).get("realtime_summary_interval", existing_ff.get("realtime_summary_interval", 60)),
             "update_check": data.get("feature_flags", {}).get("update_check", existing_ff.get("update_check", True)),
             "voiceprint_auto_match": data.get("feature_flags", {}).get("voiceprint_auto_match", existing_ff.get("voiceprint_auto_match", False)),
+            "voiceprint_v2": data.get("feature_flags", {}).get("voiceprint_v2", existing_ff.get("voiceprint_v2", True)),
+            "chrome_autohide": data.get("feature_flags", {}).get("chrome_autohide", existing_ff.get("chrome_autohide", True)),
+        },
+        # 逐字稿分层：清理默认开（逃生通道可关），书面版自动生成默认关（会中禁用）
+        "transcript": {
+            "cleanup": {
+                "enabled": bool(data.get("transcript", {}).get("cleanup", {}).get("enabled", existing_tr_cleanup.get("enabled", True))),
+            },
+            "formal": {
+                "auto_generate": bool(data.get("transcript", {}).get("formal", {}).get("auto_generate", existing_tr_formal.get("auto_generate", False))),
+            },
         },
         "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
         "active_agent": data.get("active_agent", existing.get("active_agent", "meeting-minutes")),

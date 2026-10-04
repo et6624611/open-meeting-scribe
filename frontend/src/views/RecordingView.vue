@@ -90,7 +90,6 @@
 
       <!-- 左栏：转写原文（宽屏并排，窄屏由 CSS tab-insights 切换） / Left: transcript (side-by-side on wide, CSS tab on narrow) -->
       <RecTranscriptPanel
-        ref="transcriptRef"
         :lines="wsLines"
         :listening="ws.listening.value"
         :chapters="wsChapters"
@@ -260,7 +259,6 @@ const rosterComposable = useMeetingRoster(taskId.value, task)
 const recTab = ref<'transcript' | 'insights'>('transcript')
 const noteText = ref('')
 const notesBarRef = ref<InstanceType<typeof RecNotesBar> | null>(null)
-const transcriptRef = ref<InstanceType<typeof RecTranscriptPanel> | null>(null)
 const showTranscript = ref(true)
 const markerMode = ref(false)
 const locateSpeakerId = ref<number | null>(null)

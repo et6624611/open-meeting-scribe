@@ -1,5 +1,6 @@
 # Windows 打包工作流
-# 触发方式：仅手动运行（workflow_dispatch）——当前只发 macOS 版，Windows 需要时在 Actions 页手动跑
+# 2026-10-04 起：官方首发不提供预编译包，本流程仅保留手动验证用途（workflow_dispatch），
+# 需要者自行在 Actions 页运行，官方不随 Release 发布其产物。
 name: Build Windows Package
 
 on:

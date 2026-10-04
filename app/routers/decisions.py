@@ -137,3 +137,71 @@ def list_all_decisions(
         group["decisions"].append(row)
 
     return {"groups": list(groups.values()), "total": len(rows)}
+
+
+def _collect_flow_rows() -> list[dict]:
+    """无过滤全量聚合行（演变归属等内部读路径复用）；形状同 /api/decisions 平铺行。"""
+    status_meta = {s["id"]: s for s in load_statuses()}
+    kb_cache: dict = {}
+    try:
+        owner_map = get_speaker_name_map()
+    except Exception:
+        owner_map = {}
+
+    rows: list[dict] = []
+    for tid, task in tasks.items():
+        if not isinstance(task, dict):
+            continue
+        todos = task.get("todos")
+        if not isinstance(todos, list):
+            continue
+        for node in todos:
+            if isinstance(node, dict):
+                rows.append(enrich_todo(tid, task, node, status_meta, kb_cache, owner_map))
+
+    rows.sort(key=lambda r: (r.get("meeting_date") or "", r.get("created_at") or ""), reverse=True)
+    return rows
+
+
+@router.get("/api/decisions/evolution")
+def task_evolution(task_id: str = Query(..., max_length=100)):
+    """单会议节点的跨会议演变归属（纪要页角标数据源）/ Per-node cross-meeting evolution membership.
+
+    复用议题归并簇：只输出跨会议（meeting_count ≥ 2）且包含本会议节点的簇；
+    节点是簇主记录 → role=main（本节点即最新推进），否则 role=history，latest 指向簇主记录。
+    单会议节点不返回（前端不跨会议出角标）；未知任务 404。
+    """
+    task = tasks.get(task_id)
+    if not isinstance(task, dict):
+        raise HTTPException(404, _("Meeting not found"))
+
+    evolution: dict[str, dict] = {}
+    for cluster in cluster_topics(_collect_flow_rows()):
+        if cluster["meeting_count"] < 2:
+            continue
+        main = cluster["main"]
+        members = [main, *cluster["history"]]
+        if not any(m.get("task_id") == task_id for m in members):
+            continue
+
+        def _ref(node: dict) -> dict:
+            return {
+                "task_id": node.get("task_id"),
+                "todo_id": node.get("id"),
+                "title": str(node.get("title") or node.get("text") or "")[:200],
+                "meeting_title": str(node.get("meeting_title") or "")[:200],
+            }
+
+        for node in members:
+            if node.get("task_id") != task_id:
+                continue
+            is_main = node is main
+            evolution[str(node.get("id"))] = {
+                "topic_key": cluster["topic_key"],
+                "topic_title": cluster["title"],
+                "role": "main" if is_main else "history",
+                "meeting_count": cluster["meeting_count"],
+                "latest": _ref(node) if is_main else _ref(main),
+            }
+
+    return {"evolution": evolution}

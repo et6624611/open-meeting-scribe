@@ -1,5 +1,5 @@
 <template>
-  <div ref="panelRef" class="rec-insights-panel">
+  <div class="rec-insights-panel">
     <div class="rec-insights-header">
       <div class="rec-insights-title">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
@@ -201,8 +201,6 @@ function renderInsightMarkdown(md: string): string {
   html = html.replace(/\n/g, '<br>')
   return html
 }
-
-const panelRef = ref<HTMLElement | null>(null)
 
 /* ── 超长 body 截断+折叠：卡规格为 1-3 句图注，存量/手动长文不撑版 ── */
 const BODY_CLAMP_LEN = 280

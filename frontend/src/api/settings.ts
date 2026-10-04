@@ -9,6 +9,10 @@ export interface FeatureFlags {
   realtime_summary_interval: number
   update_check: boolean
   voiceprint_auto_match: boolean
+  /** 声纹 v2.1 群嵌入链路（默认开，逃生通道）/ Group-embedding voiceprint pipeline (default on) */
+  voiceprint_v2: boolean
+  /** 底栏 chrome 自动隐藏（false=四栏常驻逃生通道）/ Bottom-bar autohide (false = pinned escape hatch) */
+  chrome_autohide: boolean
 }
 
 /** LLM 提供商预设 / LLM provider preset */
@@ -74,6 +78,13 @@ export interface Settings {
   output_dir?: string
   disabled_commands?: string[]
   feature_flags?: Partial<FeatureFlags>
+  /** 逐字稿分层（口语清理 / AI 书面版）/ Transcript layering (cleanup / formal written version) */
+  transcript?: {
+    /** 口语清理（本地规则），默认开；显式 false 为逃生通道 */
+    cleanup?: { enabled?: boolean }
+    /** 会后自动生成 AI 书面版，默认关；会中禁用 */
+    formal?: { auto_generate?: boolean }
+  }
   /** 优先使用体验配额（详情默认值来源） / Prefer trial quota (capability default source) */
   prefer_subscription?: boolean
   /** 接入方式决策层（离线/联网/null 未选态）/ Access mode decision layer */

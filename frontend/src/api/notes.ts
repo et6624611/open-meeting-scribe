@@ -86,6 +86,36 @@ export async function updateTodo(
   await client.put(`/api/tasks/${taskId}/todos/${todoId}`, patch)
 }
 
+// ─── 决策演变链：标记 / 撤销「已被替代」 / Supersede flow ───
+
+/**
+ * 把旧决策标记为已被另一会议（或同会议）的新决策替代。
+ * Mark a node superseded by another decision.
+ * 后端将旧节点闭档为系统态 superseded，并写入 superseded_by 关系快照。
+ */
+export async function supersedeTodo(
+  taskId: string,
+  todoId: string,
+  target: { taskId: string; todoId: string },
+): Promise<TodoItem> {
+  const { data } = await client.post<{ todo: TodoItem }>(
+    `/api/tasks/${taskId}/todos/${todoId}/supersede`,
+    { by_task_id: target.taskId, by_todo_id: target.todoId },
+  )
+  return data.todo
+}
+
+/**
+ * 撤销「已被替代」：恢复标记前的原状态（原状态已删除时后端安全降级）。
+ * Revert a superseded marking; restores the previous status.
+ */
+export async function revertSupersede(taskId: string, todoId: string): Promise<TodoItem> {
+  const { data } = await client.delete<{ todo: TodoItem }>(
+    `/api/tasks/${taskId}/todos/${todoId}/supersede`,
+  )
+  return data.todo
+}
+
 // ─── AI 写回快照与撤销 / AI write-back snapshots & undo（PROPOSAL §5.4） ───
 
 /** 一条 AI 写回快照的摘要（不回旧值全文） */

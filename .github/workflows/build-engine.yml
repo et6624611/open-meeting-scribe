@@ -1,24 +1,14 @@
 # 本地引擎组件包构建（WP-G G-2/G-4b）— 独立引擎包（D-G1 方案 A）
 #
-# 产物：OMSEngine-<platform>.zip + .sha256（含 engine-manifest.json），
-# 供三条安装通道分发：应用内一键落位（core/engine_installer.py 默认从
-# GitHub Releases 拉取）、Win Inno [Components]（构建机本地 dist/OMSEngine）、
-# 内网离线包（人工传递 zip）。
+# 2026-10-04 起：官方首发不提供预编译包（含引擎组件包），tag/push 不再自动触发，
+# 本流程仅保留手动验证用途（workflow_dispatch）。应用内一键落位（engine_installer）
+# 在官方恢复引擎包发布前，需自行构建或指定自有下载源。
 #
-# 与云包链路完全隔离：本 workflow 不触碰 build/pyinstaller.spec /
-# build-windows.yml / build-macos.yml（AC-7 云包零增长）。
 # 硬性禁令：CI 不下载任何真实模型权重（引擎包只含代码运行时，不含权重）。
 name: Build Engine Package
 
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
-    paths:
-      - 'build/pyinstaller_engine.spec'
-      - 'engine_entry.py'
-      - 'core/engine_worker.py'
+  workflow_dispatch:  # 仅手动触发
 
 concurrency:
   group: engine-build-${{ github.ref }}

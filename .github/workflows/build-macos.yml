@@ -1,12 +1,10 @@
 # macOS 打包工作流
-# 触发方式：手动运行（workflow_dispatch）或推送 tag
+# 2026-10-04 起：官方首发不提供预编译包，tag 不再自动触发构建/发 Release。
+# 本流程仅保留手动验证用途（workflow_dispatch），需要者自行在 Actions 页运行。
 name: Build macOS Package
 
 on:
-  workflow_dispatch:  # 手动触发
-  push:
-    tags:
-      - 'v*'  # 推送版本标签时自动构建
+  workflow_dispatch:  # 仅手动触发
 
 jobs:
   build-macos:

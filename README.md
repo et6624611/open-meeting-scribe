@@ -24,6 +24,8 @@ version: "2.1.0"
 
 **Platform-agnostic — audio is the only input.** Whether it's an online video call, a phone conference, or an in-person meeting room — if it produces audio, Open Meeting Scribe can transcribe it and generate structured minutes automatically.
 
+> Built by a non-IT developer with the assistance of AI coding tools. Code reviews and improvements are welcome.
+
 ## ✨ Features
 
 - **Multiple audio inputs**: Drag-and-drop file upload (wav/mp3/m4a) + system loopback recording (BlackHole on macOS) + live microphone capture
@@ -107,6 +109,25 @@ Visit http://localhost:8000 to use the app.
 # Transcribe an audio file directly
 python cli.py transcribe samples/your-meeting.wav
 ```
+
+### Run with Docker (optional)
+
+```bash
+docker build -t open-meeting-scribe .
+docker run -d --name oms -p 8000:8000 \
+  -e DASHSCOPE_API_KEY=sk-your-key \
+  -v oms-data:/app/data open-meeting-scribe
+```
+
+ffmpeg is bundled in the image; the local FunASR engine is not included.
+
+## 📦 Distribution
+
+**No prebuilt binaries or installers are provided at launch — this project is source-only for now.**
+
+- Run from source (Quick Start above) or via Docker.
+- The native desktop entry [desktop.py](desktop.py) (pywebview) stays in the repo: run `python desktop.py` or build it yourself with PyInstaller.
+- Community packages (Homebrew formula, AUR, Docker images, etc.) are welcome — link yours in an issue.
 
 ## 🏗 Architecture
 

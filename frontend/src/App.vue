@@ -94,7 +94,7 @@
     </div>
 
     <!-- 底部状态栏（B 案：零高度挂载点 + hover 上浮；任一能力非就绪时 is-pinned 常驻） -->
-    <div class="chrome-btm" ref="chromeBtmEl" :class="{ 'is-pinned': statusPinned }">
+    <div class="chrome-btm" :class="{ 'is-pinned': statusPinned }">
       <div class="bb-hotzone" aria-hidden="true"></div>
       <div class="bb-clip">
     <footer class="status" ref="statusBarEl" :class="statusCapsMode === 'full' ? '' : 'is-' + statusCapsMode">
@@ -144,7 +144,7 @@
   </div>
 
   <!-- 登录遮罩层 / Login modal overlay -->
-  <LoginModal ref="loginModal" />
+  <LoginModal />
 </template>
 
 <script setup lang="ts">
@@ -184,7 +184,6 @@ const watermark = useWatermarkStore()
 const agentStore = useAgentStore()
 const engineStore = useEngineStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
-const loginModal = ref<InstanceType<typeof LoginModal> | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
 const { widthClass: mainWidthClass, tier: mainTier } = useContainerSize(mainEl)
 const { philosophyChars, loadPhilosophy, updatePhilosophy } = usePhilosophy()
@@ -272,7 +271,6 @@ type CapsMode = 'full' | 'mid' | 'narrow'
 const statusBarEl = ref<HTMLElement | null>(null)
 const statusCapsEl = ref<HTMLElement | null>(null)
 const statusCapsMode = ref<CapsMode>('full')
-const chromeBtmEl = ref<HTMLElement | null>(null)
 let capsRaf = 0
 let capsMeasuring = false
 let capsObserver: ResizeObserver | null = null

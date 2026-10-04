@@ -21,6 +21,8 @@ version: "2.0.1"
 
 **不绑定任何会议平台，音频输入即一切。** 无论是线上视频会议、电话会议还是线下会议室，只要能输出音频，就能自动转写并生成结构化纪要。
 
+> 本项目由非 IT 背景开发者在 AI 编程助手辅助下完成，欢迎 review 代码与改进。
+
 ## ✨ 功能特性
 
 - **多种音频输入**：文件拖拽上传（wav/mp3/m4a）+ BlackHole 系统内录 + 麦克风实时录音
@@ -104,6 +106,25 @@ python cli.py server
 # 直接转写音频文件
 python cli.py transcribe samples/your-meeting.wav
 ```
+
+### 使用 Docker 运行（可选）
+
+```bash
+docker build -t open-meeting-scribe .
+docker run -d --name oms -p 8000:8000 \
+  -e DASHSCOPE_API_KEY=sk-你的key \
+  -v oms-data:/app/data open-meeting-scribe
+```
+
+镜像已内置 ffmpeg；不含本地 FunASR 引擎。
+
+## 📦 分发方式
+
+**首发暂不提供预编译包和安装器——本项目现阶段仅以源码形式发布。**
+
+- 按上方快速开始源码运行，或使用 Docker。
+- 原生桌面入口 [desktop.py](desktop.py)（pywebview）保留在仓库中，可 `python desktop.py` 直接运行，或自行用 PyInstaller 打包。
+- 欢迎社区提供打包（Homebrew formula、AUR、Docker 镜像等），可在 issue 中贴链接。
 
 ## 🏗 技术架构
 
