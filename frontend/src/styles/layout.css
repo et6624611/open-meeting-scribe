@@ -1,0 +1,46 @@
+/* ═══ 三栏布局 + 分隔条 ═══ */
+
+/* ─── 主框架（Flexbox 纵向布局：横幅 → 顶栏 → 主体 → 状态栏） ─── */
+.frame { height: 100vh; display: flex; flex-direction: column; }
+.body { flex: 1; display: flex; min-height: 0; overflow: hidden; position: relative; }
+
+/* ─── 视图模式 ─── */
+.body.view-full .sidebar { display: flex; }
+.body.view-full .ai { display: flex; }
+
+/* ─── 分隔缝（纯视觉；调宽与折叠由面板上的缝隙拉手承担） ─── */
+.layout-divider { flex: 0 0 10px; position: relative; pointer-events: none; }
+.divider-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-strong); transition: width 0.15s ease, background-color 0.15s ease; }
+.layout-divider-left .divider-line { left: 0; }
+.layout-divider-right .divider-line { right: 0; }
+body.is-divider-dragging .divider-line { width: 2px; background: var(--accent); }
+
+/* ─── 主内容区 ─── */
+.main { flex: 1; min-width: 300px; background: var(--bg); overflow-y: auto; min-height: 0; height: 100%; position: relative; }
+.main-inner { max-width: 760px; margin: 0 auto; padding: var(--s-9) var(--s-7) var(--s-10); }
+.main-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); margin-bottom: var(--s-6); }
+.main-head h1 { font-size: var(--fs-24); font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; margin: 0; }
+.main-head .sub { color: var(--muted); font-size: var(--fs-14); }
+.main-head .title-row { display: flex; align-items: baseline; gap: 8px; }
+.main-head .page-count { font-size: 13px; color: var(--subtle); }
+
+/* ─── 页面返回按钮 ─── */
+.page-back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: none; background: none; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); transition: background 0.12s, color 0.12s; width: fit-content; flex-shrink: 0; }
+.page-back-btn:hover { background: var(--surface-2); color: var(--fg); }
+.page-back-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.page-back-btn kbd { margin-left: 4px; font-size: 10px; color: var(--subtle); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); }
+
+/* ─── 设置页隐私提示条 ─── */
+/* 语义色只做底/边，正文与链接一律 --fg（浅色主题下 --accent/--info 作文字仅 2.1–4.0:1，不足 AA） */
+.settings-privacy-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--info-soft); border: 1px solid oklch(from var(--info) l c h / 0.35); border-radius: var(--radius); color: var(--fg); font-size: var(--fs-12); margin-bottom: var(--s-5); line-height: 1.5; }
+.settings-privacy-bar svg { flex-shrink: 0; color: var(--info); opacity: 1; }
+.settings-privacy-bar span { flex: 1; }
+.settings-privacy-link { color: var(--fg); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; flex-shrink: 0; }
+.settings-privacy-link:hover { color: var(--accent); }
+/* ─── 水印氛围层（z-index: 15 — 面板之上、弹窗之下，确保光晕可见） ─── */
+.wm-layer { position: fixed; inset: 0; z-index: 15; pointer-events: none; overflow: hidden; transition: opacity 0.3s ease; }
+.wm-layer.is-hidden { opacity: 0; }
+.wm-glow { position: absolute; border-radius: 50%; filter: blur(120px); opacity: var(--wm-opacity); transition: background 0.25s ease, opacity 0.25s ease; }
+.wm-glow-1 { width: 600px; height: 600px; top: -200px; left: -100px; background: var(--wm-glow); }
+.wm-glow-2 { width: 500px; height: 500px; bottom: -150px; right: -100px; background: var(--wm-glow); }
+.wm-glow-3 { width: 400px; height: 400px; top: 40%; left: 50%; transform: translateX(-50%); background: var(--wm-glow); }

@@ -1,0 +1,95 @@
+# CI 工作流 — 代码检查与测试
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-lint:
+    name: 后端代码检查
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: 安装 ruff
+      run: |
+        python -m pip install --upgrade pip
+        pip install "ruff>=0.1.0"
+
+    - name: 运行 Ruff Bug 检查（仅拦截逻辑错误）
+      run: |
+        ruff check . --select F821,F811,F402
+
+  backend-test:
+    name: 后端测试
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+    
+    - name: 安装 ffmpeg
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+    
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+    
+    - name: 运行冒烟测试
+      run: |
+        pytest tests/test_smoke.py -v
+      env:
+        DASHSCOPE_API_KEY: test-key
+        JWT_SECRET: test-secret
+    
+    - name: Python 语法检查
+      run: |
+        python -m py_compile cli.py
+        python -m py_compile app/server.py
+        python -m py_compile core/pipeline.py
+
+  frontend-build:
+    name: 前端构建
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 安装 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: 安装依赖
+      working-directory: frontend
+      run: npm ci
+    
+    - name: 类型检查
+      working-directory: frontend
+      run: npx vue-tsc --noEmit
+    
+    - name: 构建
+      working-directory: frontend
+      run: npm run build

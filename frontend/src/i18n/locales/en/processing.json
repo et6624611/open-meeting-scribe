@@ -1,0 +1,19 @@
+{
+  "title": "Processing progress",
+  "steps_aria": "Processing steps",
+  "step_transcribe": "Transcribing",
+  "step_organize": "Organizing",
+  "step_summarize": "Summarizing",
+  "step_done": "Done",
+  "elapsed": "Elapsed {time}",
+  "eta": "about {minutes} min left",
+  "eta_unknown": "Still working — long audio takes more time",
+  "stagnation": "The local engine is processing this long audio, still working",
+  "reassure": "You can safely leave this page or minimize the window — we'll remind you when it's done",
+  "failed_caption": "{stage} failed (processed up to {percent}%)",
+  "retry": "Retry",
+  "chapter_backfill": "Dividing chapters…",
+  "completed_toast": "\"{title}\" is ready",
+  "notify_body": "Meeting processing finished — click to view",
+  "badge_new": "New"
+}

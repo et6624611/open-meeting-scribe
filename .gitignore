@@ -1,0 +1,113 @@
+# 密钥（严禁入库）
+.env
+desktop-secrets.env
+
+# 运行时数据
+data/output/
+data/uploads/
+data/recordings/
+data/tasks/
+data/projects.json
+data/project_index/
+data/speakers.json
+data/users.json
+data/meeting_mappings.json
+data/hotword_mappings.txt
+data/voiceprint_registry.json
+data/settings.json
+data/decision_statuses.json
+data/philosophies.json
+data/hotwords.txt
+data/usage/
+data/chat_attachments/
+data/downloads/
+data/models/
+data/remote_config.json
+data/settings_events.json
+data/*.wav
+data/*.mp3
+data/*.m4a
+data/*.raw
+
+# 测试音频（大文件，不入库；需要共享请走 LFS 或外部存储）
+samples/*.mp3
+samples/*.wav
+samples/*.m4a
+samples/*.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 本地模型缓存（v1 纯云，理论上不产生）
+*.onnx
+models/
+
+# 日志
+logs/
+
+# macOS
+.DS_Store
+
+# 截图（调试/测试用，不入库）
+/*.png
+qa-evidence/
+/docs/screenshots/
+.cu_shots/
+browser/
+
+# 前端构建产物（npm run build 生成，由 FastAPI 托管）
+frontend/node_modules/
+frontend/dist/
+# vue-tsc 增量编译缓存，每次构建都会产生无意义 diff
+# Incremental type-check cache; produces a meaningless diff on every build
+*.tsbuildinfo
+
+# PyInstaller 打包产物
+dist/
+build_venv/
+build/OpenMeetingScribe/
+build/pyinstaller_macos/
+*.zip
+
+# AI 生成的文档索引（可随时重建，不入库）
+.qoder/
+.trae/
+
+# SSH 自动化脚本（私人运维工具）
+scripts/_ssh_*.exp
+
+# AI 协作文档（内部使用，不对外）
+AGENTS.md
+CODEX.md
+
+# 云盘同步生成的重名副本（"xxx 2" / "xxx 3.ext" 等数字后缀），非人工成果，会随构建反复出现
+# 两条都要：* [0-9] 覆盖无扩展名的文件与目录，* [0-9].* 覆盖带扩展名的副本
+# Cloud-sync duplicate artifacts. Both patterns are needed: "* [0-9]" catches
+# extension-less files and directories, "* [0-9].*" catches ones with an extension.
+* [0-9]
+* [0-9].*
+
+# Qoder CLI 引擎 Spike 取证与工作区（含会议上下文，禁止入库）
+# Spike evidence + agent workspace (contains meeting context; never commit)
+.spike_qoder/
+agent-workspace/
+
+# R8 Spike 隔离环境（venv/模型权重/冻结产物，本地位于工作区内但不入库）
+.spike_local_engine/
+
+# WP-C AC-2 评测中间产物（切分音频/模型输出/大文件，不入库）
+.eval_local_engine/
+
+# 会话验证截图目录（verify 产物，不入库）
+.verify_shots/
+
+# 本地 git worktree 隔离目录（内容由 git 元数据可恢复，不入库）
+.worktrees/

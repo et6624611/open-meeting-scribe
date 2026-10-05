@@ -1,0 +1,19 @@
+{
+  "title": "处理进度",
+  "steps_aria": "处理步骤",
+  "step_transcribe": "语音转写",
+  "step_organize": "原文整理",
+  "step_summarize": "生成纪要",
+  "step_done": "完成",
+  "elapsed": "已用 {time}",
+  "eta": "预计还需约 {minutes} 分钟",
+  "eta_unknown": "正在处理中，长音频需要更多时间",
+  "stagnation": "本地引擎正在处理长音频，仍在进行中",
+  "reassure": "可以放心离开本页或最小化窗口，处理完成后会提醒你",
+  "failed_caption": "{stage}失败（已处理至 {percent}%）",
+  "retry": "重试",
+  "chapter_backfill": "章节划分中…",
+  "completed_toast": "《{title}》已处理完成",
+  "notify_body": "会议处理完成，点击查看",
+  "badge_new": "待查看"
+}

@@ -1,0 +1,249 @@
+/* ═══ 登录/注册/水印设置控件（从 legacy-views.css 提取） ═══ */
+/* 水印氛围层基础样式已统一在 layout.css 中，此处仅保留登录页专属控件 */
+
+/* 水印设置控件 */
+.wm-setting-row {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) 0;
+}
+.wm-setting-row label { font-size: var(--fs-13); color: var(--fg); font-weight: 500; min-width: 80px; }
+.wm-setting-row input[type="range"] {
+  flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+  background: var(--border); border-radius: 2px; outline: none;
+}
+.wm-setting-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 2px solid var(--surface);
+}
+.wm-setting-val {
+  font-size: var(--fs-12); color: var(--muted); font-family: var(--font-mono);
+  min-width: 36px; text-align: right;
+}
+.wm-toggle-wrap { display: flex; align-items: center; gap: var(--s-2); }
+.wm-freq-btn { padding: 2px 8px; font-size: var(--fs-11); font-family: var(--font-mono, ui-monospace, monospace); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.12s; line-height: 1.5; }
+.wm-freq-btn:hover { border-color: var(--subtle); color: var(--fg); }
+.wm-freq-btn.is-active { border-color: var(--accent); color: var(--accent); background: oklch(from var(--accent) l c h / 0.08); font-weight: 600; }
+.wm-toggle {
+  position: relative; width: 36px; height: 20px;
+  background: var(--border); border-radius: 10px; cursor: pointer;
+  transition: background 0.2s;
+}
+.wm-toggle.is-on { background: var(--accent); }
+.wm-toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface); transition: transform 0.2s;
+}
+.wm-toggle.is-on::after { transform: translateX(16px); }
+
+/* 主题下拉分隔线 */
+.theme-hue-bar {
+  width: 100%; height: 3px; border-radius: 2px; margin-top: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-mid));
+  opacity: 0.4; transition: background 0.4s ease;
+}
+
+/* ─── 登录遮罩层 ─── */
+.login-overlay {
+  position: fixed; inset: 0; z-index: var(--z-toast);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg);
+  transition: opacity 0.3s ease;
+}
+.login-overlay.is-hidden { opacity: 0; pointer-events: none; }
+/* 卡片底部：提示文字 + 下方右对齐返回按钮 */
+.login-footer {
+  margin-top: 24px; font-size: 12px; color: var(--subtle);
+  line-height: 1.6; text-align: left; margin-bottom: 0;
+}
+.login-footer-action {
+  display: flex; justify-content: flex-end;
+  margin-top: 12px;
+}
+.login-footer-action .login-back-btn.icon-btn--with-label {
+  height: 36px;
+  padding: 0 12px;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.login-footer-action .login-back-btn.icon-btn--with-label:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+.login-footer-action .login-back-btn kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--subtle);
+  line-height: 1.4;
+}
+.login-card {
+  width: 420px; padding: 48px 40px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+  text-align: center;
+}
+.login-card-brand {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  margin-bottom: 8px;
+}
+.login-card-brand .brand-mark {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+}
+.login-card-brand .brand-mark svg { width: 100%; height: 100%; display: block; }
+.login-card-brand span {
+  font-size: 20px; font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--fg);
+}
+.login-card-sub {
+  font-size: 14px; color: var(--muted);
+  margin-bottom: 32px; line-height: 1.5;
+}
+.login-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: 15px; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.login-btn:hover { background: var(--border); }
+.login-btn svg { width: 20px; height: 20px; }
+
+/* ─── 登录 Tab 切换 ─── */
+.login-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.login-tab {
+  flex: 1; padding: 10px 0; background: none; border: none;
+  cursor: pointer; font-size: 14px; color: var(--muted);
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+  font-family: var(--font-body);
+}
+.login-tab.active {
+  color: var(--accent); border-bottom-color: var(--accent); font-weight: 600;
+}
+.login-tab-panel { display: none; }
+.login-tab-panel.active { display: block; }
+
+/* ─── 手机号表单 ─── */
+.sms-beta-notice {
+  font-size: 12px; color: var(--subtle); text-align: left;
+  margin-bottom: 12px; padding: 8px 12px;
+  background: oklch(from var(--warn) l c h / 0.08);
+  border-radius: 8px; line-height: 1.5;
+}
+.sms-input-group { margin-bottom: 12px; }
+.sms-input {
+  width: 100%; height: 44px; padding: 0 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); color: var(--fg);
+  font-size: 15px; outline: none; transition: border-color 0.15s;
+  font-family: var(--font-body); box-sizing: border-box;
+}
+.sms-input:focus { border-color: var(--accent); }
+.sms-input::placeholder { color: var(--subtle); }
+.sms-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.sms-row .sms-input { flex: 1; min-width: 0; }
+.sms-send-btn {
+  white-space: nowrap; height: 44px; padding: 0 16px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); color: var(--fg);
+  font-size: 14px; cursor: pointer; transition: all 0.15s;
+  font-family: var(--font-body); flex-shrink: 0;
+}
+.sms-send-btn:hover:not(:disabled) { background: var(--border); }
+.sms-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sms-submit-btn {
+  width: 100%; height: 44px; border: none; border-radius: 10px;
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.15s; font-family: var(--font-body);
+}
+.sms-submit-btn:hover:not(:disabled) { background: oklch(from var(--accent) calc(l - 0.06) c h); }
+.sms-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sms-error {
+  font-size: 12px; color: oklch(55% 0.2 25);
+  margin-top: 8px; margin-bottom: 8px; text-align: left;
+}
+
+/* ── 注册引导横幅：样式唯一来源在 topbar.css（本文件早于它之后的模块加载，
+   重复声明会按导入顺序互相覆盖，曾把隐藏态打回 opacity:0 而继续占位挡点击）
+   Single source of truth lives in topbar.css; a duplicate declaration here used
+   to win by import order and leave the hidden banner in flow. ─── */
+.reg-guidance-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.reg-guidance-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--ann-icon, var(--accent));
+  flex-shrink: 0;
+}
+.reg-guidance-text {
+  flex: 1;
+  font-size: var(--fs-13);
+  color: var(--fg);
+  line-height: 1.5;
+}
+.reg-guidance-text strong {
+  color: var(--ann-text-strong, var(--fg));
+  font-weight: 600;
+}
+.reg-guidance-cta {
+  padding: 6px 16px;
+  background: var(--ann-cta-bg, var(--accent));
+  color: var(--ann-cta-fg, var(--accent-fg));
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.reg-guidance-cta:hover {
+  opacity: 0.85;
+}
+.reg-guidance-dismiss {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.reg-guidance-dismiss:hover {
+  background: var(--ann-dismiss-hover, var(--surface-3));
+  color: var(--fg);
+}
+.reg-guidance-dismiss svg {
+  width: 16px;
+  height: 16px;
+}
+

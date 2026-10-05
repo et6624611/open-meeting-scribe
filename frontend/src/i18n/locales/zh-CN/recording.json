@@ -1,0 +1,163 @@
+{
+  "title": "录音纪要",
+  "status": {
+    "identifying": "识别中...",
+    "paused": "已暂停"
+  },
+  "speaker": {
+    "count": "{count} 位人员",
+    "count_title": "当前识别到的人员",
+    "bind_title": "绑定人员身份",
+    "search_placeholder": "搜索人员...",
+    "no_match": "无匹配结果",
+    "create_and_bind": "新建「{name}」并绑定",
+    "locate": "定位此人员",
+    "me_suffix": "（我）",
+    "default_name": "未识别",
+    "unid_initial": "未"
+  },
+  "tab": {
+    "transcript": "转写",
+    "insights": "洞察台"
+  },
+  "layer": {
+    "list_label": "转写文本层",
+    "formal": "书面版",
+    "clean": "清理版",
+    "raw": "原文",
+    "more_section": "文本处理",
+    "cleanup_name": "口语清理",
+    "cleanup_side": "本地 · 不耗额度",
+    "cleanup_sub": "去除语气词与填充词、合并口吃重复；不删否定与自我纠正，不改变语义",
+    "formal_name": "AI 书面化",
+    "formal_side": "云端 · 耗额度",
+    "formal_sub": "把口语改写为书面表达，生成独立书面版；逐字稿原文永不修改",
+    "formal_post_only": "会后可用",
+    "formal_locked_title": "AI 书面化会后可用",
+    "formal_locked_desc": "录制中不改动实时文本，避免延迟与语义反转；会议结束后可在「更多」菜单中生成。",
+    "tag_cleaned": "已清理 · 原文",
+    "tag_cleaned_title": "查看逐字稿原文与清理明细",
+    "peek_label": "逐字稿原文 · 只读",
+    "op_filler": "移除语气词 {n}",
+    "op_dup": "合并重复 {n}",
+    "op_punct": "标点整理 {n} 处",
+    "op_items": "（{items}）",
+    "op_join": "、",
+    "op_sep": "；"
+  },
+  "transcript": {
+    "show": "显示原文",
+    "hide": "隐藏原文",
+    "show_title": "显示原文",
+    "hide_title": "隐藏原文，仅保留章节与要点",
+    "hidden_indicator": "已隐藏 {count} 条原文，当前仅显示章节与要点",
+    "empty": "等待识别结果…",
+    "empty_hint": "开始说话后，识别内容将实时显示在这里",
+    "listening": "正在聆听…",
+    "local_batch_notice": "本地引擎模式：录音全程在本机完成、不出网；录音期间不逐句出字，结束后由本机统一转写。",
+    "local_realtime_notice": "本地引擎模式：分段识别逐句上屏（约有数秒延迟），全程在本机完成、不出网。",
+    "batch_empty": "录音进行中，本机将在结束后统一转写",
+    "batch_empty_hint": "当前未开启分段实时上屏，录音期间不逐句出字属正常现象",
+    "connect_failed": "转写连接已断开",
+    "reconnecting": "正在重新连接…（第 {attempt} 次）",
+    "retry": "重新连接"
+  },
+  "chapter": {
+    "discussing": "讨论中",
+    "key_points": "关键要点",
+    "key_points_count": "{count} 个要点"
+  },
+  "marker": {
+    "label": "标记",
+    "title": "标记模式 — 压缩无标记对话",
+    "compressed": "已压缩 {count} 条无标记对话",
+    "expand_all": "展开全部"
+  },
+  "notes": {
+    "placeholder": "记录随记... Enter 发送，Shift+Enter 换行",
+    "send": "发送随记",
+    "delete": "删除随记"
+  },
+  "insights": {
+    "title": "洞察台",
+    "empty": "在 AI 对话中发起分析或画图，产物会呈现在这里",
+    "empty_hint": "图表用于辅助思考、揭示讨论中的盲点",
+    "expand": "扩展洞察台",
+    "collapse": "收起洞察台",
+    "flow_phase_no": "阶段 {no}",
+    "flow_step_owner": "讨论步骤",
+    "flow_fit": "适应画布",
+    "flow_zoom_in": "放大",
+    "flow_zoom_out": "缩小",
+    "flow_fullscreen": "全屏",
+    "flow_exit_fullscreen": "退出全屏",
+    "deferred_title": "历史观察（{count}）"
+  },
+  "control": {
+    "pause": "暂停",
+    "resume": "恢复",
+    "pause_title": "暂停录音",
+    "resume_title": "恢复录音",
+    "end": "结束",
+    "abandon": "放弃录音"
+  },
+  "focus": {
+    "enter_title": "聚焦模式 — 折叠两侧边栏",
+    "exit": "退出聚焦 Esc",
+    "exit_title": "退出聚焦模式 (Esc)"
+  },
+  "ending": {
+    "text": "录音已结束",
+    "sub": "正在整理录音内容..."
+  },
+  "stop_failed": {
+    "text": "无法结束录音",
+    "force_quit": "强制退出"
+  },
+  "abandon_dialog": {
+    "title": "放弃本次录音？",
+    "desc": "录音将被终止，所有数据将永久删除，无法恢复。",
+    "recorded_duration": "已录制时长：{duration}",
+    "confirm": "确认放弃"
+  },
+  "jump_latest": "回到底部",
+  "timeline": {
+    "jump_title": "跳转到指定时间",
+    "jump_placeholder": "MM:SS 或 HH:MM:SS",
+    "jump_go": "前往"
+  },
+  "volume_warning": "检测到音量极低，请检查麦克风或音频输入设备",
+  "presence_warning": {
+    "gentle_text": "已 {minutes} 分钟未检测到语音，且页面暂无操作。是否继续录制？",
+    "urgent_title": "录制无活动提示",
+    "urgent_text": "录制已持续无活动 {minutes} 分钟，即将自动停止。",
+    "continue_recording": "继续录制",
+    "stop_recording": "停止录制",
+    "stop_and_save": "停止并保存",
+    "auto_stopped_text": "因长时间无活动已自动停止录制"
+  },
+  "errors": {
+    "bind_speaker_failed": "绑定人员失败",
+    "create_bind_speaker_failed": "创建并绑定人员失败"
+  },
+  "translate": {
+    "title": "翻译",
+    "enable": "开启翻译",
+    "disable": "关闭翻译",
+    "toggle_off": "翻译",
+    "target_lang": "目标语言",
+    "status_active": "翻译中",
+    "status_stopped": "翻译已停止",
+    "display_original": "仅原文",
+    "display_translation": "仅译文",
+    "display_bilingual": "双语对照"
+  },
+  "roster": {
+    "title": "参会人",
+    "count": "{count} 人参会",
+    "add_placeholder": "搜索添加…",
+    "remove": "移除",
+    "create_hint": "新建「{name}」",
+    "empty": "暂无参会人"
+  }
+}

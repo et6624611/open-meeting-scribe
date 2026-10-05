@@ -1,0 +1,163 @@
+{
+  "title": "Recording & Minutes",
+  "status": {
+    "identifying": "Identifying...",
+    "paused": "Paused"
+  },
+  "speaker": {
+    "count": "{count} people",
+    "count_title": "Currently identified people",
+    "bind_title": "Bind Person Identity",
+    "search_placeholder": "Search people...",
+    "no_match": "No matching results",
+    "create_and_bind": "Create \"{name}\" and bind",
+    "locate": "Locate this person",
+    "me_suffix": " (Me)",
+    "default_name": "Unidentified",
+    "unid_initial": "?"
+  },
+  "tab": {
+    "transcript": "Transcript",
+    "insights": "Insight Deck"
+  },
+  "layer": {
+    "list_label": "Transcript text layer",
+    "formal": "Formal",
+    "clean": "Cleaned",
+    "raw": "Verbatim",
+    "more_section": "Text processing",
+    "cleanup_name": "Speech cleanup",
+    "cleanup_side": "On-device · free",
+    "cleanup_sub": "Removes fillers and merges stutters; never deletes negations or self-corrections, meaning preserved",
+    "formal_name": "AI rewrite",
+    "formal_side": "Cloud · uses quota",
+    "formal_sub": "Rewrites spoken language into formal prose as a separate version; verbatim transcript is never modified",
+    "formal_post_only": "After meeting",
+    "formal_locked_title": "AI rewrite is available after the meeting",
+    "formal_locked_desc": "Live text is not changed during recording, avoiding latency and tone reversals. Generate it from the More menu once the meeting ends.",
+    "tag_cleaned": "Cleaned · Verbatim",
+    "tag_cleaned_title": "View verbatim transcript and cleanup details",
+    "peek_label": "Verbatim transcript · read-only",
+    "op_filler": "Removed {n} filler(s)",
+    "op_dup": "Merged {n} repetition(s)",
+    "op_punct": "{n} punctuation fix(es)",
+    "op_items": " ({items})",
+    "op_join": ", ",
+    "op_sep": "; "
+  },
+  "transcript": {
+    "show": "Show Transcript",
+    "hide": "Hide Transcript",
+    "show_title": "Show transcript",
+    "hide_title": "Hide transcript, keep only chapters and key points",
+    "hidden_indicator": "{count} transcript lines hidden, showing only chapters and key points",
+    "empty": "Waiting for recognition results...",
+    "empty_hint": "Start speaking and the recognized content will appear here in real time",
+    "listening": "Listening…",
+    "local_batch_notice": "Local engine mode: recording stays fully on-device with no network involved; live text is unavailable during recording, and transcription runs on this device after you stop.",
+    "local_realtime_notice": "Local engine mode: segmented recognition with sentence-by-sentence display (a few seconds behind), fully on-device with no network involved.",
+    "batch_empty": "Recording in progress — transcription will run on this device after you stop",
+    "batch_empty_hint": "Segmented live display is off, so no live sentences appear during recording",
+    "connect_failed": "Transcription connection lost",
+    "reconnecting": "Reconnecting... (attempt {attempt})",
+    "retry": "Reconnect"
+  },
+  "chapter": {
+    "discussing": "In Discussion",
+    "key_points": "Key Points",
+    "key_points_count": "{count} key point(s)"
+  },
+  "marker": {
+    "label": "Mark",
+    "title": "Marker mode — collapse unmarked conversations",
+    "compressed": "{count} unmarked conversation(s) compressed",
+    "expand_all": "Expand All"
+  },
+  "notes": {
+    "placeholder": "Take notes... Enter to send, Shift+Enter for new line",
+    "send": "Send note",
+    "delete": "Delete note"
+  },
+  "insights": {
+    "title": "Insight Deck",
+    "empty": "Ask AI to analyze or draw a diagram in chat; outputs will appear here",
+    "empty_hint": "Diagrams aid thinking and surface blind spots in the discussion",
+    "expand": "Expand Insight Deck",
+    "collapse": "Collapse Insight Deck",
+    "flow_phase_no": "Phase {no}",
+    "flow_step_owner": "Discussion step",
+    "flow_fit": "Fit to canvas",
+    "flow_zoom_in": "Zoom in",
+    "flow_zoom_out": "Zoom out",
+    "flow_fullscreen": "Fullscreen",
+    "flow_exit_fullscreen": "Exit fullscreen",
+    "deferred_title": "History ({count})"
+  },
+  "control": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "pause_title": "Pause recording",
+    "resume_title": "Resume recording",
+    "end": "End",
+    "abandon": "Abandon Recording"
+  },
+  "focus": {
+    "enter_title": "Focus mode — collapse sidebars",
+    "exit": "Exit Focus Esc",
+    "exit_title": "Exit focus mode (Esc)"
+  },
+  "ending": {
+    "text": "Recording ended",
+    "sub": "Organizing recording content..."
+  },
+  "stop_failed": {
+    "text": "Unable to end recording",
+    "force_quit": "Force Quit"
+  },
+  "abandon_dialog": {
+    "title": "Abandon this recording?",
+    "desc": "The recording will be terminated and all data will be permanently deleted. This cannot be undone.",
+    "recorded_duration": "Recorded duration: {duration}",
+    "confirm": "Confirm Abandon"
+  },
+  "jump_latest": "Jump to Latest",
+  "timeline": {
+    "jump_title": "Jump to specific time",
+    "jump_placeholder": "MM:SS or HH:MM:SS",
+    "jump_go": "Go"
+  },
+  "volume_warning": "Very low volume detected. Please check your microphone or audio input device.",
+  "presence_warning": {
+    "gentle_text": "No speech detected for {minutes} minutes and the page is inactive. Continue recording?",
+    "urgent_title": "Recording Inactivity Alert",
+    "urgent_text": "Recording has been inactive for {minutes} minutes and will stop automatically soon.",
+    "continue_recording": "Continue Recording",
+    "stop_recording": "Stop Recording",
+    "stop_and_save": "Stop & Save",
+    "auto_stopped_text": "Recording automatically stopped due to prolonged inactivity"
+  },
+  "errors": {
+    "bind_speaker_failed": "Failed to bind person",
+    "create_bind_speaker_failed": "Failed to create and bind person"
+  },
+  "translate": {
+    "title": "Translate",
+    "enable": "Enable Translation",
+    "disable": "Disable Translation",
+    "toggle_off": "Translate",
+    "target_lang": "Target Language",
+    "status_active": "Translating",
+    "status_stopped": "Translation Stopped",
+    "display_original": "Original Only",
+    "display_translation": "Translation Only",
+    "display_bilingual": "Bilingual"
+  },
+  "roster": {
+    "title": "Attendees",
+    "count": "{count} attending",
+    "add_placeholder": "Search to add…",
+    "remove": "Remove",
+    "create_hint": "Create \"{name}\"",
+    "empty": "No attendees yet"
+  }
+}

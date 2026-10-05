@@ -1,0 +1,197 @@
+/* ═══ 全局重置 + 基础样式 ═══ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: var(--fs-14); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; padding: 0; }
+input, textarea { font: inherit; color: inherit; }
+::selection { background: var(--accent-soft); color: var(--fg); }
+
+/* ─── 搜索结果高亮 ─── */
+mark { background: color-mix(in oklch, var(--accent) 18%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+/* ─── 全局键盘焦点环 ─── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── 全局滚动条：hover 触发，默认隐藏 ─── */
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; transition: background 0.2s; }
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+
+/* 悬停时显示滚动条滑块 */
+.sb-history:hover::-webkit-scrollbar-thumb,
+.ai-feed:hover::-webkit-scrollbar-thumb,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb,
+.gen-content:hover::-webkit-scrollbar-thumb,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb,
+.main:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+.sb-history:hover::-webkit-scrollbar-thumb:hover,
+.ai-feed:hover::-webkit-scrollbar-thumb:hover,
+.rec-transcript-body:hover::-webkit-scrollbar-thumb:hover,
+.gen-content:hover::-webkit-scrollbar-thumb:hover,
+.spk-transcript-scroll:hover::-webkit-scrollbar-thumb:hover,
+.main:hover::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+
+/* Firefox hover 触发 */
+.sb-history:hover, .ai-feed:hover, .rec-transcript-body:hover,
+.gen-content:hover, .spk-transcript-scroll:hover, .main:hover { scrollbar-color: rgba(0,0,0,0.18) transparent; }
+
+/* ─── 减弱动效 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── 通用工具类 ─── */
+.hidden { display: none !important; }
+
+/* ─── 动画 ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══ 全局 tooltip（L2 防护层） ═══
+   单一 DOM 元素挂载在 document.body 上，position: fixed 定位，
+   不受任何父容器 overflow: hidden 裁剪。
+   由 main.ts 中的全局事件委托驱动显示/隐藏/定位。 */
+#global-tooltip {
+  position: fixed;
+  padding: 4px 8px;
+  font-size: var(--fs-12, 12px);
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: var(--fg, oklch(20% 0.01 250));
+  background: var(--surface, oklch(99% 0 0));
+  border: 1px solid var(--border, oklch(88% 0.01 250));
+  border-radius: var(--radius-sm, 6px);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.06);
+  z-index: var(--z-popover, 500);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#global-tooltip.is-visible {
+  opacity: 1;
+}
+
+/* ─── Z-INDEX 分层阶梯（全局唯一取值来源） ─── */
+:root {
+  --z-topbar: 100;
+  --z-popover: 500;
+  --z-modal: 1000;
+  --z-toast: 1100;
+
+  /* ── 圆角标尺补全（sm/radius/lg 由各主题定义，此处补齐缺档） ──
+     --radius-md 对齐 --radius(8px)，使下拉面板圆角与既有浮层一致。 */
+  --radius-xs: 4px;
+  --radius-md: 8px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ── 字号标尺补全 ──
+     --fs-10 曾被子组件大量引用但从未定义，声明被浏览器丢弃后回退到继承字号。
+     此处刻意等于 --fs-11 而非 10px：10px 低于本产品最小可读字号下限。
+     --fs-10 was referenced but never defined, so those declarations were dropped
+     and inherited the parent size. Deliberately mapped to --fs-11, not 10px,
+     because 10px sits below this product's minimum legible size. */
+  --fs-10: var(--fs-11);
+  --fs-16: 16px;
+
+  /* ── 错误态语义色 ──
+     此前「失败 / 危险操作」全站借用 --rec（录音色），侧栏失败项与录音项仅靠
+     脉动动画区分；另有 var(--danger) 引用了一个从未定义的属性，实际生效的是
+     硬编码回退值（oklch(0.55 0.2 25) / #e53e3e），不随 10 套主题变化。
+     --error 在明色主题取 oklch(48% .2 20)，暗色主题由各暗色文件覆盖为
+     oklch(66% .19 20)，两者均已核算对 --surface 的小字对比度 ≥4.5:1（AA）。
+     --error-soft 由 --error 派生，随主题自动变化。 */
+  --error: oklch(48% 0.2 20);
+  --error-soft: color-mix(in oklch, var(--error) 10%, transparent);
+
+  /* ── 蒙版体系 token ── */
+  --overlay-bg: oklch(0% 0 0 / 0.4);        /* 标准 Modal 蒙版背景（硬阻断） */
+  --overlay-enter: 0.2s ease;               /* 蒙版淡入时长 */
+  --card-enter: 0.25s cubic-bezier(0.16, 1, 0.3, 1); /* 卡片入场时长 */
+
+  /* ── 毛玻璃体系 token ──
+     blur 值按「临时过渡 → 浮层卡片 → 常驻结构」三级递增，
+     --glass-bg 由各主题文件覆盖以适配明暗底色。 */
+  --glass-blur-sm: blur(4px);    /* 过渡态（录音结束等临时遮罩） */
+  --glass-blur-md: blur(8px);    /* 浮层卡片（AI 上下文气泡等） */
+  --glass-blur-lg: blur(12px);   /* 常驻结构（顶栏、侧栏） */
+  --modal-width-sm: 400px;   /* 确认弹窗 */
+  --modal-width-md: 480px;   /* 标准弹窗、引导弹窗 */
+  --modal-width-lg: 560px;   /* 向导 */
+}
+
+/* ═══ 统一蒙版基础类 ═══
+   所有 L3 硬阻断 Modal 复用此基础类，确保蒙版背景、z-index、
+   入场动效、卡片样式全局一致。业务弹窗通过叠加业务类名
+   （如 .wizard、.spk-onboarding-card）覆盖尺寸与内部布局。 */
+
+/* 蒙版层：全屏半透明背景 */
+.oms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--overlay-bg);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--overlay-enter);
+}
+.oms-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 卡片层：居中内容容器 */
+.oms-overlay-card {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px oklch(0% 0 0 / 0.10), 0 4px 16px oklch(0% 0 0 / 0.05);
+  width: var(--modal-width-md);
+  max-width: calc(100% - var(--s-6));
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 入场：从下方 8px 滑入 + 淡入 */
+  transform: translateY(8px);
+  opacity: 0;
+  transition: transform var(--card-enter), opacity var(--card-enter);
+}
+.oms-overlay.is-open .oms-overlay-card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* 引导型 Modal 入场（含丰富演示动画，需要更大幅度） */
+.oms-overlay-card.oms-card-guided {
+  transform: translateY(16px) scale(0.97);
+}
+.oms-overlay.is-open .oms-overlay-card.oms-card-guided {
+  transform: translateY(0) scale(1);
+  transition-duration: 0.4s;
+}

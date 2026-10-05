@@ -1,0 +1,22 @@
+# DCO 检查工作流 — 校验每个 commit 均已签署 Developer Certificate of Origin
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dco-check:
+    name: DCO 签署检查
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 校验 Signed-off-by
+      uses: tisonkun/dco-check-github-action@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

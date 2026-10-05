@@ -1,0 +1,62 @@
+{
+  "untitled": "Untitled Meeting",
+  "group_count": "{count} meeting(s)",
+  "empty": "No meeting records",
+  "empty_search": "No matching meetings",
+  "loading": "Loading...",
+  "more": "More",
+  "rename": "Rename",
+  "retry": "Retry",
+  "delete": "Delete",
+  "summary_label": "Summary",
+  "status": {
+    "recording": "Recording",
+    "pending": "Pending",
+    "transcribing": "Transcribing",
+    "awaiting_mapping": "Awaiting link",
+    "summarizing": "Generating",
+    "completed": "Completed",
+    "failed": "Failed"
+  },
+  "duration": {
+    "minutes": "{m} min",
+    "hours_minutes": "{h}h {m}m",
+    "hours": "{h}h"
+  },
+  "failure": {
+    "unknown": "Unknown error",
+    "transient": "Temporary error, retryable",
+    "transient_action": "Retry",
+    "api_config": "API configuration error",
+    "api_config_action": "Check Settings",
+    "audio": "Audio file error",
+    "audio_action": "Re-upload",
+    "rerecord_action": "Re-record",
+    "no_speech": "No valid speech detected",
+    "no_speech_hint": "The recording may be silent or at very low volume. Please check your microphone or audio input device.",
+    "local_engine": "Local engine transcription failed",
+    "default_action": "View Details"
+  },
+  "rename_prompt": "Enter new title:",
+  "confirm_delete_title": "Delete Meeting",
+  "confirm_delete": "Delete this meeting? This cannot be undone.",
+  "errors": {
+    "delete_failed": "Delete failed, please try again",
+    "rename_failed": "Rename failed, please try again",
+    "retry_failed": "Retry failed, please check network connection",
+    "reupload_wip": "Re-upload feature is under development"
+  },
+  "copy_title": "Copy Title",
+  "copy_summary": "Copy Summary",
+  "copied": "Copied",
+  "stat_speakers": "People",
+  "stat_duration": "Duration",
+  "stat_created": "Created",
+  "stat_source": "Source",
+  "source_record": "Recording",
+  "source_upload": "Upload",
+  "speakers_more": "{count} more",
+  "speakers_total": "{count} participants",
+  "speakers_unidentified": "{count} unidentified",
+  "speakers_unid_title": "{count} people not yet linked to an identity"
+}

@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-meeting-scribe"
+version = "1.0.0"
+description = "Open-source meeting minutes tool: audio → transcription + speaker diarization + voiceprint naming → structured minutes"
+readme = "README.md"
+license = {text = "AGPL-3.0-or-later"}
+authors = [
+    {name = "et6624611", email = "57283830+et6624611@users.noreply.github.com"}
+]
+maintainers = [
+    {name = "et6624611", email = "57283830+et6624611@users.noreply.github.com"}
+]
+keywords = ["meeting", "transcription", "asr", "speaker-diarization", "voiceprint", "minutes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Office/Business",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.32",
+    "PyJWT>=2.8.0",
+    "alibabacloud-dypnsapi20170525>=1.0.0",
+    "alibabacloud-tea-openapi>=0.3.0",
+    "dashscope>=1.23.0",
+    "websockets>=12.0",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "python-docx>=1.1.0",
+    "PyPDF2>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/et6624611/open-meeting-scribe"
+Repository = "https://github.com/et6624611/open-meeting-scribe"
+Issues = "https://github.com/et6624611/open-meeting-scribe/issues"
+Changelog = "https://github.com/et6624611/open-meeting-scribe/blob/main/CHANGELOG.md"
+
+[project.scripts]
+oms = "cli:main"
+
+[tool.setuptools]
+packages = ["core", "app"]
+
+[tool.setuptools.package-data]
+app = ["static/*.html", "admin_static/*.html"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = [
+    "E501",  # Line too long（>120 字符的长字符串/URL/注释，保持现状）
+    "E402",  # Module import not at top（底部 re-export 兼容层 + 懒加载 import 是刻意设计）
+    "N806",  # Variable in function should be lowercase（函数级常量用大写是团队约定）
+    "N801",  # Class name should use CapWords（perf_timer 装饰器式类名是刻意设计）
+    "N812",  # Lowercase imported as non-lowercase（kaldi 声纹库别名 K 是行业惯例）
+    "N999",  # Invalid module name（voiceprint-service 目录名是服务命名约定）
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

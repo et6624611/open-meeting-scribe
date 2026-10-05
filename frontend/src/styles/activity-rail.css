@@ -1,0 +1,91 @@
+/* ═══ Activity Rail（常驻全局导航轨） ═══ */
+
+.activity-rail {
+  flex: 0 0 52px;
+  width: 52px;
+  min-width: 52px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-lg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--s-2) 0;
+  /* z-dock(600) > z-popover(500)：浮层定位失误横压 rail 时图标仍可点；
+     < z-modal(1000)，遮罩类弹窗仍盖住整窗。 */
+  z-index: var(--z-dock, 600);
+  position: relative;
+}
+
+/* ─── 顶部区域 ─── */
+.ar-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+}
+
+/* ─── 中部导航图标组 ─── */
+.ar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-3) 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ─── 底部区域 ─── */
+.ar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  flex-shrink: 0;
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+/* ─── 通用按钮样式（Slack 风格背景高亮） ─── */
+.ar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--subtle);
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.ar-btn:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+/* Slack 风格选中态：圆角背景高亮 + accent 色图标 */
+.ar-btn.is-active {
+  background: var(--surface-3, var(--surface-2));
+  color: var(--accent);
+}
+/* 抑制 focus-visible 轮廓：hover / is-active 已提供充分视觉反馈，
+   且 outline-offset 会在圆角按钮边缘产生弧形残影。
+   双类选择器提升特异性以覆盖 IconButton scoped 样式（0-2-1）。 */
+.ar-btn.icon-btn:focus-visible {
+  outline: none;
+}
+
+/* ─── 折叠/展开按钮箭头旋转 ─── */
+.ar-toggle-arrow {
+  transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+  transform-origin: center;
+}
+.ar-toggle-btn.is-collapsed .ar-toggle-arrow {
+  transform: rotate(180deg);
+}

@@ -1,0 +1,48 @@
+/* ─── 月白 (Moonlight — cool silver-cyan on bluestone) ─── */
+html[data-theme="moonlight"] {
+  --bg: oklch(21% 0.01 220);
+  --surface: oklch(25% 0.014 220);
+  --surface-2: oklch(28% 0.016 220);
+  --surface-3: oklch(32% 0.018 220);
+  --fg: oklch(91% 0.008 220);
+  --muted: oklch(66.5% 0.012 220);
+  --subtle: oklch(63% 0.01 220);
+  --border: oklch(35% 0.018 220);
+  --border-strong: oklch(42% 0.022 220);
+  --accent: oklch(74% 0.05 220);
+  --accent-soft: oklch(74% 0.05 220 / 0.12);
+  --accent-mid: oklch(74% 0.05 220 / 0.30);
+  --accent-fg: oklch(18% 0.01 220);
+  --rec: oklch(70% 0.18 25);
+  --rec-soft: oklch(70% 0.18 25 / 0.12);
+  /* 暗色下 :root 的 48% 明度红对深底不足 AA，提亮至 66%（对 surface 4.68:1） */
+  --error: oklch(66% 0.19 20);
+  --note-bg: oklch(27% 0.014 220);
+  --note-border: oklch(36% 0.02 220);
+  --note-fg: oklch(88% 0.01 220);
+  --mine: oklch(72% 0.10 155);
+  --mine-soft: oklch(72% 0.10 155 / 0.14);
+  --mine-bg: oklch(27% 0.018 155);
+  --mine-border: oklch(38% 0.03 155);
+  --ok: oklch(72% 0.12 155);
+  --ok-soft: oklch(72% 0.12 155 / 0.12);
+  --warn: oklch(78% 0.12 80);
+  --warn-soft: oklch(78% 0.12 80 / 0.12);
+  --info: oklch(65% 0.08 220);
+  --info-soft: oklch(65% 0.08 220 / 0.14);
+  --purple: oklch(65% 0.08 280);
+  --purple-soft: oklch(65% 0.08 280 / 0.14);
+  --proactive: oklch(72% 0.05 220);
+  --proactive-soft: oklch(72% 0.05 220 / 0.12);
+  --proactive-mid: oklch(72% 0.05 220 / 0.28);
+  --timeline-line: oklch(28% 0.012 220);
+  --timeline-node: oklch(68% 0.05 220);
+  --timeline-today: oklch(74% 0.05 220);
+  --timeline-today-glow: oklch(74% 0.05 220 / 0.20);
+  --dropdown-bg: oklch(28% 0.016 220);
+  --dropdown-shadow: 0 8px 32px oklch(0% 0 0 / 0.38), 0 2px 8px oklch(0% 0 0 / 0.18);
+  --glass-bg: oklch(21% 0.01 220 / 0.75);
+  --shadow-focus: 0 0 0 3px oklch(74% 0.05 220 / 0.25);
+  --wm-opacity: 0.18;
+  --wm-glow: oklch(74% 0.05 220 / 0.12);
+}

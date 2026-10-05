@@ -1,0 +1,77 @@
+{
+  "engine_id": "qoder-cli",
+  "display_name": "Qoder CLI",
+  "binary": "qoder",
+  "install_url": "https://qoder.com/cli",
+  "min_version": "1.1.0",
+  "protocol_version_observed": "1.4.0",
+  "probe": {
+    "path_cmd": ["which", "qoder"],
+    "version_cmd": ["qoder", "--version"],
+    "login_cmd": ["qoder", "status"],
+    "login_signature": "Username:",
+    "models_cmd": ["qoder", "--list-models"]
+  },
+  "capabilities": {
+    "stream_json": true,
+    "session_resume": true,
+    "mcp_injection": true,
+    "pre_authorization": true,
+    "add_dir": true,
+    "system_prompt_append": true
+  },
+  "argv": {
+    "base": ["-p", "--output-format", "stream-json"],
+    "workspace_flag": "-w",
+    "add_dir_flag": "--add-dir",
+    "session_new_flag": "--session-id",
+    "session_resume_flag": "-r",
+    "no_persist_flag": "--no-session-persistence",
+    "permission_flag": "--permission-mode",
+    "disallowed_flag": "--disallowed-tools",
+    "allowed_tools_flag": "--allowed-tools",
+    "strict_mcp_flag": "--strict-mcp-config",
+    "mcp_config_flag": "--mcp-config",
+    "model_flag": "-m",
+    "prompt_separator": "--"
+  },
+  "auth_tiers": {
+    "readonly": {
+      "permission_mode": "dont_ask",
+      "disallowed_tools": ["Bash", "Write", "Edit", "WebFetch", "WebSearch", "NotebookEdit"]
+    },
+    "workspace_write": {
+      "permission_mode": "accept_edits",
+      "disallowed_tools": ["Bash", "WebFetch", "WebSearch"]
+    },
+    "full_task": {
+      "permission_mode": "auto",
+      "disallowed_tools": ["WebFetch", "WebSearch"]
+    }
+  },
+  "error_codes": {
+    "118": "credit_exhausted"
+  },
+  "ignore_subtypes": ["hook_started", "hook_progress", "hook_response", "artifacts_update"],
+  "noise_types": ["system"],
+  "tool_labels": {
+    "Read": { "zh": "读取文件", "en": "Read file", "icon": "file-text" },
+    "Write": { "zh": "写入文件", "en": "Write file", "icon": "pen-line" },
+    "Edit": { "zh": "编辑文件", "en": "Edit file", "icon": "pencil" },
+    "Bash": { "zh": "执行命令", "en": "Run command", "icon": "terminal" },
+    "Glob": { "zh": "查找文件", "en": "Find files", "icon": "search" },
+    "Grep": { "zh": "检索内容", "en": "Search content", "icon": "list-filter" },
+    "Agent": { "zh": "子任务", "en": "Subtask", "icon": "bot" },
+    "TaskCreate": { "zh": "创建任务", "en": "Create task", "icon": "clipboard-list" },
+    "TaskUpdate": { "zh": "更新任务", "en": "Update task", "icon": "check-square" },
+    "TaskList": { "zh": "列出任务", "en": "List tasks", "icon": "list" },
+    "WebFetch": { "zh": "抓取网页", "en": "Fetch web page", "icon": "globe" },
+    "WebSearch": { "zh": "联网搜索", "en": "Web search", "icon": "telescope" },
+    "_mcp": { "zh": "调用集成工具", "en": "Call integration tool", "icon": "plug" },
+    "_unknown": { "zh": "执行工具", "en": "Run tool", "icon": "wrench" }
+  },
+  "timeout": {
+    "first_event_seconds": 60,
+    "total_seconds": 300
+  }
+}

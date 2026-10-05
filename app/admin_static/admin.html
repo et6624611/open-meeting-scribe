@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Meeting Scribe — 管理后台</title>
+<style>
+:root {
+  --sidebar-bg: #1e293b;
+  --sidebar-fg: #e2e8f0;
+  --sidebar-border: #334155;
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --border: #cbd5e1;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.6;
+}
+
+/* ── 登录页 ── */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+.login-box {
+  background: var(--surface);
+  padding: 40px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 380px;
+}
+.login-box h1 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+.login-box p {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.login-box input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.login-box input:focus {
+  border-color: var(--accent);
+}
+.login-box button {
+  width: 100%;
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.login-box button:hover { background: var(--accent-hover); }
+.login-error {
+  color: var(--danger);
+  font-size: 13px;
+  margin-bottom: 12px;
+  display: none;
+}
+
+/* ── 主布局 ── */
+.app-container { display: none; }
+.app-container.active { display: block; }
+
+.topbar {
+  background: var(--sidebar-bg);
+  border-bottom: none;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-brand {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sidebar-fg);
+}
+.topbar-brand span { color: #94a3b8; font-weight: 400; }
+.topbar-actions { display: flex; gap: 12px; align-items: center; }
+.topbar-actions button {
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--sidebar-fg);
+  transition: all 0.2s;
+}
+.topbar-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.main-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* ── Tab 导航 ── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 24px;
+}
+.tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  margin-bottom: -2px;
+}
+.tab:hover { color: var(--fg); }
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── 概览卡片 ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--surface);
+  padding: 20px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.stat-card .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 600;
+}
+.stat-card .sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── 表格 ── */
+.table-container {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.table-toolbar {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.table-toolbar input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  width: 240px;
+  outline: none;
+}
+.table-toolbar input:focus { border-color: var(--accent); }
+.table-toolbar select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  text-align: left;
+  padding: 12px 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  background: #fafbfc;
+}
+td {
+  padding: 14px 20px;
+  font-size: 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+tr:hover td { background: #f8f9ff; }
+tr:last-child td { border-bottom: none; }
+
+/* ── 标签 ── */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge-free { background: #e9ecef; color: #495057; }
+.badge-personal { background: #dbeafe; color: #1e40af; }
+.badge-pro { background: #d1fae5; color: #065f46; }
+.badge-team { background: #fef3c7; color: #92400e; }
+.badge-active { background: #d1fae5; color: #065f46; }
+.badge-disabled { background: #fee2e2; color: #991b1b; }
+.badge-github { background: #e9ecef; color: #24292e; }
+.badge-sms { background: #ede9fe; color: #5b21b6; }
+
+/* ── 操作按钮 ── */
+.action-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  color: var(--fg);
+  transition: all 0.2s;
+}
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.action-btn.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── 用户详情面板 ── */
+.detail-panel {
+  display: none;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.detail-panel.active { display: block; }
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+.detail-header h2 { font-size: 18px; }
+.detail-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px 8px;
+}
+.detail-close:hover { color: var(--fg); }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.detail-field .label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.detail-field .value {
+  font-size: 14px;
+}
+
+/* ── 授权编辑 ── */
+.subscription-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+.subscription-form select {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.subscription-form button {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.subscription-form button:hover { background: var(--accent-hover); }
+
+/* ── 用量条 ── */
+.usage-bar {
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+  width: 100px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.usage-bar-fill.low { background: var(--success); }
+.usage-bar-fill.medium { background: var(--warning); }
+.usage-bar-fill.high { background: var(--danger); }
+
+/* ── 最近注册列表 ── */
+.recent-list {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+.recent-list h3 {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+.recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.recent-item:last-child { border-bottom: none; }
+.recent-item .name { font-weight: 500; }
+.recent-item .meta { font-size: 13px; color: var(--muted); }
+
+/* ── 空状态 ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-state .icon { margin-bottom: 16px; display: flex; justify-content: center; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  background: var(--fg);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s;
+  z-index: 1000;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── 响应式 ── */
+@media (max-width: 768px) {
+  .main-content { padding: 16px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .table-toolbar { flex-wrap: wrap; }
+  .table-toolbar input { width: 100%; }
+  td, th { padding: 10px 12px; font-size: 13px; }
+}
+
+/* ─── 图标系统（Lucide / Feather 风格） ─── */
+.ic { flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ic-sm { width: 14px; height: 14px; }
+.ic-md { width: 16px; height: 16px; }
+.ic-lg { width: 20px; height: 20px; }
+.ic-xl { width: 24px; height: 24px; }
+.ic-xxl { width: 48px; height: 48px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- 登录页 -->
+<div class="login-container" id="loginPage">
+  <div class="login-box">
+    <h1>管理后台</h1>
+    <p>Open Meeting Scribe</p>
+    <div class="login-error" id="loginError">密码错误</div>
+    <form id="loginForm">
+      <input type="password" id="passwordInput" placeholder="管理员密码" autofocus>
+      <button type="submit">登录</button>
+    </form>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<div class="app-container" id="appContainer">
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      Open Meeting Scribe <span>管理后台</span>
+    </div>
+    <div class="topbar-actions">
+      <button onclick="logout()">退出登录</button>
+    </div>
+  </div>
+
+  <!-- 主内容 -->
+  <div class="main-content">
+    <!-- Tab 导航 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="overview" onclick="switchTab('overview')">概览</button>
+      <button class="tab" data-tab="users" onclick="switchTab('users')">用户管理</button>
+      <button class="tab" data-tab="messages" onclick="switchTab('messages')">消息管理</button>
+      <button class="tab" data-tab="flags" onclick="switchTab('flags')">功能开关</button>
+    </div>
+
+    <!-- 概览 Tab -->
+    <div id="tab-overview">
+      <div class="stats-grid" id="statsGrid">
+        <!-- 动态填充 -->
+      </div>
+      <div class="recent-list" id="recentList">
+        <h3>最近注册</h3>
+        <div id="recentUsers"><!-- 动态填充 --></div>
+      </div>
+    </div>
+
+    <!-- 用户管理 Tab -->
+    <div id="tab-users" style="display:none;">
+      <!-- 用户详情面板 -->
+      <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+          <h2 id="detailName">用户详情</h2>
+          <button class="detail-close" onclick="closeDetail()">&times;</button>
+        </div>
+        <div class="detail-grid" id="detailGrid">
+          <!-- 动态填充 -->
+        </div>
+        <div class="subscription-form">
+          <span style="font-size:14px;color:var(--muted);">月度配额（分钟）：</span>
+          <input type="number" id="detailQuotaInput" min="0" step="100" style="width:100px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          <span style="margin-left:12px;font-size:14px;color:var(--muted);">账号状态：</span>
+          <select id="detailStatusSelect">
+            <option value="active">正常</option>
+            <option value="disabled">禁用</option>
+          </select>
+          <button onclick="updateQuota()">保存配额</button>
+          <button onclick="updateStatus()" style="margin-left:8px;">保存状态</button>
+        </div>
+      </div>
+
+      <!-- 用户列表 -->
+      <div class="table-container">
+        <div class="table-toolbar">
+          <input type="text" id="searchInput" placeholder="搜索名称、手机号、邮箱..." oninput="debounceSearch()">
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>登录方式</th>
+              <th>本月用量</th>
+              <th>状态</th>
+              <th>注册时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <!-- 动态填充 -->
+          </tbody>
+        </table>
+        <div class="empty-state" id="emptyState" style="display:none;">
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div>
+          <p>暂无用户数据</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 消息管理 Tab -->
+    <div id="tab-messages" style="display:none;">
+      <!-- 操作栏 -->
+      <div class="table-container" style="margin-bottom:24px;">
+        <div class="table-toolbar">
+          <button class="action-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:8px 16px;font-size:14px;" onclick="showMessageForm()">+ 新建消息</button>
+        </div>
+      </div>
+
+      <!-- 消息编辑表单（默认隐藏） -->
+      <div class="detail-panel" id="messageFormPanel">
+        <div class="detail-header">
+          <h2 id="messageFormTitle">新建消息</h2>
+          <button class="detail-close" onclick="closeMessageForm()">&times;</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">消息类型</label>
+            <select id="msgType" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+              <option value="banner">横幅（banner）</option>
+              <option value="toast">提示（toast）</option>
+              <option value="announcement">公告（announcement）</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">目标用户</label>
+            <select id="msgTarget" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+              <option value="guest">未登录用户</option>
+              <option value="logged_in">已登录用户</option>
+              <option value="all">所有用户</option>
+              <option value="tier:free">体验期用户</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">标题（可选）</label>
+            <input type="text" id="msgTitle" placeholder="可选标题" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">优先级</label>
+            <input type="number" id="msgPriority" value="10" min="0" max="100" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">消息内容（支持 HTML）</label>
+            <textarea id="msgContent" rows="3" placeholder="例：注册账号可获得 <strong>300 分钟/月</strong> 免费转写额度" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;resize:vertical;"></textarea>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">行动按钮文案（可选）</label>
+            <input type="text" id="msgCtaText" placeholder="例：立即注册" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">行动按钮链接（可选）</label>
+            <input type="text" id="msgCtaUrl" placeholder="例：/auth/github" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">关闭策略</label>
+            <select id="msgDismissMode" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+              <option value="delayed">延迟重现（推荐）</option>
+              <option value="session">仅当前会话</option>
+              <option value="permanent">永久关闭</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">延迟天数</label>
+            <input type="number" id="msgDismissDelay" value="7" min="1" max="365" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">生效开始（留空=立即）</label>
+            <input type="datetime-local" id="msgScheduleStart" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">生效结束（留空=长期）</label>
+            <input type="datetime-local" id="msgScheduleEnd" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <button onclick="saveMessage()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;">保存</button>
+          <button onclick="closeMessageForm()" style="padding:8px 20px;background:none;border:1px solid var(--border);border-radius:6px;font-size:14px;cursor:pointer;">取消</button>
+        </div>
+      </div>
+
+      <!-- 消息列表 -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>类型</th>
+              <th>内容</th>
+              <th>目标</th>
+              <th>关闭策略</th>
+              <th>有效期</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="messagesTableBody">
+          </tbody>
+        </table>
+        <div class="empty-state" id="messagesEmptyState" style="display:none;">
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div>
+          <p>暂无消息，点击「新建消息」创建</p>
+        </div>
+      </div>
+    </div>
+    <!-- 功能开关 Tab -->
+    <div id="tab-flags" style="display:none;">
+      <!-- 操作栏 -->
+      <div class="table-container" style="margin-bottom:24px;">
+        <div class="table-toolbar">
+          <button class="action-btn" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:8px 16px;font-size:14px;" onclick="showFlagForm()">+ 新建开关</button>
+        </div>
+      </div>
+
+      <!-- 开关编辑表单（默认隐藏） -->
+      <div class="detail-panel" id="flagFormPanel">
+        <div class="detail-header">
+          <h2 id="flagFormTitle">新建开关</h2>
+          <button class="detail-close" onclick="closeFlagForm()">&times;</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">标识名</label>
+            <input type="text" id="flagName" placeholder="例：realtime_asr" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">生效对象</label>
+            <select id="flagTarget" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+              <option value="all">所有用户</option>
+              <option value="tier:free">体验期用户</option>
+              <option value="users">指定用户 ID</option>
+            </select>
+          </div>
+          <div style="grid-column:1/-1;">
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">描述</label>
+            <input type="text" id="flagDesc" placeholder="功能描述" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;">
+          </div>
+          <div id="flagUsersGroup" style="grid-column:1/-1;display:none;">
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;">用户 ID 列表（每行一个）</label>
+            <textarea id="flagUsers" rows="3" placeholder="每行输入一个用户 ID" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;resize:vertical;font-family:monospace;"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <button onclick="saveFlag()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer;">保存</button>
+          <button onclick="closeFlagForm()" style="padding:8px 20px;background:none;border:1px solid var(--border);border-radius:6px;font-size:14px;cursor:pointer;">取消</button>
+        </div>
+      </div>
+
+      <!-- 开关列表 -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>标识名</th>
+              <th>描述</th>
+              <th>生效对象</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="flagsTableBody">
+          </tbody>
+        </table>
+        <div class="empty-state" id="flagsEmptyState" style="display:none;">
+          <div class="icon"><svg class="ic ic-xxl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></div>
+          <p>暂无功能开关，点击「新建开关」创建</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 状态
+// ============================================================
+let currentTab = 'overview';
+let currentUser = null;
+let searchTimer = null;
+
+// ============================================================
+// API 请求
+// ============================================================
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(path, opts);
+  if (resp.status === 401) {
+    showLogin();
+    throw new Error('未登录');
+  }
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    // FastAPI 422 验证错误：detail 是对象数组
+    let msg = '请求失败';
+    if (typeof err.detail === 'string') {
+      msg = err.detail;
+    } else if (Array.isArray(err.detail)) {
+      msg = err.detail.map(e => {
+        const loc = (e.loc || []).slice(1).join('.') || '字段';
+        return `${loc}: ${e.msg || '验证失败'}`;
+      }).join('; ');
+    } else if (err.detail) {
+      msg = String(err.detail);
+    }
+    throw new Error(msg);
+  }
+  const json = await resp.json();
+  return json || {};
+}
+
+// ============================================================
+// 登录/登出
+// ============================================================
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = document.getElementById('passwordInput').value;
+  const errorEl = document.getElementById('loginError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('POST', '/api/admin/login', { password });
+    showApp();
+  } catch (err) {
+    errorEl.textContent = err.message || '密码错误';
+    errorEl.style.display = 'block';
+  }
+});
+
+async function logout() {
+  try {
+    await api('POST', '/api/admin/logout');
+  } catch {}
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('appContainer').classList.remove('active');
+  document.getElementById('passwordInput').value = '';
+}
+
+function showApp() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appContainer').classList.add('active');
+  loadOverview();
+}
+
+// ============================================================
+// Tab 切换
+// ============================================================
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('tab-overview').style.display = tab === 'overview' ? 'block' : 'none';
+  document.getElementById('tab-users').style.display = tab === 'users' ? 'block' : 'none';
+  document.getElementById('tab-messages').style.display = tab === 'messages' ? 'block' : 'none';
+  document.getElementById('tab-flags').style.display = tab === 'flags' ? 'block' : 'none';
+
+  if (tab === 'overview') loadOverview();
+  if (tab === 'users') loadUsers();
+  if (tab === 'messages') loadMessages();
+  if (tab === 'flags') loadFlags();
+}
+
+// ============================================================
+// 概览
+// ============================================================
+async function loadOverview() {
+  try {
+    const data = await api('GET', '/api/admin/overview');
+
+    // 统计卡片
+    const totalUsers = data.total_users;
+
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-card">
+        <div class="label">总用户数</div>
+        <div class="value">${totalUsers}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">本月总用量</div>
+        <div class="value">${data.total_monthly_minutes}</div>
+        <div class="sub">${data.month_key} 分钟</div>
+      </div>
+    `;
+
+    // 最近注册
+    const recentHtml = (data.recent_users || []).map(u => {
+      const displayName = u.name || u.phone_masked || '未知';
+      const time = u.created_at ? u.created_at.slice(0, 16).replace('T', ' ') : '';
+      return `
+        <div class="recent-item">
+          <div>
+            <span class="name">${esc(displayName)}</span>
+            <span class="badge badge-${u.provider}" style="margin-left:8px;">${u.provider === 'github' ? 'GitHub' : '短信'}</span>
+          </div>
+          <div class="meta">
+            <span style="font-size:13px;color:var(--muted);">配额 ${u.quota} 分钟</span>
+            <span style="margin-left:12px;">${time}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('recentUsers').innerHTML = recentHtml || '<p style="color:var(--muted);padding:20px 0;text-align:center;">暂无注册用户</p>';
+  } catch (err) {
+    showToast('加载概览失败: ' + err.message);
+  }
+}
+
+// ============================================================
+// 用户列表
+// ============================================================
+async function loadUsers() {
+  const search = document.getElementById('searchInput').value;
+
+  try {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+
+    const data = await api('GET', '/api/admin/users?' + params.toString());
+    const users = data.users || [];
+
+    const tbody = document.getElementById('usersTableBody');
+    const empty = document.getElementById('emptyState');
+
+    if (users.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = users.map(u => {
+      const displayName = u.name || u.phone_masked || u.email || '未知';
+      const providerLabel = u.provider === 'github' ? 'GitHub' : (u.provider === 'sms' ? '短信' : '本地');
+      const status = u.status || 'active';
+      const time = u.created_at ? u.created_at.slice(0, 10) : '';
+      const usagePct = u.quota > 0 ? Math.min(100, Math.round(u.monthly_minutes / u.quota * 100)) : 0;
+      const usageClass = usagePct > 80 ? 'high' : (usagePct > 50 ? 'medium' : 'low');
+
+      return `
+        <tr>
+          <td>
+            <strong>${esc(displayName)}</strong>
+            ${u.email ? '<br><span style="font-size:12px;color:var(--muted);">' + esc(u.email) + '</span>' : ''}
+          </td>
+          <td><span class="badge badge-${u.provider}">${providerLabel}</span></td>
+          <td>
+            <div class="usage-bar"><div class="usage-bar-fill ${usageClass}" style="width:${usagePct}%"></div></div>
+            <span style="font-size:13px;">${u.monthly_minutes}/${u.quota} 分钟</span>
+          </td>
+          <td><span class="badge badge-${status}">${status === 'active' ? '正常' : '已禁用'}</span></td>
+          <td style="font-size:13px;color:var(--muted);">${time}</td>
+          <td><button class="action-btn" onclick="showUserDetail('${u.id}')">详情</button></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    showToast('加载用户列表失败: ' + err.message);
+  }
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(loadUsers, 300);
+}
+
+// ============================================================
+// 用户详情
+// ============================================================
+async function showUserDetail(userId) {
+  try {
+    const user = await api('GET', '/api/admin/users/' + userId);
+    currentUser = user;
+
+    document.getElementById('detailName').textContent = user.name || user.phone_masked || '用户详情';
+
+    const providerLabel = user.provider === 'github' ? 'GitHub' : (user.provider === 'sms' ? '短信' : '本地');
+    const time = user.created_at ? user.created_at.slice(0, 16).replace('T', ' ') : '';
+    const lastLogin = user.last_login ? user.last_login.slice(0, 16).replace('T', ' ') : '';
+
+    document.getElementById('detailGrid').innerHTML = `
+      <div class="detail-field">
+        <div class="label">用户 ID</div>
+        <div class="value" style="font-family:monospace;font-size:12px;">${user.id}</div>
+      </div>
+      <div class="detail-field">
+        <div class="label">登录方式</div>
+        <div class="value">${providerLabel} ${user.provider_id ? '(' + esc(user.provider_id) + ')' : ''}</div>
+      </div>
+      <div class="detail-field">
+        <div class="label">邮箱</div>
+        <div class="value">${esc(user.email || '未绑定')}</div>
+      </div>
+      <div class="detail-field">
+        <div class="label">注册时间</div>
+        <div class="value">${time}</div>
+      </div>
+      <div class="detail-field">
+        <div class="label">最后登录</div>
+        <div class="value">${lastLogin}</div>
+      </div>
+      <div class="detail-field">
+        <div class="label">本月用量</div>
+        <div class="value">${user.monthly_minutes} / ${user.quota} 分钟</div>
+      </div>
+    `;
+
+    document.getElementById('detailQuotaInput').value = user.quota ?? 300;
+    document.getElementById('detailStatusSelect').value = user.status || 'active';
+
+    document.getElementById('detailPanel').classList.add('active');
+  } catch (err) {
+    showToast('加载用户详情失败: ' + err.message);
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('active');
+  currentUser = null;
+}
+
+// ============================================================
+// 配额/状态修改
+// ============================================================
+async function updateQuota() {
+  if (!currentUser) return;
+  const quota = parseInt(document.getElementById('detailQuotaInput').value);
+  if (isNaN(quota) || quota < 0) {
+    showToast('请输入有效的配额数值');
+    return;
+  }
+  try {
+    await api('PUT', `/api/admin/users/${currentUser.id}/quota`, { quota });
+    showToast('配额已更新为 ' + quota + ' 分钟');
+    loadUsers();
+  } catch (err) {
+    showToast('更新失败: ' + err.message);
+  }
+}
+
+async function updateStatus() {
+  if (!currentUser) return;
+  const status = document.getElementById('detailStatusSelect').value;
+  try {
+    await api('PUT', `/api/admin/users/${currentUser.id}/status`, { status });
+    showToast(status === 'active' ? '账号已启用' : '账号已禁用');
+    loadUsers();
+  } catch (err) {
+    showToast('更新失败: ' + err.message);
+  }
+}
+
+// ============================================================
+// 消息管理
+// ============================================================
+let editingMessageId = null;
+
+async function loadMessages() {
+  try {
+    const data = await api('GET', '/api/admin/config/messages');
+    const messages = data.messages || [];
+
+    const tbody = document.getElementById('messagesTableBody');
+    const empty = document.getElementById('messagesEmptyState');
+
+    if (messages.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = messages.map(m => {
+      const typeLabel = { banner: '横幅', toast: '提示', announcement: '公告' }[m.type] || m.type;
+      const targetLabel = {
+        'all': '所有用户', 'guest': '未登录', 'logged_in': '已登录',
+        'tier:free': '体验期',
+      }[m.target] || m.target;
+      const dismissLabel = {
+        'session': '会话级', 'delayed': `延迟 ${m.dismiss_policy?.delay_days || 7} 天`, 'permanent': '永久',
+      }[m.dismiss_policy?.mode] || m.dismiss_policy?.mode;
+
+      const startStr = m.schedule?.start ? m.schedule.start.slice(0, 10) : '立即';
+      const endStr = m.schedule?.end ? m.schedule.end.slice(0, 10) : '长期';
+      const contentPreview = (m.content || '').replace(/<[^>]*>/g, '').slice(0, 40);
+
+      return `
+        <tr>
+          <td><span class="badge" style="background:#e9ecef;color:#495057;">${typeLabel}</span></td>
+          <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(m.content)}">${esc(contentPreview)}${m.content && m.content.length > 40 ? '...' : ''}</td>
+          <td>${targetLabel}</td>
+          <td style="font-size:13px;">${dismissLabel}</td>
+          <td style="font-size:13px;color:var(--muted);">${startStr} ~ ${endStr}</td>
+          <td>
+            <button class="action-btn" onclick="toggleMessage('${m.id}')" style="font-size:12px;">
+              ${m.enabled ? '已启用' : '已禁用'}
+            </button>
+          </td>
+          <td>
+            <button class="action-btn" onclick="editMessage('${m.id}')" style="margin-right:4px;">编辑</button>
+            <button class="action-btn danger" onclick="deleteMessage('${m.id}')">删除</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    showToast('加载消息列表失败: ' + err.message);
+  }
+}
+
+function showMessageForm(msg) {
+  editingMessageId = msg ? msg.id : null;
+  document.getElementById('messageFormTitle').textContent = msg ? '编辑消息' : '新建消息';
+
+  document.getElementById('msgType').value = msg?.type || 'banner';
+  document.getElementById('msgTarget').value = msg?.target || 'guest';
+  document.getElementById('msgTitle').value = msg?.title || '';
+  document.getElementById('msgPriority').value = msg?.priority ?? 10;
+  document.getElementById('msgContent').value = msg?.content || '';
+  document.getElementById('msgCtaText').value = msg?.cta_text || '';
+  document.getElementById('msgCtaUrl').value = msg?.cta_url || '';
+  document.getElementById('msgDismissMode').value = msg?.dismiss_policy?.mode || 'delayed';
+  document.getElementById('msgDismissDelay').value = msg?.dismiss_policy?.delay_days || 7;
+
+  // 日期时间转换
+  if (msg?.schedule?.start) {
+    const d = new Date(msg.schedule.start);
+    document.getElementById('msgScheduleStart').value = d.toISOString().slice(0, 16);
+  } else {
+    document.getElementById('msgScheduleStart').value = '';
+  }
+  if (msg?.schedule?.end) {
+    const d = new Date(msg.schedule.end);
+    document.getElementById('msgScheduleEnd').value = d.toISOString().slice(0, 16);
+  } else {
+    document.getElementById('msgScheduleEnd').value = '';
+  }
+
+  document.getElementById('messageFormPanel').classList.add('active');
+}
+
+function closeMessageForm() {
+  document.getElementById('messageFormPanel').classList.remove('active');
+  editingMessageId = null;
+}
+
+async function editMessage(msgId) {
+  try {
+    const data = await api('GET', '/api/admin/config/messages');
+    const msg = (data.messages || []).find(m => m.id === msgId);
+    if (msg) showMessageForm(msg);
+  } catch (err) {
+    showToast('加载消息详情失败: ' + err.message);
+  }
+}
+
+async function saveMessage() {
+  const body = {
+    type: document.getElementById('msgType').value,
+    target: document.getElementById('msgTarget').value,
+    title: document.getElementById('msgTitle').value,
+    priority: parseInt(document.getElementById('msgPriority').value) || 10,
+    content: document.getElementById('msgContent').value,
+    cta_text: document.getElementById('msgCtaText').value,
+    cta_url: document.getElementById('msgCtaUrl').value,
+    dismiss_mode: document.getElementById('msgDismissMode').value,
+    dismiss_delay_days: parseInt(document.getElementById('msgDismissDelay').value) || 7,
+    schedule_start: document.getElementById('msgScheduleStart').value
+      ? new Date(document.getElementById('msgScheduleStart').value).toISOString()
+      : null,
+    schedule_end: document.getElementById('msgScheduleEnd').value
+      ? new Date(document.getElementById('msgScheduleEnd').value).toISOString()
+      : null,
+  };
+
+  if (!body.content) {
+    showToast('请填写消息内容');
+    return;
+  }
+
+  try {
+    if (editingMessageId) {
+      await api('PUT', `/api/admin/config/messages/${editingMessageId}`, body);
+      showToast('消息已更新');
+    } else {
+      body.enabled = true;
+      await api('POST', '/api/admin/config/messages', body);
+      showToast('消息已创建');
+    }
+    closeMessageForm();
+    loadMessages();
+  } catch (err) {
+    showToast('保存失败: ' + err.message);
+  }
+}
+
+async function deleteMessage(msgId) {
+  if (!confirm('确定删除此消息？')) return;
+  try {
+    await api('DELETE', `/api/admin/config/messages/${msgId}`);
+    showToast('消息已删除');
+    loadMessages();
+  } catch (err) {
+    showToast('删除失败: ' + err.message);
+  }
+}
+
+async function toggleMessage(msgId) {
+  try {
+    const data = await api('PUT', `/api/admin/config/messages/${msgId}/toggle`);
+    const enabled = data.message?.enabled;
+    showToast(enabled ? '消息已启用' : '消息已禁用');
+    loadMessages();
+  } catch (err) {
+    showToast('操作失败: ' + err.message);
+  }
+}
+
+// ============================================================
+// 功能开关
+// ============================================================
+let editingFlagId = null;
+
+async function loadFlags() {
+  try {
+    const data = await api('GET', '/api/admin/config/feature-flags');
+    const flags = data.flags || [];
+
+    const tbody = document.getElementById('flagsTableBody');
+    const empty = document.getElementById('flagsEmptyState');
+
+    if (flags.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = flags.map(f => {
+      const targetLabel = {
+        'all': '所有用户',
+        'users': '指定用户',
+        'tier:free': '体验期用户',
+      }[f.target] || f.target;
+      const usersHint = f.target === 'users' && f.target_users?.length
+        ? ` (${f.target_users.length} 人)` : '';
+
+      return `
+        <tr>
+          <td><code style="font-size:13px;background:#f0f0f0;padding:2px 6px;border-radius:3px;">${esc(f.name)}</code></td>
+          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(f.description)}">${esc(f.description) || '<span style="color:var(--muted);">-</span>'}</td>
+          <td style="font-size:13px;">${targetLabel}${usersHint}</td>
+          <td>
+            <button class="action-btn" onclick="toggleFlag('${f.id}')" style="font-size:12px;">
+              ${f.enabled ? '已启用' : '已禁用'}
+            </button>
+          </td>
+          <td>
+            <button class="action-btn" onclick="editFlag('${f.id}')" style="margin-right:4px;">编辑</button>
+            <button class="action-btn danger" onclick="deleteFlag('${f.id}')">删除</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    showToast('加载功能开关失败: ' + err.message);
+  }
+}
+
+function showFlagForm(flag) {
+  editingFlagId = flag ? flag.id : null;
+  document.getElementById('flagFormTitle').textContent = flag ? '编辑开关' : '新建开关';
+
+  document.getElementById('flagName').value = flag?.name || '';
+  document.getElementById('flagName').disabled = !!flag; // 编辑时不允许改标识名
+  document.getElementById('flagTarget').value = flag?.target || 'all';
+  document.getElementById('flagDesc').value = flag?.description || '';
+  document.getElementById('flagUsers').value = (flag?.target_users || []).join('\n');
+
+  // 显示/隐藏用户列表
+  document.getElementById('flagUsersGroup').style.display =
+    (flag?.target || 'all') === 'users' ? 'block' : 'none';
+
+  document.getElementById('flagFormPanel').classList.add('active');
+}
+
+function closeFlagForm() {
+  document.getElementById('flagFormPanel').classList.remove('active');
+  editingFlagId = null;
+}
+
+// 监听 target 下拉切换，显示/隐藏用户 ID 输入区
+document.getElementById('flagTarget').addEventListener('change', function() {
+  document.getElementById('flagUsersGroup').style.display =
+    this.value === 'users' ? 'block' : 'none';
+});
+
+async function editFlag(flagId) {
+  try {
+    const data = await api('GET', '/api/admin/config/feature-flags');
+    const flag = (data.flags || []).find(f => f.id === flagId);
+    if (flag) showFlagForm(flag);
+  } catch (err) {
+    showToast('加载开关详情失败: ' + err.message);
+  }
+}
+
+async function saveFlag() {
+  const name = document.getElementById('flagName').value.trim();
+  if (!name) {
+    showToast('请填写标识名');
+    return;
+  }
+
+  const target = document.getElementById('flagTarget').value;
+  let targetUsers = [];
+  if (target === 'users') {
+    targetUsers = document.getElementById('flagUsers').value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  const body = {
+    name: name,
+    description: document.getElementById('flagDesc').value,
+    target: target,
+    target_users: targetUsers,
+  };
+
+  try {
+    if (editingFlagId) {
+      await api('PUT', `/api/admin/config/feature-flags/${editingFlagId}`, body);
+      showToast('开关已更新');
+    } else {
+      body.enabled = true;
+      await api('POST', '/api/admin/config/feature-flags', body);
+      showToast('开关已创建');
+    }
+    closeFlagForm();
+    loadFlags();
+  } catch (err) {
+    showToast('保存失败: ' + err.message);
+  }
+}
+
+async function deleteFlag(flagId) {
+  if (!confirm('确定删除此功能开关？')) return;
+  try {
+    await api('DELETE', `/api/admin/config/feature-flags/${flagId}`);
+    showToast('开关已删除');
+    loadFlags();
+  } catch (err) {
+    showToast('删除失败: ' + err.message);
+  }
+}
+
+async function toggleFlag(flagId) {
+  try {
+    const data = await api('PUT', `/api/admin/config/feature-flags/${flagId}/toggle`);
+    const enabled = data.flag?.enabled;
+    showToast(enabled ? '开关已启用' : '开关已禁用');
+    loadFlags();
+  } catch (err) {
+    showToast('操作失败: ' + err.message);
+  }
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function tierLabel(tier) {
+  return tier === 'free' ? '体验期' : (tier || '体验期');
+}
+
+function esc(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ============================================================
+// 初始化：检查是否已登录
+// ============================================================
+(async function init() {
+  try {
+    await api('GET', '/api/admin/me');
+    showApp();
+  } catch {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

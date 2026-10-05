@@ -1,0 +1,181 @@
+/* ═══ 热词页 + 窄屏适配（从 legacy-views.css 迁移）═══ */
+/* ═══ 窄屏适配补充（JS 宽度档位 + 流式间距） ═══
+   背景：三栏最小宽度合计约 700px，转写网格固定前两列占用约 164px，
+   窗口变窄或拖动分隔条收窄主区时，文本被挤成逐字换行。策略：
+   - 组件级适配用 ResizeObserver 驱动的宽度档位类（is-compact/is-narrow/is-xnarrow，
+     与侧边栏 is-narrow 同一套模式；不用 container-type，避免 layout containment
+     破坏 .main 内部 position:fixed 的下拉菜单）；
+   - 视口级降级用 @media；间距 token 仅在 ≤1024 时流式化，桌面外观不变。 */
+
+/* ── 流式间距：仅 ≤1024px 生效，≥1024px 保持原值 ── */
+@media (max-width: 1024px) {
+  :root {
+    --s-5: clamp(14px, 2vw, 20px);
+    --s-7: clamp(18px, 3.1vw, 32px);
+    --s-9: clamp(24px, 5.5vw, 56px);
+  }
+}
+
+/* ── 主区宽度档位（JS 在宽度 <620/520/380px 时挂类，拖动分隔条同样生效） ── */
+.main.is-compact .main-inner { padding-left: 20px; padding-right: 20px; }
+.main.is-compact .rec-transcript-body { padding-left: 18px; padding-right: 18px; }
+/* 主区偏窄：允许说话人芯片收缩，避免文本列被挤成逐字换行 */
+.main.is-narrow .bt-line { grid-template-columns: 44px minmax(0, max-content) minmax(0, 1fr); }
+.main.is-narrow .bt-line .bt-chip { white-space: normal; min-width: 0; }
+.main.is-narrow .ts-line { grid-template-columns: 48px minmax(0, max-content) minmax(0, 1fr); }
+.main.is-narrow .ts-line .spk { white-space: normal; }
+/* 主区极窄：时间 / 说话人 / 文本纵向堆叠，文本列独占整行 */
+.main.is-xnarrow .bt-line { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
+.main.is-xnarrow .bt-line .bt-chip { justify-self: start; }
+.main.is-xnarrow .ts-line { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
+.main.is-xnarrow .ts-line .spk { justify-self: start; }
+
+/* ── 顶栏 / 状态栏溢出保护 ── */
+.topbar-left { min-width: 0; }
+.topbar-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .brand { flex-shrink: 0; }
+.topbar .state-pill, .topbar .rec-pill, .topbar .player-pill { white-space: nowrap; flex-shrink: 0; }
+.status .left, .status .right { min-width: 0; overflow: hidden; }
+.status .item { white-space: nowrap; flex-shrink: 0; }
+.status .philosophy-text { flex-shrink: 1; }
+
+/* 侧边栏窄幅态（JS 在宽度 <200px 时加 is-narrow）：标题单行截断、降低行高 */
+.sidebar.is-narrow .sb-tl-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
+.sidebar.is-narrow .sb-tl-meta .sb-tl-dur { display: none; }
+.sidebar.is-narrow .sb-tl-speakers { display: none; }
+
+/* 悬停卡片：任何视口下都不超出屏幕 */
+.sb-hover-card { min-width: min(260px, calc(100vw - 16px)); max-width: min(340px, calc(100vw - 16px)); }
+
+/* ── 视口级布局降级 ── */
+/* ≤900px：状态栏隐藏次要的模型信息项 */
+@media (max-width: 900px) {
+  .status .status-models { display: none; }
+}
+/* ≤768px：三栏布局必然溢出 —— 解除主区最小宽度、收窄分隔条；
+   侧边栏与 AI 面板的自动折叠由 JS 复用现有折叠类完成 */
+@media (max-width: 768px) {
+  .main { min-width: 0; }
+  .layout-divider { flex: 0 0 6px; }
+}
+/* ≤640px：顶栏只留 Logo，收紧顶栏留白；按钮只留图标（消除 min-content 撑破 grid 轨道的 83px 文档溢出）；状态栏隐藏装饰性哲学语 */
+@media (max-width: 640px) {
+  .brand > span { display: none; }
+  #newBtnLabel { display: none; }
+  .lang-btn span { display: none; }
+  .status .philosophy-text { display: none; }
+  .topbar > .topbar-main { padding: 0 var(--s-3); }
+  .topbar-right { gap: var(--s-2); }
+  .topbar .player-pill .pp-title { display: none; }
+}
+/* ≤480px：顶栏进一步精简 —— 面板开关组与视图切换器功能重叠，隐藏前者；
+   录音胶囊仅留脉冲点（隐藏计时），状态胶囊只留呼吸灯圆点，保证顶栏 min-content 不超过视口 */
+@media (max-width: 480px) {
+  .topbar-toggles { display: none; }
+  .topbar .rec-pill .rec-pill-timer, .topbar .state-pill span:not(.pip) { display: none; }
+  .topbar .player-pill .pp-progress, .topbar .player-pill .pp-time { display: none; }
+}
+
+/* ── btn-sm ─── */
+.btn-sm { padding: 5px 10px; font-size: var(--fs-12); white-space: nowrap; }
+
+/* ── Skip link ─── */
+.skip-link { position: fixed; top: -100%; left: var(--s-4); z-index: var(--z-toast); padding: 8px 16px; background: var(--fg); color: var(--bg); border-radius: var(--radius); font-size: var(--fs-13); font-weight: 500; text-decoration: none; transition: top 0.15s; }
+.skip-link:focus { top: var(--s-2); outline: none; }
+
+/* ── Toast 提示 ── */
+.toast { position: fixed; top: var(--s-4); left: 50%; transform: translateX(-50%) translateY(-20px); z-index: var(--z-toast); padding: 10px 20px; background: var(--fg); color: var(--bg); border-radius: var(--radius); font-size: var(--fs-13); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; white-space: nowrap; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.15); }
+.toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast.is-warn { background: oklch(65% 0.18 55); color: oklch(15% 0.05 55); }
+.toast.is-success { background: oklch(60% 0.17 155); color: oklch(15% 0.05 155); }
+.toast.is-error { background: oklch(60% 0.2 25); color: oklch(98% 0 0); }
+.toast.is-info { background: oklch(60% 0.15 240); color: oklch(98% 0 0); }
+
+/* ── Focus-visible coverage ─── */
+.qa-card:focus-visible,
+.wizard-link:focus-visible,
+.wizard-close:focus-visible,
+.wizard-step:focus-visible,
+.lib-filter-btn:focus-visible,
+.lib-page-btn:focus-visible,
+.modal-close:focus-visible,
+.toggle-btn:focus-visible,
+.rec-summary-btn:focus-visible,
+.btn-ctrl-icon:focus-visible,
+.btn-translate:focus-visible,
+.sb-new:focus-visible,
+.tab:focus-visible,
+.chip:focus-visible,
+.ai-send-btn:focus-visible,
+.btn-pause:focus-visible,
+.btn-end-rec:focus-visible,
+.btn-record:focus-visible,
+.btn-stop:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Empty state (generic) ─── */
+.empty-state { text-align: center; padding: var(--s-9) var(--s-7); color: var(--muted); }
+.empty-state h3 { font-size: var(--fs-15); font-weight: 500; color: var(--fg); margin: 0 0 var(--s-2); }
+.empty-state p { font-size: var(--fs-13); margin: 0; }
+
+/* ─── 顶栏新建会议按钮 ─── */
+.topbar-new-btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 999px; border: none; background: var(--fg); color: var(--bg); font-size: var(--fs-13); font-weight: 500; cursor: pointer; transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease, opacity 0.2s ease, max-width 0.25s ease, padding 0.25s ease, margin 0.25s ease; overflow: hidden; max-width: 200px; opacity: 1; white-space: nowrap; }
+.topbar-new-btn.is-hidden { opacity: 0; max-width: 0; padding: 0; margin: 0; pointer-events: none; }
+.topbar-new-btn.is-disabled { opacity: 0.5; cursor: default; }
+.topbar-new-btn.is-disabled:hover { filter: none; box-shadow: none; }
+.topbar-new-btn:hover { filter: brightness(1.15); box-shadow: 0 1px 3px oklch(0% 0 0 / 0.12); }
+.topbar-new-btn:active { transform: scale(0.97); box-shadow: none; }
+.topbar-new-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.topbar-new-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* 语言按钮（预留） */
+.lang-btn { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: default; transition: all 0.12s; font-family: var(--font-body); }
+.lang-btn svg { flex-shrink: 0; opacity: 0.6; }
+.lang-btn:disabled { opacity: 0.5; }
+
+/* ─── 侧边栏头部（文字式操作按钮） ─── */
+.sb-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px; border-bottom: 1px solid var(--border); }
+.sb-header-actions { display: flex; align-items: center; gap: var(--s-2); }
+/* 边栏已折叠态 — 完全隐藏（导航职责已迁移到 Activity Rail） */
+.body.sidebar-collapsed .sidebar { flex-basis: 0 !important; min-width: 0 !important; max-width: 0 !important; margin-left: 0 !important; overflow: hidden; border: none; }
+.body.sidebar-collapsed .sidebar .sb-toggle { display: none; }
+/* 折叠时同时隐藏左侧分隔缝，避免残留 10px 视觉占位 */
+.body.sidebar-collapsed .layout-divider-left { display: none; }
+/* 聚焦模式 — 移除内容区宽度限制，让录音内容充分利用空间 */
+.body.sidebar-collapsed .main-inner { max-width: none; padding-left: var(--s-5); padding-right: var(--s-5); }
+/* 筛选搜索行 — 默认隐藏，点击筛选按钮展开（新实现见 sidebar.css .sb-filter-row） */
+.sb-filter-row .sb-search-wrap { flex: 1; min-width: 0; }
+.sb-filter-reset { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: none; background: none; border-radius: var(--radius-sm); color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: color 0.12s, background 0.12s; white-space: nowrap; flex-shrink: 0; }
+.sb-filter-reset:hover { color: var(--fg); background: var(--surface-2); }
+.sb-filter-reset svg { width: 12px; height: 12px; flex-shrink: 0; }
+.sb-text-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: none; background: none; border-radius: var(--radius-sm); color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: color 0.12s, background 0.12s; white-space: nowrap; }
+.sb-text-btn:hover { color: var(--fg); background: var(--surface-2); }
+.sb-text-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sb-text-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.sb-text-btn.is-active { color: var(--accent); background: var(--accent-soft); }
+/* 侧边栏过窄时隐藏文字标签，保留图标 */
+.sidebar.is-narrow .sb-text-btn span { display: none; }
+/* 全部折叠按钮：图标随状态切换（默认收起箭头，全折叠态显示展开箭头） */
+#sbCollapseAllBtn .ico-expand { display: none; }
+#sbCollapseAllBtn.is-collapsed .ico-expand { display: block; }
+#sbCollapseAllBtn.is-collapsed .ico-fold { display: none; }
+
+/* ─── 侧边栏定位上下文（筛选面板需要） ─── */
+.sidebar { position: relative; }
+
+
+
+/* ── 侧边栏 section 紧凑化 ── */
+.sb-section { padding: 0 0 0; }
+
+/* ── 减弱动效 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

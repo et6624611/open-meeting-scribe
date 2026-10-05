@@ -1,0 +1,25 @@
+{
+  "back": "Back (or press ESC)",
+  "back_label": "Back",
+  "subtitle": "Log in to use all features: AI meeting minutes, people identification and more",
+  "tab_github": "GitHub",
+  "tab_sms": "Phone (Beta)",
+  "sms_beta_notice": "SMS login is for mainland China internal testing only.",
+  "github_btn": "Sign in with GitHub",
+  "phone_placeholder": "Enter phone number",
+  "code_placeholder": "Verification code",
+  "send_code": "Get Code",
+  "submitting": "Signing in...",
+  "submit": "Sign In",
+  "footer_line1": "By signing in you agree to the open-source terms",
+  "footer_line2": "Log in to experience all features",
+  "errors": {
+    "invalid_phone": "Please enter a valid 11-digit phone number",
+    "send_failed": "Send failed, please try again later",
+    "network": "Network error, please check your connection",
+    "phone_required": "Please enter phone number",
+    "code_required": "Please enter verification code",
+    "login_failed": "Sign in failed",
+    "service_error": "Service error (HTTP {status}), please try again later"
+  }
+}

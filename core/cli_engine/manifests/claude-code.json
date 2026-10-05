@@ -1,0 +1,73 @@
+{
+  "engine_id": "claude-code",
+  "display_name": "Claude Code",
+  "name_key": "cliengine_engine_claude_code",
+  "binary": "claude",
+  "install_url": "https://docs.anthropic.com/claude-code",
+  "min_version": "1.0.0",
+  "probe": {
+    "path_cmd": ["which", "claude"],
+    "version_cmd": ["claude", "--version"],
+    "login_cmd": ["claude", "auth", "status"],
+    "login_signature": "account"
+  },
+  "capabilities": {
+    "stream_json": true,
+    "session_resume": true,
+    "mcp_injection": true,
+    "pre_authorization": true,
+    "add_dir": false,
+    "system_prompt_append": true
+  },
+  "argv": {
+    "base": ["-p", "--output-format", "stream-json", "--verbose"],
+    "workspace_flag": null,
+    "session_new_flag": "--session-id",
+    "session_resume_flag": "-r",
+    "no_persist_flag": null,
+    "permission_flag": "--permission-mode",
+    "disallowed_flag": "--disallowedTools",
+    "allowed_tools_flag": "--allowedTools",
+    "strict_mcp_flag": "--strict-mcp-config",
+    "mcp_config_flag": "--mcp-config",
+    "model_flag": "--model",
+    "system_prompt_flag": "--append-system-prompt",
+    "prompt_separator": null
+  },
+  "auth_tiers": {
+    "readonly": {
+      "permission_mode": "default",
+      "disallowed_tools": ["Bash", "Write", "Edit", "WebFetch", "WebSearch", "NotebookEdit"]
+    },
+    "workspace_write": {
+      "permission_mode": "acceptEdits",
+      "disallowed_tools": ["Bash", "WebFetch", "WebSearch"]
+    },
+    "full_task": {
+      "permission_mode": "bypassPermissions",
+      "disallowed_tools": ["WebFetch", "WebSearch"]
+    }
+  },
+  "error_codes": {
+    "118": "credit_exhausted"
+  },
+  "ignore_subtypes": ["hook_started", "hook_progress", "hook_response"],
+  "noise_types": ["system"],
+  "tool_labels": {
+    "Read": { "zh": "读取文件", "en": "Read file", "icon": "file-text" },
+    "Write": { "zh": "写入文件", "en": "Write file", "icon": "pen-line" },
+    "Edit": { "zh": "编辑文件", "en": "Edit file", "icon": "pencil" },
+    "Bash": { "zh": "执行命令", "en": "Run command", "icon": "terminal" },
+    "Glob": { "zh": "查找文件", "en": "Find files", "icon": "search" },
+    "Grep": { "zh": "检索内容", "en": "Search content", "icon": "list-filter" },
+    "Task": { "zh": "子任务", "en": "Subtask", "icon": "bot" },
+    "WebFetch": { "zh": "抓取网页", "en": "Fetch web page", "icon": "globe" },
+    "WebSearch": { "zh": "联网搜索", "en": "Web search", "icon": "telescope" },
+    "_mcp": { "zh": "调用集成工具", "en": "Call integration tool", "icon": "plug" },
+    "_unknown": { "zh": "执行工具", "en": "Run tool", "icon": "wrench" }
+  },
+  "timeout": {
+    "first_event_seconds": 60,
+    "total_seconds": 300
+  }
+}

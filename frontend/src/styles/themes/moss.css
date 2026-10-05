@@ -1,0 +1,48 @@
+/* ─── 苔藓 (Moss — wet deep green with grey) ─── */
+html[data-theme="moss"] {
+  --bg: oklch(95% 0.012 155);
+  --surface: oklch(97% 0.008 152);
+  --surface-2: oklch(93% 0.016 150);
+  --surface-3: oklch(90% 0.022 150);
+  --fg: oklch(20% 0.02 155);
+  --muted: oklch(50% 0.022 155);
+  --subtle: oklch(48% 0.018 155);
+  --border: oklch(87% 0.016 150);
+  --border-strong: oklch(80% 0.022 150);
+  --accent: oklch(52% 0.10 155);
+  --accent-soft: oklch(52% 0.10 155 / 0.10);
+  --accent-mid: oklch(52% 0.10 155 / 0.25);
+  --accent-fg: oklch(100% 0 0);
+  /* --rec L56%：作 11–12px 小字时在 6 套明色主题均 ≥4.5:1（WCAG AA）。
+     原 L62% 只有 3.7–3.9:1，勿回调——录音态文字与停止按钮都依赖此值。 */
+  --rec: oklch(56% 0.22 25);
+  --rec-soft: oklch(56% 0.22 25 / 0.10);
+  --note-bg: oklch(94% 0.014 150);
+  --note-border: oklch(88% 0.02 150);
+  --note-fg: oklch(26% 0.02 155);
+  --mine: oklch(55% 0.12 155);
+  --mine-soft: oklch(55% 0.12 155 / 0.10);
+  --mine-bg: oklch(94% 0.016 155);
+  --mine-border: oklch(88% 0.024 155);
+  --ok: oklch(58% 0.14 155);
+  --ok-soft: oklch(58% 0.14 155 / 0.10);
+  --warn: oklch(72% 0.14 80);
+  --warn-soft: oklch(72% 0.14 80 / 0.10);
+  --info: oklch(52% 0.10 170);
+  --info-soft: oklch(52% 0.10 170 / 0.10);
+  --purple: oklch(52% 0.08 300);
+  --purple-soft: oklch(52% 0.08 300 / 0.10);
+  --proactive: oklch(50% 0.10 155);
+  --proactive-soft: oklch(50% 0.10 155 / 0.08);
+  --proactive-mid: oklch(50% 0.10 155 / 0.18);
+  --timeline-line: oklch(83% 0.014 150);
+  --timeline-node: oklch(50% 0.10 155);
+  --timeline-today: oklch(52% 0.10 155);
+  --timeline-today-glow: oklch(52% 0.10 155 / 0.15);
+  --dropdown-bg: oklch(97% 0.008 152);
+  --dropdown-shadow: 0 8px 32px oklch(20% 0.02 155 / 0.10), 0 2px 8px oklch(20% 0.02 155 / 0.06);
+  --glass-bg: oklch(95% 0.012 155 / 0.72);
+  --shadow-focus: 0 0 0 3px oklch(52% 0.10 155 / 0.18);
+  --wm-opacity: 0.16;
+  --wm-glow: oklch(52% 0.10 155 / 0.10);
+}

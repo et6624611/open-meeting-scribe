@@ -1,0 +1,37 @@
+{
+  "title": "AI Assistants",
+  "desc": "Choose and configure AI assistants. Click a role to activate it — AI conversations will use that assistant's role definition.",
+  "count": "{count} roles",
+  "builtin": "Built-in Roles",
+  "custom": "Custom Roles",
+  "fork": "Create Custom",
+  "fork_from": "Forked from",
+  "edit": "Edit",
+  "delete": "Delete",
+  "save": "Save",
+  "saving": "Saving…",
+  "cancel": "Cancel",
+  "fork_title": "Create Custom Role",
+  "fork_name": "Role name (English, e.g. my-expert)",
+  "fork_source": "Fork from",
+  "fork_btn": "Create",
+  "delete_confirm_title": "Delete Role",
+  "delete_confirm": "Delete custom role '{name}'? This cannot be undone.",
+  "no_custom": "No custom roles yet",
+  "no_custom_hint": "Create one by forking a built-in role",
+  "files": "Files",
+  "file_saved": "Saved",
+  "readonly_hint": "Built-in roles are read-only. Fork to create an editable copy.",
+  "create_role": "New Role",
+  "current_active": "Currently Active",
+  "role": {
+    "meeting-minutes": {
+      "title": "Meeting Minutes",
+      "description": "Focused on structured minutes output, faithfully recording meeting conclusions and decisions. Default role of Open Meeting Scribe."
+    },
+    "learning-tutor": {
+      "title": "Learning Tutor",
+      "description": "Transform meeting and lecture content into structured study notes and review materials"
+    }
+  }
+}

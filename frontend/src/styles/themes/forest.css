@@ -1,0 +1,48 @@
+/* ─── 森林 (Forest — deep canopy green, dark) ─── */
+html[data-theme="forest"] {
+  --bg: oklch(22% 0.02 155);
+  --surface: oklch(26% 0.025 155);
+  --surface-2: oklch(29% 0.028 155);
+  --surface-3: oklch(33% 0.03 155);
+  --fg: oklch(90% 0.012 155);
+  --muted: oklch(67% 0.025 155);
+  --subtle: oklch(64% 0.02 155);
+  --border: oklch(36% 0.03 155);
+  --border-strong: oklch(44% 0.035 155);
+  --accent: oklch(70% 0.11 155);
+  --accent-soft: oklch(70% 0.11 155 / 0.12);
+  --accent-mid: oklch(70% 0.11 155 / 0.30);
+  --accent-fg: oklch(18% 0.02 155);
+  --rec: oklch(70% 0.18 25);
+  --rec-soft: oklch(70% 0.18 25 / 0.12);
+  /* 暗色下 :root 的 48% 明度红对深底不足 AA，提亮至 66%（对 surface 4.52:1） */
+  --error: oklch(66% 0.19 20);
+  --note-bg: oklch(28% 0.025 155);
+  --note-border: oklch(38% 0.035 155);
+  --note-fg: oklch(88% 0.015 155);
+  --mine: oklch(72% 0.12 155);
+  --mine-soft: oklch(72% 0.12 155 / 0.14);
+  --mine-bg: oklch(28% 0.03 155);
+  --mine-border: oklch(40% 0.04 155);
+  --ok: oklch(72% 0.14 155);
+  --ok-soft: oklch(72% 0.14 155 / 0.12);
+  --warn: oklch(78% 0.14 80);
+  --warn-soft: oklch(78% 0.14 80 / 0.12);
+  --info: oklch(65% 0.10 170);
+  --info-soft: oklch(65% 0.10 170 / 0.14);
+  --purple: oklch(62% 0.10 300);
+  --purple-soft: oklch(62% 0.10 300 / 0.14);
+  --proactive: oklch(68% 0.11 155);
+  --proactive-soft: oklch(68% 0.11 155 / 0.12);
+  --proactive-mid: oklch(68% 0.11 155 / 0.28);
+  --timeline-line: oklch(30% 0.022 155);
+  --timeline-node: oklch(65% 0.11 155);
+  --timeline-today: oklch(70% 0.11 155);
+  --timeline-today-glow: oklch(70% 0.11 155 / 0.20);
+  --dropdown-bg: oklch(29% 0.028 155);
+  --dropdown-shadow: 0 8px 32px oklch(0% 0 0 / 0.35), 0 2px 8px oklch(0% 0 0 / 0.18);
+  --glass-bg: oklch(22% 0.02 155 / 0.75);
+  --shadow-focus: 0 0 0 3px oklch(70% 0.11 155 / 0.25);
+  --wm-opacity: 0.18;
+  --wm-glow: oklch(70% 0.11 155 / 0.12);
+}

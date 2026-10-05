@@ -1,0 +1,38 @@
+{
+  "title": "Start a New Meeting",
+  "record": "Record with Mic",
+  "return_record": "Return to Recording",
+  "upload": "Upload Audio File",
+  "recent": "Recent Meetings",
+  "view_all": "View all {count} meetings →",
+  "errors": {
+    "start_failed": "Failed to start recording",
+    "upload_failed": "Upload failed"
+  },
+  "import": {
+    "title": "Import",
+    "dropzone_text": "Drop files here, or click to browse",
+    "dropzone_hint": "Audio · Documents · Screenshots",
+    "or_paste": "or paste text",
+    "paste_placeholder": "Paste transcript or meeting notes here…",
+    "btn_submit": "Import",
+    "processing": "Analyzing content…",
+    "duplicate_found": "This file has been imported before:",
+    "duplicate_open": "Open Existing",
+    "duplicate_continue": "Import Anyway",
+    "errors": {
+      "import_failed": "Import failed"
+    }
+  },
+  "privacy": {
+    "disclaimer_title": "Data Privacy Notice",
+    "disclaimer_local": "Recordings, meeting notes and other data are stored on your device",
+    "disclaimer_cloud": "AI processing can run entirely on this device (FunASR transcription, CAM++ voiceprint, local LLM); cloud compute is used only when the trial quota or your own cloud API Key is enabled",
+    "disclaimer_warn": "When cloud capabilities are enabled, meeting audio and transcripts are sent to the cloud; in full on-device mode data never leaves the device.",
+    "disclaimer_region": "SMS login is for internal testing in mainland China only. Other users please configure your own API Key.",
+    "disclaimer_prohibit": "Do not use for classified information, core trade secrets, or highly sensitive personal privacy.",
+    "disclaimer_acknowledge": "I Understand, Continue",
+    "disclaimer_detail": "See SECURITY.md for detailed data flow description.",
+    "check_participants": "I confirm that all participants have been informed this recording will undergo AI transcription and summarization; if cloud capabilities are enabled, related data will be sent to the cloud"
+  }
+}

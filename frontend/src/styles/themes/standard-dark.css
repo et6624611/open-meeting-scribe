@@ -1,0 +1,48 @@
+/* ─── 标准深色 (Standard Dark — neutral dark gray, blue accent) ─── */
+html[data-theme="standard-dark"] {
+  --bg: oklch(17% 0.004 264);
+  --surface: oklch(21% 0.005 264);
+  --surface-2: oklch(25% 0.007 264);
+  --surface-3: oklch(29% 0.009 264);
+  --fg: oklch(91% 0.004 264);
+  --muted: oklch(64% 0.008 264);
+  --subtle: oklch(61% 0.006 264);
+  --border: oklch(33% 0.01 264);
+  --border-strong: oklch(40% 0.014 264);
+  --accent: oklch(68% 0.14 250);
+  --accent-soft: oklch(68% 0.14 250 / 0.12);
+  --accent-mid: oklch(68% 0.14 250 / 0.30);
+  --accent-fg: oklch(14% 0.004 264);
+  --rec: oklch(70% 0.18 25);
+  --rec-soft: oklch(70% 0.18 25 / 0.12);
+  /* 暗色下 :root 的 48% 明度红对深底不足 AA，提亮至 66%（对 surface 5.20:1） */
+  --error: oklch(66% 0.19 20);
+  --note-bg: oklch(23% 0.005 264);
+  --note-border: oklch(34% 0.012 264);
+  --note-fg: oklch(88% 0.006 264);
+  --mine: oklch(72% 0.12 155);
+  --mine-soft: oklch(72% 0.12 155 / 0.14);
+  --mine-bg: oklch(25% 0.016 155);
+  --mine-border: oklch(36% 0.03 155);
+  --ok: oklch(72% 0.14 155);
+  --ok-soft: oklch(72% 0.14 155 / 0.12);
+  --warn: oklch(78% 0.14 80);
+  --warn-soft: oklch(78% 0.14 80 / 0.12);
+  --info: oklch(65% 0.12 220);
+  --info-soft: oklch(65% 0.12 220 / 0.14);
+  --purple: oklch(65% 0.10 280);
+  --purple-soft: oklch(65% 0.10 280 / 0.14);
+  --proactive: oklch(68% 0.12 250);
+  --proactive-soft: oklch(68% 0.12 250 / 0.12);
+  --proactive-mid: oklch(68% 0.12 250 / 0.28);
+  --timeline-line: oklch(28% 0.006 264);
+  --timeline-node: oklch(65% 0.12 250);
+  --timeline-today: oklch(68% 0.14 250);
+  --timeline-today-glow: oklch(68% 0.14 250 / 0.20);
+  --dropdown-bg: oklch(25% 0.007 264);
+  --dropdown-shadow: 0 8px 32px oklch(0% 0 0 / 0.40), 0 2px 8px oklch(0% 0 0 / 0.20);
+  --glass-bg: oklch(17% 0.004 264 / 0.75);
+  --shadow-focus: 0 0 0 3px oklch(68% 0.14 250 / 0.25);
+  --wm-opacity: 0.20;
+  --wm-glow: oklch(68% 0.14 250 / 0.12);
+}

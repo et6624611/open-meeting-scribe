@@ -1,0 +1,88 @@
+/* ═══ 纪要面板增强 — 章节回顾 + 决策（从 legacy-views.css 提取） ═══ */
+
+/* ═══════════════════════════════════════════════════════════
+   SUMMARY PANEL — 纪要面板增强（章节回顾 + 决策入口）
+   ═══════════════════════════════════════════════════════════ */
+.sum-section { margin-bottom: var(--s-6); }
+.sum-section-label {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-11); font-weight: 600;
+  color: var(--subtle); text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: var(--s-3);
+}
+.sum-section-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* 章节回顾卡片 */
+.sum-chapter-card {
+  margin-bottom: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.sum-chapter-card:hover { border-color: var(--border-strong); }
+.sum-chapter-header {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  cursor: pointer; width: 100%; text-align: left;
+}
+.sum-chapter-header:hover { background: var(--surface-2); }
+.sum-chapter-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surface-3); color: var(--muted);
+  display: grid; place-items: center;
+  font-size: var(--fs-11); font-weight: 600;
+  font-family: var(--font-mono); flex-shrink: 0;
+}
+.sum-chapter-info { flex: 1; min-width: 0; }
+.sum-chapter-title {
+  font-size: var(--fs-13); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.sum-chapter-meta {
+  display: flex; align-items: center; gap: var(--s-2);
+  font-size: var(--fs-11); color: var(--subtle);
+  font-family: var(--font-mono);
+}
+.sum-chapter-meta .sep { opacity: 0.4; }
+.sum-chapter-chevron {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--subtle);
+  transition: transform 0.15s;
+}
+.sum-chapter-chevron svg { width: 14px; height: 14px; }
+.sum-chapter-card.is-open .sum-chapter-chevron { transform: rotate(180deg); }
+.sum-chapter-points {
+  display: none;
+  padding: 0 var(--s-4) var(--s-3) calc(var(--s-4) + 36px);
+  margin: 0;
+}
+.sum-chapter-card.is-open .sum-chapter-points { display: block; }
+.sum-chapter-points li {
+  list-style: none; position: relative;
+  font-size: var(--fs-13); line-height: 1.7; color: var(--fg);
+  padding-left: var(--s-4); margin-bottom: var(--s-1);
+}
+.sum-chapter-points li::before {
+  content: ""; position: absolute; left: 2px; top: 9px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--border-strong);
+}
+
+/* 决策入口 */
+.sum-todos-link {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer; width: 100%; text-align: left;
+  transition: all 0.12s;
+  font-size: var(--fs-13); color: var(--muted);
+}
+.sum-todos-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sum-todos-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sum-todos-link .count { font-family: var(--font-mono); font-weight: 600; }
+.sum-todos-link .go { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+.sum-todos-link .go svg { width: 13px; height: 13px; }
+

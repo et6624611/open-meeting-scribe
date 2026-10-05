@@ -1,0 +1,25 @@
+{
+  "back": "返回（或按 ESC）",
+  "back_label": "返回",
+  "subtitle": "登录后即可使用 AI 会议纪要生成、人员身份识别等全部功能",
+  "tab_github": "GitHub",
+  "tab_sms": "手机号（内测）",
+  "sms_beta_notice": "此登录方式仅限中国大陆手机号，仅用于内部测试。",
+  "github_btn": "使用 GitHub 登录",
+  "phone_placeholder": "请输入手机号",
+  "code_placeholder": "验证码",
+  "send_code": "获取验证码",
+  "submitting": "登录中...",
+  "submit": "登录",
+  "footer_line1": "登录即表示同意开源使用条款",
+  "footer_line2": "登录即可体验全部功能",
+  "errors": {
+    "invalid_phone": "请输入正确的 11 位手机号",
+    "send_failed": "发送失败，请稍后重试",
+    "network": "网络异常，请检查连接",
+    "phone_required": "请输入手机号",
+    "code_required": "请输入验证码",
+    "login_failed": "登录失败",
+    "service_error": "服务异常（HTTP {status}），请稍后重试"
+  }
+}

@@ -1,0 +1,114 @@
+# 本地引擎组件包构建（WP-G G-2/G-4b）— 独立引擎包（D-G1 方案 A）
+#
+# 产物：OMSEngine-<platform>.zip + .sha256（含 engine-manifest.json），
+# 供三条安装通道分发：应用内一键落位（core/engine_installer.py 默认从
+# GitHub Releases 拉取）、Win Inno [Components]（构建机本地 dist/OMSEngine）、
+# 内网离线包（人工传递 zip）。
+#
+# 与云包链路完全隔离：本 workflow 不触碰 build/pyinstaller.spec /
+# build-windows.yml / build-macos.yml（AC-7 云包零增长）。
+# 硬性禁令：CI 不下载任何真实模型权重（引擎包只含代码运行时，不含权重）。
+name: Build Engine Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    paths:
+      - 'build/pyinstaller_engine.spec'
+      - 'engine_entry.py'
+      - 'core/engine_worker.py'
+
+concurrency:
+  group: engine-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  build-engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            tag: windows-amd64
+          - os: macos-latest
+            tag: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    permissions:
+      contents: write
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        # 与 R8 Spike 实测环境对齐（Python 3.11 + torch 2.14.0 + funasr 1.4.16）
+        python-version: '3.11'
+        cache: 'pip'
+        cache-dependency-path: .github/local-engine/requirements-smoke.txt
+
+    - name: 安装引擎构建依赖（torch CPU 版）
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+        pip install -r .github/local-engine/requirements-smoke.txt
+
+    - name: PyInstaller 冻结引擎包（onedir，OMSEngine）
+      timeout-minutes: 90
+      run: |
+        python -m PyInstaller --clean --noconfirm build/pyinstaller_engine.spec
+
+    - name: 生成 engine-manifest.json（版本/协议版本/逐文件 SHA256）
+      run: |
+        python build/make_engine_manifest.py --dist dist/OMSEngine
+
+    - name: 引擎包自检（替身权重下 --help/ping 冒烟，禁真实模型下载）
+      env:
+        MODELSCOPE_CACHE: ${{ runner.temp }}/engine-ms-cache
+        HF_HUB_OFFLINE: '1'
+        TRANSFORMERS_OFFLINE: '1'
+      shell: bash
+      run: |
+        mkdir -p "$MODELSCOPE_CACHE"
+        if [ "${{ runner.os }}" = "Windows" ]; then EXE="dist/OMSEngine/OMSEngine.exe"; else EXE="dist/OMSEngine/OMSEngine"; fi
+        [ -x "$EXE" ] || { echo "引擎可执行体不存在: $EXE"; exit 1; }
+        echo '{"id":"t1","cmd":"ping"}' | "$EXE" | tee engine-ping.log
+        grep -q '"ok": true' engine-ping.log || { echo "引擎包 ping 冒烟失败"; exit 1; }
+        # 零真实模型下载守护
+        FOUND=$(find "$MODELSCOPE_CACHE" -type f | head -1)
+        [ -z "$FOUND" ] || { echo "MODELSCOPE_CACHE 出现文件，疑似真实下载: $FOUND"; exit 1; }
+
+    - name: 打包 zip + sha256
+      shell: bash
+      run: |
+        cd dist
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          powershell -NoProfile -Command "Compress-Archive -Path OMSEngine -DestinationPath OMSEngine-${{ matrix.tag }}.zip"
+        else
+          zip -rq "OMSEngine-${{ matrix.tag }}.zip" OMSEngine
+        fi
+        shasum -a 256 "OMSEngine-${{ matrix.tag }}.zip" | awk '{print $1}' > "OMSEngine-${{ matrix.tag }}.zip.sha256"
+        ls -lh OMSEngine-*
+
+    - name: 上传产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: OMSEngine-${{ matrix.tag }}
+        path: |
+          dist/OMSEngine-${{ matrix.tag }}.zip
+          dist/OMSEngine-${{ matrix.tag }}.zip.sha256
+        retention-days: 30
+
+    - name: 发布 Release 资产（仅 tag 触发；应用内一键安装本地引擎组件的默认下载源）
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/OMSEngine-${{ matrix.tag }}.zip
+          dist/OMSEngine-${{ matrix.tag }}.zip.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

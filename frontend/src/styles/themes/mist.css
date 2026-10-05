@@ -1,0 +1,48 @@
+/* ─── 薄雾 (Mist — low-saturation grey-green-blue) ─── */
+html[data-theme="mist"] {
+  --bg: oklch(96% 0.005 210);
+  --surface: oklch(98% 0.003 210);
+  --surface-2: oklch(94% 0.006 210);
+  --surface-3: oklch(91% 0.009 210);
+  --fg: oklch(21% 0.012 210);
+  --muted: oklch(54% 0.01 210);
+  --subtle: oklch(52% 0.008 210);
+  --border: oklch(89% 0.006 210);
+  --border-strong: oklch(83% 0.008 210);
+  --accent: oklch(58% 0.05 210);
+  --accent-soft: oklch(58% 0.05 210 / 0.10);
+  --accent-mid: oklch(58% 0.05 210 / 0.25);
+  --accent-fg: oklch(100% 0 0);
+  /* --rec L56%：作 11–12px 小字时在 6 套明色主题均 ≥4.5:1（WCAG AA）。
+     原 L62% 只有 3.7–3.9:1，勿回调——录音态文字与停止按钮都依赖此值。 */
+  --rec: oklch(56% 0.22 25);
+  --rec-soft: oklch(56% 0.22 25 / 0.10);
+  --note-bg: oklch(95% 0.006 210);
+  --note-border: oklch(89% 0.01 210);
+  --note-fg: oklch(28% 0.012 210);
+  --mine: oklch(58% 0.10 155);
+  --mine-soft: oklch(58% 0.10 155 / 0.10);
+  --mine-bg: oklch(95% 0.012 155);
+  --mine-border: oklch(89% 0.018 155);
+  --ok: oklch(62% 0.12 155);
+  --ok-soft: oklch(62% 0.12 155 / 0.10);
+  --warn: oklch(72% 0.12 80);
+  --warn-soft: oklch(72% 0.12 80 / 0.10);
+  --info: oklch(55% 0.08 220);
+  --info-soft: oklch(55% 0.08 220 / 0.10);
+  --purple: oklch(55% 0.08 280);
+  --purple-soft: oklch(55% 0.08 280 / 0.10);
+  --proactive: oklch(56% 0.05 210);
+  --proactive-soft: oklch(56% 0.05 210 / 0.08);
+  --proactive-mid: oklch(56% 0.05 210 / 0.18);
+  --timeline-line: oklch(85% 0.005 210);
+  --timeline-node: oklch(55% 0.05 210);
+  --timeline-today: oklch(58% 0.05 210);
+  --timeline-today-glow: oklch(58% 0.05 210 / 0.15);
+  --dropdown-bg: oklch(98% 0.003 210);
+  --dropdown-shadow: 0 8px 32px oklch(21% 0.012 210 / 0.08), 0 2px 8px oklch(21% 0.012 210 / 0.05);
+  --glass-bg: oklch(96% 0.005 210 / 0.72);
+  --shadow-focus: 0 0 0 3px oklch(58% 0.05 210 / 0.18);
+  --wm-opacity: 0.16;
+  --wm-glow: oklch(58% 0.05 210 / 0.10);
+}

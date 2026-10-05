@@ -1,0 +1,59 @@
+/* ─── 标准浅色 (Standard Light — neutral gray, blue accent) ─── */
+:root,
+html[data-theme="standard-light"] {
+  --bg: oklch(97% 0.002 264);
+  --surface: oklch(99% 0.001 264);
+  --surface-2: oklch(95% 0.003 264);
+  --surface-3: oklch(92% 0.005 264);
+  --fg: oklch(19% 0.008 264);
+  --muted: oklch(54% 0.01 264);
+  --subtle: oklch(50% 0.008 264);
+  --border: oklch(90% 0.005 264);
+  --border-strong: oklch(84% 0.008 264);
+  --accent: oklch(65% 0.16 250);
+  --accent-soft: oklch(65% 0.16 250 / 0.10);
+  --accent-mid: oklch(65% 0.16 250 / 0.25);
+  --accent-fg: oklch(98% 0.001 264);
+  /* --rec L56%：作 11–12px 小字时在 6 套明色主题均 ≥4.5:1（WCAG AA）。
+     原 L62% 只有 3.7–3.9:1，勿回调——录音态文字与停止按钮都依赖此值。 */
+  --rec: oklch(56% 0.22 25);
+  --rec-soft: oklch(56% 0.22 25 / 0.10);
+  --note-bg: oklch(96% 0.004 264);
+  --note-border: oklch(90% 0.008 264);
+  --note-fg: oklch(28% 0.008 264);
+  --mine: oklch(62% 0.14 155);
+  --mine-soft: oklch(62% 0.14 155 / 0.10);
+  --mine-bg: oklch(96% 0.01 155);
+  --mine-border: oklch(90% 0.016 155);
+  --ok: oklch(64% 0.16 155);
+  --ok-soft: oklch(64% 0.16 155 / 0.10);
+  --warn: oklch(72% 0.16 80);
+  --warn-soft: oklch(72% 0.16 80 / 0.10);
+  --info: oklch(55% 0.15 220);
+  --info-soft: oklch(55% 0.15 220 / 0.10);
+  --purple: oklch(55% 0.12 280);
+  --purple-soft: oklch(55% 0.12 280 / 0.10);
+  --proactive: oklch(65% 0.12 250);
+  --proactive-soft: oklch(65% 0.12 250 / 0.08);
+  --proactive-mid: oklch(65% 0.12 250 / 0.18);
+  --timeline-line: oklch(85% 0.004 264);
+  --timeline-node: oklch(62% 0.12 250);
+  --timeline-today: oklch(65% 0.16 250);
+  --timeline-today-glow: oklch(65% 0.16 250 / 0.15);
+  --dropdown-bg: oklch(99% 0.001 264);
+  --dropdown-shadow: 0 8px 32px oklch(20% 0.008 264 / 0.10), 0 2px 8px oklch(20% 0.008 264 / 0.06);
+  --glass-bg: oklch(97% 0.002 264 / 0.72);
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-18: 18px; --fs-20: 20px; --fs-24: 24px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 40px; --s-9: 56px; --s-10: 64px;
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
+  --shadow-focus: 0 0 0 3px oklch(65% 0.16 250 / 0.18);
+  --wm-opacity: 0.18;
+  --wm-glow: oklch(65% 0.16 250 / 0.10);
+  --diff-add: oklch(92% 0.08 155);
+  --diff-add-fg: oklch(30% 0.1 155);
+  --diff-del: oklch(94% 0.06 25);
+  --diff-del-fg: oklch(40% 0.12 25);
+  --shadow-float: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+}

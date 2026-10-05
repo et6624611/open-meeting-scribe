@@ -1,0 +1,176 @@
+# macOS 打包工作流
+# 触发方式：手动运行（workflow_dispatch）或推送 tag
+name: Build macOS Package
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    tags:
+      - 'v*'  # 推送版本标签时自动构建
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write  # 允许创建 Release
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 安装 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: 转换图标
+      run: |
+        python build/convert_icon.py
+
+    - name: 注入桌面端云端服务凭据
+      # 将 GitHub Secrets 写入 desktop-secrets.env，PyInstaller 打包时嵌入到 .app 内
+      # Write GitHub Secrets to desktop-secrets.env; PyInstaller embeds it into the .app bundle
+      env:
+        OMS_CLOUD_API_URL:   ${{ secrets.OMS_CLOUD_API_URL }}
+        OMS_CLOUD_API_TOKEN: ${{ secrets.OMS_CLOUD_API_TOKEN }}
+        OMS_SMS_PROXY_URL:   ${{ secrets.OMS_SMS_PROXY_URL }}
+        OMS_SMS_PROXY_TOKEN: ${{ secrets.OMS_SMS_PROXY_TOKEN }}
+      run: |
+        if [ -z "$OMS_CLOUD_API_TOKEN" ]; then
+          echo "⚠ 未配置 OMS_CLOUD_API_TOKEN 等 GitHub Secrets，打包版云端代理功能将不可用"
+        else
+          printf 'CLOUD_API_URL=%s\nCLOUD_API_TOKEN=%s\nSMS_PROXY_URL=%s\nSMS_PROXY_TOKEN=%s\n' \
+            "$OMS_CLOUD_API_URL" "$OMS_CLOUD_API_TOKEN" "$OMS_SMS_PROXY_URL" "$OMS_SMS_PROXY_TOKEN" \
+            > desktop-secrets.env
+          echo "✓ desktop-secrets.env 已生成"
+        fi
+
+    - name: PyInstaller 打包
+      run: |
+        pyinstaller --clean --noconfirm build/pyinstaller_macos.spec
+
+    - name: 诊断 dist 目录
+      run: |
+        echo "=== dist 目录内容 ==="
+        find dist -maxdepth 3 -type f | head -50
+        echo "=== .app 大小 ==="
+        du -sh dist/OpenMeetingScribe.app 2>/dev/null || echo ".app 不存在"
+
+    - name: 组装分发物
+      run: |
+        DIST_DIR="dist/OpenMeetingScribe-macOS"
+        mkdir -p "$DIST_DIR"
+
+        # 移动 .app
+        if [ ! -d "dist/OpenMeetingScribe.app" ]; then
+          echo "错误：OpenMeetingScribe.app 不存在！"
+          exit 1
+        fi
+        mv dist/OpenMeetingScribe.app "$DIST_DIR/"
+        echo "OpenMeetingScribe.app 就位 ✓"
+
+        # 复制启动器
+        cp build/launcher_macos.sh "$DIST_DIR/启动会议助手.command"
+        chmod +x "$DIST_DIR/启动会议助手.command"
+        echo "启动器就位 ✓"
+
+        # 复制 .env 模板
+        cp .env.example "$DIST_DIR/.env"
+
+        # 创建数据目录
+        mkdir -p "$DIST_DIR/data/output"
+        mkdir -p "$DIST_DIR/data/recordings"
+        mkdir -p "$DIST_DIR/data/tasks"
+        mkdir -p "$DIST_DIR/data/uploads"
+
+        echo "分发物组装完成 ✓"
+
+    - name: 下载 ffmpeg + ffprobe
+      run: |
+        FFMPEG_DIR="dist/OpenMeetingScribe-macOS/ffmpeg"
+        mkdir -p "$FFMPEG_DIR"
+
+        # 下载 ffmpeg
+        curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o "build/ffmpeg-macos.zip" || true
+        if [ -f "build/ffmpeg-macos.zip" ]; then
+          unzip -o "build/ffmpeg-macos.zip" -d "$FFMPEG_DIR/" 2>/dev/null || {
+            cp "build/ffmpeg-macos.zip" "$FFMPEG_DIR/ffmpeg"
+          }
+          chmod +x "$FFMPEG_DIR/ffmpeg" 2>/dev/null || true
+          rm -f "build/ffmpeg-macos.zip"
+          echo "ffmpeg 下载完成 ✓"
+        else
+          echo "警告：ffmpeg 下载失败，录音功能不可用"
+        fi
+
+        # 下载 ffprobe（用于音频时长检测）
+        curl -L "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip" -o "build/ffprobe-macos.zip" || true
+        if [ -f "build/ffprobe-macos.zip" ]; then
+          unzip -o "build/ffprobe-macos.zip" -d "$FFMPEG_DIR/" 2>/dev/null || {
+            cp "build/ffprobe-macos.zip" "$FFMPEG_DIR/ffprobe"
+          }
+          chmod +x "$FFMPEG_DIR/ffprobe" 2>/dev/null || true
+          rm -f "build/ffprobe-macos.zip"
+          echo "ffprobe 下载完成 ✓"
+        else
+          echo "警告：ffprobe 下载失败，音频时长检测将使用降级方案"
+        fi
+
+        # 验证
+        if [ -x "$FFMPEG_DIR/ffmpeg" ]; then
+          "$FFMPEG_DIR/ffmpeg" -version | head -1
+        fi
+        if [ -x "$FFMPEG_DIR/ffprobe" ]; then
+          "$FFMPEG_DIR/ffprobe" -version | head -1
+        fi
+
+    - name: 签名 + 公证 + DMG 组装（WP-G G-7；凭据缺失自动 dry-run 跳过签名）
+      env:
+        APPLE_CERT_P12_B64: ${{ secrets.APPLE_CERT_P12_B64 }}
+        APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+      run: |
+        chmod +x build/macos_sign_notarize.sh
+        build/macos_sign_notarize.sh dist/OpenMeetingScribe-macOS dist
+        # 【G-7 DEFERRED，移出 v10】项目方 2026-09-24 裁决暂不考虑 Apple 凭据；
+        # dry-run（凭据缺失）时显式标注：产物未签名，发布材料不得出现「macOS 一键安装」字样
+        if [ "${SIGN_RESULT:-}" = "dry-run-unsigned" ]; then
+          echo "⚠️ 本次产物为未签名 dry-run（缺 Apple 凭据）——blocked-on-credentials"
+        fi
+
+    - name: 创建 ZIP 包
+      run: |
+        cd dist/OpenMeetingScribe-macOS
+        zip -r ../../OpenMeetingScribe-macOS.zip .
+        cd ../..
+        SIZE=$(du -sh OpenMeetingScribe-macOS.zip | cut -f1)
+        echo "分发包大小: $SIZE"
+
+    - name: 上传产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenMeetingScribe-macOS
+        path: |
+          OpenMeetingScribe-macOS.zip
+          dist/OpenMeetingScribe-macOS.dmg
+        retention-days: 30
+
+    - name: 发布 Release（仅 tag 触发）
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          OpenMeetingScribe-macOS.zip
+          dist/OpenMeetingScribe-macOS.dmg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

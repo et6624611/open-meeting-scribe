@@ -1,0 +1,516 @@
+# Translations template for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-10 17:04+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app/routers/admin.py:82
+msgid "Please log in to the admin console first"
+msgstr ""
+
+#: app/routers/admin.py:85
+msgid "Admin login expired"
+msgstr ""
+
+#: app/routers/admin.py:101
+msgid "Admin password not configured (ADMIN_PASSWORD)"
+msgstr ""
+
+#: app/routers/admin.py:105
+msgid "Incorrect password"
+msgstr ""
+
+#: app/routers/admin.py:125 app/routers/auth.py:166
+msgid "Logged out"
+msgstr ""
+
+#: app/routers/admin.py:264 app/routers/admin.py:318 app/routers/admin.py:363
+#: app/routers/auth.py:149
+msgid "User not found"
+msgstr ""
+
+#: app/routers/admin.py:314
+#, python-brace-format
+msgid "Invalid tier, options: {opts}"
+msgstr ""
+
+#: app/routers/admin.py:327
+msgid "Update failed"
+msgstr ""
+
+#: app/routers/admin.py:353
+msgid "Invalid status, options: active, disabled"
+msgstr ""
+
+#: app/routers/admin.py:415
+#, python-brace-format
+msgid "Invalid type, options: {opts}"
+msgstr ""
+
+#: app/routers/admin.py:420
+#, python-brace-format
+msgid "Invalid target user, options: {opts} or tier:<name>"
+msgstr ""
+
+#: app/routers/admin.py:424
+#, python-brace-format
+msgid "Invalid dismissal policy, options: {opts}"
+msgstr ""
+
+#: app/routers/admin.py:452 app/routers/admin.py:481 app/routers/admin.py:493
+msgid "Message not found"
+msgstr ""
+
+#: app/routers/admin.py:531
+msgid "Identifier name cannot be empty"
+msgstr ""
+
+#: app/routers/admin.py:536
+msgid "Invalid effective target, options: all, tier:<name>, users"
+msgstr ""
+
+#: app/routers/admin.py:561 app/routers/admin.py:587 app/routers/admin.py:599
+msgid "Feature flag not found"
+msgstr ""
+
+#: app/routers/auth.py:75
+#, python-brace-format
+msgid "OAuth authorization failed: {err}"
+msgstr ""
+
+#: app/routers/auth.py:80
+msgid "Security verification failed, please log in again"
+msgstr ""
+
+#: app/routers/auth.py:84
+msgid "Missing authorization code"
+msgstr ""
+
+#: app/routers/auth.py:91
+#, python-brace-format
+msgid "Authorization code exchange failed: {err}"
+msgstr ""
+
+#: app/routers/auth.py:98
+#, python-brace-format
+msgid "Failed to get user info: {err}"
+msgstr ""
+
+#: app/routers/auth.py:140 app/routers/usage.py:29
+msgid "Not logged in"
+msgstr ""
+
+#: app/routers/auth.py:144
+msgid "Login expired, please log in again"
+msgstr ""
+
+#: app/routers/auth.py:202 app/routers/auth.py:231
+msgid "Please enter a valid phone number"
+msgstr ""
+
+#: app/routers/auth.py:234
+msgid "Please enter the verification code"
+msgstr ""
+
+#: app/routers/chat.py:812
+msgid "Message cannot be empty"
+msgstr ""
+
+#: app/routers/chat.py:988
+#, python-brace-format
+msgid "AI conversation failed: {err}"
+msgstr ""
+
+#: app/routers/chat.py:1020
+msgid "Text cannot be empty"
+msgstr ""
+
+#: app/routers/chat.py:1033
+#, python-brace-format
+msgid "Text refinement failed: {err}"
+msgstr ""
+
+#: app/routers/notes.py:31 app/routers/notes.py:40 app/routers/notes.py:65
+#: app/routers/notes.py:74 app/routers/notes.py:111 app/routers/notes.py:125
+#: app/routers/notes.py:144 app/routers/notes.py:153 app/routers/notes.py:167
+#: app/routers/notes.py:189 app/routers/notes.py:209 app/routers/record.py:356
+#: app/routers/speakers.py:172 app/routers/speakers.py:221
+#: app/routers/speakers.py:284 app/routers/tasks.py:146
+#: app/routers/tasks.py:182 app/routers/tasks.py:203 app/routers/tasks.py:236
+#: app/routers/tasks.py:266 app/routers/tasks.py:310 app/routers/tasks.py:347
+#: app/routers/tasks.py:375 app/routers/tasks.py:409
+#: app/routers/voiceprint.py:284
+msgid "Task not found"
+msgstr ""
+
+#: app/routers/notes.py:117
+msgid "Injection content not found"
+msgstr ""
+
+#: app/routers/notes.py:159 app/routers/notes.py:218
+msgid "To-do not found"
+msgstr ""
+
+#: app/routers/decisions.py:54 app/routers/decisions.py:152
+msgid "Decision not found"
+msgstr ""
+
+#: app/routers/decisions.py:144
+msgid "A decision cannot supersede itself"
+msgstr ""
+
+#: app/routers/projects.py:60
+#, python-brace-format
+msgid "Path not found: {path}"
+msgstr ""
+
+#: app/routers/projects.py:62 app/routers/projects.py:103
+#, python-brace-format
+msgid "Not a directory: {path}"
+msgstr ""
+
+#: app/routers/projects.py:83
+#, python-brace-format
+msgid "No permission to access: {path}"
+msgstr ""
+
+#: app/routers/projects.py:101 app/routers/projects.py:134
+#: app/routers/projects.py:193
+#, python-brace-format
+msgid "Folder not found: {path}"
+msgstr ""
+
+#: app/routers/projects.py:113
+#, python-brace-format
+msgid "Failed to open folder: {err}"
+msgstr ""
+
+#: app/routers/projects.py:129
+msgid "Project name cannot be empty"
+msgstr ""
+
+#: app/routers/projects.py:147 app/routers/projects.py:176
+#: app/routers/projects.py:184 app/routers/projects.py:196
+#: app/routers/projects.py:207 app/routers/projects.py:234
+#: app/routers/projects.py:272
+msgid "Project not found"
+msgstr ""
+
+#: app/routers/projects.py:225
+msgid "Project or folder not found"
+msgstr ""
+
+#: app/routers/projects.py:238
+msgid "No folders with sync enabled"
+msgstr ""
+
+#: app/routers/projects.py:254
+#, python-brace-format
+msgid "Synced {count} meeting(s), wrote {files} file(s)"
+msgstr ""
+
+#: app/routers/projects.py:274
+msgid "Index build started"
+msgstr ""
+
+#: app/routers/record.py:57
+msgid "Already recording"
+msgstr ""
+
+#: app/routers/record.py:72 app/routers/tasks.py:73
+#, python-brace-format
+msgid ""
+"Monthly transcription quota exhausted ({remaining} min remaining). "
+"Configure your own API Key to continue."
+msgstr ""
+
+#: app/routers/record.py:262
+#, python-brace-format
+msgid "Failed to start recording: {err}"
+msgstr ""
+
+#: app/routers/record.py:281 app/routers/record.py:419
+#: app/routers/record.py:431 app/routers/record.py:443
+msgid "Not recording"
+msgstr ""
+
+#: app/routers/record.py:398
+#, python-brace-format
+msgid "Failed to stop recording: {err}"
+msgstr ""
+
+#: app/routers/record.py:496
+#, python-brace-format
+msgid "Failed to abandon recording: {err}"
+msgstr ""
+
+#: app/routers/record.py:511 app/routers/record.py:524
+#: app/routers/record.py:537 app/routers/record.py:550
+#: app/routers/record.py:567
+msgid "No active real-time summary"
+msgstr ""
+
+#: app/routers/record.py:597
+msgid "No active recording"
+msgstr ""
+
+#: app/routers/record.py:602 app/routers/speakers.py:80
+#: app/routers/speakers.py:88 app/routers/speakers.py:106
+#: app/routers/voiceprint.py:209
+msgid "Speaker not found"
+msgstr ""
+
+#: app/routers/record.py:670
+msgid "Task not found or not recording"
+msgstr ""
+
+#: app/routers/settings.py:300
+msgid "ASR proxy URL not configured"
+msgstr ""
+
+#: app/routers/settings.py:310
+msgid "ASR proxy service connected"
+msgstr ""
+
+#: app/routers/settings.py:312
+msgid "Proxy server has no DASHSCOPE_API_KEY configured"
+msgstr ""
+
+#: app/routers/settings.py:314
+msgid "Proxy signature verification failed"
+msgstr ""
+
+#: app/routers/settings.py:318
+msgid "Connection timeout (15s), please check network"
+msgstr ""
+
+#: app/routers/settings.py:320 app/routers/settings.py:376
+#, python-brace-format
+msgid "Cannot connect to {url}, please check the address"
+msgstr ""
+
+#: app/routers/settings.py:322 app/routers/settings.py:378
+#, python-brace-format
+msgid "Test failed: {err}"
+msgstr ""
+
+#: app/routers/settings.py:341
+msgid "LLM API Key not configured"
+msgstr ""
+
+#: app/routers/settings.py:343
+msgid "LLM API Base URL not configured"
+msgstr ""
+
+#: app/routers/settings.py:361
+#, python-brace-format
+msgid "Connection successful, model {model} responding"
+msgstr ""
+
+#: app/routers/settings.py:363
+msgid "Invalid LLM API Key (401 Unauthorized)"
+msgstr ""
+
+#: app/routers/settings.py:365
+msgid "No permission to access LLM service (403 Forbidden)"
+msgstr ""
+
+#: app/routers/settings.py:367
+msgid "Endpoint or model not found (404). Please check Base URL and model name"
+msgstr ""
+
+#: app/routers/settings.py:369
+msgid "Too many requests (429 Rate Limited), the Key itself is valid"
+msgstr ""
+
+#: app/routers/settings.py:374
+msgid "Connection timeout (15s), please check network or Base URL"
+msgstr ""
+
+#: app/routers/speakers.py:61 app/routers/user.py:35
+msgid "Name cannot be empty"
+msgstr ""
+
+#: app/routers/speakers.py:114
+msgid "Operation failed"
+msgstr ""
+
+#: app/routers/speakers.py:176 app/routers/speakers.py:225
+msgid "Current status does not allow setting speaker mapping"
+msgstr ""
+
+#: app/routers/speakers.py:270
+msgid "Generating minutes..."
+msgstr ""
+
+#: app/routers/speakers.py:288
+msgid "Task not yet completed"
+msgstr ""
+
+#: app/routers/speakers.py:296
+msgid "Speaker mapping not set"
+msgstr ""
+
+#: app/routers/speakers.py:313 app/routers/tasks.py:340
+msgid "Regenerating minutes..."
+msgstr ""
+
+#: app/routers/tasks.py:54
+#, python-brace-format
+msgid "Unsupported file type: {ext}"
+msgstr ""
+
+#: app/routers/tasks.py:58
+msgid "speaker_count must be between 1 and 100"
+msgstr ""
+
+#: app/routers/tasks.py:187
+msgid "Minutes file not found"
+msgstr ""
+
+#: app/routers/tasks.py:208 app/routers/tasks.py:318
+msgid "Recording file not found"
+msgstr ""
+
+#: app/routers/tasks.py:271
+msgid "Recording file not found, cannot re-transcribe"
+msgstr ""
+
+#: app/routers/tasks.py:299
+msgid "Re-transcription task submitted"
+msgstr ""
+
+#: app/routers/tasks.py:314
+msgid "Transcription result not found, please use Re-transcribe"
+msgstr ""
+
+#: app/routers/tasks.py:358
+msgid "Invalid date format, expected YYYY-MM-DD"
+msgstr ""
+
+#: app/routers/tasks.py:413
+msgid "Task not completed, cannot sync"
+msgstr ""
+
+#: app/routers/tasks.py:417
+msgid "Task is not linked to a project"
+msgstr ""
+
+#: app/routers/tasks.py:422
+msgid "No target folder to sync"
+msgstr ""
+
+#: app/routers/tasks.py:428
+#, python-brace-format
+msgid "Wrote {count} file(s) to project folder"
+msgstr ""
+
+#: app/routers/usage.py:38
+msgid "Self-hosted Key, not metered"
+msgstr ""
+
+#: app/routers/user.py:45
+msgid "Please set up your name first"
+msgstr ""
+
+#: app/routers/user.py:48
+msgid "Binding failed"
+msgstr ""
+
+#: app/routers/user.py:100
+msgid "Please log in first"
+msgstr ""
+
+#: app/routers/voiceprint.py:102
+#, python-brace-format
+msgid "Audio file not found: {path}"
+msgstr ""
+
+#: app/routers/voiceprint.py:110
+#, python-brace-format
+msgid "Failed to read audio: {err}"
+msgstr ""
+
+#: app/routers/voiceprint.py:120
+msgid "Invalid time range"
+msgstr ""
+
+#: app/routers/voiceprint.py:128
+#, python-brace-format
+msgid "Audio too short: {dur}s (minimum {min}s required)"
+msgstr ""
+
+#: app/routers/voiceprint.py:134
+msgid "Voiceprint extraction failed (audio quality may be insufficient)"
+msgstr ""
+
+#: app/routers/voiceprint.py:152
+#, python-brace-format
+msgid "Voiceprint registered: {name}"
+msgstr ""
+
+#: app/routers/voiceprint.py:160
+msgid "Voiceprint not found"
+msgstr ""
+
+#: app/routers/voiceprint.py:245
+#, python-brace-format
+msgid ""
+"This speaker has insufficient speech audio in all linked meetings (at "
+"least {min} sec per meeting)"
+msgstr ""
+
+#: app/routers/voiceprint.py:269
+#, python-brace-format
+msgid "Voiceprint rebuilt from {count} meeting(s): {name}"
+msgstr ""
+
+#: app/routers/voiceprint.py:289
+msgid "Task has no transcription result yet"
+msgstr ""
+
+#: app/routers/voiceprint.py:296
+msgid "Normalized audio unavailable"
+msgstr ""
+
+#: core/errors.py:90
+msgid "Service temporarily unavailable, please try again later."
+msgstr ""
+
+#: core/errors.py:111
+msgid "Audio file issue detected. Please check the file format and integrity."
+msgstr ""
+
+#: core/errors.py:133
+msgid "API configuration error. Please check API Key and account status."
+msgstr ""
+
+#: core/errors.py:141
+msgid ""
+"No valid speech detected in the audio. Please confirm the recording "
+"contains human voice."
+msgstr ""
+
+#: core/errors.py:149
+msgid "Transcription service error. Please try re-transcribing."
+msgstr ""
+
+#: core/errors.py:156
+msgid ""
+"Processing failed. Please try again. Contact support if the issue "
+"persists."
+msgstr ""
+

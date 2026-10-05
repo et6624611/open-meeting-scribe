@@ -1,0 +1,7 @@
+# WP-D 冻结冒烟依赖 — 与主应用 requirements.txt 严格隔离（云包零增长，AC-7）
+# 版本对齐 R8 Spike 实测环境（R8 本地引擎 Spike 报告 §1）
+# torch 在 workflow 中先从 CPU index 安装（避免 Windows CUDA 巨包），此处锁版本
+torch==2.14.0
+funasr==1.4.16
+modelscope==1.40.1
+pyinstaller>=6.0

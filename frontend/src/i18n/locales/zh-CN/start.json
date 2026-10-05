@@ -1,0 +1,38 @@
+{
+  "title": "开始新的会议",
+  "record": "麦克风录音",
+  "return_record": "返回录音",
+  "upload": "上传音频文件",
+  "recent": "最近会议",
+  "view_all": "查看全部 {count} 个会议 →",
+  "errors": {
+    "start_failed": "开始录音失败",
+    "upload_failed": "上传失败"
+  },
+  "import": {
+    "title": "导入",
+    "dropzone_text": "拖拽文件到此处，或点击选择",
+    "dropzone_hint": "音频 · 文档 · 截图 均可",
+    "or_paste": "或粘贴文字",
+    "paste_placeholder": "在此粘贴转写稿或会议纪要…",
+    "btn_submit": "导入",
+    "processing": "正在识别内容…",
+    "duplicate_found": "这个文件之前已经导入过：",
+    "duplicate_open": "打开已有会议",
+    "duplicate_continue": "仍然导入",
+    "errors": {
+      "import_failed": "导入失败"
+    }
+  },
+  "privacy": {
+    "disclaimer_title": "数据安全须知",
+    "disclaimer_local": "录音文件、会议纪要等数据保存在你的设备上",
+    "disclaimer_cloud": "AI 处理可全程在本机完成（FunASR 转写、CAM++ 声纹、本机 LLM）；仅在启用体验配额或自带云端 Key 时才使用云端算力",
+    "disclaimer_warn": "启用云端能力时，会议音频和转写文本将发送至云端；全程本机模式下数据不出设备。",
+    "disclaimer_region": "手机号登录仅限中国大陆地区内部测试使用。其他用户请自行配置 API Key。",
+    "disclaimer_prohibit": "请勿用于处理国家机密、核心商业机密或高度敏感个人隐私的会议内容。",
+    "disclaimer_acknowledge": "我已了解，继续使用",
+    "disclaimer_detail": "详细数据流向说明请查阅 SECURITY.md。",
+    "check_participants": "我确认已告知所有参会人本次录音将进行 AI 转写与纪要处理；如启用云端能力，相关数据将发送至云端"
+  }
+}

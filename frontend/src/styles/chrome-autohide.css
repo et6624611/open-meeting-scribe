@@ -1,0 +1,47 @@
+/* ═══ 底栏 Hover 浮现（chrome autohide） ═══
+   几何：底栏在 flex 流内「高度 0 ↔ var(--bar-h)」占位——显示时全宽铺开，
+   左轨与右栏（.body）高度自然收缩，内容被让位而非覆盖。
+   bar 本体置于 .bb-clip（absolute inset:0 + overflow:hidden）内随容器高度卷帘，
+   热区是 clip 的兄弟节点，容器 0 高时仍可向上伸出 10px 全宽热区。
+   触发统一 :hover + :focus-within（键盘可达）；进延迟 0（边缘热区即触）、出延迟 300ms（防晃）。
+   状态性内容：底栏告警 is-pinned 常驻；录音/播放胶囊在顶栏（顶栏不参与自动隐藏）。
+   顶栏、左轨图标、右栏 AI 均为常驻，不参与自动隐藏。
+   逃生通道：settings.json feature_flags.chrome_autohide=false → .frame.chrome-pinned 底栏常驻。 */
+
+/* ─── 时序与尺寸变量 ─── */
+:root {
+  --chrome-delay-out: 0.3s;
+  --chrome-ease: cubic-bezier(0.22, 0.9, 0.3, 1);
+  --bar-h: 44px;
+}
+
+/* ═══ 底栏：流内高度动画 ═══ */
+.chrome-btm {
+  position: relative; z-index: var(--z-topbar); height: 0; flex-shrink: 0;
+  transition: height 0.18s var(--chrome-ease) var(--chrome-delay-out);
+}
+.chrome-btm:hover,
+.chrome-btm:focus-within,
+.chrome-btm.is-pinned {
+  height: var(--bar-h);
+  transition-delay: 0s;
+}
+.bb-hotzone {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 10px;
+  z-index: var(--z-topbar);
+}
+.bb-clip { position: absolute; inset: 0; overflow: hidden; }
+.chrome-btm .status { position: relative; height: var(--bar-h); }
+/* B2：任一能力非就绪 → 底栏常驻，琥珀边提示异常 */
+.chrome-btm.is-pinned .status { border-top-color: color-mix(in oklch, var(--warn) 40%, var(--border)); }
+
+/* ═══ 逃生通道：chrome_autohide=false → 底栏常驻回原位 ═══ */
+.frame.chrome-pinned .chrome-btm { height: var(--bar-h); transition: none; }
+.frame.chrome-pinned .bb-clip { position: static; overflow: visible; }
+.frame.chrome-pinned .bb-hotzone { display: none; }
+.frame.chrome-pinned .chrome-btm.is-pinned .status { border-top-color: var(--border); }
+
+/* ═══ 无障碍：减弱动效时零过渡 ═══ */
+@media (prefers-reduced-motion: reduce) {
+  .chrome-btm { transition: none !important; }
+}

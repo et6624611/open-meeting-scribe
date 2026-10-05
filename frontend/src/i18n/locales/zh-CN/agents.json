@@ -1,0 +1,37 @@
+{
+  "title": "AI 助手",
+  "desc": "选择并配置 AI 助手。点击角色即可激活，AI 对话将使用该助手的角色定义。",
+  "count": "{count} 个角色",
+  "builtin": "预定义角色",
+  "custom": "自定义角色",
+  "fork": "创建自定义",
+  "fork_from": "复制自",
+  "edit": "编辑",
+  "delete": "删除",
+  "save": "保存",
+  "saving": "保存中…",
+  "cancel": "取消",
+  "fork_title": "创建自定义角色",
+  "fork_name": "角色名称（英文，如 my-expert）",
+  "fork_source": "复制来源",
+  "fork_btn": "创建",
+  "delete_confirm_title": "删除角色",
+  "delete_confirm": "确认删除自定义角色「{name}」？此操作不可撤销。",
+  "no_custom": "暂无自定义角色",
+  "no_custom_hint": "可从预定义角色复制创建",
+  "files": "文件",
+  "file_saved": "已保存",
+  "readonly_hint": "预定义角色为只读，可复制为自定义角色后编辑",
+  "create_role": "新建角色",
+  "current_active": "当前启用",
+  "role": {
+    "meeting-minutes": {
+      "title": "会议纪要员",
+      "description": "专注于结构化纪要输出，忠实记录会议结论与决策。Open Meeting Scribe 默认角色。"
+    },
+    "learning-tutor": {
+      "title": "学习辅导员",
+      "description": "将会议和讲座内容转化为结构化学习笔记和复习材料"
+    }
+  }
+}
