@@ -242,6 +242,26 @@ jobs:
         }
         Write-Host "[GUARD] 静态侵入守护 PASS"
 
+    - name: 安装 Node.js（前端构建，产物同步到 spec 打包数据源 app/static）
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    - name: 安装前端依赖并构建
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+    - name: 同步 dist 到 app/static
+      run: |
+        New-Item -ItemType Directory -Force -Path app/static | Out-Null
+        Copy-Item -Recurse -Force frontend/dist/* app/static/
+        if (-not (Test-Path "app/static/index.html")) {
+          Write-Host "app/static/index.html 缺失，前端同步失败"; exit 1
+        }
+        Write-Host "app/static 同步完成"
+
     - name: 构建云精简主包（PyInstaller，与 build-windows.yml 一致，不含 ffmpeg/安装器）
       timeout-minutes: 40
       run: |

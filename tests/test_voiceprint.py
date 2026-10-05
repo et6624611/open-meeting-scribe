@@ -8,6 +8,7 @@ tests/test_voiceprint.py — 声纹域冒烟测试
   pytest tests/test_voiceprint.py -v
 """
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 

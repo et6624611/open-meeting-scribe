@@ -53,7 +53,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest
-    
+
+    - name: 安装 Node.js（冒烟测试依赖 frontend/dist 静态页）
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    - name: 安装前端依赖并构建
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+
     - name: 运行冒烟测试
       run: |
         pytest tests/test_smoke.py -v
