@@ -49,10 +49,6 @@ version: "1.0.0"
 - **Project management**: Organize meetings by project, cross-meeting search, and archive
 - **Themes**: 7 built-in themes with light/dark mode
 
-## 🎬 Demo
-
-_A short demo video/GIF will be added before the 1.0.0 announcement. In the meantime, see [Quick Start](#-quick-start)._
-
 ## 🖥 Requirements
 
 > **Distribution**: source installation and Docker only — no prebuilt binaries are provided.

@@ -56,12 +56,12 @@ status: active
 ### E 组：门面
 
 - [x] README 双语首屏：badges、Releases/Security 导航、非技术用户 AI 协助声明
-- [x] Demo 段占位（视频/GIF 待补）
+- [x] ~~Demo 段占位~~ 用户决定暂不放演示素材，占位段已移除（2026-10-05）
 - [x] Docker 路径写入双语 README Quick Start（Option A / 路径 A），含「不含 FunASR 权重」说明
 - [x] 分发声明：仅源码 + Docker，无预编译二进制
 - [x] 署名统一 et6624611
 - [x] Issue 模板双语引导（bug_report / feature_request）
-- [ ] Demo GIF/视频录制并替换占位
+- [x] ~~Demo GIF/视频~~ 用户决定暂不提供（2026-10-05）
 - [x] GitHub Release v1.0.0 发布说明：https://github.com/et6624611/open-meeting-scribe/releases/tag/v1.0.0
 - [x] topics 标签已加：meeting / transcription / asr / speaker-diarization / voiceprint / minutes / funasr / open-source
 
