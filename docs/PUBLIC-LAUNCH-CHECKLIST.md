@@ -39,7 +39,7 @@ status: active
 - [x] THIRD_PARTY_NOTICES 重写：移除退役 G6，补 NumPy/python-docx/PyPDF2/Babel/pywebview/ffmpeg，新增 FunASR/PyTorch 与 ModelScope 四模型「引导下载不随包分发」声明
 - [x] gitleaks 扫描：HEAD 零命中（历史 8 处命中均属旧 commit，孤儿首提交不带入）
 - [x] `data/settings.json` 真实 key 未跟踪，不入仓
-- [ ] Docker 镜像实测 `docker build` + 冒烟（Docker Desktop 未就绪，**待手动验证**）
+- [x] Docker 镜像实测：`docker build` 通过（node:20-slim + python:3.12-slim，内置 ffmpeg 7.1.5）；冒烟全绿——`GET /` 200、静态 asset 200、`GET /api/tasks?view=lite` 200。修复：package-lock.json 与 package.json 失步（缺 vitest/playwright-core/jsdom 等 devDeps），已用 node:20 容器 `npm install --package-lock-only` 重建
 
 ### D 组：干净历史与远端
 
@@ -62,14 +62,14 @@ status: active
 - [x] 署名统一 et6624611
 - [x] Issue 模板双语引导（bug_report / feature_request）
 - [ ] Demo GIF/视频录制并替换占位
-- [ ] GitHub Release v1.0.0 发布说明（待授权后创建）
-- [ ] topics 标签（github.com 仓设置：meeting transcription asr speaker-diarization minutes open-source）
+- [x] GitHub Release v1.0.0 发布说明：https://github.com/et6624611/open-meeting-scribe/releases/tag/v1.0.0
+- [x] topics 标签已加：meeting / transcription / asr / speaker-diarization / voiceprint / minutes / funasr / open-source
 
 ## 遗留与后续
 
 | 事项 | 状态 | 说明 |
 |---|---|---|
-| Docker 冒烟 | 待办 | 用户启动 Docker Desktop 后执行 `docker build -t open-meeting-scribe .` + `docker run` 冒烟 |
+| Docker 冒烟 | 已完成 | 2026-10-05 build + 三项冒烟全绿（见 C 组） |
 | 旧仓观察期 | 待办 | private-archive 保留观察，确认无引用后删除 |
 | feature/performance-monitoring | 可选 | 本地仍有该分支（16 个独有提交、无隐私），需要时 rebase 到干净仓 |
 | 本地旧分支清理 | 待办 | 18 个本地旧分支 + snapshot/pre-slim-20261004 仅本地救援用，观察期后清理 |
