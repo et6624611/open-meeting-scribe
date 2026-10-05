@@ -15,11 +15,25 @@ version: "1.0.0"
   <p align="center">
     音频 → 转写 + 说话人分离 → 结构化纪要（结论 / 待办）
   </p>
+  <p align="center">
+    <a href="README.md">English</a>
+    ·
+    <a href="https://github.com/et6624611/open-meeting-scribe/releases">版本发布</a>
+    ·
+    <a href="SECURITY.md">安全与隐私</a>
+  </p>
+  <p align="center">
+    <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
+    <img alt="Version" src="https://img.shields.io/badge/version-1.0.0-green">
+    <img alt="Platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Docker-lightgrey">
+  </p>
 </p>
 
 ---
 
 **不绑定任何会议平台，音频输入即一切。** 无论是线上视频会议、电话会议还是线下会议室，只要能输出音频，就能自动转写并生成结构化纪要。
+
+> **面向非技术用户**：本项目由 AI 辅助开发，也面向「能在 AI 编程助手帮助下使用开源软件」的非 IT 人员。源码与 Docker 两条路径都不需要你是开发者，但需要能接受在终端里粘贴命令。
 
 ## ✨ 功能特性
 
@@ -35,14 +49,20 @@ version: "1.0.0"
 - **项目管理**：按项目组织会议，支持跨会议搜索与资料归档
 - **多主题**：7 套内置主题，支持明/暗模式切换
 
+## 🎬 演示
+
+_Demo 视频/GIF 将在 1.0.0 正式发布前补上。当前可直接参考下方「快速开始」。_
+
 ## 🖥 系统要求
+
+> **分发方式**：仅提供源码安装与 Docker 两条路径，不提供预编译二进制包。
 
 | 项目 | 要求 |
 |------|------|
-| 操作系统 | macOS 12+（主要开发平台） |
-| Python | 3.11+ |
+| 操作系统 | macOS 12+（主要开发平台）；Linux 可走 Docker |
+| Python | 3.11+（源码安装） |
 | Node.js | 18+（前端构建） |
-| ffmpeg | 音频处理必需 |
+| ffmpeg | 音频处理必需（Docker 镜像已内置） |
 | BlackHole | 系统内录需要（[安装指南](https://github.com/ExistentialAudio/BlackHole)） |
 
 > **支持边界 / Support scope**：本项目桌面优先（macOS），<768px 视口不做适配保证。
@@ -50,14 +70,28 @@ version: "1.0.0"
 
 ## 🚀 快速开始
 
-### 1. 克隆仓库
+### 路径 A — Docker（云模式，内置 ffmpeg）
+
+```bash
+docker build -t open-meeting-scribe .
+docker run --rm -p 8000:8000 \
+  -e DASHSCOPE_API_KEY=your-key \
+  -v "$(pwd)/data:/app/data" \
+  open-meeting-scribe
+```
+
+访问 http://localhost:8000。镜像内置 ffmpeg，但**不含**可选的 FunASR 本地引擎权重（约 2 GB）——启用本地引擎时按需下载到挂载卷中。
+
+### 路径 B — 源码安装
+
+#### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/et6624611/open-meeting-scribe.git
 cd open-meeting-scribe
 ```
 
-### 2. 配置环境变量
+#### 2. 配置环境变量
 
 ```bash
 cp .env.example .env
@@ -73,7 +107,7 @@ cp .env.example .env
 
 > **关于 ASR 代理**：为保护 API Key 安全，转写请求通过代理服务中转，客户端不存储 DashScope Key。你可以自行部署 `asr-proxy/` 服务，或使用第三方提供的代理服务。
 
-### 3. 安装后端依赖
+#### 3. 安装后端依赖
 
 ```bash
 python3 -m venv venv
@@ -81,7 +115,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. 构建前端
+#### 4. 构建前端
 
 ```bash
 cd frontend
@@ -90,7 +124,7 @@ npm run build
 cd ..
 ```
 
-### 5. 启动服务
+#### 5. 启动服务
 
 ```bash
 python cli.py server
@@ -144,6 +178,7 @@ python cli.py transcribe samples/your-meeting.wav
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 版本路线图 |
 | [docs/PRD.md](docs/PRD.md) | 产品需求文档 |
 | [SECURITY.md](SECURITY.md) | 安全策略与数据隐私声明 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 第三方许可与引导下载模型清单 |
 | [CHANGELOG.md](CHANGELOG.md) | 更新日志 |
 
 ## 🤝 贡献
@@ -152,4 +187,4 @@ python cli.py transcribe samples/your-meeting.wav
 
 ## 📄 许可证
 
-[GNU AGPLv3](LICENSE) © 2026 Yongliang Wang
+[GNU AGPLv3](LICENSE) © 2026 et6624611

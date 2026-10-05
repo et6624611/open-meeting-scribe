@@ -6,7 +6,9 @@ labels: enhancement
 assignees: ''
 ---
 
-## 你的功能请求是否与某个问题相关？
+> Non-Chinese speakers: feel free to fill in this form in English.
+
+## 你的功能请求是否与某个问题相关？ / Is your feature request related to a problem?
 
 简明扼要地描述问题。例如：「当 [...] 时我总是感到困扰」
 

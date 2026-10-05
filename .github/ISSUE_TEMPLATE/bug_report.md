@@ -6,7 +6,9 @@ labels: bug
 assignees: ''
 ---
 
-## 问题描述
+> Non-Chinese speakers: feel free to fill in this form in English.
+
+## 问题描述 / Bug description
 
 简明扼要地描述这个 Bug。
 
