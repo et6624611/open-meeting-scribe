@@ -608,13 +608,32 @@ def start_recording_with_stream(
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
         )
-        # 短暂等待，确认进程没有立即退出（200ms 足以捕获 ffmpeg 启动失败，同时减少阻塞） / Brief wait to confirm process didn't exit immediately (200ms enough to catch ffmpeg startup failure while reducing block)
-        time.sleep(0.2)
+        # 短暂等待，确认进程没有立即退出。实测 avfoundation 设备不存在时 ffmpeg ~0.3s 才退出，
+        # 0.2s 会误判为启动成功 → 后续 WAV 为空 → 任务「处理失败」。0.5s 与非流式 start_recording 对齐。
+        # Brief wait to confirm process didn't exit immediately. Measured: avfoundation exits ~0.3s on
+        # missing device; 0.2s falsely marks success → empty WAV → task "处理失败". Align with start_recording's 0.5s.
+        time.sleep(0.5)
         if proc.poll() is not None:
-            raise RuntimeError("ffmpeg 启动失败（设备可能不可用）")
+            # 进程已退出，安全读取 stderr 获取真实失败原因（设备未找到/权限缺失/BlackHole 缺失等）
+            # Process exited, safely read stderr for real failure reason (device not found/permission missing/BlackHole missing etc.)
+            # stderr 开头是 ffmpeg banner/配置，真实错误在末尾；按错误关键词精准提取，避免被 banner 挤掉
+            # stderr begins with ffmpeg banner/config; real error is at the end — filter by keywords to avoid banner crowding it out
+            try:
+                _, stderr_bytes = proc.communicate(timeout=2)
+                stderr_text = stderr_bytes.decode(errors="replace") if stderr_bytes else ""
+            except Exception:
+                stderr_text = ""
+            _ERR_KEYWORDS = ("error", "not found", "no such", "failed", "denied", "cannot", "could not", "unavailable")
+            key_lines = [ln.strip() for ln in stderr_text.splitlines()
+                         if any(k in ln.lower() for k in _ERR_KEYWORDS)]
+            stderr_msg = " | ".join(key_lines)[:500] if key_lines else stderr_text.strip()[-500:]
+            raise RuntimeError(
+                f"ffmpeg 启动失败（设备可能不可用）: {stderr_msg}" if stderr_msg
+                else "ffmpeg 启动失败（设备可能不可用）"
+            )
     except FileNotFoundError:
         raise RuntimeError("ffmpeg 未安装")
 
