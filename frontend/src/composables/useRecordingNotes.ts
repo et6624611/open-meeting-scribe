@@ -74,7 +74,6 @@ export function useRecordingNotes(
   // 自动关停（heartbeat_timeout）时前端不会走手动 stop 流程，随记只存在 localStorage。
   // 必须在每次笔记变更时同步后端，否则 auto_stop_recording 收不到随记、会后丢失。
   let syncTimer: ReturnType<typeof setTimeout> | null = null
-  let syncScheduled = false
 
   function _formatForBackend(): string {
     if (userNotes.value.length === 0) return ''
@@ -85,11 +84,9 @@ export function useRecordingNotes(
 
   function _scheduleSync() {
     if (!taskId?.value) return
-    syncScheduled = true
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = setTimeout(() => {
       syncTimer = null
-      syncScheduled = false
       const tid = taskId.value
       if (!tid) return
       const text = _formatForBackend()
