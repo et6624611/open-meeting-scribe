@@ -271,6 +271,85 @@ class TestGenerate:
         doc = tf.generate_formal_version("t1", auto=True)
         assert doc["status"] == "done" and doc["auto"] is True
 
+    def test_count_mismatch_triggers_split_then_success(self, _guards, monkeypatch):
+        # 第 1 块（25句）首次返回少 1 条 → count_mismatch → 拆两半 → 两半各自成功
+        import app.store
+        app.store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5 两块
+        state = {"calls": 0}
+
+        def _mismatch_then_ok(messages, model=None, temperature=0.2):
+            state["calls"] += 1
+            ids = _extract_ids(messages)
+            # 首块首次调用（25句）返回 24 条（漏最后一条）
+            if state["calls"] == 1 and len(ids) == 25:
+                out = []
+                for sid in ids[:-1]:  # 24 条，漏最后一个 id
+                    out.append({"sentence_id": sid, "text": f"书面化：{sid}", "tone_flag": None})
+                return _FakeResult(json.dumps(out, ensure_ascii=False))
+            # 其余调用严格按输入量返回
+            out = []
+            for sid in ids:
+                out.append({"sentence_id": sid, "text": f"书面化：{sid}", "tone_flag": None})
+            return _FakeResult(json.dumps(out, ensure_ascii=False))
+
+        monkeypatch.setattr("core.llm.chat_completion_full", _mismatch_then_ok)
+        doc = tf.generate_formal_version("t1")
+        assert doc["status"] == "done"
+        assert len(doc["items"]) == 30
+        # 被拆后总调用次数 ≥ 首块 1 次 + 拆分后 2 次 + 第二块 1 次 = 4
+        assert state["calls"] >= 4
+
+    def test_count_mismatch_minchunk_fallback_per_sentence(self, _guards, monkeypatch):
+        # 块小到不再拆（≤ _MIN_CHUNK_FOR_SPLIT=12）时 count_mismatch → 逐句兜底
+        import app.store
+        app.store.tasks["t1"] = _task(_dialogue(6))  # 1 块 ≤ 12
+        state = {"calls": 0}
+
+        def _mismatch_small_chunk(messages, model=None, temperature=0.2):
+            state["calls"] += 1
+            ids = _extract_ids(messages)
+            # 块首次调用返回少 1 条
+            if state["calls"] == 1:
+                out = []
+                for sid in ids[:-1]:
+                    out.append({"sentence_id": sid, "text": f"x{sid}", "tone_flag": None})
+                return _FakeResult(json.dumps(out, ensure_ascii=False))
+            # 单句/后续严格返回
+            out = []
+            for sid in ids:
+                out.append({"sentence_id": sid, "text": f"y{sid}", "tone_flag": None})
+            return _FakeResult(json.dumps(out, ensure_ascii=False))
+
+        monkeypatch.setattr("core.llm.chat_completion_full", _mismatch_small_chunk)
+        doc = tf.generate_formal_version("t1")
+        assert doc["status"] == "done"
+        assert len(doc["items"]) == 6
+
+    def test_hard_error_keeps_completed_chunks(self, _guards, monkeypatch):
+        # 第 1 块成功，第 2 块硬错误 → error 态，但 items 保留第 1 块成果
+        import app.store
+        app.store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5
+        state = {"calls": 0}
+
+        def _block2_hard_fail(messages, model=None, temperature=0.2):
+            state["calls"] += 1
+            ids = _extract_ids(messages)
+            if len(ids) == 5:  # 第二块硬错误
+                raise RuntimeError("connection reset")
+            out = []
+            for sid in ids:
+                out.append({"sentence_id": sid, "text": f"ok{sid}", "tone_flag": None})
+            return _FakeResult(json.dumps(out, ensure_ascii=False))
+
+        monkeypatch.setattr("core.llm.chat_completion_full", _block2_hard_fail)
+        doc = tf.generate_formal_version("t1")
+        assert doc["status"] == "error"
+        assert "chunk_failed" in doc["error"]
+        # 关键：第 1 块 25 句保留在 items 里
+        assert len(doc["items"]) == 25
+        returned_ids = sorted(it["sentence_id"] for it in doc["items"])
+        assert returned_ids == list(range(25))
+
 
 class TestStalenessAndSelection:
     def test_stale_after_text_correction(self, _guards, monkeypatch):

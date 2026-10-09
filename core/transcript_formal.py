@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 SIDECAR_VERSION = 1
 CHUNK_SIZE = 25
+_MIN_CHUNK_FOR_SPLIT = 12  # 块小于等于此值不再拆，逐句兜底
 TEMPERATURE = 0.2
 
 # 路由判定中不可用的 reason（空 reason = 正常可用；byok_key_missing + auto_switched
@@ -75,11 +76,12 @@ SYSTEM_PROMPT = (
 
 def build_user_prompt(chunk: list[dict]) -> str:
     payload = [{"sentence_id": s["sentence_id"], "text": s["text"]} for s in chunk]
+    n = len(payload)
     return (
-        "把下面的口语句子数组书面化，逐句回填。\n"
+        f"把下面 {n} 条口语句子书面化，逐句回填。共 {n} 条，必须输出 {n} 条，不得多不得少。\n"
         "输入：\n"
         + json.dumps(payload, ensure_ascii=False)
-        + "\n输出格式："
+        + f"\n输出格式（数组长度严格等于输入的 {n}）："
         "[{\"sentence_id\": 整数, \"text\": \"书面句\", \"tone_flag\": null 或 \"weakened\"}]"
     )
 
@@ -266,6 +268,84 @@ def _merge_items(base: list[dict], new: list[dict]) -> list[dict]:
     return list(merged.values())
 
 
+def _process_chunk(
+    chunk: list[dict], *, model: str, _depth: int = 0,
+) -> tuple[list[dict], dict]:
+    """处理单块，失败时拆两半递归，返回 (items, usage_delta)。
+
+    count_mismatch → 拆两半重试；传输/解析错 → 原样重试一次。
+    递归终止条件：块 ≤ _MIN_CHUNK_FOR_SPLIT 时逐句兜底。
+    """
+    from core.llm import chat_completion_full
+
+    expected_ids = [s["sentence_id"] for s in chunk]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": build_user_prompt(chunk)},
+    ]
+    usage_delta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    last_err = ""
+    for attempt in (1, 2):
+        try:
+            result = chat_completion_full(messages, model=model, temperature=TEMPERATURE)
+            for k in usage_delta:
+                usage_delta[k] += int(result.usage.get(k, 0) or 0)
+            parsed = parse_chunk_response(result.content, expected_ids)
+            return parsed, usage_delta
+        except Exception as e:
+            last_err = str(e)
+            # count_mismatch 且有拆块空间 → 跳出原样重试，改走拆块
+            if "count_mismatch" in last_err and len(chunk) > _MIN_CHUNK_FOR_SPLIT and attempt == 1:
+                break
+            logger.warning(
+                f"[书面版] 块 len={len(chunk)} depth={_depth} "
+                f"第 {attempt} 次失败: {e}"
+            )
+
+    # count_mismatch 且可拆 → 分两半递归
+    if "count_mismatch" in last_err and len(chunk) > _MIN_CHUNK_FOR_SPLIT:
+        mid = len(chunk) // 2
+        left_items, left_use = _process_chunk(chunk[:mid], model=model, _depth=_depth + 1)
+        right_items, right_use = _process_chunk(chunk[mid:], model=model, _depth=_depth + 1)
+        for k in usage_delta:
+            usage_delta[k] += left_use[k] + right_use[k]
+        return left_items + right_items, usage_delta
+
+    # 块已最小仍失败 → 逐句兜底（每句单独调 LLM，成本略高但能救回）
+    if "count_mismatch" in last_err:
+        logger.warning(
+            f"[书面版] 块 len={len(chunk)} 拆分后仍 count_mismatch，逐句兜底"
+        )
+        items: list[dict] = []
+        for s in chunk:
+            # 单句不再递归（防无限递归），直接保底
+            if len(chunk) <= 1:
+                logger.warning(f"[书面版] 单句 sid={s['sentence_id']} count_mismatch 保底")
+                items.append({
+                    "sentence_id": s["sentence_id"],
+                    "text": s["text"],
+                    "tone_flag": "weakened",
+                })
+                continue
+            try:
+                one_items, one_use = _process_chunk([s], model=model, _depth=_depth + 1)
+                items.extend(one_items)
+                for k in usage_delta:
+                    usage_delta[k] += one_use[k]
+            except Exception as e2:
+                # 单句都救不回，构造保底项 tone_flag="weakened"（不确定语气一律弱化）
+                logger.warning(f"[书面版] 单句 sid={s['sentence_id']} 兜底失败: {e2}")
+                items.append({
+                    "sentence_id": s["sentence_id"],
+                    "text": s["text"],
+                    "tone_flag": "weakened",
+                })
+        return items, usage_delta
+
+    raise RuntimeError(last_err)  # 非 count_mismatch 的硬错误直接上抛
+
+
 def _prepare_generation(
     task_id: str,
     sentence_ids: list[int] | None,
@@ -379,37 +459,23 @@ def generate_formal_version(
         doc = prep["doc"]
         model = prep["model"]
 
-        from core.llm import chat_completion_full
-
         usage_sum = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         new_items: list[dict] = []
         chunks = [targets[i:i + CHUNK_SIZE] for i in range(0, len(targets), CHUNK_SIZE)]
 
         for ci, chunk in enumerate(chunks):
-            expected_ids = [s["sentence_id"] for s in chunk]
-            messages = [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(chunk)},
-            ]
-            parsed: list[dict] | None = None
-            last_err = ""
-            for attempt in (1, 2):  # 块失败重试 1 次
-                try:
-                    result = chat_completion_full(messages, model=model, temperature=TEMPERATURE)
-                    for k in usage_sum:
-                        usage_sum[k] += int(result.usage.get(k, 0) or 0)
-                    parsed = parse_chunk_response(result.content, expected_ids)
-                    break
-                except Exception as e:  # 传输/解析/校验失败均允许一次重试
-                    last_err = str(e)
-                    logger.warning(
-                        f"[书面版] task={task_id[:8]} 块 {ci + 1}/{len(chunks)} "
-                        f"第 {attempt} 次失败: {e}"
-                    )
-            if parsed is None:
-                return _finish_error(task_id, doc, base_items, f"chunk_failed: {last_err}")
-
-            new_items.extend(parsed)
+            try:
+                chunk_items, chunk_use = _process_chunk(chunk, model=model)
+            except Exception as e:
+                # 传输/解析等硬错误：已成功的 chunk 保留、未处理的留空
+                merged_kept = _merge_items(base_items, new_items)
+                return _finish_error(
+                    task_id, doc, merged_kept,
+                    f"chunk_failed: {e}",
+                )
+            new_items.extend(chunk_items)
+            for k in usage_sum:
+                usage_sum[k] += chunk_use[k]
 
             # 进度落盘（running 态允许半截 items，崩溃后用户重新生成即可）
             doc["items"] = _merge_items(base_items, new_items)
