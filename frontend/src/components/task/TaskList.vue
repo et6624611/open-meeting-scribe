@@ -97,7 +97,7 @@ import { useTaskStore } from '@/stores/task'
 import { useLayoutStore } from '@/stores/layout'
 import { usePlayerStore } from '@/stores/player'
 import TaskCard from './TaskCard.vue'
-import { retranscribe } from '@/api/tasks'
+import { retranscribe, retrySummary, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
 import type { Task } from '@/api/types'
 
 const { t } = useI18n()
@@ -238,8 +238,30 @@ async function onMenu(taskId: string, event: MouseEvent, newName?: string) {
       console.error('rename failed:', e)
       alert(t('task.errors.rename_failed'))
     }
-  } else if (event.type === 'retry') {
+  } else if (event.type === 'retry_summary') {
+    try {
+      await retrySummary(taskId)
+      taskStore.patchTaskLocal(taskId, { status: 'processing', error: undefined, error_category: undefined })
+    } catch (e) {
+      console.error('retry_summary failed:', e)
+      alert(t('task.errors.retry_failed'))
+    }
+  } else if (event.type === 'retranscribe') {
     await onRetry(taskId)
+  } else if (event.type === 'archive') {
+    try {
+      await apiArchiveTask(taskId)
+      taskStore.patchTaskLocal(taskId, { archived_at: new Date().toISOString() })
+    } catch (e) {
+      console.error('archive failed:', e)
+    }
+  } else if (event.type === 'unarchive') {
+    try {
+      await apiUnarchiveTask(taskId)
+      taskStore.patchTaskLocal(taskId, { archived_at: null })
+    } catch (e) {
+      console.error('unarchive failed:', e)
+    }
   }
 }
 

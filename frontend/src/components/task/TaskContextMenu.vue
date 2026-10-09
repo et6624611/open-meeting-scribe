@@ -6,6 +6,8 @@
       class="sb-ctx-menu"
       :style="menuPosition"
       @click.stop
+      @mouseenter="onMouseEnter"
+      @mouseleave="onMouseLeave"
     >
       <!-- 顶部：分享 / 复制 / Top: share / copy -->
       <div class="sb-ctx-section">
@@ -31,7 +33,7 @@
 
       <div class="sb-ctx-sep"></div>
 
-      <!-- 中部：操作 / Middle: actions -->
+      <!-- 中部：管理组 / Middle: manage -->
       <div class="sb-ctx-section">
         <button @click="emit('rename')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
@@ -40,12 +42,42 @@
           </svg>
           {{ t('task.rename') }}
         </button>
-        <button v-if="task.status === 'failed'" @click="emit('retry')">
+        <button @click="emit('regenerate')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
             <polyline points="23 4 23 10 17 10"/>
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
-          {{ t('task.retry') }}
+          {{ t('generating.toolbar.regenerate') }}
+        </button>
+        <button @click="emit('retranscribe')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          {{ t('generating.toolbar.retranscribe') }}
+        </button>
+      </div>
+
+      <div class="sb-ctx-sep"></div>
+
+      <!-- 下部：危险组 / Bottom: danger -->
+      <div class="sb-ctx-section">
+        <button v-if="!task.archived_at" @click="emit('archive')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+            <polyline points="21 8 21 21 3 21 3 8"/>
+            <rect x="1" y="3" width="22" height="5"/>
+            <line x1="10" y1="12" x2="14" y2="12"/>
+          </svg>
+          {{ t('generating.toolbar.archive') }}
+        </button>
+        <button v-else @click="emit('unarchive')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+            <polyline points="21 8 21 21 3 21 3 8"/>
+            <rect x="1" y="3" width="22" height="5"/>
+            <line x1="12" y1="12" x2="12" y2="16"/>
+            <line x1="10" y1="14" x2="14" y2="14"/>
+          </svg>
+          {{ t('generating.toolbar.unarchive') }}
         </button>
         <button class="is-danger" @click="emit('delete')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
@@ -100,14 +132,19 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
+  'hover-enter': []
   rename: []
-  retry: []
+  regenerate: []
+  retranscribe: []
+  archive: []
+  unarchive: []
   delete: []
 }>()
 
 const menuRef = ref<HTMLElement | null>(null)
 const menuPosition = ref<Record<string, string>>({})
 const copied = ref<string | null>(null)
+let hoverTimer: ReturnType<typeof setTimeout> | null = null
 
 /** 根据侧边栏右边缘 + 按钮垂直位置计算菜单坐标 / Calculate menu coords from sidebar right edge + button vertical position
    *  永不早退：sidebarEl 缺失时退化为以按钮右边缘为锚（用于本组件将来在 .sidebar 之外复用的情况），
@@ -215,8 +252,20 @@ const durationDisplay = computed(() => {
   return m > 0 ? t('task.duration.hours_minutes', { h, m }) : t('task.duration.hours', { h })
 })
 
+// ─── hover 自动关闭 / Auto-close on mouseleave ───
+
+function onMouseEnter() {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
+  emit('hover-enter')
+}
+
+function onMouseLeave() {
+  hoverTimer = setTimeout(() => { emit('close') }, 150)
+}
+
 onBeforeUnmount(() => {
   document.removeEventListener('click', onClickOutside, true)
   window.removeEventListener('keydown', onEscKey)
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
 })
 </script>

@@ -80,8 +80,12 @@
       :sidebar-el="sidebarEl"
       :button-rect="buttonRect"
       @close="closeMenu"
+      @hover-enter="onMenuHoverEnter"
       @rename="onRename"
-      @retry="onRetry"
+      @regenerate="onRegenerate"
+      @retranscribe="onRetranscribe"
+      @archive="onArchive"
+      @unarchive="onUnarchive"
       @delete="onDelete"
     />
 
@@ -278,13 +282,20 @@ function onMouseLeave() {
 }
 
 // 更多按钮互斥：光标在按钮上时取消悬停卡片，离开后恢复 / More button mutex: cancel hover card on enter, restore on leave
+let menuHoverTimer: ReturnType<typeof setTimeout> | null = null
 function onMoreEnter() {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
   showHoverCard.value = false
+  if (menuHoverTimer) { clearTimeout(menuHoverTimer); menuHoverTimer = null }
 }
 function onMoreLeave() {
-  // 光标离开更多按钮但仍在卡片内时，重新触发悬停检测 / When cursor leaves more button but stays on card, re-trigger hover detection
-  // 由父元素的 @mouseenter 自然处理，这里不做额外操作 / Handled naturally by parent @mouseenter, no extra action here
+  // 离开按钮 → 延迟关闭菜单（给用户从按钮移向 Teleport 出去的菜单留过渡时间）
+  if (showContextMenu.value) {
+    menuHoverTimer = setTimeout(() => closeMenu(), 250)
+  }
+}
+function onMenuHoverEnter() {
+  if (menuHoverTimer) { clearTimeout(menuHoverTimer); menuHoverTimer = null }
 }
 
 const hoverDate = computed(() => {
@@ -373,9 +384,24 @@ function onRename() {
   }
 }
 
-function onRetry() {
+function onRegenerate() {
   closeMenu()
-  emit('menu', props.task.task_id, new MouseEvent('retry'))
+  emit('menu', props.task.task_id, new MouseEvent('retry_summary'))
+}
+
+function onRetranscribe() {
+  closeMenu()
+  emit('menu', props.task.task_id, new MouseEvent('retranscribe'))
+}
+
+function onArchive() {
+  closeMenu()
+  emit('menu', props.task.task_id, new MouseEvent('archive'))
+}
+
+function onUnarchive() {
+  closeMenu()
+  emit('menu', props.task.task_id, new MouseEvent('unarchive'))
 }
 
 function onDelete() {

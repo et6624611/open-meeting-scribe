@@ -101,14 +101,25 @@
           <span class="tb-tip">{{ t('generating.toolbar.sync_kb') }}</span>
         </button>
         <div class="gen-toolbar-divider"></div>
-        <div class="gen-toolbar-more-wrap">
+        <div class="gen-toolbar-more-wrap" @mouseenter="onGenMoreEnter" @mouseleave="onGenMoreLeave">
           <button ref="genMoreBtn" class="gen-toolbar-icon" v-bind="genMoreTriggerAttrs" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
           <div ref="genMoreDropdown" class="gen-toolbar-more-menu" v-bind="genMoreMenuAttrs" :class="{ 'is-open': showMoreMenu }">
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onEditSummary">
+            <!-- 复制组 -->
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onCopyTitle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              {{ t('task.copy_title') }}
+            </button>
+            <button v-if="task?.summary" class="gen-toolbar-more-item" role="menuitem" @click="onCopySummary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              {{ t('task.copy_summary') }}
+            </button>
+            <!-- 管理组 -->
+            <div class="gen-toolbar-more-divider"></div>
+            <button class="gen-toolbar-more-item" role="menuitem" @click="onRenameTask">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              {{ t('generating.toolbar.edit') }}
+              {{ t('task.rename') }}
             </button>
             <button class="gen-toolbar-more-item" role="menuitem" @click="onRetrySummary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -118,6 +129,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               {{ t('generating.toolbar.retranscribe') }}
             </button>
+            <!-- 危险组 -->
             <div class="gen-toolbar-more-divider"></div>
             <button class="gen-toolbar-more-item" role="menuitem" @click="onArchiveConfirm">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
@@ -842,6 +854,9 @@ watch([data.kbSearchQuery, data.showKbCreateInput], () => resetKbNav())
 const genMoreBtn = ref<HTMLElement | null>(null)
 const genMoreDropdown = ref<HTMLElement | null>(null)
 const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore, triggerAttrs: genMoreTriggerAttrs, menuAttrs: genMoreMenuAttrs } = usePopMenu(genMoreDropdown, genMoreBtn)
+let genMoreHoverTimer: ReturnType<typeof setTimeout> | null = null
+function onGenMoreEnter() { if (genMoreHoverTimer) { clearTimeout(genMoreHoverTimer); genMoreHoverTimer = null } }
+function onGenMoreLeave() { genMoreHoverTimer = setTimeout(() => closeGenMore(), 150) }
 
 // ─── 原文三层视图下拉（tab 栏右侧；真源在此，TranscriptPanel prop 消费）/ Transcript layer dropdown (tab-bar right; source of truth here) ──
 const layerView = ref<LayerView>('clean')
@@ -855,7 +870,40 @@ function selectLayer(v: LayerView) {
 }
 
 // ─── 工具栏操作 / Toolbar actions ───
-function onEditSummary() { closeGenMore(); data.switchTab('summary') }
+
+/** 复制会议标题 / Copy meeting title */
+async function onCopyTitle() {
+  closeGenMore()
+  const t = task.value
+  const title = t?.title || t?.audio_name || ''
+  if (!title) return
+  try { await navigator.clipboard.writeText(title) } catch { /* 剪贴板不可用静默降级 */ }
+}
+
+/** 复制纪要摘要 / Copy summary */
+async function onCopySummary() {
+  closeGenMore()
+  const summary = task.value?.summary || ''
+  if (!summary) return
+  try { await navigator.clipboard.writeText(summary) } catch { /* 剪贴板不可用静默降级 */ }
+}
+
+/** 重命名 / Rename */
+async function onRenameTask() {
+  closeGenMore()
+  const cur = task.value
+  const current = cur?.title || cur?.audio_name || ''
+  const newName = prompt(t('task.rename_prompt'), current)
+  if (!newName || !newName.trim() || newName.trim() === current) return
+  try {
+    const { updateTask } = await import('@/api/tasks')
+    const updated = await updateTask(data.taskId, { title: newName.trim() })
+    taskStore.patchTaskLocal(data.taskId, { title: updated.title })
+  } catch (e) {
+    console.error('rename failed:', e)
+    alert(t('task.errors.rename_failed'))
+  }
+}
 
 /**
  * 决策中心演变链跳转锚点：?tab=todos&todo=<id>&from=evolution
