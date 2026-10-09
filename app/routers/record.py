@@ -606,6 +606,36 @@ def stop_record(
     FastAPI 会自动在线程池中运行同步端点，避免阻塞事件循环。 / FastAPI auto-runs sync endpoints in thread pool to avoid blocking event loop.
     """
     if not is_stream_recording():
+        # ── 兜底：静默检测自动关停 / Fallback: silence detection auto-stopped ──
+        # 自动关停已 stop_recording + 派发纪要管线，realtime_transcribers 已被 pop，
+        # tasks[tid] 状态推进到 processing 或终态。此时前端再点「结束录音」不应误判为 crashed。
+        # 查 tasks 找 status 为 processing/completed/failed 且最近活跃的任务：
+        # - 命中 → 返回正常响应，引导前端跳转 generating
+        # - 仍是 recording（真僵尸）→ 走原清理逻辑并报错
+        # Auto-stop already stopped recording + dispatched pipeline, realtime_transcribers popped,
+        # tasks[tid] advanced to processing or terminal. Clicking "stop" must NOT be misjudged as
+        # crashed. Scan tasks for one in processing/completed/failed with recent activity:
+        # hit → return normal response guiding frontend to generating; still recording → real
+        # zombie, run cleanup and raise.
+        candidate_tid = None
+        candidate_created = ""
+        for _tid, _task in tasks.items():
+            _s = _task.get("status")
+            if _s in ("processing", "completed", "failed") and _task.get("auto_stop_reason"):
+                _created = _task.get("created_at", "")
+                if _created > candidate_created:
+                    candidate_tid, candidate_created = _tid, _created
+        if candidate_tid:
+            t_state = tasks[candidate_tid].get("status")
+            logger.info(f"[录制] stop 收到但 ffmpeg 已停（任务 {t_state}，静默检测自动关停）: task={candidate_tid[:8]}")
+            # 静默检测已清理实时资源，这里仅清理可能残留的队列
+            realtime_queues.pop(candidate_tid, None)
+            return {
+                "task_id": candidate_tid,
+                "status": t_state,
+                "duration": tasks[candidate_tid].get("audio_duration") or 0,
+            }
+
         # ── 僵尸录音清理 / Zombie recording cleanup ──
         # ffmpeg 进程已崩溃但任务状态仍为 recording，需要清理
         # ffmpeg process crashed but task status is still "recording"; needs cleanup

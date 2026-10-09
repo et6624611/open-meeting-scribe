@@ -495,6 +495,23 @@ watch(() => wsChapters.value.length, (n) => { for (let c = recAutoExpandedCount.
 // 洞察生成/修订改由会话面板中人与 AI 共创驱动，不再由时钟无人值守触发。
 watch(() => ws.speakerCount.value, (n, o) => { if (n > o && n > 0) { speakerCountUpdated.value = true; if (speakerCountFlashTimer) clearTimeout(speakerCountFlashTimer); speakerCountFlashTimer = setTimeout(() => speakerCountUpdated.value = false, 2000) } })
 watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if (!p && !ws.connected.value && taskId.value) ws.connect(taskId.value) })
+// 静默检测自动关停兜底：后端已 stop_recording + 派发纪要管线，前端不能再调 /api/record/stop（会触发 400 zombie 误判）。
+// 收到 auto_stopped 信号即走本地结束流程：断 WS、清 notes、刷新任务列表、跳 generating。
+// Auto-stop fallback: backend already stopped recording + dispatched pipeline. Frontend must NOT call
+// /api/record/stop (triggers 400 zombie misjudgment). On auto_stopped signal, run local finish flow:
+// disconnect WS, clear notes, reload tasks, jump to generating view.
+watch(() => ws.autoStopped.value, (info) => {
+  if (!info) return
+  ws.disconnect()
+  translation.reset()
+  notes.clearStorage()
+  const tid = recorder.taskId.value
+  ending.value = true; stopFailed.value = false
+  taskStore.loadTasks().then(() => {
+    if (tid) router.push({ name: 'generating', params: { taskId: tid } })
+    else router.push('/')
+  })
+})
 watch(recTab, (tab) => {
   localStorage.setItem('oms_rec_active_tab', tab)
   ;(window as any).__omsUpdatePhilosophy?.(tab)
