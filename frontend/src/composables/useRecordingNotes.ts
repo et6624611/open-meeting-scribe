@@ -8,6 +8,7 @@
 import { ref, computed, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { TranscriptLine } from '@/composables/useWebSocket'
+import { saveNotes } from '@/api/notes'
 
 const NOTES_LS_KEY = 'oms_rec_timestamped_notes'
 
@@ -27,6 +28,7 @@ export interface RecordingNote {
 export function useRecordingNotes(
   wsLines: Ref<TranscriptLine[]>,
   elapsedMs: Ref<number>,
+  taskId?: Ref<string | null>,
 ) {
   const userNotes = ref<RecordingNote[]>([])
   const noteCount = computed(() => userNotes.value.length)
@@ -68,6 +70,41 @@ export function useRecordingNotes(
     try { localStorage.removeItem(NOTES_LS_KEY) } catch { /* 忽略 / ignore */ }
   }
 
+  // ── 后端实时同步（防抖 1s）/ Backend realtime sync (1s debounce) ──
+  // 自动关停（heartbeat_timeout）时前端不会走手动 stop 流程，随记只存在 localStorage。
+  // 必须在每次笔记变更时同步后端，否则 auto_stop_recording 收不到随记、会后丢失。
+  let syncTimer: ReturnType<typeof setTimeout> | null = null
+  let syncScheduled = false
+
+  function _formatForBackend(): string {
+    if (userNotes.value.length === 0) return ''
+    return userNotes.value
+      .map(n => `[${_formatNoteTime(n.lineIndex, n.time)}] ${n.text}`)
+      .join('\n')
+  }
+
+  function _scheduleSync() {
+    if (!taskId?.value) return
+    syncScheduled = true
+    if (syncTimer) clearTimeout(syncTimer)
+    syncTimer = setTimeout(() => {
+      syncTimer = null
+      syncScheduled = false
+      const tid = taskId.value
+      if (!tid) return
+      const text = _formatForBackend()
+      saveNotes(tid, text).catch(() => { /* 静默失败，下次变更会重试 */ })
+    }, 1000)
+  }
+
+  /** 立即同步后端（取消挂起的防抖计时器）/ Flush pending debounce and sync immediately */
+  function flushSync(): void {
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null }
+    if (!taskId?.value) return
+    const text = _formatForBackend()
+    saveNotes(taskId.value, text).catch(() => { /* */ })
+  }
+
   // ── 笔记操作 / Note operations ──
 
   function addNote(text: string) {
@@ -76,11 +113,13 @@ export function useRecordingNotes(
     const id = crypto.randomUUID()
     userNotes.value.push({ id, text, lineIndex, time })
     saveToStorage()
+    _scheduleSync()
   }
 
   function deleteNote(idx: number) {
     userNotes.value = userNotes.value.filter(n => n.lineIndex !== idx)
     saveToStorage()
+    _scheduleSync()
   }
 
   // ── 自动关联：新行出现时匹配未关联笔记 / Auto-associate: match unassociated notes when new lines appear ──
@@ -99,14 +138,14 @@ export function useRecordingNotes(
         }
       }
     }
-    if (changed) saveToStorage()
+    if (changed) { saveToStorage(); _scheduleSync() }
   }
 
   // 监听新行出现时自动关联 / Watch for new lines to auto-associate
   watch(() => wsLines.value.length, () => { autoAssociate() })
 
   /** 格式化笔记时间戳 / Format note timestamp */
-  function formatNoteTime(lineIdx: number, fallbackTimeMs: number): string {
+  function _formatNoteTime(lineIdx: number, fallbackTimeMs: number): string {
     const line = lineIdx >= 0 ? wsLines.value[lineIdx] : null
     const timeMs = line?.begin_time ?? fallbackTimeMs
     if (!timeMs) return '00:00'
@@ -116,10 +155,13 @@ export function useRecordingNotes(
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
+  /** 格式化笔记时间戳（公开别名）/ Format note timestamp (public alias) */
+  const formatNoteTime = _formatNoteTime
+
   /** 获取所有笔记的格式化文本（用于结束录音时提交） / Get formatted text of all notes (for submission when recording ends) */
   function getNotesText(): string | undefined {
-    if (userNotes.value.length === 0) return undefined
-    return userNotes.value.map(n => `[${formatNoteTime(n.lineIndex, n.time)}] ${n.text}`).join('\n')
+    const text = _formatForBackend()
+    return text || undefined
   }
 
   return {
@@ -132,5 +174,6 @@ export function useRecordingNotes(
     clearStorage,
     getNotesText,
     formatNoteTime,
+    flushSync,
   }
 }

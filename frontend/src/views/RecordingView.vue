@@ -252,7 +252,7 @@ const task = computed(() => taskStore.tasks.find(t => t.task_id === taskId.value
 // ── Composables ──
 const presence = usePresenceDetection((score, ack) => ws.sendHeartbeat(score, ack))
 const elapsedMs = computed(() => recorder.elapsed.value * 1000)
-const notes = useRecordingNotes(wsLines, elapsedMs)
+const notes = useRecordingNotes(wsLines, elapsedMs, taskId)
 const rosterComposable = useMeetingRoster(taskId.value, task)
 
 // ── 本地状态 / Local state ──
@@ -502,6 +502,7 @@ watch(recPaused, (p) => { if (p && ws.connected.value) ws.disconnect(); else if 
 // disconnect WS, clear notes, reload tasks, jump to generating view.
 watch(() => ws.autoStopped.value, (info) => {
   if (!info) return
+  notes.flushSync()  // 自动关停路径：随记从未经 /api/record/stop 提交，必须在清 localStorage 前 flush 到后端
   ws.disconnect()
   translation.reset()
   notes.clearStorage()
