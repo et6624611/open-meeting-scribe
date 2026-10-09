@@ -27,11 +27,21 @@ export const useThemeStore = defineStore('theme', () => {
     THEMES.find(t => t.id === current.value)?.label ?? '标准浅色',
   )
 
-  /** 切换主题 / Switch theme */
+  /** 切换主题（持久化） / Switch theme (persisted) */
   function setTheme(id: ThemeId) {
     current.value = id
     document.documentElement.setAttribute('data-theme', id)
     localStorage.setItem(STORAGE_KEY, id)
+  }
+
+  /** 预览主题（仅改 DOM，不持久化） / Preview theme (DOM only, no persist) */
+  function previewTheme(id: ThemeId) {
+    document.documentElement.setAttribute('data-theme', id)
+  }
+
+  /** 恢复到当前已确认的主题 / Restore to confirmed theme */
+  function restoreTheme() {
+    document.documentElement.setAttribute('data-theme', current.value)
   }
 
   /** 从 localStorage 加载已保存的主题 / Load saved theme from localStorage */
@@ -44,5 +54,5 @@ export const useThemeStore = defineStore('theme', () => {
     return 'standard-light'
   }
 
-  return { current, currentLabel, isStartMode, setTheme }
+  return { current, currentLabel, isStartMode, setTheme, previewTheme, restoreTheme }
 })

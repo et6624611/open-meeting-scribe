@@ -126,16 +126,16 @@
               <path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
             </svg>
           </IconButton>
-          <div class="theme-dropdown" :class="{ 'is-open': showThemeMenu }" role="listbox">
+          <div class="theme-dropdown" :class="{ 'is-open': showThemeMenu }" role="listbox" @mouseleave="themeStore.restoreTheme()">
             <div class="theme-group-label">{{ t('common.theme.group_standard') }}</div>
-            <button v-for="theme in standardThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @click="selectTheme(theme.id)">
+            <button v-for="theme in standardThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @mouseenter="themeStore.previewTheme(theme.id)" @focus="themeStore.previewTheme(theme.id)" @click="selectTheme(theme.id)">
               <span class="theme-swatch" :style="{ background: theme.swatch }"></span>
               <span class="theme-option-label">{{ theme.label }}</span>
               <svg v-if="themeStore.current === theme.id" class="theme-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             </button>
             <div class="theme-group-divider"></div>
             <div class="theme-group-label">{{ t('common.theme.group_nature') }}</div>
-            <button v-for="theme in natureThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @click="selectTheme(theme.id)">
+            <button v-for="theme in natureThemes" :key="theme.id" class="theme-option" :class="{ 'is-active': themeStore.current === theme.id }" :title="theme.label" @mouseenter="themeStore.previewTheme(theme.id)" @focus="themeStore.previewTheme(theme.id)" @click="selectTheme(theme.id)">
               <span class="theme-swatch" :style="{ background: theme.swatch }"></span>
               <span class="theme-option-label">{{ theme.label }}</span>
               <svg v-if="themeStore.current === theme.id" class="theme-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>

@@ -191,6 +191,11 @@ def update_speaker_mapping(
 
     # 仅更新映射并持久化，不改变状态、不触发纪要生成 / Only update mapping and persist; no state change, no summary trigger
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    # 同步清理 speaker_mapping 中已解绑项，避免前端 fallback 仍显示旧名 / Drop stale speaker_mapping entries for unbound speakers
+    existing_sm = task.get("speaker_mapping") or {}
+    new_sm = {k: v for k, v in existing_sm.items() if int(k) in mapping}
+    if len(new_sm) != len(existing_sm):
+        tasks[task_id]["speaker_mapping"] = new_sm
     _mark_modified(task_id)
     save_task_to_disk(task_id)
 
@@ -251,6 +256,11 @@ def set_speaker_mapping(
     tasks[task_id]["progress"] = 75
     tasks[task_id]["message"] = _("Generating minutes...")
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
+    # 同步清 speaker_mapping 中已解绑项（Stage 2 会重写，但此处确保即刻一致）
+    existing_sm = task.get("speaker_mapping") or {}
+    new_sm = {k: v for k, v in existing_sm.items() if int(k) in mapping}
+    if len(new_sm) != len(existing_sm):
+        tasks[task_id]["speaker_mapping"] = new_sm
     # 作业日志：记录确认绑定（含姓名，便于会议助手回溯） / Job log: record confirmed bindings (with names for meeting assistant traceability)
     names = []
     for uuid in mapping.values():
@@ -346,7 +356,10 @@ def apply_speaker_names_endpoint(
 
     # 4) 落库 / Persist
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
-    tasks[task_id]["speaker_mapping"] = {**task.get("speaker_mapping", {}), **speaker_name_map}
+    # 保留未解绑项的旧名（可能来自 ASR 自动识别），再覆盖新绑定名；已解绑的 sid 直接清除
+    old_sm = task.get("speaker_mapping", {})
+    kept_old = {k: v for k, v in old_sm.items() if int(k) in mapping}
+    tasks[task_id]["speaker_mapping"] = {**kept_old, **speaker_name_map}
     tasks[task_id]["summary"] = new_summary
     if user_summary is not None:
         tasks[task_id]["user_summary"] = new_user_summary

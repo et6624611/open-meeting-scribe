@@ -140,12 +140,14 @@
     <!-- 主题 / Theme -->
     <div class="settings-section">
       <h2 class="settings-title">{{ t('settings.appearance') }}</h2>
-      <div class="theme-grid">
+      <div class="theme-grid" @mouseleave="themeStore.restoreTheme()">
         <button
           v-for="theme in THEMES"
           :key="theme.id"
           class="theme-chip"
           :class="{ 'is-active': themeStore.current === theme.id }"
+          @mouseenter="themeStore.previewTheme(theme.id)"
+          @focus="themeStore.previewTheme(theme.id)"
           @click="themeStore.setTheme(theme.id)"
         >{{ t(`common.theme.${theme.id.replace(/-/g, '_')}`) }}</button>
       </div>
