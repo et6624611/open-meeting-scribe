@@ -131,6 +131,8 @@ async def run_cli_agent(
 
     proc = None
     try:
+        # limit=1MB：CLI stream-json 的单行 JSON 可能很大（如带长 text block 或 HTML），
+        # asyncio 默认 64KB 会抛 LimitOverrunError，导致 readline() 直接崩溃整条 SSE 流。
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -138,6 +140,7 @@ async def run_cli_agent(
             stdin=asyncio.subprocess.DEVNULL,
             cwd=proc_cwd,
             start_new_session=True,  # 独立进程组，cancel 可整组 kill（§3.9-5）
+            limit=1024 * 1024,
         )
     except (FileNotFoundError, PermissionError, OSError) as e:
         raise CliAgentError(f"无法启动 CLI 引擎：{e}", hint_key="cli_engine_start_failed", detail=str(e)) from e

@@ -325,9 +325,10 @@ function startEdit() {
   const t = props.todo
   editingHasTitle.value = Boolean(t.title && t.title.trim())
   if (editingHasTitle.value) {
-    // 有独立标题：标题行=title，摘要行=text
+    // 有独立标题：标题行=title，内容框预填正文权威源 why（why 空回退 text）
+    // 与 AddDecisionDialog 新建时同时写 text+why 的口径对齐，保证所见即所编辑
     editTitle.value = t.title || ''
-    editText.value = t.text || ''
+    editText.value = t.why || t.text || ''
   } else {
     // 无独立标题：卡片首行展示的是 text，正文是 why
     editTitle.value = t.text || ''
@@ -339,10 +340,13 @@ function startEdit() {
 
 function saveEdit() {
   if (!editing.value) return
-  // 按进入编辑态时的形态写回对应字段：走既有 patch 链路（决策中心 savePatch / 纪要页 update→onEditTodo）
+  // 与 AddDecisionDialog 新建口径对齐：有 title 时内容同时写 text（主文本/检索）和 why（正文权威源），
+  // 保证 bodyContent 优先读 why 时能拿到用户最新编辑内容，不被残留 why 老值覆盖
   const title = editTitle.value.trim()
   const body = editText.value.trim()
-  emit('patch', editingHasTitle.value ? { title, text: body } : { text: title, why: body })
+  emit('patch', editingHasTitle.value
+    ? { title, text: body, why: body }
+    : { text: title, why: body })
   editing.value = false
 }
 
