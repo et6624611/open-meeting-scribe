@@ -86,6 +86,10 @@
             <div class="chapter-loading is-panel" v-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length > 0">
               <ProgressDialog :task="task" backfill />
             </div>
+            <!-- 手动记录空态（无音频源，用户补录决策/随记） / Manual notes empty state (no audio source) -->
+            <div class="chapter-loading is-empty" v-else-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length === 0 && task?.source === 'manual'">
+              <span>{{ t('generating.chapter.manual_notes_hint') }}</span>
+            </div>
             <!-- 空转写提示（completed 但无任何转写内容） / Empty transcript hint (completed but no transcript) -->
             <div class="chapter-loading is-empty" v-else-if="taskStatus === 'completed' && !chapters.length && flatTranscript.length === 0">
               <span>{{ t('generating.chapter.empty_transcript') }}</span>

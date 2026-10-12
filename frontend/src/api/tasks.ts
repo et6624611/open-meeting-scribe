@@ -126,6 +126,14 @@ export async function batchArchiveTasks(taskIds: string[]): Promise<{ archived: 
   return data
 }
 
+/** 创建手动空会话（无音频源，用于补录决策/随记） / Create manual empty task (no audio source) */
+export async function createManualTask(
+  options?: { title?: string; meeting_date?: string },
+): Promise<Task> {
+  const { data } = await client.post<Task>('/api/tasks', options || {})
+  return data
+}
+
 // ─── 知识库同步 / Knowledge base sync ───
 
 export interface SyncStatus {

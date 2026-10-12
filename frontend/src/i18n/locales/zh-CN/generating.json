@@ -126,6 +126,7 @@
     "index_suffix": "章 / 共 {count} 章",
     "dividing": "章节划分中...",
     "empty_transcript": "未识别到有效语音内容",
+    "manual_notes_hint": "这是一个手动记录 · 从右侧面板开始记录决策和随记",
     "key_points": "关键要点",
     "key_points_count": "{count} 个要点",
     "review": "章节回顾",

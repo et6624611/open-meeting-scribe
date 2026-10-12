@@ -126,6 +126,7 @@
     "index_suffix": "of {count}",
     "dividing": "Dividing chapters...",
     "empty_transcript": "No valid speech detected",
+    "manual_notes_hint": "Manual notes · Record decisions and notes from the right panel",
     "key_points": "Key Points",
     "key_points_count": "{count} key point(s)",
     "review": "Chapter Review",

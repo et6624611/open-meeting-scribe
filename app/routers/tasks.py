@@ -44,6 +44,58 @@ _chapters_empty_confirmed: set[str] = set()
 router = APIRouter(tags=["tasks"])
 
 
+class ManualTaskCreate(BaseModel):
+    """手动空会话创建请求体。无音频、无 pipeline 触发，仅占位供补录决策/随记使用。"""
+    title: Optional[str] = None
+    meeting_date: Optional[str] = None  # "YYYY-MM-DD"
+
+
+@router.post("/api/tasks")
+def create_manual_task(data: Optional[ManualTaskCreate] = None):
+    """创建手动空会话（无音频源） / Create a manual empty task (no audio source).
+
+    用于补录决策、随记、头脑风暴等不需要录音的场景。任务 source="manual"，
+    不会触发任何转写/纪要 pipeline。"""
+    now = datetime.now()
+    date_str = data.meeting_date if data and data.meeting_date else now.strftime("%Y-%m-%d")
+    # 验证日期格式
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(400, _("Invalid date format, expected YYYY-MM-DD"))
+
+    task_id = str(uuid.uuid4())
+    title = ((data.title if data else None) or "").strip() or None
+
+    tasks[task_id] = {
+        "task_id": task_id,
+        "status": "completed",  # 手动创建即视为"会后"状态（无 pipeline 可跑）
+        "source": "manual",
+        "progress": 100,
+        "message": _("Manual notes"),
+        "title": title,
+        "audio_name": None,
+        "audio_path": None,
+        "audio_duration": None,
+        "speaker_count": None,
+        "summary": None,
+        "output_path": None,
+        "created_at": now.isoformat(),
+        "meeting_date": date_str,
+        "error": None,
+        "error_category": None,
+        "error_suggestion": None,
+        "failed_stage": None,
+        "retry_count": 0,
+        "speaker_mapping": {},
+        "dialogue": [],
+    }
+
+    save_task_to_disk(task_id)
+    logger.info(f"[手动会话] 已创建 task={task_id[:8]}, title={title!r}, date={date_str}")
+    return {"task_id": task_id, "status": "completed", "source": "manual"}
+
+
 class TranscribeRequest(BaseModel):
     speaker_mapping: Optional[dict[str, str]] = None  # {"0": "uuid1", "1": "uuid2"} 说话人映射 / Speaker mapping
 

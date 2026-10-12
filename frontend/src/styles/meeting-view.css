@@ -571,26 +571,58 @@
 /* 绑定态底部文本输入 / Binding state text input */
 
 /* ─── 统一进度面板（REQ-TRANSCRIBE-PROGRESS P0） / Unified progress panel ─── */
-/* 视觉与书面版生成卡统一（rec-formal-lock + gen-formal-spinner/bar）；步骤信息压成文本，无圆点步骤条 */
-.tp-panel { margin: var(--s-4); }
+.tp-panel { display: flex; flex-direction: column; gap: var(--s-5); margin: var(--s-4); padding: var(--s-4) 0; }
 .tp-panel--error { border-color: var(--warn); }
 
-/* 描述行：第 n/4 步 · 百分比 · 已用时长 · ETA */
-.tp-meta-row { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
-.tp-percent { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-.tp-sep { color: var(--subtle); }
-.tp-eta-unknown { color: var(--subtle); }
-.tp-stagnation { color: var(--warn); }
+/* 4 步步骤条：圆点 + 连接线 / 4-step stepper with dot markers + connectors */
+.tp-steps { display: flex; align-items: flex-start; list-style: none; margin: 0; padding: 0; gap: 0; }
+.tp-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); position: relative; font-size: var(--fs-12); color: var(--muted); min-width: 0; }
+/* 连接线：从前一节点圆心到本节点圆心 */
+.tp-step + .tp-step::before { content: ''; position: absolute; top: 11px; right: 50%; left: calc(-50%); height: 2px; background: var(--border); z-index: 0; }
+.tp-step.is-done + .tp-step::before, .tp-step.is-active + .tp-step::before { background: var(--accent-soft); }
+.tp-step.is-done + .tp-step::before { background: var(--ok); opacity: 0.45; }
+.tp-step::after { content: none; }
+.tp-step-marker { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface-2); border: 2px solid var(--border); color: var(--muted); font-size: var(--fs-11); font-weight: 600; position: relative; z-index: 1; box-sizing: border-box; }
+.tp-step-marker svg { width: 13px; height: 13px; }
+.tp-step-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tp-step.is-done { color: var(--ok); }
+.tp-step.is-done .tp-step-marker { background: var(--ok); border-color: var(--ok); color: #fff; }
+.tp-step.is-active { color: var(--accent); font-weight: 600; }
+.tp-step.is-active .tp-step-marker { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); animation: tp-pulse 1.6s ease-in-out infinite; }
+.tp-step.is-failed { color: var(--rec); font-weight: 600; }
+.tp-step.is-failed .tp-step-marker { background: var(--rec); border-color: var(--rec); color: #fff; animation: none; }
+@keyframes tp-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: reduce) { .tp-step.is-active .tp-step-marker { animation: none; } }
 
-/* 进度条：宽度由 JS rAF 缓动驱动，禁用 CSS transition 避免双重动画 */
+/* 百分比进度条（宽度由 JS rAF 缓动驱动，CSS 不再加 transition 避免双重动画） */
+.tp-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.tp-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent) 60%, var(--ok)); min-width: 2px; }
+.tp-panel--compact .tp-bar { display: none; }
 .tp-bar .gen-formal-bar-fill { transition: none; }
 
+/* 计时行：百分比 + 已用时长 + ETA */
+.tp-meta-row { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; font-size: var(--fs-13); color: var(--muted); }
+.tp-percent { font-size: var(--fs-18); font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.tp-elapsed, .tp-eta { font-variant-numeric: tabular-nums; }
+.tp-eta { color: var(--fg); }
+.tp-sep { color: var(--border); }
+.tp-eta-unknown { font-style: italic; }
+.tp-stagnation { margin: 0; font-size: var(--fs-13); color: var(--warn); }
+
+/* 安心文案 */
+.tp-reassure { margin: 0; font-size: var(--fs-12); color: var(--muted); display: flex; align-items: center; gap: var(--s-2); }
+.tp-reassure::before { content: ''; width: 12px; height: 12px; flex-shrink: 0; border-radius: 50%; background: var(--ok); opacity: 0.5; }
+
 /* 失败态（R4-简） */
+.tp-failed-caption { margin: 0; font-size: var(--fs-14); color: var(--rec); font-weight: 600; }
 .tp-failed-desc { color: var(--warn); }
-.tp-retry-btn { display: inline-flex; align-items: center; gap: 6px; }
-.tp-retry-btn svg { width: 13px; height: 13px; }
+.tp-retry-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-4); border-radius: 8px; border: 1px solid var(--rec); background: transparent; color: var(--rec); font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
+.tp-retry-btn:hover { background: var(--rec); color: #fff; }
+.tp-retry-btn:focus-visible { outline: 2px solid var(--rec); outline-offset: 2px; }
+.tp-retry-btn svg { width: 14px; height: 14px; }
 
 /* compact：整页失败卡片内嵌单行说明 */
+.tp-panel--compact { gap: var(--s-3); padding: var(--s-2) 0; }
 .tp-compact-caption { margin: 0; font-size: var(--fs-12); color: var(--warn); }
 
 /* ═══ 声纹识别（融入人员栏） / Voiceprint match embedded in personnel bar ═══ */

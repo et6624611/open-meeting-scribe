@@ -106,6 +106,7 @@ import { useTaskStore } from '@/stores/task'
 import { useRecorder } from '@/composables/useRecorder'
 import { usePrivacyDisclaimer } from '@/composables/usePrivacyDisclaimer'
 import { getRecordStatus } from '@/api/record'
+import { createManualTask } from '@/api/tasks'
 import { extractErrorMessage } from '@/api/client'
 import type { Task } from '@/api/types'
 import ResponsiveButtonGroup from '@/components/common/ResponsiveButtonGroup.vue'
@@ -181,6 +182,15 @@ const ImportIcon = {
   },
 }
 
+const NoteIcon = {
+  render() {
+    return h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
+      h('path', { d: 'M12 20h9' }),
+      h('path', { d: 'M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z' }),
+    ])
+  },
+}
+
 // ── 操作按钮配置 / Action button config ───
 const actionButtons = computed(() => [
   {
@@ -198,6 +208,14 @@ const actionButtons = computed(() => [
     variant: 'secondary' as const,
     shortcut: `${modKey}U`,
     onClick: onImportClick,
+  },
+  {
+    key: 'manual',
+    label: t('start.manual'),
+    icon: NoteIcon,
+    variant: 'secondary' as const,
+    shortcut: `${modKey}N`,
+    onClick: onStartManual,
   },
 ])
 
@@ -339,6 +357,22 @@ function doImport() {
 function onImported(taskId: string) {
   taskStore.loadTasks()
   router.push({ name: 'generating', params: { taskId } })
+}
+
+async function onStartManual() {
+  try {
+    const task = await createManualTask()
+    taskStore.patchTaskLocal(task.task_id, {
+      status: 'completed',
+      source: 'manual',
+      created_at: new Date().toISOString(),
+      meeting_date: new Date().toISOString().slice(0, 10),
+    } as any)
+    router.push({ name: 'generating', params: { taskId: task.task_id } })
+    taskStore.loadTasks()
+  } catch (e) {
+    alert(extractErrorMessage(e))
+  }
 }
 
 function onOpenExistingTask(taskId: string) {

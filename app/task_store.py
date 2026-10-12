@@ -54,7 +54,7 @@ def infer_task_source(task: dict) -> str:
     - 均不匹配时默认 'upload' / Default 'upload' if no match
     """
     source = task.get("source")
-    if source in ("record", "upload"):
+    if source in ("record", "upload", "manual"):
         return source
     audio_path = task.get("audio_path", "")
     if "recordings" in audio_path:

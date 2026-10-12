@@ -3,6 +3,7 @@
   "record": "Record with Mic",
   "return_record": "Return to Recording",
   "upload": "Upload Audio File",
+  "manual": "Manual Notes",
   "recent": "Recent Meetings",
   "view_all": "View all {count} meetings →",
   "errors": {

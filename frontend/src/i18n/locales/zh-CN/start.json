@@ -3,6 +3,7 @@
   "record": "麦克风录音",
   "return_record": "返回录音",
   "upload": "上传音频文件",
+  "manual": "手动记录",
   "recent": "最近会议",
   "view_all": "查看全部 {count} 个会议 →",
   "errors": {
