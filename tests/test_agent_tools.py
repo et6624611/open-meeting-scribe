@@ -507,3 +507,281 @@ class TestWorkspaceCleanup:
         # 穿越键会被 resolve 后判定不在 WORKSPACE_ROOT 下 → 不删除、不报错（幂等 no-op）
         r = client.post("/api/agent-tools/cleanup", json={"chat_session_id": "../../etc"})
         assert r.status_code == 200  # 幂等，不因越界而崩
+
+
+# ============================================================
+# 联网工具 / Web tools（web_search + web_fetch）
+# ============================================================
+
+
+class TestWebToolsCatalog:
+    """目录层：web_search / web_fetch 存在且 kind=read（readonly 档也可用）。"""
+
+    def test_web_search_registered(self):
+        t = TOOLS_BY_NAME["web_search"]
+        assert t["kind"] == "read"
+        assert t["needs_task"] is False
+        assert "query" in t["input_schema"]["properties"]
+
+    def test_web_fetch_registered(self):
+        t = TOOLS_BY_NAME["web_fetch"]
+        assert t["kind"] == "read"
+        assert t["needs_task"] is False
+        assert "url" in t["input_schema"]["properties"]
+
+    def test_tools_list_safe_at_readonly(self, client):
+        # readonly 档也能调联网工具——它们不写本地磁盘
+        from core.agent_tools.tokens import issue_token, verify_token
+        from core.agent_tools.catalog import TOOL_CATALOG as _CAT
+        readonly_tools = [t["name"] for t in _CAT if t["kind"] == "read"]
+        assert "web_search" in readonly_tools
+        assert "web_fetch" in readonly_tools
+
+
+class TestWebSearchTool:
+    """web_search 实现层（impl._tool_web_search）。"""
+
+    def _call(self, **kwargs):
+        from core.agent_tools.impl import execute_tool
+        return json.loads(execute_tool("web_search", kwargs))
+
+    def test_no_key_returns_configured_error(self):
+        """未配置 API key 时返回明确错误，不是静默失败。"""
+        r = self._call(query="会计事件库")
+        assert r["error"] == "web_search_not_configured"
+        assert "API key" in r["message"]
+
+    def test_empty_query_rejected(self):
+        r = self._call(query="")
+        assert r["error"] == "empty_query"
+
+    def test_query_truncated(self):
+        """超长 query 被截到 200 字。"""
+        r = self._call(query="x" * 500)
+        # 未配置 key 仍应被拦住（比截断优先级高），但不会 crash
+        assert r.get("error") in ("web_search_not_configured", "web_search_network")
+
+    def test_mock_brave_success(self, monkeypatch):
+        """mock requests.get 成功返回时，解析出 results。"""
+        import requests as http
+
+        class _FakeResp:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+
+            def json(self):
+                return {
+                    "web": {
+                        "results": [
+                            {"title": "Tallyfy", "description": "审批流", "url": "https://tallyfy.com"},
+                            {"title": "Kissflow", "description": "低代码 BPM", "url": "https://kissflow.com"},
+                        ],
+                    }
+                }
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _FakeResp())
+
+        # 先写入一个 fake API key
+        settings_store.save_settings_to_disk(
+            {"web_search": {"provider": "brave", "api_key": "fake-test-key-1234567890"}}
+        )
+
+        r = self._call(query="workflow approval bpm")
+        assert "error" not in r
+        assert r["count"] == 2
+        assert r["results"][0]["title"] == "Tallyfy"
+        assert r["results"][1]["url"] == "https://kissflow.com"
+
+    def test_mock_brave_401(self, monkeypatch):
+        """API key 无效（401）返回 web_search_auth。"""
+        import requests as http
+
+        class _Fake401:
+            status_code = 401
+            headers = {}
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _Fake401())
+        settings_store.save_settings_to_disk(
+            {"web_search": {"provider": "brave", "api_key": "bad-key"}}
+        )
+
+        r = self._call(query="test")
+        assert r["error"] == "web_search_auth"
+
+    def test_mock_brave_429(self, monkeypatch):
+        """配额耗尽（429）返回 web_search_rate_limited。"""
+        import requests as http
+
+        class _Fake429:
+            status_code = 429
+            headers = {}
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _Fake429())
+        settings_store.save_settings_to_disk(
+            {"web_search": {"provider": "brave", "api_key": "ok-but-rate-limited"}}
+        )
+
+        r = self._call(query="test")
+        assert r["error"] == "web_search_rate_limited"
+
+    def test_unknown_provider(self, monkeypatch):
+        """未知 provider 返回明确错误。"""
+        settings_store.save_settings_to_disk(
+            {"web_search": {"provider": "google", "api_key": "some-key"}}
+        )
+        r = self._call(query="test")
+        assert r["error"] == "web_search_unknown_provider"
+
+
+class TestWebFetchTool:
+    """web_fetch 实现层 SSRF + 功能测试。"""
+
+    def _call(self, url="https://example.com"):
+        from core.agent_tools.impl import execute_tool
+        return json.loads(execute_tool("web_fetch", {"url": url}))
+
+    def test_empty_url_rejected(self):
+        r = self._call(url="")
+        assert r["error"] == "empty_url"
+
+    def test_ssrf_blocked_localhost(self):
+        r = self._call(url="http://localhost/admin")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_loopback_ip(self):
+        r = self._call(url="http://127.0.0.1/admin")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_10_x(self):
+        r = self._call(url="https://10.0.0.1/internal")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_192_168(self):
+        r = self._call(url="https://192.168.1.1/config")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_172_16(self):
+        """172.16.0.0/12 数值范围检查（Advisor 指出的 SSRF 漏洞）。"""
+        r = self._call(url="https://172.20.5.10/secret")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_172_31(self):
+        r = self._call(url="https://172.31.255.255/")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ssrf_blocked_link_local(self):
+        r = self._call(url="https://169.254.1.1/")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_non_https_blocked(self):
+        r = self._call(url="http://example.com/x")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_ftp_blocked(self):
+        r = self._call(url="ftp://files.evil.com/x")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_data_scheme_blocked(self):
+        r = self._call(url="data:text/html,<h1>evil</h1>")
+        assert r["error"] == "web_fetch_safety"
+
+    def test_mock_success_html(self, monkeypatch):
+        """mock 一个成功的 HTTPS 响应，验证正文提取。"""
+        import requests as http
+
+        class _FakeResp:
+            status_code = 200
+            headers = {"content-type": "text/html; charset=utf-8", "location": ""}
+            url = "https://example.com/"
+            text = "<html><body><h1>Hello World</h1><p>This is the content.</p><script>alert(1)</script></body></html>"
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _FakeResp())
+
+        r = self._call(url="https://example.com/")
+        assert "error" not in r
+        assert r["chars"] > 0
+        assert "Hello World" in r["content"]
+        assert "This is the content" in r["content"]
+        assert "alert" not in r["content"]  # script 标签内容被跳过
+
+    def test_mock_redirect_to_internal_blocked(self, monkeypatch):
+        """重定向到内网地址 → 拦截。"""
+        import socket as sock_mod
+        import requests as http
+
+        # mock DNS：让 redirector.example.com 解析到一个公网 IP
+        def _fake_getaddrinfo(host, port):
+            return [(sock_mod.AF_INET, sock_mod.SOCK_STREAM, 6, "", ("203.0.113.42", port or 0))]
+        monkeypatch.setattr(sock_mod, "getaddrinfo", _fake_getaddrinfo)
+
+        class _FakeRedirect:
+            status_code = 200
+            headers = {}
+            url = "https://192.168.1.1/secret"  # 重定向后目标
+            text = "hacked"
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _FakeRedirect())
+        r = self._call(url="https://redirector.example.com/go")
+        assert r["error"] == "web_fetch_redirect_blocked"
+
+    def test_404_response_returned_as_error(self, monkeypatch):
+        import requests as http
+
+        class _Fake404:
+            status_code = 404
+            headers = {"content-type": "text/html"}
+            url = "https://example.com/missing"
+            text = "Not Found"
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _Fake404())
+        r = self._call(url="https://example.com/missing")
+        assert r["error"] == "web_fetch_http"
+        assert "404" in r["message"]
+
+    def test_content_truncated_at_10kb(self, monkeypatch):
+        """超长响应体被截断并标注。"""
+        import requests as http
+
+        class _FakeBig:
+            status_code = 200
+            headers = {"content-type": "text/plain", "location": ""}
+            url = "https://example.com/big"
+            text = "x" * 50000  # 50KB
+
+        monkeypatch.setattr(http, "get", lambda *a, **kw: _FakeBig())
+        r = self._call(url="https://example.com/big")
+        assert "error" not in r
+        # 截断到 10KB + 标记（标记含换行符，边界 ±3）
+        assert 10240 <= r["chars"] <= 10270
+        assert "已截断" in r["content"]
+
+
+class TestWebToolsViaRouter:
+    """通过 /api/agent-tools/invoke 路由调用（完整链路，含授权）。"""
+
+    def test_readonly_can_call_web_search(self, client):
+        """readonly 档也能调联网工具（它们不写磁盘）。"""
+        from core.agent_tools.tokens import issue_token
+
+        ctx = issue_token(task_id=None, project_id=None, auth_tier="readonly")
+        r = client.post(
+            "/api/agent-tools/invoke",
+            json={"name": "web_search", "arguments": {"query": "test"}},
+            headers={"Authorization": f"Bearer {ctx.token}"},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ok"] is True
+        parsed = json.loads(data["result"])
+        # 未配置 key → 返回明确错误，但调用本身是成功的 200
+        assert parsed.get("error") in ("web_search_not_configured",)
+
+    def test_unknown_tool_404(self, client):
+        from core.agent_tools.tokens import issue_token
+        ctx = issue_token(task_id=None, project_id=None, auth_tier="readonly")
+        r = client.post(
+            "/api/agent-tools/invoke",
+            json={"name": "web_jump", "arguments": {}},
+            headers={"Authorization": f"Bearer {ctx.token}"},
+        )
+        assert r.status_code == 404

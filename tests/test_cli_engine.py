@@ -217,7 +217,10 @@ class TestManifest:
 
     def test_auth_argv_tiers(self, manifest):
         ro = mf.compile_auth_argv(manifest, "readonly")
-        assert "dont_ask" in ro and "Write" in ro and "Bash" in ro
+        # readonly: auto（让 CLI 引擎自动放行 WebSearch 等只读工具），
+        # 但 Bash/Write/Edit 仍禁；WebSearch/WebFetch 已解禁（三档均不挡）
+        assert "auto" in ro and "Write" in ro and "Bash" in ro
+        assert "WebSearch" not in ro and "WebFetch" not in ro
         full = mf.compile_auth_argv(manifest, "full_task")
         assert "auto" in full and "Write" not in full
         # 未知档位安全回退 readonly（最小权限）

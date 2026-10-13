@@ -111,6 +111,12 @@ export interface Settings {
   }
   /** 后端返回的 LLM Provider 预设列表 / LLM provider presets returned by backend */
   llm_provider_presets?: ProviderPreset[]
+  /** 联网搜索配置（web_search/web_fetch 工具使用） / Web-search config (used by web_search/web_fetch tools) */
+  web_search?: {
+    provider?: string
+    api_key?: string          // GET 时脱敏返回 "sk-****xyz"；POST 时明文或空=保留
+    api_key_set?: boolean
+  }
   [key: string]: unknown
 }
 

@@ -49,6 +49,7 @@ from app.store import (
     get_llm_config,
     get_storage_config,
     get_transcript_config,
+    get_web_search_config,
     load_settings,
     mask_api_key,
     save_settings_to_disk,
@@ -135,6 +136,7 @@ def get_settings():
     llm = get_llm_config()
     asr = get_asr_config()
     feature_flags = get_feature_flags()
+    web_search = get_web_search_config()
 
     # 声纹偏好：根据用户订阅状态决定 / Voiceprint preference: based on user subscription status
     from core.users import get_current_user, should_use_local_diarization
@@ -197,6 +199,12 @@ def get_settings():
         "disabled_commands": settings.get("disabled_commands", []),
         "active_agent": settings.get("active_agent", "meeting-minutes"),
         "chat_engine": get_chat_engine_config(),
+        # 联网搜索配置（Brave 默认，provider 预留）
+        "web_search": {
+            "provider": web_search["provider"],
+            "api_key": mask_api_key(web_search["api_key"]),
+            "api_key_set": web_search["api_key_set"],
+        },
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "llm_provider_presets": PROVIDER_PRESETS,
     }
@@ -257,6 +265,22 @@ def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_
             "component_url": component_url.strip(),
         },
     }
+
+
+def _merge_web_search_config(incoming: dict | None, existing: dict | None) -> dict:
+    """合并联网搜索配置（provider + api_key）。
+
+    API key 脱敏回显（含 ****）或空值时保留存量 key，否则用新值覆盖。
+    """
+    incoming = incoming or {}
+    existing = existing or {}
+    provider = str(incoming.get("provider") or existing.get("provider") or "brave").strip() or "brave"
+    incoming_key = str(incoming.get("api_key") or "").strip()
+    if not incoming_key or "****" in incoming_key:
+        final_key = str(existing.get("api_key") or "").strip()
+    else:
+        final_key = incoming_key
+    return {"provider": provider, "api_key": final_key}
 
 
 @router.post("/api/settings")
@@ -359,6 +383,8 @@ def save_settings(data: dict):
             "auto_clean_intermediate": data.get("storage", {}).get("auto_clean_intermediate", existing.get("storage", {}).get("auto_clean_intermediate", True)),
             "auto_archive_days": data.get("storage", {}).get("auto_archive_days", existing.get("storage", {}).get("auto_archive_days", 0)),
         },
+        # ── 联网搜索配置 / Web search config ──
+        "web_search": _merge_web_search_config(data.get("web_search"), existing.get("web_search")),
     }
 
     # ── 逐能力算力来源（唯一真相源）/ Per-capability compute source handling ──

@@ -54,6 +54,27 @@
       <input id="cli-path-input" v-model="form.cli_path_override" class="cc-input cc-input-mono" :placeholder="selectedBinary || 'qoder'" />
     </div>
 
+    <!-- 联网搜索（独立子卡，和 chat_engine 正交，同属智能体工具面） -->
+    <div class="cc-subcard">
+      <div class="cc-subcard-head">
+        <h3 class="cc-subcard-title">{{ t('settings.web_search_title') }}</h3>
+        <span class="cc-pill" :class="webSearchConfigured ? 'cc-pill-ok' : ''">
+          {{ webSearchConfigured ? t('settings.web_search_configured') : t('settings.web_search_not_configured') }}
+        </span>
+      </div>
+      <p class="cc-note cli-note-block">{{ t('settings.web_search_desc') }}</p>
+      <div class="cc-field">
+        <label class="cc-field-label" for="ws-api-key">{{ t('settings.web_search_api_key') }}</label>
+        <input id="ws-api-key" v-model="webSearchForm.api_key" class="cc-input cc-input-mono" type="password"
+               :placeholder="existingWebSearchKey ? maskKey(existingWebSearchKey) : t('settings.web_search_api_key_placeholder')"
+               autocomplete="off" />
+      </div>
+      <div class="ws-actions">
+        <span class="cc-note cli-note-block ws-free-hint">{{ t('settings.web_search_brave_free') }}</span>
+        <a href="https://brave.com/search/api/" target="_blank" rel="noopener" class="cc-link">{{ t('settings.web_search_get_key') }} →</a>
+      </div>
+    </div>
+
     <div class="cc-btn-row">
       <button class="cc-btn cc-btn-primary cc-btn-sm" :disabled="saving" @click="onSave">{{ saving ? t('settings.engine_saving') : t('settings.save') }}</button>
       <span v-if="saveMessage" class="cc-result-line" :class="{ 'is-error': saveError, 'is-ok': !saveError }">{{ saveMessage }}</span>
@@ -75,7 +96,7 @@
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { fetchChatEngineStatus, saveSettings, type ChatEngineEngineInfo, type ChatEngineProbe } from '@/api/settings'
+import { fetchChatEngineStatus, fetchSettings, saveSettings, type ChatEngineEngineInfo, type ChatEngineProbe } from '@/api/settings'
 
 const { t, te } = useI18n()
 
@@ -91,6 +112,21 @@ const form = reactive({
   engine_id: 'qoder-cli',
   cli_path_override: '',
 })
+
+// ── 联网搜索配置（web_search namespace） ──
+const webSearchForm = reactive({
+  api_key: '',  // 用户编辑态；空=不修改后端存量 key
+})
+const existingWebSearchKey = ref('')  // 后端脱敏回显的存量 key（placeholder 用）
+// 后端 GET 回 api_key_set=true/false + 脱敏 api_key；保存时空值或含 **** 的值不覆盖存量
+const wsIsSet = ref(false)
+const webSearchConfigured = computed(() => wsIsSet.value)
+
+/** 简单脱敏（前3 + **** + 后4，与后端 mask_api_key 一致） */
+function maskKey(key: string): string {
+  if (!key || key.length < 8) return '****'
+  return `${key.slice(0, 3)}****${key.slice(-4)}`
+}
 
 /** 引擎展示名：name_key 命中翻译优先，否则品牌原文（display_name 不翻译） */
 function engineLabel(e: ChatEngineEngineInfo): string {
@@ -137,6 +173,14 @@ async function load() {
       form.cli_path_override = c.cli_path_override || ''
     }
   } catch { /* 静默：面板显示占位 */ }
+  // 联网搜索配置（独立 fetch，chat-engine 端点不覆盖 web_search 命名空间）
+  try {
+    const s = await fetchSettings()
+    const ws = s.web_search
+    existingWebSearchKey.value = ws?.api_key || ''
+    wsIsSet.value = !!ws?.api_key_set
+    webSearchForm.api_key = ''  // 每次 load 清空编辑态，placeholder 由 existingWebSearchKey 给出
+  } catch { /* 静默 */ }
 }
 
 function stageClass(stage: 'path' | 'version' | 'login'): string {
@@ -178,6 +222,11 @@ async function onSave() {
         // 不传 auth_tier：避免保存引擎设置时误置 _auth_tier_explicit（档位由会话级管理）
         cli_path_override: form.cli_path_override || null,
       },
+      // 联网搜索配置：后端 _merge_web_search_config 处理空值/脱敏值=保留存量的逻辑
+      web_search: {
+        provider: 'brave',
+        api_key: webSearchForm.api_key || '',
+      },
     } as any)
     await load()
     saveMessage.value = t('settings.saved')
@@ -218,6 +267,16 @@ defineExpose({ load })
 /* 开关行：与 02/04 Tab 字段节奏一致 */
 .cli-switch-row { display: flex; align-items: center; gap: var(--s-3); }
 .cli-switch-label { font-size: 13px; color: var(--fg); }
+
+/* 联网搜索子卡（与 CLI 引擎正交，同属智能体工具面） */
+.cc-subcard { margin-top: var(--s-2); border-top: 1px solid var(--border); padding-top: var(--s-4); }
+.cc-subcard-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-2); }
+.cc-subcard-title { font-size: 13px; font-weight: 600; color: var(--fg); margin: 0; }
+.cli-note-block { margin: var(--s-2) 0; line-height: 1.55; }
+.ws-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-2); flex-wrap: wrap; }
+.ws-free-hint { flex: 1; min-width: 0; }
+.cc-link { color: var(--accent); text-decoration: none; font-size: 12px; white-space: nowrap; }
+.cc-link:hover { text-decoration: underline; }
 
 .cli-orthogonal-note { margin-top: var(--s-2); line-height: 1.55; }
 </style>

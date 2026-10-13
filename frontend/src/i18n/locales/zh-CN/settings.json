@@ -498,6 +498,17 @@
   "cliengine_engine_trae_cli": "TRAE CLI（字节）",
   "cliengine_engine_kimi_code": "Kimi Code CLI（月之暗面）",
   "cliengine_engine_codex": "Codex CLI（OpenAI）",
+
+  "web_search_title": "联网搜索",
+  "web_search_desc": "智能体联网搜索外部行业知识时使用（web_search / web_fetch 工具）。未配置时智能体只会依赖模型自身知识，洞察板解法可能偏保守。",
+  "web_search_provider": "提供商",
+  "web_search_api_key": "API Key",
+  "web_search_api_key_placeholder": "留空则保留当前 Key；填入新值则覆盖",
+  "web_search_get_key": "获取 Brave Search Key",
+  "web_search_configured": "已配置",
+  "web_search_not_configured": "未配置",
+  "web_search_brave_free": "Brave Search 免费额度 2000 次/月，适合日常洞察板检索。",
+
   "engine_status": "引擎状态",
   "engine_status_desc": "本地引擎运行状态与组件就绪情况。本页为只读回显：转写是否走本机由「ASR 配置」的逐能力来源决定，不影响纪要 AI 来源。",
   "engine_current": "当前引擎",

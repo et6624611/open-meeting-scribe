@@ -15,6 +15,12 @@ core/agent_tools/impl.py — 会议域工具实现（唯一来源） / Meeting-d
 
 import json
 import logging
+import re
+import socket
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
+import requests as http_requests  # 统一重命名，避免 _tool_web_fetch 内 import 重名冲突
 
 from app.store import tasks
 from core import hotwords as hw_module
@@ -43,6 +49,8 @@ TOOL_LABELS = {
     "propose_summary": "提出纪要改写建议",
     "revise_insight_board": "修订洞察板",
     "revise_insight_board_section": "修订洞察板单节",
+    "web_search": "联网搜索",
+    "web_fetch": "网页抓取",
 }
 
 TOOL_ICONS = {
@@ -59,6 +67,8 @@ TOOL_ICONS = {
     "propose_summary": "📝",
     "revise_insight_board": "🖋️",
     "revise_insight_board_section": "📝",
+    "web_search": "🔍",
+    "web_fetch": "🌐",
 }
 
 
@@ -82,6 +92,10 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             return _tool_search_project_files(project_id, arguments.get("query", ""))
         elif name == "get_hotwords":
             return _tool_get_hotwords()
+        elif name == "web_search":
+            return _tool_web_search(arguments.get("query", ""))
+        elif name == "web_fetch":
+            return _tool_web_fetch(arguments.get("url", ""))
         elif name == "get_system_settings":
             return _tool_get_system_settings()
         elif name == "revise_insight_board":
@@ -288,3 +302,253 @@ def _tool_get_system_settings() -> str:
     safe_keys = ["language", "default_model", "theme", "hotwords_enabled"]
     info = {k: settings.get(k) for k in safe_keys if settings.get(k) is not None}
     return json.dumps(info, ensure_ascii=False)
+
+
+# ============================================================
+# 联网工具 / Web tools
+# ============================================================
+
+# SSRF 防护：禁掉的内网/保留网段前缀（IPv4 + IPv6 环回/链路本地）
+_PRIVATE_IP_PREFIXES = (
+    "127.", "10.", "192.168.", "169.254.", "0.",
+    "::1", "fe80:", "fc00:", "fd00:",
+)
+_PRIVATE_IP_RANGES = (
+    (0xAC100000, 0xAC1FFFFF),   # 172.16.0.0 - 172.31.255.255
+)
+
+# Brave Search API（默认 provider）
+_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+_BRAVE_TIMEOUT = 10
+
+
+def _ip_in_private_range(ip_str: str) -> bool:
+    """判定单个 IPv4 地址字符串是否属于内网/保留网段（含 172.16.0.0/12 数值范围）。"""
+    for p in _PRIVATE_IP_PREFIXES:
+        if ip_str.startswith(p):
+            return True
+    try:
+        parts = ip_str.split(".")
+        if len(parts) == 4:
+            ip_int = (int(parts[0]) << 24) | (int(parts[1]) << 16) | (int(parts[2]) << 8) | int(parts[3])
+            for lo, hi in _PRIVATE_IP_RANGES:
+                if lo <= ip_int <= hi:
+                    return True
+    except (ValueError, IndexError):
+        pass
+    return False
+
+
+def _is_private_ip(host: str) -> bool:
+    """判断 host 是否解析到内网/保留网段（SSRF 防护）。"""
+    h = host.strip().lower().rstrip(".")
+    # 先快速字符串匹配（常见内网段前缀）
+    for p in _PRIVATE_IP_PREFIXES:
+        if h.startswith(p):
+            return True
+    # 原始 host 是 IPv4 地址时做数值范围判定（含 172.16.0.0/12）
+    if _ip_in_private_range(h):
+        return True
+    # DNS 解析后再对每个地址查一遍（前缀 + 数值范围都查）
+    try:
+        infos = socket.getaddrinfo(h, None)
+        for info in infos:
+            addr = info[4][0]
+            if _ip_in_private_range(addr):
+                return True
+    except socket.gaierror:
+        return True  # DNS 失败也挡住
+    return False
+
+
+def _url_safety_check(url: str) -> str | None:
+    """URL 安全检查，返回错误消息（None 表示通过）。"""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return "URL 格式无效"
+    if parsed.scheme != "https":
+        return "仅支持 HTTPS URL"
+    host = parsed.hostname
+    if not host:
+        return "URL 缺少主机名"
+    if _is_private_ip(host):
+        return f"URL 指向内网地址（{host}），SSRF 防护已拦截"
+    return None
+
+
+def _get_web_search_config() -> dict | None:
+    """取联网搜索配置；未配置返回 None。"""
+    from app.store import load_settings
+    settings = load_settings()
+    ns = settings.get("web_search") or {}
+    api_key = str(ns.get("api_key") or "").strip()
+    if not api_key:
+        return None
+    return {"provider": str(ns.get("provider") or "brave").strip(), "api_key": api_key}
+
+
+def _tool_web_search(query: str) -> str:
+    """联网搜索（Brave Search API 默认）。"""
+    q = str(query or "").strip()[:200]
+    if not q:
+        return json.dumps({"error": "empty_query", "message": "搜索关键词不能为空"}, ensure_ascii=False)
+
+    cfg = _get_web_search_config()
+    if not cfg:
+        return json.dumps({
+            "error": "web_search_not_configured",
+            "message": "联网搜索尚未配置 API key。请在设置 → 智能体 → 联网搜索 中填入 Brave Search API Key。",
+            "note": "未配置搜索 key，无法联网检索。可以依赖模型自身知识继续。",
+        }, ensure_ascii=False)
+
+    provider = cfg["provider"]
+    api_key = cfg["api_key"]
+
+    if provider == "brave":
+        try:
+            resp = http_requests.get(
+                _BRAVE_SEARCH_URL,
+                params={"q": q, "count": 8, "search_lang": "zh", "ui_lang": "zh-CN"},
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Encoding": "gzip",
+                    "X-Subscription-Token": api_key,
+                },
+                timeout=_BRAVE_TIMEOUT,
+            )
+        except http_requests.RequestException as e:
+            return json.dumps({"error": "web_search_network",
+                               "message": f"搜索请求失败（{e.__class__.__name__}）：{e}"},
+                              ensure_ascii=False)
+
+        if resp.status_code == 401:
+            return json.dumps({"error": "web_search_auth",
+                               "message": "API Key 无效（401），请检查设置中的联网搜索 Key"},
+                              ensure_ascii=False)
+        if resp.status_code == 429:
+            return json.dumps({"error": "web_search_rate_limited",
+                               "message": "搜索配额已耗尽（429），请稍后再试或升级套餐"},
+                              ensure_ascii=False)
+        if resp.status_code != 200:
+            return json.dumps({"error": "web_search_http",
+                               "message": f"搜索 API 返回 {resp.status_code}"},
+                              ensure_ascii=False)
+
+        try:
+            data = resp.json()
+        except ValueError:
+            return json.dumps({"error": "web_search_parse",
+                               "message": "搜索 API 返回无法解析的 JSON"},
+                              ensure_ascii=False)
+
+        results = []
+        for item in (data.get("web") or {}).get("results", [])[:8]:
+            results.append({
+                "title": item.get("title", ""),
+                "description": item.get("description", ""),
+                "url": item.get("url", ""),
+            })
+        return json.dumps({
+            "query": q,
+            "count": len(results),
+            "results": results,
+        }, ensure_ascii=False)
+    else:
+        return json.dumps({"error": "web_search_unknown_provider",
+                           "message": f"未知搜索 provider: {provider}（当前仅支持 brave）"},
+                          ensure_ascii=False)
+
+
+def _tool_web_fetch(url: str) -> str:
+    """网页抓取（HTTPS 强制 + SSRF 防护 + 截断上限）。"""
+    u = str(url or "").strip()
+    if not u:
+        return json.dumps({"error": "empty_url", "message": "URL 不能为空"}, ensure_ascii=False)
+
+    safety_err = _url_safety_check(u)
+    if safety_err:
+        return json.dumps({"error": "web_fetch_safety", "message": safety_err}, ensure_ascii=False)
+
+    try:
+        resp = http_requests.get(u, timeout=15, headers={
+            "User-Agent": "OMS-Agent/1.0 (+web_fetch tool)",
+            "Accept": "text/html,text/plain;q=0.9,*/*;q=0.1",
+        }, allow_redirects=True)
+    except http_requests.RequestException as e:
+        return json.dumps({"error": "web_fetch_network",
+                           "message": f"请求失败（{e.__class__.__name__}）：{e}"},
+                          ensure_ascii=False)
+
+    # 重定向后再验一次 SSRF
+    final_url = resp.url or u
+    redirect_err = _url_safety_check(final_url)
+    if redirect_err:
+        return json.dumps({"error": "web_fetch_redirect_blocked",
+                           "message": f"重定向后目标不安全：{redirect_err}"},
+                          ensure_ascii=False)
+
+    if resp.status_code != 200:
+        return json.dumps({"error": "web_fetch_http",
+                           "message": f"目标返回 HTTP {resp.status_code}"},
+                          ensure_ascii=False)
+
+    ctype = (resp.headers.get("content-type") or "").lower()
+    if "html" in ctype:
+        text = _strip_html(resp.text)
+    elif "text" in ctype or "json" in ctype or "xml" in ctype:
+        text = resp.text
+    else:
+        text = resp.text
+
+    # 截断上限 10KB
+    max_chars = 10240
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[内容已截断，上限 10KB]"
+
+    return json.dumps({
+        "url": final_url,
+        "content_type": ctype,
+        "chars": len(text),
+        "content": text,
+    }, ensure_ascii=False)
+
+
+class _HtmlTextExtractor(HTMLParser):
+    """极简 HTML 正文提取（script/style 跳过，标签内文本拼接）。"""
+
+    def __init__(self):
+        super().__init__()
+        self._skip = 0
+        self._out: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip += 1
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript") and self._skip > 0:
+            self._skip -= 1
+        if tag in ("p", "br", "div", "li", "h1", "h2", "h3", "h4", "tr"):
+            self._out.append("\n")
+
+    def handle_data(self, data):
+        if self._skip == 0:
+            text = data.strip()
+            if text:
+                self._out.append(text)
+                self._out.append(" ")
+
+
+def _strip_html(html: str) -> str:
+    """从 HTML 字符串提取纯文本（极简实现，够用就行）。"""
+    parser = _HtmlTextExtractor()
+    try:
+        parser.feed(html[:200000])  # 前 200KB 足够
+    except Exception:  # noqa: BLE001 - HTML 解析失败就降级返回原文前 10KB
+        return html[:10000]
+    out = "".join(parser._out)
+    # 压缩多余空行和空格
+    out = re.sub(r"[ \t]+", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()

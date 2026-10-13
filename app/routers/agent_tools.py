@@ -53,6 +53,8 @@ def invoke_tool(payload: ToolInvoke, request: Request,
     ctx = verify_token(token)
     if not ctx:
         raise HTTPException(401, {"error": "invalid_token", "message": "工具令牌无效或已过期"})
+    logger.info("[agent-tools] invoke name=%s task_id=%s args_keys=%s",
+                payload.name, ctx.task_id, list(payload.arguments.keys()))
 
     tool = TOOLS_BY_NAME.get(payload.name)
     if not tool:

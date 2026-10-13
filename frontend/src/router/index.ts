@@ -18,6 +18,11 @@ const router = createRouter({
       name: 'generating',
       component: () => import('@/views/GeneratingView.vue'),
     },
+    // 别名：/meetings/:taskId 重定向到 /meeting/:taskId（用户习惯用复数形式的 URL）
+    {
+      path: '/meetings/:taskId',
+      redirect: (to) => ({ name: 'generating', params: { taskId: to.params.taskId } }),
+    },
     {
       path: '/projects',
       name: 'projects',

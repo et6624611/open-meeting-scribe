@@ -121,9 +121,11 @@ from app.settings_store import (  # noqa: E402, F401
     get_silence_detection_config,
     get_storage_config,
     get_transcript_config,
+    get_web_search_config,
     load_settings,
     mask_api_key,
     save_settings_to_disk,
+    save_web_search_config,
 )
 
 # ============================================================

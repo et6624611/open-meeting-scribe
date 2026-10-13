@@ -119,6 +119,12 @@
         </div>
       </div>
 
+      <!-- 工作区 · IDE 联动（会议上下文物化成的本地文件夹，可一键在 IDE 打开） / Workspace · IDE linkage -->
+      <WorkspaceSection
+        :task-id="taskId"
+        @go-meeting="$emit('goMeeting', $event)"
+      />
+
       <!-- 拖拽上传提示（功能开发中） / Drag-to-upload hint (feature in development) -->
       <div class="ctx-drop-hint" style="display: none;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
@@ -132,6 +138,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import WorkspaceSection from './WorkspaceSection.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -169,6 +176,8 @@ const props = defineProps<{
   visibleRelatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   relatedMeetingCount: number
   contextSource: { taskId: string; title: string } | null
+  /** 当前会议 ID（用于驱动工作区预生成 / 文件树 / IDE 联动） */
+  taskId: string | null
 }>()
 
 // 当前正停留在来源会议页时，归属一目了然，无需重复提示 / Hide the source row when already on the source meeting

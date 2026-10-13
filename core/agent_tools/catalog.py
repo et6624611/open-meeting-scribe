@@ -62,6 +62,40 @@ TOOL_CATALOG: list[dict] = [
         "description": "获取热词表（专有名词/人名校正词）。",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        # 联网搜索：调用 Brave Search API（默认）或用户配置的 provider，
+        # 需在设置页填入对应 API key；未配置时返回明确错误而非静默失败。
+        # kind=read 但涉及外部网络调用，readonly 档也可用（无本地落盘副作用）。
+        "name": "web_search", "kind": "read", "needs_task": False,
+        "description": (
+            "联网搜索外部信息。当会议涉及会上没人提到的行业知识、标准实践、竞品方案、外部产品时调用，"
+            "用搜索结果补足你训练数据可能缺的实时信息。返回标题、摘要、URL（取前 8 条）。"
+            "注意：若返回 error=web_search_not_configured，说明用户尚未在设置页填入搜索 API key，"
+            "此时直接说明无法联网搜索，不要假装查过。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "搜索关键词（≤200 字）"}},
+            "required": ["query"],
+        },
+    },
+    {
+        # 网页抓取：用于跟进 web_search 结果的全文阅读，或 AI 需要读取特定已知 URL。
+        # SSRF 防护：禁内网地址（127.0.0.1/10.x/172.16-31.x/192.168.x）、仅 HTTPS、15s 超时、
+        # 响应体截断上限 ~10KB。
+        "name": "web_fetch", "kind": "read", "needs_task": False,
+        "description": (
+            "抓取单个公网 URL 的网页正文（纯文本，HTML 自动剥离）。"
+            "用于在 web_search 返回的候选里深挖详情，或直接读取已知 URL。"
+            "禁止内网地址（localhost/127.0.0.1/10.x/172.16-31.x/192.168.x），仅支持 HTTPS。"
+            "响应体上限 10KB，超时 15s。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"url": {"type": "string", "description": "目标 URL（必须 HTTPS、公网）"}},
+            "required": ["url"],
+        },
+    },
     # ── 写工具（复用 notes 路由的受控入口；仅 workspace_write/full_task 档可用） ──
     {
         "name": "update_summary", "kind": "write", "needs_task": True,
@@ -171,10 +205,16 @@ TOOL_CATALOG: list[dict] = [
         # 洞察共创 HTML 产物（会话驱动唯一写入路径）；实现在 core.insight_board.invoke_revise_board，
         # schema 变更需同步工具描述消费方（自建 agent_loop 已退役，此处为唯一工具定义来源）。
         "name": "revise_insight_board", "kind": "write", "needs_task": True,
+        # 读写双语义：空参/无 html = 读基线（不算落盘）；带 html = 整版落盘
+        "bidirectional": True, "write_arg": "html",
         "description": (
             "读取或修订当前会议的洞察板（一份自包含 HTML 文档）。"
             "不带 html 参数 = 读取当前板 HTML 原文（改写前先取基线，只读档也可用）；"
             "带 html 参数 = 整份落盘为新版本（需可写档）。"
+            "【调用契约·必读】本工具分两个阶段：①先用空参读基线（改写前必须先取当前板），"
+            "期间可自由调用 web_search/web_fetch 检索外部行业知识来构造解法；"
+            "②搜索/分析完成后，必须调用本工具并传入 html 参数落盘——"
+            "只搜索/只读基线就回复用户不算完成任务，后端会因为没有落盘而看不到板。"
             "【内容底线·最重要，违反会被后端整份拒收并返回 error=board_is_recap】"
             "洞察板唯一任务：针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法。"
             "你被授权调用外部行业知识、标准实践、成熟架构来构造解法；会议内容只用于界定问题，不用于复述。"
@@ -215,6 +255,8 @@ TOOL_CATALOG: list[dict] = [
     {
         # 单节共创：只替换板内指定 data-ib-id 的一节，其余节硬隔离。
         "name": "revise_insight_board_section", "kind": "write", "needs_task": True,
+        # 读写双语义：需同时带 section_id 和 html 才算真落盘
+        "bidirectional": True, "write_arg": "html",
         "description": (
             "只修订洞察板中某一节（按节锈点 id 定位替换），其余节逐字节不动。"
             "需先调 revise_insight_board（不带 html）读到当前板，定位目标节的 data-ib-id。"

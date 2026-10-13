@@ -117,6 +117,7 @@ from app.routers import (
     usage,
     user,
     voiceprint,
+    workspace,
     ws_transcript,
 )
 from app.store import STATIC_DIR, cleanup_orphaned_intermediate_files, load_tasks_from_disk, recover_interrupted_tasks
@@ -418,6 +419,7 @@ app.include_router(insights.router)
 app.include_router(agent.router)
 app.include_router(agent_tools.router)
 app.include_router(cloud_api.router)
+app.include_router(workspace.router)
 app.include_router(ws_transcript.router)
 app.include_router(import_tasks.router)
 app.include_router(models.router)
@@ -579,6 +581,20 @@ async def startup():
         cleanup_orphaned_intermediate_files()
     except Exception as e:
         logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
+
+    # 工作区根目录迁移：旧位置（仓库根/agent-workspace）→ 新位置（BASE_DIR/agent-workspace）
+    # 仅在旧位置存在且新位置不存在时移动（一次性迁移，失败只 warn 不阻断） /
+    # Migrate workspace root from old location (repo root) to new (BASE_DIR, exe-adjacent in PyInstaller)
+    try:
+        from core.cli_engine.context_export import WORKSPACE_ROOT
+        old_root = Path(__file__).resolve().parents[1] / "agent-workspace"
+        if old_root.is_dir() and not WORKSPACE_ROOT.is_dir():
+            import shutil
+            WORKSPACE_ROOT.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_root), str(WORKSPACE_ROOT))
+            logger.info(f"工作区已迁移: {old_root} → {WORKSPACE_ROOT}")
+    except Exception as e:
+        logger.warning(f"工作区迁移失败（不影响服务）: {e}")
 
     # 智能体引擎过期工作区按保留期清理（含会议上下文，R7/§3.10；不影响服务）
     try:

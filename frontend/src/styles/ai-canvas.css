@@ -89,11 +89,6 @@ html[data-theme="standard-dark"] ::selection { background: var(--accent-soft); }
 
 /* 保持正常三栏布局，不隐藏其他面板 */
 
-/* 隐藏 AI 面板头部（保留上下文状态栏和 Tab 栏） */
-.frame.conv-layout .ai-panel-header {
-  display: none !important;
-}
-
 .frame.conv-layout .ai {
   background: var(--bg);
 }

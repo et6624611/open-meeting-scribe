@@ -166,6 +166,7 @@
       :visible-related-meetings="ctx.visibleRelatedMeetings.value"
       :related-meeting-count="ctx.relatedMeetingCount.value"
       :context-source="ctx.contextSource.value"
+      :task-id="ctx.contextSource.value?.taskId ?? null"
       @show-all-meetings="ctx.showAllMeetings.value = !ctx.showAllMeetings.value"
       @generate-summary="ctx.generateSummary(chat.sendRaw, (tab: string) => aiTab = tab)"
       @link-meeting="ctx.linkRelatedMeeting"

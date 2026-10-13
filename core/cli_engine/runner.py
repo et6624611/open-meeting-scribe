@@ -154,7 +154,10 @@ async def run_cli_agent(
     from core.agent_tools.catalog import TOOL_CATALOG as _CATALOG
     write_names = {t["name"] for t in _CATALOG
                    if t.get("kind") == "write" and t.get("persists", True)}
-    call_names: dict[str, str] = {}
+    # 读写双语义工具：空参/缺关键字段时是读语义，不能触发 rewritten
+    bidirectional_tools = {t["name"] for t in _CATALOG
+                           if t.get("kind") == "write" and t.get("bidirectional")}
+    call_info: dict[str, dict] = {}  # id → {name, args}
     try:
         while True:
             try:
@@ -178,11 +181,26 @@ async def run_cli_agent(
                 else:
                     if on_write_success is not None:
                         if evt[bridge.EV_TYPE_KEY] == bridge.EV_TOOL_CALL and evt.get("id"):
-                            call_names[evt["id"]] = str(evt.get("name") or "")
+                            call_info[evt["id"]] = {
+                                "name": str(evt.get("name") or ""),
+                                "args": evt.get("args") or {},
+                            }
                         elif evt[bridge.EV_TYPE_KEY] == bridge.EV_TOOL_RESULT and evt.get("success"):
-                            bare = str(evt.get("name") or call_names.get(evt.get("tool_use_id") or "", ""))
-                            if bare.rsplit("__", 1)[-1] in write_names:
-                                on_write_success(bare)
+                            call_id = evt.get("tool_use_id") or ""
+                            info = call_info.get(call_id, {})
+                            bare = str(evt.get("name") or info.get("name", ""))
+                            short = bare.rsplit("__", 1)[-1]
+                            if short in write_names:
+                                # 读写双语义工具：只有带了"写"的关键字段才算真落盘
+                                if short in bidirectional_tools:
+                                    tool_spec = next((t for t in _CATALOG if t["name"] == short), None)
+                                    write_arg = (tool_spec or {}).get("write_arg", "html")
+                                    if write_arg not in (info.get("args") or {}):
+                                        pass  # 读语义，不触发
+                                    else:
+                                        on_write_success(bare)
+                                else:
+                                    on_write_success(bare)
                     if evt[bridge.EV_TYPE_KEY] in (bridge.EV_DONE, bridge.EV_ERROR):
                         got_result = True
                     yield evt

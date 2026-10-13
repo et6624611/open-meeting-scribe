@@ -20,15 +20,30 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from core.speakers import normalize_speaker_name
 
 logger = logging.getLogger(__name__)
 
-# 工作区根目录：仓库根下 agent-workspace/，与 data/（含 settings.json）无父子关系（M3）
-REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKSPACE_ROOT = REPO_ROOT / "agent-workspace"
+
+def _compute_workspace_root() -> Path:
+    """计算工作区根目录，优先用 app.store.BASE_DIR（打包后落 exe 同级，持久），
+    回退仓库根（开发模式等价）。PyInstaller _MEIPASS 临时目录重启丢失，必须避开。"""
+    try:
+        from app.store import BASE_DIR
+        return BASE_DIR / "agent-workspace"
+    except Exception:
+        return Path(__file__).resolve().parents[2] / "agent-workspace"
+
+
+# 工作区根目录：与 app.store.BASE_DIR 同源（打包后落 exe 同级，持久） /
+# Workspace root: same source as app.store.BASE_DIR (persists next to exe in PyInstaller)
+WORKSPACE_ROOT = _compute_workspace_root()
+# 预生成工作区根目录（资源管理视图浏览的命名空间，与 AI 对话工作区隔离） /
+# Preview workspace root (namespace for resource explorer; isolated from AI chat workspaces)
+PREVIEW_ROOT = WORKSPACE_ROOT / "_preview"
 
 # 单文件体量上限（字符），超限截断并标注，避免工作区无限膨胀（R4）
 _MAX_TRANSCRIPT_CHARS = 40000
@@ -39,6 +54,58 @@ _MAX_HISTORY_TURNS = 10         # 最多保留前 N 轮对话
 
 # 洞察消息存储目录：与后端同一事实源约定（cwd 相对） / Insight messages dir (same cwd-relative convention as routers)
 INSIGHTS_TASKS_DIR = Path("data/tasks")
+
+
+# ============================================================
+# 元数据 frontmatter 辅助 / Metadata frontmatter helpers
+# ============================================================
+
+def _now_iso() -> str:
+    """当前时间 ISO 8601 带本地时区。 / Current time in ISO 8601 with local timezone."""
+    return datetime.now().astimezone().isoformat()
+
+
+def _format_yaml_frontmatter(meta: dict) -> str:
+    """手写 YAML frontmatter（避免 pyyaml 依赖）。 / Hand-write YAML frontmatter (no pyyaml dependency)."""
+    lines = ["---"]
+    for key, value in meta.items():
+        if isinstance(value, bool):
+            lines.append(f"{key}: {str(value).lower()}")
+        elif isinstance(value, (int, float)):
+            lines.append(f"{key}: {value}")
+        elif isinstance(value, list):
+            joined = ", ".join(str(v) for v in value)
+            lines.append(f"{key}: [{joined}]")
+        else:
+            safe = str(value).replace('"', '\\"')
+            lines.append(f'{key}: "{safe}"')
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def _write_md_with_meta(ctx_dir: Path, filename: str, meta: dict, body: str) -> None:
+    """写带 YAML frontmatter 的 Markdown 文件。 / Write a Markdown file with YAML frontmatter.
+
+    meta 字段：task_id/meeting_title/generated_at/source/version + 各文件特定字段。
+    body 是正文（含标题行，函数在 frontmatter 与 body 之间加空行）。
+    """
+    frontmatter = _format_yaml_frontmatter(meta)
+    content = f"{frontmatter}\n\n{body}"
+    (ctx_dir / filename).write_text(content, encoding="utf-8")
+
+
+def _base_meta(task_id: str | None, task: dict | None, source: str) -> dict:
+    """构造通用 frontmatter 字段。 / Build common frontmatter fields."""
+    title = ""
+    if task:
+        title = task.get("title") or task.get("audio_name") or ""
+    return {
+        "task_id": task_id or "",
+        "meeting_title": title,
+        "generated_at": _now_iso(),
+        "source": source,
+        "version": 1,
+    }
 
 
 def workspace_dir(engine_id: str, task_id: str | None) -> Path:
@@ -255,15 +322,27 @@ def export_context(
         if pairs:
             header = ("# 会议转写原文（说话人已实名化；录音进行中，以下为实时转写）\n\n"
                       if in_progress else "# 会议转写原文（说话人已实名化）\n\n")
-            (ctx / "transcript.md").write_text(header + _render_transcript(pairs),
-                                               encoding="utf-8")
+            rendered = _render_transcript(pairs)
+            transcript_body = header + rendered
+            _write_md_with_meta(ctx, "transcript.md", {
+                **_base_meta(task_id, task, "transcript"),
+                "speaker_count": len(set(name for name, _ in pairs)),
+                "char_count": len(transcript_body),
+                "truncated": "转写过长已截断" in rendered,
+                "is_realtime": in_progress,
+            }, transcript_body)
             written.append("context/transcript.md")
 
         summary = task_final_summary(task).strip()
         if summary and "内容过短" not in summary and "无法生成有效纪要" not in summary:
-            (ctx / "summary.md").write_text(
-                "# 当前会议纪要（用户已编辑时为编辑后版本）\n\n" + summary[:_MAX_SUMMARY_CHARS],
-                encoding="utf-8")
+            summary_body = "# 当前会议纪要（用户已编辑时为编辑后版本）\n\n" + summary[:_MAX_SUMMARY_CHARS]
+            _write_md_with_meta(ctx, "summary.md", {
+                **_base_meta(task_id, task, "summary"),
+                "char_count": len(summary_body),
+                "truncated": len(summary) > _MAX_SUMMARY_CHARS,
+                "chapter_count": len(task.get("chapters") or []),
+                "edited_by_user": bool(task.get("summary_edited")),
+            }, summary_body)
             written.append("context/summary.md")
 
         # 随记：四域中唯一的用户原创区，此前从未导出给 CLI——用户把共识结论写进随记
@@ -271,13 +350,19 @@ def export_context(
         notes = task_notes(task)
         if notes:
             body = notes[:_MAX_NOTES_CHARS]
-            if len(notes) > _MAX_NOTES_CHARS:
+            truncated_notes = len(notes) > _MAX_NOTES_CHARS
+            if truncated_notes:
                 body += '\n…（随记过长已截断）'
-            (ctx / 'notes.md').write_text(
+            notes_body = (
                 '# 会议随记（用户手写原文，非 AI 产物）\n\n'
                 '> 随记是用户本人记录的会议要点，可信度高于转写推断。当用户要求'
                 '「按随记更新纪要/决策」时，以随记表述为准；随记属用户原创区，'
-                '如需改写只能走 propose_notes 提案通道（用户接受后才落盘）。\n\n' + body, encoding='utf-8')
+                '如需改写只能走 propose_notes 提案通道（用户接受后才落盘）。\n\n' + body)
+            _write_md_with_meta(ctx, 'notes.md', {
+                **_base_meta(task_id, task, "notes"),
+                "char_count": len(notes_body),
+                "truncated": truncated_notes,
+            }, notes_body)
             written.append('context/notes.md')
 
         todos = task.get("todos") or []
@@ -290,14 +375,31 @@ def export_context(
     # Insight Deck observations (full render; workspace-file mode tolerates larger context)
     insights_md = _render_insights(task_id)
     if insights_md:
-        (ctx / "insights.md").write_text(insights_md, encoding="utf-8")
+        insight_count = insights_md.count("\n## ")
+        phases_set: set[str] = set()
+        if "会中" in insights_md:
+            phases_set.add("in_meeting")
+        if "会后" in insights_md:
+            phases_set.add("post_meeting")
+        _write_md_with_meta(ctx, "insights.md", {
+            **_base_meta(task_id, task, "insights"),
+            "insight_count": insight_count,
+            "phases": sorted(phases_set),
+        }, insights_md)
         written.append("context/insights.md")
 
     # 对话历史（保障多轮上下文连续性，防止 session resume 失败时上下文割裂）
     # Conversation history: guards multi-turn continuity when session resume fails
     history_md = _render_history(history)
     if history_md:
-        (ctx / "history.md").write_text(history_md, encoding="utf-8")
+        history_turns = [m for m in (history or []) if (m.get("content") or "").strip()]
+        if history_turns and history_turns[-1].get("role") == "user":
+            history_turns = history_turns[:-1]
+        _write_md_with_meta(ctx, "history.md", {
+            **_base_meta(task_id, task, "history"),
+            "turn_count": len(history_turns),
+            "truncated": "更早历史已省略" in history_md,
+        }, history_md)
         written.append("context/history.md")
 
     # @附件：用户本轮显式上传的本地文件与图片，原样复制到 context/attachments/
@@ -361,6 +463,17 @@ def export_context(
         "## 用户本轮问题",
         user_message.strip(),
     ]
+    # 条件化洞察板强约束：用户意图是洞察板生成时，在 brief 末尾硬注入完成契约
+    _BOARD_KEYWORDS = ("洞察板", "insight.board", "insight board", "insightboard")
+    _is_board_intent = any(kw.lower() in user_message.lower() for kw in _BOARD_KEYWORDS)
+    if _is_board_intent:
+        brief_lines += [
+            "",
+            "【强制执行】洞察板生成三步：",
+            "① revise_insight_board() 空参 → ② web_search ×最多2次 → ③ revise_insight_board(html=<完整HTML>) 落盘",
+            "缺第③步就是任务失败——后端没有 board.html，用户洞察 tab 是空的。",
+            "不要在搜索后直接回复用户。必须看到工具回执 revision≥1 再回复。",
+        ]
     brief = "\n".join(brief_lines)
 
     # 项目知识库：以绝对路径 --add-dir 挂载，不复制（M3/§3.1）
@@ -413,3 +526,289 @@ def sweep_expired_workspaces(retention_days: int) -> int:
     if removed:
         logger.info("[CLI引擎] 过期工作区清理 %d 个（保留 %d 天）", removed, retention_days)
     return removed
+
+
+# ============================================================
+# 预览工作区（资源管理视图） / Preview workspace (resource explorer)
+# ============================================================
+
+def preview_workspace_dir(task_id: str, project_id: str | None = None) -> Path:
+    """返回 _preview 下的工作区路径，按 project_id 路由：
+    有 project_id → _preview/<project_id>/<task_id>/
+    无 project_id → _preview/_standalone/<task_id>/
+    确保 context/ 和 output/ 子目录存在。"""
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    if project_id:
+        ws = (PREVIEW_ROOT / project_id / task_id).resolve()
+    else:
+        ws = (PREVIEW_ROOT / "_standalone" / task_id).resolve()
+    (ws / "context").mkdir(parents=True, exist_ok=True)
+    (ws / "output").mkdir(parents=True, exist_ok=True)
+    return ws
+
+
+def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
+                             speaker_map: dict, realtime_entries: list[dict] | None,
+                             history: list[dict] | None,
+                             written: list[str]) -> None:
+    """写 context/ 下的 .md 和 todos.json 文件（export_context 与 export_preview_context 共用）。
+    Write context/ .md and todos.json files (shared by export_context and export_preview_context)."""
+    from core.chat_context import task_final_summary, task_notes
+
+    if task:
+        pairs = _flatten_dialogue(task, speaker_map)
+        in_progress = False
+        if not pairs:
+            pairs = _realtime_pairs(realtime_entries, task, speaker_map, task_id)
+            in_progress = bool(pairs)
+        if pairs:
+            header = ("# 会议转写原文（说话人已实名化；录音进行中，以下为实时转写）\n\n"
+                      if in_progress else "# 会议转写原文（说话人已实名化）\n\n")
+            rendered = _render_transcript(pairs)
+            transcript_body = header + rendered
+            _write_md_with_meta(ctx, "transcript.md", {
+                **_base_meta(task_id, task, "transcript"),
+                "speaker_count": len(set(name for name, _ in pairs)),
+                "char_count": len(transcript_body),
+                "truncated": "转写过长已截断" in rendered,
+                "is_realtime": in_progress,
+            }, transcript_body)
+            written.append("context/transcript.md")
+
+        summary = task_final_summary(task).strip()
+        if summary and "内容过短" not in summary and "无法生成有效纪要" not in summary:
+            summary_body = "# 当前会议纪要（用户已编辑时为编辑后版本）\n\n" + summary[:_MAX_SUMMARY_CHARS]
+            _write_md_with_meta(ctx, "summary.md", {
+                **_base_meta(task_id, task, "summary"),
+                "char_count": len(summary_body),
+                "truncated": len(summary) > _MAX_SUMMARY_CHARS,
+                "chapter_count": len(task.get("chapters") or []),
+                "edited_by_user": bool(task.get("summary_edited")),
+            }, summary_body)
+            written.append("context/summary.md")
+
+        notes = task_notes(task)
+        if notes:
+            body = notes[:_MAX_NOTES_CHARS]
+            truncated_notes = len(notes) > _MAX_NOTES_CHARS
+            if truncated_notes:
+                body += '\n…（随记过长已截断）'
+            notes_body = (
+                '# 会议随记（用户手写原文，非 AI 产物）\n\n'
+                '> 随记是用户本人记录的会议要点，可信度高于转写推断。当用户要求'
+                '「按随记更新纪要/决策」时，以随记表述为准；随记属用户原创区，'
+                '如需改写只能走 propose_notes 提案通道（用户接受后才落盘）。\n\n' + body)
+            _write_md_with_meta(ctx, 'notes.md', {
+                **_base_meta(task_id, task, "notes"),
+                "char_count": len(notes_body),
+                "truncated": truncated_notes,
+            }, notes_body)
+            written.append('context/notes.md')
+
+        todos = task.get("todos") or []
+        if todos:
+            (ctx / "todos.json").write_text(
+                json.dumps(todos, ensure_ascii=False, indent=2), encoding="utf-8")
+            written.append("context/todos.json")
+
+    insights_md = _render_insights(task_id)
+    if insights_md:
+        insight_count = insights_md.count("\n## ")
+        phases_set: set[str] = set()
+        if "会中" in insights_md:
+            phases_set.add("in_meeting")
+        if "会后" in insights_md:
+            phases_set.add("post_meeting")
+        _write_md_with_meta(ctx, "insights.md", {
+            **_base_meta(task_id, task, "insights"),
+            "insight_count": insight_count,
+            "phases": sorted(phases_set),
+        }, insights_md)
+        written.append("context/insights.md")
+
+    history_md = _render_history(history)
+    if history_md:
+        history_turns = [m for m in (history or []) if (m.get("content") or "").strip()]
+        if history_turns and history_turns[-1].get("role") == "user":
+            history_turns = history_turns[:-1]
+        _write_md_with_meta(ctx, "history.md", {
+            **_base_meta(task_id, task, "history"),
+            "turn_count": len(history_turns),
+            "truncated": "更早历史已省略" in history_md,
+        }, history_md)
+        written.append("context/history.md")
+
+
+def export_preview_context(*, task_id: str, task: dict,
+                           project_id: str | None = None,
+                           realtime_entries: list[dict] | None = None) -> dict:
+    """预生成工作区（无 user_message/attachments/history），返回 {workspace, file_count}。
+    复用 _write_context_md_files 的渲染逻辑，写带 frontmatter 的 .md 文件。"""
+    ws = preview_workspace_dir(task_id, project_id)
+    ctx = ws / "context"
+    written: list[str] = []
+
+    _write_context_md_files(ctx, task, task_id, {}, realtime_entries, None, written)
+
+    # 精简 AGENTS.md（预览工作区，无对话权限段，含跨会议探索指引） /
+    # Minimal AGENTS.md (preview workspace; no permission section; includes cross-meeting guidance)
+    agents_parts = [
+        "# 会议助手预览工作区\n",
+        "## 说明\n本工作区由 OpenMeetingScribe 自动生成（预览模式），供浏览和外部 IDE 探索。"
+        "context/ 目录为会议只读上下文，output/ 目录为可写产物区。"
+        "如需修改会议纪要/待办，请通过软件内的 AI 面板或集成工具完成。\n",
+        "## 目录结构\n"
+        "- `context/` — 会议只读上下文：transcript.md / summary.md / notes.md / insights.md / history.md / todos.json，均带 YAML frontmatter（task_id / meeting_title / generated_at / source / 等）\n"
+        "- `output/` — 可写产物区\n"
+        "- `AGENTS.md` — 本文件\n",
+    ]
+    if project_id:
+        agents_parts.append(
+            "## 跨会议探索\n本工作区位于项目级目录 `_preview/<project_id>/<task_id>/` 下。"
+            "上级目录 `_preview/<project_id>/_meetings.json` 索引了同项目所有会议，每条含 "
+            "`task_id` / `title` / `meeting_date` / `workspace_path` 字段。"
+            "可逐个进入子目录读取 context/ 下的 .md 进行跨会议探索。\n"
+            "更上级 `_preview/_index.json` 索引了所有项目（含独立会议），可发现其他项目。\n")
+    else:
+        agents_parts.append(
+            "## 跨会议探索\n本工作区为独立会议（未关联知识库），位于 `_preview/_standalone/<task_id>/`。"
+            "上级 `_preview/_standalone/` 下可能有其他独立会议工作区；"
+            "全局索引 `_preview/_index.json` 含所有项目（含独立会议计数），可发现其他会议工作区。\n")
+    (ws / "AGENTS.md").write_text("\n".join(agents_parts), encoding="utf-8")
+    written.append("AGENTS.md")
+
+    update_workspace_index(task_id, project_id, task)
+
+    logger.info("[CLI引擎] 预览工作区生成 task=%s ws=%s files=%d", task_id, ws, len(written))
+    return {"workspace": str(ws), "file_count": len(written)}
+
+
+def update_workspace_index(task_id: str, project_id: str | None, task: dict) -> None:
+    """增量更新 _index.json（全局）和 _meetings.json（项目级）。"""
+    # 更新项目级索引 / Update project-level index
+    if project_id:
+        proj_dir = PREVIEW_ROOT / project_id
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        index_file = proj_dir / "_meetings.json"
+        index: dict = {}
+        if index_file.exists():
+            try:
+                index = json.loads(index_file.read_text(encoding="utf-8"))
+            except Exception:
+                index = {}
+        if not index:
+            index = {"project_id": project_id, "project_name": "", "version": 1,
+                     "generated_at": _now_iso(), "meetings": []}
+        meetings = index.get("meetings", [])
+        meetings = [m for m in meetings if m.get("task_id") != task_id]
+        ctx_dir = proj_dir / task_id / "context"
+        meetings.append({
+            "task_id": task_id,
+            "title": task.get("title") or task.get("audio_name") or "未命名",
+            "meeting_date": task.get("meeting_date") or "",
+            "has_transcript": (ctx_dir / "transcript.md").exists(),
+            "has_summary": (ctx_dir / "summary.md").exists(),
+            "has_notes": (ctx_dir / "notes.md").exists(),
+            "has_insights": (ctx_dir / "insights.md").exists(),
+            "todo_count": len(task.get("todos") or []),
+            "speaker_count": len(set(
+                normalize_speaker_name(d.get("speaker_name")) or ""
+                for d in (task.get("dialogue") or []))),
+            "last_updated": _now_iso(),
+        })
+        index["meetings"] = meetings
+        index["generated_at"] = _now_iso()
+        index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 更新全局索引 / Update global index
+    global_index_file = PREVIEW_ROOT / "_index.json"
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    global_index: dict = {}
+    if global_index_file.exists():
+        try:
+            global_index = json.loads(global_index_file.read_text(encoding="utf-8"))
+        except Exception:
+            global_index = {}
+    if not global_index:
+        global_index = {"version": 1, "generated_at": _now_iso(), "projects": [], "standalone_count": 0}
+
+    projects = []
+    standalone_count = 0
+    try:
+        for entry in sorted(PREVIEW_ROOT.iterdir()):
+            if not entry.is_dir() or entry.name.startswith("_"):
+                if entry.name == "_standalone" and entry.is_dir():
+                    standalone_count = sum(1 for sub in entry.iterdir() if sub.is_dir())
+                continue
+            meetings_file = entry / "_meetings.json"
+            proj_name = ""
+            meeting_count = 0
+            if meetings_file.exists():
+                try:
+                    mi = json.loads(meetings_file.read_text(encoding="utf-8"))
+                    proj_name = mi.get("project_name", "")
+                    meeting_count = len(mi.get("meetings", []))
+                except Exception:
+                    pass
+            projects.append({
+                "project_id": entry.name,
+                "project_name": proj_name,
+                "meeting_count": meeting_count,
+                "last_updated": _now_iso(),
+            })
+    except Exception:
+        pass
+    global_index["projects"] = projects
+    global_index["standalone_count"] = standalone_count
+    global_index["generated_at"] = _now_iso()
+    global_index_file.write_text(
+        json.dumps(global_index, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def refresh_workspace(task_id: str) -> dict:
+    """刷新指定工作区（复用 export_preview_context），返回 {workspace, file_count}。"""
+    from app.store import tasks
+    task = tasks.get(task_id)
+    if not task:
+        return {"error": "task_not_found"}
+    project_id = task.get("project_id")
+    return export_preview_context(task_id=task_id, task=task, project_id=project_id)
+
+
+def import_from_workspace(task_id: str) -> dict:
+    """解析工作区 .md frontmatter，返回可导入的 summary/notes 变更。
+    只解析 summary.md 和 notes.md；frontmatter 的 task_id 必须匹配，否则拒收。"""
+    from app.store import tasks
+    task = tasks.get(task_id)
+    if not task:
+        return {"error": "task_not_found"}
+    project_id = task.get("project_id")
+    ws = preview_workspace_dir(task_id, project_id)
+    ctx = ws / "context"
+    result: dict = {"source_mtime": None}
+
+    for filename in ("summary.md", "notes.md"):
+        f = ctx / filename
+        if not f.exists():
+            continue
+        try:
+            content = f.read_text(encoding="utf-8")
+            if content.startswith("---"):
+                end = content.find("---", 3)
+                if end > 0:
+                    frontmatter = content[3:end].strip()
+                    body = content[end + 3:].lstrip("\n")
+                    for line in frontmatter.split("\n"):
+                        if line.strip().startswith("task_id:"):
+                            fm_task_id = line.split(":", 1)[1].strip().strip('"')
+                            if fm_task_id and fm_task_id != task_id:
+                                return {"error": "task_id_mismatch",
+                                        "expected": task_id, "found": fm_task_id}
+                    result[filename.replace(".md", "")] = body
+                    mtime = f.stat().st_mtime
+                    if result["source_mtime"] is None or mtime > result["source_mtime"]:
+                        result["source_mtime"] = mtime
+        except Exception as e:
+            logger.warning("[CLI引擎] 导入解析失败 %s: %s", filename, e)
+
+    return result
