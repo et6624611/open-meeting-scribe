@@ -776,17 +776,23 @@ def refresh_workspace(task_id: str) -> dict:
 
 
 def import_from_workspace(task_id: str) -> dict:
-    """解析工作区 .md frontmatter，返回可导入的 summary/notes 变更。
-    只解析 summary.md 和 notes.md；frontmatter 的 task_id 必须匹配，否则拒收。"""
+    """解析工作区 .md frontmatter，返回可导入的 summary/notes 变更（propose 格式）。
+    只解析 summary.md 和 notes.md；frontmatter 的 task_id 必须匹配，否则拒收。
+    返回 {has_changes, summary: {baseline, proposed}|null, notes: {baseline, proposed}|null, source_mtime, task_id}。
+    baseline = 当前定稿口径（user_summary/user_notes 优先），proposed = 工作区 .md body；
+    两者不同才标记为变更，走 propose 通道（不直接覆盖，用户在前端接受才落盘）。"""
     from app.store import tasks
+    from core.chat_context import task_final_summary, task_notes
     task = tasks.get(task_id)
     if not task:
         return {"error": "task_not_found"}
     project_id = task.get("project_id")
     ws = preview_workspace_dir(task_id, project_id)
     ctx = ws / "context"
-    result: dict = {"source_mtime": None}
+    result: dict = {"has_changes": False, "summary": None, "notes": None,
+                    "source_mtime": None, "task_id": task_id}
 
+    baselines = {"summary.md": task_final_summary(task), "notes.md": task_notes(task)}
     for filename in ("summary.md", "notes.md"):
         f = ctx / filename
         if not f.exists():
@@ -804,7 +810,17 @@ def import_from_workspace(task_id: str) -> dict:
                             if fm_task_id and fm_task_id != task_id:
                                 return {"error": "task_id_mismatch",
                                         "expected": task_id, "found": fm_task_id}
-                    result[filename.replace(".md", "")] = body
+                    key = filename.replace(".md", "")
+                    # notes.md body 含固定头部声明（# 会议随记 + > 随记是...），剥掉取用户实际 notes，
+                    # 与 baseline（task_notes）口径一致；外部 IDE 改头部声明不算用户内容变更。
+                    if key == "notes" and body.startswith("# 会议随记"):
+                        parts = body.split("\n\n", 2)
+                        if len(parts) >= 3:
+                            body = parts[2]
+                    baseline = baselines[filename]
+                    if body != baseline:
+                        result[key] = {"baseline": baseline, "proposed": body}
+                        result["has_changes"] = True
                     mtime = f.stat().st_mtime
                     if result["source_mtime"] is None or mtime > result["source_mtime"]:
                         result["source_mtime"] = mtime

@@ -6,8 +6,11 @@
  * 跨会议浏览区复用同一套预览根，按 project 路由聚合。
  */
 import { ref, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { showToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/api/client'
+import { useSummaryProposal } from '@/composables/useSummaryProposal'
+import { useNotesProposal } from '@/composables/useNotesProposal'
 import {
   fetchWorkspaceTree,
   fetchWorkspaceFile,
@@ -29,6 +32,7 @@ import type {
 } from '@/api/workspace'
 
 export function useWorkspace() {
+  const { t } = useI18n()
   // ── 当前会议工作区 / Current meeting workspace ──
   const workspacePath = ref<string>('')
   const treeNodes = ref<WorkspaceNode[]>([])
@@ -127,21 +131,31 @@ export function useWorkspace() {
     }
   }
 
-  /** 从工作区导入 IDE 在 .md 里的改动（走 propose 通道，回到纪要确认） */
+  /** 从工作区导入 IDE 在 .md 里的改动（走 propose 通道，回到纪要/随记确认） */
   async function importChanges(taskId: string): Promise<boolean> {
     if (!taskId) return false
     importing.value = true
     try {
       const r = await importFromWorkspace(taskId)
-      if (r.imported) {
-        const parts: string[] = []
-        if (r.summary_changes) parts.push(`纪要 ${r.summary_changes} 处`)
-        if (r.notes_changes) parts.push(`随记 ${r.notes_changes} 处`)
-        showToast(parts.length ? `已导入 ${parts.join('、')}，请在纪要页确认` : '已导入变更', 'success')
-      } else {
-        showToast(r.message || '工作区无变更', 'info')
+      if (!r.has_changes) {
+        showToast(t('ai-panel.context.workspace_no_changes'), 'info')
+        return false
       }
-      return r.imported
+      // summary 变更 → setSummaryProposal（模块级单例，自动起跳纪要 Tab diff 预览）
+      if (r.summary) {
+        const { setSummaryProposal } = useSummaryProposal()
+        setSummaryProposal({ baseline: r.summary.baseline, proposed: r.summary.proposed })
+      }
+      // notes 变更 → setNotesProposal（模块级单例，自动起跳随记 Tab diff 预览）
+      if (r.notes) {
+        const { notesProposal } = useNotesProposal()
+        notesProposal.value = { baseline: r.notes.baseline, proposed: r.notes.proposed }
+      }
+      const parts: string[] = []
+      if (r.summary) parts.push(t('ai-panel.context.workspace_summary_changes'))
+      if (r.notes) parts.push(t('ai-panel.context.workspace_notes_changes'))
+      showToast(t('ai-panel.context.workspace_imported', { parts: parts.join('、') }), 'success')
+      return true
     } catch (err) {
       showToast(extractErrorMessage(err, '导入失败'), 'error')
       return false

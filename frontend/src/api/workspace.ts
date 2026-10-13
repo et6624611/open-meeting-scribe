@@ -80,11 +80,17 @@ export interface WorkspaceRefreshResult {
   [k: string]: unknown
 }
 
+export interface ProposalChange {
+  baseline: string
+  proposed: string
+}
+
 export interface WorkspaceImportResult {
-  imported: boolean
-  summary_changes?: number
-  notes_changes?: number
-  message?: string
+  has_changes: boolean
+  summary?: ProposalChange | null
+  notes?: ProposalChange | null
+  source_mtime?: number | null
+  task_id?: string
   [k: string]: unknown
 }
 
