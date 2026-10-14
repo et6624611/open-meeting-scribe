@@ -443,8 +443,4 @@ onUnmounted(() => {
 .ws-browser-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-browser-count { font-size: 10px; color: var(--text-tertiary, #9ca3af); flex-shrink: 0; padding: 1px 6px; border-radius: 8px; background: var(--badge-bg, rgba(0,0,0,0.05)); }
 .ws-browser-date { font-size: 10px; color: var(--text-tertiary, #9ca3af); flex-shrink: 0; }
-
-@media (prefers-color-scheme: dark) {
-  .ws-ide-menu { background: rgba(30,30,30,0.96); }
-}
 </style>
