@@ -660,6 +660,7 @@ def export_preview_context(*, task_id: str, task: dict,
         "## 目录结构\n"
         "- `context/` — 会议只读上下文：transcript.md / summary.md / notes.md / insights.md / history.md / todos.json，均带 YAML frontmatter（task_id / meeting_title / generated_at / source / 等）\n"
         "- `output/` — 可写产物区\n"
+        "- `related.md` — 同项目关联会议的标题/日期/相对路径列表（带 frontmatter）\n"
         "- `AGENTS.md` — 本文件\n",
     ]
     if project_id:
@@ -678,6 +679,39 @@ def export_preview_context(*, task_id: str, task: dict,
     written.append("AGENTS.md")
 
     update_workspace_index(task_id, project_id, task)
+
+    # 写 related.md：列出同项目关联会议的标题/日期/相对路径（人类可读，放工作区根与 AGENTS.md 同级）
+    related_parts = [
+        "# 关联会议\n",
+        "## 说明\n本文件列出同项目（知识库）的其他会议工作区，供跨会议探索。"
+        "路径为相对路径，从本工作区上级目录出发。\n",
+    ]
+    if project_id:
+        proj_dir = PREVIEW_ROOT / project_id
+        meetings_file = proj_dir / "_meetings.json"
+        others = []
+        if meetings_file.exists():
+            try:
+                idx = json.loads(meetings_file.read_text(encoding="utf-8"))
+                others = [m for m in idx.get("meetings", []) if m.get("task_id") != task_id]
+            except Exception:
+                pass
+        if others:
+            related_parts.append("## 同项目会议\n")
+            for m in others:
+                title = m.get("title", "未命名")
+                date = m.get("meeting_date", "")
+                wp = m.get("workspace_path", f"{m.get('task_id', '')}/")
+                related_parts.append(f"- **{title}**（{date}）→ `{wp}`\n")
+        else:
+            related_parts.append("## 同项目会议\n本项目暂无其他会议。\n")
+    else:
+        related_parts.append("## 同项目会议\n本工作区为独立会议（未关联知识库），无同项目关联会议。"
+            "全局索引见上级 `_index.json`。\n")
+    _write_md_with_meta(ws, "related.md", {
+        **_base_meta(task_id, task, "related"),
+    }, "\n".join(related_parts))
+    written.append("related.md")
 
     logger.info("[CLI引擎] 预览工作区生成 task=%s ws=%s files=%d", task_id, ws, len(written))
     return {"workspace": str(ws), "file_count": len(written)}
@@ -706,6 +740,7 @@ def update_workspace_index(task_id: str, project_id: str | None, task: dict) -> 
             "task_id": task_id,
             "title": task.get("title") or task.get("audio_name") or "未命名",
             "meeting_date": task.get("meeting_date") or "",
+            "workspace_path": f"{task_id}/",
             "has_transcript": (ctx_dir / "transcript.md").exists(),
             "has_summary": (ctx_dir / "summary.md").exists(),
             "has_notes": (ctx_dir / "notes.md").exists(),
