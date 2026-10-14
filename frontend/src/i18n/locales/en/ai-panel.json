@@ -257,6 +257,8 @@
     "stat_todos": "Decisions",
     "stat_files": "Files",
     "stat_related": "Related",
+    "view_overview": "Overview",
+    "view_workspace": "Workspace",
     "source_prefix": "Context from",
     "source_hint": "The AI panel context follows the most recently opened meeting. Click to go back to it.",
     "source_jump": "View meeting",

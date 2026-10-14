@@ -30,6 +30,24 @@
     </div>
 
     <template v-else>
+      <!-- 视图切换：概览 ↔ 工作区（两种看同一份会议数据的视图模式） / View switch: overview ↔ workspace -->
+      <div class="ctx-view-switch" role="tablist">
+        <button
+          role="tab"
+          :aria-selected="contextView === 'overview'"
+          :class="{ 'is-active': contextView === 'overview' }"
+          @click="contextView = 'overview'"
+        >{{ t('ai-panel.context.view_overview') }}</button>
+        <button
+          role="tab"
+          :aria-selected="contextView === 'workspace'"
+          :class="{ 'is-active': contextView === 'workspace' }"
+          @click="contextView = 'workspace'"
+        >{{ t('ai-panel.context.view_workspace') }}</button>
+      </div>
+
+      <!-- 概览态：数据概览 + 分区跳转 / Overview mode -->
+      <template v-if="contextView === 'overview'">
       <!-- 上下文来源归属（仅非该会议页面显示） / Context source attribution (shown only away from the source meeting) -->
       <div v-if="contextSource && !isOnSourceMeeting" class="ctx-source" :title="t('ai-panel.context.source_hint')" @click="$emit('goMeeting', contextSource.taskId)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -119,11 +137,15 @@
         </div>
       </div>
 
-      <!-- 工作区 · IDE 联动（会议上下文物化成的本地文件夹，可一键在 IDE 打开） / Workspace · IDE linkage -->
+      </template><!-- /概览态 -->
+
+      <!-- 工作区态：文件树浏览 + IDE 联动 / Workspace mode -->
+      <template v-else>
       <WorkspaceSection
         :task-id="taskId"
         @go-meeting="$emit('goMeeting', $event)"
       />
+      </template><!-- /工作区态 -->
 
       <!-- 拖拽上传提示（功能开发中） / Drag-to-upload hint (feature in development) -->
       <div class="ctx-drop-hint" style="display: none;">
@@ -146,6 +168,9 @@ const route = useRoute()
 // 分区标题逐字显现触发 / Section title character-by-character reveal trigger
 const panelMounted = ref(false)
 onMounted(() => { setTimeout(() => { panelMounted.value = true }, 200) })
+
+// 视图模式：概览（数据统计+分区跳转）vs 工作区（文件树+IDE 联动） / View mode: overview vs workspace
+const contextView = ref<'overview' | 'workspace'>('overview')
 // 按词分组，避免空格字符在 inline-block span 中丢失宽度 / Group by word so spaces are natural whitespace between inline-block word groups
 const sectionTitleChars = computed(() => {
   const build = (text: string) => text.split(' ').map(w => w.split(''))

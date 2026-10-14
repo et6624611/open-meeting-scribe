@@ -489,6 +489,36 @@
   border-radius: 4px;
 }
 
+/* 视图切换：概览 ↔ 工作区 */
+.ctx-view-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: var(--s-2);
+  background: var(--badge-bg, rgba(0,0,0,0.05));
+  border-radius: 6px;
+}
+.ctx-view-switch button {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary, #9ca3af);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.ctx-view-switch button.is-active {
+  background: var(--glass-bg, rgba(255,255,255,0.96));
+  color: var(--text-primary, #111827);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.ctx-view-switch button:not(.is-active):hover {
+  color: var(--text-secondary, #6b7280);
+}
+
 /* 上下文来源归属 */
 .ctx-source {
   display: flex;

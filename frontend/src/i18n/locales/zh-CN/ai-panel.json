@@ -257,6 +257,8 @@
     "stat_todos": "决策",
     "stat_files": "文件",
     "stat_related": "相关会议",
+    "view_overview": "概览",
+    "view_workspace": "工作区",
     "source_prefix": "上下文来自",
     "source_hint": "AI 面板的上下文跟随最近打开的会议，点击可回到该会议",
     "source_jump": "查看会议",
