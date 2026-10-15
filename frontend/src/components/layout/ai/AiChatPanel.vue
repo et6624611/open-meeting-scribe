@@ -131,6 +131,13 @@
             <div v-else class="ai-meta-empty">{{ t('ai-panel.meta_empty_sources') }}</div>
           </div>
         </div>
+        <AiExecutionTrace
+          v-if="msg.role === 'assistant' && msg.stages?.length"
+          :key="msg.executionId || msg.timestamp || i"
+          :stages="msg.stages"
+          :state="msg.executionState"
+          :live="isLoading && msg.executionState === 'running'"
+        />
         <!-- 改写 Diff 视图 / Rewrite diff view -->
         <div v-if="rewritePending && i === messages.length - 1 && msg.role === 'assistant'" class="diff-view">
           <div class="diff-header"><span>{{ t('ai-panel.rewrite_label') }}</span><span>{{ rewritePending.source }}</span></div>
@@ -190,21 +197,9 @@
           <button class="btn-dismiss" @click="$emit('dismissInject')">{{ t('ai-panel.inject_dismiss') }}</button>
         </div>
       </div>
-      <!-- Agent 思考阶段指示器 / Agent thinking stages indicator -->
+      <!-- 无执行记录时保留轻量等待提示；执行过程已归属各条答复。 -->
       <Transition name="thinking">
-        <div v-if="isLoading && stages.length > 0" class="ai-stages">
-          <div v-for="(stage, si) in stages" :key="si" class="ai-stage-item" :class="{ 'is-done': stage.status === 'done', 'is-error': stage.status === 'error' }">
-            <!-- 工具图标：lucide 名命中则内联 SVG（多 CLI 引擎双语标签体系），未命中降级为文本/emoji（历史消息兼容） -->
-            <svg v-if="stageIcon(stage)" class="ai-stage-icon" :viewBox="stageIcon(stage)!.viewBox" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="stageIcon(stage)!.body"></svg>
-            <span v-else-if="stage.icon" class="ai-stage-icon">{{ stage.icon }}</span>
-            <svg v-else-if="stage.status === 'running'" class="ai-stage-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
-            <span v-else class="ai-stage-check">✓</span>
-            <span class="ai-stage-label">{{ stage.label }}</span>
-            <span v-if="stage.detail && stage.status !== 'running'" class="ai-stage-detail">{{ stage.detail }}</span>
-          </div>
-        </div>
-        <!-- 回退：无阶段时显示简单思考指示器 / Fallback: simple thinking indicator when no stages -->
-        <div v-else-if="isLoading && stages.length === 0 && !isStreaming" class="ai-thinking" role="status" aria-live="polite">
+        <div v-if="isLoading && stages.length === 0 && !isStreaming" class="ai-thinking" role="status" aria-live="polite">
           <svg class="ai-thinking-spinner" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 1a7 7 0 1 1-7 7" stroke-linecap="round"/></svg>
           <span class="ai-thinking-text">{{ t('ai-panel.thinking_elapsed', { sec: thinkingElapsed }) }}</span>
         </div>
@@ -407,14 +402,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { AttachmentMeta, LlmMetadata, MessagePerformance, SourceFile, AgentStage, ModelUsage, SendSnapshot } from '@/api/chat'
+import type { AttachmentMeta, LlmMetadata, AgentStage, ChatMessage } from '@/api/chat'
 import { attachmentUrl } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import EmptyHint from '@/components/common/EmptyHint.vue'
 import { escapeHtml } from '@/utils/sanitize'
-import { lucideIcon, type IconDef } from '@/utils/lucideIcons'
+import AiExecutionTrace from './AiExecutionTrace.vue'
 import type { AiCommand } from '@/composables/useAiCommands'
 import { parseMention, mentionToken } from '@/composables/useAiMentions'
 import type { MentionSource } from '@/composables/useAiMentions'
@@ -430,11 +425,6 @@ import ComposerBar from './ComposerBar.vue'
 
 const { t, locale } = useI18n()
 
-/** 阶段图标：按 lucide 名取 SVG 定义（非 lucide 名返回 null 走文本降级） */
-function stageIcon(stage: AgentStage): IconDef | null {
-  return lucideIcon(stage.icon)
-}
-
 /** 文件体积人类可读 / Human-readable file size */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -447,7 +437,7 @@ const meetingMentions = computed(() => props.filteredMentions.filter(m => m.grou
 const localMentions = computed(() => props.filteredMentions.filter(m => m.group === 'local'))
 
 const props = defineProps<{
-  messages: Array<{ role: string; content: string; timestamp?: string; metadata?: LlmMetadata; sources?: SourceFile[]; performance?: MessagePerformance; stages?: AgentStage[]; modelUsage?: ModelUsage; sendOptions?: SendSnapshot; attachments?: AttachmentMeta[] }>
+  messages: ChatMessage[]
   isLoading: boolean
   isStreaming: boolean
   thinkingElapsed: number
@@ -950,66 +940,6 @@ const probeHintText = computed(() => {
 }
 .ai-thinking-text {
   font-variant-numeric: tabular-nums;
-}
-/* ── Agent 思考阶段 / Agent thinking stages ── */
-.ai-stages {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  margin: 4px 0;
-  background: var(--surface-2);
-  border-radius: 8px;
-  border: 1px solid var(--border, #e5e7eb);
-}
-.ai-stage-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-.ai-stage-item.is-done {
-  color: var(--subtle);
-}
-.ai-stage-item.is-error {
-  color: var(--error);
-}
-.ai-stage-icon {
-  font-size: 13px;
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-}
-.ai-stage-spinner {
-  width: 14px;
-  height: 14px;
-  animation: spin 1s linear infinite;
-  flex-shrink: 0;
-  color: var(--accent, #3b82f6);
-}
-.ai-stage-check {
-  font-size: 12px;
-  color: #10b981;
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-  font-weight: 600;
-}
-.ai-stage-label {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ai-stage-detail {
-  font-size: 11px;
-  color: var(--muted, #999);
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* ── 折叠过渡 / Collapse transition ── */
 .thinking-enter-active,

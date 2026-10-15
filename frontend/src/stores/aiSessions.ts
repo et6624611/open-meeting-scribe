@@ -8,6 +8,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage } from '@/api/chat'
 import { tt } from '@/i18n'
+import { showToast } from '@/composables/useToast'
 
 const STORAGE_KEY = 'oms_ai_chat'
 const DEFAULT_KEY = '__default__'
@@ -175,6 +176,7 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
     persist()
   }
 
+  let persistWarningShown = false
   function persist() {
     try {
       const trimmed: Record<string, SessionBucket> = {}
@@ -196,8 +198,11 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
         ts: Date.now(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+      persistWarningShown = false
     } catch {
-      // quota exceeded → 静默 / quota exceeded → silent
+      // 不静默丢失会话，也不为腾空间擅自清除用户历史。
+      if (!persistWarningShown) showToast(tt('ai-panel.execution.persist_failed'), 'warn')
+      persistWarningShown = true
     }
   }
 
@@ -208,6 +213,17 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
       const data: PersistedData = JSON.parse(raw)
       if (data.historyMap) {
         historyMap.value = migrateLegacy(data.historyMap)
+        // 刷新后没有原 SSE 连接，运行中快照只能视为未确认，不能显示永久转圈。
+        for (const bucket of Object.values(historyMap.value)) {
+          for (const session of bucket.sessions) {
+            for (const msg of session.messages) {
+              if (msg.executionState === 'running') msg.executionState = 'interrupted'
+              for (const stage of msg.stages || []) {
+                if (stage.status === 'running') stage.status = 'interrupted'
+              }
+            }
+          }
+        }
       }
       if (data.activeKey) {
         activeKey.value = data.activeKey

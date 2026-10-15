@@ -118,6 +118,29 @@ class TestEventBridge:
         assert r2["tool_use_id"] == "call_2" and r2["success"] is True
         assert r1["tool_use_id"] == "call_1" and "A内容1" in r1["summary"]
 
+    @pytest.mark.parametrize("length", [0, 200, 1200, eb.MAX_TOOL_RESULT_CHARS, eb.MAX_TOOL_RESULT_CHARS + 1])
+    def test_tool_result_detail_and_explicit_truncation(self, manifest, length):
+        text = "文" * length
+        raw = json.dumps({"type": "user", "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "read-1", "is_error": False,
+            "content": [{"type": "text", "text": text}],
+        }]}})
+        event = eb.parse_line(raw, manifest)[0]
+        assert event["summary"] == text[:200]
+        assert event["output"] == text[:eb.MAX_TOOL_RESULT_CHARS]
+        assert event["output_truncated"] is (length > eb.MAX_TOOL_RESULT_CHARS)
+        assert event["tool_use_id"] == "read-1"
+
+    def test_failed_tool_detail_is_retained(self, manifest):
+        text = "Error: Allow searching the web?"
+        raw = json.dumps({"type": "user", "message": {"content": [{
+            "type": "tool_result", "tool_use_id": "search-1", "is_error": True, "content": text,
+        }]}})
+        event = eb.parse_line(raw, manifest)[0]
+        assert event["success"] is False
+        assert event["output"] == text
+        assert event["output_truncated"] is False
+
     def test_done_carries_latency_and_iterations(self, manifest):
         d = eb.parse_line(LINE_DONE, manifest)[0]
         assert d["type"] == "done"
@@ -612,3 +635,355 @@ class TestWorkspaceRetention:
         (root / "qoder-cli" / "t").mkdir(parents=True)
         assert ce.sweep_expired_workspaces(0) == 0
         assert (root / "qoder-cli" / "t").exists()
+
+
+# 生命周期回归：虚拟时钟 + 假进程，绝不启动真实 CLI 或消耗额度。
+@pytest.fixture
+def cli_process(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from core.cli_engine import runner
+
+    clock = [0.0]
+    script = []
+    budgets = []
+    reaped = []
+
+    async def readline():
+        delay, line = script.pop(0) if script else (0, "")
+        clock[0] += delay
+        return line.encode()
+
+    proc = SimpleNamespace(stdout=SimpleNamespace(readline=readline), returncode=None)
+
+    async def spawn(*args, **kwargs):
+        return proc
+
+    async def wait_for(coro, timeout):
+        budgets.append(timeout)
+        if script and script[0][0] > timeout:
+            clock[0] += timeout
+            coro.close()
+            raise asyncio.TimeoutError
+        return await coro
+
+    async def sleep(delay):
+        clock[0] += delay
+
+    async def reap(p):
+        reaped.append(p)
+        if p.returncode is None:
+            p.returncode = 0
+
+    monkeypatch.setattr(runner.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(runner.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(runner.asyncio, "wait_for", wait_for)
+    monkeypatch.setattr(runner.asyncio, "sleep", sleep)
+    monkeypatch.setattr(runner, "_reap", reap)
+
+    async def collect(lines, consume=None, **kwargs):
+        script.extend(lines)
+        events = []
+        async for event in runner.run_cli_agent(
+            stream_id="test-turn", engine_id="qoder-cli", cli_path="fake-cli",
+            workspace=".", add_dirs=[], brief="离线测试", auth_tier="workspace_write", **kwargs,
+        ):
+            events.append(event)
+            if consume:
+                consume(event)
+        assert not runner.active_streams()
+        assert "test-turn" not in runner._CANCELLED
+        assert reaped
+        return events
+
+    return SimpleNamespace(collect=collect, proc=proc, budgets=budgets, clock=clock, runner=runner)
+
+
+class TestCliLifecycle:
+    @pytest.mark.parametrize("lines,options,reason", [
+        ([(61, LINE_INIT)], {}, "first_event_timeout"),
+        ([(1, LINE_INIT), (181, LINE_DONE)], {}, "idle_timeout"),
+        ([(1, LINE_INIT), (10, LINE_DONE)], {"total_timeout": 5}, "total_timeout"),
+        ([(40, LINE_HOOK), (21, LINE_INIT)], {}, "first_event_timeout"),
+        ([(1, LINE_INIT), (120, LINE_HOOK), (61, LINE_DONE)], {}, "idle_timeout"),
+    ])
+    def test_timeout_has_one_error_and_no_success_done(self, cli_process, lines, options, reason):
+        import asyncio
+        events = asyncio.run(cli_process.collect(lines, **options))
+        terminals = [e for e in events if e["type"] in ("error", "done")]
+        assert len(terminals) == 1
+        assert terminals[0]["type"] == "error"
+        assert terminals[0]["engine_error"] == reason
+        assert "额度不足" not in terminals[0]["content"]
+
+    def test_later_output_can_exceed_first_frame_budget(self, cli_process):
+        import asyncio
+        events = asyncio.run(cli_process.collect([(1, LINE_INIT), (90, LINE_DONE)]))
+        assert events[-1]["status"] == "completed"
+        assert cli_process.budgets == [60, 180]
+
+    def test_manifest_timeouts_and_explicit_override(self, cli_process, monkeypatch):
+        import asyncio
+        manifest = mf.load_manifest("qoder-cli")
+        manifest["timeout"] = {"first_event_seconds": 7, "idle_seconds": 11, "total_seconds": 30}
+        monkeypatch.setattr(cli_process.runner, "load_manifest", lambda _: manifest)
+        events = asyncio.run(cli_process.collect([(6, LINE_INIT), (10, LINE_DONE)]))
+        assert events[-1]["status"] == "completed"
+        assert cli_process.budgets == [7, 11]
+        events = asyncio.run(cli_process.collect([(2, LINE_INIT)], first_event_timeout=1))
+        assert events[-1]["engine_error"] == "first_event_timeout"
+
+    @pytest.mark.parametrize("returncode", [0, 1, -9])
+    def test_eof_without_result_is_incomplete_not_success(self, cli_process, returncode):
+        import asyncio
+        cli_process.proc.returncode = returncode
+        events = asyncio.run(cli_process.collect([(0, LINE_INIT)]))
+        assert events[-1]["type"] == "error"
+        assert events[-1]["status"] == "incomplete"
+
+    def test_cli_error_not_followed_by_done(self, cli_process):
+        import asyncio
+        events = asyncio.run(cli_process.collect([(0, LINE_CREDIT_ERROR), (0, LINE_DONE)]))
+        assert len(events) == 1
+        assert events[0]["engine_error"] == "credit_exhausted"
+
+    def test_write_success_survives_later_timeout(self, cli_process):
+        import asyncio
+        writes = []
+        call = json.dumps({"type": "assistant", "message": {"content": [{
+            "type": "tool_use", "id": "call_1", "name": "mcp__oms__revise_insight_board", "input": {"html": "<section>内容</section>"},
+        }]}})
+        events = asyncio.run(cli_process.collect(
+            [(0, call), (0, LINE_TOOL_RESULT_1), (181, LINE_DONE)], on_write_success=writes.append))
+        assert writes == ["mcp__oms__revise_insight_board"]
+        assert events[-1]["engine_error"] == "idle_timeout"
+        assert events[1]["success"] is True
+
+    def test_typewriter_respects_total_timeout(self, cli_process):
+        import asyncio
+        text = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "字" * 1000}]}})
+        events = asyncio.run(cli_process.collect([(0, text), (0, LINE_DONE)], total_timeout=0.05))
+        assert events[-1]["engine_error"] == "total_timeout"
+        assert len(events) < 10
+
+    def test_explicit_cancel_is_not_failure(self, cli_process):
+        import asyncio
+
+        def stop(evt):
+            if evt["type"] == "stage":
+                # 假进程已退出；禁止测试向任何真实进程发送信号。
+                cli_process.proc.returncode = -9
+                assert cli_process.runner.cancel_stream("test-turn")
+
+        events = asyncio.run(cli_process.collect([(0, LINE_INIT), (0, LINE_DONE)], consume=stop))
+        assert events[-1]["status"] == "cancelled"
+        assert not any(e["type"] == "error" for e in events)
+
+    def test_asgi_disconnect_still_reaps_process(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        import anyio
+
+        from core.cli_engine import runner
+
+        reaped = []
+
+        async def run():
+            started = anyio.Event()
+
+            async def readline():
+                started.set()
+                await anyio.sleep_forever()
+
+            proc = SimpleNamespace(stdout=SimpleNamespace(readline=readline), returncode=None)
+
+            async def reap(p):
+                await anyio.sleep(0)
+                p.returncode = -9
+                reaped.append(p)
+
+            monkeypatch.setattr(runner.asyncio, "create_subprocess_exec", AsyncMock(return_value=proc))
+            monkeypatch.setattr(runner, "_reap", reap)
+
+            async def consume():
+                async for _ in runner.run_cli_agent(stream_id="disconnect", engine_id="qoder-cli",
+                        cli_path="fake", workspace=".", add_dirs=[], brief="test", auth_tier="workspace_write"):
+                    pass
+
+            async with anyio.create_task_group() as group:
+                group.start_soon(consume)
+                await started.wait()
+                group.cancel_scope.cancel()
+
+        asyncio.run(run())
+        assert len(reaped) == 1
+        assert "disconnect" not in runner._ACTIVE
+        assert "disconnect" not in runner._CANCELLED
+
+    def test_cancel_between_main_and_retry_prevents_new_process(self, monkeypatch):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from core.cli_engine import runner
+        spawn = AsyncMock(side_effect=AssertionError("不能启动补写进程"))
+        monkeypatch.setattr(runner.asyncio, "create_subprocess_exec", spawn)
+
+        async def run():
+            with runner.stream_scope("gap"):
+                assert runner.cancel_stream("gap")
+                return [e async for e in runner.run_cli_agent(stream_id="gap", engine_id="qoder-cli",
+                    cli_path="fake", workspace=".", add_dirs=[], brief="test", auth_tier="workspace_write")]
+
+        assert asyncio.run(run()) == [{"type": "done", "status": "cancelled", "cancelled": True}]
+        spawn.assert_not_called()
+        assert "gap" not in runner._CANCELLED
+
+
+@pytest.fixture
+def agent_route(monkeypatch):
+    from types import SimpleNamespace
+
+    import app.routers.chat as chat
+    cfg = {"enabled": True, "engine_id": "qoder-cli", "model": None,
+           "session_persistence": False, "auth_tier": "workspace_write"}
+    monkeypatch.setattr(chat, "get_chat_engine_config", lambda: cfg)
+    monkeypatch.setattr(chat, "probe_engine", lambda *a: {"available": True, "path": "fake-cli"})
+    monkeypatch.setattr(chat, "build_speaker_name_map", lambda *a: {})
+    monkeypatch.setattr(chat, "resolve_agent_role", lambda *a: None)
+    monkeypatch.setattr(chat, "export_context", lambda **kw: {"workspace": ".", "add_dirs": ["."], "brief": "用户任务：生成洞察板"})
+    monkeypatch.setattr(chat, "manifest_has_mcp", lambda *a: True)
+    configs = []
+    teardown = []
+
+    def build(**kwargs):
+        configs.append(kwargs)
+        return "fake-config", SimpleNamespace(token="test-token"), ["revise_insight_board"]
+
+    monkeypatch.setattr(chat, "build_bridge_config", build)
+    monkeypatch.setattr(chat, "teardown_bridge", lambda *a: teardown.append(a))
+    data = chat.ChatRequest(message="生成洞察板", task_id="fake-task", engine="agent", stream_id="route-test")
+    calls = []
+    closed = []
+
+    def setup(main, retry=()):
+        async def fake_run(**kwargs):
+            index = len(calls)
+            calls.append(kwargs)
+            if index == 1:
+                assert closed == [0], "主进程必须在补写前关闭"
+            try:
+                for original in (main if index == 0 else retry):
+                    event = dict(original)
+                    if event.pop("_write", False):
+                        kwargs["on_write_success"]("mcp__oms__revise_insight_board")
+                    yield event
+            finally:
+                closed.append(index)
+        monkeypatch.setattr(chat, "run_cli_agent", fake_run)
+
+    async def collect():
+        return [e async for e in chat._agent_engine_events(data, data.message, "project", "http://localhost:9999")]
+
+    return SimpleNamespace(chat=chat, cfg=cfg, data=data, setup=setup, collect=collect,
+                           calls=calls, closed=closed, configs=configs, teardown=teardown)
+
+
+_SEARCH_EVENT = {"type": "tool_call", "id": "c1", "name": "web_search", "args": {}}
+_SUCCESS_EVENT = {"type": "done", "status": "completed", "metadata": {"model": "test"}}
+_BOARD_CALL = {"type": "tool_call", "id": "c1", "name": "revise_insight_board", "args": {"html": "<section>内容</section>"}}
+_BOARD_RESULT = {"type": "tool_result", "tool_use_id": "c1", "success": True, "summary": "revision=1", "_write": True}
+
+
+class TestBoardRetryLifecycle:
+    @pytest.mark.parametrize("terminal", [
+        {"type": "error", "status": "error", "content": "timeout"},
+        {"type": "done", "status": "cancelled", "cancelled": True},
+        {"type": "error", "status": "incomplete"},
+        {"type": "done", "cancelled": True},
+        {"type": "done"},
+        {**_SUCCESS_EVENT, "error": "partial failure"},
+        {**_SUCCESS_EVENT, "permission_denials": [{"tool_name": "Write"}]},
+    ])
+    def test_no_retry_on_failure_cancellation_or_unconfirmed_completion(self, agent_route, terminal):
+        import asyncio
+        # 复现旧链路的 error → done；第一个终态后不能静默补写。
+        agent_route.setup([_SEARCH_EVENT, terminal, _SUCCESS_EVENT])
+        events = asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 1
+        assert len([e for e in events if e["type"] in ("error", "done")]) == 1
+        assert agent_route.teardown == [("fake-config", "test-token")]
+
+    @pytest.mark.parametrize("blocked", ["readonly", "tool_error", "permission_denied", "already_written"])
+    def test_retry_honors_effective_permissions_and_write_facts(self, agent_route, blocked):
+        import asyncio
+        middle = []
+        if blocked == "readonly":
+            agent_route.cfg.update(auth_tier="readonly", auth_tier_explicit=True)
+        elif blocked == "tool_error":
+            middle = [{"type": "tool_result", "success": False}]
+        elif blocked == "permission_denied":
+            middle = [{"type": "stage", "hint_key": "cli_engine_permission_denied"}]
+        else:
+            middle = [_BOARD_CALL, _BOARD_RESULT]
+        agent_route.setup([_SEARCH_EVENT, *middle, _SUCCESS_EVENT])
+        asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 1
+
+    def test_retry_in_same_stream_forwards_results_and_write_metadata(self, agent_route):
+        import asyncio
+        agent_route.setup([_SEARCH_EVENT, {"type": "token", "content": "主轮参考资料"}, _SUCCESS_EVENT],
+                          [_BOARD_CALL, _BOARD_RESULT, _SUCCESS_EVENT])
+        events = asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 2
+        main, retry = agent_route.calls
+        assert main["stream_id"] == retry["stream_id"] == "route-test"
+        assert retry["mcp_config"] == main["mcp_config"]
+        assert retry["auth_tier"] == main["auth_tier"]
+        assert 0 < retry["total_timeout"] <= 300
+        assert "主轮参考资料" in retry["brief"]
+        assert agent_route.configs[0]["base_url"] == "http://localhost:9999"
+        assert agent_route.configs[0]["turn_id"] == "route-test"
+        assert len(agent_route.configs) == 1
+        assert [e["status"] for e in events if e.get("stage") == "board_retry"] == ["running", "done"]
+        assert next(e for e in events if e.get("type") == "tool_result")["tool_use_id"] == "board-retry:c1"
+        assert events[-1]["metadata"]["rewritten"] is True
+        assert events[-1]["metadata"]["turn_id"] == "route-test"
+        assert events[-1]["metadata"]["rewritten_tools"] == ["revise_insight_board"]
+        assert len([e for e in events if e["type"] == "done"]) == 1
+
+    @pytest.mark.parametrize("written", [False, True])
+    def test_retry_error_keeps_actual_write_fact(self, agent_route, written):
+        import asyncio
+        retry = [_BOARD_CALL, _BOARD_RESULT] if written else []
+        retry.append({"type": "error", "status": "error", "content": "等待后续输出超时"})
+        agent_route.setup([_SEARCH_EVENT, _SUCCESS_EVENT], retry)
+        events = asyncio.run(agent_route.collect())
+        assert events[-1]["type"] == "error"
+        assert events[-1]["metadata"]["rewritten"] is written
+        assert events[-1]["metadata"]["board_retry"] == ("done" if written else "error")
+        assert not any(e["type"] == "done" for e in events)
+
+    def test_retry_no_write_is_not_success(self, agent_route):
+        import asyncio
+        agent_route.setup([_SEARCH_EVENT, _SUCCESS_EVENT], [_SUCCESS_EVENT])
+        events = asyncio.run(agent_route.collect())
+        assert events[-1]["hint_key"] == "cli_board_retry_no_write"
+        assert events[-1]["metadata"]["rewritten"] is False
+
+    def test_disconnection_closes_retry_before_bridge_teardown(self, agent_route):
+        import asyncio
+        agent_route.setup([_SEARCH_EVENT, _SUCCESS_EVENT], [_BOARD_CALL, _BOARD_RESULT, _SUCCESS_EVENT])
+
+        async def disconnect():
+            events = agent_route.chat._agent_engine_events(agent_route.data, "生成洞察板", None)
+            async for event in events:
+                if event.get("id") == "board-retry:c1":
+                    await events.aclose()
+                    break
+
+        asyncio.run(disconnect())
+        assert agent_route.closed == [0, 1]
+        assert agent_route.teardown == [("fake-config", "test-token")]

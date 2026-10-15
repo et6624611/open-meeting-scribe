@@ -46,8 +46,10 @@ export interface ChatMessage {
   metadata?: LlmMetadata
   sources?: SourceFile[]
   performance?: MessagePerformance
-  /** Agent 思考阶段列表 / Agent thinking stages */
+  /** 本轮执行记录；与答复共同持久化 */
   stages?: AgentStage[]
+  executionId?: string
+  executionState?: 'running' | 'done' | 'error' | 'stopped' | 'interrupted'
   /** 本轮实际消费方与计费回显（REQ-EXPERT-MODE §2.3，与 routing 判定一致） */
   modelUsage?: ModelUsage
   /** 发送时快照（编辑再发送回填用）：模式 + 问答模型 + 智能体引擎模型 */
@@ -84,11 +86,17 @@ export interface ModelUsage {
 
 /** Agent 思考阶段 / Agent thinking stage */
 export interface AgentStage {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'generating'
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'generating' | 'board_retry'
   label: string
   icon?: string
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'error' | 'denied' | 'stopped' | 'interrupted'
+  /** 列表摘要，兼容旧会话 */
   detail?: string
+  /** 请求与结果分开存放，不相互覆盖；以纯文本渲染 */
+  input?: string
+  output?: string
+  inputTruncated?: boolean
+  outputTruncated?: boolean
   /** 工具调用 id（智能体模式并行工具按此配对，不靠数组下标） */
   id?: string
   /** 工具原始名（含 mcp__ 前缀）：完成护栏按名定性与 tool_result 不带 name 时回溯用 */
@@ -187,7 +195,7 @@ export async function sendMessage(
     message,
     task_id: options?.task_id,
     project_id: options?.project_id,
-    history: options?.history,
+    history: options?.history?.map(({ role, content }) => ({ role, content })),
     realtime_transcripts: options?.realtime_transcripts,
     mode: options?.mode || 'agent',
     model: options?.model || undefined, // 缺省不写死：后端跟随详情 llm.model（REQ-EXPERT-MODE §2.3）
@@ -200,15 +208,27 @@ export async function sendMessage(
   return data
 }
 
+/** CLI 权威终态；旧 SSE 可省略，消费端仍需防御 error → done。 */
+export type ExecutionStatus = 'completed' | 'error' | 'cancelled' | 'incomplete'
+export interface StreamErrorDetails {
+  hint_key?: string
+  hint_params?: Record<string, unknown>
+  status?: ExecutionStatus
+  metadata?: LlmMetadata
+}
+
 /** 流式 SSE 事件回调 / Streaming SSE event callbacks */
 export interface StreamCallbacks {
   onToken: (token: string) => void
-  onStage: (stage: { stage: string; label: string; label_en?: string; hint_key?: string; hint_params?: Record<string, unknown> }) => void
+  onStage: (stage: { stage: string; label: string; status?: AgentStage['status']; label_en?: string; hint_key?: string; hint_params?: Record<string, unknown> }) => void
   onToolCall: (tool: { name: string; label: string; label_en?: string; icon: string; args: Record<string, unknown>; id?: string }) => void
-  onToolResult: (result: { name: string; summary: string; success: boolean; tool_use_id?: string }) => void
+  onToolResult: (result: { name: string; summary: string; success: boolean; tool_use_id?: string; output?: string; output_truncated?: boolean }) => void
   /** 智能体模式路由回显（§3.9-1）：本次由哪个引擎/授权档执行，含 auto 自动选中标记 */
   onEngineRoute?: (info: { engine: string; display_name: string; name_key?: string; auth_tier: string; session_id?: string; auto_selected?: boolean }) => void
   onDone: (data: {
+    status?: ExecutionStatus
+    cancelled?: boolean
+    error?: string
     metadata?: LlmMetadata
     latency_ms?: number
     sources?: SourceFile[]
@@ -224,8 +244,9 @@ export interface StreamCallbacks {
     model_usage?: ModelUsage
     /** 完成护栏：写回事实（仅智能体链路；问答路径无此字段） */
     rewritten?: boolean
+    permission_denials?: Array<{ tool_name?: string; tool_use_id?: string; decision_reason?: string }>
   }) => void
-  onError: (error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) => void
+  onError: (error: string, extra?: StreamErrorDetails) => void
 }
 
 /** 流式发送消息（SSE） / Send message with streaming via SSE */
@@ -242,7 +263,7 @@ export async function sendMessageStream(
       message,
       task_id: options?.task_id,
       project_id: options?.project_id,
-      history: options?.history,
+      history: options?.history?.map(({ role, content }) => ({ role, content })),
       realtime_transcripts: options?.realtime_transcripts,
       mode: options?.mode || 'agent',
       model: options?.model || undefined, // 缺省不写死：后端跟随详情 llm.model（REQ-EXPERT-MODE §2.3）
@@ -309,7 +330,7 @@ export async function sendMessageStream(
             callbacks?.onDone(event)
           } else if (event.type === 'error') {
             callbacks?.onError(event.content || 'Unknown error',
-              { hint_key: event.hint_key, hint_params: event.hint_params })
+              { hint_key: event.hint_key, hint_params: event.hint_params, status: event.status, metadata: event.metadata })
           }
         } catch {
           // Skip malformed JSON lines

@@ -24,6 +24,10 @@ import asyncio
 import logging
 import os
 import signal
+import time
+from contextlib import contextmanager
+
+from anyio import CancelScope
 
 from core.cli_engine import event_bridge as bridge
 from core.cli_engine.manifest import compile_auth_argv, load_manifest
@@ -32,6 +36,25 @@ logger = logging.getLogger(__name__)
 
 # 活跃进程注册表：stream_id → Process（真取消用）；进程内单例
 _ACTIVE: dict[str, asyncio.subprocess.Process] = {}
+# 同一会话轮次可顺序执行主轮和补写；取消标记覆盖两进程之间的空档。
+_CANCELLED: dict[str, bool] = {}
+
+
+@contextmanager
+def stream_scope(stream_id: str):
+    """把主轮与补写绑定到同一个可取消生命周期。"""
+    owner = stream_id not in _CANCELLED
+    _CANCELLED.setdefault(stream_id, False)
+    try:
+        yield
+    finally:
+        if owner:
+            _CANCELLED.pop(stream_id, None)
+
+
+class _UserCancelledError(Exception):
+    """用户主动停止，不当作引擎故障。"""
+
 
 # 打字机切片节奏（M1）：每片字符数与片间延迟（秒）
 _TYPEWRITER_SIZE = 18
@@ -64,8 +87,9 @@ async def run_cli_agent(
     resume: bool = False,
     mcp_config: str | None = None,
     allowed_tools: list[str] | None = None,
-    first_event_timeout: int = 60,
-    total_timeout: int = 300,
+    first_event_timeout: float | None = None,
+    idle_timeout: float | None = None,
+    total_timeout: float | None = None,
     on_write_success=None,
 ):
     """
@@ -79,6 +103,16 @@ async def run_cli_agent(
     manifest = load_manifest(engine_id)
     argv = manifest.get("argv", {})
     caps = manifest.get("capabilities", {}) or {}
+    timeouts = manifest.get("timeout") or {}
+    first_event_timeout = float(first_event_timeout if first_event_timeout is not None else timeouts.get("first_event_seconds", 60))
+    # CLI 常在整段生成完后才输出，后续等待不能沿用启动首帧预算。
+    idle_timeout = float(idle_timeout if idle_timeout is not None else timeouts.get("idle_seconds", 180))
+    total_timeout = float(total_timeout if total_timeout is not None else timeouts.get("total_seconds", 300))
+    if min(first_event_timeout, idle_timeout, total_timeout) <= 0:
+        raise ValueError("CLI 超时配置必须为正数")
+    if _CANCELLED.get(stream_id):
+        yield {"type": "done", "status": "cancelled", "cancelled": True}
+        return
 
     cmd: list[str] = [cli_path, *argv.get("base", ["-p", "--output-format", "stream-json"])]
     model_flag = argv.get("model_flag", "-m")
@@ -146,7 +180,15 @@ async def run_cli_agent(
         raise CliAgentError(f"无法启动 CLI 引擎：{e}", hint_key="cli_engine_start_failed", detail=str(e)) from e
 
     _ACTIVE[stream_id] = proc
-    got_result = False
+    owns_cancel = stream_id not in _CANCELLED
+    _CANCELLED.setdefault(stream_id, False)
+    terminal: dict | None = None
+    started = time.monotonic()
+    total_deadline = started + total_timeout
+    phase_deadline = started + first_event_timeout
+    seen_event = False
+    last_event = "none"
+    timeout_kind = "first_event"
     # 完成护栏配对（§5.4）：tool_call 先行记录 id→name，tool_result 只带 tool_use_id，
     # 按 id 回溯名字后才能判定"写工具成功落盘"（读写双语义工具的读调用不在写工具集，自然排除）
     # persists=False 的是"名义 write、实际不落盘"的提案信号（propose_summary / propose_notes），
@@ -160,24 +202,39 @@ async def run_cli_agent(
     call_info: dict[str, dict] = {}  # id → {name, args}
     try:
         while True:
-            try:
-                line = await asyncio.wait_for(proc.stdout.readline(), timeout=first_event_timeout)
-            except asyncio.TimeoutError:
-                yield {bridge.EV_TYPE_KEY: bridge.EV_ERROR,
-                       "content": "引擎首帧超时，可能额度不足或环境异常",
-                       "hint_key": "cli_engine_first_event_timeout",
-                       "hint_params": {"engine": manifest.get("display_name", "CLI")},
-                       "engine_error": "timeout"}
-                break
+            if _CANCELLED.get(stream_id):
+                raise _UserCancelledError
+            timeout_kind = "total" if total_deadline <= phase_deadline else "idle" if seen_event else "first_event"
+            remaining = min(total_deadline, phase_deadline) - time.monotonic()
+            if remaining <= 0:
+                raise asyncio.TimeoutError
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=remaining)
+            if _CANCELLED.get(stream_id):
+                raise _UserCancelledError
             if not line:
-                break  # EOF
+                # 退出码为 0 也不能代替 CLI 的成功 result。
+                terminal = {"type": "error", "status": "incomplete", "content": "引擎连接已结束，但未收到完成结果；已写入的内容不会自动撤销。",
+                            "hint_key": "cli_engine_incomplete", "engine_error": "missing_result"}
+                break
             raw = line.decode("utf-8", "replace")
-            for evt in bridge.parse_line(raw, manifest):
-                if evt[bridge.EV_TYPE_KEY] == bridge.EV_TOKEN:
-                    # M1 打字机合成：整段 text 切片逐帧推
+            events = bridge.parse_line(raw, manifest)
+            if events:
+                seen_event = True
+                phase_deadline = time.monotonic() + idle_timeout
+            for evt in events:
+                last_event = evt[bridge.EV_TYPE_KEY]
+                if last_event == bridge.EV_TOKEN:
+                    # 合成打字机也受总时限与取消控制，不因超长正文无限延迟终态。
+                    timeout_kind = "total"
                     for piece in bridge.chunk_text(evt.get("content", ""), _TYPEWRITER_SIZE):
+                        if _CANCELLED.get(stream_id):
+                            raise _UserCancelledError
+                        remaining = total_deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise asyncio.TimeoutError
                         yield {bridge.EV_TYPE_KEY: bridge.EV_TOKEN, "content": piece}
-                        await asyncio.sleep(_TYPEWRITER_DELAY)
+                        await asyncio.sleep(min(_TYPEWRITER_DELAY, remaining))
+                    phase_deadline = time.monotonic() + idle_timeout
                 else:
                     if on_write_success is not None:
                         if evt[bridge.EV_TYPE_KEY] == bridge.EV_TOOL_CALL and evt.get("id"):
@@ -202,18 +259,42 @@ async def run_cli_agent(
                                 else:
                                     on_write_success(bare)
                     if evt[bridge.EV_TYPE_KEY] in (bridge.EV_DONE, bridge.EV_ERROR):
-                        got_result = True
+                        terminal = evt
+                        terminal.setdefault("status", "completed" if last_event == bridge.EV_DONE else "error")
+                        break
                     yield evt
-            if got_result:
+            if terminal is not None:
                 break
+    except _UserCancelledError:
+        terminal = {"type": "done", "status": "cancelled", "cancelled": True}
+    except asyncio.TimeoutError:
+        label = {"first_event": "等待首次输出超时", "idle": "等待后续输出超时", "total": "执行总时限已到"}[timeout_kind]
+        terminal = {"type": "error", "status": "error", "content": f"引擎{label}；已写入的内容不会自动撤销。",
+                    "hint_key": f"cli_engine_{timeout_kind}_timeout", "engine_error": f"{timeout_kind}_timeout"}
+    except Exception as exc:
+        terminal = {"type": "error", "status": "error", "content": "引擎输出读取失败",
+                    "hint_key": "cli_engine_stream_error", "engine_error": "stream_error"}
+        # 不记录原始工具参数/输出，避免日志泄漏业务数据。
+        logger.warning("[CLI引擎] 读流失败 stream=%s exception=%s", stream_id, type(exc).__name__)
     finally:
-        _ACTIVE.pop(stream_id, None)
-        await _reap(proc)
+        try:
+            # ASGI 断连会持续取消 await；屏蔽清理阶段的取消，先确认子进程退出再回收桥。
+            with CancelScope(shield=True):
+                await _reap(proc)
+        finally:
+            _ACTIVE.pop(stream_id, None)
+            if _CANCELLED.get(stream_id):
+                terminal = {"type": "done", "status": "cancelled", "cancelled": True}
+            if owns_cancel:
+                _CANCELLED.pop(stream_id, None)
 
-    if not got_result:
-        # 未见 result 事件即 EOF：进程被取消/异常终止，补一个 done 保持协议完整
-        yield {bridge.EV_TYPE_KEY: bridge.EV_DONE, "metadata": {"model": model or engine_id},
-               "cancelled": proc.returncode not in (0, None)}
+    if terminal is not None:
+        terminal.setdefault("hint_params", {"engine": manifest.get("display_name", "CLI")})
+        logger.info("[CLI引擎] 结束 stream=%s status=%s reason=%s last_event=%s elapsed=%.3f returncode=%s",
+                    stream_id, terminal.get("status"), terminal.get("engine_error", ""), last_event,
+                    time.monotonic() - started, proc.returncode)
+        # 回收后只发送一个权威终态；错误/EOF 绝不再补成功 done。
+        yield terminal
 
 
 def _resolve(path: str):
@@ -249,9 +330,12 @@ def cancel_stream(stream_id: str) -> bool:
 
     返回是否命中活跃进程。由 /api/chat/cancel 端点调用（fetch abort 不足以终止任务，§3.9-5）。
     """
+    if stream_id not in _CANCELLED:
+        return False
+    _CANCELLED[stream_id] = True
     proc = _ACTIVE.get(stream_id)
     if not proc or proc.returncode is not None:
-        return False
+        return True
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):

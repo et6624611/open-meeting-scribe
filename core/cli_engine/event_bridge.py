@@ -34,6 +34,9 @@ EV_ERROR = "error"
 # 额度耗尽专项映射（§4）
 _CREDIT_EXHAUSTED_CODE = "118"
 
+# 展开详情独立于列表摘要；限制体量，避免长工具输出撑满会话存储。
+MAX_TOOL_RESULT_CHARS = 16000
+
 
 def parse_line(raw_line: str, manifest: dict) -> list[dict]:
     """
@@ -115,6 +118,8 @@ def parse_line(raw_line: str, manifest: dict) -> list[dict]:
                     "tool_use_id": block.get("tool_use_id"),
                     "success": not is_err,
                     "summary": summary[:200],
+                    "output": summary[:MAX_TOOL_RESULT_CHARS],
+                    "output_truncated": len(summary) > MAX_TOOL_RESULT_CHARS,
                 })
         return out
 

@@ -447,13 +447,38 @@ export function useAiChat() {
     let turnHasProposal = false
     let toolWriteOk = false
 
-    const loadingIdx = aiSessions.activeMessages.length
-    const assistantMsg: ChatMessage = { role: 'assistant', content: '', timestamp: new Date().toISOString() }
-    aiSessions.activeMessages.push(assistantMsg)
-    // 写回必须经响应式代理（数组下标读取）：直接改 push 前的 raw 引用会绕过 Vue 依赖收集，
-    // 导致流式 token 全程不触发重渲染、直到 done 才一次性出现（2026-09-29 浏览器 MutationObserver 实测）。
-    // 代理与 raw 共享同一 target，读 assistantMsg 仍能拿到最新值。
-    const liveMsg = (): ChatMessage => (aiSessions.activeMessages[loadingIdx] as ChatMessage) ?? assistantMsg
+    const turnMessages = aiSessions.activeMessages
+    turnMessages.push({
+      role: 'assistant', content: '', timestamp: new Date().toISOString(),
+      stages: stages.value, executionId: streamId, executionState: 'running',
+    })
+    // 捕获本轮响应式消息，切换会话后仍写原消息，不按当前会话的数组下标寻址。
+    const assistantMsg = turnMessages[turnMessages.length - 1]!
+    const liveMsg = (): ChatMessage => assistantMsg
+    const turnStages = assistantMsg.stages!
+    const TRACE_LIMIT = 16000
+
+    function finishExecution(state: NonNullable<ChatMessage['executionState']>) {
+      // 兼容旧后端 error → done：协议收尾不得把消息级失败改成成功。
+      if (state === 'done' && assistantMsg.executionState !== 'running') return
+      assistantMsg.executionState = state
+      for (const stage of turnStages) {
+        if (stage.status !== 'running') continue
+        // 未收到工具结果，不等同于成功；并行工具也只能由各自结果确认。
+        stage.status = state === 'stopped' ? 'stopped'
+          : state === 'done' && stage.type !== 'tool_call' && stage.type !== 'board_retry' ? 'done' : 'interrupted'
+      }
+      aiSessions.persist()
+    }
+
+    function recordError(detail: string, state: 'error' | 'interrupted' = 'error') {
+      if (!assistantMsg.content) assistantMsg.content = `${tt('ai-panel.chat_error_prefix')}${detail}`
+      turnStages.push({
+        type: 'generating', label: tt('ai-panel.execution.error_label'), status: state,
+        output: detail.slice(0, TRACE_LIMIT), outputTruncated: detail.length > TRACE_LIMIT,
+      })
+      finishExecution(state)
+    }
 
     // 本轮内「写板」工具调用的 id 集（读语义不带 html，不计入）：
     // 两引擎的 tool_result 都只带 tool_use_id（CLI 侧不带 name），故先按 call 的 args 定性、再按 id 配对结果
@@ -491,13 +516,24 @@ export function useAiChat() {
           // 更新或添加思考阶段 / Update or add thinking stage
           // 智能体引擎文案 i18n 化：携 hint_key 时按当前 locale 翻译，否则用 label 兜底
           const stageLabel = resolveEngineText(stageData.hint_key, stageData.label, stageData.hint_params)
-          const existing = stages.value.find(s => s.type === stageData.stage)
+          if (stageData.stage === 'board_retry') {
+            const retry = turnStages.find(s => s.type === 'board_retry')
+            if (retry) {
+              retry.label = stageLabel
+              retry.status = stageData.status || 'running'
+            } else {
+              turnStages.push({ type: 'board_retry', label: stageLabel, status: stageData.status || 'running' })
+            }
+            aiSessions.persist()
+            return
+          }
+          const existing = stages.value.find(s => s.type === stageData.stage && s.status === 'running')
           if (existing) {
             existing.label = stageLabel
           } else if (stageData.stage === 'thinking' || stageData.stage === 'generating') {
             // 将之前的 running 阶段标记为 done / Mark previous running stages as done
             stages.value.forEach(s => {
-              if (s.status === 'running') s.status = 'done'
+              if (s.status === 'running' && s.type !== 'tool_call' && s.type !== 'board_retry') s.status = 'done'
             })
             stages.value.push({
               type: stageData.stage as 'thinking' | 'generating',
@@ -505,6 +541,7 @@ export function useAiChat() {
               status: 'running',
             })
           }
+          aiSessions.persist()
         },
         onToolCall(tool) {
           // 洞察板自动同步：记住本轮哪些调用是「写板」，待其结果成功回传时广播板已更新
@@ -534,8 +571,9 @@ export function useAiChat() {
           }
           // 将之前的 running 阶段标记为 done / Mark previous running stages as done
           stages.value.forEach(s => {
-            if (s.status === 'running') s.status = 'done'
+            if (s.status === 'running' && s.type !== 'tool_call' && s.type !== 'board_retry') s.status = 'done'
           })
+          const input = JSON.stringify(tool.args || {}, null, 2)
           stages.value.push({
             type: 'tool_call',
             // 双语标签：manifest 同时下发 label(zh)+label_en，按当前 locale 选取（多 CLI 国际化）
@@ -545,18 +583,33 @@ export function useAiChat() {
             status: 'running',
             id: tool.id,
             name: tool.name,
-            detail: Object.values(tool.args || {}).join(', '),
+            detail: input.slice(0, 200),
+            input: input.slice(0, TRACE_LIMIT),
+            inputTruncated: input.length > TRACE_LIMIT,
           })
+          aiSessions.persist()
         },
         onToolResult(result) {
           // 按 id 精确配对（并行工具结果乱序回传，不可靠数组下标/label）
-          const toolStage = result.tool_use_id
-            ? [...stages.value].reverse().find(s => s.type === 'tool_call' && s.id === result.tool_use_id)
-            : [...stages.value].reverse().find(s => s.type === 'tool_call' && s.status === 'running')
-          if (toolStage) {
-            toolStage.status = result.success ? 'done' : 'error'
-            toolStage.detail = result.summary
+          const candidates = turnStages.filter(s => s.type === 'tool_call' && s.status === 'running'
+            && (!result.name || s.name === result.name))
+          let toolStage = result.tool_use_id
+            ? turnStages.find(s => s.type === 'tool_call' && s.id === result.tool_use_id)
+            : candidates.length === 1 ? candidates[0] : undefined
+          // 无法唯一配对时保留独立结果，不能错挂到另一个并行工具。
+          if (!toolStage) {
+            toolStage = { type: 'tool_result', label: result.name || tt('ai-panel.execution.output'), status: 'running', id: result.tool_use_id }
+            turnStages.push(toolStage)
+            toolStage = turnStages[turnStages.length - 1]!
           }
+          const output = result.output ?? result.summary
+          const denied = !result.success && /read[_-]only|forbidden|not.authori[sz]ed|permission.denied|needs approval|allow searching the web\?|未授权|需要授权|权限不足/i.test(output)
+          toolStage.status = result.success ? 'done' : denied ? 'denied' : 'error'
+          toolStage.detail = result.summary.slice(0, 200)
+          // 旧后端只有 summary 时不冒充完整结果，组件明确提示。
+          if (result.output !== undefined) toolStage.output = output.slice(0, TRACE_LIMIT)
+          toolStage.outputTruncated = !!result.output_truncated || output.length > TRACE_LIMIT
+          aiSessions.persist()
           // 档位拦截（403 read_only）：MCP 桥把 HTTP 403 正文放进 tool_result，拒绝不静默——
           // 挂拒绝卡，给出就地升档/新会话入口（见 AiChatPanel 末条气泡下的 ai-tier-deny）
           if (!result.success && /read_only|read-only|forbidden/i.test(result.summary)) {
@@ -612,12 +665,34 @@ export function useAiChat() {
               message_count: data.message_count ?? 0,
             }
           }
-          // 保存思考阶段到消息（完成后折叠显示） / Save stages to message (collapsed after done)
-          if (stages.value.length > 0) {
-            msg.stages = [...stages.value]
-            stages.value.forEach(s => { s.status = 'done' })
+          // 有些引擎只在终帧报告拒绝；按调用 id（缺失时唯一未完成的同名工具）归档。
+          for (const denial of data.permission_denials || []) {
+            const candidates = turnStages.filter(s => s.type === 'tool_call' && s.name === denial.tool_name
+              && ['running', 'error', 'denied'].includes(s.status))
+            const target = denial.tool_use_id ? turnStages.find(s => s.id === denial.tool_use_id)
+              : candidates.length === 1 ? candidates[0] : undefined
+            const detail = denial.decision_reason || tt('ai-panel.execution.denied')
+            if (target) {
+              target.status = 'denied'
+              if (!target.output) target.output = detail.slice(0, TRACE_LIMIT)
+            } else {
+              turnStages.push({ type: 'tool_result', label: denial.tool_name || tt('ai-panel.execution.tool'),
+                status: 'denied', output: detail.slice(0, TRACE_LIMIT), outputTruncated: detail.length > TRACE_LIMIT })
+            }
           }
-          aiSessions.persist()
+          // 异常终态不走成功护栏、自动命名或后续建议；旧 error → done 也不覆盖。
+          if (msg.executionState !== 'running') { aiSessions.persist(); return }
+          if (data.cancelled || data.status === 'cancelled' || ctrl.signal.aborted) {
+            if (!msg.content) msg.content = tt('ai-panel.execution.stopped_reply')
+            finishExecution('stopped')
+            return
+          }
+          if (data.error || data.status === 'error' || data.status === 'incomplete') {
+            recordError(data.error || tt('ai-panel.execution.interrupted_reply'), data.status === 'incomplete' ? 'interrupted' : 'error')
+            return
+          }
+          // 只结算仍在运行的阶段；失败、未授权及中断记录原样保留。
+          finishExecution('done')
 
           // 完成护栏（§5.4）：改写意图轮零写回 → 显式横幅，不让用户对着旧版本猜
           // 例外：纪要本轮产出了 propose_summary 提案（turnHasProposal）= 已正确响应改写意图（待用户接受），不亮横幅
@@ -637,31 +712,18 @@ export function useAiChat() {
           maybeAutoTitle(sessionAtSend)
           followUps.value = generateFollowUps(msg.content)
         },
-        onError(error: string, extra?: { hint_key?: string; hint_params?: Record<string, unknown> }) {
-          // 智能体引擎错误 i18n 化：携 hint_key 时按当前 locale 翻译
+        onError(error, extra) {
+          // 已写入事实与整轮失败并不冲突；错误终帧同样保留写回版本元数据。
+          if (extra?.metadata) assistantMsg.metadata = extra.metadata
           const errText = resolveEngineText(extra?.hint_key, error, extra?.hint_params)
-          if (!liveMsg().content) {
-            aiSessions.activeMessages.splice(loadingIdx, 1)
-            aiSessions.activeMessages.push({ role: 'assistant', content: `${tt('ai-panel.chat_error_prefix')}${errText}` })
-          }
-          aiSessions.persist()
+          recordError(errText, extra?.status === 'incomplete' ? 'interrupted' : 'error')
         },
       })
     } catch (e: unknown) {
-      if (assistantMsg.content) {
-        // 已有部分内容，保留已生成的文本 / Already have partial content, keep it
-        aiSessions.persist()
+      if (ctrl.signal.aborted || (e instanceof Error && e.name === 'AbortError')) {
+        if (!assistantMsg.content) assistantMsg.content = tt('ai-panel.execution.stopped_reply')
+        finishExecution('stopped')
       } else {
-        aiSessions.activeMessages.splice(loadingIdx, 1)
-      }
-      if (e instanceof Error && e.name === 'AbortError') {
-        if (assistantMsg.content) {
-          aiSessions.persist()
-        } else {
-          aiSessions.activeMessages.push({ role: 'assistant', content: '已停止生成。' })
-          aiSessions.persist()
-        }
-      } else if (!assistantMsg.content) {
         const err = e as { response?: { data?: unknown }; message?: string }
         const data = err.response?.data
         let detail = '请求失败'
@@ -682,17 +744,21 @@ export function useAiChat() {
         } else if (err.message) {
           detail = err.message
         }
-        aiSessions.activeMessages.push({ role: 'assistant', content: `${tt('ai-panel.chat_error_prefix')}${detail}` })
-        aiSessions.persist()
+        recordError(detail)
       }
     } finally {
+      if (assistantMsg.executionState === 'running') {
+        const state = ctrl.signal.aborted ? 'stopped' : 'interrupted'
+        if (!assistantMsg.content) assistantMsg.content = tt(`ai-panel.execution.${state}_reply`)
+        finishExecution(state)
+      }
       isLoading.value = false
       isStreaming.value = false
       thinkingStartTime.value = 0
       abortController.value = null
       currentStreamId.value = ''
-      // 延迟清空 stages，让 UI 有时间看到最终状态 / Delay clearing stages for UI
-      setTimeout(() => { stages.value = [] }, 300)
+      // 消息保留原数组；立即解绑临时引用，避免延迟清空误伤下一轮。
+      stages.value = []
     }
   }
 

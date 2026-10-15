@@ -498,7 +498,8 @@ function autoResize() {
 async function scrollFeed() {
   await nextTick()
   const feed = chatPanelRef.value?.feedRef
-  if (feed) feed.scrollTop = feed.scrollHeight
+  // 用户正在阅读执行详情时，不被流式回复的定时滚动拉走。
+  if (feed && !feed.querySelector('.ai-execution-step[open]')) feed.scrollTop = feed.scrollHeight
 }
 
 function runCommand(cmd: AiCommand, args?: string) { cmds.close(); inputText.value = ''; autoResize(); cmd.action(args) }
