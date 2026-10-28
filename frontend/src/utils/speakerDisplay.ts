@@ -96,3 +96,35 @@ export function ac8Mismatches(): string[] {
   }
   return bad
 }
+
+const DISAMBIG_SUFFIX_MAX = 8
+
+/**
+ * 重名消歧显示名（与后端 core/speakers.py resolve_display_names 同规则，改规则两侧同步）：
+ * 集合内同名 ≥2 才追加后缀「name · 备注」，备注空退角色，再退序号「name 2」；
+ * 不同名原样返回。纯派生，不改源数据。 / Duplicate-name disambiguation, pure derivation.
+ */
+export function resolveDisplayNames(
+  list: { id: string; name: string; role?: string; note?: string }[],
+): Map<string, string> {
+  const counts = new Map<string, number>()
+  for (const s of list) counts.set(s.name, (counts.get(s.name) || 0) + 1)
+  const seq = new Map<string, number>()
+  const out = new Map<string, string>()
+  for (const s of list) {
+    if ((counts.get(s.name) || 0) < 2) {
+      out.set(s.id, s.name)
+      continue
+    }
+    const raw = (s.note || '').trim() || (s.role || '').trim()
+    if (raw) {
+      const suffix = raw.length > DISAMBIG_SUFFIX_MAX ? raw.slice(0, DISAMBIG_SUFFIX_MAX) + '…' : raw
+      out.set(s.id, `${s.name} · ${suffix}`)
+    } else {
+      const n = (seq.get(s.name) || 0) + 1
+      seq.set(s.name, n)
+      out.set(s.id, `${s.name} ${n}`)
+    }
+  }
+  return out
+}

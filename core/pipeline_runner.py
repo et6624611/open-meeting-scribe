@@ -140,11 +140,9 @@ def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
     binding = tasks[task_id].get("realtime_speaker_binding")
     if binding:
         try:
-            speaker_mapping = {}
-            for k, uuid in binding.items():
-                spk = speakers.get_speaker_by_id(uuid)
-                if spk:
-                    speaker_mapping[int(k)] = spk.name
+            uuid_by_sid = {int(k): u for k, u in binding.items()}
+            display = speakers.resolve_display_names(uuid_by_sid.values())
+            speaker_mapping = {sid: display[u] for sid, u in uuid_by_sid.items() if u in display}
             if not speaker_mapping:
                 speaker_mapping = None
         except (ValueError, TypeError):
@@ -188,11 +186,9 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
     binding = tasks[task_id].get("realtime_speaker_binding")
     if binding:
         try:
-            speaker_mapping = {}
-            for k, uuid in binding.items():
-                spk = speakers.get_speaker_by_id(uuid)
-                if spk:
-                    speaker_mapping[int(k)] = spk.name
+            uuid_by_sid = {int(k): u for k, u in binding.items()}
+            display = speakers.resolve_display_names(uuid_by_sid.values())
+            speaker_mapping = {sid: display[u] for sid, u in uuid_by_sid.items() if u in display}
             if not speaker_mapping:
                 speaker_mapping = None
         except (ValueError, TypeError):
@@ -353,7 +349,7 @@ def run_pipeline_task(
                 if realtime_full_transcript and realtime_speaker_binding and dialogue:
                     try:
                         tb_start = time.perf_counter()
-                        # 构建说话人姓名映射
+                        # 构建说话人姓名映射（文本桥接按底库原名匹配实时标签，禁用消歧显示名）
                         speaker_names = {}
                         for uuid in set(realtime_speaker_binding.values()):
                             spk = speakers.get_speaker_by_id(uuid)

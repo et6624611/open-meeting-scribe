@@ -8,7 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { createSpeaker, submitSpeakerMapping, saveSpeakerMapping, applySpeakerNames, type Speaker } from '@/api/speakers'
 import { getSpeakerColor } from '@/utils/speakerColors'
-import { normalizeSpeakerName } from '@/utils/speakerDisplay'
+import { normalizeSpeakerName, resolveDisplayNames } from '@/utils/speakerDisplay'
 import { showToast } from '@/composables/useToast'
 import type { FlatTranscriptLine, Task } from '@/api/types'
 
@@ -46,7 +46,7 @@ export function useSpeakerBinding(
 
   // 统一的说话人展示数据源：同时驱动「绑定态交互 chip」与「只读态名单」，
   // 避免与旧的 speakerStats 重复计算。displayName 解析优先级：
-  // 已绑定真人名 > ASR 分配名(speaker_mapping) > 默认「说话人N」。
+  // 同会消歧名（已绑定且本场重名时带备注/角色/序号后缀）> ASR 分配名(speaker_mapping) > 默认「说话人N」。
   const bindingLegend = computed(() => {
     const lines = flatTranscript.value
     if (!lines.length) return []
@@ -56,6 +56,11 @@ export function useSpeakerBinding(
       speakerMap.set(l.speaker_id, (speakerMap.get(l.speaker_id) || 0) + (l.end_time - l.begin_time))
     }
     const mapping = task.value?.speaker_mapping
+    // 同会范围消歧：仅本场已绑定人员参与计数（与后端 resolve_display_names 同规则）
+    const boundList = Object.values(currentBindingMapping)
+      .map(u => speakers.value.find(s => s.id === u))
+      .filter((s): s is Speaker => !!s)
+    const disambigMap = resolveDisplayNames(boundList)
     return Array.from(speakerMap.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([sid, durMs]) => {
@@ -63,7 +68,7 @@ export function useSpeakerBinding(
         const bound = uuid ? speakers.value.find(s => s.id === uuid) : null
         const pct = totalMs > 0 ? Math.round((durMs / totalMs) * 100) : 0
         // REQ-SPK-RN H1/D5：存量占位名（mapping 直存 Speaker N）经判定器收敛，未绑定态统一中性文案
-        const displayName = normalizeSpeakerName(bound?.name) || normalizeSpeakerName(mapping?.[String(sid)]) || t('generating.speaker_default')
+        const displayName = normalizeSpeakerName(uuid ? disambigMap.get(uuid) : '') || normalizeSpeakerName(mapping?.[String(sid)]) || t('generating.speaker_default')
         return { sid, durMs, pct, color: getSpeakerColor(String(sid)), name: normalizeSpeakerName(bound?.name), displayName, bound: !!bound }
       })
   })

@@ -266,18 +266,55 @@ def clear_linked_user(speaker_id: str) -> Optional[Speaker]:
 
 
 def find_speaker_by_name(name: str) -> Optional[Speaker]:
-    """根据姓名查找说话人（精确匹配） / Find speaker by name (exact match)"""
-    speakers = load_speakers()
-    for s in speakers:
-        if s.name == name:
-            return s
-    return None
+    """根据姓名查找说话人（精确匹配） / Find speaker by name (exact match)
+
+    重名多命中时返回 None 并告警——静默取首个会把身份（声纹/账号挂接）系到错误的人，
+    调用方按「未找到」走新建流程，重复可见可修，错绑不可逆。
+    """
+    matches = [s for s in load_speakers() if s.name == name]
+    if len(matches) > 1:
+        logger.warning(f"姓名「{name}」命中 {len(matches)} 个说话人档案，放弃按名反查（需人工消歧）")
+        return None
+    return matches[0] if matches else None
 
 
 def get_speaker_name_map() -> dict[str, str]:
     """获取 speaker_id → name 的映射表 / Get speaker_id → name mapping"""
     speakers = load_speakers()
     return {s.speaker_id: s.name for s in speakers}
+
+
+# 消歧后缀最大长度（备注/角色为自由文本，超长截断） / Max disambiguation suffix length
+DISPLAY_SUFFIX_MAX = 8
+
+
+def resolve_display_names(uuids) -> dict[str, str]:
+    """同会重名消歧显示名派生（唯一真源） / Per-meeting duplicate-name disambiguation (single source).
+
+    输入本场绑定的 UUID 集合，输出 {uuid: 显示名}：
+    - 集合内同名 ≥2 才追加后缀「name · 备注」；备注空退角色，再退序号「name 2」
+    - 不同名原样返回底库姓名；查不到档案的 uuid 不出现在结果中
+    - 纯派生，不落盘、不改底库 / Pure derivation: no persistence, registry untouched
+    """
+    by_id = {s.speaker_id: s for s in load_speakers()}
+    picked = [by_id[u] for u in uuids if u in by_id]
+    counts: dict[str, int] = {}
+    for s in picked:
+        counts[s.name] = counts.get(s.name, 0) + 1
+    result: dict[str, str] = {}
+    seq: dict[str, int] = {}
+    for s in picked:
+        if counts.get(s.name, 0) < 2:
+            result[s.speaker_id] = s.name
+            continue
+        raw = (s.note or "").strip() or (s.role or "").strip()
+        if raw:
+            suffix = raw[:DISPLAY_SUFFIX_MAX] + "…" if len(raw) > DISPLAY_SUFFIX_MAX else raw
+            result[s.speaker_id] = f"{s.name} · {suffix}"
+        else:
+            seq[s.name] = seq.get(s.name, 0) + 1
+            result[s.speaker_id] = f"{s.name} {seq[s.name]}"
+    return result
 
 
 # ============================================================
@@ -374,8 +411,8 @@ def apply_speaker_names(
     if not dialogue:
         return dialogue
 
-    # 获取 speaker_id → name 的映射 / Get speaker_id → name mapping
-    name_map = get_speaker_name_map()
+    # 同会重名消歧：uuid → 显示名（resolve_display_names 唯一真源） / Disambiguated uuid → display name
+    display_map = resolve_display_names(mapping.values())
 
     result = []
     for item in dialogue:
@@ -383,7 +420,7 @@ def apply_speaker_names(
         speaker_uuid = mapping.get(sid)
         # BE-R1：查不到档案→空串（未命名），不再持久化 Speaker 编号默认名；
         # 展示层按 D5「未识别」口径聚合（前端 T2 / 读取侧归一化）。
-        speaker_name = normalize_speaker_name(name_map.get(speaker_uuid)) if speaker_uuid else ""
+        speaker_name = normalize_speaker_name(display_map.get(speaker_uuid)) if speaker_uuid else ""
 
         new_item = dict(item)
         new_item["speaker_name"] = speaker_name
@@ -394,12 +431,13 @@ def apply_speaker_names(
 
 
 def resolve_speaker_names(mapping: dict[int, str]) -> dict[int, str]:
-    """将 {speaker_id: uuid} 解析为 {speaker_id: 真实姓名}（仅保留能解析到非空姓名的条目）。
-    Resolve {speaker_id: uuid} to {speaker_id: real_name}, keeping only entries with a non-empty name."""
-    name_map = get_speaker_name_map()
+    """将 {speaker_id: uuid} 解析为 {speaker_id: 显示名}（仅保留能解析到非空姓名的条目）。
+    Resolve {speaker_id: uuid} to {speaker_id: display_name}, keeping only entries with a non-empty name.
+    同会重名时显示名经 resolve_display_names 消歧（备注/角色/序号后缀）。"""
+    display_map = resolve_display_names(mapping.values())
     out: dict[int, str] = {}
     for sid, uuid in mapping.items():
-        name = name_map.get(uuid)
+        name = display_map.get(uuid)
         if name:
             out[sid] = name
     return out

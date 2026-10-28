@@ -108,11 +108,18 @@ def test_pipeline_collect_normalizes_existing_placeholder():
     assert _collect_speaker_names(dialogue) == {0: ""}
 
 
-def test_apply_speaker_names_missing_profile_is_empty(monkeypatch):
-    """路径②：apply_speaker_names 查不到档案 → 空串（不落 Speaker N）。"""
+def _fake_speakers(monkeypatch, rows):
+    """以内存档案替代 speakers.json：rows = [(uuid, name, role, note), ...]"""
     import core.speakers as sp
 
-    monkeypatch.setattr(sp, "get_speaker_name_map", lambda: {"uuid-a": "Alice"})
+    fake = [sp.Speaker(speaker_id=u, name=n, role=r, note=nt) for u, n, r, nt in rows]
+    monkeypatch.setattr(sp, "load_speakers", lambda: fake)
+    return sp
+
+
+def test_apply_speaker_names_missing_profile_is_empty(monkeypatch):
+    """路径②：apply_speaker_names 查不到档案 → 空串（不落 Speaker N）。"""
+    sp = _fake_speakers(monkeypatch, [("uuid-a", "Alice", "", "")])
     dialogue = [{"speaker_id": 0, "text": "A"}, {"speaker_id": 1, "text": "B"}]
     out = sp.apply_speaker_names(dialogue, {0: "uuid-a", 1: "uuid-missing"})
     names = {item["speaker_id"]: item["speaker_name"] for item in out}
@@ -121,11 +128,78 @@ def test_apply_speaker_names_missing_profile_is_empty(monkeypatch):
 
 def test_apply_speaker_names_placeholder_profile_normalized(monkeypatch):
     """路径②补充：档案名本身是历史占位串（speakers.json 污染）→ 归一为空串。"""
-    import core.speakers as sp
-
-    monkeypatch.setattr(sp, "get_speaker_name_map", lambda: {"uuid-b": "Speaker 2"})
+    sp = _fake_speakers(monkeypatch, [("uuid-b", "Speaker 2", "", "")])
     out = sp.apply_speaker_names([{"speaker_id": 1, "text": "B"}], {1: "uuid-b"})
     assert out[0]["speaker_name"] == ""
+
+
+# ============================================================
+# 同会重名消歧（resolve_display_names 唯一真源）
+# ============================================================
+
+def test_disambig_unique_name_bare(monkeypatch):
+    """不同名：原样返回裸名，不加任何后缀。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "产品"), ("u2", "李娜", "", "")])
+    assert sp.resolve_display_names(["u1", "u2"]) == {"u1": "张伟", "u2": "李娜"}
+
+
+def test_disambig_same_name_uses_note(monkeypatch):
+    """同名 ≥2：追加「· 备注」后缀。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "产品"), ("u2", "张伟", "", "上海")])
+    out = sp.resolve_display_names(["u1", "u2"])
+    assert out == {"u1": "张伟 · 产品", "u2": "张伟 · 上海"}
+
+
+def test_disambig_note_empty_falls_back_role(monkeypatch):
+    """备注空退角色。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "经理", ""), ("u2", "张伟", "", "")])
+    out = sp.resolve_display_names(["u1", "u2"])
+    assert out["u1"] == "张伟 · 经理"
+    assert out["u2"] == "张伟 1"  # 全空退序号
+
+
+def test_disambig_all_empty_seq(monkeypatch):
+    """同名且备注/角色全空：按输入顺序退序号。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", ""), ("u2", "张伟", "", "")])
+    assert sp.resolve_display_names(["u1", "u2"]) == {"u1": "张伟 1", "u2": "张伟 2"}
+
+
+def test_disambig_long_note_truncated(monkeypatch):
+    """后缀超 8 字截断带省略号。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "长三角大区销售总监"), ("u2", "张伟", "", "产品")])
+    out = sp.resolve_display_names(["u1", "u2"])
+    assert out["u1"] == "张伟 · 长三角大区销售总…"
+    assert out["u2"] == "张伟 · 产品"
+
+
+def test_disambig_unknown_uuid_dropped(monkeypatch):
+    """查不到档案的 uuid 不出现在结果中。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "")])
+    assert sp.resolve_display_names(["u1", "u-ghost"]) == {"u1": "张伟"}
+
+
+def test_apply_speaker_names_disambiguates(monkeypatch):
+    """链路覆盖：apply_speaker_names 同会重名 → dialogue speaker_name 带后缀。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "产品"), ("u2", "张伟", "", "上海")])
+    dialogue = [{"speaker_id": 0, "text": "A"}, {"speaker_id": 1, "text": "B"}]
+    out = sp.apply_speaker_names(dialogue, {0: "u1", 1: "u2"})
+    names = {item["speaker_id"]: item["speaker_name"] for item in out}
+    assert names == {0: "张伟 · 产品", 1: "张伟 · 上海"}
+
+
+def test_resolve_speaker_names_disambiguates(monkeypatch):
+    """链路覆盖：resolve_speaker_names（apply-speaker-names 端点）同名带后缀。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "产品"), ("u2", "张伟", "", "上海")])
+    assert sp.resolve_speaker_names({0: "u1", 1: "u2"}) == {0: "张伟 · 产品", 1: "张伟 · 上海"}
+
+
+def test_find_speaker_by_name_multi_hit_returns_none(monkeypatch):
+    """按名反查多命中 → None（调用方走新建，不错绑身份）。"""
+    sp = _fake_speakers(monkeypatch, [("u1", "张伟", "", "产品"), ("u2", "张伟", "", "上海")])
+    assert sp.find_speaker_by_name("张伟") is None
+    assert sp.find_speaker_by_name("李娜") is None  # 无命中仍 None
+    sp2 = _fake_speakers(monkeypatch, [("u1", "张伟", "", "")])
+    assert sp2.find_speaker_by_name("张伟").speaker_id == "u1"  # 单命中正常
 
 
 def test_import_parser_pattern3_no_default_names():

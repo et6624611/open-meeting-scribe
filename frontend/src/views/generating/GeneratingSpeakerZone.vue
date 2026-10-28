@@ -122,7 +122,7 @@
                   @click="selectRosterSpeaker(s)"
                 >
                   <span class="gs-roster-dd-dot" :style="{ background: getSpeakerColor(s.id) }"></span>
-                  <span>{{ s.name }}</span>
+                  <span>{{ registryDisplay.get(s.id) || s.name }}</span>
                 </div>
                 <div v-if="filteredRosterSpeakers.length === 0 && rosterSearch.trim()" class="gs-roster-dd-create" @click="createAndAddToRoster">
                   {{ t('generating.roster.create_hint', { name: rosterSearch.trim() }) }}
@@ -248,7 +248,7 @@
           @click="emit('select', dropdown.speakerId, vpItem(dropdown.speakerId)!.matched_uuid!)"
         >
           <span class="bt-di-name">
-            {{ vpItem(dropdown.speakerId)!.matched_name }}
+            {{ registryDisplay.get(vpItem(dropdown.speakerId)!.matched_uuid!) || vpItem(dropdown.speakerId)!.matched_name }}
             <span class="bt-vp-badge">{{ t('generating.voiceprint.suggest_badge', { pct: vpPct(vpItem(dropdown.speakerId)!.similarity) }) }}</span>
           </span>
         </div>
@@ -260,7 +260,7 @@
               :class="{ 'is-selected': currentMapping[dropdown.speakerId] === s.id, 'is-focused': dropdown.focusIdx === idx }"
               @click="emit('select', dropdown.speakerId, s.id)"
             >
-              <span class="bt-di-name" :style="{ color: currentMapping[dropdown.speakerId] === s.id ? getSpeakerColor(String(dropdown.speakerId)) : undefined }">{{ s.name }}<span v-if="s.role" class="bt-di-role">({{ s.role }})</span></span>
+              <span class="bt-di-name" :style="{ color: currentMapping[dropdown.speakerId] === s.id ? getSpeakerColor(String(dropdown.speakerId)) : undefined }">{{ registryDisplay.get(s.id) || s.name }}<span v-if="s.role && registryDisplay.get(s.id) === s.name" class="bt-di-role">({{ s.role }})</span></span>
             </div>
           </template>
         </template>
@@ -281,6 +281,7 @@ import { useI18n } from 'vue-i18n'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { useEscClose } from '@/composables/useEscClose'
 import { createSpeaker, type Speaker } from '@/api/speakers'
+import { resolveDisplayNames } from '@/utils/speakerDisplay'
 import type { VoiceprintMatchItem } from '@/api/types'
 
 interface ZoneSpeaker {
@@ -339,6 +340,9 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+// 底库范围重名消歧显示名（下拉候选用，同名才带后缀） / Registry-scope disambiguated names for picker candidates
+const registryDisplay = computed(() => resolveDisplayNames(props.allSpeakers))
 
 const interactive = computed(() => props.mode === 'actionable')
 
