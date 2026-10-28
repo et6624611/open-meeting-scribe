@@ -119,6 +119,19 @@ export function useRecordingNotes(
     _scheduleSync()
   }
 
+  /** 修改已发送的随记（清空即删除，与内联卡片编辑共用口径）
+   *  Edit a sent note in place (blank text deletes it) */
+  function updateNote(idx: number, text: string) {
+    const next = text.trim()
+    if (!next) { deleteNote(idx); return }
+    // 与 notesByLine 口径一致：同一行多条时显示的是最后一条，编辑也落在它上面
+    const note = [...userNotes.value].reverse().find(n => n.lineIndex === idx)
+    if (!note || note.text === next) return
+    note.text = next
+    saveToStorage()
+    _scheduleSync()
+  }
+
   // ── 自动关联：新行出现时匹配未关联笔记 / Auto-associate: match unassociated notes when new lines appear ──
 
   function autoAssociate() {
@@ -166,6 +179,7 @@ export function useRecordingNotes(
     noteCount,
     notesByLine,
     addNote,
+    updateNote,
     deleteNote,
     restoreFromStorage,
     clearStorage,

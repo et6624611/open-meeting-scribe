@@ -83,6 +83,17 @@ const tooltipEl = document.createElement('div')
 tooltipEl.id = 'global-tooltip'
 document.body.appendChild(tooltipEl)
 
+// 左侧导航轨安全区：rail 层级（z-dock 600）高于 tooltip（z-popover 500），
+// 光标贴 rail 时若按光标坐标定位，tooltip 左半部分会被 rail 整个盖住。
+// Rail safe-zone: the rail (z-dock 600) outranks the tooltip (z-popover 500),
+// so cursor-anchored tooltips near the rail would be clipped by it.
+let railEl: HTMLElement | null = null
+function railSafeLeft(): number {
+  if (!railEl || !railEl.isConnected) railEl = document.querySelector('.activity-rail')
+  const r = railEl?.getBoundingClientRect()
+  return r && r.width > 0 ? r.right + 8 : 0
+}
+
 // 检测元素是否为"..."更多按钮（三个圆点图标已是通用符号，无需 tooltip 提示） / Check if element is "..." more button (three-dot icon is already a universal symbol; no tooltip needed)
 function isMoreButton(el: HTMLElement): boolean {
   // 检查元素自身或其子元素是否包含"..."图标 SVG（三个 circle） / Check if element or its children contain "..." icon SVG (three circles)
@@ -142,19 +153,21 @@ function showTooltip(e: Event) {
     positionTooltip(e as MouseEvent)
   } else {
     const r = el.getBoundingClientRect()
-    tooltipEl.style.left = (r.right + 8) + 'px'
+    tooltipEl.style.left = Math.max(r.right + 8, railSafeLeft()) + 'px'
     tooltipEl.style.top = (r.top + r.height / 2 - 14) + 'px'
   }
 }
 
 function positionTooltip(e: MouseEvent) {
-  const x = e.clientX + 12
-  const y = e.clientY - 4
   const rect = tooltipEl.getBoundingClientRect()
   const vw = window.innerWidth
   const vh = window.innerHeight
+  const minLeft = railSafeLeft()
+  let x = Math.max(e.clientX + 12, minLeft)
+  const y = e.clientY - 4
 
-  tooltipEl.style.left = (x + rect.width > vw ? e.clientX - rect.width - 8 : x) + 'px'
+  if (x + rect.width > vw) x = Math.max(minLeft, vw - rect.width - 8)
+  tooltipEl.style.left = x + 'px'
   tooltipEl.style.top = (y + rect.height > vh ? e.clientY - rect.height - 8 : y) + 'px'
 }
 

@@ -76,7 +76,8 @@
   "notes": {
     "placeholder": "记录随记... Enter 发送，Shift+Enter 换行",
     "send": "发送随记",
-    "delete": "删除随记"
+    "delete": "删除随记",
+    "edit": "编辑随记（Enter 保存 · Esc 取消）"
   },
   "insights": {
     "title": "洞察台",

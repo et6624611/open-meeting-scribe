@@ -41,8 +41,12 @@ export async function createSpeaker(name: string): Promise<Speaker> {
   return mapSpeaker(data)
 }
 
-export async function updateSpeaker(id: string, patch: { name?: string; alias?: string }): Promise<void> {
-  await client.put(`/api/speakers/${id}`, { name: patch.name, role: patch.alias })
+export async function updateSpeaker(id: string, patch: { name?: string; alias?: string; note?: string }): Promise<void> {
+  const body: Record<string, string> = {}
+  if (patch.name !== undefined) body.name = patch.name
+  if (patch.alias !== undefined) body.role = patch.alias
+  if (patch.note !== undefined) body.note = patch.note
+  await client.put(`/api/speakers/${id}`, body)
 }
 
 export async function deleteSpeaker(id: string): Promise<void> {

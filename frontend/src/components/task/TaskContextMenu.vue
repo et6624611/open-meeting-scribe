@@ -120,6 +120,7 @@
 import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Task } from '@/api/types'
+import { clampHorizontal, getDockBounds } from '@/utils/popoverPosition'
 
 const { t } = useI18n()
 
@@ -159,7 +160,11 @@ function updatePosition() {
   const anchorRight = props.sidebarEl
     ? props.sidebarEl.getBoundingClientRect().right
     : props.buttonRect.right + gap
-  const baseLeft = Math.max(8, anchorRight - menuWidth - gap)
+  // 右对齐侧栏右缘；菜单宽于侧栏时会向左溢出，必须夹在导航轨（rail）右缘之外，
+  // 否则左半部分被 rail 的更高层级盖住（图标与圆角被切）。
+  // Right-align to the sidebar edge; since the menu is wider than the sidebar it spills left,
+  // so clamp past the rail safe-zone or the rail (higher z-index) clips its left side.
+  const baseLeft = clampHorizontal(anchorRight - gap - menuWidth / 2, menuWidth, getDockBounds())
   menuPosition.value = { position: 'fixed', left: baseLeft + 'px', top: Math.max(8, props.buttonRect.top) + 'px', width: menuWidth + 'px' }
 
   nextTick(() => {

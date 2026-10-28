@@ -76,7 +76,8 @@
   "notes": {
     "placeholder": "Take notes... Enter to send, Shift+Enter for new line",
     "send": "Send note",
-    "delete": "Delete note"
+    "delete": "Delete note",
+    "edit": "Edit note (Enter to save · Esc to cancel)"
   },
   "insights": {
     "title": "Insight Deck",

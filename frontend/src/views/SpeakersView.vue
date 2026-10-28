@@ -41,8 +41,11 @@
           <div class="spk-info">
             <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
             <div class="spk-text">
-              <span class="spk-name" :class="{ 'is-unid': isPlaceholderName(spk.name) }" :style="{ color: getTextColor(spk.id) }">{{ spkDisplayName(spk.name) }}</span>
-              <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
+              <div class="spk-name-row">
+                <span class="spk-name" :class="{ 'is-unid': isPlaceholderName(spk.name) }" :style="{ color: getTextColor(spk.id) }">{{ spkDisplayName(spk.name) }}</span>
+                <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
+              </div>
+              <span v-if="spk.note" class="spk-list-note">{{ spk.note }}</span>
             </div>
           </div>
           <div class="spk-meta-row">
@@ -85,6 +88,12 @@
               <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
             </div>
             <div v-if="selectedSpeaker.alias" class="spk-detail-role">{{ selectedSpeaker.alias }}</div>
+            <!-- 备注：同名消歧后缀来源，点击行内编辑 / Note: source of disambiguation suffix, click to edit -->
+            <div class="spk-detail-note">
+              <span class="spk-note-label">{{ t('speakers.note_label') }}</span>
+              <input v-if="isEditingNote" ref="noteInputRef" v-model="noteValue" class="spk-inline-edit spk-note-edit" :maxlength="500" :placeholder="t('speakers.note_placeholder')" @keyup.enter="saveNote" @keydown.escape.prevent="cancelNote" @blur="saveNote" />
+              <span v-else class="spk-note-text" :class="{ 'is-empty': !selectedSpeaker.note }" :title="t('speakers.note_hint')" @click="startNote">{{ selectedSpeaker.note || t('speakers.note_empty') }}</span>
+            </div>
           </div>
         </div>
         <div class="spk-detail-actions">
@@ -264,6 +273,10 @@ const voiceprintIds = ref<Set<string>>(new Set())
 const isRenaming = ref(false)
 const renameValue = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
+// 备注行内编辑（同名消歧后缀来源）/ Note inline edit (source of disambiguation suffix)
+const isEditingNote = ref(false)
+const noteValue = ref('')
+const noteInputRef = ref<HTMLInputElement | null>(null)
 // 确认对话框 / Confirmation dialog
 const showConfirmDialog = ref(false)
 const confirmDialogTitle = ref('')
@@ -472,6 +485,33 @@ function cancelRename() {
   isRenaming.value = false
 }
 
+/** 开始编辑备注 / Start editing note */
+function startNote() {
+  if (!selectedSpeaker.value) return
+  noteValue.value = selectedSpeaker.value.note || ''
+  isEditingNote.value = true
+  nextTick(() => noteInputRef.value?.focus())
+}
+
+/** 保存备注（失焦/回车提交，空值=清除）/ Save note (blur/enter, empty = clear) */
+async function saveNote() {
+  if (!isEditingNote.value || !selectedSpeaker.value) return
+  const note = noteValue.value.trim()
+  if (note === (selectedSpeaker.value.note || '')) {
+    cancelNote()
+    return
+  }
+  await updateSpeaker(selectedSpeaker.value.id, { note })
+  selectedSpeaker.value.note = note
+  isEditingNote.value = false
+  await load()
+}
+
+/** 取消编辑备注 / Cancel note editing */
+function cancelNote() {
+  isEditingNote.value = false
+}
+
 function openTask(taskId: string) {
   router.push({ name: 'generating', params: { taskId } })
 }
@@ -576,8 +616,10 @@ onMounted(load)
 .spk-vp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .spk-vp-dot.vp-yes { background: var(--ok); }
 .spk-vp-dot.vp-no { background: var(--border); }
-.spk-text { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.spk-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.spk-name-row { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
 .spk-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spk-list-note { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; opacity: 0.9; }
 /* REQ-SPK-RN L5：存量占位档案仍列出（H4 数据本体不动），名字位灰标中性文案，改名走既有编辑 */
 .spk-name.is-unid, .spk-name-clickable.is-unid { color: var(--subtle) !important; font-style: italic; font-weight: 400; }
 .spk-badge-me { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-weight: 500; flex-shrink: 0; }
@@ -608,6 +650,12 @@ onMounted(load)
 .spk-name-clickable:hover { background: var(--surface-2); }
 .spk-inline-edit { font-size: 18px; font-weight: 600; border: 1px solid var(--accent); border-radius: var(--radius); padding: 1px 6px; background: var(--surface); color: var(--fg); outline: none; font-family: inherit; }
 .spk-detail-role { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.spk-detail-note { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-2); font-size: 13px; min-width: 0; }
+.spk-note-label { color: var(--muted); flex-shrink: 0; opacity: 0.85; }
+.spk-note-text { color: var(--muted); cursor: text; padding: 1px 6px; border-radius: var(--radius); border: 1px dashed transparent; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spk-note-text:hover { border-color: var(--border); background: var(--surface); color: var(--fg); }
+.spk-note-text.is-empty { opacity: 0.5; }
+.spk-note-edit { font-size: 13px; font-weight: 400; max-width: 280px; }
 .spk-detail-actions { display: flex; gap: var(--s-2); flex-shrink: 0; }
 
 /* 统计卡片 / Stat cards */

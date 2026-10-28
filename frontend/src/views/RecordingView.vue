@@ -119,6 +119,7 @@
         @open-bind="openBindPopover"
         @toggle-locate="toggleLocateSpeaker"
         @delete-note="notes.deleteNote"
+        @update-note="notes.updateNote"
       />
 
       <!-- 右栏：洞察台（宽屏并排，窄屏由 CSS tab-insights 切换） / Right: Insight Deck (side-by-side on wide, CSS tab on narrow) -->
