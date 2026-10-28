@@ -149,11 +149,18 @@ export async function openInFinder(taskId: string): Promise<OpenResult> {
   return data
 }
 
-/** 启动 IDE 打开工作区 / Launch IDE to open workspace */
-export async function openInIde(taskId: string, ideId: string): Promise<IdeLaunchResult> {
+export type WorkspaceScope = 'meeting' | 'project' | 'all'
+
+/** 启动 IDE 打开工作区，可指定上下文范围 / Launch IDE with context scope */
+export async function openInIde(
+  taskId: string,
+  ideId: string,
+  scope: WorkspaceScope = 'meeting',
+): Promise<IdeLaunchResult> {
   const { data } = await client.post<IdeLaunchResult>('/api/workspace/open-ide', {
     task_id: taskId,
     ide_id: ideId,
+    scope,
   })
   return data
 }

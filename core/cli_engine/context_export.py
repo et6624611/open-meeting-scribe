@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -44,6 +45,137 @@ WORKSPACE_ROOT = _compute_workspace_root()
 # 预生成工作区根目录（资源管理视图浏览的命名空间，与 AI 对话工作区隔离） /
 # Preview workspace root (namespace for resource explorer; isolated from AI chat workspaces)
 PREVIEW_ROOT = WORKSPACE_ROOT / "_preview"
+
+# 目录命名：日期_标题__短ID（机器键保留在后缀，人可读在前缀）
+_SLUG_MAX_CHARS = 24
+_SHORT_KEY_CHARS = 8
+_WIN_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *[f"COM{i}" for i in range(1, 10)],
+    *[f"LPT{i}" for i in range(1, 10)],
+}
+
+
+def _short_key(value: str | None) -> str:
+    """取稳定短键：清洗后的前 8 位，用于目录后缀反查。"""
+    raw = re.sub(r"[^0-9A-Za-z]", "", str(value or ""))
+    return (raw[:_SHORT_KEY_CHARS] or "00000000").lower()
+
+
+def _sanitize_segment(text: str, fallback: str, max_len: int = _SLUG_MAX_CHARS) -> str:
+    """目录段清洗：去非法字符（含全角冒号，规避同步工具兼容问题）、压空白、处理 Windows 保留名与长度。"""
+    s = re.sub(r'[\x00-\x1f\x7f/\\:*?"<>|：]+', "_", str(text or "").strip())
+    s = re.sub(r"\s+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("._")
+    if not s:
+        return fallback
+    if s.split(".")[0].upper() in _WIN_RESERVED:
+        s = "_" + s
+    s = s[:max_len].rstrip("._")
+    return s or fallback
+
+
+def _meeting_date_slug(task: dict | None) -> str:
+    """会议日期段：优先 meeting_date，回退 created_at，缺失时用「未定日期」。"""
+    for key in ("meeting_date", "created_at"):
+        m = re.search(r"(\d{4})-(\d{2})-(\d{2})", str((task or {}).get(key) or ""))
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return "未定日期"
+
+
+# 音频/视频常见扩展名：用原始文件名兜底标题时剥掉，避免目录名出现 "rec.wav"
+_MEDIA_EXT_RE = re.compile(
+    r"\.(mp3|wav|m4a|aac|flac|ogg|opus|webm|wma|mp4|mov|mkv)$", re.IGNORECASE)
+
+
+def _meeting_dir_name(task: dict | None, task_id: str) -> str:
+    """会议目录名：日期_标题__短ID。标题缺失用录音文件名兜底（剥扩展名）。"""
+    title = (task or {}).get("title")
+    if not title:
+        title = _MEDIA_EXT_RE.sub("", str((task or {}).get("audio_name") or "").strip())
+    return (f"{_meeting_date_slug(task)}_"
+            f"{_sanitize_segment(title or '', '未命名会议')}__{_short_key(task_id)}")
+
+
+def _project_display_name(project_id: str | None) -> str:
+    """项目显示名：读知识库名称，缺失时用「知识库」。"""
+    if not project_id:
+        return "独立会议"
+    try:
+        from core import projects as projects_store
+        project = projects_store.get_project(project_id)
+        if project and project.get("name"):
+            return str(project["name"])
+    except Exception:  # noqa: BLE001 - 名称读取失败不阻断导出
+        pass
+    return "知识库"
+
+
+def _find_meeting_dir(proj_dir: Path, task_id: str) -> Path | None:
+    """按短键后缀查找会议目录；兼容旧版直接以 task_id 命名的目录。"""
+    suffix = f"__{_short_key(task_id)}"
+    if proj_dir.is_dir():
+        for entry in sorted(proj_dir.iterdir()):
+            if entry.is_dir() and entry.name.endswith(suffix):
+                return entry
+        legacy = proj_dir / task_id
+        if legacy.is_dir():
+            return legacy
+    return None
+
+
+def _project_dir_name(project_id: str) -> str:
+    """项目目录名：<项目名>__<短ID>（project_preview_dir 与孤儿反查共用，避免两处拼名漂移）。"""
+    return (f"{_sanitize_segment(_project_display_name(project_id), '知识库')}"
+            f"__{_short_key(project_id)}")
+
+
+def project_preview_dir(project_id: str | None) -> Path:
+    """项目级工作区根：<项目名>__<短ID>；独立会议归入 _standalone。
+    旧版 <project_id> 目录首次访问时惰性迁移。"""
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    if not project_id or project_id == "_standalone":
+        root = PREVIEW_ROOT / "_standalone"
+        root.mkdir(parents=True, exist_ok=True)
+        return root.resolve()
+
+    target = PREVIEW_ROOT / _project_dir_name(project_id)
+    legacy = PREVIEW_ROOT / project_id
+    if legacy.is_dir():
+        if not target.exists():
+            try:
+                legacy.rename(target)
+            except OSError as e:  # noqa: BLE001 - 迁移失败保留旧目录，功能不中断
+                logger.warning("[CLI引擎] 项目目录迁移失败 %s → %s: %s", legacy, target, e)
+                return legacy.resolve()
+        else:
+            # 双目录并存：把旧目录里缺失的子项并入新目录后清理
+            _merge_dir_into(legacy, target)
+    target.mkdir(parents=True, exist_ok=True)
+    return target.resolve()
+
+
+def _merge_dir_into(src: Path, dst: Path) -> None:
+    """同任务双目录并存收口：把 src 里 dst 缺失的子项并过去，再删掉 src。
+    同名子目录递归并入；只搬缺失项，绝不覆盖——用户在任一侧的改动都保留。"""
+    if not src.is_dir() or not dst.is_dir():
+        return
+    for child in src.iterdir():
+        dest = dst / child.name
+        if child.is_dir() and dest.is_dir():
+            _merge_dir_into(child, dest)
+            continue
+        if dest.exists():
+            continue
+        try:
+            child.rename(dest)
+        except OSError:
+            pass
+    try:
+        src.rmdir()  # 只删得空的目录，搬不动的东西留下不动
+    except OSError as e:  # noqa: BLE001
+        logger.warning("[CLI引擎] 目录合并残留 %s → %s: %s", src, dst, e)
 
 # 单文件体量上限（字符），超限截断并标注，避免工作区无限膨胀（R4）
 _MAX_TRANSCRIPT_CHARS = 40000
@@ -532,19 +664,30 @@ def sweep_expired_workspaces(retention_days: int) -> int:
 # 预览工作区（资源管理视图） / Preview workspace (resource explorer)
 # ============================================================
 
-def preview_workspace_dir(task_id: str, project_id: str | None = None) -> Path:
-    """返回 _preview 下的工作区路径，按 project_id 路由：
-    有 project_id → _preview/<project_id>/<task_id>/
-    无 project_id → _preview/_standalone/<task_id>/
-    确保 context/ 和 output/ 子目录存在。"""
-    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
-    if project_id:
-        ws = (PREVIEW_ROOT / project_id / task_id).resolve()
-    else:
-        ws = (PREVIEW_ROOT / "_standalone" / task_id).resolve()
+def preview_workspace_dir(task_id: str, project_id: str | None = None,
+                          task: dict | None = None) -> Path:
+    """返回 _preview 下的会议工作区路径：
+    有 project_id → _preview/<项目名>__<短ID>/<日期>_<标题>__<短ID>/
+    无 project_id → _preview/_standalone/<日期>_<标题>__<短ID>/
+    旧版 UUID 目录在传入 task 时惰性改名；确保 context/ 与 output/ 存在。"""
+    proj_dir = project_preview_dir(project_id)
+    target_name = _meeting_dir_name(task, task_id) if task else None
+    existing = _find_meeting_dir(proj_dir, task_id)
+
+    # 标题/日期变化时跟随改名；旧版 <task_id> 目录也在这一步迁移
+    if existing is not None and target_name and existing.name != target_name:
+        target = proj_dir / target_name
+        if not target.exists():
+            try:
+                existing.rename(target)
+                existing = target
+            except OSError as e:  # noqa: BLE001 - 改名失败沿用旧目录，功能不中断
+                logger.warning("[CLI引擎] 会议目录改名失败 %s → %s: %s", existing, target, e)
+
+    ws = existing or (proj_dir / (target_name or task_id))
     (ws / "context").mkdir(parents=True, exist_ok=True)
     (ws / "output").mkdir(parents=True, exist_ok=True)
-    return ws
+    return ws.resolve()
 
 
 def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
@@ -639,21 +782,211 @@ def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
         written.append("context/history.md")
 
 
+# 机器索引统一收进 .oms/，不进用户视野；旧位置读取后自动迁移
+_OMS_DIR = ".oms"
+
+# IDE → 原生规则文件；只给实际打开的 IDE 生成一套，其余不落盘
+_IDE_RULE_FILES = {
+    "cursor": ".cursor/rules/meeting-context.mdc",
+    "vscode": ".github/copilot-instructions.md",
+    "windsurf": ".windsurf/rules/meeting-context.md",
+    "trae": ".trae/rules/meeting-context.md",
+    "trae-cn": ".trae/rules/meeting-context.md",
+    "claude-code": "CLAUDE.md",
+}
+
+
+def _rule_pointer(scope_note: str, level: str = "global") -> str:
+    """给非 AGENTS.md 体系的 IDE 留一行入口，避免各平台规则文件重复长文。
+    按作用层级指向真实存在的索引/台账文件——指引落空的文件名比没有指引更糟。"""
+    if level == "meeting":
+        pointers = ("开始前先读 `AGENTS.md`；跨会议见上级 `_INDEX.md`，"
+                    "决策与待办见上级 `_DECISIONS.md`（如有）。")
+    elif level == "project":
+        pointers = ("开始前先读 `AGENTS.md`（工作约束与阅读顺序）与 `_INDEX.md`（会议索引）；"
+                    "决策与待办见本目录 `_DECISIONS.md`。")
+    else:
+        pointers = ("开始前先读 `AGENTS.md`（工作约束与阅读顺序）与 `_INDEX.md`（会议索引）；"
+                    "决策与待办见根 `_DECISIONS.md` 与各项目内 `_DECISIONS.md`。")
+    return (
+        "# 会议知识库\n\n"
+        "本目录由 OpenMeetingScribe 生成，会议上下文已就绪。\n"
+        f"{scope_note}\n"
+        f"{pointers}不要通读全部转写，先索引后定点。\n")
+
+
+def attach_ide_rule(root: Path, ide_id: str | None, scope_note: str = "",
+                    level: str = "global") -> list[str]:
+    """按实际打开的 IDE 写一份原生规则文件，并清掉其他 IDE 的旧文件与空目录。
+    未识别 IDE 时只留 AGENTS.md，避免多套规则在文件树里制造噪音。"""
+    rel = _IDE_RULE_FILES.get(str(ide_id or "").lower(), "")
+    keep = {rel} if rel else set()
+    body = _rule_pointer(scope_note, level=level)
+    if rel.endswith(".mdc"):
+        body = "---\ndescription: OpenMeetingScribe 会议上下文\nalwaysApply: true\n---\n\n" + body
+    if rel:
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+
+    for stale in set(_IDE_RULE_FILES.values()) - keep:
+        stale_path = root / stale
+        if stale_path.is_file():
+            try:
+                stale_path.unlink()
+            except OSError:
+                pass
+    # rules 子目录删空后再收父目录；目录里有用户自建文件时 rmdir 自然失败，不受影响
+    for d in (root / ".cursor" / "rules", root / ".cursor",
+              root / ".trae" / "rules", root / ".trae",
+              root / ".windsurf" / "rules", root / ".windsurf",
+              root / ".github"):
+        try:
+            d.rmdir()  # 只删空目录
+        except OSError:
+            pass
+    return [rel] if rel else []
+
+
+def _write_agent_rules(root: Path, agents_body: str, scope_note: str,
+                       ide_id: str | None = None, level: str = "global") -> list[str]:
+    """写 AGENTS.md + 当前 IDE 的原生规则入口。"""
+    (root / "AGENTS.md").write_text(agents_body, encoding="utf-8")
+    # 旧版 START_HERE.md 已并入 AGENTS.md，清掉残留
+    stale_start = root / "START_HERE.md"
+    if stale_start.is_file():
+        try:
+            stale_start.unlink()
+        except OSError:
+            pass
+    # 页面预生成不认识 IDE，保留已有规则文件；只有真正打开 IDE 时才切换
+    if not ide_id:
+        return ["AGENTS.md"]
+    return ["AGENTS.md", *attach_ide_rule(root, ide_id, scope_note, level=level)]
+
+
+def _meetings_index_path(proj_dir: Path) -> Path:
+    return proj_dir / _OMS_DIR / "meetings.json"
+
+
+def _global_index_path() -> Path:
+    return PREVIEW_ROOT / _OMS_DIR / "index.json"
+
+
+def read_meetings_index(proj_dir: Path) -> dict:
+    """读项目会议索引：优先 .oms/meetings.json，兼容旧 _meetings.json。"""
+    for path in (_meetings_index_path(proj_dir), proj_dir / "_meetings.json"):
+        if path.is_file():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+    return {}
+
+
+def write_meetings_index(proj_dir: Path, data: dict) -> None:
+    path = _meetings_index_path(proj_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    legacy = proj_dir / "_meetings.json"
+    if legacy.is_file():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+
+
+def read_global_index() -> dict:
+    """读全局索引：优先 .oms/index.json，兼容旧 _index.json。"""
+    for path in (_global_index_path(), PREVIEW_ROOT / "_index.json"):
+        if path.is_file():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+    return {}
+
+
+def _write_global_index(data: dict) -> None:
+    path = _global_index_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    legacy = PREVIEW_ROOT / "_index.json"
+    if legacy.is_file():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+
+
+def _start_here(scope_label: str) -> str:
+    """任务模板：并入 AGENTS.md，避免根目录多一个入口文件。"""
+    return (
+        f"## 推荐任务 · {scope_label}\n\n"
+        "以下是现成任务，可直接把提示词交给 IDE 里的智能体。\n\n"
+        "### 1. 项目进展周报\n"
+        "提示词：读 `_INDEX.md` 与各会议 `context/summary.md`（没有纪要的会议改读其 "
+        "`context/transcript.md`），按「本周结论 / 进展 / "
+        "风险 / 下周动作」输出一份周报，每条结论标注来源会议。\n\n"
+        "### 2. 跨会议决策梳理\n"
+        "提示词：读 `_DECISIONS.md` 与相关会议，找出仍未闭环的决策，列出「议题 / 当前状态 / "
+        "卡点 / 建议下一步」，不要把已完成的再列一遍。\n\n"
+        "### 3. 待办与风险盘点\n"
+        "提示词：汇总所有未完成待办，按负责人分组，标注逾期风险与来源会议；"
+        "只读，不要直接改任务数据。\n\n"
+        "### 说明\n正式改纪要、随记、决策请在软件内通过 AI 面板或集成工具完成；"
+        "本目录的 `output/` 可写，用于放你产出的稿子。\n")
+
+
+def _start_here_meeting(title: str) -> str:
+    """单场会议的任务模板。"""
+    return (
+        f"## 推荐任务 · {title}\n\n"
+        "先用 `context/summary.md` 建立全局（没有 summary.md 就直接读 `transcript.md`），"
+        "需要原话证据时再查 `transcript.md`。\n\n"
+        "### 1. 提炼行动项\n"
+        "提示词：从纪要与转写中提炼行动项，按负责人分组，标注原文依据与截止时间；"
+        "只输出建议，不要直接改任务数据。\n\n"
+        "### 2. 按章节优化纪要\n"
+        "提示词：保留事实与结论，压缩重复表述，补齐每章的「结论 / 依据 / 待确认」，"
+        "把改写稿放到 `output/summary-draft.md`。\n\n"
+        "### 3. 对外同步稿\n"
+        "提示词：基于本场会议生成一份对外同步稿，只保留已达成一致的结论，"
+        "去掉内部讨论与未定事项，标注仍需确认的问题。\n\n"
+        "### 说明\n正式落盘请回到软件内 AI 面板或集成工具；`output/` 可写。\n")
+
+
+def _summary_line(task: dict, limit: int = 60) -> str:
+    """取纪要首行作索引摘要；无纪要返回空串。"""
+    try:
+        from core.chat_context import task_final_summary
+        text = task_final_summary(task).strip()
+    except Exception:  # noqa: BLE001
+        text = ""
+    for line in text.splitlines():
+        line = re.sub(r"^[#>\-\*\s]+", "", line).strip()
+        if line and "内容过短" not in line and "无法生成有效纪要" not in line:
+            return line[:limit] + ("…" if len(line) > limit else "")
+    return ""
+
+
 def export_preview_context(*, task_id: str, task: dict,
                            project_id: str | None = None,
-                           realtime_entries: list[dict] | None = None) -> dict:
+                           realtime_entries: list[dict] | None = None,
+                           ide_id: str | None = None) -> dict:
     """预生成工作区（无 user_message/attachments/history），返回 {workspace, file_count}。
     复用 _write_context_md_files 的渲染逻辑，写带 frontmatter 的 .md 文件。"""
-    ws = preview_workspace_dir(task_id, project_id)
+    ws = preview_workspace_dir(task_id, project_id, task)
     ctx = ws / "context"
     written: list[str] = []
 
     _write_context_md_files(ctx, task, task_id, {}, realtime_entries, None, written)
 
-    # 精简 AGENTS.md（预览工作区，无对话权限段，含跨会议探索指引） /
-    # Minimal AGENTS.md (preview workspace; no permission section; includes cross-meeting guidance)
+    title = task.get("title") or task.get("audio_name") or "未命名会议"
     agents_parts = [
-        "# 会议助手预览工作区\n",
+        f"# 会议上下文：{title}\n",
+        f"## 本场信息\n- 日期：{_meeting_date_slug(task)}\n- 任务 ID：{task_id}\n"
+        f"- 目录：`{ws.name}/`\n",
         "## 说明\n本工作区由 OpenMeetingScribe 自动生成（预览模式），供浏览和外部 IDE 探索。"
         "context/ 目录为会议只读上下文，output/ 目录为可写产物区。"
         "如需修改会议纪要/待办，请通过软件内的 AI 面板或集成工具完成。\n",
@@ -665,20 +998,21 @@ def export_preview_context(*, task_id: str, task: dict,
     ]
     if project_id:
         agents_parts.append(
-            "## 跨会议探索\n本工作区位于项目级目录 `_preview/<project_id>/<task_id>/` 下。"
-            "上级目录 `_preview/<project_id>/_meetings.json` 索引了同项目所有会议，每条含 "
-            "`task_id` / `title` / `meeting_date` / `workspace_path` 字段。"
-            "可逐个进入子目录读取 context/ 下的 .md 进行跨会议探索。\n"
-            "更上级 `_preview/_index.json` 索引了所有项目（含独立会议），可发现其他项目。\n")
+            "## 跨会议探索\n本工作区只是单场会议。上级 `_INDEX.md` 与 `.oms/meetings.json` 索引了同项目所有会议，"
+            "每条含 `task_id` / `title` / `meeting_date` / `workspace_path`。"
+            "若需要跨会议上下文，优先在软件里用「在 IDE 中继续」选择「本项目」或「全部会议」，"
+            "会直接打开含 `AGENTS.md` 与 `_INDEX.md` 的上层根目录。\n")
     else:
         agents_parts.append(
-            "## 跨会议探索\n本工作区为独立会议（未关联知识库），位于 `_preview/_standalone/<task_id>/`。"
-            "上级 `_preview/_standalone/` 下可能有其他独立会议工作区；"
-            "全局索引 `_preview/_index.json` 含所有项目（含独立会议计数），可发现其他会议工作区。\n")
-    (ws / "AGENTS.md").write_text("\n".join(agents_parts), encoding="utf-8")
-    written.append("AGENTS.md")
+            "## 跨会议探索\n本工作区为独立会议（未关联知识库）。"
+            "上级 `_standalone/` 下可能有其他独立会议，全局索引见 `_preview/.oms/index.json`。\n")
+    agents_parts.append(_start_here_meeting(title))
+    agents_md = "\n".join(agents_parts)
+    written.extend(_write_agent_rules(ws, agents_md,
+                                      "本目录为单场会议上下文；跨会议请看上级索引。",
+                                      ide_id=ide_id, level="meeting"))
 
-    update_workspace_index(task_id, project_id, task)
+    update_workspace_index(task_id, project_id, task, workspace_name=ws.name)
 
     # 写 related.md：列出同项目关联会议的标题/日期/相对路径（人类可读，放工作区根与 AGENTS.md 同级）
     related_parts = [
@@ -687,15 +1021,8 @@ def export_preview_context(*, task_id: str, task: dict,
         "路径为相对路径，从本工作区上级目录出发。\n",
     ]
     if project_id:
-        proj_dir = PREVIEW_ROOT / project_id
-        meetings_file = proj_dir / "_meetings.json"
-        others = []
-        if meetings_file.exists():
-            try:
-                idx = json.loads(meetings_file.read_text(encoding="utf-8"))
-                others = [m for m in idx.get("meetings", []) if m.get("task_id") != task_id]
-            except Exception:
-                pass
+        idx = read_meetings_index(project_preview_dir(project_id))
+        others = [m for m in idx.get("meetings", []) if m.get("task_id") != task_id]
         if others:
             related_parts.append("## 同项目会议\n")
             for m in others:
@@ -707,7 +1034,7 @@ def export_preview_context(*, task_id: str, task: dict,
             related_parts.append("## 同项目会议\n本项目暂无其他会议。\n")
     else:
         related_parts.append("## 同项目会议\n本工作区为独立会议（未关联知识库），无同项目关联会议。"
-            "全局索引见上级 `_index.json`。\n")
+            "全局索引见上级 `.oms/index.json`。\n")
     _write_md_with_meta(ws, "related.md", {
         **_base_meta(task_id, task, "related"),
     }, "\n".join(related_parts))
@@ -717,87 +1044,527 @@ def export_preview_context(*, task_id: str, task: dict,
     return {"workspace": str(ws), "file_count": len(written)}
 
 
-def update_workspace_index(task_id: str, project_id: str | None, task: dict) -> None:
-    """增量更新 _index.json（全局）和 _meetings.json（项目级）。"""
-    # 更新项目级索引 / Update project-level index
-    if project_id:
-        proj_dir = PREVIEW_ROOT / project_id
-        proj_dir.mkdir(parents=True, exist_ok=True)
-        index_file = proj_dir / "_meetings.json"
-        index: dict = {}
-        if index_file.exists():
-            try:
-                index = json.loads(index_file.read_text(encoding="utf-8"))
-            except Exception:
-                index = {}
-        if not index:
-            index = {"project_id": project_id, "project_name": "", "version": 1,
-                     "generated_at": _now_iso(), "meetings": []}
-        meetings = index.get("meetings", [])
-        meetings = [m for m in meetings if m.get("task_id") != task_id]
-        ctx_dir = proj_dir / task_id / "context"
-        meetings.append({
-            "task_id": task_id,
-            "title": task.get("title") or task.get("audio_name") or "未命名",
-            "meeting_date": task.get("meeting_date") or "",
-            "workspace_path": f"{task_id}/",
-            "has_transcript": (ctx_dir / "transcript.md").exists(),
-            "has_summary": (ctx_dir / "summary.md").exists(),
-            "has_notes": (ctx_dir / "notes.md").exists(),
-            "has_insights": (ctx_dir / "insights.md").exists(),
-            "todo_count": len(task.get("todos") or []),
-            "speaker_count": len(set(
-                normalize_speaker_name(d.get("speaker_name")) or ""
-                for d in (task.get("dialogue") or []))),
-            "last_updated": _now_iso(),
-        })
-        index["meetings"] = meetings
-        index["generated_at"] = _now_iso()
-        index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+def _slim_meetings(meetings: list[dict]) -> list[dict]:
+    """机器索引的会议级瘦身条目：够反查定位即可，不带正文类数据。"""
+    return [{"task_id": m.get("task_id"), "title": m.get("title"),
+             "meeting_date": m.get("meeting_date"),
+             "workspace_path": m.get("workspace_path"),
+             "has_summary": m.get("has_summary")} for m in meetings]
 
-    # 更新全局索引 / Update global index
-    global_index_file = PREVIEW_ROOT / "_index.json"
+
+def _rebuild_global_index() -> None:
+    """重建全局索引：从各项目会议索引反查 project_id，不再依赖目录名。
+    含会议级条目——单场会议 AGENTS.md 让 agent 查它当全局索引，查不到就是废索引。"""
     PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
-    global_index: dict = {}
-    if global_index_file.exists():
-        try:
-            global_index = json.loads(global_index_file.read_text(encoding="utf-8"))
-        except Exception:
-            global_index = {}
-    if not global_index:
-        global_index = {"version": 1, "generated_at": _now_iso(), "projects": [], "standalone_count": 0}
-
-    projects = []
-    standalone_count = 0
+    projects: list[dict] = []
+    standalone_meetings: list[dict] = []
     try:
         for entry in sorted(PREVIEW_ROOT.iterdir()):
-            if not entry.is_dir() or entry.name.startswith("_"):
-                if entry.name == "_standalone" and entry.is_dir():
-                    standalone_count = sum(1 for sub in entry.iterdir() if sub.is_dir())
+            if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            meetings_file = entry / "_meetings.json"
-            proj_name = ""
-            meeting_count = 0
-            if meetings_file.exists():
-                try:
-                    mi = json.loads(meetings_file.read_text(encoding="utf-8"))
-                    proj_name = mi.get("project_name", "")
-                    meeting_count = len(mi.get("meetings", []))
-                except Exception:
-                    pass
+            if entry.name == "_standalone":
+                # 按索引计数：目录数会把 未识别会议 归档目录也算进去
+                standalone_meetings = _slim_meetings(
+                    read_meetings_index(entry).get("meetings", []))
+                continue
+            if entry.name.startswith("_"):
+                continue
+            mi = read_meetings_index(entry)
+            if not mi:
+                continue
+            pid = mi.get("project_id") or ""
+            if not _UUID_RE.match(pid):
+                continue  # 归属非法（如被误标 _standalone）不入全局列表
             projects.append({
-                "project_id": entry.name,
-                "project_name": proj_name,
-                "meeting_count": meeting_count,
+                "project_id": pid,
+                "project_name": mi.get("project_name") or _project_display_name(pid),
+                "meeting_count": len(mi.get("meetings", [])),
+                "meetings": _slim_meetings(mi.get("meetings", [])),
+                "path": entry.name,
                 "last_updated": _now_iso(),
             })
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
-    global_index["projects"] = projects
-    global_index["standalone_count"] = standalone_count
-    global_index["generated_at"] = _now_iso()
-    global_index_file.write_text(
-        json.dumps(global_index, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_global_index({
+        "version": 1,
+        "generated_at": _now_iso(),
+        "projects": projects,
+        "standalone_count": len(standalone_meetings),
+        "standalone_meetings": standalone_meetings,
+    })
+
+
+def update_workspace_index(task_id: str, project_id: str | None, task: dict,
+                           workspace_name: str | None = None) -> None:
+    """增量更新项目级 .oms/meetings.json，并重建全局 .oms/index.json。"""
+    proj_dir = project_preview_dir(project_id)
+    index: dict = read_meetings_index(proj_dir)
+    if not index:
+        index = {"project_id": project_id or "_standalone",
+                 "project_name": _project_display_name(project_id),
+                 "version": 1, "generated_at": _now_iso(), "meetings": []}
+    index["project_id"] = project_id or "_standalone"
+    index["project_name"] = _project_display_name(project_id)
+
+    ws = (proj_dir / workspace_name) if workspace_name else _find_meeting_dir(proj_dir, task_id)
+    ctx_dir = (ws / "context") if ws else (proj_dir / task_id / "context")
+    meetings = [m for m in index.get("meetings", []) if m.get("task_id") != task_id]
+    meetings.append({
+        "task_id": task_id,
+        "title": task.get("title") or task.get("audio_name") or "未命名",
+        "meeting_date": task.get("meeting_date") or "",
+        "workspace_path": f"{ws.name}/" if ws else f"{task_id}/",
+        "has_transcript": (ctx_dir / "transcript.md").exists(),
+        "has_summary": (ctx_dir / "summary.md").exists(),
+        "has_notes": (ctx_dir / "notes.md").exists(),
+        "has_insights": (ctx_dir / "insights.md").exists(),
+        "todo_count": len(task.get("todos") or []),
+        "speaker_count": _speaker_count(task),
+        "last_updated": _now_iso(),
+    })
+    index["meetings"] = meetings
+    index["generated_at"] = _now_iso()
+    write_meetings_index(proj_dir, index)
+    _rebuild_global_index()
+
+
+def _project_members(project_id: str) -> list[dict]:
+    """按日期倒序取项目内会议（任务库为空时先从磁盘加载）。"""
+    _ensure_tasks_loaded()
+    from app.store import tasks
+    members = [t for t in tasks.values()
+               if t.get("project_id") == project_id and t.get("task_id")]
+    members.sort(key=lambda t: (t.get("meeting_date") or t.get("created_at") or ""), reverse=True)
+    return members
+
+
+def _decision_rows(members: list[dict], names: dict,
+                   project_label: str | None = None) -> list[str]:
+    """决策行生成；project_label 提供时输出全局六列（项目 | 日期 | 会议 | 节点 | 状态 | 负责人），
+    否则五列（无项目列，供单作用域台账用）。"""
+    from core.decision_flow import status_of
+    out: list[str] = []
+    for task in members:
+        date = (task.get("meeting_date") or task.get("created_at") or "")[:10]
+        title = (task.get("title") or task.get("audio_name") or "未命名").replace("|", "/")
+        for todo in (task.get("todos") or []):
+            if not isinstance(todo, dict):
+                continue
+            text = (todo.get("title") or todo.get("text") or "").replace("|", "/").strip()
+            if not text:
+                continue
+            sid = status_of(todo)
+            state = names.get(sid, sid)
+            assignee = (todo.get("assignee") or "未分配").replace("|", "/")
+            if project_label:
+                out.append(f"| {project_label} | {date} | {title} | {text} | {state} | {assignee} |")
+            else:
+                out.append(f"| {date} | {title} | {text} | {state} | {assignee} |")
+    return out
+
+
+def _decision_lines(members: list[dict]) -> list[str]:
+    """跨会议决策台账：会议 / 节点 / 状态 / 负责人。"""
+    from core.decision_status import load_statuses
+    try:
+        names = {s["id"]: s.get("name") or s["id"] for s in load_statuses()}
+    except Exception:  # noqa: BLE001
+        names = {}
+    return (["| 日期 | 会议 | 决策 / 待办 | 状态 | 负责人 |", "| --- | --- | --- | --- | --- |"]
+            + _decision_rows(members, names))
+
+
+def _write_global_decisions(projects_idx: list[dict], standalone_members: list[dict],
+                            written: list[str]) -> None:
+    """根级决策台账：聚合全部项目与独立会议（六列带项目归属）。
+    根级规则文案「决策与待办见 _DECISIONS.md」必须有真实落点，不能悬空。"""
+    from core.decision_status import load_statuses
+    try:
+        names = {s["id"]: s.get("name") or s["id"] for s in load_statuses()}
+    except Exception:  # noqa: BLE001
+        names = {}
+    rows = ["| 项目 | 日期 | 会议 | 决策 / 待办 | 状态 | 负责人 |",
+            "| --- | --- | --- | --- | --- | --- |"]
+    for item in projects_idx:
+        pid = item["index"].get("project_id")
+        if not pid or not _UUID_RE.match(pid):
+            continue
+        label = item["index"].get("project_name") or _project_display_name(pid)
+        rows.extend(_decision_rows(_project_members(pid), names, label))
+    if standalone_members:
+        rows.extend(_decision_rows(standalone_members, names, "独立会议"))
+    body = ("# 跨项目决策台账\n\n"
+            "> 聚合全部知识库项目与独立会议的决策/待办节点；项目内明细见各项目目录 `_DECISIONS.md`。\n\n"
+            + "\n".join(rows) + "\n")
+    _write_md_with_meta(PREVIEW_ROOT, "_DECISIONS.md",
+                        {"generated_at": _now_iso(), "source": "decisions"},
+                        body)
+    written.append("_DECISIONS.md")
+
+
+_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _ensure_tasks_loaded() -> None:
+    """任务库为空时从磁盘加载一次。索引/迁移以任务库为全量基准，
+    服务进程启动时已加载，CLI/测试进程按需补载。"""
+    from app.store import tasks as task_store
+    if task_store:
+        return
+    try:
+        from app.task_store import load_tasks_from_disk
+        load_tasks_from_disk()
+    except Exception as e:  # noqa: BLE001 - 加载失败按空库处理，不阻断导出
+        logger.warning("[CLI引擎] 任务库加载失败: %s", e)
+
+
+def _store_members(project_id: str | None) -> dict[str, dict]:
+    """某范围（项目/独立会议）的全量任务，task_id → task。"""
+    from app.store import tasks as task_store
+    _ensure_tasks_loaded()
+    if project_id:
+        items = [t for t in task_store.values()
+                 if t.get("project_id") == project_id and t.get("task_id")]
+    else:
+        items = [t for t in task_store.values()
+                 if not t.get("project_id") and t.get("task_id")]
+    return {t["task_id"]: t for t in items}
+
+
+def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None:
+    """把遗留 <task_id> 目录批量改成可读名，并按任务库重建完整索引。
+    此前索引只记录导出过的会议，历史会议既不被改名也不计数——这里以任务库为准全量对齐。
+    不在任务库中的 UUID 目录视为孤儿，归档为 未识别会议__<短ID>。"""
+    by_id = _store_members(project_id)
+
+    # 1) 磁盘遗留 UUID 目录 → 可读名 / 孤儿归档
+    if proj_dir.is_dir():
+        for entry in sorted(proj_dir.iterdir()):
+            if not entry.is_dir() or entry.name.startswith(".") or entry.name.startswith("_"):
+                continue
+            if not _UUID_RE.match(entry.name):
+                continue
+            task = by_id.get(entry.name)
+            if task is not None:
+                target = proj_dir / _meeting_dir_name(task, entry.name)
+            else:
+                # 与本范围对不上：旧版可能把项目会议错放进独立区，搬回所属项目；
+                # 彻底无主才归档为 未识别会议__<短ID>
+                from app.store import tasks as task_store
+                owner = task_store.get(entry.name)
+                if owner and owner.get("project_id"):
+                    target = (project_preview_dir(owner["project_id"])
+                              / _meeting_dir_name(owner, entry.name))
+                else:
+                    target = proj_dir / f"未识别会议__{entry.name[:8].lower()}"
+            if target.exists():
+                # 同任务已有正式工作区：旧目录是残留副本，缺失子项并入后清掉，防 ID 撞车脏副本
+                _merge_dir_into(entry, target)
+                continue
+            try:
+                entry.rename(target)
+            except OSError as e:  # noqa: BLE001 - 单目录失败不阻断整体迁移
+                logger.warning("[CLI引擎] 历史目录迁移失败 %s: %s", entry.name, e)
+
+        # 1.5) 撞车归档清理：未识别会议__<key> 的 key 已命中任务库且真实工作区存在
+        # → 当年是误归档的脏副本，缺失子项并入真实工作区后收掉（评估 2026-10-26 P0-4）
+        from app.store import tasks as task_store
+        by_key: dict[str, dict] = {}
+        for tid, t in task_store.items():
+            by_key.setdefault(_short_key(tid), t)
+        for entry in sorted(proj_dir.iterdir()):
+            if not entry.is_dir() or not entry.name.startswith("未识别会议__"):
+                continue
+            owner = by_key.get(entry.name.split("__", 1)[1])
+            if owner is None:
+                continue  # 真无主，保留归档待人工辨认
+            pid = owner.get("project_id")
+            pd = (PREVIEW_ROOT / _project_dir_name(pid) if pid and _UUID_RE.match(str(pid))
+                  else PREVIEW_ROOT / "_standalone")
+            real = (_find_meeting_dir(pd, owner["task_id"])
+                    if pd.is_dir() else None)
+            if real is not None:
+                _merge_dir_into(entry, real)
+                logger.info("[CLI引擎] 撞车归档已并入真实工作区 %s → %s", entry.name, real.name)
+
+    # 2) 以任务库为准重建索引（历史会议只有导出过才入索引，是数量偏少的根因）
+    old = {m.get("task_id"): m
+           for m in read_meetings_index(proj_dir).get("meetings", [])}
+    meetings = []
+    for tid, task in by_id.items():
+        ws = _find_meeting_dir(proj_dir, tid)
+        ctx = (ws / "context") if ws else None
+        meetings.append({
+            "task_id": tid,
+            "title": task.get("title") or task.get("audio_name") or "未命名",
+            "meeting_date": task.get("meeting_date") or task.get("created_at") or "",
+            "workspace_path": f"{ws.name}/" if ws else "",
+            "has_transcript": bool(ctx and (ctx / "transcript.md").exists()),
+            "has_summary": bool(ctx and (ctx / "summary.md").exists()),
+            "has_notes": bool(ctx and (ctx / "notes.md").exists()),
+            "has_insights": bool(ctx and (ctx / "insights.md").exists()),
+            "todo_count": len(task.get("todos") or []),
+            "speaker_count": _speaker_count(task),
+            "last_updated": old.get(tid, {}).get("last_updated") or _now_iso(),
+        })
+    meetings.sort(key=lambda m: m.get("meeting_date") or "", reverse=True)
+    proj_id = project_id or "_standalone"
+    write_meetings_index(proj_dir, {
+        "project_id": proj_id,
+        "project_name": "独立会议" if proj_id == "_standalone" else _project_display_name(proj_id),
+        "version": 1,
+        "generated_at": _now_iso(),
+        "meetings": meetings,
+    })
+
+
+def _infer_project_id_from_dir(proj_dir: Path) -> str | None:
+    """按目录内会议反查归属项目（索引 project_id 被污染时的自愈路径）。"""
+    from app.store import tasks as task_store
+    owners: set[str] = set()
+    for m in read_meetings_index(proj_dir).get("meetings", []):
+        t = task_store.get(m.get("task_id") or "")
+        pid = (t or {}).get("project_id")
+        if pid and _UUID_RE.match(pid):
+            owners.add(pid)
+    return owners.pop() if len(owners) == 1 else None
+
+
+def _speaker_count(task: dict | None) -> int:
+    """发言人数：dialogue 内实名去重（空名不计）。
+    任务库 task.speaker_count 是导入时的对话条数，口径不对，索引一律现算。"""
+    names = (normalize_speaker_name(d.get("speaker_name"))
+             for d in (task or {}).get("dialogue") or [])
+    return len({n for n in names if n})
+
+
+def _sweep_junk_files() -> None:
+    """清扫 Finder/同步工具留下的噪声文件（.DS_Store 等），保持工作区纯净。"""
+    if not PREVIEW_ROOT.is_dir():
+        return
+    for path in PREVIEW_ROOT.rglob(".DS_Store"):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _migrate_all_dirs() -> None:
+    """打开全部会议前批量迁移：所有项目与独立会议的旧目录一次性改名。
+    目录归属只认任务库与合法 project_id，绝不给非独立目录盖 standalone 章——
+    项目目录缺索引时若误标，会把独立会议灌进项目索引并连锁清空独立区。"""
+    _ensure_tasks_loaded()
+    _sweep_junk_files()
+    if not PREVIEW_ROOT.is_dir():
+        return
+    for entry in sorted(PREVIEW_ROOT.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        if entry.name == "_standalone":
+            _migrate_meeting_dirs(entry, None)
+            continue
+        if entry.name.startswith("_"):
+            continue
+        pid = read_meetings_index(entry).get("project_id")
+        if pid and not _UUID_RE.match(pid):
+            pid = _infer_project_id_from_dir(entry)  # 被污染的归属，反查自愈
+        if not pid and _UUID_RE.match(entry.name):
+            pid = entry.name  # 旧版项目目录以 task_id 命名
+        if not pid:
+            pid = _infer_project_id_from_dir(entry)
+        if not pid:
+            logger.warning("[CLI引擎] 跳过无法识别归属的目录 %s", entry.name)
+            continue
+        _migrate_meeting_dirs(project_preview_dir(pid), pid)
+
+
+def _write_scope_indexes(scope_dir: Path, scope_id: str, scope_name: str,
+                         members: list[dict], written: list[str],
+                         archive_note: bool = False) -> None:
+    """写作用域级 `_INDEX.md`（会议清单）与 `_DECISIONS.md`（跨会议决策台账）。
+    项目级与独立会议区共用——「决策与待办见 _DECISIONS.md」的指引必须在每个作用域有落点。"""
+    rows = ["| 日期 | 会议 | 一句话结论 | 待办 | 目录 |", "| --- | --- | --- | --- | --- |"]
+    for task in members:
+        ws = _find_meeting_dir(scope_dir, task["task_id"])
+        if not ws:
+            continue
+        date = (task.get("meeting_date") or task.get("created_at") or "")[:10]
+        title = (task.get("title") or task.get("audio_name") or "未命名").replace("|", "/")
+        has_summary = (ws / "context" / "summary.md").exists()
+        summary = _summary_line(task).replace("|", "/")
+        todo_count = len(task.get("todos") or [])
+        rows.append(f"| {date} | {title} | {summary or ('—' if has_summary else '（无纪要）')} "
+                    f"| {todo_count} | `{ws.name}/` |")
+    index_body = (f"# 会议索引：{scope_name}\n\n> 共 {len(members)} 场，按日期倒序。"
+                  "先在这里定位，再进入目录读 context/。\n\n" + "\n".join(rows) + "\n")
+    if archive_note:
+        index_body += ("\n> 注：磁盘上的 `未识别会议__*` 目录是无主遗留归档，不属于任务库，"
+                       "不列入本索引。\n")
+    _write_md_with_meta(scope_dir, "_INDEX.md",
+                        {"project_id": scope_id, "project_name": scope_name,
+                         "generated_at": _now_iso(), "source": "index",
+                         "meeting_count": len(members)}, index_body)
+    written.append("_INDEX.md")
+
+    decision_body = (f"# 跨会议决策台账：{scope_name}\n\n"
+                     "> 只列本范围内会议产生的决策/待办节点，状态取软件内决策字典。\n\n"
+                     + "\n".join(_decision_lines(members)) + "\n")
+    _write_md_with_meta(scope_dir, "_DECISIONS.md",
+                        {"project_id": scope_id, "generated_at": _now_iso(), "source": "decisions"},
+                        decision_body)
+    written.append("_DECISIONS.md")
+
+
+def export_project_context(project_id: str, ide_id: str | None = None) -> dict:
+    """导出项目级上下文根：AGENTS.md + _INDEX.md + _DECISIONS.md。
+    单场目录按需补齐（只生成缺失的），已存在的保留用户/IDE 改动。"""
+    if not project_id or not _UUID_RE.match(project_id):
+        raise ValueError(f"invalid project_id: {project_id!r}")
+    proj_dir = project_preview_dir(project_id)
+    _migrate_meeting_dirs(proj_dir, project_id)
+    name = _project_display_name(project_id)
+    members = _project_members(project_id)
+
+    for task in members:
+        tid = task["task_id"]
+        ws = preview_workspace_dir(tid, project_id, task)
+        if not (ws / "context" / "summary.md").exists() and not (ws / "context" / "transcript.md").exists():
+            export_preview_context(task_id=tid, task=task, project_id=project_id, ide_id=ide_id)
+
+    written: list[str] = []
+    _write_scope_indexes(proj_dir, project_id, name, members, written)
+
+    agents_body = (
+        f"# 会议知识库：{name}\n\n"
+        "## 项目概况\n"
+        f"- 会议数：{len(members)}\n"
+        f"- 索引：`_INDEX.md`（会议清单） / `_DECISIONS.md`（跨会议决策台账）\n"
+        "- 单场上下文：`<会议目录>/context/`\n\n"
+        "## 阅读顺序\n"
+        "1. 读 `_INDEX.md`，按日期与摘要找相关会议。\n"
+        "2. 需要决策/待办时读 `_DECISIONS.md`。\n"
+        "3. 再进入对应会议目录读 `context/summary.md`，没有纪要就读 `context/transcript.md`；"
+        "需要原话证据时也读它。\n"
+        "4. 不要一次性通读所有转写，先索引后定点，控制上下文预算。\n\n"
+        "## 工作约束\n"
+        "- 本目录是只读会议上下文，`output/` 可写，用于放草稿与产物。\n"
+        "- 正式修改纪要/随记/决策必须回到软件内 AI 面板或集成工具，不要直接改任务数据。\n"
+        "- 引用结论时标注来源会议与文件，跨会议冲突要显式指出。\n\n"
+        + _start_here(f"{name} · 项目级"))
+    written.extend(_write_agent_rules(proj_dir, agents_body,
+                                      "本目录为项目级会议知识库，含本项目全部会议。",
+                                      ide_id=ide_id, level="project"))
+
+    _rebuild_global_index()
+    logger.info("[CLI引擎] 项目上下文导出 project=%s ws=%s meetings=%d", project_id, proj_dir, len(members))
+    return {"workspace": str(proj_dir), "file_count": len(written),
+            "meeting_count": len(members), "scope": "project"}
+
+
+def export_global_context(ide_id: str | None = None) -> dict:
+    """导出全局上下文根：所有项目与独立会议的索引。"""
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    _migrate_all_dirs()
+
+    # 独立会议逐场补齐工作区（只生成缺失的）——否则索引列了全量，
+    # 文件树里却只有导出过的寥寥数场，用户看到的"会议数"严重失真
+    for tid, task in _store_members(None).items():
+        ws = preview_workspace_dir(tid, None, task)
+        if (ws / "context" / "summary.md").exists() or (ws / "context" / "transcript.md").exists():
+            continue
+        try:
+            export_preview_context(task_id=tid, task=task, project_id=None, ide_id=ide_id)
+        except Exception as e:  # noqa: BLE001 - 单场失败不阻断全局导出
+            logger.warning("[CLI引擎] 独立会议上下文补齐失败 %s: %s", tid[:8], e)
+    _rebuild_global_index()
+    projects_idx: list[dict] = []
+    standalone_meetings: list[dict] = []
+    try:
+        for entry in sorted(PREVIEW_ROOT.iterdir()):
+            if not entry.is_dir() or entry.name.startswith(".") or entry.name.startswith("_"):
+                continue
+            mi = read_meetings_index(entry)
+            if mi:
+                projects_idx.append({"dir": entry, "index": mi})
+        si = read_meetings_index(PREVIEW_ROOT / "_standalone")
+        standalone_meetings = si.get("meetings", [])
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 同步补齐各项目根入口，避免“全部会议”里只有光秃秃的目录
+    for item in projects_idx:
+        pid = item["index"].get("project_id")
+        if not pid or not _UUID_RE.match(pid):
+            continue  # 非法归属（如被误标 _standalone）不导出，防污染独立区
+        try:
+            export_project_context(pid, ide_id=ide_id)
+        except Exception as e:  # noqa: BLE001 - 单项目失败不阻断全局导出
+            logger.warning("[CLI引擎] 项目上下文补齐失败 %s: %s", pid, e)
+
+    # 补齐会重写各项目索引，行数据以导出后的新鲜索引为准
+    written: list[str] = []
+
+    # 独立会议区自己的索引/台账：根级与会议级规则都会指向 _DECISIONS.md，standalone 不能空转
+    standalone_members = sorted(
+        _store_members(None).values(),
+        key=lambda t: (t.get("meeting_date") or t.get("created_at") or ""), reverse=True)
+    _write_scope_indexes(PREVIEW_ROOT / "_standalone", "_standalone", "独立会议",
+                         standalone_members, written, archive_note=True)
+    _write_global_decisions(projects_idx, standalone_members, written)
+
+    proj_rows = ["| 项目 | 会议数 | 目录 |", "| --- | --- | --- |"]
+    for item in projects_idx:
+        pid = item["index"].get("project_id")
+        if not pid or not _UUID_RE.match(pid):
+            continue
+        mi = read_meetings_index(item["dir"]) or item["index"]
+        proj_rows.append(f"| {mi.get('project_name') or _project_display_name(pid)} "
+                         f"| {len(mi.get('meetings', []))} | `{item['dir'].name}/` |")
+    if standalone_meetings:
+        proj_rows.append(f"| 独立会议 | {len(standalone_meetings)} | `_standalone/` |")
+        standalone_rows = ["| 日期 | 会议 | 目录 |", "| --- | --- | --- |"]
+        for m in standalone_meetings:
+            date = (m.get("meeting_date") or "")[:10]
+            title = (m.get("title") or "未命名").replace("|", "/")
+            wp = m.get("workspace_path") or ""
+            standalone_rows.append(f"| {date or '—'} | {title} | `{wp}` |" if wp
+                                   else f"| {date or '—'} | {title}（上下文未生成） | — |")
+        index_body = ("# 全部会议索引\n\n> 全部知识库项目与独立会议。先选项目，再进项目内 `_INDEX.md`。\n\n"
+                      + "\n".join(proj_rows)
+                      + "\n\n## 独立会议\n\n" + "\n".join(standalone_rows) + "\n")
+    else:
+        index_body = ("# 全部会议索引\n\n> 全部知识库项目与独立会议。先选项目，再进项目内 `_INDEX.md`。\n\n"
+                      + "\n".join(proj_rows) + "\n")
+    _write_md_with_meta(PREVIEW_ROOT, "_INDEX.md",
+                        {"generated_at": _now_iso(), "source": "global_index",
+                         "project_count": len(projects_idx),
+                         "standalone_count": len(standalone_meetings)}, index_body)
+    written.append("_INDEX.md")
+
+    agents_body = (
+        "# 全部会议知识库\n\n"
+        "## 结构\n"
+        "- 每个项目一个目录：`<项目名>__<短ID>/`，内含 `AGENTS.md`、`_INDEX.md`、`_DECISIONS.md`。\n"
+        "- 未关联知识库的会议在 `_standalone/`，同样内含 `_INDEX.md` 与 `_DECISIONS.md`。\n"
+        "- 根目录：`_INDEX.md`（全部会议索引）与 `_DECISIONS.md`（跨项目决策台账）。\n"
+        "- 机器索引 `.oms/index.json` 含会议级条目（task_id / workspace_path / has_summary），供程序反查。\n\n"
+        "## 阅读顺序\n"
+        "1. 按用户问题先选定项目。\n"
+        "2. 进项目读 `_INDEX.md` 与 `_DECISIONS.md`；跨项目议题看根 `_DECISIONS.md`。\n"
+        "3. 再进单场会议目录读 `context/summary.md`，没有纪要就读 `context/transcript.md`。\n"
+        "4. 不要通读全部转写。\n\n"
+        "## 工作约束\n"
+        "- 会议上下文只读，`output/` 可写。\n"
+        "- 正式改任务数据必须回到软件内 AI 面板或集成工具。\n"
+        "- 跨项目引用时标注项目、会议与文件。\n\n"
+        + _start_here("全部会议"))
+    written.extend(_write_agent_rules(PREVIEW_ROOT, agents_body,
+                                      "本目录为全部会议知识库，含多个项目。",
+                                      ide_id=ide_id))
+
+    logger.info("[CLI引擎] 全局上下文导出 ws=%s projects=%d", PREVIEW_ROOT, len(projects_idx))
+    return {"workspace": str(PREVIEW_ROOT), "file_count": len(written),
+            "project_count": len(projects_idx), "scope": "all"}
 
 
 def refresh_workspace(task_id: str) -> dict:
@@ -822,7 +1589,7 @@ def import_from_workspace(task_id: str) -> dict:
     if not task:
         return {"error": "task_not_found"}
     project_id = task.get("project_id")
-    ws = preview_workspace_dir(task_id, project_id)
+    ws = preview_workspace_dir(task_id, project_id, task)
     ctx = ws / "context"
     result: dict = {"has_changes": False, "summary": None, "notes": None,
                     "source_mtime": None, "task_id": task_id}

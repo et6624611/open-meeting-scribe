@@ -329,6 +329,13 @@
     "workspace_ide_close": "Close",
     "workspace_ide_unavailable": "Not installed",
     "workspace_ide_not_found": "{name} not detected",
+    "workspace_ide_scope_label": "Context scope",
+    "workspace_ide_scope_meeting": "This meeting",
+    "workspace_ide_scope_project": "Whole project",
+    "workspace_ide_scope_all": "All meetings",
+    "workspace_ide_scope_project_hint": "No knowledge base linked; project scope unavailable",
+    "workspace_ide_scope_hint": "Wider scope lets the IDE agent see more meetings",
+    "workspace_ide_continue": "Continue in IDE",
     "workspace_browser_title": "Cross-meeting browser",
     "workspace_browser_empty": "No meeting index",
     "workspace_browser_standalone": "Standalone meetings"

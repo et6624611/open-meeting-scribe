@@ -85,6 +85,22 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
+        <div class="ws-ide-scope">
+          <span class="ws-ide-scope-label">{{ t('ai-panel.context.workspace_ide_scope_label') }}</span>
+          <div class="ws-ide-scope-opts">
+            <button
+              v-for="s in ideScopes"
+              :key="s.id"
+              class="ws-ide-scope-btn"
+              :class="{ 'is-active': ideScope === s.id }"
+              :disabled="s.id === 'project' && !taskStore.currentTask?.project_id"
+              :title="s.id === 'project' && !taskStore.currentTask?.project_id
+                ? t('ai-panel.context.workspace_ide_scope_project_hint')
+                : t('ai-panel.context.workspace_ide_scope_hint')"
+              @click="ideScope = s.id"
+            >{{ t(s.label) }}</button>
+          </div>
+        </div>
         <ul class="ws-ide-list">
           <li v-for="ide in ws.ides.value" :key="ide.ide_id">
             <button
@@ -92,7 +108,7 @@
               :class="{ 'is-disabled': !ide.available, 'is-busy': ws.openingIdeId.value === ide.ide_id }"
               :disabled="!ide.available || ws.openingIdeId.value === ide.ide_id"
               :title="ide.available ? ide.display_name : t('ai-panel.context.workspace_ide_not_found', { name: ide.display_name })"
-              @click="ws.openIde(taskId!, ide.ide_id)"
+              @click="ws.openIde(taskId!, ide.ide_id, ideScope)"
             >
               <span class="ws-ide-name">{{ ide.display_name }}</span>
               <span v-if="!ide.available" class="ws-ide-na">{{ t('ai-panel.context.workspace_ide_unavailable') }}</span>
@@ -157,6 +173,7 @@ import { useTaskStore } from '@/stores/task'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { getDockBounds, positionDropdown } from '@/utils/popoverPosition'
 import FileTreeNode from './FileTreeNode.vue'
+import type { WorkspaceScope } from '@/api/workspace'
 
 const { t } = useI18n()
 const ws = useWorkspace()
@@ -172,6 +189,12 @@ defineEmits<{
 const expanded = ref(true)
 const ideMenuRef = ref<HTMLElement | null>(null)
 const ideTriggerRef = ref<HTMLElement | null>(null)
+const ideScope = ref<WorkspaceScope>('meeting')
+const ideScopes: Array<{ id: WorkspaceScope; label: string }> = [
+  { id: 'meeting', label: 'ai-panel.context.workspace_ide_scope_meeting' },
+  { id: 'project', label: 'ai-panel.context.workspace_ide_scope_project' },
+  { id: 'all', label: 'ai-panel.context.workspace_ide_scope_all' },
+]
 
 // 解构访问常用状态（保持模板简洁）
 const {
@@ -421,6 +444,13 @@ onUnmounted(() => {
 .ws-ide-close { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; border: none; background: transparent; cursor: pointer; color: var(--text-tertiary, #9ca3af); border-radius: 3px; }
 .ws-ide-close:hover { background: var(--hover-bg, rgba(0,0,0,0.06)); }
 .ws-ide-close svg { width: 11px; height: 11px; }
+.ws-ide-scope { padding: 6px 6px 4px; border-bottom: 1px solid var(--border-subtle, rgba(0,0,0,0.06)); }
+.ws-ide-scope-label { display: block; font-size: 10px; color: var(--text-tertiary, #9ca3af); margin-bottom: 4px; }
+.ws-ide-scope-opts { display: flex; gap: 4px; }
+.ws-ide-scope-btn { flex: 1; padding: 3px 4px; border: 1px solid var(--border-subtle, rgba(0,0,0,0.1)); background: transparent; border-radius: 4px; font-size: 10px; color: var(--text-secondary, #6b7280); cursor: pointer; white-space: nowrap; }
+.ws-ide-scope-btn:hover:not(:disabled) { background: var(--hover-bg, rgba(0,0,0,0.04)); }
+.ws-ide-scope-btn.is-active { color: var(--accent, #2563eb); border-color: var(--accent, #2563eb); background: color-mix(in srgb, var(--accent, #2563eb) 10%, transparent); }
+.ws-ide-scope-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .ws-ide-list { list-style: none; margin: 0; padding: 2px 0 0; }
 .ws-ide-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 6px 8px; border: none; background: transparent; cursor: pointer; border-radius: 4px; text-align: left; font-size: 12px; color: var(--text-primary, #111827); }
 .ws-ide-item:hover:not(.is-disabled) { background: var(--hover-bg, rgba(0,0,0,0.04)); }

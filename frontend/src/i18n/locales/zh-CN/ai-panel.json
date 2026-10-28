@@ -329,6 +329,13 @@
     "workspace_ide_close": "关闭",
     "workspace_ide_unavailable": "未安装",
     "workspace_ide_not_found": "未检测到 {name}",
+    "workspace_ide_scope_label": "上下文范围",
+    "workspace_ide_scope_meeting": "本场会议",
+    "workspace_ide_scope_project": "本项目全部",
+    "workspace_ide_scope_all": "全部会议",
+    "workspace_ide_scope_project_hint": "未关联知识库，无法打开项目级上下文",
+    "workspace_ide_scope_hint": "范围越大，IDE 里的 agent 能看到的会议越多",
+    "workspace_ide_continue": "在 IDE 中继续",
     "workspace_browser_title": "跨会议浏览",
     "workspace_browser_empty": "暂无会议索引",
     "workspace_browser_standalone": "独立会议"

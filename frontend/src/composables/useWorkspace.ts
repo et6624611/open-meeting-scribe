@@ -29,6 +29,7 @@ import type {
   IdeInfo,
   WorkspaceProject,
   ProjectMeeting,
+  WorkspaceScope,
 } from '@/api/workspace'
 
 export function useWorkspace() {
@@ -51,6 +52,7 @@ export function useWorkspace() {
   const ides = ref<IdeInfo[]>([])
   const idesLoaded = ref(false)
   const idesOpen = ref(false)
+  const lastIdeId = ref<string>(localStorage.getItem('oms.lastIde') || '')
 
   // ── 跨会议浏览 / Cross-meeting browser ──
   const projects = ref<WorkspaceProject[]>([])
@@ -175,16 +177,22 @@ export function useWorkspace() {
   }
 
   /** 启动 IDE 打开工作区（已安装的 IDE 才会成功） */
-  async function openIde(taskId: string, ideId: string): Promise<void> {
-    if (!taskId || !ideId) return
+  async function openIde(taskId: string, ideId: string,
+                        scope: WorkspaceScope = 'meeting'): Promise<boolean> {
+    if (!taskId || !ideId) return false
     openingIdeId.value = ideId
     try {
-      const r = await openInIde(taskId, ideId)
+      const r = await openInIde(taskId, ideId, scope)
       if (!r.launched) {
         showToast(r.error || '启动 IDE 失败', 'error')
+        return false
       }
+      lastIdeId.value = ideId
+      try { localStorage.setItem('oms.lastIde', ideId) } catch { /* 隐私模式忽略 */ }
+      return true
     } catch (err) {
       showToast(extractErrorMessage(err, '启动 IDE 失败'), 'error')
+      return false
     } finally {
       openingIdeId.value = null
       idesOpen.value = false
@@ -277,6 +285,7 @@ export function useWorkspace() {
     ides,
     idesLoaded,
     idesOpen,
+    lastIdeId,
     projects,
     standaloneCount,
     projectsLoaded,

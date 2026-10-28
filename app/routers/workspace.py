@@ -9,16 +9,22 @@ Workspace browse/preview/refresh/import/open endpoints
 import logging
 import sys
 from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.settings_store import get_feature_flags
 from app.store import tasks
 from core.cli_engine.context_export import (
-    PREVIEW_ROOT,
-    preview_workspace_dir,
-    refresh_workspace,
+    attach_ide_rule,
+    export_global_context,
+    export_project_context,
     import_from_workspace,
+    preview_workspace_dir,
+    project_preview_dir,
+    read_global_index,
+    read_meetings_index,
+    refresh_workspace,
 )
 from core.cli_engine.ide_probe import detect_ides, launch_ide
 from core.i18n import _
@@ -39,13 +45,14 @@ class TaskAction(BaseModel):
 class OpenIdeAction(BaseModel):
     task_id: str
     ide_id: str
+    scope: str = "meeting"  # meeting | project | all
 
 
 def _resolve_preview_dir(task_id: str) -> Path:
     """根据 task_id 解析预览工作区目录（从 task 取 project_id 路由）。"""
     task = tasks.get(task_id)
     project_id = task.get("project_id") if task else None
-    return preview_workspace_dir(task_id, project_id)
+    return preview_workspace_dir(task_id, project_id, task)
 
 
 def _is_path_allowed(path: Path, root: Path) -> bool:
@@ -181,18 +188,40 @@ def open_in_finder(data: TaskAction):
 
 @router.post("/api/workspace/open-ide")
 def open_in_ide(data: OpenIdeAction):
-    """启动 IDE 打开工作区。 / Launch IDE to open workspace."""
+    """启动 IDE 打开工作区，可指定上下文范围（单场 / 项目 / 全部）。"""
     if not get_feature_flags().get("workspace_explorer", True):
         raise HTTPException(403, _("Workspace explorer is disabled"))
 
-    ws = _resolve_preview_dir(data.task_id)
+    task = tasks.get(data.task_id)
+    if not task:
+        raise HTTPException(404, _("Task not found"))
+
+    scope = (data.scope or "meeting").lower()
+    try:
+        if scope == "project" and task.get("project_id"):
+            export = export_project_context(task["project_id"], ide_id=data.ide_id)
+            ws = Path(export["workspace"])
+        elif scope == "all":
+            export = export_global_context(ide_id=data.ide_id)
+            ws = Path(export["workspace"])
+        else:
+            scope = "meeting"
+            export = {}
+            ws = _resolve_preview_dir(data.task_id)
+            # 单场目录不重新导出，只补当前 IDE 的原生规则入口
+            attach_ide_rule(ws, data.ide_id, "本目录为单场会议上下文；跨会议请看上级索引。")
+    except Exception as e:  # noqa: BLE001 - 导出失败按 500 回传，前端提示可重试
+        logger.exception("[IDE] 上下文导出失败 task=%s scope=%s", data.task_id, scope)
+        raise HTTPException(500, _("Failed to prepare workspace: {err}").format(err=e))
+
     if not ws.is_dir():
         raise HTTPException(404, _("Workspace not found"))
 
     result = launch_ide(data.ide_id, ws)
     if not result["launched"]:
         raise HTTPException(400, result.get("error", "launch_failed"))
-    return result
+    return {**result, "workspace": str(ws), "scope": scope,
+            "file_count": export.get("file_count", 0)}
 
 
 @router.get("/api/workspace/ides")
@@ -209,15 +238,10 @@ def list_workspace_projects():
     if not get_feature_flags().get("workspace_explorer", True):
         raise HTTPException(403, _("Workspace explorer is disabled"))
 
-    import json
-    index_file = PREVIEW_ROOT / "_index.json"
-    if not index_file.exists():
+    index = read_global_index()
+    if not index:
         return {"projects": [], "standalone_count": 0, "exists": False}
-    try:
-        index = json.loads(index_file.read_text(encoding="utf-8"))
-        return {**index, "exists": True}
-    except Exception as e:
-        raise HTTPException(500, _("Failed to read index: {err}").format(err=e))
+    return {**index, "exists": True}
 
 
 @router.get("/api/workspace/project/{project_id}/meetings")
@@ -226,15 +250,10 @@ def list_project_meetings(project_id: str):
     if not get_feature_flags().get("workspace_explorer", True):
         raise HTTPException(403, _("Workspace explorer is disabled"))
 
-    import json
-    meetings_file = PREVIEW_ROOT / project_id / "_meetings.json"
-    if not meetings_file.exists():
+    index = read_meetings_index(project_preview_dir(project_id))
+    if not index:
         return {"meetings": [], "exists": False}
-    try:
-        index = json.loads(meetings_file.read_text(encoding="utf-8"))
-        return {**index, "exists": True}
-    except Exception as e:
-        raise HTTPException(500, _("Failed to read meetings: {err}").format(err=e))
+    return {**index, "exists": True}
 
 
 @router.get("/api/workspace/preview")

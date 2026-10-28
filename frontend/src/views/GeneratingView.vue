@@ -71,6 +71,51 @@
         </nav>
       </div>
       <div class="gen-toolbar-right">
+        <!-- 在 IDE 中继续：上下文联动入口 / Continue in IDE -->
+        <div v-if="ws.ides.value.length" class="gen-ide-wrap">
+          <button ref="genIdeBtn" class="gen-toolbar-icon gen-toolbar-ide" :title="t('ai-panel.context.workspace_ide_continue')" @click="toggleIdeMenu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span class="tb-tip">{{ t('ai-panel.context.workspace_ide_continue') }}</span>
+          </button>
+          <div v-if="ideMenuOpen" ref="genIdeMenu" class="gen-ide-menu" role="dialog">
+            <div class="gen-ide-head">
+              <span>{{ t('ai-panel.context.workspace_ide_open_in') }}</span>
+              <button class="gen-ide-close" :title="t('ai-panel.context.workspace_ide_close')" @click="ideMenuOpen = false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            <div class="gen-ide-scope">
+              <span class="gen-ide-scope-label">{{ t('ai-panel.context.workspace_ide_scope_label') }}</span>
+              <div class="gen-ide-scope-opts">
+                <button
+                  v-for="s in ideScopes"
+                  :key="s.id"
+                  class="gen-ide-scope-btn"
+                  :class="{ 'is-active': ideScope === s.id }"
+                  :disabled="s.id === 'project' && !task?.project_id"
+                  :title="s.id === 'project' && !task?.project_id
+                    ? t('ai-panel.context.workspace_ide_scope_project_hint')
+                    : t('ai-panel.context.workspace_ide_scope_hint')"
+                  @click="ideScope = s.id"
+                >{{ t(s.label) }}</button>
+              </div>
+            </div>
+            <ul class="gen-ide-list">
+              <li v-for="ide in ws.ides.value" :key="ide.ide_id">
+                <button
+                  class="gen-ide-item"
+                  :disabled="!ide.available || ws.openingIdeId.value === ide.ide_id"
+                  :title="ide.available ? ide.display_name : t('ai-panel.context.workspace_ide_not_found', { name: ide.display_name })"
+                  @click="onContinueInIde(ide.ide_id)"
+                >
+                  <span>{{ ide.display_name }}</span>
+                  <span v-if="!ide.available" class="gen-ide-na">{{ t('ai-panel.context.workspace_ide_unavailable') }}</span>
+                  <svg v-else-if="ws.openingIdeId.value === ide.ide_id" class="gen-ide-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
         <button class="gen-toolbar-icon" @click="onCopy" :title="t('generating.toolbar.copy')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           <span class="tb-tip">{{ t('generating.toolbar.copy') }}</span>
@@ -529,11 +574,63 @@ import { useSummaryProposal } from '@/composables/useSummaryProposal'
 import { useNotesProposal } from '@/composables/useNotesProposal'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
+import { useWorkspace } from '@/composables/useWorkspace'
+import type { WorkspaceScope } from '@/api/workspace'
+import { getDockBounds, positionDropdown } from '@/utils/popoverPosition'
 
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const taskStore = useTaskStore()
+
+// ─── IDE 联动入口 / IDE launch entry ───
+const ws = useWorkspace()
+const genIdeBtn = ref<HTMLElement | null>(null)
+const genIdeMenu = ref<HTMLElement | null>(null)
+const ideMenuOpen = ref(false)
+const ideScope = ref<WorkspaceScope>('meeting')
+const ideScopes: Array<{ id: WorkspaceScope; label: string }> = [
+  { id: 'meeting', label: 'ai-panel.context.workspace_ide_scope_meeting' },
+  { id: 'project', label: 'ai-panel.context.workspace_ide_scope_project' },
+  { id: 'all', label: 'ai-panel.context.workspace_ide_scope_all' },
+]
+
+async function repositionIdeMenu() {
+  await nextTick()
+  if (!genIdeMenu.value || !genIdeBtn.value) return
+  const tr = genIdeBtn.value.getBoundingClientRect()
+  const { x, y } = positionDropdown(
+    { top: tr.top, left: tr.left, width: tr.width, height: tr.height },
+    genIdeMenu.value.offsetWidth, genIdeMenu.value.offsetHeight, getDockBounds(),
+    { align: 'end' },
+  )
+  genIdeMenu.value.style.left = `${x}px`
+  genIdeMenu.value.style.top = `${y}px`
+}
+
+async function toggleIdeMenu() {
+  ideMenuOpen.value = !ideMenuOpen.value
+  if (ideMenuOpen.value) {
+    await ws.loadIdes()
+    await repositionIdeMenu()
+  }
+}
+
+async function onContinueInIde(ideId: string) {
+  const ok = await ws.openIde(data.taskId, ideId, ideScope.value)
+  if (ok) ideMenuOpen.value = false
+}
+
+function onIdeDocMouseDown(e: MouseEvent) {
+  if (!ideMenuOpen.value) return
+  const target = e.target as Node
+  if (genIdeMenu.value?.contains(target) || genIdeBtn.value?.contains(target)) return
+  ideMenuOpen.value = false
+}
+
+function onIdeResize() {
+  if (ideMenuOpen.value) void repositionIdeMenu()
+}
 
 // ─── 模板 refs / Template refs ───
 const transcriptPanelRef = ref<InstanceType<typeof TranscriptPanel> | null>(null)
@@ -740,10 +837,16 @@ onMounted(() => {
     void loadSyncStatus()
   })
   document.addEventListener('visibilitychange', onVisibilityChange)
+  // IDE 联动：探测已安装 IDE，并接管下拉的外部点击/缩放重定位
+  void ws.loadIdes()
+  document.addEventListener('mousedown', onIdeDocMouseDown, true)
+  window.addEventListener('resize', onIdeResize)
 })
 onUnmounted(() => {
   stopBoardPolling()
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  document.removeEventListener('mousedown', onIdeDocMouseDown, true)
+  window.removeEventListener('resize', onIdeResize)
   offBoardWritten?.()
   offBoardWritten = null
   offTaskWritten?.()
