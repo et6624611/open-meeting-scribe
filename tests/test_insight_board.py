@@ -309,8 +309,28 @@ class TestTextWallFloor:
         one = '<section data-ib-id="s1"><h3>标题</h3><p>只有文字</p></section>'
         res = ib.board_html_save("t-1", one)
         assert res["ok"] is False and res["error"] == "board_is_text_wall"
-        assert res["reasons"] and ".ib-flow" in res["guidance"]
+        assert res["reasons"] and "ib-mermaid" in res["guidance"]
         assert ib.board_html_load("t-1") is None
+
+    def test_mermaid_pre_counts_as_visual(self, tmp_board_dir):
+        html = ('<section data-ib-id="s1"><h3>t</h3><div class="ib-visual">'
+                '<pre class="ib-mermaid">flowchart LR\n  A -->|标签| B</pre>'
+                '</div><p>外部最优解法：……</p></section>')
+        assert ib.board_html_save("t-1", html)["ok"] is True
+
+    def test_empty_mermaid_pre_rejected(self, tmp_board_dir):
+        html = ('<section data-ib-id="s1"><h3>t</h3><div class="ib-visual">'
+                '<pre class="ib-mermaid">   </pre></div><p>外部最优解法：……</p></section>')
+        res = ib.board_html_save("t-1", html)
+        assert res["ok"] is False and res["error"] == "board_is_text_wall"
+
+    def test_non_whitelist_mermaid_pre_rejected(self, tmp_board_dir):
+        # 首词非图类型关键字（如模型写了段说明文字）不计主视觉
+        html = ('<section data-ib-id="s1"><h3>t</h3><div class="ib-visual">'
+                '<pre class="ib-mermaid">foo bar baz</pre></div>'
+                '<p>外部最优解法：……</p></section>')
+        res = ib.board_html_save("t-1", html)
+        assert res["ok"] is False and res["error"] == "board_is_text_wall"
 
     def test_multi_section_allows_one_without_visual(self, tmp_board_dir):
         # n=2：允许恰好 1 节无图（容错）；n=3 仅 1 图则拒收

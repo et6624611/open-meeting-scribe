@@ -258,6 +258,8 @@
     "owner_waiting_agent": "Waiting: Agent",
     "owner_waiting_colleague": "Waiting: Colleague",
     "owner_waiting_enterprise": "Waiting: Enterprise",
+    "pending_badge": "To confirm",
+    "evidence_prefix": "Note: ",
     "avatar_self": "Me"
   },
   "archive_dialog": {
@@ -290,11 +292,12 @@
       "empty_title": "No insight board yet",
       "empty_body": "The board is a human-AI co-created global view: in Agent mode of the chat panel, ask AI to generate the board for this meeting — it reads the transcript and the current board, then produces the full HTML artifact.",
       "co_create": "Co-create in Chat",
-      "co_create_msg": "Generate or revise the insight board from this meeting's transcript and chapters: do NOT recap decisions, topic groups, todo assignments, or who said what (the minutes and Decision Center already carry those). Address only the meeting's unresolved dilemmas, draw on external industry knowledge and proven practices, and provide the best solutions nobody raised in the room. The board is a diagram-first artifact, not an essay: each dilemma is one section drawn before the prose — a .ib-visual built only from built-in components (.ib-flow for flows/chains, .ib-tree for fan-out/aggregation, .ib-compare for now-vs-goal, .ib-grid for parallel mechanisms) — followed by brief notes, a .ib-roadmap rollout timeline, and a .ib-tradeoff callout. Never stack plain text lists as the section body.",
+      "co_create_msg": "Generate or revise the insight board from this meeting's transcript and chapters: do NOT recap decisions, topic groups, todo assignments, or who said what (the minutes and Decision Center already carry those). Address only the meeting's unresolved dilemmas, draw on external industry knowledge and proven practices, and provide the best solutions nobody raised in the room. The board is a diagram-first artifact, not an essay: each dilemma is one section drawn before the prose — a .ib-visual containing one pre.ib-mermaid mermaid source block (flowchart for flows/chains/fan-out/compare, sequenceDiagram for time-ordered interactions, edge labels as A -->|label| B) — followed by brief notes, a .ib-roadmap rollout timeline, and a .ib-tradeoff callout. Never stack plain text lists as the section body.",
       "co_create_section": "Co-create section",
-      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, rewrite it as «.ib-dilemma bar → one mandatory .ib-visual (.ib-flow / .ib-tree / .ib-compare / .ib-grid) → brief notes → .ib-roadmap rollout → .ib-tradeoff callout» with no decision/topic/todo lists, speaker records, or plain-text walls, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
+      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, rewrite it as «.ib-dilemma bar → one mandatory .ib-visual (containing a pre.ib-mermaid mermaid diagram) → brief notes → .ib-roadmap rollout → .ib-tradeoff callout» with no decision/topic/todo lists, speaker records, or plain-text walls, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
       "refresh": "Refresh",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "mermaid_error": "Diagram render failed: "
     }
   },
   "ai_actions": {

@@ -259,6 +259,8 @@
     "owner_waiting_agent": "等待Agent",
     "owner_waiting_colleague": "等待同事",
     "owner_waiting_enterprise": "等待企业",
+    "pending_badge": "待确认",
+    "evidence_prefix": "注：",
     "avatar_self": "我"
   },
   "archive_dialog": {
@@ -291,11 +293,12 @@
       "empty_title": "尚无洞察板",
       "empty_body": "洞察板是一份人与 AI 共创的全局视图：在 AI 对话的「智能体」模式中说「为本次会议生成洞察板」，AI 会读取转写与当前板、产出整份 HTML 并落盘。",
       "co_create": "在对话中共创",
-      "co_create_msg": "请基于本次会议的转写与章节生成或修订洞察板：不要复述决策、议题归类、待办分工和谁说了什么（纪要页与决策中心已经承载）；只针对会上悬而未决的困境，调用你的外部行业知识与成熟实践，给出会上没人想到的最优解法。板是图不是文章：每个困境一节，先画后主文，用内置组件画主视觉（流程链路 .ib-flow、分发聚合 .ib-tree、现状目标对照 .ib-compare、并列机制 .ib-grid），再配简短图文、.ib-roadmap 落地路线和 .ib-tradeoff 取舍，不要用纯文字列表堆成文章。",
+      "co_create_msg": "请基于本次会议的转写与章节生成或修订洞察板：不要复述决策、议题归类、待办分工和谁说了什么（纪要页与决策中心已经承载）；只针对会上悬而未决的困境，调用你的外部行业知识与成熟实践，给出会上没人想到的最优解法。板是图不是文章：每个困境一节，先画后主文，主视觉用 mermaid 图（div.ib-visual 内放 pre.ib-mermaid 源码块，流程链路/分发聚合/前后对照用 flowchart，时序交互用 sequenceDiagram，边标签 A -->|标签| B），再配简短图文、.ib-roadmap 落地路线和 .ib-tradeoff 取舍，不要用纯文字列表堆成文章。",
       "co_create_section": "共创此节",
-      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，按「困境条 .ib-dilemma → 主视觉 .ib-visual（.ib-flow/.ib-tree/.ib-compare/.ib-grid 之一，不可缺）→ 简短图文 → .ib-roadmap 落地 → .ib-tradeoff 取舍」重写，不要放决策/议题/待办清单、发言人记录或纯文字列表，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
+      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，按「困境条 .ib-dilemma → 主视觉 .ib-visual（内含一个 pre.ib-mermaid mermaid 图，不可缺）→ 简短图文 → .ib-roadmap 落地 → .ib-tradeoff 取舍」重写，不要放决策/议题/待办清单、发言人记录或纯文字列表，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
       "refresh": "刷新",
-      "loading": "加载中…"
+      "loading": "加载中…",
+      "mermaid_error": "图渲染失败："
     }
   },
   "ai_actions": {

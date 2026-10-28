@@ -638,16 +638,49 @@ _VISUAL_MARK_RE = re.compile(
     r'class=["\'][^"\']*\b(?:ib-flow|ib-tree|ib-compare|ib-grid|ib-visual)\b|<svg\b',
     re.IGNORECASE)
 
+# 主视觉唯一载体：.ib-visual 内的 mermaid 源码 pre（前端显示时渲染，落盘存源码）
+_MERMAID_PRE_RE = re.compile(
+    r'<pre\b[^>]*class=["\'][^"\']*\bib-mermaid\b[^"\']*["\'][^>]*>(.*?)</pre>',
+    re.IGNORECASE | re.DOTALL)
+# mermaid 首词白名单：flowchart/graph 流程、sequenceDiagram 时序、stateDiagram 状态、
+# mindmap/timeline 兜底形态；首词不在列 = 模型没写真图，不计主视觉
+_MERMAID_TYPES = ("flowchart", "graph", "sequenceDiagram", "stateDiagram-v2",
+                  "stateDiagram", "mindmap", "timeline")
+_MERMAID_DIRECTIVE_RE = re.compile(r"^%%\{.*\}%%\s*$")
+
 _TEXT_WALL_GUIDANCE = (
     "洞察板是图不是文章：每个困境一节，先画后主文，纯文字段落/列表组成的节不允许落盘。"
-    "请为每个节补一个主视觉（div.ib-visual），只能使用应用内置组件："
-    "流程/链路用 .ib-flow（.ib-node+.ib-arrow，节点状态 is-bad/is-block/is-good/is-new/is-hub/is-auto）、"
-    "分发聚合用 .ib-tree（.ib-node.is-hub + .ib-branches>.ib-branch）、"
-    "现状目标对照用 .ib-compare（.ib-col.is-now/.ib-col.is-goal）、并列机制用 .ib-grid>.ib-sol；"
-    "落地步骤改为 .ib-roadmap>.ib-phase，取舍放 .ib-tradeoff，关键数字用 .ib-chip。"
-    "节点文字≤12 字、每图≤8 节点；禁止自带 <style> 重定义这些类，禁止 mermaid/图片/外链。"
+    "请为每个节补一个主视觉：<div class=\"ib-visual\"><pre class=\"ib-mermaid\">mermaid 源码"
+    "</pre></div>，图类型用 flowchart LR/TD（流程/链路/对照/并列）或 sequenceDiagram（时序交互），"
+    "首词必须是 flowchart/graph/sequenceDiagram 等图类型关键字；"
+    "边标签是标配：A -->|标签| B；节点文字≤12 字、每图≤10 节点；"
+    "源码内禁写 < > &（用「小于」「与」等中文替代）、禁 click 语句、禁 <style>/图片/外链。"
+    "落地步骤用 .ib-roadmap>.ib-phase，取舍放 .ib-tradeoff，关键数字用 .ib-chip。"
     "完整骨架见角色 insights.md，改完整份重新提交。"
 )
+
+
+def _mermaid_pre_ok(inner: str) -> bool:
+    """mermaid pre 内容是否有效：非空白且首个非指令行以图类型白名单开头。"""
+    for raw in (inner or "").splitlines():
+        line = raw.strip()
+        if not line or _MERMAID_DIRECTIVE_RE.match(line):
+            continue
+        return line.split()[0] in _MERMAID_TYPES if line.split() else False
+    return False
+
+
+def _section_has_visual(body: str) -> bool:
+    """节是否含有效主视觉。
+
+    节内出现 pre.ib-mermaid 即切换到严格判定（空 pre / 首词非图类型不计图），
+    否则走旧标记超集（ib-flow 等 legacy 组件与内联 <svg>），向后兼容旧板
+    在单节共创 merge 后的整板校验。
+    """
+    pres = _MERMAID_PRE_RE.findall(body)
+    if pres:
+        return any(_mermaid_pre_ok(inner) for inner in pres)
+    return bool(_VISUAL_MARK_RE.search(body))
 
 _RECAP_GUIDANCE = (
     "洞察板的唯一任务是针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法"
@@ -728,7 +761,7 @@ def detect_text_wall(board_html: str) -> tuple[int, int]:
     sections = _SECTION_RE.findall(board_html or "")
     if not sections:
         return 0, 0
-    visual = sum(1 for body in sections if _VISUAL_MARK_RE.search(body))
+    visual = sum(1 for body in sections if _section_has_visual(body))
     return len(sections), visual
 
 

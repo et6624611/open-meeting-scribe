@@ -51,10 +51,12 @@
  * 4. 版本前进（会话落板/轮询发现）时 rev 徽标脉冲一下，作为“板刚刚自己变了”的轻提示。
  * 旧 Board Spec 渲染器（zone 导航/cell 动态组件/失败横幅）已整体退役。
  */
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import EmptyHint from '@/components/common/EmptyHint.vue'
 import type { BoardArtifact } from '@/api/board'
+import { useThemeStore } from '@/stores/theme'
+import { isDarkThemeId, normalizeMermaidSvg, renderMermaidToSvg } from '@/utils/renderMermaid'
 
 const { t } = useI18n()
 
@@ -72,6 +74,73 @@ const emit = defineEmits<{
 }>()
 
 const rootEl = ref<HTMLElement | null>(null)
+
+const themeStore = useThemeStore()
+
+/** 尺寸归一化：图按自然尺寸 1:1 渲染（字号恒定），仅超容器时等比收窄 */
+function stripSvgSize(box: HTMLElement) {
+  const svgEl = box.querySelector('svg')
+  if (svgEl) normalizeMermaidSvg(svgEl)
+}
+
+/**
+ * 把板内 pre.ib-mermaid 源码块渲染为 SVG / Render mermaid source blocks inside the board
+ *
+ * 落盘存源码（AI 读基线时看到的也是源码），显示时渲染；渲染成功把源码存到
+ * data-ib-mermaid-src 供主题切换重渲（DOM 已替换，不从 box 里反取）。
+ * 不调 bindFunctions：mermaid click 语句天然失效。失败保留 pre 便于排查并挂错误框。
+ */
+async function renderMermaidBlocks() {
+  const root = rootEl.value
+  if (!root) return
+  const pres = Array.from(root.querySelectorAll('pre.ib-mermaid'))
+  await Promise.all(pres.map(async (pre) => {
+    const code = (pre.textContent || '').trim()
+    if (!code) return
+    try {
+      const { svg } = await renderMermaidToSvg(code, isDarkThemeId(themeStore.current))
+      const box = document.createElement('div')
+      box.className = 'ib-mermaid-box'
+      box.setAttribute('data-ib-mermaid-src', code)
+      box.innerHTML = svg
+      stripSvgSize(box)
+      pre.replaceWith(box)
+    } catch (e) {
+      if (!pre.nextElementSibling?.classList.contains('ib-mermaid-err')) {
+        const err = document.createElement('div')
+        err.className = 'ib-mermaid-err'
+        err.textContent = t('generating.insights.board.mermaid_error')
+          + (e instanceof Error ? e.message : String(e))
+        pre.after(err)
+      }
+      console.warn('[InsightBoard] mermaid render failed:', e)
+    }
+  }))
+}
+
+/** 主题切换：用存好的源码重渲所有已渲染图；失败保留旧图不闪空 */
+async function rethemeMermaidBlocks() {
+  const root = rootEl.value
+  if (!root) return
+  const boxes = Array.from(root.querySelectorAll<HTMLElement>('.ib-mermaid-box[data-ib-mermaid-src]'))
+  await Promise.all(boxes.map(async (box) => {
+    const code = box.getAttribute('data-ib-mermaid-src') || ''
+    if (!code) return
+    try {
+      const { svg } = await renderMermaidToSvg(code, isDarkThemeId(themeStore.current))
+      box.innerHTML = svg
+      stripSvgSize(box)
+    } catch { /* 保留旧图 */ }
+  }))
+}
+
+// v-html 重渲后 DOM 整体重建（旧 SVG 随之清理，无泄漏面），每次 html 变化重新扫描渲染
+watch(() => props.artifact.html, async () => {
+  await nextTick()
+  renderMermaidBlocks()
+}, { flush: 'post', immediate: true })
+
+watch(() => themeStore.current, () => { rethemeMermaidBlocks() })
 
 /** rev 徽标脉冲：静默替换的新版本不弹提示，仅徽标闪一下（首次赋值/持平不触发） */
 const revBumped = ref(false)

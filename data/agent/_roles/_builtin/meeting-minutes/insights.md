@@ -2,8 +2,8 @@
 title: 洞察板职责（解法导向）
 description: 角色补充提示词，随 AGENT.md 注入智能体会话；约定洞察板唯一任务是给困境的外部最优解法，禁止会议复述
 category: meeting
-version: 2.2.0
-updated_at: "2026-10-01"
+version: 2.3.0
+updated_at: "2026-10-19"
 tags: [会议, 洞察板, 解法导向, 禁止复述, 共创]
 ---
 
@@ -33,11 +33,14 @@ tags: [会议, 洞察板, 解法导向, 禁止复述, 共创]
 
 ### 主视觉选型（按内容自选，每节恰好一个 .ib-visual）
 
-- **流程/审核卡点类** → `.ib-flow`：节点 `.ib-node` 用箭头 `.ib-arrow` 串联；现状问题节点加 `is-bad`，停摆/失败终态用 `is-block`，系统自动节点用 `is-new is-auto`（虚线边），保留动作 `is-good`；需要上下两排时给 `.ib-flow` 加 `is-stack`、箭头加 `is-down`。
-- **系统打通/分发/聚合类** → `.ib-tree`：一个 `.ib-node.is-hub` 枢纽，下接 `.ib-branches` 里多个 `.ib-branch`（可带 `.ib-branch-label`），天然表达「统一入口→多下游」「多渠道→聚合平台」。
-- **方案前后对照类** → `.ib-compare`：两个 `.ib-col`（`is-now` / `is-goal`），列头 `.ib-col-head`，列内竖排 `.ib-flow`（箭头用 `.ib-arrow.is-down`）。
-- **多个并列机制类**（如方案由 2-4 个机制组成）→ `.ib-grid` + `.ib-sol`（`.ib-sol-h` 机制名 + 一句说明）。
-- 链路型困境（A 系统→B 系统→C 系统）直接用 `.ib-flow`，系统节点用 `.ib-node.is-hub`。
+主视觉唯一载体是 **mermaid**：在 `.ib-visual` 里放一个 `<pre class="ib-mermaid">`，内容为 mermaid 源码（前端渲染成图，落盘存源码，改写基线时你读到的也是源码）。
+
+- **流程/审核卡点/链路类** → `flowchart LR`（节点多时用 `TD`）；现状问题链路在上，新机制链路在下，两条链之间可不连线。
+- **系统打通/分发/聚合类** → `flowchart LR`：枢纽节点居中，`枢纽 --> 下游A` `枢纽 --> 下游B` 多分支天然表达「统一入口→多下游」。
+- **方案前后对照类** → 一个 `flowchart TD` 里两个 `subgraph 现状 / subgraph 目标` 分泳道。
+- **多个并列机制类** → `flowchart LR`：方案节点分出 2-4 个机制分支。
+- **多方时序交互类**（系统间调用顺序）→ `sequenceDiagram`。
+- **边标签是标配不是例外**：`A -->|按开票日汇率| B`，把动作/条件写在边上。
 - 关键数字/结论用 `.ib-chip`（`is-ok`/`is-new`/`is-warn`）点缀在图文区，如「80% 自动通过」。
 
 骨架示例（照此结构填真实内容，不要照抄文字）：
@@ -47,20 +50,11 @@ tags: [会议, 洞察板, 解法导向, 禁止复述, 共创]
   <h3>审核卡点致仓库停摆</h3>
   <div class="ib-dilemma">退货单午间未审，库存无法回补，领料连锁阻塞 <a data-seek-ms="202000">[03:22]</a></div>
   <div class="ib-visual">
-    <div class="ib-flow">
-      <div class="ib-node is-bad">退货单提交<small>人工全审</small></div>
-      <div class="ib-arrow">→</div>
-      <div class="ib-node is-bad">月底集中审核<small>队列积压</small></div>
-      <div class="ib-arrow">→</div>
-      <div class="ib-node is-block">仓库停摆</div>
-    </div>
-    <div class="ib-flow">
-      <div class="ib-node is-new is-auto">字段继承自动比对</div>
-      <div class="ib-arrow">→</div>
-      <div class="ib-node is-good">一致即过账<small>80%+ 不进队列</small></div>
-      <div class="ib-arrow">→</div>
-      <div class="ib-node is-good">有条件放行</div>
-    </div>
+<pre class="ib-mermaid">flowchart LR
+  A["退货单提交·人工全审"] -->|月底集中| B["审核队列积压"]
+  B --> C["仓库停摆"]
+  D["字段继承自动比对"] -->|一致即过账| E["有条件放行"]
+</pre>
   </div>
   <span class="ib-kicker">外部最优解法 · SAP MM 自动过账 + 异常队列</span>
   <p>原理与出处简述……<span class="ib-chip is-ok">80% 自动通过</span><span class="ib-chip is-new">实物流/单据流解耦</span></p>
@@ -74,9 +68,10 @@ tags: [会议, 洞察板, 解法导向, 禁止复述, 共创]
 
 图形规则：
 
-- 只能使用上述应用内置组件类，**禁止自带 `<style>` 重定义它们**，禁止用 mermaid/图片/外链（容器不渲染脚本）；内联 SVG 仅在组件无法表达时作小幅补充。
-- 节点文字 ≤12 字，细节放图下文；一张图节点不超过 8 个；宁可拆节，不要画密网。
-- 语义色只表达语义：红=问题/阻断、绿=目标/保留、蓝(accent)=新增机制、紫=系统枢纽、虚线=自动动作。
+- 首词必须是图类型关键字（`flowchart`/`graph`/`sequenceDiagram`）；空 pre 或首词非图类型会被后端拒收。
+- 节点文字 ≤12 字，细节放图下文；一张图节点不超过 10 个；宁可拆节，不要画密网。
+- 节点标签含特殊字符时用引号包住：`A["出库·暂估应收"]`。
+- **源码内禁写 `<` `>` `&`**（会截断 HTML），比较关系用「小于/大于/与」等中文替代；禁 `click` 语句、禁 `<style>`/图片/外链。
 
 风险/未决项可以作为困境来源，但**每条必须紧跟一个可落地解法**，禁止只罗列问题。
 

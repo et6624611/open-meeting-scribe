@@ -251,10 +251,11 @@
 .rec-insight-diagram { margin: var(--s-2) 0; padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow-x: auto; }
 /* 图形主输出态：全幅面积已表达主次地位，去紫色晕影改中性描边（R2） */
 .rec-insight-diagram-primary { margin-top: 0; margin-bottom: 0; border-color: var(--border-strong); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-/* 仅限 Mermaid 渲染体铺满宽度（精确命中 .mermaid-diagram-svg > svg，
-   避免波及画布内部图标/连线 SVG）
-   Full-width scaling targets the Mermaid render body only, so canvas icons/wires keep their own sizing */
-.mermaid-diagram-svg > svg { width: 100%; height: auto; }
+/* Mermaid 渲染体按自然尺寸 1:1 显示（图内字号恒定），仅超容器时等比收窄；
+   精确命中 .mermaid-diagram-svg > svg，避免波及画布内部图标/连线 SVG
+   Natural 1:1 sizing keeps diagram font size constant; shrinks only beyond container.
+   Targets the Mermaid render body only, so canvas icons/wires keep their own sizing */
+.mermaid-diagram-svg > svg { max-width: 100%; height: auto; }
 .mermaid-diagram { position: relative; }
 .mermaid-diagram-error { display: flex; align-items: center; gap: var(--s-1); font-size: var(--fs-11); color: var(--warn); padding: var(--s-2); }
 .mermaid-diagram-error svg { flex-shrink: 0; }
