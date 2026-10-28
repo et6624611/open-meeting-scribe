@@ -393,7 +393,12 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
             if req.outcome is not None:
                 todo["outcome"] = req.outcome
             if req.how is not None:
-                todo["how"] = [s.strip() for s in req.how if s and s.strip()][:_HOW_MAX_ITEMS]
+                steps = [s.strip() for s in req.how if s and s.strip()][:_HOW_MAX_ITEMS]
+                # 空表或 [text] 冗余副本不落盘（缺省视为 [text] 是读侧约定，非存储内容）
+                if not steps or steps == [str(todo.get("text") or "").strip()]:
+                    todo.pop("how", None)
+                else:
+                    todo["how"] = steps
             if req.owner_type is not None:
                 todo["owner_type"] = req.owner_type
             if req.status is not None:

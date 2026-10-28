@@ -68,6 +68,20 @@ TITLE_SYSTEM_PROMPT = """你是一位专业的会议标题生成助手。根据�
 只返回标题文本，不要添加任何其他内容或格式。"""
 
 
+def _strip_wrapping_fence(text: str) -> str:
+    """剥掉模型把整篇纪要包进 ``` 围栏的外壳。
+    保守策略：仅当整体以围栏开头结尾、且剥壳后正文内不再含 ``` 时才剥，
+    避免误伤内嵌代码块的正常纪要。"""
+    t = (text or "").strip()
+    if not (t.startswith("```") and t.endswith("```")):
+        return text or ""
+    first_nl = t.find("\n")
+    if first_nl == -1:
+        return text or ""
+    body = t[first_nl + 1:-3].strip("\n")
+    return body if body and "```" not in body else (text or "")
+
+
 def generate_title(
     dialogue: list[dict],
     model: str = "qwen-plus",
@@ -166,7 +180,8 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 
 ## 三、待办事项
 [列出明确提到的后续任务]
-[格式：- [ ] **负责人**：任务描述（截止日期）]
+[格式：- [ ] **负责人**：任务描述（截止日期）（注：…）]
+[内联注置句尾最后（截止日期之后），遵循核心原则 6 的注释资格：≤40 字、每条至多一个，无合格素材时省略]
 [如无待办，写"无明确待办事项"]
 
 - [ ] ...
@@ -378,6 +393,9 @@ def generate_summary(
         summary = summary.replace("**会议时间**:未提供", f"**会议时间**：{meeting_time}")
         summary = summary.replace("**会议时间**：未提供", f"**会议时间**：{meeting_time}")
 
+    # 剥掉模型把整篇纪要包进 ``` 围栏的外壳（工作区 summary.md 标题才能正常渲染）
+    summary = _strip_wrapping_fence(summary)
+
     logger.info(f"纪要生成完成: {len(summary)} 字符")
 
     return summary
@@ -436,20 +454,89 @@ def save_summary(
     return str(output_path)
 
 
+# ============================================================
+# 内联注（（注：…）/（依据：…））剥离与结构化
+# 注属备查层（SYSTEM_PROMPT 核心原则 6：≤40 字、至多一个），不落正文；
+# 解析侧统一剥出为 evidence 结构化字段，违规则告警但不丢数据。
+# ============================================================
+
+NOTE_MAX_CHARS = 40  # 与 SYSTEM_PROMPT「≤40 字」口径一致
+
+# 句尾单个内联注；内容不含括号字符，保证多注连写时逐段剥离而非跨段吞并
+import re as _note_re
+
+_TRAILING_NOTE_RE = _note_re.compile(r"[（(]\s*(?:注|依据)\s*[：:]\s*([^（）()]*?)\s*[）)]\s*$")
+# 出处引用：说话人名（说话人N/Speaker N/真名）紧邻时间戳，如「说话人3（22:10）」「张三 07:34」
+_NOTE_REF_RE = _note_re.compile(
+    r"(?P<speaker>(?:说话人|Speaker)\s*[A-Za-z0-9_一-龥]{0,10}|[A-Za-z一-龥][A-Za-z0-9_一-龥]{1,9})?"
+    r"\s*[（(]?\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*[）)]?"
+)
+
+
+def split_trailing_note(text: str) -> tuple[str, str | None, int]:
+    """剥离句尾连续内联注，返回 (净文本, 合并注原文|None, 注条数)。
+
+    注原文按出现顺序以「；」合并；净文本去除尾注后 strip。
+    """
+    notes: list[str] = []
+    clean = (text or "").strip()
+    while True:
+        m = _TRAILING_NOTE_RE.search(clean)
+        if not m:
+            break
+        body = m.group(1).strip()
+        if body:
+            notes.insert(0, body)
+        clean = clean[:m.start()].strip()
+    return clean, ("；".join(notes) if notes else None), len(notes)
+
+
+def parse_note_refs(note: str) -> list[dict]:
+    """从注原文抽取出处引用 [{speaker?, time}]（best-effort，原文始终全量保留）。"""
+    refs: list[dict] = []
+    for m in _NOTE_REF_RE.finditer(note or ""):
+        ref: dict = {}
+        speaker = (m.group("speaker") or "").strip()
+        if speaker:
+            ref["speaker"] = speaker
+        ref["time"] = m.group("time")
+        refs.append(ref)
+    return refs
+
+
+def build_note_evidence(note_raw: str | None, note_count: int, *, context: str = "") -> dict | None:
+    """把注原文构造为 evidence 结构化字段；违反「≤40 字/至多一个」时告警（不丢数据）。
+
+    形状：{"text": 注原文, "refs": [{speaker?, time}, ...]}；无注返回 None。
+    """
+    if not note_raw:
+        return None
+    if len(note_raw) > NOTE_MAX_CHARS:
+        logger.warning(f"{context}内联注超长（{len(note_raw)} > {NOTE_MAX_CHARS} 字）：{note_raw[:50]}…")
+    if note_count > 1:
+        logger.warning(f"{context}单条目含 {note_count} 条内联注（约定至多一个）：{note_raw[:50]}…")
+    return {"text": note_raw, "refs": parse_note_refs(note_raw)}
+
+
 def parse_todos_from_summary(summary: str) -> list[dict]:
     """
     从纪要 Markdown 中解析待办事项。
 
     匹配格式：
       - [ ] **负责人**：任务描述（截止日期）
+      - [ ] **负责人**：任务描述（截止日期）（注：…）
       - [ ] **负责人**：任务描述
       - [ ] 任务描述
 
+    解析顺序：先剥句尾内联注（注/依据），再匹配截止日期——否则「（依据：…）」
+    会占位句尾遮蔽 deadline 正则。节点统一由 make_todo_node 构造（与决策同形状）。
+
     Returns:
-        [{"id": str, "text": str, "assignee": str, "done": False, "source": "auto"}, ...]
+        决策流节点列表（make_todo_node 形状；含 deadline/evidence 时有对应键）
     """
     import re
-    import uuid
+
+    from core.decision_flow import make_todo_node
 
     todos = []
     seen_texts = set()
@@ -471,6 +558,8 @@ def parse_todos_from_summary(summary: str) -> list[dict]:
         raw = m.group(1).strip()
         if not raw or len(raw) < 4:
             continue
+
+        raw, note_raw, note_count = split_trailing_note(raw)
 
         assignee = ""
         task_text = raw
@@ -494,17 +583,13 @@ def parse_todos_from_summary(summary: str) -> list[dict]:
             continue
         seen_texts.add(dedup_key)
 
-        item = {
-            "id": str(uuid.uuid4())[:8],
-            "text": task_text,
-            "assignee": assignee,
-            "done": False,
-            "source": "auto",
-        }
+        extra: dict = {}
         if deadline:
-            item["deadline"] = deadline
-
-        todos.append(item)
+            extra["deadline"] = deadline
+        evidence = build_note_evidence(note_raw, note_count, context="待办")
+        if evidence:
+            extra["evidence"] = evidence
+        todos.append(make_todo_node(task_text, assignee=assignee, source="auto", extra=extra))
 
     logger.info(f"从纪要中解析出 {len(todos)} 条待办")
     return todos
@@ -623,8 +708,7 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                         "missing_section"=两章节均缺失；
                         "no_items"=章节存在但既无条目也非阴性说明（格式异常）
     """
-    import uuid
-    from datetime import datetime
+    from core.decision_flow import make_todo_node
 
     sections = [s for s in (
         extract_conclusions_section(summary),
@@ -636,7 +720,6 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
 
     nodes: list[dict] = []
     seen_texts: set[str] = set()
-    now_iso = datetime.now().isoformat()
 
     for section in sections:
         for raw_line in section.splitlines():
@@ -673,6 +756,11 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                 if not text or len(text) < 2:
                     continue
 
+            # 剥句尾内联注 → evidence 结构化字段（备查层不落正文；正文恢复干净利于查重/展示）
+            text, note_raw, note_count = split_trailing_note(text)
+            if not text or len(text) < 2:
+                continue
+
             # 去除 markdown 强调符号后跨章节查重（文本本体保留原格式；上游已保证 text 非空）
             # 待确认态入查重键：同文的「已定结论」与「待确认提案」不互相吞并
             dedup_key = ("pending:" if pending else "decided:") + _re.sub(r"[*_`]", "", text).strip()
@@ -680,22 +768,18 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                 continue
             seen_texts.add(dedup_key)
 
-            # 决策流节点形状（todos）：status=to_decide 由项目方裁决「自动生成但待用户定案」（三态口径）
-            nodes.append({
-                "id": str(uuid.uuid4()),
-                "title": title,
-                "text": text,
-                "assignee": "",
-                "owner_id": None,
-                "done": False,
-                "status": "to_decide",
-                "how": [text],
-                "owner_type": "self",
-                "pending_confirmation": pending,
-                "source": "auto",
-                "created_at": now_iso,
-                "updated_at": now_iso,
-            })
+            # 决策流节点统一由 make_todo_node 构造（与待办同形状）；
+            # status=to_decide 由项目方裁决「自动生成但待用户定案」（三态口径）
+            extra: dict = {"pending_confirmation": pending}
+            evidence = build_note_evidence(note_raw, note_count, context="结论")
+            if evidence:
+                extra["evidence"] = evidence
+            nodes.append(make_todo_node(
+                text,
+                title=title,
+                source="auto",
+                extra=extra,
+            ))
 
     if not nodes:
         if any(_NEGATIVE_CONCLUSION_RE.search(s) for s in sections):
@@ -713,8 +797,7 @@ def parse_decisions_from_summary(summary: str) -> list[dict]:
     从纪要「主要结论」/「决策」章节解析决策流节点（简化签名，与 parse_todos_from_summary 并列）。
 
     Returns:
-        [{"id", "title", "text", "assignee", "owner_id", "done", "status", "how",
-          "owner_type", "pending_confirmation", "source", "created_at", "updated_at"}, ...]
+        make_todo_node 形状节点列表（另含 pending_confirmation；有内联注时含 evidence）
     """
     nodes, _ = parse_decisions_with_status(summary)
     return nodes

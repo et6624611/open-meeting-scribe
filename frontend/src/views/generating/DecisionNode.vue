@@ -1,49 +1,42 @@
 <template>
   <!-- 决策流卡片（唯一决策对象的交互载体）/ Decision-flow card: the one and only decision object -->
   <div class="db-node" :data-todo-id="todo.id" :class="{ 'is-done': closing }" :style="statusVarStyle">
-    <!-- 第一行：状态点 + 标题 + 状态下拉 + 负责人下拉 / Row 1: dot + title + status dropdown + owner dropdown -->
+    <!-- 第一行：状态点 + 标题（状态/等待方改为下方平铺选择，缩短点击路径） -->
     <div class="db-row1">
       <span class="db-dot"></span>
       <span class="db-title" v-if="!editing" :title="fullText">{{ displayTitle }}</span>
       <span class="db-title-spacer" v-else></span>
-      <!-- 状态下拉：选项与颜色全部来自状态字典 / Status dropdown: options & colors come from the status dictionary -->
-      <div class="db-dropdown-wrap" ref="statusDropRef">
-        <button class="db-status-btn" :aria-expanded="statusOpen" aria-haspopup="menu" @click.stop="statusOpen = !statusOpen">
-          {{ statusLabel }}
-          <svg class="db-dd-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+      <!-- 待确认提案徽标：与已定结论共用 to_decide 态，靠 pending_confirmation 区分 -->
+      <span v-if="!editing && todo.pending_confirmation" class="db-pending-badge">{{ t('generating.todos.pending_badge') }}</span>
+    </div>
+    <!-- 平铺选择行：状态 + 等待方，一次点击即切换（替代下拉，无需展开） -->
+    <div class="db-tiles-row" v-if="!editing">
+      <div class="db-tile-group" role="radiogroup" :aria-label="t('decisions.add_status_label')">
+        <button
+          v-for="s in statusOptions"
+          :key="s.id"
+          type="button"
+          class="db-tile"
+          :class="{ 'is-active': s.id === status }"
+          role="radio"
+          :aria-checked="s.id === status"
+          @click.stop="onSelectStatus(s.id)"
+        >
+          <span class="db-tile-dot" :style="{ background: s.color }"></span>
+          {{ labelOf(s.id, locale) }}
         </button>
-        <div class="db-dropdown" :class="{ 'is-open': statusOpen }" role="menu">
-          <button
-            v-for="s in statusOptions"
-            :key="s.id"
-            class="db-dd-item"
-            :class="{ 'is-active': s.id === status }"
-            @click.stop="onSelectStatus(s.id)"
-          >
-            <span class="db-dd-dot" :style="{ background: s.color }"></span>
-            {{ labelOf(s.id, locale) }}
-            <svg v-if="s.id === status" class="db-dd-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </button>
-        </div>
       </div>
-      <!-- 负责人下拉 / Owner dropdown -->
-      <div class="db-dropdown-wrap" ref="ownerDropRef">
-        <button class="db-owner-btn" :aria-expanded="ownerOpen" aria-haspopup="menu" @click.stop="ownerOpen = !ownerOpen">
-          {{ ownerLabel }}
-          <svg class="db-dd-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div class="db-dropdown" :class="{ 'is-open': ownerOpen }" role="menu">
-          <button
-            v-for="o in ownerOptions"
-            :key="o"
-            class="db-dd-item"
-            :class="{ 'is-active': o === ownerType }"
-            @click.stop="onSelectOwner(o)"
-          >
-            {{ t('generating.todos.owner_waiting_' + o) }}
-            <svg v-if="o === ownerType" class="db-dd-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </button>
-        </div>
+      <div class="db-tile-group db-tile-group-owner" role="radiogroup" :aria-label="t('decisions.add_owner_type_label')">
+        <button
+          v-for="o in ownerOptions"
+          :key="o"
+          type="button"
+          class="db-tile"
+          :class="{ 'is-active': o === ownerType }"
+          role="radio"
+          :aria-checked="o === ownerType"
+          @click.stop="onSelectOwner(o)"
+        >{{ t('generating.todos.owner_waiting_' + o) }}</button>
       </div>
     </div>
 
@@ -102,6 +95,11 @@
         :open="contentMenuOpen" :items="contentMenuItems" :active-index="contentMenuActive" :pos="contentMenuPos"
         @select="contentMenu.select" @hover="contentMenu.setActive"
       />
+    </div>
+
+    <!-- 备查层证据注行：内联注已从正文剥离为 evidence，展示层在此还原（只读） -->
+    <div class="db-evidence" v-if="!editing && todo.evidence?.text">
+      {{ t('generating.todos.evidence_prefix') }}{{ todo.evidence.text }}
     </div>
 
     <!-- 底部：操作 / Footer: actions -->
@@ -173,20 +171,9 @@ void load()
 const ownerOptions: OwnerType[] = ['self', 'agent', 'colleague', 'enterprise']
 const statusOptions = computed(() => statuses.value)
 
-// ── 下拉状态 / Dropdown open state ──
-const statusOpen = ref(false)
-const ownerOpen = ref(false)
-// ESC 关闭下拉需落到状态上，仅剥 class 会让下次渲染重新打开
-// ESC must clear state, not just the class, or the next render reopens the surface.
-useEscClose(statusOpen, () => { statusOpen.value = false })
-useEscClose(ownerOpen, () => { ownerOpen.value = false })
-const statusDropRef = ref<HTMLElement | null>(null)
-const ownerDropRef = ref<HTMLElement | null>(null)
-
 // 状态：显式 status 优先，缺省由旧 done 布尔推导（历史 task JSON 兼容）
 const status = computed(() => props.todo.status || (props.todo.done ? 'done' : 'in_progress'))
 const closing = computed(() => isClosing(status.value) || status.value === 'done')
-const statusLabel = computed(() => labelOf(status.value, String(locale.value || 'zh-CN')))
 const ownerType = computed<OwnerType>(() => props.todo.owner_type || 'self')
 
 // 状态色以 CSS 变量注入卡片，色点/徽标共用一个来源（不再写死 st-* 类名）
@@ -215,9 +202,6 @@ const fullText = computed(() => {
   const title = strip(props.todo.title || '')
   return body ? `${title}：${body}` : title
 })
-
-// 负责人文字标签 / Owner text label
-const ownerLabel = computed(() => t('generating.todos.owner_waiting_' + ownerType.value))
 
 const content = ref(bodyContent.value)
 
@@ -288,12 +272,10 @@ function onEditKeydown(e: KeyboardEvent) {
 }
 
 function onSelectStatus(s: string) {
-  statusOpen.value = false
   if (s !== status.value) emit('select-status', s)
 }
 
 function onSelectOwner(o: OwnerType) {
-  ownerOpen.value = false
   if (o !== ownerType.value) emit('select-owner', o)
 }
 
@@ -354,21 +336,13 @@ function cancelEdit() {
   editing.value = false
 }
 
-// ── 点击外部关闭下拉 / Click-outside to close dropdowns ──
-function onDocClick(e: MouseEvent) {
-  if (statusDropRef.value && !statusDropRef.value.contains(e.target as Node)) statusOpen.value = false
-  if (ownerDropRef.value && !ownerDropRef.value.contains(e.target as Node)) ownerOpen.value = false
-}
-
 onMounted(() => {
-  document.addEventListener('click', onDocClick, true)
   void nextTick(autoGrowContent)
   // 宽度变化（窗口缩放）与分组 v-show 折叠/展开都会触发，按新尺寸重算折行高度
   contentResizeObs = new ResizeObserver(() => autoGrowContent())
   if (contentRef.value) contentResizeObs.observe(contentRef.value)
 })
 onBeforeUnmount(() => {
-  document.removeEventListener('click', onDocClick, true)
   contentResizeObs?.disconnect()
 })
 

@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: et6624611
 created_at: 2026-09-03
-updated_at: "2026-10-05"
+updated_at: "2026-10-28"
 status: published
 ---
 
@@ -12,6 +12,19 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-10-28 — 决策流存储层去冗与证据结构化
+
+### 变更
+- **`how` 不落盘缺省值**：`make_todo_node` 不再写入 `how=[text]` 冗余副本，仅在显式给出真实执行步骤时持久化；`PUT /api/tasks/:id/todos/:todoId` 传空表或 `[text]` 即清除该键。「缺省视为 [text]」回归读侧约定，渲染约定退出存储层
+- **内联注结构化**：结论/待办条目句尾的 `（注：…）`/`（依据：…）` 由解析侧剥出为 `evidence={text, refs:[{speaker,time}]}` 字段，正文不再内联；违反「≤40 字、至多一个」时后端告警但全量保留，不丢数据
+- **待办注释规范**：纪要模板 v1.4.1 与 SYSTEM_PROMPT 补齐待办章节内联注规则（置句尾最后）；解析先剥注再匹配截止日期，`（依据：…）` 不再遮蔽 deadline
+- **节点 schema 统一**：`parse_todos_from_summary` 与 `parse_decisions_with_status` 均经 `make_todo_node` 构造，待办节点从 4 键补齐为决策同形状（详见 `docs/API_CONTRACTS.md` §12）
+- **`pending_confirmation` 接入展示**：决策卡标题行新增「待确认」徽标、证据注行只读展示（此前该布尔字段无任何消费点）；`to_decide` 共用态维持不变（项目方裁决保布尔标记，不复活已退役的 `to_confirm` 态）
+
+存量节点上的 `how=[text]` 旧副本保留不清洗，读侧兼容；`evidence.text` 自动纳入说话人改名改写（dict 递归命中白名单）。
+
+---
 
 ## [1.0.0] - 2026-10-05 — 首个公开发布版本
 

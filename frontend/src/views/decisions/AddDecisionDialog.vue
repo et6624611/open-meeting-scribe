@@ -50,7 +50,7 @@
         </label>
         <!-- 次要信息（等待方 / 状态）默认折叠，展开后可编辑；不编辑即默认“等自己 · 待决策” -->
         <div class="ad-advanced">
-          <button type="button" class="ad-adv-toggle" :aria-expanded="showAdvanced" @click="showAdvanced = !showAdvanced">
+          <button type="button" class="ad-adv-toggle" :aria-expanded="showAdvanced" :aria-label="t('decisions.add_advanced_toggle')" @click="showAdvanced = !showAdvanced">
             <svg class="ad-adv-chev" :class="{ open: showAdvanced }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             <span>{{ t('decisions.add_advanced_toggle') }}</span>
             <span class="ad-adv-summary" v-if="!showAdvanced">{{ ownerTypeSummary }} · {{ statusSummary }}</span>
@@ -58,15 +58,36 @@
           <div class="ad-adv-body" v-show="showAdvanced">
             <div class="ad-field">
               <span class="ad-label">{{ t('decisions.add_owner_type_label') }}</span>
-              <select v-model="ownerType" class="ad-select">
-                <option v-for="o in ownerTypeOptions" :key="o" :value="o">{{ t('decisions.owner_type_' + o) }}</option>
-              </select>
+              <div class="ad-tile-group" role="radiogroup" :aria-label="t('decisions.add_owner_type_label')">
+                <button
+                  v-for="o in ownerTypeOptions"
+                  :key="o"
+                  type="button"
+                  class="ad-tile"
+                  :class="{ 'is-active': ownerType === o }"
+                  role="radio"
+                  :aria-checked="ownerType === o"
+                  @click="ownerType = o"
+                >{{ t('decisions.owner_type_' + o) }}</button>
+              </div>
             </div>
             <div class="ad-field">
               <span class="ad-label">{{ t('decisions.add_status_label') }}</span>
-              <select v-model="statusId" class="ad-select">
-                <option v-for="s in statuses" :key="s.id" :value="s.id">{{ labelOf(s.id, locale) }}</option>
-              </select>
+              <div class="ad-tile-group" role="radiogroup" :aria-label="t('decisions.add_status_label')">
+                <button
+                  v-for="s in statuses"
+                  :key="s.id"
+                  type="button"
+                  class="ad-tile"
+                  :class="{ 'is-active': statusId === s.id }"
+                  role="radio"
+                  :aria-checked="statusId === s.id"
+                  @click="statusId = s.id"
+                >
+                  <span class="ad-tile-dot" :style="{ background: s.color }"></span>
+                  {{ labelOf(s.id, locale) }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -243,6 +264,18 @@ defineExpose({ setSubmitting: (v: boolean) => { submitting.value = v } })
 .ad-adv-chev.open { transform: rotate(90deg); }
 .ad-adv-summary { color: var(--subtle); }
 .ad-adv-body { display: flex; flex-direction: column; gap: var(--s-3); padding-left: 18px; }
+/* 平铺选择：选项以胶囊按钮横向铺开，选中态高亮，一次点击即选中（替代下拉，缩短路径） */
+.ad-tile-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.ad-tile {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: transparent; color: var(--muted); font-size: var(--fs-13, 13px);
+  font-family: inherit; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.ad-tile:hover { color: var(--fg); border-color: var(--border-strong); }
+.ad-tile.is-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+.ad-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ad-tile-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .ad-check { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-13, 13px); color: var(--fg); cursor: pointer; }
 .ad-check input { accent-color: var(--accent); width: 14px; height: 14px; }
 .ad-error { margin: 0; font-size: var(--fs-12, 12px); color: var(--error); }

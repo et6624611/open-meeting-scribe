@@ -105,14 +105,16 @@ export interface TodoItem {
   deadline?: string
   // ── 决策链字段（人工编辑） / Decision-chain fields (human-edited) ──
   why?: string          // 为什么做这个决定 / Why this decision
-  how?: string[]        // 如何完成：执行步骤，缺省视为 [text] / How: steps, defaults to [text]
+  how?: string[]        // 如何完成：执行步骤；缺省不落盘，读侧视为 [text] / Steps; absent = [text]
   outcome?: string      // 完成后带来什么 / What it brings
   status?: DecisionStatus  // 缺省时由 done 推导 / Derived from done when absent
   owner_type?: OwnerType   // 等待谁推进(展示用) / Who drives (display-only)
   // ── DC-UNIFY-01：承接原 decision 对象的能力 / Absorbed from the retired decision record ──
   title?: string           // 决策短标题（auto/存量可为空）
   owner_id?: string | null // 执行人说话人档案 id
-  pending_confirmation?: boolean
+  pending_confirmation?: boolean  // 待确认提案（与已定结论共用 to_decide，靠此布尔区分）
+  /** 备查层证据：条目内联注剥离而成（注原文 + 机读出处），正文不再内联 / Evidence note stripped from body */
+  evidence?: { text: string; refs: { speaker?: string; time: string }[] }
   /** 演变链：已被另一决策替代时的关系快照（手动标记；null/缺省=未标记） */
   superseded_by?: SupersededBy | null
   // 后端随行下发的状态字典元信息（读侧只用于展示，不回写）

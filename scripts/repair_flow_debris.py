@@ -93,9 +93,10 @@ def repair_task(task: dict) -> tuple[int, int, list[str]]:
         why_edited = node.get("why") not in (None, "", node.get("text"))
         if not why_edited:
             node["text"] = match["text"]
-            node["how"] = [match["text"]]
         node["title"] = match["title"]
         node["pending_confirmation"] = match.get("pending_confirmation", False)
+        if match.get("evidence"):
+            node["evidence"] = match["evidence"]
         node["updated_at"] = datetime.now().isoformat()
         fixed += 1
         details.append(f"  fixed: **{match['title']}** | pending={node['pending_confirmation']}"

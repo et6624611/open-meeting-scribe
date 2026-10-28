@@ -101,8 +101,8 @@ def test_conclusions_parse_into_flow_nodes_pending_confirmation():
     assert degrade is None
     assert len(nodes) == 3
     for n in nodes:
-        # 节点形状 = todos：有 text/assignee/status/how，不再有 owner_name/superseded_by
-        assert {"id", "text", "assignee", "owner_id", "done", "status", "how", "source"} <= set(n)
+        # 节点形状 = todos：有 text/assignee/status（how 冗余缺省不落盘），不再有 owner_name/superseded_by
+        assert {"id", "text", "assignee", "owner_id", "done", "status", "source"} <= set(n)
         assert n["status"] == "to_decide" and n["source"] == "auto" and n["done"] is False
     # 「**标题**：正文」拆出 title，正文不含 [待确认] 前缀
     assert nodes[0]["title"] == "方案选型" and nodes[0]["text"] == "项目采用方案A推进"

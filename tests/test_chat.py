@@ -556,12 +556,12 @@ class TestDecisionFlowTodos:
         notes_mod.tasks.pop(tid, None)
 
     def test_create_todo_defaults(self, client, task_id):
-        """新建决策节点应带默认 status/how/owner_type"""
+        """新建决策节点应带默认 status/owner_type；how 冗余缺省不落盘"""
         resp = client.post(f"/api/tasks/{task_id}/todos", json={"text": "采用云方案", "assignee": "陈一"})
         assert resp.status_code == 200
         todo = resp.json()["todo"]
         assert todo["status"] == "to_decide"
-        assert todo["how"] == ["采用云方案"]
+        assert "how" not in todo  # 缺省视为 [text] 是读侧约定，不写存储层
         assert todo["owner_type"] == "self"
         assert todo["done"] is False
 
@@ -586,6 +586,14 @@ class TestDecisionFlowTodos:
         todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
         todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": ["a", "  ", "b", ""]}).json()["todo"]
         assert todo["how"] == ["a", "b"]
+
+    def test_update_how_trivial_copy_removed(self, client, task_id):
+        """how 为 [text] 冗余副本或空表时不落盘"""
+        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "数据迁移"}).json()["todo"]["id"]
+        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": ["数据迁移"]}).json()["todo"]
+        assert "how" not in todo
+        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": []}).json()["todo"]
+        assert "how" not in todo
 
     def test_status_done_syncs_done_true(self, client, task_id):
         """status='done' 应同步 done=True"""

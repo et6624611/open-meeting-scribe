@@ -291,15 +291,21 @@ recognition.stop()  # 阻塞直到所有结果返回
   "done": false,               // 兼容字段：等价于 status 属于闭档（完成类）态
   "superseded_by": null,       // 手动「已替代」快照：{task_id, todo_id, title, meeting_title, prev_status, marked_at}；未标记为 null
   "why": "决策正文（Markdown）",
-  "how": ["执行步骤…"],         // 缺省视为 [text]
+  "how": ["执行步骤…"],         // 缺省不落盘：读侧一律视为 [text]；仅显式给出且非 [text] 冗余副本时持久化（PUT 传空表或 [text] 即清除该键）
   "outcome": "完成后带来什么",
-  "pending_confirmation": false, // 仅 auto 解析的历史标志位，不再作为筛选维度
+  "pending_confirmation": false, // 待确认提案标志：与已定结论共用 to_decide 态，靠此布尔区分（前端徽标维度）
+  "evidence": {                 // 备查层证据（仅解析到句尾内联注时存在）：注已剥离正文，不再内联
+    "text": "注原文（（注：…）/（依据：…）去括号合并）",
+    "refs": [{"speaker": "说话人2", "time": "07:34"}]  // 出处机读抽取（best-effort，speaker 可缺）
+  },
   "source": "auto | manual | injection | backfill",
   "created_at": "ISO 8601",
   "updated_at": "ISO 8601"
 }
 ```
 
+- **内联注结构化（2026-10-28）**：结论/待办条目句尾的 `（注：…）`/`（依据：…）` 由解析侧剥出为 `evidence` 字段，`text` 不再携带注；违反「≤40 字、至多一个」（SYSTEM_PROMPT 核心原则 6）时后端告警但仍全量保留（不丢数据）。待办解析先剥注再匹配截止日期——「（依据：…）」不再遮蔽句尾 deadline。
+- **节点构造唯一入口**：`parse_todos_from_summary` 与 `parse_decisions_with_status` 均经 `core/decision_flow.make_todo_node` 出节点，待办与决策同形状（此前待办仅 4 键）。
 - **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01 + DEBRISH-EVO）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流六态；系统锚点为 `done`（完成）与 `superseded`（已替代，闭档但语义不同于完成，专用于演变链手动替代，详见 §12.6），均不可改名不可删除，其余四态用户可维护。
 - **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底，同时驱动 `done=true`；读侧 `status` 缺省时由 `done` 推导（历史 task JSON 零迁移）。
 - **自动生成口径（项目方裁决）**：纪要「主要结论」章节的条目自动解析为决策流节点（模板 v1.4.0 已下线「决策」章节、改为单通道 + 终态归并；解析器仍兼容存量纪要的「决策」章节）；自动节点**统一落在 `to_decide`（待决策）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。

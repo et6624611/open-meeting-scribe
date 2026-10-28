@@ -89,15 +89,17 @@ def make_todo_node(
     owner_id: str | None = None,
     title: str = "",
     why: str = "",
+    how: list[str] | None = None,
     source: str = "manual",
     status: str | None = None,
     owner_type: str = "self",
     node_id: str | None = None,
     extra: dict | None = None,
 ) -> dict:
-    """构造一条决策流节点（纪要页/注入/补录共用同一形状）。
+    """构造一条决策流节点（纪要页/注入/补录/自动解析共用同一形状）。
 
-    `how` 初始为 [text] 是决策流面板的既有约定（路径首条即标题），保持不变。
+    `how` 不落盘缺省值：读侧约定「缺省视为 [text]」（types.ts/API_CONTRACTS §12），
+    因此仅当显式给出且非 [text] 冗余副本时才持久化——渲染约定不写入存储层。
     """
     now = datetime.now().isoformat()
     oid, owner_name = resolve_owner(owner_id, assignee)
@@ -110,11 +112,13 @@ def make_todo_node(
         "done": False,
         "source": source,
         "status": status or (AUTO_STATUS_ID if source == "auto" or source == "injection" else MANUAL_STATUS_ID),
-        "how": [text],
         "owner_type": owner_type or "self",
         "created_at": now,
         "updated_at": now,
     }
+    steps = [s.strip() for s in (how or []) if isinstance(s, str) and s.strip()]
+    if steps and steps != [text]:
+        node["how"] = steps
     if why and why.strip():
         node["why"] = why.strip()
     if extra:
