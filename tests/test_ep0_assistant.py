@@ -7,6 +7,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -127,6 +128,42 @@ def live_instance(tmp_path, monkeypatch):
     server.should_exit = True
     thread.join(timeout=5)
     enterprise_api.reset_store_cache()
+
+
+def test_local_storage_and_migrate(assistant_client, tmp_path):
+    tok = _token(assistant_client)
+    headers = {"X-OMS-Local-Token": tok}
+    st = assistant_client.get("/api/local/storage", headers=headers)
+    assert st.status_code == 200
+    body = st.json()
+    assert body["exists"] is True and body["writable"] is True
+    assert {"data_dir", "total_bytes", "disk_free_bytes", "tasks_files"} <= set(body)
+    # 未配对队列=200 空数组（v1.1 口径确认：前端两态兼容成立，本地面不设 409 语义）
+    assert assistant_client.get("/api/sync/queue", headers=headers).json() == {"queue": []}
+
+    # 迁移：源=当前 assistant 根（造点文件）；目标嵌套/同目录拒绝
+    root = assistant_client.get("/api/local/storage", headers=headers).json()["data_dir"]
+    (Path(root) / "recordings").mkdir(exist_ok=True)
+    (Path(root) / "recordings" / "a.wav").write_bytes(b"12345")
+    nested = str(Path(root) / "sub")
+    assert assistant_client.post(
+        "/api/local/storage/migrate", json={"target_dir": nested}, headers=headers
+    ).status_code == 422
+    assert assistant_client.post(
+        "/api/local/storage/migrate", json={"target_dir": root}, headers=headers
+    ).status_code == 422
+
+    target = str(tmp_path / "NEW_DIR")
+    r = assistant_client.post("/api/local/storage/migrate", json={"target_dir": target}, headers=headers)
+    assert r.status_code == 200, r.text
+    rep = r.json()
+    assert rep["copied"] >= 1 and rep["source_retained"] is True
+    assert (Path(target) / "recordings" / "a.wav").read_bytes() == b"12345"
+    assert (Path(root) / "recordings" / "a.wav").exists()  # 保留源
+    rep2 = assistant_client.post(
+        "/api/local/storage/migrate", json={"target_dir": target}, headers=headers
+    ).json()
+    assert rep2["copied"] == 0 and rep2["skipped_identical"] >= 1  # 幂等重跑
 
 
 def test_e2e_assistant_sync_to_instance(tmp_path, live_instance):

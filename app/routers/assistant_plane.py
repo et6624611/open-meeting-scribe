@@ -88,6 +88,28 @@ def state(token: str = Depends(require_local_token)):
     }  # device token 永不明文回显
 
 
+@router.get("/api/local/storage")
+def storage(token: str = Depends(require_local_token)):
+    """本机数据目录用量与可写性（档位⑦设置页"数据位置/存储"数据源）。"""
+    from ..local_storage import storage_snapshot
+
+    return storage_snapshot()
+
+
+@router.post("/api/local/storage/migrate")
+def storage_migrate(body: dict, token: str = Depends(require_local_token)):
+    """迁移本机数据目录：复制-校验-保留源（幂等可重跑）；切换生效=重启注入 OMS_DATA_ROOT。"""
+    from fastapi.responses import JSONResponse
+
+    from ..local_storage import migrate_data_dir
+
+    target = body.get("target_dir") or ""
+    try:
+        return migrate_data_dir(target=target)
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": {"code": "migrate_rejected", "message": str(exc)}})
+
+
 def register_assistant_routes(app: FastAPI) -> None:
     app.include_router(router)
 
