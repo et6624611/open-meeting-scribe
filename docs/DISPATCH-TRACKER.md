@@ -16,11 +16,23 @@
 
 | 工单 | 负责人 | 实施内容 | 设计依据 | 开工条件 | 出场 gate | 状态 |
 |------|--------|----------|----------|----------|-----------|------|
-| EP0-BE | 后端工程师 | 数据层迁移（DATA_ROOT + users/<user_id> 命名空间、单租户 JSON→SQLite、存量数据归 13373013103、settings 按用户加密拆分、schema 预留 owner/scope）+ API 契约实现 + 账号体系（邀请码自助设密/管理员建号/停用即吊销会话）；契约必须含：默认零出网引擎/AI 配置开关、设备配对 token、sync_status 与 visibility 字段、邀请码自助设密端点、账号停用后定稿文字保留在企业服务器且管理台可整包删除语义 | shared/P0-BACKEND-DESIGN-MULTIUSER-20261029.md（v0.2） | 已就绪：契约已于 2026-10-29 09:30 UTC 冻结 v1.0，本单进入存储迁移开发（第一个增量：DATA_ROOT + schema + actor 强制 DAO 层） | 契约冻结（端点清单/错误码/WS schema/幂等键/JWT 策略齐备并发群）→ SQLite 迁移脚本 + 存量迁移可复现 → 账号体系端点自测通过 | 进行中（契约已冻结，存储迁移开发中） |
-| EP0-FE | 前端开发工程师 | 七档去单例化改造：①守卫+登录页+清态（S）②双 client 工厂+origin 归属打标（M）③task store 按 user 过滤（M）④录音 per-task 化（M，硬依赖 EP0-BE 契约）⑤engine 状态归位设备属性（S+M）⑥管理台页面组（M）⑦数据目录设置+上传知情同意交互（M，按 UI 规格） | shared/DESIGN-P0-FRONTEND-ARCH-20261029.md | ①⑥⑦不依赖后端，即刻开工；②③⑤随契约冻结推进；④待 EP0-BE 录音控制面契约 | ①登录守卫+退出清 localStorage（零残留）→ 全部七档完成且企业 build flag 下个人版零变化 → 同意卡/数据位置/登录页三处文案与 QA B5 逐字一致 | 进行中（已接单，档①开工；档②起按契约 v1.0 接线） |
-| EP0-OPS | DevOps 工程师 | deploy/private Docker Compose 骨架（oms-app/oms-proxy/oms-backup 三服务）、离线 tar 交付包（oms-private_<版本>_linux_amd64.tar.gz）、管理员初始化向导 4 步（默认绑定 13373013103）、TLS_MODE 三态开关（出厂 off + 管理台/向导常驻一键开内置 CA + 企业自有证书文档位）、数据卷备份（每日快照 14 天轮转）与升级回滚流程（强制前置备份→事务化 migrate→/healthz 探活） | shared/DEVOPS-P0-DESIGN-20261029.md | 即刻开工（可与 EP0-BE 并行；联调点仅 db migrate 命令与 /healthz）；CA 已降级，不再是出场 gate | compose 一键包在内网 Linux 裸机跑通「管理员启用服务→Web 访问」→ 升级回滚演练一次成功 → 离线包无外网依赖验证 | 待开工（阻塞已解除：compose 微调依据已到位，待播报开工） |
-| EP0-QA | QA 工程师 | 越权矩阵（资源×操作×令牌形态全矩阵，含禁止 5xx 区分存在性、WS 订阅越权、管理员默认不可读单分支、注销用户定稿保留/管理台整包删除预期、13373013103 存量专项 diff=∅ 可回滚）展开为逐条用例 + 数据出境白名单（默认零出网；非白名单对端全关；同意卡三行=抓包事实 B5 断言；域 B 按 CA 降级拆两条口径）+ 个人版升级回归门禁四条 + §3A U1–U7 | shared/QA-ENTERPRISE-P0-ACCEPTANCE-DRAFT-20261029.md（v0.2） | 框架与不依赖契约的用例即刻开写；逐条展开+升 v1.0 待 EP0-BE 契约冻结 | v1.0 定稿 → P0 六场景端到端验收（开通服务/邀请码建号/Web 查看编辑定稿文字/助手连接同步/用户隔离/备份回滚）+ 越权矩阵 100% 执行 + 白名单抓包通过 | 进行中（契约已冻结，升 v1.0 前置齐备，待播报） |
-| EP0-UX | UI 设计师 | 转入实现走查：对照已交付规格逐屏核对前端/管理台实现（登录/用户空间、本机录音助手+数据位置分区、同意卡与徽标、/admin 三页+向导、服务停用双端表现、文案词表禁"云端"） | shared/P0-UIUX-SPEC-20261029.md | 本侧设计已交付，无前置；随 EP0-FE 各档产出滚动走查 | 每轮走查问题清单发群并跟踪闭环；P0 出场前走查项零未关闭 P0 级缺陷 | 进行中（转实现走查） |
+| EP0-BE | 后端工程师 | 数据层迁移（DATA_ROOT + users/<user_id> 命名空间、单租户 JSON→SQLite、存量数据归 13373013103、settings 按用户加密拆分、schema 预留 owner/scope）+ API 契约实现 + 账号体系（邀请码自助设密/管理员建号/停用即吊销会话）；契约必须含：默认零出网引擎/AI 配置开关、设备配对 token、sync_status 与 visibility 字段、邀请码自助设密端点、账号停用后定稿文字保留在企业服务器且管理台可整包删除语义 | shared/P0-BACKEND-DESIGN-MULTIUSER-20261029.md（v0.2） | 已就绪：契约已于 2026-10-29 09:30 UTC 冻结 v1.0，本单进入存储迁移开发（第一个增量：DATA_ROOT + schema + actor 强制 DAO 层） | 契约冻结（端点清单/错误码/WS schema/幂等键/JWT 策略齐备并发群）→ SQLite 迁移脚本 + 存量迁移可复现 → 账号体系端点自测通过 | 进行中（增量1已交，见进展登记 P-001；下一增量：/api/v1 端点层+oms-migrate） |
+| EP0-FE | 前端开发工程师 | 七档去单例化改造：①守卫+登录页+清态（S）②双 client 工厂+origin 归属打标（M）③task store 按 user 过滤（M）④录音 per-task 化（M，硬依赖 EP0-BE 契约）⑤engine 状态归位设备属性（S+M）⑥管理台页面组（M）⑦数据目录设置+上传知情同意交互（M，按 UI 规格） | shared/DESIGN-P0-FRONTEND-ARCH-20261029.md | ①⑥⑦不依赖后端，即刻开工；②③⑤随契约冻结推进；④待 EP0-BE 录音控制面契约 | ①登录守卫+退出清 localStorage（零残留）→ 全部七档完成且企业 build flag 下个人版零变化 → 同意卡/数据位置/登录页三处文案与 QA B5 逐字一致 | 进行中（档①已完成待验收 P-004；档②⑤推进中） |
+| EP0-OPS | DevOps 工程师 | deploy/private Docker Compose 骨架（oms-app/oms-proxy/oms-backup 三服务）、离线 tar 交付包（oms-private_<版本>_linux_amd64.tar.gz）、管理员初始化向导 4 步（默认绑定 13373013103）、TLS_MODE 三态开关（出厂 off + 管理台/向导常驻一键开内置 CA + 企业自有证书文档位）、数据卷备份（每日快照 14 天轮转）与升级回滚流程（强制前置备份→事务化 migrate→/healthz 探活） | shared/DEVOPS-P0-DESIGN-20261029.md | 即刻开工（可与 EP0-BE 并行；联调点仅 db migrate 命令与 /healthz）；CA 已降级，不再是出场 gate | compose 一键包在内网 Linux 裸机跑通「管理员启用服务→Web 访问」→ 升级回滚演练一次成功 → 离线包无外网依赖验证 | 进行中（骨架+契约回填已交 P-002/P-003；下一：Linux 实机 smoke+企业包 CI job） |
+| EP0-QA | QA 工程师 | 越权矩阵（资源×操作×令牌形态全矩阵，含禁止 5xx 区分存在性、WS 订阅越权、管理员默认不可读单分支、注销用户定稿保留/管理台整包删除预期、13373013103 存量专项 diff=∅ 可回滚）展开为逐条用例 + 数据出境白名单（默认零出网；非白名单对端全关；同意卡三行=抓包事实 B5 断言；域 B 按 CA 降级拆两条口径）+ 个人版升级回归门禁四条 + §3A U1–U7 | shared/QA-ENTERPRISE-P0-ACCEPTANCE-DRAFT-20261029.md（v0.2） | 框架与不依赖契约的用例即刻开写；逐条展开+升 v1.0 待 EP0-BE 契约冻结 | v1.0 定稿 → P0 六场景端到端验收（开通服务/邀请码建号/Web 查看编辑定稿文字/助手连接同步/用户隔离/备份回滚）+ 越权矩阵 100% 执行 + 白名单抓包通过 | 进行中（v1.0 定稿+47项用例台账已建 P-005，执行态滚动开测） |
+| EP0-UX | UI 设计师 | 转入实现走查：对照已交付规格逐屏核对前端/管理台实现（登录/用户空间、本机录音助手+数据位置分区、同意卡与徽标、/admin 三页+向导、服务停用双端表现、文案词表禁"云端"） | shared/P0-UIUX-SPEC-20261029.md | 本侧设计已交付，无前置；随 EP0-FE 各档产出滚动走查 | 每轮走查问题清单发群并跟踪闭环；P0 出场前走查项零未关闭 P0 级缺陷 | 进行中（W1 走查已启动，对照 feat/req-ep0-fe-auth@1057fd6） |
+
+## EP0-IMP 实施进展登记（滚动）
+
+| 编号 | 时间(UTC) | 工单 | 交付物 | 证据位置 | 验证状态 | 下一步 |
+|------|-----------|------|--------|----------|----------|--------|
+| P-001 | 10-29 ~09:40 | EP0-BE | 增量1：存储迁移基础（DATA_ROOT、schema 0001 全表、迁移 runner、actor 强制 DAO、账号域、快照域、防枚举 404 修正） | 分支 feat/ep0-datalayer-20261029-093500 @ 8b09a3f（worktree，本地未推送）；tests/test_ep0_datalayer.py 13 passed | 已核实（worktree list 实查）；QA 冒烟未执行 | /api/v1 端点层 + oms-migrate 存量迁移工具 |
+| P-002 | 10-29 ~09:36 | EP0-OPS | deploy/private 一键包骨架 13 文件（compose/离线安装/升级回滚/备份/Caddy TLS 三态/CA 导入脚本/管理员手册） | main @ 8417811（本地未推送）；compose config+语法校验通过 | 已核实（git log 实查）；Linux 实机全链路未验证 | 镜像产物后实机 install→登录→upgrade→rollback smoke |
+| P-003 | 10-29 ~09:38 | EP0-OPS | 契约回填：reset-password 本机命令定稿、backup-snapshot 封装优先+sqlite3 API 回退、备份 sidecar 改企业镜像 | main @ 6958e88（本地未推送） | 已核实 | 企业包 CI job workflow |
+| P-004 | 10-29 ~09:39 | EP0-FE | 档①完成：双形态开关、/login、/activate 邀请码设密、路由守卫、登出清态、会话过期、锁定三行组件（B5 三处同源） | 分支 feat/req-ep0-fe-auth @ 1057fd6（已 push origin，未合 main）；vue-tsc 0 错、build 通过、vitest 54/54 | 已核实（分支+origin ref 实查）；真实例联调待后端端点层；UI W1 走查进行中 | 档②OriginRegistry 双 client+WS handshake、档⑤engine 状态归位 |
+| P-005 | 10-29 ~09:37 | EP0-QA | 验收标准升 v1.0 定稿 + 47 项用例台账（六组 QA-EP0-A/P/M/W/C/U） | shared/QA-ENTERPRISE-P0-ACCEPTANCE-DRAFT-20261029.md、shared/QA-P0-CASES-LEDGER-20261029.md（镜像 docs/EP0-DESIGNS/） | 已核实（文档版本行实查） | 按增量顺序滚动冒烟：schema/DAO→结构项先行（P-001 已可开测） |
+
+推送纪律：BE/OPS 分支与 main 提交均未推送，推送需项目方确认；FE 分支已按群纪律 push origin 不自行合 main。
 
 ## 全局协调事项
 
@@ -37,3 +49,5 @@
 
 - 2026-10-29（晚）：登记 EP0-IMP 五张实施工单及全局协调事项 EP0-C1~C6（项目管理员，依据产品经理派工 cmsg_01m63frf0zk4ap0966st6t9hft；后端设计 v0.2 已在共享目录核收，工单拆分覆盖其全部契约点）。
 - 2026-10-29（晚·第二次更新）：补登 EP0-IMP 共同实施基线（PRD v1.0 + 契约 v1.0，冻结时点 09:30 UTC，冲突裁决规则与产品裁决补充见台账头部）；EP0-C1/C2 关键路径标记解除；后端/前端/QA 状态按群内播报实况刷新；§9 排期口径（出场门禁五条不让步、宁可晚上线不可坏承诺）纳入播报基准；PRD 镜像至 docs/EP0-DESIGNS/（依据 cmsg_01m63fy7bzc9gj7n02wb5egxk2、cmsg_01m63fwhr5m6etwnxwwp96w4rr、cmsg_01m63fxgp38fhr5mnxpjfj7f58）。
+
+- 2026-10-29（晚·第三次更新）：登记实施进展 P-001~P-005（后端增量1、DevOps 骨架+回填、前端档①、QA v1.0+用例台账），五单状态按 commit/文档实况刷新（项目管理员实查 git worktree/log/origin ref 与共享目录版本行核证）；QA v1.0 与用例台账镜像入 docs/EP0-DESIGNS/。下一检查点：EP0-BE 端点层交付后 QA W/A/P 系用例执行结果 + UI W1 走查清单。
