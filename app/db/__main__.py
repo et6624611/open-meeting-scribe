@@ -31,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     p_backup = sub.add_parser("backup-snapshot", help="sqlite3 在线备份 API 的一致性快照")
     p_backup.add_argument("dest", help="目标 .db 文件路径")
 
+    p_legacy = sub.add_parser("migrate-legacy", help="存量单机 data 目录导入实例（只读源、幂等、出对账单）")
+    p_legacy.add_argument("--source", required=True, help="单机版 data 目录（只读）")
+    p_legacy.add_argument("--account", default="13373013103", help="归属账号（裁决④默认）")
+
     args = parser.parse_args(argv)
     dr = resolve_data_root()
 
@@ -58,6 +62,11 @@ def main(argv: list[str] | None = None) -> int:
         print("重置邀请码（一次性展示，有效期以 invites.expires_at 为准，明文不落库）：")
         print(code)
         return 0
+
+    if args.cmd == "migrate-legacy":
+        from .legacy_import import main as legacy_main
+
+        return legacy_main(["--source", args.source, "--account", args.account])
 
     if args.cmd == "backup-snapshot":
         if not dr.db_path.exists():

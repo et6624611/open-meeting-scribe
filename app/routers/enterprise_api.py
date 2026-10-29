@@ -391,16 +391,19 @@ def admin_ai_update(body: dict, admin: str = Depends(current_admin)):
 
 
 def _validate_asset_payload(payload: Any) -> None:
-    """出境内容级门禁（QA 域 B）：资产只允许纯文本结构，拒收 embedding/二进制。"""
-    ok = isinstance(payload, (list, dict, str))
-    if isinstance(payload, str):
-        return
-    if isinstance(payload, list):
-        ok = all(isinstance(x, str) for x in payload)
-    elif isinstance(payload, dict):
-        ok = all(isinstance(k, str) and isinstance(v, str) for k, v in payload.items())
-    if not ok:
-        raise EHttp(422, "payload_not_allowed", "资产仅允许纯文本结构（str/list[str]/dict[str,str]）")
+    """出境内容级门禁（QA 域 B）：资产仅允许纯文本嵌套结构，拒收浮点数组（embedding 形态）。"""
+
+    def walk(v: Any) -> bool:
+        if isinstance(v, str) or v is None or isinstance(v, bool) or isinstance(v, int):
+            return True
+        if isinstance(v, list):
+            return all(walk(x) for x in v)
+        if isinstance(v, dict):
+            return all(isinstance(k, str) and walk(x) for k, x in v.items())
+        return False  # float / bytes / 其他二进制形态一律拒收
+
+    if not walk(payload):
+        raise EHttp(422, "payload_not_allowed", "资产仅允许文本嵌套结构（拒收数值/二进制，含 embedding）")
 
 
 def _derive_fernet_key(raw: bytes) -> bytes:

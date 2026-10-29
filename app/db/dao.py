@@ -255,6 +255,26 @@ class EnterpriseStore:
         ).fetchone()
         return dict(row) if row else None
 
+    # ---------------- 辅助（迁移工具/端点层用） ----------------
+
+    def new_task_for(self, actor_user_id: str) -> str:
+        _require_actor(actor_user_id)
+        return new_id("tsk")
+
+    def task_current_rev(self, actor_user_id: str, task_id: str) -> int:
+        _require_actor(actor_user_id)
+        row = self.conn.execute(
+            "SELECT current_rev FROM ctx_tasks WHERE task_id=? AND owner_user_id=?", (task_id, actor_user_id)
+        ).fetchone()
+        return row["current_rev"] if row else 0
+
+    def asset_current_rev(self, actor_user_id: str, kind: str) -> int:
+        _require_actor(actor_user_id)
+        row = self.conn.execute(
+            "SELECT current_rev FROM ctx_assets WHERE owner_user_id=? AND kind=?", (actor_user_id, kind)
+        ).fetchone()
+        return row["current_rev"] if row else 0
+
     # ---------------- 个人资产域（§1.5，单当前版 + 幂等 mutation） ----------------
 
     def apply_asset(
