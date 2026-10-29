@@ -72,6 +72,7 @@
 | P-029 | 10-29 ~10:50 | EP0-UX | W4 二轮结论：档③3b 复核通过，**EP0-UX 走查 W1–W4 全部关闭**（W1@2be0327 链至 W4@f09cc5f），四批次问题项全部销项或转 P1，无遗留走查债；备案级观察一条：assets 窗口徽标传字面量 'personal' 未消费响应 visibility 字段（P0 恒等无影响） | UI 读码复核链 cmsg_01m63mg2scfhja4jqrbbxckn7n；注明项核对合规 | 已核实 | 剩余=合入 main 后运行时目检（W10 五表面/实机截图），QA 节奏执行、UI 接应 |
 
 | P-031 | 10-29 ~22:44 | EP0-QA | 合入等待期本机收口（77765aa）：M04 告知即过无回执端点全 404 PASS；M06 HTTP 级整包撤销闭环 PASS；L01–L03（local_token 双承载守卫/迁移三段式幂等源零改动/activation 逐字"重启后生效"——FE 文案有实现依据）PASS；U2 未配对 200 空队列单态 PASS；U8 **真进程重启**会话保持 PASS（非模拟） | 套件 test_qa_ep0_closeout_local.py 7/7 PASS，登记 shared/QA-P0-CASES-LEDGER-20261029.md「合入批准批次」节（实查在案） | 已核实 | 剩三组纯环境依赖：W 抓包系+C 系+W10 目检，随棒3 环境一次性收口 |
+| P-032 | 10-29 ~22:46 | EP0-MERGE | 第一棒完成：BE 合入 main（merge de8fbaa 纯新增 3297 行零删除）并推送，origin/main=b6c3037 实查 0/0 同步；红线复核全量 1090 passed（worktree 三项失败=本地产物缺失误影，主检出全过，个人版零变化）；OPS 存量提交随批入 origin（第三棒免 push）；QA 事实修正落地：契约 §1.3 改注+v1.1 第12条留痕（404 未挂载，原 501 播报失实，后端接受修正并对齐 B5 自纠纪律）；台账 P-031 批次提交随推送入 origin | de8fbaa/b6c3037 实查；契约第12条+§1.3 镜像在案 | 已核实 | 第二棒 FE 已点名接力 |
 
 推送纪律：BE/OPS 分支与 main 提交均未推送，推送需项目方确认；FE 分支已按群纪律 push origin 不自行合 main。
 
@@ -88,8 +89,8 @@
 | 棒次 | 负责人 | 动作 | 前置 | 状态 |
 |------|--------|------|------|------|
 | 1 | 后端工程师 | 推送 feat/ep0-datalayer-20261029-093500（8b09a3f→…→77765aa）并合入 main；台账文档提交随批次推送；对齐后点名 OPS | 批准已达 | **已合入本地 main @ de8fbaa**（BE 五增量全量 merge，个人版红线随 merge 纪律；origin/main 尚在 75e05a5，推送待完成播报） |
-| 2 | 前端开发工程师 | feat/req-ep0-fe-auth（1057fd6→b41f69e 共 9 提交，b41f69e=C12 徽标单源备案项零成本提前落地）合入 main 并推送 | 棒1 先合（避免 main 契约引用断档） | 已接单就绪（改动面与 BE 零交集、红线自查通过，待棒1 推送点名接力） |
-| 3 | DevOps工程师 | 企业包 CI job workflow、oms-app 镜像构建、Linux 实机/容器全链路 smoke（install→登录页可达→upgrade→rollback→备份落盘）、oms-private tar 产物 | 棒1+2 main 齐 | 工件预先就绪（de396c1 已在 main 血缘：workflow+Dockerfile 构建参数+首装 migrate；main 齐即 push+触发构建 smoke） |
+| 2 | 前端开发工程师 | feat/req-ep0-fe-auth（1057fd6→b41f69e 共 9 提交，b41f69e=C12 徽标单源备案项零成本提前落地）合入 main 并推送 | 棒1 先合（避免 main 契约引用断档） | **已点名**（棒1 交棒播报完成，BE 建议合入前复跑 vue-tsc+vitest+后端四套件——EP0 33 项现已在 main 可直接复跑） |
+| 3 | DevOps工程师 | 企业包 CI job workflow、oms-app 镜像构建、Linux 实机/容器全链路 smoke（install→登录页可达→upgrade→rollback→备份落盘）、oms-private tar 产物 | 棒1+2 main 齐 | 工件已在 origin/main（de396c1 随棒1 推送入 origin，**无需再执行 push**，BE 事实同步入册）；FE 合入即"main 齐"点火信号，直接 gh workflow run |
 | 4 | QA工程师 | 收口最后一批：W 抓包系（默认零出网+L05）、C 系个人版回归门禁、W10 五表面运行时目检（B5 逐字四处+承诺卡）、U8、M04/M06 HTTP 复验、L01–L03；逐条入用例台账并播报出场 gate 终局判定 | 棒3 smoke 环境就绪 | **本机收口 7/7 全绿提前完成**（P-031）；剩 W 抓包系/C 系/W10 五表面目检严格依赖 smoke 环境，就绪点名即一次性出终局判定 |
 
 合入红线：只合企业版批次内容，个人版行为零变化；任一棒发现个人版回归立即中止播报。每棒 commit+证据由项目管理员滚动入册；出场 gate 全绿后台账增设"验收终局"节，产品经理向项目方交付最终验收报告与四项体验确认点结果。
@@ -146,3 +147,5 @@
 - 留痕更正：上一条登记的实际 commit 消息复用了上一批次文案（脚本失误），commit 8dec106 内容确为本条（批准时点+EP0-MERGE 批次+C10 解除），以变更记录文字为准，不改写历史。
 
 - 2026-10-29（22:45）：登记 P-031（QA 本机收口 7/7：M04/M06/L01–03/U2/U8 全绿）与合入批次实况（棒1 BE 已合入本地 main de8fbaa 待推送、棒2 就绪、棒3 工件在位、棒4 仅剩环境三组）；偏差①表述按 QA 实测修正为"404 未挂载（原 501 系口误）"，用户可见语义不变。
+
+- 2026-10-29（22:47）：登记 P-032（第一棒完成：合入+推送+红线守住+OPS 随批入 origin+404 修正契约第12条）；EP0-MERGE 表棒1 转✓、棒3 免 push 注记、棒2 已点名。台账自身提交随批推送 origin。
