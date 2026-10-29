@@ -144,3 +144,18 @@ PASS 要点：X01 /healthz；X02 422 client_mutation_conflict；X03 422 activati
 - 资产形态：speaker_aliases 纯字符串值、embedding 零出现。
 
 M 系剩余：M04 归属卡无回执端点（探测 404）与 M06 服务端整包撤销回滚的 HTTP 级复验随联调环境执行；C2 个人版升级回归需安装包形态，维持 BLOCK。
+
+---
+
+## 执行记录｜D001–D003 修复复跑销项（2026-10-29，@ c23b247 增量4）
+
+复跑范围：QA 三套件全量（增量1 探针 29 + 增量2 HTTP 20【含新增两状态线组合断言】+ 增量3 M 系 6）+ 开发 EP0 全套独立复跑。
+结果：**QA 55/55 PASS；开发 32 passed**。
+
+- D001 **销项**：停用账号+正确密码 → 403 account_disabled（前端"请联系管理员"分流接通）；错凭据仍 401 bad_credentials，三分正确。
+- D002 **销项**：出示 Bearer 但凭据吊销/失效 → 403 device_revoked，与 401 unauthenticated 区分成立。
+- D003 **销项**：If-Match-Rev 畸形/负数 → 400 invalid_header，快照+资产双端同规则，全链无裸 5xx（复跑 20 项 HTTP 未见任何 5xx）。
+- 组合断言（后端建议采纳入册）：账号线/实例线错误码不混用 PASS——停用+关闭叠加态下 active 用户登录=403 service_closed、停用用户=403（两线之一），401 混码零出现。
+- 探针漂移说明（非产品缺陷）：增量4 `redeem_pairing` DAO 返回值扩为 3 元组（附 user_id 供助手展示），QA 增量1 探针已同步适配；HTTP 契约面（device-activate 响应体）不受影响。
+
+**A 域状态：全绿收口**。维持 BLOCK 不变：W01–W03/W05–W08 抓包系、C 系（安装包形态）、W10（随 FE 档⑦）、U8（随 compose 实机）、M04/M06 HTTP 级复验（随联调）。
