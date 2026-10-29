@@ -164,5 +164,14 @@
     "save_failed": "保存失败，请稍后重试",
     "not_found": "会议不存在或已被删除",
     "audio_local": "录音音频保留在录制设备本机"
+  },
+  "assets": {
+    "hotwords_title": "热词",
+    "speakers_title": "发言人别名",
+    "hotwords_guide": "热词在安装了本机录音助手的电脑上编辑，这里显示的是公司服务器上的最新版本。",
+    "speakers_guide": "发言人命名与声纹绑定在安装了本机录音助手的电脑上完成，这里显示的是公司服务器上的最新别名映射。",
+    "empty": "公司服务器上还没有你在助手设备上上传过的内容",
+    "alias_speaker": "发言人标签",
+    "alias_name": "显示名"
   }
 }

@@ -164,5 +164,14 @@
     "save_failed": "Save failed, please retry",
     "not_found": "Meeting not found or deleted",
     "audio_local": "Audio stays on the recording device"
+  },
+  "assets": {
+    "hotwords_title": "Hot words",
+    "speakers_title": "Speaker aliases",
+    "hotwords_guide": "Hot words are edited on computers with the local recording assistant. This shows the latest version stored on your company server.",
+    "speakers_guide": "Speaker naming and voiceprint binding happen on computers with the local recording assistant. This shows the latest alias mapping from your company server.",
+    "empty": "Nothing uploaded from your assistant devices yet",
+    "alias_speaker": "Speaker tag",
+    "alias_name": "Display name"
   }
 }

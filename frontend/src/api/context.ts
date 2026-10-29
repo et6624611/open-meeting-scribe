@@ -114,42 +114,38 @@ export function snapshotConflictRev(err: unknown): number | null {
 }
 
 // ─── 个人资产（§1.5）：仅白名单文本字段；声纹 embedding 出现即 422 拒收 ───
+// 实测信封（BE aba84fb/dao.get_asset）：无数据时 current_rev=0、payload=null（非 404）
 
-export interface HotwordsAsset {
-  hotwords: string
+export interface AssetEnvelope<T> {
+  kind: string
   visibility: Visibility
-  sync_status: ServerSyncStatus
-  server_rev: number
-  content_hash: string
+  current_rev: number
+  content_hash: string | null
+  payload: T | null
 }
 
-export interface SpeakerAliasAsset {
-  aliases: Record<string, string>
-  visibility: Visibility
-  sync_status: ServerSyncStatus
-  server_rev: number
-  content_hash: string
-}
+export interface HotwordsPayload { hotwords: string }
+export interface SpeakerAliasesPayload { aliases: Record<string, string> }
 
-export async function getHotwordsAsset(): Promise<HotwordsAsset> {
-  const { data } = await client.get<HotwordsAsset>('/api/v1/context/assets/hotwords')
+export async function getHotwordsAsset(): Promise<AssetEnvelope<HotwordsPayload>> {
+  const { data } = await client.get<AssetEnvelope<HotwordsPayload>>('/api/v1/context/assets/hotwords')
   return data
 }
 
-export async function putHotwordsAsset(snapshot: { hotwords: string; content_hash: string }, headers: { idempotencyKey: string; baseRev: number }): Promise<SnapshotResult> {
-  const { data } = await client.put<SnapshotResult>('/api/v1/context/assets/hotwords', snapshot, {
+export async function putHotwordsAsset(payload: HotwordsPayload, headers: { idempotencyKey: string; baseRev: number }): Promise<SnapshotResult> {
+  const { data } = await client.put<SnapshotResult>('/api/v1/context/assets/hotwords', payload, {
     headers: { 'Idempotency-Key': headers.idempotencyKey, 'If-Match-Rev': String(headers.baseRev) },
   })
   return data
 }
 
-export async function getSpeakerAliasesAsset(): Promise<SpeakerAliasAsset> {
-  const { data } = await client.get<SpeakerAliasAsset>('/api/v1/context/assets/speaker-aliases')
+export async function getSpeakerAliasesAsset(): Promise<AssetEnvelope<SpeakerAliasesPayload>> {
+  const { data } = await client.get<AssetEnvelope<SpeakerAliasesPayload>>('/api/v1/context/assets/speaker-aliases')
   return data
 }
 
-export async function putSpeakerAliasesAsset(snapshot: { aliases: Record<string, string>; content_hash: string }, headers: { idempotencyKey: string; baseRev: number }): Promise<SnapshotResult> {
-  const { data } = await client.put<SnapshotResult>('/api/v1/context/assets/speaker-aliases', snapshot, {
+export async function putSpeakerAliasesAsset(payload: SpeakerAliasesPayload, headers: { idempotencyKey: string; baseRev: number }): Promise<SnapshotResult> {
+  const { data } = await client.put<SnapshotResult>('/api/v1/context/assets/speaker-aliases', payload, {
     headers: { 'Idempotency-Key': headers.idempotencyKey, 'If-Match-Rev': String(headers.baseRev) },
   })
   return data

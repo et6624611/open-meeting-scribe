@@ -51,21 +51,25 @@ const router = createRouter({
       path: '/projects',
       name: 'projects',
       component: () => import('@/views/ProjectsView.vue'),
+      meta: { enterpriseRedirect: '/library' },
     },
     {
       path: '/speakers',
       name: 'speakers',
-      component: () => import('@/views/SpeakersView.vue'),
+      component: () => import(isEnterprise ? '@/views/EnterpriseAssetsView.vue' : '@/views/SpeakersView.vue'),
+      props: isEnterprise ? { kind: 'speakers' } : undefined,
     },
     {
       path: '/hotwords',
       name: 'hotwords',
-      component: () => import('@/views/HotwordsView.vue'),
+      component: () => import(isEnterprise ? '@/views/EnterpriseAssetsView.vue' : '@/views/HotwordsView.vue'),
+      props: isEnterprise ? { kind: 'hotwords' } : undefined,
     },
     {
       path: '/agents',
       name: 'agents',
       component: () => import('@/views/AgentsView.vue'),
+      meta: { enterpriseRedirect: '/library' },
     },
     {
       path: '/settings',
@@ -83,6 +87,7 @@ const router = createRouter({
       path: '/decisions',
       name: 'decisions',
       component: () => import('@/views/DecisionCenterView.vue'),
+      meta: { enterpriseRedirect: '/library' },
     },
     // 洞察板独立浏览页：“在浏览器中打开”落在这里，而不是直接打开 raw 字节
     // （raw 不跑桥接，mermaid 图不渲染、主题令牌不下发）
@@ -110,6 +115,8 @@ router.beforeEach(async (to) => {
   }
   // 管理台仅 admin（越权回员工空间；服务端 §1.3 仍有 403 兜底，前端只管界面边界）
   if (to.meta.requiresAdmin && !userStore.isAdmin) return { path: '/' }
+  // 企业形态无服务端承接的本地面路由：直达 URL 也重定向（不产生注定 404 请求，3b 裁决）
+  if (to.meta.enterpriseRedirect) return { path: to.meta.enterpriseRedirect as string }
   return true
 })
 
