@@ -23,11 +23,16 @@ const client = axios.create({
 function handleEnterprise401() {
   void (async () => {
     try {
-      const { useUserStore } = await import('@/stores/user')
+      const [{ useUserStore }, { setActiveUser }] = await Promise.all([
+        import('@/stores/user'),
+        import('./origins'),
+      ])
       const userStore = useUserStore()
       if (!userStore.isLoggedIn) return
       userStore.user = null
       userStore.checked = false
+      // W4-01：过期清态与登出同口径——内存握手一并失效
+      setActiveUser(null)
       const { pathname, search } = window.location
       // W1-01：跳登录页携带 redirect，重新登录回到被中断的工作页（排除登录/激活页自身）
       if (!pathname.startsWith('/login') && !pathname.startsWith('/activate')) {

@@ -28,12 +28,30 @@ interface LocalState {
   /** 已解析的 local origin；'' = same-origin（个人版形态） */
   origin: string
   handshake: LocalHandshake | null
+  /** 握手建立时的 active user（W4-01：用户切换必须重新握手，防同机串号） */
+  handshakeUid: string | null
   /** 握手失败原因（企业形态 UI 呈现"未连接录音助手"态） */
   error: string | null
   probing: Promise<LocalState> | null
+  /** 进行中的探测所属 uid（跨用户不共享探测结果） */
+  probingUid?: string | null
 }
 
-const local: LocalState = { origin: '', handshake: null, error: null, probing: null }
+const local: LocalState = { origin: '', handshake: null, handshakeUid: null, error: null, probing: null }
+
+/**
+ * 当前登录用户（W4-02：助手地址覆盖按 uid 读取的前置）。
+ * 由 user store 在登录/checkAuth 成功时写入、登出/过期时清空——
+ * origins 不反向 import store，避免循环依赖。
+ */
+let activeUserId: string | null = null
+export function setActiveUser(uid: string | null): void {
+  if (uid !== activeUserId) {
+    activeUserId = uid
+    // 用户即上下文：切换用户时内存握手一律作废（W4-01 结构性防串号）
+    invalidateLocalPlane()
+  }
+}
 
 /** 服务端 origin（企业版即当前页面 origin） */
 export function serverOrigin(): string {
@@ -80,12 +98,16 @@ export function ensureLocalPlane(userId?: string | null): Promise<LocalState> {
     local.origin = ''
     return Promise.resolve(local)
   }
-  if (local.handshake && local.origin) return Promise.resolve(local)
-  if (local.probing) return local.probing
+  const uid = userId ?? activeUserId
+  // W4-01/02：握手归属用户与当前用户不一致 → 视为失效，重新探测（覆盖也按当前 uid 读）
+  if (local.handshake && local.origin && local.handshakeUid === uid) return Promise.resolve(local)
+  if (local.handshake && local.handshakeUid !== uid) invalidateLocalPlane()
+  if (local.probing && local.probingUid === uid) return local.probing
+  local.probingUid = uid
   local.probing = (async () => {
-    const uid = userId ?? null
+    const override = readLocalOriginOverride(uid)
     const candidates = [...new Set([
-      ...(readLocalOriginOverride(uid) ? [readLocalOriginOverride(uid) as string] : []),
+      ...(override ? [override] : []),
       ...DEFAULT_LOCAL_CANDIDATES,
     ])]
     for (const origin of candidates) {
@@ -93,20 +115,22 @@ export function ensureLocalPlane(userId?: string | null): Promise<LocalState> {
       if (hs) {
         local.origin = origin
         local.handshake = hs
+        local.handshakeUid = uid
         local.error = null
         return local
       }
     }
     local.error = 'assistant_unreachable'
     return local
-  })().finally(() => { local.probing = null })
+  })().finally(() => { local.probing = null; local.probingUid = null })
   return local.probing
 }
 
-/** 握手失效（token 轮换/助手重启）时重置，下次调用重新探测 */
+/** 握手失效（token 轮换/助手重启/用户切换）时重置，下次调用重新探测 */
 export function invalidateLocalPlane(): void {
   local.origin = ''
   local.handshake = null
+  local.handshakeUid = null
   local.error = null
 }
 

@@ -11,6 +11,7 @@ import { ref, computed } from 'vue'
 import { fetchMe, logout as apiLogout, probeSession } from '@/api/auth'
 import { isEnterprise } from '@/edition'
 import { enterpriseFetchMe, enterpriseLogout, type EnterpriseMe } from '@/api/enterpriseAuth'
+import { setActiveUser } from '@/api/origins'
 import { purgeUserScopedData } from '@/utils/scopedStorage'
 import type { User } from '@/api/types'
 
@@ -47,7 +48,9 @@ export const useUserStore = defineStore('user', () => {
     try {
       if (isEnterprise) {
         // 企业版 REQUIRE_AUTH 恒开（契约 §1.1），直接 /api/v1/auth/me；401 即未登录
-        user.value = toUser(await enterpriseFetchMe())
+        const me = await enterpriseFetchMe()
+        user.value = toUser(me)
+        setActiveUser(me.user_id)
       } else {
         // DEF-01: 先探测会话，无会话时跳过 /auth/me，避免本地/匿名模式每页一次 401 控制台噪音。
         // 探测返回 null（不可用/旧后端）时回退为直接请求 /auth/me，保证登录态检测不受影响。
@@ -72,6 +75,7 @@ export const useUserStore = defineStore('user', () => {
   function setUser(me: EnterpriseMe) {
     user.value = toUser(me)
     checked.value = true
+    if (isEnterprise) setActiveUser(me.user_id)
   }
 
   /** 登出 / Logout */
@@ -86,7 +90,11 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
     checked.value = false
     // 档位①清态：登出必须清空该用户命名空间下全部本地缓存（UI 规格 §1 走查硬项）
-    if (isEnterprise) purgeUserScopedData(purgeId)
+    // W4-01：内存握手态同属"该用户的状态"——失效并重探测，防同机下一用户沿用上一用户的 local_token
+    if (isEnterprise) {
+      setActiveUser(null)
+      purgeUserScopedData(purgeId)
+    }
   }
 
   return { user, loading, checked, isLoggedIn, isAdmin, displayName, avatarLetter, checkAuth, setUser, logout }
