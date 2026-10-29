@@ -28,8 +28,11 @@ function handleEnterprise401() {
       if (!userStore.isLoggedIn) return
       userStore.user = null
       userStore.checked = false
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.assign('/login?expired=1')
+      const { pathname, search } = window.location
+      // W1-01：跳登录页携带 redirect，重新登录回到被中断的工作页（排除登录/激活页自身）
+      if (!pathname.startsWith('/login') && !pathname.startsWith('/activate')) {
+        const redirect = encodeURIComponent(pathname + search)
+        window.location.assign(`/login?expired=1&redirect=${redirect}`)
       }
     } catch { /* pinia 未就绪等场景静默 */ }
   })()

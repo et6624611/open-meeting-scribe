@@ -10,6 +10,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { enterpriseActivate, authErrorCode } from '@/api/enterpriseAuth'
+import LockedPrivacyBlock from '@/components/common/LockedPrivacyBlock.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -70,6 +71,10 @@ async function onSubmit() {
           {{ submitting ? t('login.enterprise.activating') : t('login.enterprise.activate_submit') }}
         </button>
       </form>
+      <section class="ent-auth-privacy" aria-labelledby="activatePrivacyTitle">
+        <h3 id="activatePrivacyTitle">{{ t('login.enterprise.privacy_title') }}</h3>
+        <LockedPrivacyBlock />
+      </section>
       <RouterLink to="/login" class="ent-auth-back">{{ t('login.enterprise.back_to_login') }}</RouterLink>
     </div>
   </div>
@@ -122,5 +127,17 @@ async function onSubmit() {
   margin-top: var(--s-3, 16px);
   font-size: var(--fs-12, 12px);
   color: var(--muted, #666);
+}
+.ent-auth-privacy {
+  margin-top: var(--s-3, 16px);
+  padding: var(--s-3, 16px);
+  background: var(--surface-2, #fafaf8);
+  border-radius: var(--radius-sm, 8px);
+}
+.ent-auth-privacy h3 {
+  margin: 0 0 var(--s-2, 8px);
+  font-size: var(--fs-12, 12px);
+  color: var(--subtle, #999);
+  font-weight: 600;
 }
 </style>
