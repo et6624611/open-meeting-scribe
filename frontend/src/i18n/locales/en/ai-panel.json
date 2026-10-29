@@ -372,6 +372,12 @@
   "notes_proposal_applied": "Notes updated",
   "notes_proposal_applied_drift": "Notes updated per the proposal (the notes were edited manually after it was created — please review)",
   "notes_proposal_save_failed": "Failed to save the notes, please retry",
+  "board_proposal_label": "New insight board proposal",
+  "board_proposal_summary": "Suggested creating a new insight board “{title}”.",
+  "board_proposal_accept": "Accept & create",
+  "board_proposal_reject": "Reject",
+  "board_proposal_applied": "Insight board created",
+  "board_proposal_failed": "Failed to create the board, please retry",
   "execution": {
     "title": "Execution trace",
     "steps": "{count} steps",

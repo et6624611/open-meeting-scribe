@@ -17,7 +17,8 @@ scripts/cleanup_test_tasks.py — 清理会议库中遗留的测试垃圾任务 
     - 标题为「会议记录」但音频路径指向 data/recordings/ 或 data/uploads/ 的真实业务数据，
       不含上述测试特征 → 一律保留，绝不误删。
     - 删除任务主体 {id}.json 时，一并清理同前缀的旁路文件
-      {id}.joblog.jsonl / {id}.insights.json / {id}.board.json / {id}.board.html。
+      {id}.joblog.jsonl / {id}.insights.json / {id}.board.json / {id}.boards.json
+      / {id}.board.html / {id}.board.<board_id>.html（多板形态按 glob 展开）。
 
 用法 / Usage:
     venv/bin/python scripts/cleanup_test_tasks.py            # 预览（dry-run） / Preview
@@ -35,7 +36,24 @@ TASKS_DIR = ROOT / "data" / "tasks"
 AUDIO_PATH_MARKERS = ("pytest-", "/nonexistent/")
 TEST_AUDIO_NAMES = ("test.wav",)
 # 随任务主体一并清理的旁路文件后缀 / Sidecar suffixes removed alongside the task body
-SIDECAR_SUFFIXES = (".joblog.jsonl", ".insights.json", ".board.json", ".board.html")
+# 多板后板文件形态为 `<id>.board.<board_id>.html` + manifest `<id>.boards.json`，
+# 固定后缀已盖不住，由 collect_sidecars 按前缀 glob 补全。
+SIDECAR_SUFFIXES = (".joblog.jsonl", ".insights.json", ".board.json", ".board.html",
+                    ".board.meta.json", ".boards.json")
+# 仅以这些旁路为入口扫描会误判任务主体的形态（不是任务本体）
+NON_TASK_BODY_SUFFIXES = (".joblog.jsonl", ".insights.json", ".board.json", ".boards.json")
+
+
+def collect_sidecars(task_id: str) -> list[Path]:
+    """列出该任务的全部旁路文件（含多板形态）/ List every sidecar of a task id."""
+    found: list[Path] = []
+    for suf in SIDECAR_SUFFIXES:
+        p = TASKS_DIR / f"{task_id}{suf}"
+        if p.exists():
+            found.append(p)
+    # 多板 HTML：<task_id>.board.<board_id>.html（glob 形态，不靠 board_id 枚举）
+    found.extend(p for p in sorted(TASKS_DIR.glob(f"{task_id}.board.*.html")) if p not in found)
+    return found
 
 
 def is_test_artifact(task: dict) -> tuple[bool, str]:
@@ -67,7 +85,7 @@ def main() -> int:
 
     for task_file in sorted(TASKS_DIR.glob("*.json")):
         # 排除旁路文件（只以任务主体为入口） / Skip sidecar files (iterate on task bodies only)
-        if any(task_file.name.endswith(suf) for suf in (".joblog.jsonl", ".insights.json", ".board.json")):
+        if any(task_file.name.endswith(suf) for suf in NON_TASK_BODY_SUFFIXES):
             continue
         total += 1
         try:
@@ -100,14 +118,12 @@ def main() -> int:
         except OSError as e:
             print(f"    [删除失败] {task_file.name}: {e}")
             continue
-        for suf in SIDECAR_SUFFIXES:
-            side = task_file.with_name(f"{task_id}{suf}")
-            if side.exists():
-                try:
-                    side.unlink()
-                    removed_sidecars += 1
-                except OSError as e:
-                    print(f"    [旁路删除失败] {side.name}: {e}")
+        for side in collect_sidecars(task_id):
+            try:
+                side.unlink()
+                removed_sidecars += 1
+            except OSError as e:
+                print(f"    [旁路删除失败] {side.name}: {e}")
 
     if args.apply:
         print(f"\n已删除 {deleted} 个测试垃圾任务主体，附带清理 {removed_sidecars} 个旁路文件。")

@@ -18,13 +18,26 @@ import { useEngineStore } from '@/stores/engine'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { useSummaryProposal } from '@/composables/useSummaryProposal'
 import { useNotesProposal } from '@/composables/useNotesProposal'
+import { useBoardProposal } from '@/composables/useBoardProposal'
 import { fetchNotes } from '@/api/notes'
-import { isBoardWriteCall, isBoardWriteResult, notifyBoardWritten } from '@/composables/useBoardSync'
+import { isBoardWriteCall, isBoardWriteResult, notifyBoardWritten, boardIdOf } from '@/composables/useBoardSync'
 import { notifyTaskWritten, writeDomainsOf } from '@/composables/useTaskWrites'
 import { showToast } from '@/composables/useToast'
 import { tt, getLocale } from '@/i18n'
 
 const AI_MAX_CONTEXT = 20
+
+/** 工具回执可能是 JSON 字符串也可能已是对象；解析失败返回空对象（不抛错不阻断事件流） */
+function safeJsonParse(value: string | unknown): Record<string, unknown> {
+  if (value && typeof value === 'object') return value as Record<string, unknown>
+  if (typeof value !== 'string' || !value.trim()) return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
 
 /** 授权档位（与后端 _VALID_TIERS 对齐）：只读 / 提案写入 / 完全任务 */
 export type AuthTier = 'readonly' | 'workspace_write' | 'full_task'
@@ -86,6 +99,8 @@ export function useAiChat() {
   // 纪要改写提案：模块级单例状态（原位 diff 预览 Layer 1），与 GeneratingView/SummaryPanel 共享
   const proposal = useSummaryProposal()
   const notesProposalStore = useNotesProposal()
+  // 建板提案（create_insight_board）：同样不落盘，用户点「接受」才 POST 建板
+  const boardProposalStore = useBoardProposal()
 
   const isLoading = ref(false)
   const isStreaming = ref(false)
@@ -118,6 +133,8 @@ export function useAiChat() {
   const summaryProposal = proposal.summaryProposal
   /** 随记改写提案（propose_notes）：同一机制的单例下沉（随记 Tab 原位预览），用户接受才落盘 */
   const notesProposal = notesProposalStore.notesProposal
+  /** 建板提案（create_insight_board）：建板权属于用户，侧栏确认卡接受后才 POST 建板 */
+  const boardProposal = boardProposalStore.boardProposal
 
   /** 剥 MCP 工具全名前缀：mcp__<server>__<tool> → tool（内置引擎直接给裸名） */
   function bareToolName(name: string): string {
@@ -225,6 +242,7 @@ export function useAiChat() {
     rewriteNotPersisted.value = null
     summaryProposal.value = null
     notesProposal.value = null
+    boardProposal.value = null
     tierDenial.value = null
   }
 
@@ -385,6 +403,7 @@ export function useAiChat() {
     rewriteNotPersisted.value = null
     summaryProposal.value = null
     notesProposal.value = null
+    boardProposal.value = null
   }, { immediate: true })
 
   const canSend = computed(() => !isLoading.value)
@@ -444,6 +463,7 @@ export function useAiChat() {
     // 新一轮开始：清上一轮遗留的纪要提案（提案卡只渲染在末条 assistant 气泡下，新轮后自然失效）
     summaryProposal.value = null
     notesProposal.value = null
+    boardProposal.value = null
     let turnHasProposal = false
     let toolWriteOk = false
 
@@ -569,6 +589,19 @@ export function useAiChat() {
                 .catch(() => { notesProposal.value = { baseline: '', proposed } })
             }
           }
+          // 建板提案（create_insight_board）：后端不落盘，只把标题/理由挂成确认卡。
+          // 真正建板发生在用户点「接受」后（useBoardProposal → POST .../boards）。
+          if (bareToolName(tool.name) === 'create_insight_board') {
+            const title = String(tool.args?.title ?? '').trim()
+            if (title) {
+              boardProposal.value = {
+                board_id: String(tool.args?.board_id ?? '').trim(),
+                title,
+                reason: String(tool.args?.reason ?? '').trim(),
+              }
+              turnHasProposal = true
+            }
+          }
           // 将之前的 running 阶段标记为 done / Mark previous running stages as done
           stages.value.forEach(s => {
             if (s.status === 'running' && s.type !== 'tool_call' && s.type !== 'board_retry') s.status = 'done'
@@ -618,8 +651,12 @@ export function useAiChat() {
             tierDenial.value = { tool: deniedName, summary: result.summary }
           }
           // 落板成功→广播：板的写入点在后端，呈现侧（同页的洞察 Tab）此前只能人工刷新
+          // 多板下带 board_id（回执里那份被写的板），订阅侧才不会重拉错板
           if (result.success && isBoardWriteResult(result, boardWriteIds)) {
-            notifyBoardWritten({ tool: result.name })
+            notifyBoardWritten({
+              tool: result.name,
+              board_id: boardIdOf(safeJsonParse(result.output ?? '')) || boardIdOf(safeJsonParse(result.summary ?? '')),
+            })
           }
           // 完成护栏（§5.4）：前端侧写工具成功事实（与后端 done.rewritten 双保险，任一命中即视为落盘）
           // tool_result 可能不带 name（CLI 侧），按 tool_use_id 回溯 tool_call 阶段的工具名后再剥 MCP 前缀
@@ -951,6 +988,8 @@ export function useAiChat() {
     notesProposal, acceptNotesProposal: notesProposalStore.acceptNotesProposal,
     rejectNotesProposal: notesProposalStore.rejectNotesProposal,
     openNotesPreview: notesProposalStore.openNotesPreview,
+    boardProposal, acceptBoardProposal: boardProposalStore.acceptBoardProposal,
+    rejectBoardProposal: boardProposalStore.rejectBoardProposal,
     // 使用面闭环（REQ-EXPERT-MODE §2.3） / usage-surface loop
     sessionModel, setSessionModel: engineStore.setSessionModel,
     modelCandidates, detailModelLabel, cliProbe, agentEngineEnabled, agentAvailable,

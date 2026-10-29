@@ -61,6 +61,7 @@ def invoke_tool(payload: ToolInvoke, request: Request,
         raise HTTPException(404, {"error": "unknown_tool", "message": f"未知工具: {payload.name}"})
 
     # 授权档位：写工具要求可写档；例外：revise_insight_board 不带 html 时为读语义（取基线），只读档放行
+    # （create_insight_board 不属例外：它是写档的提案动作，只读档连提议权也不给）
     if tool["kind"] == "write" and not ctx.writable:
         if not (payload.name == "revise_insight_board" and "html" not in (payload.arguments or {})):
             raise HTTPException(403, {"error": "read_only",
@@ -229,24 +230,45 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                 "result": {"deleted": True, "node_id": node_id, "restorable": restorable},
                 "echo": res}
 
+    if name == "create_insight_board":
+        # 建板提案（与 propose_summary/propose_notes 同构）：后端不碰磁盘。
+        # 新板只能在用户点「接受」后经 POST /api/insights/board/{task_id}/boards 建立，
+        # 因此本分支的审计措辞也写“未落盘,待用户确认”，便于回溯是谁点的接受。
+        from core.insight_board import BOARD_TITLE_MAX
+        title = str(args.get("title") or "").strip()[:BOARD_TITLE_MAX]
+        if not title:
+            raise HTTPException(400, {"error": "title_required",
+                                      "message": "新板标题必填（create_insight_board 只提案，不落盘）"})
+        logger.info("[agent-tools] create_insight_board task=%s title=%s", ctx.task_id, title)
+        audit_logger.info("[agent-engine] create_insight_board task=%s tier=%s title=%s (未落盘,待用户确认)",
+                          ctx.task_id, ctx.auth_tier, title)
+        return {"ok": True, "tool": name,
+                "result": {"proposed": True, "title": title,
+                           "board_id": str(args.get("board_id") or "").strip(),
+                           "note": "已作为待确认建板提案展示给用户，未经用户点「接受」不会新建任何板"}}
+
     if name == "revise_insight_board":
         # 洞察共创 HTML 产物：唯一实现与内置引擎共享（core.insight_board.invoke_revise_board）
         from core.insight_board import invoke_revise_board
         result = invoke_revise_board(ctx.task_id, args)
         if args.get("html") and result.get("ok"):
-            audit_logger.info("[agent-engine] revise_insight_board task=%s tier=%s chars=%d rev=%s",
-                              ctx.task_id, ctx.auth_tier, len(str(args.get("html"))), result.get("revision"))
+            audit_logger.info("[agent-engine] revise_insight_board task=%s tier=%s board=%s chars=%d rev=%s removed=%s",
+                              ctx.task_id, ctx.auth_tier, result.get("board_id"),
+                              len(str(args.get("html"))), result.get("revision"),
+                              result.get("removed") or "-")
         return {"ok": bool(result.get("ok")), "tool": name, "result": result}
 
     if name == "revise_insight_board_section":
-        # 单节共创：按 data-ib-id 只替那一节，其余节硬隔离
+        # 单节共创：按 data-ib-id 只替那一节，其余节硬隔离；多板下按 board_id 定位
         from core.insight_board import board_html_save_section
         section_id = str(args.get("section_id", "")).strip()
         html_arg = str(args.get("html", ""))
-        result = board_html_save_section(ctx.task_id, section_id, html_arg)
+        bid = str(args.get("board_id") or "").strip() or None
+        result = board_html_save_section(ctx.task_id, section_id, html_arg, bid)
         if result.get("ok"):
-            audit_logger.info("[agent-engine] revise_insight_board_section task=%s tier=%s sec=%s rev=%s",
-                              ctx.task_id, ctx.auth_tier, section_id, result.get("revision"))
+            audit_logger.info("[agent-engine] revise_insight_board_section task=%s tier=%s board=%s sec=%s rev=%s",
+                              ctx.task_id, ctx.auth_tier, result.get("board_id"), section_id,
+                              result.get("revision"))
         return {"ok": bool(result.get("ok")), "tool": name, "result": result}
 
     raise HTTPException(404, {"error": "unhandled_write", "message": f"未实现的写工具: {name}"})

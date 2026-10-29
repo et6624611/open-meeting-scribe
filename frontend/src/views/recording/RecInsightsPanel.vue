@@ -36,9 +36,14 @@
         v-if="board.html"
         :artifact="board"
         :loading="boardLoading"
+        :boards="boards"
+        :active-board-id="activeBoardId"
         @seek="$emit('seekTo', $event)"
         @refresh="loadBoardData"
         @co-create="onBoardCoCreate"
+        @switch-board="onBoardSwitch"
+        @create-board="onBoardCreate"
+        @open-in-browser="onBoardOpen"
       />
       <template v-else>
       <div v-if="messages.length === 0" class="rec-insights-empty">
@@ -167,8 +172,8 @@ import { useI18n } from 'vue-i18n'
 import { escapeHtml } from '@/utils/sanitize'
 import type { InsightMessage, InsightAction } from '@/composables/useAiInsights'
 import { useAiInsights } from '@/composables/useAiInsights'
-import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
-import { onBoardWritten } from '@/composables/useBoardSync'
+import { createBoard, listBoards, loadBoard, loadBoardMeta, openBoardInBrowser, type BoardArtifact, type BoardSummary } from '@/api/board'
+import { notifyBoardsChanged, onBoardWritten, onBoardsChanged } from '@/composables/useBoardSync'
 import InsightBoard from '../generating/InsightBoard.vue'
 import type { InsightFlowData } from '@/utils/parseInsightFlow'
 import { parseInsightFlow, matchPhaseDescriptions } from '@/utils/parseInsightFlow'
@@ -273,20 +278,35 @@ defineEmits<{
 }>()
 
 /* ── 洞察板产物呈现 / Board artifact（会中「画入洞察台」的落点） ──
-   板唯一写入点在后端会话工具；本面板只读重拉——挂载即拉、board-written 即时重拉、
-   10s 轻量版本探测盖住「写板发生在其它窗口」的缝隙（与 GeneratingView 洞察 Tab 同机制）。 */
+   板唯一写入点在后端会话工具；本面板只读重拉——挂载即拉、board-written 即时重拉 、
+   10s 轻量版本探测盖住「写板发生在其它窗口」的缝隙（与 GeneratingView 洞察 Tab 同机制）。
+   多板：清单（manifest）是权威，tab 轨与轮询都读它；建板只由用户在这里发起。 */
 const EMPTY_BOARD: BoardArtifact = { html: null, revision: 0, updated_at: null }
 const board = ref<BoardArtifact>({ ...EMPTY_BOARD })
+const boards = ref<BoardSummary[]>([])
+const activeBoardId = ref('')
 const boardLoading = ref(false)
 const BOARD_POLL_MS = 10_000
 let boardPollTimer: ReturnType<typeof setInterval> | null = null
 let offBoardWritten: (() => void) | null = null
+let offBoardsChanged: (() => void) | null = null
+/** 版本指纹：任一板的 revision 变化即重拉当前可见板 */
+function boardSignature(bs: BoardSummary[]): string {
+  return bs.map(b => `${b.board_id}:${b.revision}`).join('|')
+}
+let boardSig = ''
 
 async function loadBoardData() {
   if (!props.taskId) return
   boardLoading.value = true
   try {
-    board.value = await loadBoard(props.taskId)
+    const manifest = await listBoards(props.taskId)
+    boards.value = manifest.boards
+    boardSig = boardSignature(manifest.boards)
+    if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
+      activeBoardId.value = manifest.default_board_id || 'main'
+    }
+    board.value = await loadBoard(props.taskId, activeBoardId.value)
   } catch {
     // 读板失败静默降级卡片视图 / Load failure silently falls back to cards
   } finally {
@@ -294,21 +314,46 @@ async function loadBoardData() {
   }
 }
 
-/** 轻量版本探测：版本号前进（或无板→有板）才拉整份正文 */
+/** 轻量版本探测：版本指纹前进（或无板→有板）才拉整份正文 */
 async function probeBoardRevision() {
   if (boardLoading.value || document.hidden || !props.taskId) return
   try {
     const meta = await loadBoardMeta(props.taskId)
-    if (meta.revision !== board.value.revision || (meta.exists && !board.value.html)) {
-      await loadBoardData()
-    }
+    const list = meta.boards || []
+    const sig = boardSignature(list)
+    const changed = sig !== boardSig
+    boardSig = sig
+    if (list.length) boards.value = list
+    if (changed || (meta.exists && !board.value.html)) await loadBoardData()
   } catch { /* 探测失败静默跳过 / Probe failure is silent */ }
+}
+
+function onBoardSwitch(bid: string) {
+  if (!bid || bid === activeBoardId.value) return
+  activeBoardId.value = bid
+  board.value = { ...EMPTY_BOARD, board_id: bid }
+  void loadBoardData()
+}
+
+async function onBoardCreate(title: string) {
+  if (!props.taskId) return
+  try {
+    const created = await createBoard(props.taskId, title, undefined, 'ui')
+    activeBoardId.value = created.board_id
+    await loadBoardData()
+    notifyBoardsChanged({ board_id: created.board_id })
+  } catch { /* 失败保持原状：面板不弹全屏幕提示，避免打断会中阅读 */ }
+}
+
+async function onBoardOpen() {
+  if (!props.taskId) return
+  try { await openBoardInBrowser(props.taskId, activeBoardId.value, board.value.revision) } catch { /* 忽略 */ }
 }
 
 /** 全文共创起跳：预填修订请求到 AI 面板输入框（与纪要页同文案） */
 function onBoardCoCreate() {
   window.dispatchEvent(new CustomEvent('quote-to-ai', {
-    detail: { prefill: t('generating.insights.board.co_create_msg'), coCreate: true },
+    detail: { prefill: t('generating.insights.board.co_create_msg', { board_id: activeBoardId.value }), coCreate: true },
   }))
 }
 
@@ -316,16 +361,20 @@ onMounted(() => {
   loadBoardData()
   boardPollTimer = setInterval(probeBoardRevision, BOARD_POLL_MS)
   offBoardWritten = onBoardWritten(() => { loadBoardData() })
+  offBoardsChanged = onBoardsChanged(() => { boardSig = ''; void loadBoardData() })
 })
 
 onUnmounted(() => {
   if (boardPollTimer) clearInterval(boardPollTimer)
   if (offBoardWritten) offBoardWritten()
+  if (offBoardsChanged) offBoardsChanged()
 })
 
 // 切换任务（重新挂载路由复用组件等场景）时重置并重拉
 watch(() => props.taskId, () => {
   board.value = { ...EMPTY_BOARD }
+  activeBoardId.value = ''
+  boardSig = ''
   loadBoardData()
 })
 

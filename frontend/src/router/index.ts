@@ -58,6 +58,13 @@ const router = createRouter({
       name: 'decisions',
       component: () => import('@/views/DecisionCenterView.vue'),
     },
+    // 洞察板独立浏览页：“在浏览器中打开”落在这里，而不是直接打开 raw 字节
+    // （raw 不跑桥接，mermaid 图不渲染、主题令牌不下发）
+    {
+      path: '/board/:taskId',
+      name: 'board-viewer',
+      component: () => import('@/views/BoardViewerView.vue'),
+    },
   ],
 })
 

@@ -524,6 +524,10 @@ def delete_task(task_id: str):
         if f.exists():
             f.unlink()
 
+    # 洞察板旁路（manifest + 多板 HTML + 旧单文件形态）——不留无人引用的残留文件
+    from app.task_store import _purge_board_files
+    _purge_board_files(task_id)
+
     return {"deleted": True}
 
 

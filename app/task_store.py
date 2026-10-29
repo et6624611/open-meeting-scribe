@@ -201,6 +201,22 @@ def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
     return False
 
 
+def _purge_board_files(task_id: str) -> None:
+    """删除任务时一并清掉洞察板旁路（manifest + 全部板 HTML + 旧单文件形态）。
+
+    不留只进不出：否则删完会议后 data/tasks 里会堆一批无人引用的板文件，
+    且同名重建时会被旧板“复活”。清理失败不阻断启动/删除主流程。
+    """
+    try:
+        (TASKS_DIR / f"{task_id}.boards.json").unlink(missing_ok=True)
+        (TASKS_DIR / f"{task_id}.board.html").unlink(missing_ok=True)
+        (TASKS_DIR / f"{task_id}.board.meta.json").unlink(missing_ok=True)
+        for p in TASKS_DIR.glob(f"{task_id}.board.*.html"):
+            p.unlink(missing_ok=True)
+    except OSError as e:
+        logger.warning("[任务旁路] 洞察板清理失败 task=%s: %s", task_id[:8], e)
+
+
 def load_tasks_from_disk() -> None:
     """启动时从磁盘恢复任务到内存（含迁移：剔除旧文件中的 transcription 字段） / Restore tasks from disk on startup (with migration: strip transcription field from legacy files)."""
     try:
@@ -208,6 +224,10 @@ def load_tasks_from_disk() -> None:
         orphan_recording = 0
         speaker_count_fixed = 0
         for task_file in TASKS_DIR.glob("*.json"):
+            # 旁路文件不是任务主体（洞察板 manifest / 洞察消息 / 作业日志）
+            if task_file.name.endswith((".boards.json", ".insights.json", ".board.json",
+                                        ".board.meta.json", ".formal.json")):
+                continue
             with open(task_file, "r", encoding="utf-8") as f:
                 task = json.load(f)
             task_id = task.get("task_id")
@@ -249,6 +269,7 @@ def load_tasks_from_disk() -> None:
                     task_file.unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
+                    _purge_board_files(task_id)
                     orphan_recording += 1
                     continue
                 # 清理历史遗留的无内容 failed 任务（之前重启标记的孤儿，无音频/对话/摘要） / Cleanup legacy empty failed tasks (orphans from prior restarts; no audio/dialogue/summary)
@@ -260,6 +281,7 @@ def load_tasks_from_disk() -> None:
                     task_file.unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
+                    _purge_board_files(task_id)
                     orphan_recording += 1
                     continue
                 tasks[task_id] = task

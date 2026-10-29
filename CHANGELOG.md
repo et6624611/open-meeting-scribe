@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: et6624611
 created_at: 2026-09-03
-updated_at: "2026-10-28"
+updated_at: "2026-10-29"
 status: published
 ---
 
@@ -12,6 +12,33 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-10-29 — 洞察板回归原始 HTML（版式归 CLI）+ 多板
+
+### 决策
+- **版式所有权从应用侧交还 CLI**（方案 `docs/insight-board-raw-html-plan.md`）：应用只做安全清洗、版本协议、跨边界能力桥接、内容底线；其余排版意见全部撤除。风险集中项 R1/R4 与安全项 4.7 同批交付。
+
+### 变更
+- **呈现容器 `v-html` → `sandbox="allow-scripts"` iframe**：`InsightBoard.vue` 重写为 iframe 桥接（opaque origin）；新增 `useBoardBridge`/`boardBridge`/`boardThemeTokens`，跨边界经 5 类 `postMessage`（seek/hover/resize/theme/mermaid）。主题令牌下发到板文档 `:root`。
+- **清洗只留安全项**：`sanitize_board_html` 删 `_strip_global_css_and_wrappers`，`_DROP_TAGS` 定为容器级五项（`iframe`/`object`/`embed`/`base`/`form`）；`<script>`/`<style>`/`link`/`meta`/`:root` 全局选择器与文档外壳原样保留（不再剥壳）；`on*`/危险 scheme 仍剥且经 `removed` 如实上报。
+- **主视觉判据按形态**：`detect_text_wall`/`_VISUAL_MARK_RE`/`_MERMAID_PRE_RE` 从类名改为形态（内联 `<svg>`/`<canvas>`/mermaid 形态 `<pre>`/data URI `<img>`）；`<table>`、相对路径 `<img>`、纯 CSS 条形不计。
+- **写请求 Origin 守卫**（`app/server.py`）：`POST/PUT/PATCH/DELETE` + `/api/`（豁免前缀外）+ 非白名单 Origin（含 `null`）→ 403 + `audit.log`；`raw` 端点必带 `Content-Security-Policy: sandbox allow-scripts`。
+- **契约松绑**：`catalog.py` 删 `revise_insight_board`/`_section` 的版式条款与令牌清单，改为「三最小契约 + 版式自定 + 资源内联 + 真实字节」；两个内置角色 `insights.md`（meeting-minutes v3.0.0）同步。
+
+### 新增
+- **板 HTML 进 CLI 上下文（R2）**：`context_export.py` 新增 `_write_board_files`，把落盘展示字节逐字节拷进 `context/boards/<board_id>.html` + `index.md`（两出口一致），终止每轮从零重写；`board_html_save` 支持 `expected_revision`（不匹配返 `stale_baseline`）。
+- **一场会议多份板（R3）**：manifest `data/tasks/<task_id>.boards.json` 为唯一权威，文件 `<task_id>.board.<board_id>.html`；旧单文件板首次读取就地迁移为 `main`。**建板权属于用户**：`board_id` 不在 manifest → `unknown_board_id`（绝不隐式建板）；`create_insight_board`（`persists:False`）只出提案，前端确认卡 +「＋ 新建板」经同一个 `POST /api/insights/board/{id}/boards` 建板。新增 `list_insight_boards` 只读工具、`GET/POST .../boards`、`raw`、`open` 端点，前端 tab 轨 + 多板轮询。
+- **验证**：`test_insight_board.py` 的清洗断言改为「不再剥壳、只剥容器级逃逸面」，新增多板/迁移/`unknown_board_id`/`stale_baseline`/`raw` CSP 用例；新增 `test_origin_guard.py`；`test_agent_tools`/`test_text_correction`/`test_cli_engine` 更新。全量 `pytest` 1057 绿、`ruff` 干净、`vue-tsc` 零错、`vite build` 成功。
+
+### 修复（上线后两轮真实共创暴露）
+- **主题令牌改为低优先级注入**：桥接脚本原用 inline style 逐条写 `documentElement`，优先级高于板自己的 `:root{}`，板只重定义部分同名变量时出现「背景跟宿主、文字跟板」的混合故障（实测宿主浅色主题下页头白底白字）。现以 `:root{…}` 样式表插到 `head` 最前（后来者胜），语义从「覆写」改为**兜底**；`*{box-sizing}` 几何兜底同样让位给板。
+- **洞察板容器宽度不跟随**：`.ib-root` 只有 `max-width:860px; margin:0 auto`，在 flex 列父容器 `.gen-insights-wrap` 里交叉轴 auto margin 使 `align-self:stretch` 失效、退化为 shrink-to-fit（实测板宽钉在 372px 而可用 671px，拖列不跟）。补 `width:100%` 后 frameW = 列宽 − padding，515↔437 可逆跟随。
+- **宽度变化后高度不重报**：桥只监听 body 内容尺寸变化，列宽拖拽不一定触发，板底会被裁（实测 frameH 恒值）。补接 `window.resize`，且**仅在 `innerWidth` 真变时**重测，避免父侧改 iframe 高度反向触发子文档 resize 形成 vh 自馈环。
+- **主题/宽度/对比度契约收紧**（`catalog.py` + `meeting-minutes/insights.md` v3.2.0 + 起跳文案中英两处）：底色、正文、卡片面、边框四个**必须**写成带兜底值的宿主令牌且**不得重定义同名令牌**（自带色一律放 `--ib-*` 命名空间）；宽度用相对单位 + `@media`（板视口=容器宽度）；新增对比度底线≥ 4.5:1（主题所有权转移后可读性不再由宿主保证）。
+- **浏览器入口从 raw 字节改为独立浏览页**：新增路由 `/board/:taskId`（`BoardViewerView.vue`，复用 `InsightBoard`）。原因：`/api/insights/board/{id}/raw` 只回磁盘字节、不拼桥接脚本，板内 mermaid 主视觉在浏览器里只渲染成 `<pre>` 源码（用户反馈“流程图不显现”）。现在图渲染与主题令牌下发都走同一条桥接链路，板仍在 sandbox iframe 内（安全边界不变）；`POST .../open` 目标由后端按 `task_id`/`board_id` 自行拼接，不再接受客户端传 `raw_url`（审计改为 `OPEN_VIEWER`），`raw` 保留为字节出口。实测：浏览页 6 张图全渲成 SVG、快照里 `flowchart`/`-->` 零命中；raw 对照为 `preCount=6 / svgCount=0`。
+- **主题预览不再漏掉洞察板**：`previewTheme()` 原先只改 `html[data-theme]`、不动 store，订阅 `current` 的桥接收不到变化 → 全站已在预览新主题、板仍是旧配色。现在 store 新增 `previewing` 与 `activeTheme`（预览优先），`InsightBoard` 改读 `activeTheme`。同时补上**明暗跨越后重画 mermaid**：旧 `v-html` 容器有 `rethemeMermaidBlocks`，换成 iframe 后那一层整体退役，渲好的 SVG 颜色已写死在节点里、不跟随主题；现桥接在 `dark` 翻转时收起旧图并重发请求（`<pre>` 不删、只 `display:none`，保留源码才能重画）。实测：hover 5 次主题各产生一次新令牌下发（`--bg` 依次为 97%→17%→97%(彩度/色相不同)→97%→17%），明暗跨越时 `ib:mermaid` 精确 +6×4，浅→浅跨越不重画（+0）。
+
+---
 
 ## [未发布] - 2026-10-28 — 决策流正名：去「待办」/ To-do 语汇
 

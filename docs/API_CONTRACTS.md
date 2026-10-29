@@ -533,12 +533,25 @@ recognition.stop()  # 阻塞直到所有结果返回
 - 服务端经 `core.insights.run_analysis(existing_insights=...)` 渲染为 user message 中的「已产出的洞察卡片」块（同样有 8 条 / 2000 字符双层截断），并约束模型：同主题不重复建卡（除非有明确增量发现）。
 - 定位：**只读累进**——仅影响提示词输入，不改变单卡输出契约、写入模型与持久化契约（append + 前端全量覆盖语义不变）。
 
-### 洞察板 API（Phase 2 · 已实现，契约见 core/insight_board.py）
+### 洞察板 API（原始 HTML 产物 · 多板 · 契约见 core/insight_board.py）
 
-- **GET /api/insights/board/{task_id}** → `{board: InsightBoard|null}`；无板/坏板（JSON 损坏或 schema 不合）均返回 null，前端降级到卡片视图。
-- **POST /api/insights/board/analyze/task/{task_id}** → `{ok, board, changed, errors}`。服务端单一写入（与卡片管线同模型，前端只读重拉）：读任务全文最近 K 句（`OMS_BOARD_ANALYSIS_K` 默认 60）+ 当前板摘要，LLM 输出 zone patch ops（`upsert_zone`/`replace_cells`/`settle_zone`）；**ops 全部合法才应用并落盘** `data/tasks/<task_id>.board.json`（revision +1），任一非法整次丢弃（ok=false、板保持上一版本，返 200 不阻断展示）；无板时先建骨架板（revision 0，占位 flow 主视觉）。
-- 错误：404 任务不存在；400 未完成/内容不足；**409 `board_in_flight`**（同任务修订进行中）；**504 `board_timeout`**（超时守护 `OMS_BOARD_ANALYSIS_TIMEOUT` 默认 **180s**——本地推理实测 50s+，不沿用卡片 60s 预算），超时不写盘。
-- 卡片管线（insights.json）与板管线（board.json）**并行共存、互不写入**；zone.origin 回指卡片消息 id 作收敛溯源锚点。
+> 【已退役】旧 Board Spec v0.3（`POST /api/insights/board/analyze/task/{task_id}`、zone/cell/ops、
+> `data/tasks/<task_id>.board.json`）已随「洞察共创 · 会话驱动」下线；存量 `.board.json` 不迁移、不再呈现。以下为新契约。
+
+板的唯一写入点在服务端会话工具（`revise_insight_board` / `revise_insight_board_section`），前端与以下 HTTP 端点均只读重拉。
+
+- **板形态**：一份 AI 直出的**自包含原始 HTML**（可含 `<!DOCTYPE>`/`<html>`/`<style>`/`:root`/`<script>`）。后端只做**安全清洗**（剥 `iframe`/`form`/`object`/`embed`/`base` 容器级逃逸标签、`on*` 内联事件、`javascript:`/`data:text/html` 危险 URL），**不再剥文档外壳与全局 CSS**。被剔除项在工具回执 `removed` 里如实上报（磁盘字节 = 提交内容 − removed）。
+- **呈现容器**：前端 `sandbox="allow-scripts"`（**不给 `allow-same-origin`**）的 iframe，板文档落入 opaque origin；版式、主题（经桥接下发到板 `:root`）、断点均归 CLI。安全边界：opaque origin + `app/server.py` 的写请求 Origin 守卫 + raw 端点的 `Content-Security-Policy: sandbox allow-scripts`。
+- **存储模型（多板）**：manifest `data/tasks/<task_id>.boards.json`（`{boards:[{board_id,title,file,revision,updated_at}], default_board_id}`）为唯一权威；板 HTML 文件 `data/tasks/<task_id>.board.<board_id>.html`。首次读取若无 manifest 但有旧 `<task_id>.board.html`，就地重命名为 `.board.main.html` 并生成 manifest（一次性、幂等）。
+- **GET /api/insights/board/{task_id}** → `{html, revision, updated_at, board_id, title}`；`?board_id=` 缺省取 `default_board_id`；`?meta=1` 只回版本（含 `boards[]`、`default_board_id`、`exists`，不含正文），供轮询一次探全部板。无板返回 `{html: null, revision: 0}`。
+- **GET /api/insights/board/{task_id}/boards** → manifest（`{boards:[{board_id,title,revision,updated_at,exists}], default_board_id}`），供 tab 轨渲染。
+- **POST /api/insights/board/{task_id}/boards**（**建板唯一执行点**）：body `{title(必填), board_id?, source}`；只写 manifest 条目（`revision:0`，不产生 HTML 文件），HTML 留到首次 revise 时创建。`board_id` 缺省服务端生成 `board-2/board-3…`；已存在返 409 `board_exists`，`title` 缺失/`board_id` 非法返 400。审计 `CREATE_BOARD | ...source=ui|proposal`。**调用方只能是用户意志的出口**（前端「＋ 新建板」或 `create_insight_board` 提案被接受后的同一 POST）。
+- **GET /api/insights/board/{task_id}/raw?board_id=&rev=** → 直回磁盘字节（`media_type=text/html`），**必带 `Content-Security-Policy: sandbox allow-scripts`**（raw 是站内同源文档，Origin 守卫在此失效，CSP 是唯一防线）；`rev` 与当前 revision 不符返 409 `revision_moved`；无板返 404。
+- **POST /api/insights/board/{task_id}/open** → 后端 `webbrowser.open(浏览页绝对地址)`（pywebview 里 `window.open` 不可靠）。目标固定为 SPA 路由 **`/board/{task_id}?board_id=`**，由本端按 `task_id`/`board_id` 自行拼接，**不接受客户端传入 URL**（避免开放重定向）。审计 `OPEN_VIEWER`。
+  - 为何不是打开 `raw`：`raw` 只回磁盘字节、不注入桥接脚本，板内的 mermaid 主视觉（靠应用侧渲成 SVG 后回传）在浏览器里只会看到 `<pre>` 源码，也拿不到主题令牌。浏览页复用同一个 `InsightBoard` 组件，因此图能渲染、主题能跟随（同源共享 `localStorage` 的 `oms_theme`），而板仍在 `sandbox="allow-scripts"` iframe 内，安全边界不因入口改变而下降。`raw` 保留为字节出口（导出/调试用）。
+- **内容底线（落盘前校验，与版式无关）**：`detect_recap_floor`（五类复述信号 ≥2 分 → `error=board_is_recap` 整份拒收）、`detect_text_wall`（节式板每节必须有主视觉，主视觉判据按形态：内联 `<svg>`/`<canvas>`/mermaid 形态 `<pre>`/data URI `<img>`；`<table>` 与纯 CSS 条形不计 → `error=board_is_text_wall`）。
+- **版本协议**：`board_html_save`/`invoke_revise_board` 支持 `expected_revision`（int），不匹配返 `{ok:false, error:stale_baseline, current_revision}` 且不落盘；不传保持旧覆盖语义。
+- **建板权硬不变量**：`board_id` 不在 manifest → `{ok:false, error:unknown_board_id, boards:[...], hint}`，**绝不隐式建板**（`board_html_save` 与 `board_html_save_section` 两处都拦）。`revise_insight_board`/`revise_insight_board_section` 带 `board_id`；`create_insight_board`（`persists:False`）只回提案不落盘。
 
 ### POST /api/insights/analyze/task/{task_id}（会后补分析）
 
@@ -557,7 +570,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 ### POST /api/tasks/{task_id}/correct-text
 
 - 请求体：`{"old": "误识别写法", "new": "正确文本"}`（两侧均 `strip()`）。
-- 语义：把一条 `错误识别→正确文本` 映射**全量回溯**应用到本场会议的**四份产物**——任务对象（转写原文 / 纪要 / 随记 / 章节 / 决策）、`<task_id>.insights.json`、`<task_id>.board.html`、`output_path` 指向的导出纪要 md。
+- 语义：把一条 `错误识别→正确文本` 映射**全量回溯**应用到本场会议的**四份产物**——任务对象（转写原文 / 纪要 / 随记 / 章节 / 决策）、`<task_id>.insights.json`、**该会议 manifest 内的全部洞察板 HTML**（`<task_id>.board.<board_id>.html`）、`output_path` 指向的导出纪要 md。每份板走 `board_html_save(content_floor=False)` 保留清洗防线与 revision+1；`residual` 扫描同样按 manifest 展开。
 - 匹配口径与转写链路**同源**（复用 `core.hotwords.sub_term` 与 `ascii_term_pattern`）：纯 ASCII 词按**ASCII 邻接边界**匹配（`(?<![A-Za-z0-9])词(?![A-Za-z0-9])`，大小写不敏感），含中文串走子串替换。
   不用 `\b`：Python Unicode 语义下汉字也算 `\w`，「与ES（」里汉字与字母之间不存在 `\b`，中文会议里最常见的「英文编码紧贴汉字」形态会全部匹配不上（ES→EAS 配了不生效）；而邻接边界既不误伤 `FILES` / `ESB` / `CH2O`。
 - 改写范围按 **键名白名单** `core.text_correction.REWRITE_KEYS` 递归判定（非按路径枚举）：新增名为 `text` 的字段自动被覆盖，而 `task_id` / `audio_path` / `*_at` / `speaker_mapping` 等标识与路径永不触碰。

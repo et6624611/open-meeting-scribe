@@ -115,3 +115,6 @@ agent-workspace/
 
 # 本地 git worktree 隔离目录（内容由 git 元数据可恢复，不入库）
 .worktrees/
+
+# 浏览器验证截图与临时探针产物（本地取证，不入库）
+.screenshots/

@@ -857,12 +857,17 @@
 .flow-empty-hint { font-size: var(--fs-12); color: var(--subtle); }
 
 /* ════════════════════════════════════════════════════════════
-   洞察板呈现容器（HTML 产物共创版，.ib-*）
-   契约：「洞察共创 · 会话驱动」——板为 AI 直出的自包含 HTML；
+   洞察板呈现容器（原始 HTML 产物 · sandbox iframe）
+   契约：「洞察共创 · 会话驱动」——板为 AI 直出的自包含 HTML（可带 doctype/<style>/<script>）；
+   版式所有权在 CLI，应用只留 chrome（板头/tab 轨/浮动按钮）与容器几何。
    旧 Board Spec v0.3 渲染器样式（notice/nav/zone/cell 系列）已整体退役。
-   颜色/字号/间距全部走主题 token，无硬编码。
+   颜色/字号/间距走主题 token，无硬编码（仅限应用 chrome；板内部由 CLI 自定）。
    ════════════════════════════════════════════════════════════ */
-.ib-root { max-width: 860px; margin: 0 auto; padding: var(--s-4) var(--s-2) var(--s-8); position: relative; }
+/* 宽度必须显式写 100%：父容器 `.gen-insights-wrap` 是 flex 列，
+   交叉轴上的 `margin:0 auto` 会让 align-self:stretch 失效、子项退成 shrink-to-fit
+   （实测板宽被钉在 372px 而可用宽度 671px，拖宽列也不跟随）。
+   这里靠 width:100% 拿满容器，max-width 只作阅读宽度上限，auto margin 继续居中。 */
+.ib-root { width: 100%; max-width: 860px; margin: 0 auto; padding: var(--s-4) var(--s-2) var(--s-8); position: relative; }
 
 /* 板头：rev 角标 + 刷新 + 共创起跳 */
 .ib-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
@@ -890,31 +895,52 @@
 .ib-tool-btn:disabled { opacity: .55; cursor: wait; }
 .ib-tool-btn.is-primary { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 45%, transparent); }
 
-/* HTML 产物呈现容器：AI 自包含文档的隔离区。
-   关键：在 .ib-html（比 :root 更近的祖先）就近定义主题令牌，令板内所有 var() 解析为当前主题值；
-   并为 AI 惯用的“非应用真名”令牌提供别名映射（后端已剥除 AI 自带的 :root 覆盖）。 */
-.ib-html {
-  --surface-alt: var(--surface-2);
-  --surface-card: var(--surface);
-  --fg-secondary: var(--muted);
-  --fg-muted: var(--subtle);
-  --accent-light: var(--accent-soft);
-  --success: var(--ok);
-  --success-bg: var(--ok-soft);
-  --warning: var(--warn);
-  --warning-bg: var(--warn-soft);
-  --danger: var(--error);
-  --danger-bg: var(--error-soft);
-  --info-bg: var(--info-soft);
-  --purple-bg: var(--purple-soft);
-  --shadow: var(--dropdown-shadow, 0 1px 3px oklch(0% 0 0 / .12));
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: var(--s-4); overflow-x: auto; color: var(--fg); line-height: 1.6;
+/* 板 tab 轨：板数 ≤1 不显示（由组件控制）；尾部「＋ 新建板」与 tab 同形状不同权重 */
+.ib-tabs { display: flex; align-items: center; gap: var(--s-1); flex-wrap: wrap; margin-bottom: var(--s-2); }
+.ib-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  font: inherit; font-size: var(--fs-12); color: var(--muted);
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-pill);
+  padding: 2px var(--s-3); cursor: pointer; transition: all .12s; white-space: nowrap;
 }
-.ib-html, .ib-html *, .ib-html *::before, .ib-html *::after { box-sizing: border-box; }
-/* 节间距兜底：顶层 section 节奏由应用持有，不依赖 AI 是否写 margin */
-.ib-html > section[data-ib-id] + section[data-ib-id] { margin-top: var(--s-5); }
-.ib-html a[data-seek-ms] { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ib-tab:hover { color: var(--fg); background: var(--surface-2); }
+.ib-tab.is-active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in oklch, var(--accent) 40%, transparent); }
+.ib-tab-empty { font-size: var(--fs-11); color: var(--subtle); }
+.ib-tab-new { border-style: dashed; border-color: var(--border); color: var(--subtle); }
+.ib-tab-new:hover { color: var(--accent); border-color: var(--accent); }
+.ib-tab-create { display: inline-flex; align-items: center; gap: var(--s-1); }
+.ib-tab-create input {
+  font: inherit; font-size: var(--fs-12); color: var(--fg);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 2px var(--s-2); width: 168px;
+}
+
+/*
+ * HTML 产物呈现容器：sandbox iframe（版式归 CLI 后的唯一合法容器）。
+ * 关键约束：
+ * 1. sandbox 由组件以常量下发（allow-scripts，**绝不给 allow-same-origin**）；
+ * 2. 高度由桥接 ib:resize 持续上报（min-height + overflow-y:auto 是高度塌陷时的失败态兜底，
+ *    宁可出现内滚动也不能把板压扁）；
+ * 3. 旧 `.ib-html` 的主题令牌就近注入 / 节间距兜底 / overflow-x 已随容器废弃：
+ *    主题经桥接下发到板文档 :root，节奏与断点由 CLI 负责。
+ */
+.ib-frame {
+  display: block; width: 100%; min-height: 320px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  background: var(--surface); overflow-y: auto;
+}
+
+/* 洞察板独立浏览页（/board/:taskId，“在浏览器中打开”的落点）
+   与站内共用 InsightBoard 组件，因此只多一个页头与宽度容器；颜色/间距全走主题变量。 */
+.ibv-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-3);
+  width: 100%; max-width: 860px; margin: 0 auto; padding: var(--s-4) var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border); }
+.ibv-title-row { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ibv-title { margin: 0; font-size: var(--fs-18); font-weight: 600; overflow-wrap: anywhere; }
+.ibv-back { flex: none; font-size: var(--fs-13); color: var(--accent); text-decoration: none; white-space: nowrap; }
+.ibv-back:hover { text-decoration: underline; }
+.ibv-error { width: 100%; max-width: 860px; margin: var(--s-5) auto; padding: 0 var(--s-2);
+  font-size: var(--fs-13); color: var(--error); }
 
 /* 板内悬停工具栏：悬停某个 <section data-ib-id> 时于其右上角浮现「共创此节」 */
 .ib-sec-cocreate {
@@ -932,9 +958,11 @@
 .ib-empty .empty-hint { height: auto; margin: 0 auto; }
 
 /* ============================================================
-   洞察板图形组件库 v1（AI 只填内容、不自带同名 <style>，视觉语言全局统一）
-   每节固定骨架：节标题 h3 → .ib-dilemma 困境条 → .ib-visual 主视觉
-   → .ib-kicker + 图文详解 → .ib-roadmap 落地 → .ib-tradeoff 取舍
+   【已退役 · 仅供存量板渲染】洞察板图形组件库 v1（.ib-* 类名体系）
+   新契约下板可自带完整文档与 <style>，不再要求组件类名；主视觉判据已改为形态
+   （内联 SVG / canvas / mermaid 形态 pre / data URI 图片），不再认这些类名。
+   保留一个版本周期，让旧“片段 + 应用类名”的板在新容器里不致变成裸文本；
+   下个版本随旧提示词一起删除（同时移除 _VISUAL_MARK_RE 里的 legacy 分支）。
    ============================================================ */
 
 /* 节内节奏 */

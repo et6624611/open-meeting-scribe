@@ -465,10 +465,15 @@
         <InsightBoard
           :artifact="board"
           :loading="boardLoading"
+          :boards="boards"
+          :active-board-id="activeBoardId"
           @seek="onInsightSeek"
           @refresh="loadBoardData"
           @co-create="onBoardCoCreate"
           @co-create-section="onBoardCoCreateSection"
+          @switch-board="onBoardSwitch"
+          @create-board="onBoardCreate"
+          @open-in-browser="onBoardOpenInBrowser"
         />
       </div>
     </div>
@@ -552,8 +557,8 @@ import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
 import { parseAnchorDecisionId } from './decisionEvolutionNav'
 import InsightBoard from './generating/InsightBoard.vue'
-import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
-import { onBoardWritten } from '@/composables/useBoardSync'
+import { createBoard, listBoards, loadBoard, loadBoardMeta, openBoardInBrowser, type BoardArtifact, type BoardSummary } from '@/api/board'
+import { notifyBoardsChanged, onBoardWritten, onBoardsChanged } from '@/composables/useBoardSync'
 import { onTaskWritten } from '@/composables/useTaskWrites'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
 import { dismissVoiceprintSuggestion, runVoiceprintMatch } from '@/api/voiceprint'
@@ -736,16 +741,19 @@ function onInsightSeek(ms: number) {
 
 // 【已退役】会后补分析触发入口：随「洞察共创 · 会话驱动」下线，历史洞察消息仍只读呈现
 
-// ─── 洞察板（HTML 产物共创版） / Insight Board (HTML artifact) ───
+// ─── 洞察板（原始 HTML 产物 · 多板） / Insight Board (raw HTML artifact, multi-board) ───
 // 单一写入源在后端：AI 经会话工具 revise_insight_board 整份落盘，前端只读重拉；
 // 旧 Board Spec 的失败归因横幅/生成端点已随共创模式退役。
 //
 // 自动同步双通道（不再依赖人工刷新）：
 //   ① 信号通道——对话流里识别到一次成功落板（useBoardSync 广播 board-written）→ 即时重拉；
-//   ② 版本通道——洞察 Tab 可见时每 10s 探测 ?meta=1 的 revision，
+//   ② 版本通道——洞察 Tab 可见时每 10s 探测 ?meta=1（一次拿全部板的 revision），
 //      盖住「写板发生在另一个窗口/设备、本标签页收不到对话流信号」的缝隙。
 // 换新呈现：静默替换 + rev 徽标脉冲（共创场景用户本已预期内容会变，不打断阅读）。
+// 多板：manifest 是板集合的权威，tab 轨只读它；**建板只能由用户发起**（这里调 POST）。
 const board = ref<BoardArtifact>({ html: null, revision: 0, updated_at: null })
+const boards = ref<BoardSummary[]>([])
+const activeBoardId = ref('')
 const boardFetched = ref(false)
 const boardLoading = ref(false)
 /** 离开洞察 Tab 期间收到过落板信号 / Board written while the tab was hidden */
@@ -753,6 +761,11 @@ const boardDirty = ref(false)
 
 const BOARD_POLL_MS = 10_000
 let boardPollTimer: ReturnType<typeof setInterval> | null = null
+/** 上一轮看到的版本指纹："board_id:rev" 拼接，任一板变化即重拉 */
+function boardSignature(bs: BoardSummary[]): string {
+  return bs.map(b => `${b.board_id}:${b.revision}`).join('|')
+}
+let boardSig = ''
 
 // 圆点跟随实际内容源：洞察 Tab 是否有点取决于洞察板产物是否存在，
 // 而板是懒加载的——悬停时补一次首拉，保证圆点在切 Tab 前就能正确点亮
@@ -770,7 +783,14 @@ async function loadBoardData() {
   boardFetched.value = true
   boardLoading.value = true
   try {
-    board.value = await loadBoard(data.taskId)
+    const manifest = await listBoards(data.taskId)
+    boards.value = manifest.boards
+    boardSig = boardSignature(manifest.boards)
+    // 当前选中板丢失（被新建/首次进入）时落到默认板
+    if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
+      activeBoardId.value = manifest.default_board_id || 'main'
+    }
+    board.value = await loadBoard(data.taskId, activeBoardId.value)
   } catch {
     // 读板失败不阻断卡片视图 / Load failure never blocks the cards view
   } finally {
@@ -778,14 +798,21 @@ async function loadBoardData() {
   }
 }
 
-/** 轻量版本探测：只在版本号前进（或无板→有板）时才拉整份正文 */
+/** 轻量版本探测：只在版本指纹前进（或无板→有板）时才拉整份正文 */
 async function probeBoardRevision() {
   if (boardLoading.value || document.hidden) return
   try {
     const meta = await loadBoardMeta(data.taskId)
-    if (meta.revision !== board.value.revision || (meta.exists && !board.value.html)) {
-      await loadBoardData()
+    const list = meta.boards || []
+    const sig = boardSignature(list)
+    const current = list.find(b => b.board_id === activeBoardId.value)
+    const changed = sig !== boardSig
+    boardSig = sig
+    if (list.length) boards.value = list
+    if (changed && (!current || current.board_id !== activeBoardId.value)) {
+      activeBoardId.value = meta.default_board_id || list[0]?.board_id || 'main'
     }
+    if (changed || (meta.exists && !board.value.html)) await loadBoardData()
   } catch {
     // 探测失败静默跳过，下一轮再试 / Probe failure is silent; next tick retries
   }
@@ -811,18 +838,62 @@ watch(activeTab, (tab) => {
   }
 }, { immediate: true })
 
+/** 切板：只换可见板（不拉清单，tab 轨已有全部元信息） */
+function onBoardSwitch(bid: string) {
+  if (!bid || bid === activeBoardId.value) return
+  activeBoardId.value = bid
+  board.value = { html: null, revision: 0, updated_at: null, board_id: bid }
+  void loadBoardData()
+}
+
+/**
+ * 建板（用户意志的唯一出口之一）：写 manifest 条目后广播集合变化。
+ * 另一出口是会话侧「建板提案卡」被用户点「接受」，两者走同一个 POST 实现。
+ */
+async function onBoardCreate(title: string) {
+  try {
+    const created = await createBoard(data.taskId, title, undefined, 'ui')
+    activeBoardId.value = created.board_id
+    await loadBoardData()
+    notifyBoardsChanged({ board_id: created.board_id })
+    showToast(t('generating.insights.board.toast_created', { title: created.title }), 'success')
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: { message?: string } } } })?.response?.data?.detail?.message
+    showToast(msg || t('generating.insights.board.toast_create_failed'), 'error')
+  }
+}
+
+/** 原始出口：后端用系统浏览器打开（pywebview 里 window.open 不可靠） */
+async function onBoardOpenInBrowser() {
+  try {
+    const ok = await openBoardInBrowser(data.taskId, activeBoardId.value, board.value.revision)
+    if (!ok) showToast(t('generating.insights.board.toast_open_failed'), 'warn')
+  } catch {
+    showToast(t('generating.insights.board.toast_open_failed'), 'error')
+  }
+}
+
 // 落板信号：正在看洞察 Tab 就即时换新；在其它 Tab 则记脏，回去时补拉
 let offBoardWritten: (() => void) | null = null
+let offBoardsChanged: (() => void) | null = null
 let offTaskWritten: (() => void) | null = null
 /** 窗口回到前台立即对齐：隐藏时轮询主动跳过且后台定时器会被浏览器节流，回到前台不等 10s 就补一次探测 */
 function onVisibilityChange() {
   if (!document.hidden && activeTab.value === 'insights') probeBoardRevision()
 }
 onMounted(() => {
-  offBoardWritten = onBoardWritten(() => {
+  offBoardWritten = onBoardWritten((detail) => {
+    // 多板下带 board_id：写的不是当前可见板，不必重拉正文（轮询会覆盖集合变化）
+    if (detail.board_id && activeBoardId.value && detail.board_id !== activeBoardId.value) {
+      boardSig = ''
+      if (activeTab.value === 'insights') void loadBoardData()
+      else boardDirty.value = true
+      return
+    }
     if (activeTab.value === 'insights') loadBoardData()
     else boardDirty.value = true
   })
+  offBoardsChanged = onBoardsChanged(() => { boardSig = ''; if (activeTab.value === 'insights') void loadBoardData() })
   // AI 会话写回任务数据（决策节点/纪要/注入）→ 呈现侧即时对齐（§5.4）：
   // 写点在后端工具落盘，本页不在实时通道上，不重拉就是"AI 说改了、页面还是旧的"
   offTaskWritten = onTaskWritten(async ({ domains }) => {
@@ -849,6 +920,8 @@ onUnmounted(() => {
   window.removeEventListener('resize', onIdeResize)
   offBoardWritten?.()
   offBoardWritten = null
+  offBoardsChanged?.()
+  offBoardsChanged = null
   offTaskWritten?.()
   offTaskWritten = null
 })
@@ -856,14 +929,16 @@ onUnmounted(() => {
 /** 共创起跳：展开 AI 面板并预填修订请求到输入框（不自动发送）；coCreate 标记使智能体轮自动升可写档以落盘 */
 function onBoardCoCreate() {
   window.dispatchEvent(new CustomEvent('quote-to-ai', {
-    detail: { prefill: t('generating.insights.board.co_create_msg'), coCreate: true },
+    detail: { prefill: t('generating.insights.board.co_create_msg', { board_id: activeBoardId.value }), coCreate: true },
   }))
 }
 
-/** 单节共创起跳：预填带节锈点 id/标题的定向修订请求，引导 AI 用 revise_insight_board_section 只改这一节 */
-function onBoardCoCreateSection(sec: { id: string; title: string }) {
+/** 单节共创起跳：预填带板 id/节锈点 id与标题的定向修订请求，引导 AI 用 revise_insight_board_section 只改这一节 */
+function onBoardCoCreateSection(sec: { id: string; title: string; boardId: string }) {
   const label = sec.title || sec.id
-  const prefill = t('generating.insights.board.co_create_section_msg', { title: label, id: sec.id })
+  const prefill = t('generating.insights.board.co_create_section_msg', {
+    title: label, id: sec.id, board_id: sec.boardId || activeBoardId.value,
+  })
   window.dispatchEvent(new CustomEvent('quote-to-ai', {
     detail: { prefill, coCreate: true },
   }))

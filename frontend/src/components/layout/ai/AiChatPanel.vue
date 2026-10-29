@@ -179,6 +179,22 @@
             <button class="diff-reject-btn" @click="$emit('rejectNotes')">{{ t('ai-panel.notes_proposal_reject') }}</button>
           </div>
         </div>
+        <!-- 建板提案确认卡（create_insight_board，未落盘）：多板只在用户显式新建时出现，
+           因此 AI 只能提议——卡片就地接受/拒接，接受才 POST 建板（与纪要/随记入口卡同一形状） -->
+        <div v-if="boardProposal && i === messages.length - 1 && msg.role === 'assistant'" class="sum-prop-view">
+          <div class="diff-header"><span>{{ t('ai-panel.board_proposal_label') }}</span></div>
+          <p class="sum-prop-summary">
+            {{ t('ai-panel.board_proposal_summary', { title: boardProposal.title }) }}
+            <template v-if="boardProposal.reason">{{ boardProposal.reason }}</template>
+          </p>
+          <div class="diff-actions">
+            <button class="diff-accept-btn" @click="$emit('acceptBoardProposal')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+              {{ t('ai-panel.board_proposal_accept') }}
+            </button>
+            <button class="diff-reject-btn" @click="$emit('rejectBoardProposal')">{{ t('ai-panel.board_proposal_reject') }}</button>
+          </div>
+        </div>
         <!-- AI 操作校验结果展示 / AI action verification results -->
         <div v-if="verifiedChanges.length && i === messages.length - 1 && msg.role === 'assistant'" class="verified-changes-block">
           <div class="vc-header">{{ t('ai-panel.verify_header') }}</div>
@@ -418,6 +434,7 @@ import type { MentionSource } from '@/composables/useAiMentions'
 import type { AuthTier } from '@/composables/useAiChat'
 import { useSummaryProposal } from '@/composables/useSummaryProposal'
 import { useNotesProposal } from '@/composables/useNotesProposal'
+import type { BoardProposal } from '@/composables/useBoardProposal'
 import { showToast } from '@/composables/useToast'
 import { notifyTaskWritten } from '@/composables/useTaskWrites'
 import { restoreTaskRewrites } from '@/api/notes'
@@ -498,8 +515,10 @@ const props = defineProps<{
   rewriteNotPersisted: { text: string } | null
   /** 纪要提案式 diff（提案式，未落盘）：baseline=当前纪要，proposed=AI 建议全文 */
   summaryProposal: { baseline: string; proposed: string } | null
-  /** 随记提案式 diff（propose_notes，未落盘）：完整 diff 在随记 Tab 原位预览，侧栏只留入口 */
+  /** 随记提案式 diff（propose_notes，未落盘）：完整 diff 在随记 Tab 原位预览， 侧栏只留入口 */
   notesProposal: { baseline: string; proposed: string } | null
+  /** 建板提案（create_insight_board，未落盘）：接受后才 POST 建板 */
+  boardProposal: BoardProposal | null
 }>()
 
 const emit = defineEmits<{
@@ -517,6 +536,8 @@ const emit = defineEmits<{
   (e: 'acceptNotes'): void
   (e: 'rejectNotes'): void
   (e: 'openNotesPreview'): void
+  (e: 'acceptBoardProposal'): void
+  (e: 'rejectBoardProposal'): void
   (e: 'clearQuote'): void
   (e: 'runCommand', cmd: AiCommand): void
   (e: 'selectMention', src: MentionSource): void

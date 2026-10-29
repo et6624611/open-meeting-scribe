@@ -395,6 +395,53 @@ app.add_middleware(
 
 
 # ============================================================
+# 写请求 Origin 守卫 / Cross-origin write guard（洞察板放开 <script> 的同期补刀）
+# ============================================================
+#
+# 为什么要这道守卫：洞察板现在是 AI 直出的原始 HTML，可在 sandbox iframe 里执行脚本。
+# opaque origin（Origin: null）让板内脚本**读不到**任何跨源响应（CORS 白名单不含 null，
+# 反向工具面另用进程内 bearer），但 CORS 只拦响应不拦「简单请求」送达：
+# text/plain 的 POST 在 REQUIRE_AUTH=false（本地免登录是产品定位）时会被服务器正常执行。
+# 即 opaque origin 挡住的是“看见”，不是“打进”——这个缺口只能服务端自己堵。
+#
+# 白名单口径（而非「等于宿主 origin」）：本机 dev 用浏览器 localhost:5173 访问 :8000 时，
+# 写请求的 Origin 是 5173 而不是宿主自地址，按「等于宿主」会误杀；因此沿用 _cors_origins
+# 这份已有白名单。桌面形态（desktop.py 以 http://host:port 装载窗口）前后端同源，同样命中。
+#
+# 预留兼底（尚未实现）：若将来改用 file:// 或自定义 scheme 装载前端，会出现
+# “Origin 真为 null 的合法宿主”，届时改为启动 nonce + X-App-Nonce 头。
+_WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+
+@app.middleware("http")
+async def cross_origin_write_guard(request: Request, call_next):
+    """拒收来路不明的写请求 / Reject writes whose Origin is not a known host origin.
+
+    规则：写方法 + 路径以 /api/ 开头 + 不在 _AUTH_EXEMPT_PREFIXES 内
+    ⇒ Origin 缺失（无头客户端/CLI，现状本就全放行，不构成新缺口）或命中白名单则放行，
+    其余（含 sandbox 文档必带的 `Origin: null`）一律 403 并落 audit.log。
+    注：本中间件注册在 CORSMiddleware 之后，因此处于其外层，
+    被拒的 403 不会被追加 Access-Control-Allow-Origin（不会把拒绝伪装成 CORS 允许）。
+    """
+    if request.method in _WRITE_METHODS:
+        path = request.url.path
+        if path.startswith("/api/") and not path.startswith(_AUTH_EXEMPT_PREFIXES):
+            origin = request.headers.get("origin")
+            if origin is not None and origin not in _cors_origins:
+                audit_logger.warning(
+                    "ORIGIN_GUARD | ip=%s | %s %s | origin=%s",
+                    request.client.host if request.client else "unknown",
+                    request.method, path, origin or "(empty)",
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "cross_origin_write_blocked",
+                             "message": "非本站来源的写请求已拦截（洞察板等沙箱文档无写权限）"},
+                )
+    return await call_next(request)
+
+
+# ============================================================
 # 注册路由 / Register Routes
 # ============================================================
 

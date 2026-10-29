@@ -42,13 +42,18 @@ def tmp_board_dir(tmp_path, monkeypatch):
 # ============================================================
 
 class TestSanitize:
-    def test_strips_script_event_and_dangerous_url(self):
+    def test_keeps_script_style_link_meta_and_drops_escape_tags(self):
+        # 版式归 CLI：script/style/link/meta 保留；仅容器级逃逸标签被剥
         src = ('<div onclick="evil()"><script>alert(1)</script>'
-               '<a href="javascript:x()">l</a><iframe src="u"></iframe></div>')
+               '<link rel="stylesheet" href="a.css"><meta name="viewport">'
+               '<a href="javascript:x()">l</a><iframe src="u"></iframe>'
+               '<form action="/x"></form></div>')
         out, removed = ib.sanitize_board_html(src)
-        assert "<script" not in out and "onclick" not in out
-        assert "javascript:" not in out and "<iframe" not in out
-        assert any("script" in r for r in removed)
+        assert "<script" in out and "<style" not in removed          # script 不再被剥
+        assert "<iframe" not in out and "<form" not in out            # 容器级逃逸标签仍剥
+        assert "onclick" not in out                                    # on* 仍剥（纵深防御）
+        assert "javascript:" not in out                                # 危险 scheme 仍处理
+        assert any("iframe" in r for r in removed)
         assert any("on*" in r for r in removed)
 
     def test_keeps_style_and_inline_svg(self):
@@ -62,18 +67,19 @@ class TestSanitize:
         out, _ = ib.sanitize_board_html(src)
         assert 'data-seek-ms="84000"' in out
 
-    def test_strips_global_css_and_doc_wrappers_keeps_component_rules(self):
-        # 主题污染根因：AI 吐整份文档 + :root 硬编码浅色令牌；应剥除全局块、保留组件样式
+    def test_doc_shell_and_global_css_preserved(self):
+        # 【回归原始 HTML】剥壳已撤：doctype/html/head/body/:root 与硬编码色完整保留
         src = ('<!DOCTYPE html><html><head><style>'
-               ':root{--surface:#fff;--surface-alt:#f7f8fa} *{box-sizing:border-box}'
-               'body{background:var(--surface-alt)} .card{color:var(--fg)}'
+               ':root{--surface:#fff} *{box-sizing:border-box}'
+               'body{background:#123456} .card{color:var(--fg)}'
                '</style></head><body><div class="card">hi</div></body></html>')
         out, removed = ib.sanitize_board_html(src)
-        assert ':root' not in out and 'box-sizing' not in out
-        assert 'body{' not in out.replace(' ', '')
-        assert '.card{color:var(--fg)}' in out.replace(' ', '')
-        assert 'DOCTYPE' not in out and '<body>' not in out
-        assert any(r.startswith('css:') for r in removed)
+        assert 'DOCTYPE' in out and '<body>' in out and '</html>' in out
+        assert ':root{--surface:#fff}' in out and 'box-sizing' in out
+        assert 'background:#123456' in out
+        # removed 里不得出现 doctype / css:* 项（旧剥壳会记这些）
+        assert not any(r.startswith('css:') for r in removed)
+        assert 'doctype' not in removed
 
 
 # ============================================================
@@ -99,7 +105,8 @@ class TestSaveLoad:
         assert ib.board_html_load("t-1") is None
 
     def test_purely_unsafe_html_empty_after_sanitize(self, tmp_board_dir):
-        res = ib.board_html_save("t-1", "<script>x</script>")
+        # 只剩容器级逃逸标签（script 已不剥）：iframe 被剔后空内容不落盘
+        res = ib.board_html_save("t-1", "<iframe>x</iframe>")
         assert res["ok"] is False and res["error"] == "html_empty_after_sanitize"
         assert ib.board_html_load("t-1") is None
 
@@ -309,7 +316,7 @@ class TestTextWallFloor:
         one = '<section data-ib-id="s1"><h3>标题</h3><p>只有文字</p></section>'
         res = ib.board_html_save("t-1", one)
         assert res["ok"] is False and res["error"] == "board_is_text_wall"
-        assert res["reasons"] and "ib-mermaid" in res["guidance"]
+        assert res["reasons"] and "主视觉" in res["guidance"]
         assert ib.board_html_load("t-1") is None
 
     def test_mermaid_pre_counts_as_visual(self, tmp_board_dir):
@@ -359,7 +366,7 @@ class TestTextWallFloor:
     def test_text_wall_surfaced_via_tool(self, tmp_board_dir):
         res = ib.invoke_revise_board("t-1", {"html": _TEXT_WALL_BOARD})
         assert res["ok"] is False and res["error"] == "board_is_text_wall"
-        assert "ib-visual" in res["guidance"]
+        assert "主视觉" in res["guidance"]
 
 
 # ============================================================
@@ -395,7 +402,8 @@ class TestGetBoardEndpoint:
 
     def test_endpoint_contract_shape(self, client):
         r = client.get("/api/insights/board/x")
-        assert set(r.json()) == {"html", "revision", "updated_at"}
+        # 多板后返回体新增 board_id/title 寻址字段
+        assert {"html", "revision", "updated_at", "board_id", "title"} == set(r.json())
 
 
 # ============================================================
@@ -406,7 +414,8 @@ class TestGetBoardEndpoint:
 class TestBoardMeta:
     def test_absent_board_meta_zero_not_exists(self, tmp_board_dir):
         m = ib.board_html_meta("t-1")
-        assert m == {"revision": 0, "updated_at": None, "exists": False}
+        # 多板口径：meta 额外携带 boards[]/default_board_id/board_id
+        assert m["revision"] == 0 and m["updated_at"] is None and m["exists"] is False
 
     def test_meta_tracks_revision_without_reading_html(self, tmp_board_dir):
         ib.board_html_save("t-1", "<p>v1</p>")
@@ -424,10 +433,169 @@ class TestBoardMeta:
         r = client.get("/api/insights/board/t-meta", params={"meta": "1"})
         assert r.status_code == 200
         body = r.json()
-        assert set(body) == {"revision", "updated_at", "exists"}
+        assert "html" not in body
+        assert {"revision", "updated_at", "exists", "board_id", "boards", "default_board_id"} == set(body)
         assert body["revision"] == 1 and body["exists"] is True
 
     def test_endpoint_without_meta_returns_body(self, client, tmp_board_dir):
         ib.board_html_save("t-meta", "<p>正文</p>")
         body = client.get("/api/insights/board/t-meta").json()
         assert "<p>正文</p>" in body["html"] and body["revision"] == 1
+
+
+# ============================================================
+# 6. 多板：manifest / 建板权 / 版本协议（R3 + R2）
+# ============================================================
+
+class TestMultiBoardManifest:
+    def test_first_save_targets_default_main(self, tmp_board_dir):
+        res = ib.board_html_save("t-1", "<p>v</p>")
+        assert res["ok"] is True and res["board_id"] == "main"
+        m = ib.boards_manifest("t-1")
+        assert m["default_board_id"] == "main"
+        assert [b["board_id"] for b in m["boards"]] == ["main"]
+        assert m["boards"][0]["exists"] is True
+
+    def test_legacy_single_file_migrated_to_main(self, tmp_board_dir):
+        # 存量旧单文件板 → 首次读取就地重命名为 main
+        (tmp_board_dir / "t-old.board.html").write_text("<p>旧板</p>", encoding="utf-8")
+        loaded = ib.board_html_load("t-old")
+        assert loaded and loaded["html"] == "<p>旧板</p>" and loaded["board_id"] == "main"
+        assert not (tmp_board_dir / "t-old.board.html").exists()
+        assert (tmp_board_dir / "t-old.board.main.html").exists()
+        assert (tmp_board_dir / "t-old.boards.json").exists()
+
+    def test_unknown_board_id_rejected_never_implicit_create(self, tmp_board_dir):
+        ib.board_html_save("t-1", "<p>main</p>")
+        res = ib.board_html_save("t-1", "<p>new</p>", board_id="ghost")
+        assert res["ok"] is False and res["error"] == "unknown_board_id"
+        # 不建板 + 不产生文件 + 回执列出候选板
+        assert not (tmp_board_dir / "t-1.board.ghost.html").exists()
+        assert [b["board_id"] for b in res["boards"]] == ["main"]
+        assert res["hint"]
+
+    def test_save_section_unknown_board_rejected(self, tmp_board_dir):
+        ib.board_html_save("t-1", '<section data-ib-id="s1"><svg/></section>')
+        res = ib.board_html_save_section("t-1", "s1", '<section data-ib-id="s1"><canvas></canvas></section>', "ghost")
+        assert res["ok"] is False and res["error"] == "unknown_board_id"
+
+    def test_stale_baseline_not_saved(self, tmp_board_dir):
+        ib.board_html_save("t-1", "<p>v1</p>")  # rev 1
+        res = ib.board_html_save("t-1", "<p>v2</p>", expected_revision=99)
+        assert res["ok"] is False and res["error"] == "stale_baseline"
+        assert res["current_revision"] == 1
+        assert ib.board_html_load("t-1")["html"] == "<p>v1</p>"  # 未覆盖
+        # 带对版本号则放行
+        ok = ib.board_html_save("t-1", "<p>v2</p>", expected_revision=1)
+        assert ok["ok"] is True and ok["revision"] == 2
+
+
+class TestCreateBoard:
+    def test_create_only_writes_manifest_entry(self, tmp_board_dir):
+        ib.board_html_save("t-1", "<p>main</p>")
+        res = ib.invoke_create_board("t-1", {"title": "供应链专项"})
+        assert res["ok"] is True and res["board_id"] == "board-2" and res["revision"] == 0
+        # 空板不产生 HTML 文件
+        assert not (tmp_board_dir / "t-1.board.board-2.html").exists()
+        m = ib.boards_manifest("t-1")
+        assert any(b["board_id"] == "board-2" and b["title"] == "供应链专项" for b in m["boards"])
+        # 建好板后可写入
+        w = ib.board_html_save("t-1", "<p>第二份</p>", board_id="board-2")
+        assert w["ok"] is True and w["revision"] == 1
+
+    def test_create_requires_title(self, tmp_board_dir):
+        assert ib.invoke_create_board("t-1", {"title": ""})["error"] == "title_required"
+
+    def test_create_rejects_duplicate_id(self, tmp_board_dir):
+        ib.invoke_create_board("t-1", {"title": "A", "board_id": "x1"})
+        assert ib.invoke_create_board("t-1", {"title": "B", "board_id": "x1"})["error"] == "board_exists"
+
+    def test_endpoint_create_board(self, client, tmp_board_dir):
+        r = client.post("/api/insights/board/t-ep/boards",
+                        json={"title": "专项分析", "source": "ui"})
+        assert r.status_code == 200
+        assert r.json()["board_id"] == "board-2"
+        assert client.post("/api/insights/board/t-ep/boards", json={}).status_code == 400
+
+
+class TestVisualFormCriteria:
+    def test_canvas_and_data_uri_img_count(self, tmp_board_dir):
+        canvas = '<section data-ib-id="s1"><h3>t</h3><canvas></canvas></section>'
+        assert ib.board_html_save("t-1", canvas)["ok"] is True
+        img = ('<section data-ib-id="s1"><h3>t</h3>'
+               '<img src="data:image/png;base64,iVBOR"/></section>')
+        assert ib.board_html_save("t-2", img)["ok"] is True
+
+    def test_table_and_relative_img_not_counted(self, tmp_board_dir):
+        table = '<section data-ib-id="s1"><h3>t</h3><table><tr><td>大表</td></tr></table></section>'
+        assert ib.detect_text_wall(table) == (1, 0)
+        rel_img = '<section data-ib-id="s1"><h3>t</h3><img src="a.png"/></section>'
+        assert ib.detect_text_wall(rel_img) == (1, 0)
+
+
+class TestRawEndpointCsp:
+    def test_raw_returns_bytes_with_sandbox_csp(self, client, tmp_board_dir):
+        ib.board_html_save("t-raw", "<h1>板正文</h1>")
+        r = client.get("/api/insights/board/t-raw/raw")
+        assert r.status_code == 200
+        assert "<h1>板正文</h1>" in r.text
+        csp = r.headers.get("content-security-policy", "")
+        assert "sandbox" in csp and "allow-same-origin" not in csp
+        assert r.headers.get("x-content-type-options") == "nosniff"
+
+    def test_raw_revision_conflict(self, client, tmp_board_dir):
+        ib.board_html_save("t-raw2", "<h1>a</h1>")
+        assert client.get("/api/insights/board/t-raw2/raw", params={"rev": "99"}).status_code == 409
+        assert client.get("/api/insights/board/t-raw2/raw", params={"rev": "1"}).status_code == 200
+
+    def test_raw_absent_board_404(self, client, tmp_board_dir):
+        assert client.get("/api/insights/board/nope/raw").status_code == 404
+
+
+class TestBoardsEndpoint:
+    def test_list_boards_endpoint(self, client, tmp_board_dir):
+        ib.board_html_save("t-lb", "<p>x</p>")
+        r = client.get("/api/insights/board/t-lb/boards")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["default_board_id"] == "main"
+        assert body["boards"][0]["board_id"] == "main"
+
+
+class TestOpenEndpoint:
+    """「在浏览器中打开」指向独立浏览页（/board/...）而不是 raw 字节。
+
+    raw 不跑桥接：mermaid 图不渲染、主题令牌不下发，在浏览器里只能看到源码 pre；
+    浏览页复用 InsightBoard 组件，图与主题都跟站内一致。
+    """
+
+    def _capture(self, monkeypatch):
+        seen: list[str] = []
+        monkeypatch.setattr("app.routers.insights.webbrowser.open",
+                            lambda url: seen.append(url) or True)
+        return seen
+
+    def test_open_points_at_viewer_route(self, client, monkeypatch, tmp_board_dir):
+        seen = self._capture(monkeypatch)
+        ib.board_html_save("t-open", "<p>x</p>")
+        r = client.post("/api/insights/board/t-open/open", json={"board_id": "main"})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        url = r.json()["url"]
+        assert url.endswith("/board/t-open?board_id=main")
+        assert "/api/insights/board/" not in url and "/raw" not in url
+        assert seen == [url]
+
+    def test_open_ignores_client_supplied_url(self, client, monkeypatch, tmp_board_dir):
+        """不接受客户端自由指定跳转目标（防开放重定向）。"""
+        self._capture(monkeypatch)
+        ib.board_html_save("t-open2", "<p>x</p>")
+        r = client.post("/api/insights/board/t-open2/open",
+                        json={"raw_url": "http://evil.example/x", "board_id": "main"})
+        assert r.json()["url"].endswith("/board/t-open2?board_id=main")
+        assert "evil.example" not in r.json()["url"]
+
+    def test_open_without_board_id_omits_query(self, client, monkeypatch, tmp_board_dir):
+        self._capture(monkeypatch)
+        ib.board_html_save("t-open3", "<p>x</p>")
+        r = client.post("/api/insights/board/t-open3/open", json={})
+        assert r.json()["url"].endswith("/board/t-open3")

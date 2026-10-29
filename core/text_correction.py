@@ -208,27 +208,34 @@ def _correct_insights_file(task_id: str, old: str, new: str, warnings: list[str]
 
 
 def _correct_board_file(task_id: str, old: str, new: str, warnings: list[str]) -> int:
-    """修正洞察板 HTML / Correct the board HTML.
+    """修正洞察板 HTML（多板全部回溯）/ Correct every board HTML of the meeting.
 
-    复用 board_html_save 走清洗 + revision+1，避免手改后绕过 XSS 防线与版本协议。
+    复用 board_html_save 走清洗 + revision+1，避免手改后绕过 XSS 防线与版本协议；
+    板列表以 manifest 为准（不扫文件名，避免把已建未写的空板当成命中）。
     """
     try:
-        from core.insight_board import board_html_load, board_html_save
+        from core.insight_board import board_html_load, board_html_save, boards_manifest
     except ImportError as e:  # 洞察板模块缺席时仅跳过旁路，任务主体仍已修正
         warnings.append(f"board module unavailable: {e}")
         return 0
-    board = board_html_load(task_id)
-    if not board or not board.get("html"):
-        return 0
-    replaced, hits = sub_term(board["html"], old, new)
-    if not hits:
-        return 0
-    # content_floor=False：错字回溯是系统级机械改写，旧板的内容形态不应被
-    # 共创期才有的复述/文字墙底线否决（否则老板会静默改不动）；安全清洗仍执行。
-    result = board_html_save(task_id, replaced, content_floor=False)
-    if not result.get("ok"):
-        warnings.append(f"board write rejected: {result.get('error')}")
-        return 0
+    hits = 0
+    for b in boards_manifest(task_id)["boards"]:
+        bid = str(b.get("board_id") or "")
+        if not bid:
+            continue
+        board = board_html_load(task_id, bid)
+        if not board or not board.get("html"):
+            continue
+        replaced, n = sub_term(board["html"], old, new)
+        if not n:
+            continue
+        # content_floor=False：错字回溯是系统级机械改写，旧板的内容形态不应被
+        # 共创期才有的复述/文字墙底线否决（否则老板会静默改不动）；安全清洗仍执行。
+        result = board_html_save(task_id, replaced, content_floor=False, board_id=bid)
+        if not result.get("ok"):
+            warnings.append(f"board write rejected ({bid}): {result.get('error')}")
+            continue
+        hits += n
     return hits
 
 
@@ -267,7 +274,16 @@ def _scan_residual(task: dict, task_id: str, old: str) -> int:
         residual += count_term(json.dumps(task, ensure_ascii=False), old)
     except (TypeError, ValueError) as e:
         logger.warning("[文本修正] 任务残留扫描失败 task=%s: %s", task_id[:8], e)
-    for path in (_insights_path(task_id), TASKS_DIR / f"{task_id}.board.html", Path(task.get("output_path") or "-")):
+    # 洞察板按 manifest 展开（多板）；读不到 manifest 时退回旧单文件路径，保证不瞒报残留
+    board_paths: list[Path] = []
+    try:
+        from core.insight_board import _board_file_path, boards_manifest
+        board_paths = [_board_file_path(task_id, str(b.get("board_id")) or "_")
+                       for b in boards_manifest(task_id)["boards"] if b.get("exists")]
+    except Exception:  # noqa: BLE001 - 旁路扫描降级到旧路径，不阻断修正主流程
+        board_paths = [TASKS_DIR / f"{task_id}.board.html"]
+    for path in [_insights_path(task_id), *board_paths,
+                 Path(task.get("output_path") or "-")]:
         try:
             if path.exists():
                 residual += count_term(path.read_text(encoding="utf-8", errors="replace"), old)

@@ -49,6 +49,8 @@ TOOL_LABELS = {
     "propose_summary": "提出纪要改写建议",
     "revise_insight_board": "修订洞察板",
     "revise_insight_board_section": "修订洞察板单节",
+    "list_insight_boards": "查看洞察板清单",
+    "create_insight_board": "提议新建洞察板",
     "web_search": "联网搜索",
     "web_fetch": "网页抓取",
 }
@@ -67,6 +69,8 @@ TOOL_ICONS = {
     "propose_summary": "📝",
     "revise_insight_board": "🖋️",
     "revise_insight_board_section": "📝",
+    "list_insight_boards": "📚",
+    "create_insight_board": "➕",
     "web_search": "🔍",
     "web_fetch": "🌐",
 }
@@ -106,7 +110,27 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             # 单节共创：按 data-ib-id 只替那一节，其余节硬隔离；task_id 取闭包不信任参数
             from core.insight_board import board_html_save_section
             return json.dumps(board_html_save_section(
-                task_id or "", str(arguments.get("section_id", "")), str(arguments.get("html", ""))), ensure_ascii=False)
+                task_id or "", str(arguments.get("section_id", "")), str(arguments.get("html", "")),
+                (str(arguments.get("board_id") or "").strip() or None)), ensure_ascii=False)
+        elif name == "list_insight_boards":
+            # 板清单（只读）：多板下先看清全景再选目标，避免盲写默认板
+            from core.insight_board import boards_manifest
+            return json.dumps(boards_manifest(task_id or ""), ensure_ascii=False)
+        elif name == "create_insight_board":
+            # 建板提案（不落盘）：与 propose_summary/propose_notes 同构——
+            # 执行权在用户（前端确认卡 → POST .../boards），工具只产出建议。
+            from core.insight_board import BOARD_TITLE_MAX, boards_manifest
+            title = str(arguments.get("title") or "").strip()[:BOARD_TITLE_MAX]
+            if not title:
+                return json.dumps({"error": "title_required",
+                                    "info": "新板标题必填"}, ensure_ascii=False)
+            return json.dumps({
+                "proposed": True, "title": title,
+                "board_id": str(arguments.get("board_id") or "").strip(),
+                "reason": str(arguments.get("reason") or ""),
+                "boards": [b["board_id"] for b in boards_manifest(task_id or "")["boards"]],
+                "note": "已作为待确认建板提案展示给用户，未经用户点「接受」不会新建任何板",
+            }, ensure_ascii=False)
         else:
             return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
     except Exception as e:

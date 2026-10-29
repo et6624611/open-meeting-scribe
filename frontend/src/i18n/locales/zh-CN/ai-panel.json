@@ -372,6 +372,12 @@
   "notes_proposal_applied": "随记已更新",
   "notes_proposal_applied_drift": "随记已按建议更新（建议生成后随记有过手动编辑，请复核）",
   "notes_proposal_save_failed": "随记保存失败，请重试",
+  "board_proposal_label": "新建洞察板建议",
+  "board_proposal_summary": "建议新建一份洞察板《{title}》。",
+  "board_proposal_accept": "接受并建板",
+  "board_proposal_reject": "拒绝",
+  "board_proposal_applied": "洞察板已新建",
+  "board_proposal_failed": "建板失败，请重试",
   "execution": {
     "title": "执行过程",
     "steps": "{count} 个步骤",

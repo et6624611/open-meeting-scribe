@@ -422,6 +422,28 @@ class TestContextExport:
         assert "错峰" in md
         assert "```mermaid" in md
 
+    def test_export_copies_board_html_baseline(self, monkeypatch, tmp_path):
+        """回归原始 HTML R2：板逐字节拷进 context/boards/ + index.md 基线索引。"""
+        import core.insight_board as ib
+        from core.cli_engine import context_export as ce
+        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        board_dir = tmp_path / "tasks"
+        board_dir.mkdir()
+        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", board_dir)
+        # 落盘一份含外壳的原始 HTML（验证不再剥壳、逐字节一致）
+        src = '<!DOCTYPE html><html><head><style>:root{--a:1}</style></head><body><svg/></body></html>'
+        saved = ib.board_html_save("t1", src, board_id=None)
+        assert saved["ok"] is True
+        ce.export_context(engine_id="qoder-cli", task={"dialogue": [], "summary": "", "decisions": []},
+                          task_id="t1", user_message="修订洞察板")
+        base = tmp_path / "agent-workspace" / "qoder-cli" / "t1" / "context" / "boards"
+        copied = base / "main.html"
+        assert copied.is_file()
+        # 工作区基线 = 磁盘展示版本（逐字节一致，不重建）
+        assert copied.read_text(encoding="utf-8") == ib.board_html_load("t1")["html"]
+        idx = (base / "index.md").read_text(encoding="utf-8")
+        assert "main" in idx and "expected_revision" in idx
+
     def test_export_skips_insights_when_absent(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
         monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")

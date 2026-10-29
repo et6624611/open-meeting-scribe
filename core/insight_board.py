@@ -518,8 +518,14 @@ async def run_board_analysis(
 
 BOARD_HTML_CAP = 300_000  # 单份板 HTML 字节上限，防失控膨胀 / Board HTML size cap
 
-# 剥离清单：可执行/外链类标签整体移除（含内容）；<style> 与内联 SVG 保留供 AI 自由绘图
-_DROP_TAGS = ("script", "iframe", "object", "embed", "link", "meta", "base", "form")
+# 剥离清单：仅容器级逃逸标签整体移除（含内容）。
+# 【版式归 CLI】script/link/meta/style 已解禁：呈现容器是 sandbox iframe（opaque origin），
+# 板内的全局作用器只影响板自己文档；安全边界见 frontend InsightBoard.vue 的 BOARD_SANDBOX
+# 与 app/server.py 的写请求 Origin 守卫，而非此处正则。on* 与危险 scheme 仍剥（纵深防御），
+# 但被剥项必须经 removed 回执如实上报——不允许出现「既没落盘也没上报」的静默变异。
+# 继续禁的五个都是内容级逃逸面：板内再套 iframe 指回站内端点、object/embed 插件、
+# base 劫持相对地址、form 提交（sandbox 同时不给 allow-forms）。
+_DROP_TAGS = ("iframe", "object", "embed", "base", "form")
 
 
 def _valid_task_id(task_id: str) -> bool:
@@ -527,56 +533,16 @@ def _valid_task_id(task_id: str) -> bool:
     return bool(task_id) and "/" not in task_id and "\\" not in task_id and ".." not in task_id
 
 
-# 全局作用域 CSS 选择器（会污染宿主主题）：:root / html / body / *（含组合）
-_GLOBAL_CSS_SELECTORS = {":root", "html", "body", "*"}
-_STYLE_BLOCK_RE = re.compile(r"(<style[^>]*>)(.*?)(</style>)", re.DOTALL | re.IGNORECASE)
-_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
-
-
-def _strip_global_css_and_wrappers(html: str) -> tuple[str, list[str]]:
-    """剥除文档外壳标签与全局作用域 CSS 块，返回 (文本, 剥离项列表)。
-
-    背景：AI 常吐整份 HTML 文档并在 :root/body 里用硬编码浅色重定义主题令牌；
-    v-html 注入后 :root 匹配宿主 <html>，会反向污染全局主题。这里只保留组件级样式，
-    主题令牌由 .ib-html 容器就近提供（见 notes-editor.css），板随应用主题自适应。
-    """
-    stripped: list[str] = []
-    out = html
-    out, n = re.subn(r"<!DOCTYPE[^>]*>", "", out, flags=re.IGNORECASE)
-    if n:
-        stripped.append("doctype")
-    for tag in ("html", "head", "body"):
-        out, n = re.subn(rf"</?{tag}(?:\s[^>]*)?>", "", out, flags=re.IGNORECASE)
-        if n:
-            stripped.append(f"<{tag}>×{n}")
-
-    def _clean_style(m):
-        head, css, tail = m.group(1), m.group(2), m.group(3)
-        css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)  # 先去注释，免干扰选择器判定
-
-        def _drop_global(mm):
-            sel = re.sub(r"\s+", " ", mm.group(1)).strip().lower()
-            parts = {p.strip() for p in sel.split(",") if p.strip()}
-            if parts and parts <= _GLOBAL_CSS_SELECTORS:
-                stripped.append(f"css:{sel or '?'}")
-                return ""
-            return mm.group(0)
-
-        return head + _RULE_RE.sub(_drop_global, css) + tail
-
-    out = _STYLE_BLOCK_RE.sub(_clean_style, out)
-    return out, stripped
-
-
 def sanitize_board_html(html: str) -> tuple[str, list[str]]:
-    """基础安全清洗：返回 (净化后文本, 剥离项列表)。
+    """安全清洗：返回 (净化后文本, 被改动的字节项列表)。
 
     1. 整体移除 _DROP_TAGS 标签（含配对内容）；未配对的裸闭合标签一并剪掉
     2. 移除 on* 内联事件属性（含 SVG 动画触发器）
     3. href/src 中的 javascript: / data:text/html 置为 #
-    4. 剥除文档外壳与 :root/html/body/* 全局 CSS 块（防污染宿主主题）
-    不做白名单全重建——共创模式的作者是本机 AI 而非不可信第三方，
-    这里只做纵深防御底线；呈现侧另有 v-html 容器隔离（不挂事件不执脚本）。
+    文档外壳（DOCTYPE/html/head/body）、`<script>`、`<style>` 与 :root/html/body/* 全局
+    选择器**一律原样保留**——版式所有权属于 CLI，应用不再代行排版权。
+    不做白名单全重建——共创模式的作者是本机 AI 而非不可信第三方，这里只做纵深防御底线；
+    真正的执行边界在浏览器侧（sandbox iframe / raw 端点的 CSP sandbox）。
     """
     removed: list[str] = []
     out = html or ""
@@ -597,8 +563,6 @@ def sanitize_board_html(html: str) -> tuple[str, list[str]]:
     )
     if n_url:
         removed.append(f"dangerous-url×{n_url}")
-    out, stripped = _strip_global_css_and_wrappers(out)
-    removed.extend(stripped)
     return out, removed
 
 
@@ -634,14 +598,19 @@ _RECAP_STAT_LABELS = ("待确认决策", "议题归类", "决策事项", "待办
 # 文字墙检测：顶层节与其主视觉标记 / Section + diagram-marker extraction
 _SECTION_RE = re.compile(r"<section\b[^>]*\bdata-ib-id\b[^>]*>(.*?)</section>",
                          re.IGNORECASE | re.DOTALL)
+# 主视觉判据按**形态**而非类名（版权归 CLI，应用只守内容底线）：
+# 内联 SVG / canvas / data URI 图片三项无争议；table 与纯 CSS 条形不计入——
+# 把结构化文字当图等于把门槛降到形同虚设。
+# 相对路径的 <img> 不计图：srcdoc 与 raw 端点两处出口的 base 解析不一致（见 4.5-4）。
+# 末尾的 .ib-* 类名为 legacy 识别，仅为存量板保留一个版本周期。
 _VISUAL_MARK_RE = re.compile(
-    r'class=["\'][^"\']*\b(?:ib-flow|ib-tree|ib-compare|ib-grid|ib-visual)\b|<svg\b',
+    r"""<svg\b|<canvas\b|<img\b[^>]*\bsrc=\s*"?data:image|"""
+    r"""class=["'][^"']*\b(?:ib-flow|ib-tree|ib-compare|ib-grid|ib-visual)\b""",
     re.IGNORECASE)
 
-# 主视觉唯一载体：.ib-visual 内的 mermaid 源码 pre（前端显示时渲染，落盘存源码）
-_MERMAID_PRE_RE = re.compile(
-    r'<pre\b[^>]*class=["\'][^"\']*\bib-mermaid\b[^"\']*["\'][^>]*>(.*?)</pre>',
-    re.IGNORECASE | re.DOTALL)
+# 主视觉载体之一：mermaid 源码 pre（不认类名——任意 <pre> 只要首词命中图类型即计图，
+# 前端显示时由桥接渲染；落盘存源码，AI 读基线时看到的也是源码）
+_MERMAID_PRE_RE = re.compile(r"<pre\b[^>]*>(.*?)</pre>", re.IGNORECASE | re.DOTALL)
 # mermaid 首词白名单：flowchart/graph 流程、sequenceDiagram 时序、stateDiagram 状态、
 # mindmap/timeline 兜底形态；首词不在列 = 模型没写真图，不计主视觉
 _MERMAID_TYPES = ("flowchart", "graph", "sequenceDiagram", "stateDiagram-v2",
@@ -650,13 +619,13 @@ _MERMAID_DIRECTIVE_RE = re.compile(r"^%%\{.*\}%%\s*$")
 
 _TEXT_WALL_GUIDANCE = (
     "洞察板是图不是文章：每个困境一节，先画后主文，纯文字段落/列表组成的节不允许落盘。"
-    "请为每个节补一个主视觉：<div class=\"ib-visual\"><pre class=\"ib-mermaid\">mermaid 源码"
-    "</pre></div>，图类型用 flowchart LR/TD（流程/链路/对照/并列）或 sequenceDiagram（时序交互），"
-    "首词必须是 flowchart/graph/sequenceDiagram 等图类型关键字；"
-    "边标签是标配：A -->|标签| B；节点文字≤12 字、每图≤10 节点；"
-    "源码内禁写 < > &（用「小于」「与」等中文替代）、禁 click 语句、禁 <style>/图片/外链。"
-    "落地步骤用 .ib-roadmap>.ib-phase，取舍放 .ib-tradeoff，关键数字用 .ib-chip。"
-    "完整骨架见角色 insights.md，改完整份重新提交。"
+    "请为每个节补一个主视觉，形态任选其一："
+    "① 内联 <svg>（自己画图，资源一律 data URI 内联）；"
+    "② mermaid 形态的 <pre>（首词必须是 flowchart/graph/sequenceDiagram/stateDiagram/mindmap/timeline 等图类型关键字）；"
+    "③ <canvas>；④ src 为 data URI 的 <img>。"
+    "mermaid 边标签是标配：A -->|标签| B；节点文字≤12 字、每图≤10 节点；"
+    "源码内禁写 < > &（用「小于」「与」等中文替代，防止截断 HTML）、禁 click 语句。"
+    "表格、div 条块不计主视觉。版式与样式由你自己负责，改完整份重新提交。"
 )
 
 
@@ -765,65 +734,246 @@ def detect_text_wall(board_html: str) -> tuple[int, int]:
     return len(sections), visual
 
 
-def _board_html_path(task_id: str) -> Path:
+# ============================================================
+# 板存储模型：一场会议多份板（manifest 为唯一权威）
+# ============================================================
+#
+# 文件命名 `data/tasks/<task_id>.board.<board_id>.html`；per-board 版本信息内联在
+# manifest `<task_id>.boards.json` 里（少一次读盘；前端轮询一次请求拿全部 revision）。
+# 【硬不变量】板只在 manifest 内存在才可写：未知 board_id 一律拒，绝不隐式建板——
+# 只要「写个不存在的 board_id 就顺手建出来」还成立，“仅用户显式新建”就只是一句文案。
+# 建板因此只剩两条通道：用户点「＋ 新建板」（POST）或 AI 提案被用户接受（同一个 POST）。
+
+DEFAULT_BOARD_ID = "main"  # 存量迁移目标与缺省板
+DEFAULT_BOARD_TITLE = "主看板"
+BOARD_TITLE_MAX = 60
+_BOARD_ID_RE = re.compile(r"^[\w-]{1,48}$")
+
+
+def _valid_board_id(board_id: str) -> bool:
+    """board_id 可入文件名且无穿越面 / Safe board id for filenames."""
+    return bool(board_id) and bool(_BOARD_ID_RE.match(board_id))
+
+
+def _legacy_html_path(task_id: str) -> Path:
     return BOARD_TASKS_DIR / f"{task_id}.board.html"
 
 
-def _board_meta_path(task_id: str) -> Path:
-    return BOARD_TASKS_DIR / f"{task_id}.board.meta.json"
+def _manifest_path(task_id: str) -> Path:
+    return BOARD_TASKS_DIR / f"{task_id}.boards.json"
 
 
-def board_html_load(task_id: str) -> dict | None:
-    """读取板 HTML 产物；无板/坏板返回 None / Load board HTML artifact, None if absent."""
+def _board_file_path(task_id: str, board_id: str) -> Path:
+    return BOARD_TASKS_DIR / f"{task_id}.board.{board_id}.html"
+
+
+def _migrate_legacy_board(task_id: str, manifest: dict) -> dict:
+    """旧单文件板就地重命名为 main 并生成 manifest（一次性、幂等、不复制不丢版本）。
+
+    不留「老文件名也认」的双读分支——那条分支会让 manifest、错字回溯、上下文导出、
+    测试清理等每处消费者各背一份兼容代码。
+    """
+    legacy = _legacy_html_path(task_id)
+    if not legacy.exists():
+        return manifest
+    target = _board_file_path(task_id, DEFAULT_BOARD_ID)
+    if not target.exists():
+        try:
+            legacy.rename(target)
+        except OSError as e:
+            logger.warning("[洞察板] 存量板迁移失败 task=%s: %s", task_id, e)
+            return manifest
+        try:
+            legacy_meta = json.loads(
+                (BOARD_TASKS_DIR / f"{task_id}.board.meta.json").read_text(encoding="utf-8"))
+            rev, upd = int(legacy_meta.get("revision") or 0), legacy_meta.get("updated_at")
+        except (OSError, ValueError, TypeError):
+            rev, upd = 1, int(time.time() * 1000)
+    else:
+        rev, upd = 0, None  # 目标已存在：旧文件只清理，不覆盖已有版本
+    try:
+        (BOARD_TASKS_DIR / f"{task_id}.board.meta.json").unlink()
+    except OSError:
+        pass
+    boards = list(manifest.get("boards") or [])
+    if not any(b.get("board_id") == DEFAULT_BOARD_ID for b in boards):
+        boards.insert(0, {"board_id": DEFAULT_BOARD_ID, "title": DEFAULT_BOARD_TITLE,
+                          "file": DEFAULT_BOARD_ID, "revision": rev, "updated_at": upd})
+    migrated = {"boards": boards,
+                "default_board_id": manifest.get("default_board_id") or DEFAULT_BOARD_ID}
+    atomic_write_json(_manifest_path(task_id), migrated)
+    logger.info("[洞察板] 存量单文件板已迁移为 main task=%s rev=%s", task_id, rev)
+    return migrated
+
+
+def _read_manifest(task_id: str) -> dict:
+    """读 manifest；缺文件时先尝试存量迁移，再返回内存态骶架（不落盘，建板才落）。
+
+    板数 = 0（既无 manifest 又无旧文件）时自动包含 revision=0 的 main 条目，
+    否则首版共创会被 unknown_board_id 拦住——用户无需为「第一份板」点新建。
+    """
+    if not _valid_task_id(task_id):
+        return {"boards": [], "default_board_id": DEFAULT_BOARD_ID}
+    try:
+        raw = json.loads(_manifest_path(task_id).read_text(encoding="utf-8"))
+        manifest = {"boards": [b for b in (raw.get("boards") or []) if isinstance(b, dict)],
+                    "default_board_id": raw.get("default_board_id") or DEFAULT_BOARD_ID}
+    except (OSError, ValueError, TypeError):
+        manifest = {"boards": [], "default_board_id": DEFAULT_BOARD_ID}
+    if not manifest["boards"]:
+        manifest = _migrate_legacy_board(task_id, manifest)
+    if not manifest["boards"]:
+        manifest["boards"] = [{"board_id": DEFAULT_BOARD_ID, "title": DEFAULT_BOARD_TITLE,
+                               "file": DEFAULT_BOARD_ID, "revision": 0, "updated_at": None}]
+    return manifest
+
+
+def _write_manifest(task_id: str, manifest: dict) -> None:
+    atomic_write_json(_manifest_path(task_id),
+                      {"boards": manifest.get("boards") or [],
+                       "default_board_id": manifest.get("default_board_id") or DEFAULT_BOARD_ID})
+
+
+def _find_board_entry(manifest: dict, board_id: str | None) -> dict | None:
+    bid = board_id or manifest.get("default_board_id") or DEFAULT_BOARD_ID
+    for b in manifest.get("boards") or []:
+        if b.get("board_id") == bid:
+            return b
+    return None
+
+
+def boards_manifest(task_id: str) -> dict:
+    """对外只读视图 / Public manifest view.
+
+    Returns: {boards: [{board_id, title, revision, updated_at, exists}], default_board_id}。
+    exists 区分「已建板但尚未写 HTML」（提案/新建后 revision=0）与真无板。
+    """
+    if not _valid_task_id(task_id):
+        return {"boards": [], "default_board_id": DEFAULT_BOARD_ID}
+    m = _read_manifest(task_id)
+    out = []
+    for b in m.get("boards") or []:
+        bid = str(b.get("board_id") or "")
+        out.append({
+            "board_id": bid,
+            "title": b.get("title") or bid,
+            "revision": int(b.get("revision") or 0),
+            "updated_at": b.get("updated_at"),
+            "exists": bool(_board_file_path(task_id, bid).exists()) if _valid_board_id(bid) else False,
+        })
+    return {"boards": out, "default_board_id": m.get("default_board_id") or DEFAULT_BOARD_ID}
+
+
+def _next_board_id(manifest: dict) -> str:
+    """服务端生成缺省 board_id：board-2、board-3… / Auto board id sequence."""
+    used = {str(b.get("board_id") or "") for b in manifest.get("boards") or []}
+    n = 2
+    while f"board-{n}" in used:
+        n += 1
+    return f"board-{n}"
+
+
+def invoke_create_board(task_id: str, arguments: dict) -> dict:
+    """建板的唯一执行点（只写 manifest 条目，不产生 HTML 文件）。
+
+    调用方必须是“用户意志”的出口：前端「＋ 新建板」按钮，或 create_insight_board
+    提案被用户点「接受」后的同一个 POST 端点。工具面不得直接调用本函数。
+    空板不落 0 字节文件：HTML 留到首次 revise_insight_board 时创建。
+    """
+    if not _valid_task_id(task_id):
+        return {"ok": False, "error": "invalid_task_id"}
+    args = arguments or {}
+    title = str(args.get("title") or "").strip()[:BOARD_TITLE_MAX]
+    if not title:
+        return {"ok": False, "error": "title_required"}
+    manifest = _read_manifest(task_id)
+    board_id = str(args.get("board_id") or "").strip() or _next_board_id(manifest)
+    if not _valid_board_id(board_id):
+        return {"ok": False, "error": "invalid_board_id"}
+    if _find_board_entry(manifest, board_id) is not None:
+        return {"ok": False, "error": "board_exists", "board_id": board_id,
+                "boards": [b.get("board_id") for b in manifest.get("boards") or []]}
+    entry = {"board_id": board_id, "title": title, "file": board_id,
+             "revision": 0, "updated_at": int(time.time() * 1000)}
+    boards = list(manifest.get("boards") or []) + [entry]
+    _write_manifest(task_id, {"boards": boards,
+                              "default_board_id": manifest.get("default_board_id") or DEFAULT_BOARD_ID})
+    logger.info("[洞察板] 建板 task=%s board=%s title=%s", task_id, board_id, title)
+    return {"ok": True, "board_id": board_id, "title": title, "revision": 0,
+            "info": f"已新建洞察板「{title}」（{board_id}），等待首次写入内容"}
+
+
+def board_html_load(task_id: str, board_id: str | None = None) -> dict | None:
+    """读取指定板的 HTML 产物；无板/坏板返回 None / Load board HTML artifact, None if absent.
+
+    board_id 缺省取 manifest 的 default_board_id；revision 来自 manifest（内联版本信息）。
+    刚建未写的板 manifest 有条目但无文件，此处统一返 None。
+    """
     if not _valid_task_id(task_id):
         return None
-    path = _board_html_path(task_id)
+    if board_id is not None and not _valid_board_id(board_id):
+        return None
+    manifest = _read_manifest(task_id)
+    entry = _find_board_entry(manifest, board_id)
+    if entry is None:
+        return None
+    bid = str(entry.get("board_id"))
+    path = _board_file_path(task_id, bid)
     if not path.exists():
         return None
     try:
         html = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        logger.warning("[洞察板] HTML 读取失败 task=%s", task_id)
+        logger.warning("[洞察板] HTML 读取失败 task=%s board=%s", task_id, bid)
         return None
-    revision, updated_at = 0, None
-    try:
-        meta = json.loads(_board_meta_path(task_id).read_text(encoding="utf-8"))
-        revision = int(meta.get("revision") or 0)
-        updated_at = meta.get("updated_at")
-    except (OSError, ValueError, TypeError):
-        pass  # meta 缺失/损坏不阻断呈现 / Missing meta never blocks rendering
-    return {"html": html, "revision": revision, "updated_at": updated_at}
+    return {"html": html, "revision": int(entry.get("revision") or 0),
+            "updated_at": entry.get("updated_at"), "board_id": bid,
+            "title": entry.get("title") or bid}
 
 
-def board_html_meta(task_id: str) -> dict | None:
+def board_html_meta(task_id: str, board_id: str | None = None) -> dict | None:
     """只读板版本信息（不读 HTML 正文）/ Read board revision metadata only.
 
-    返回 / Returns: {revision, updated_at, exists}；task_id 非法返回 None。
-    供前端洞察 Tab 轻量轮询比对版本（响应体几十字节，正文变化与否只看 revision）。
-    meta 缺失/损坏时 revision=0，与 board_html_load 的口径一致。
+    返回 / Returns: {revision, updated_at, exists, board_id}；task_id 非法返回 None。
+    多板下 board_id 缺省时返回 **全部板** 的 revision 列表（一次请求拿全部版本，
+    供前端轮询比对）；单份呈现仍以 revision/updated_at/exists 字段为主（向后兼容）。
     """
     if not _valid_task_id(task_id):
         return None
-    revision, updated_at = 0, None
-    try:
-        meta = json.loads(_board_meta_path(task_id).read_text(encoding="utf-8"))
-        revision = int(meta.get("revision") or 0)
-        updated_at = meta.get("updated_at")
-    except (OSError, ValueError, TypeError):
-        pass
-    return {"revision": revision, "updated_at": updated_at,
-            "exists": _board_html_path(task_id).exists()}
+    m = boards_manifest(task_id)
+    boards = m["boards"]
+    if board_id is not None:
+        hit = next((b for b in boards if b["board_id"] == board_id), None)
+        if hit is None:
+            return None
+        return {"revision": hit["revision"], "updated_at": hit["updated_at"],
+                "exists": hit["exists"], "board_id": hit["board_id"]}
+    head = next((b for b in boards if b["board_id"] == m["default_board_id"]),
+                boards[0] if boards else None)
+    return {"revision": head["revision"] if head else 0,
+            "updated_at": head["updated_at"] if head else None,
+            "exists": bool(head and head["exists"]),
+            "board_id": head["board_id"] if head else m["default_board_id"],
+            "boards": boards, "default_board_id": m["default_board_id"]}
 
 
-def board_html_save(task_id: str, html: str, *, content_floor: bool = True) -> dict:
+def board_html_save(task_id: str, html: str, *, content_floor: bool = True,
+                    board_id: str | None = None,
+                    expected_revision: int | str | None = None) -> dict:
     """清洗后整份落盘（revision+1）；非法输入不落盘 / Sanitize-then-save, revision+1.
 
     content_floor=True（默认，AI 共创路径）：额外执行复述/文字墙内容底线校验；
     content_floor=False：仅安全清洗，供系统级机械改写（如错字纠正回写）使用——
     旧板的内容形态不应在机械替换时被新规则否决。
 
-    返回 / Returns: {ok, revision?, html?, removed?, error?}
-    写入方唯一（后端），对话侧只提交整份文本，不存在并发合并问题。
+    board_id 缺省取 manifest 的 default_board_id；**不在 manifest 内一律拒写**（unknown_board_id），
+    绝不隐式建板——建板权属于用户（见 invoke_create_board）。
+
+    expected_revision：R2 后基线可能来自上一轮导出的 `context/boards/` 快照，
+    期间用户可能在另一个窗口共创过；不匹配则不落盘（stale_baseline）。
+    不传（None）保持旧覆盖语义，避免一次性收紧造成大面积拒写。
+
+    返回 / Returns: {ok, revision?, removed?, board_id?, error?, current_revision?, boards?}
     """
     if not _valid_task_id(task_id):
         return {"ok": False, "error": "invalid_task_id"}
@@ -831,6 +981,28 @@ def board_html_save(task_id: str, html: str, *, content_floor: bool = True) -> d
         return {"ok": False, "error": "empty_html"}
     if len(html) > BOARD_HTML_CAP:
         return {"ok": False, "error": f"html_too_large(>{BOARD_HTML_CAP} chars)"}
+    manifest = _read_manifest(task_id)
+    entry = _find_board_entry(manifest, board_id)
+    if entry is None:
+        return {"ok": False, "error": "unknown_board_id",
+                "board_id": board_id,
+                "boards": [{"board_id": b.get("board_id"), "title": b.get("title"),
+                             "revision": int(b.get("revision") or 0)}
+                            for b in manifest.get("boards") or []],
+                "hint": "需要新板请调用 create_insight_board 提案，由用户确认后才建板"}
+    bid = str(entry.get("board_id"))
+    prev_revision = int(entry.get("revision") or 0)
+    if expected_revision is not None and not isinstance(expected_revision, bool):
+        try:
+            exp = int(expected_revision)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "invalid_expected_revision", "board_id": bid}
+        if exp != prev_revision:
+            logger.info("[洞察板] 基线过期 task=%s board=%s expected=%s current=%s",
+                        task_id, bid, exp, prev_revision)
+            return {"ok": False, "error": "stale_baseline", "board_id": bid,
+                    "current_revision": prev_revision,
+                    "hint": "你读到的基线已不是最新版，重新从 context/boards/ 或空参读回后再改"}
     cleaned, removed = sanitize_board_html(html)
     if not cleaned.strip():
         return {"ok": False, "error": "html_empty_after_sanitize", "removed": removed}
@@ -847,17 +1019,17 @@ def board_html_save(task_id: str, html: str, *, content_floor: bool = True) -> d
             logger.info("[洞察板] 文字墙拒收 task=%s sections=%d visuals=%d",
                         task_id, total_sec, visual_sec)
             return {"ok": False, "error": "board_is_text_wall",
-                    "reasons": [f"{total_sec} 个节中仅 {visual_sec} 个含主视觉（.ib-flow/.ib-tree/.ib-compare/.ib-grid）"],
+                    "reasons": [f"{total_sec} 个节中仅 {visual_sec} 个含主视觉（内联 SVG / canvas / mermaid 形态 pre / data URI 图片）"],
                     "guidance": _TEXT_WALL_GUIDANCE, "removed": removed}
-    # 取上一版本号只读旁路 meta，不必读回整份 HTML 正文
-    prev = board_html_meta(task_id)
-    revision = (prev["revision"] if prev else 0) + 1
+    revision = prev_revision + 1
     now_ms = int(time.time() * 1000)
-    atomic_write_text(_board_html_path(task_id), cleaned)
-    atomic_write_json(_board_meta_path(task_id), {"revision": revision, "updated_at": now_ms})
-    logger.info("[洞察板] HTML 落盘 task=%s rev=%s chars=%d removed=%s",
-                task_id, revision, len(cleaned), removed or "-")
-    return {"ok": True, "revision": revision, "removed": removed, "updated_at": now_ms}
+    atomic_write_text(_board_file_path(task_id, bid), cleaned)
+    entry["revision"], entry["updated_at"] = revision, now_ms
+    _write_manifest(task_id, manifest)
+    logger.info("[洞察板] HTML 落盘 task=%s board=%s rev=%s chars=%d removed=%s",
+                task_id, bid, revision, len(cleaned), removed or "-")
+    return {"ok": True, "revision": revision, "removed": removed,
+            "board_id": bid, "updated_at": now_ms}
 
 
 # 合法节锈点 id（供寻址与正则安全） / Safe section id charset
@@ -872,12 +1044,14 @@ def _section_pattern(section_id: str) -> re.Pattern:
     )
 
 
-def board_html_save_section(task_id: str, section_id: str, section_html: str) -> dict:
-    """只替换板内指定 data-ib-id 的那一节，其余节逐字节不动（硬隔离）。
+def board_html_save_section(task_id: str, section_id: str, section_html: str,
+                            board_id: str | None = None) -> dict:
+    """只替换指定板内 data-ib-id 的那一节，其余节逐字节不动（硬隔离）。
 
-    返回 / Returns: {ok, revision?, section_id?, error?}
+    返回 / Returns: {ok, revision?, section_id?, board_id?, error?}
     前提：板已存且顶层节包为 <section data-ib-id="...">（不嵌套）。
     新节若缺 data-ib-id 会被归一补回，保证寻址稳定。
+    未知 board_id 同样拒绝（建板权在用户）。
     """
     if not _valid_task_id(task_id):
         return {"ok": False, "error": "invalid_task_id"}
@@ -891,18 +1065,27 @@ def board_html_save_section(task_id: str, section_id: str, section_html: str) ->
     # 归一：若新节未带 data-ib-id，补上当前 id，保证下次仍可寻址
     if f'data-ib-id="{section_id}"' not in cleaned and f"data-ib-id='{section_id}'" not in cleaned:
         cleaned = re.sub(r"<section\b", f'<section data-ib-id="{section_id}"', cleaned, count=1, flags=re.IGNORECASE)
-    cur = board_html_load(task_id)
+    cur = board_html_load(task_id, board_id)
     if not cur or not cur.get("html"):
+        manifest = _read_manifest(task_id)
+        if _find_board_entry(manifest, board_id) is None:
+            return {"ok": False, "error": "unknown_board_id", "board_id": board_id,
+                    "boards": [b.get("board_id") for b in manifest.get("boards") or []],
+                    "hint": "需要新板请调用 create_insight_board 提案，由用户确认"}
         return {"ok": False, "error": "no_board"}
     m = _section_pattern(section_id).search(cur["html"])
     if not m:
         return {"ok": False, "error": "section_not_found", "section_id": section_id}
     merged = cur["html"][:m.start()] + cleaned + cur["html"][m.end():]
-    res = board_html_save(task_id, merged)
+    # expected_revision 取刚读到的版本：单节补丁也能发现“读后被人抢先写过”
+    res = board_html_save(task_id, merged, board_id=cur["board_id"],
+                          expected_revision=cur["revision"])
     if not res.get("ok"):
         return res
-    logger.info("[洞察板] 单节补丁 task=%s sec=%s rev=%s", task_id, section_id, res["revision"])
+    logger.info("[洞察板] 单节补丁 task=%s board=%s sec=%s rev=%s",
+                task_id, cur["board_id"], section_id, res["revision"])
     return {"ok": True, "revision": res["revision"], "section_id": section_id,
+            "board_id": res["board_id"],
             "info": f"洞察板『{section_id}』这一节已更新，其余节保持不变"}
 
 
@@ -912,18 +1095,33 @@ def invoke_revise_board(task_id: str, arguments: dict) -> dict:
     两处消费（防定义漂移，同 catalog 单一来源原则）：
       - core.agent_tools.impl.execute_tool（会议域工具唯一实现）
       - app.routers.agent_tools._dispatch_write（CLI 智能体经 MCP 桥回连）
-    不带 html = 读当前板基线；带 html = 整份清洗后落盘 rev+1。
+    不带 html = 读（返回 manifest 摘要，让 CLI 先选目标；带 board_id 则读那份板的正文）；
+    带 html = 整份清洗后落盘 rev+1。
     """
-    html_arg = (arguments or {}).get("html")
+    args = arguments or {}
+    bid_arg = str(args.get("board_id") or "").strip() or None
+    if bid_arg is not None and not _valid_board_id(bid_arg):
+        return {"ok": False, "error": "invalid_board_id", "board_id": bid_arg}
+    html_arg = args.get("html")
     if html_arg is None or (isinstance(html_arg, str) and not html_arg.strip()):
-        artifact = board_html_load(task_id)
+        m = boards_manifest(task_id)
+        artifact = board_html_load(task_id, bid_arg)
         if artifact is None:
             return {"ok": True, "html": None, "revision": 0,
-                    "info": "当前会议尚无洞察板，可直接产出首份 HTML 整份落盘"}
+                    "boards": [{"board_id": b["board_id"], "title": b["title"],
+                                 "revision": b["revision"], "exists": b["exists"]}
+                                for b in m["boards"]],
+                    "default_board_id": m["default_board_id"],
+                    "info": "正文未取：请带 board_id 重调本工具（空参读只回清单）。尚无内容的板 revision=0，首版可直接整份落盘"}
         return {"ok": True, **artifact}
-    res = board_html_save(task_id, str(html_arg))
+    exp_raw = args.get("expected_revision")
+    expected_revision = None if exp_raw in (None, "") else exp_raw
+    res = board_html_save(task_id, str(html_arg), board_id=bid_arg,
+                          expected_revision=expected_revision)
     if not res.get("ok"):
         return res
-    return {"ok": True, "revision": res["revision"], "removed": res.get("removed", []),
-            "info": "洞察板已更新，前端板区点「刷新」即可看到新版"}
+    # removed 原样回传：磁盘字节 = 提交内容 − removed，不允许静默变异
+    return {"ok": True, "revision": res["revision"], "board_id": res["board_id"],
+            "removed": res.get("removed", []),
+            "info": "洞察板已更新，前端板区会自动重拉（点「刷新」可立即对齐）"}
 
