@@ -21,5 +21,31 @@
     "code_required": "Please enter verification code",
     "login_failed": "Sign in failed",
     "service_error": "Service error (HTTP {status}), please try again later"
+  },
+  "enterprise": {
+    "subtitle": "Company internal service · sign in with the account created by your admin",
+    "account_placeholder": "Account (phone or login name)",
+    "password_placeholder": "Password",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "accept_invite": "Accept Invitation",
+    "accept_invite_hint": "First time here? Enter the invite code from your admin and set your own password (the admin never sees it).",
+    "paused_notice": "Company service is paused. Please contact your admin.",
+    "expired_notice": "Session expired, please sign in again",
+    "privacy_title": "Where your data lives",
+    "err_password_not_set": "This account has no password yet. Use “Accept Invitation” to finish setup.",
+    "err_account_disabled": "This account is disabled. Please contact your admin.",
+    "err_invalid": "Incorrect account or password",
+    "err_service_error": "Service error (HTTP {status}), please try again later",
+    "err_network": "Cannot reach the company server. Check your intranet connection.",
+    "invite_placeholder": "Invite code",
+    "new_password_placeholder": "Set your password (min 8 chars)",
+    "confirm_password_placeholder": "Re-enter password",
+    "activate_submit": "Finish and enter",
+    "activating": "Setting up...",
+    "err_invite_invalid": "Invite code is invalid or already used. Contact your admin.",
+    "err_password_mismatch": "Passwords do not match",
+    "err_password_short": "Password must be at least 8 characters",
+    "back_to_login": "Back to sign in"
   }
 }

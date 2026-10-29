@@ -21,5 +21,31 @@
     "code_required": "请输入验证码",
     "login_failed": "登录失败",
     "service_error": "服务异常（HTTP {status}），请稍后重试"
+  },
+  "enterprise": {
+    "subtitle": "公司内部服务 · 使用管理员开通的账号登录",
+    "account_placeholder": "账号（手机号或登录名）",
+    "password_placeholder": "密码",
+    "submit": "登录",
+    "submitting": "登录中...",
+    "accept_invite": "接受邀请",
+    "accept_invite_hint": "第一次使用？输入管理员给你的邀请码，自己设置密码（管理员不经手密码）。",
+    "paused_notice": "企业服务已暂停，请联系管理员",
+    "expired_notice": "登录已过期，请重新登录",
+    "privacy_title": "你的数据放在哪里",
+    "err_password_not_set": "该账号还没有设置密码，请通过「接受邀请」完成首次设置",
+    "err_account_disabled": "该账号已被停用，请联系管理员",
+    "err_invalid": "账号或密码不正确",
+    "err_service_error": "服务异常（HTTP {status}），请稍后重试",
+    "err_network": "无法连接公司服务器，请检查内网连接",
+    "invite_placeholder": "邀请码",
+    "new_password_placeholder": "设置你的密码（至少 8 位）",
+    "confirm_password_placeholder": "再次输入密码",
+    "activate_submit": "完成设置并进入",
+    "activating": "设置中...",
+    "err_invite_invalid": "邀请码无效或已被使用，请联系管理员",
+    "err_password_mismatch": "两次输入的密码不一致",
+    "err_password_short": "密码至少 8 位",
+    "back_to_login": "返回登录"
   }
 }

@@ -1,8 +1,24 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { isEnterprise } from '@/edition'
+import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      // 企业版登录页（档位①）：仅账号密码入口；个人版形态不渲染此路由（守卫不拦截，正常直达首页）
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/LoginView.vue'),
+      meta: { public: true },
+    },
+    {
+      // 接受邀请：邀请码自助设置密码（裁决插单③，无初始密码环节）
+      path: '/activate',
+      name: 'activate',
+      component: () => import('@/views/ActivateView.vue'),
+      meta: { public: true },
+    },
     {
       path: '/',
       name: 'start',
@@ -66,6 +82,23 @@ const router = createRouter({
       component: () => import('@/views/BoardViewerView.vue'),
     },
   ],
+})
+
+// ─── 档位①路由守卫（仅企业版形态生效，个人版行为零变化） ───
+// 未登录访问任何功能 URL → 统一重定向登录页（UI 规格 §1：不弹空白页或报错）
+router.beforeEach(async (to) => {
+  if (!isEnterprise) return true
+  const userStore = useUserStore()
+  if (!userStore.checked) await userStore.checkAuth()
+  if (to.meta.public) {
+    // 已登录用户不再进登录/邀请页
+    if (userStore.isLoggedIn && (to.name === 'login' || to.name === 'activate')) return { path: '/' }
+    return true
+  }
+  if (!userStore.isLoggedIn) {
+    return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} }
+  }
+  return true
 })
 
 export default router
