@@ -71,6 +71,8 @@
 | P-028 | 10-29 ~10:48 | EP0-FE | 档③3b 侧栏收口（f09cc5f）：产品五项裁决全落地——projects/decisions/agents 企业隐藏+直达守卫回 /library、hotwords/speaker-aliases 只读窗口指引逐字、空态如实、零下行暗示；真实例空读→PUT→复读 4 断言通过。**EP0-FE 七档（①~⑦）全部交付**，分支累计 8 个增量提交待验收合入 | 同分支 @ f09cc5f（push origin，未合 main）；vue-tsc 0 错、build、vitest 54/54；scopedKey 注明合规 | 已核实；W4 走查通过 P-029 | 合入批准到达后按批次执行合入+实机产物配合 |
 | P-029 | 10-29 ~10:50 | EP0-UX | W4 二轮结论：档③3b 复核通过，**EP0-UX 走查 W1–W4 全部关闭**（W1@2be0327 链至 W4@f09cc5f），四批次问题项全部销项或转 P1，无遗留走查债；备案级观察一条：assets 窗口徽标传字面量 'personal' 未消费响应 visibility 字段（P0 恒等无影响） | UI 读码复核链 cmsg_01m63mg2scfhja4jqrbbxckn7n；注明项核对合规 | 已核实 | 剩余=合入 main 后运行时目检（W10 五表面/实机截图），QA 节奏执行、UI 接应 |
 
+| P-031 | 10-29 ~22:44 | EP0-QA | 合入等待期本机收口（77765aa）：M04 告知即过无回执端点全 404 PASS；M06 HTTP 级整包撤销闭环 PASS；L01–L03（local_token 双承载守卫/迁移三段式幂等源零改动/activation 逐字"重启后生效"——FE 文案有实现依据）PASS；U2 未配对 200 空队列单态 PASS；U8 **真进程重启**会话保持 PASS（非模拟） | 套件 test_qa_ep0_closeout_local.py 7/7 PASS，登记 shared/QA-P0-CASES-LEDGER-20261029.md「合入批准批次」节（实查在案） | 已核实 | 剩三组纯环境依赖：W 抓包系+C 系+W10 目检，随棒3 环境一次性收口 |
+
 推送纪律：BE/OPS 分支与 main 提交均未推送，推送需项目方确认；FE 分支已按群纪律 push origin 不自行合 main。
 
 ### EP0 缺陷登记（QA 增量2 执行发现，均为错误码/5xx 契约失配，无越权穿透）
@@ -89,8 +91,6 @@
 | 2 | 前端开发工程师 | feat/req-ep0-fe-auth（1057fd6→b41f69e 共 9 提交，b41f69e=C12 徽标单源备案项零成本提前落地）合入 main 并推送 | 棒1 先合（避免 main 契约引用断档） | 已接单就绪（改动面与 BE 零交集、红线自查通过，待棒1 推送点名接力） |
 | 3 | DevOps工程师 | 企业包 CI job workflow、oms-app 镜像构建、Linux 实机/容器全链路 smoke（install→登录页可达→upgrade→rollback→备份落盘）、oms-private tar 产物 | 棒1+2 main 齐 | 工件预先就绪（de396c1 已在 main 血缘：workflow+Dockerfile 构建参数+首装 migrate；main 齐即 push+触发构建 smoke） |
 | 4 | QA工程师 | 收口最后一批：W 抓包系（默认零出网+L05）、C 系个人版回归门禁、W10 五表面运行时目检（B5 逐字四处+承诺卡）、U8、M04/M06 HTTP 复验、L01–L03；逐条入用例台账并播报出场 gate 终局判定 | 棒3 smoke 环境就绪 | **本机收口 7/7 全绿提前完成**（P-031）；剩 W 抓包系/C 系/W10 五表面目检严格依赖 smoke 环境，就绪点名即一次性出终局判定 |
-
-| P-031 | 10-29 ~22:44 | EP0-QA | 合入等待期本机收口（77765aa）：M04 告知即过无回执端点全 404 PASS；M06 HTTP 级整包撤销闭环 PASS；L01–L03（local_token 双承载守卫/迁移三段式幂等源零改动/activation 逐字"重启后生效"——FE 文案有实现依据）PASS；U2 未配对 200 空队列单态 PASS；U8 **真进程重启**会话保持 PASS（非模拟） | 套件 test_qa_ep0_closeout_local.py 7/7 PASS，登记 shared/QA-P0-CASES-LEDGER-20261029.md「合入批准批次」节（实查在案） | 已核实 | 剩三组纯环境依赖：W 抓包系+C 系+W10 目检，随棒3 环境一次性收口 |
 
 合入红线：只合企业版批次内容，个人版行为零变化；任一棒发现个人版回归立即中止播报。每棒 commit+证据由项目管理员滚动入册；出场 gate 全绿后台账增设"验收终局"节，产品经理向项目方交付最终验收报告与四项体验确认点结果。
 
