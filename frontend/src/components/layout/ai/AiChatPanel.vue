@@ -371,6 +371,8 @@
         @keydown="$emit('inputKey', $event)"
         :aria-label="t('ai-panel.input_aria')"
       ></textarea>
+      <!-- 智能体模式常驻轻提示：模式即权限，共创按钮只触发不拦截（解法一） -->
+      <div v-if="chatMode === 'agent'" class="ai-agent-mode-hint">{{ t('ai-panel.agent_mode_writable') }}</div>
       <!-- Composer 栏：模式 + 资源（左）+ 发送/停止（右），与消息编辑态共用同一组件 -->
       <ComposerBar
         :chat-mode="chatMode"
@@ -995,6 +997,15 @@ const probeHintText = computed(() => {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .composer-card:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+
+/* 智能体模式常驻轻提示：一行浅灰小字，位于 textarea 与控制行之间 */
+.ai-agent-mode-hint {
+  font-size: 11px;
+  color: var(--subtle, oklch(0% 0 0 / 0.55));
+  line-height: 1.4;
+  margin: 2px 0 0;
+  user-select: none;
+}
 
 /* 编辑卡宽度：用户消息容器 align-items:flex-end 会让 flex 子项按 textarea 固有宽度收缩，
    这里强制横向拉满，保持与原气泡等宽（不因进编辑态而变窄） */

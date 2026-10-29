@@ -1,17 +1,17 @@
 /**
- * 随记 & 待办 CRUD / Notes & todos CRUD
+ * 随记 & 决策 CRUD / Notes & decisions CRUD
  */
 import { watch, type ComputedRef, type Ref } from 'vue'
-import { saveNotes, saveSummary, fetchTodos, toggleTodo, createTodo, deleteTodo, updateTodo, type TodoCreatePayload, type TodoPatch } from '@/api/notes'
-import type { TodoItem, Task, DecisionStatus } from '@/api/types'
+import { saveNotes, saveSummary, fetchDecisions, toggleDecision, createDecision, deleteDecision, updateDecision, type DecisionCreatePayload, type DecisionPatch } from '@/api/notes'
+import type { DecisionItem, Task, DecisionStatus } from '@/api/types'
 import { useDecisionStatuses } from './useDecisionStatuses'
 
-export function useNotesAndTodos(
+export function useNotesAndDecisions(
   taskId: string,
   notesContent: Ref<string>,
   notesSaved: Ref<boolean>,
   summaryMd: Ref<string>,
-  todos: Ref<TodoItem[]>,
+  decisions: Ref<DecisionItem[]>,
   activeTab: Ref<string>,
   _task: ComputedRef<Task | null>,
   onContentModified?: () => void,
@@ -27,7 +27,7 @@ export function useNotesAndTodos(
     if (notesTimer) { clearTimeout(notesTimer); notesTimer = null }
     notesContent.value = await (await import('@/api/notes')).fetchNotes(taskId)
   }
-  async function loadTodos() { todos.value = await fetchTodos(taskId) }
+  async function loadDecisions() { decisions.value = await fetchDecisions(taskId) }
 
   async function onSaveNotes() {
     try { await saveNotes(taskId, notesContent.value); notesSaved.value = true; onContentModified?.() } catch { /* */ }
@@ -47,56 +47,56 @@ export function useNotesAndTodos(
     }, 1000)
   }
 
-  async function onToggleTodo(todo: TodoItem) {
+  async function onToggleDecision(decision: DecisionItem) {
     try {
-      await toggleTodo(taskId, todo.id, !todo.done)
-      todo.done = !todo.done
+      await toggleDecision(taskId, decision.id, !decision.done)
+      decision.done = !decision.done
       // 同步决策流状态：完成态 = done，取消勾选回到首个开放态 / Keep decision-flow status in sync
-      todo.status = todo.done ? 'done' : (statuses.value.find(s => !s.closing)?.id || 'in_progress')
+      decision.status = decision.done ? 'done' : (statuses.value.find(s => !s.closing)?.id || 'in_progress')
       onContentModified?.()
     } catch { /* */ }
   }
 
-  async function onStatusChange(todo: TodoItem, status: DecisionStatus) {
+  async function onStatusChange(decision: DecisionItem, status: DecisionStatus) {
     try {
-      await updateTodo(taskId, todo.id, { status })
-      todo.status = status
+      await updateDecision(taskId, decision.id, { status })
+      decision.status = status
       // done 是旧兼容字段：闭档态（完成类）即为已完成，不再等价于 status === 'done'
-      todo.done = isClosing(status)
+      decision.done = isClosing(status)
       onContentModified?.()
     } catch { /* */ }
   }
 
   // DC-UNIFY-01 统一口径：添加决策与手动补录共用 AddDecisionDialog 表单（title/text/owner_id/status）
   // 归属会议由弹层选择：非当前任务时只写盘不更新本地列表；失败抛由调用方提示
-  async function onAddTodo(payload: TodoCreatePayload, targetTaskId?: string): Promise<TodoItem> {
+  async function onAddDecision(payload: DecisionCreatePayload, targetTaskId?: string): Promise<DecisionItem> {
     const text = (payload.text || '').trim()
     const tid = targetTaskId || taskId
-    const t = await createTodo(tid, { ...payload, text })
-    if (tid === taskId) todos.value.push(t)
+    const t = await createDecision(tid, { ...payload, text })
+    if (tid === taskId) decisions.value.push(t)
     onContentModified?.()
     return t
   }
 
-  async function onDeleteTodo(todo: TodoItem) {
-    try { await deleteTodo(taskId, todo.id); todos.value = todos.value.filter(x => x.id !== todo.id); onContentModified?.() } catch { /* */ }
+  async function onDeleteDecision(decision: DecisionItem) {
+    try { await deleteDecision(taskId, decision.id); decisions.value = decisions.value.filter(x => x.id !== decision.id); onContentModified?.() } catch { /* */ }
   }
 
-  async function onEditTodo(todo: TodoItem, patch: TodoPatch) {
-    try { await updateTodo(taskId, todo.id, patch); Object.assign(todo, patch); onContentModified?.() } catch { /* */ }
+  async function onEditDecision(decision: DecisionItem, patch: DecisionPatch) {
+    try { await updateDecision(taskId, decision.id, patch); Object.assign(decision, patch); onContentModified?.() } catch { /* */ }
   }
 
-  function locateTodoSource(_todo: TodoItem) { /* 由父组件 switchTab('transcript') 处理 / Handled by parent via switchTab('transcript') */ }
+  function locateDecisionSource(_decision: DecisionItem) { /* 由父组件 switchTab('transcript') 处理 / Handled by parent via switchTab('transcript') */ }
 
   // 自动加载（用 flag 区分「未加载」与「用户清空」） / Auto-load (flag distinguishes "not loaded" from "user cleared")
   let notesLoaded = false
   watch(activeTab, (tab) => {
     if (tab === 'notes' && !notesLoaded) { notesLoaded = true; loadNotes() }
-    if (tab === 'todos' && todos.value.length === 0) loadTodos()
+    if (tab === 'decisions' && decisions.value.length === 0) loadDecisions()
   })
 
   return {
-    loadNotes, loadTodos, onNotesChange, onSummaryChange,
-    onToggleTodo, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, locateTodoSource,
+    loadNotes, loadDecisions, onNotesChange, onSummaryChange,
+    onToggleDecision, onAddDecision, onDeleteDecision, onEditDecision, onStatusChange, locateDecisionSource,
   }
 }

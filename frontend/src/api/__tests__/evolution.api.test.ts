@@ -8,21 +8,21 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('@/api/client', () => ({ default: mocks }))
 
-import { revertSupersede, supersedeTodo } from '@/api/notes'
+import { revertSupersede, supersedeDecision } from '@/api/notes'
 import { fetchTaskEvolution } from '@/api/decisions'
 
 beforeEach(() => vi.clearAllMocks())
 
-describe('supersedeTodo 标记已替代', () => {
-  it('POST 正确端点，驼峰入参翻成后端 snake_case，并解包 todo', async () => {
+describe('supersedeDecision 标记已替代', () => {
+  it('POST 正确端点，驼峰入参翻成后端 snake_case，并解包 decision', async () => {
     const returned = { id: 'x1', status: 'superseded' }
-    mocks.post.mockResolvedValueOnce({ data: { todo: returned } })
+    mocks.post.mockResolvedValueOnce({ data: { decision: returned } })
 
-    const out = await supersedeTodo('t1', 'x1', { taskId: 't2', todoId: 'x2' })
+    const out = await supersedeDecision('t1', 'x1', { taskId: 't2', decisionId: 'x2' })
 
     expect(mocks.post).toHaveBeenCalledWith(
-      '/api/tasks/t1/todos/x1/supersede',
-      { by_task_id: 't2', by_todo_id: 'x2' },
+      '/api/tasks/t1/decisions/x1/supersede',
+      { by_task_id: 't2', by_decision_id: 'x2' },
     )
     expect(out).toBe(returned)
   })
@@ -31,18 +31,18 @@ describe('supersedeTodo 标记已替代', () => {
 describe('revertSupersede 撤销', () => {
   it('走 DELETE 同一端点并解包恢复后的节点', async () => {
     const returned = { id: 'x1', status: 'in_progress' }
-    mocks.delete.mockResolvedValueOnce({ data: { todo: returned } })
+    mocks.delete.mockResolvedValueOnce({ data: { decision: returned } })
 
     const out = await revertSupersede('t1', 'x1')
 
-    expect(mocks.delete).toHaveBeenCalledWith('/api/tasks/t1/todos/x1/supersede')
+    expect(mocks.delete).toHaveBeenCalledWith('/api/tasks/t1/decisions/x1/supersede')
     expect(out).toBe(returned)
   })
 })
 
 describe('fetchTaskEvolution 演变归属', () => {
   it('以 task_id 查询参数请求 evolution 端点并解包 evolution 映射', async () => {
-    const map = { x1: { role: 'history', latest: { todo_id: 'x2' } } }
+    const map = { x1: { role: 'history', latest: { decision_id: 'x2' } } }
     mocks.get.mockResolvedValueOnce({ data: { task_id: 't1', evolution: map } })
 
     const out = await fetchTaskEvolution('t1')

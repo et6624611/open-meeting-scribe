@@ -1,68 +1,103 @@
 <template>
   <!-- 决策流卡片（唯一决策对象的交互载体）/ Decision-flow card: the one and only decision object -->
-  <div class="db-node" :data-todo-id="todo.id" :class="{ 'is-done': closing }" :style="statusVarStyle">
-    <!-- 第一行：状态点 + 标题（状态/等待方改为下方平铺选择，缩短点击路径） -->
+  <div class="db-node" :data-decision-id="decision.id" :class="{ 'is-done': closing }" :style="statusVarStyle">
+    <!-- 第一行：状态点 + 标题（状态在下方平铺；等待方收进「等待中」父芯片的 caret 弹层） -->
     <div class="db-row1">
       <span class="db-dot"></span>
       <span class="db-title" v-if="!editing" :title="fullText">{{ displayTitle }}</span>
       <span class="db-title-spacer" v-else></span>
       <!-- 待确认提案徽标：与已定结论共用 to_decide 态，靠 pending_confirmation 区分 -->
-      <span v-if="!editing && todo.pending_confirmation" class="db-pending-badge">{{ t('generating.todos.pending_badge') }}</span>
+      <span v-if="!editing && decision.pending_confirmation" class="db-pending-badge">{{ t('generating.decisions.pending_badge') }}</span>
     </div>
-    <!-- 平铺选择行：状态 + 等待方，一次点击即切换（替代下拉，无需展开） -->
+    <!-- 平铺状态行；「等待中」为父芯片（方案 B）：主体=选中状态，caret=等待方子级入口 -->
     <div class="db-tiles-row" v-if="!editing">
       <div class="db-tile-group" role="radiogroup" :aria-label="t('decisions.add_status_label')">
-        <button
-          v-for="s in statusOptions"
-          :key="s.id"
-          type="button"
-          class="db-tile"
-          :class="{ 'is-active': s.id === status }"
-          role="radio"
-          :aria-checked="s.id === status"
-          @click.stop="onSelectStatus(s.id)"
-        >
-          <span class="db-tile-dot" :style="{ background: s.color }"></span>
-          {{ labelOf(s.id, locale) }}
-        </button>
-      </div>
-      <div class="db-tile-group db-tile-group-owner" role="radiogroup" :aria-label="t('decisions.add_owner_type_label')">
-        <button
-          v-for="o in ownerOptions"
-          :key="o"
-          type="button"
-          class="db-tile"
-          :class="{ 'is-active': o === ownerType }"
-          role="radio"
-          :aria-checked="o === ownerType"
-          @click.stop="onSelectOwner(o)"
-        >{{ t('generating.todos.owner_waiting_' + o) }}</button>
+        <template v-for="s in statusOptions" :key="s.id">
+          <!-- 等待中父芯片：回显「等待中 · {等待方}」，caret 弹层选等待方；非等待中态即普通芯片 -->
+          <span
+            v-if="s.id === WAITING_STATUS_ID"
+            class="db-parent"
+            :class="{ 'is-active': isWaiting, 'has-child': isWaiting }"
+          >
+            <button
+              type="button"
+              class="db-parent-main"
+              role="radio"
+              :aria-checked="isWaiting"
+              @click.stop="onSelectStatus(s.id)"
+            >
+              <span class="db-tile-dot" :style="{ background: s.color }"></span>
+              {{ labelOf(s.id, locale) }}
+            </button>
+            <span class="db-parent-echo"><span class="sep">·</span><span>{{ ownerEchoLabel }}</span></span>
+            <button
+              :ref="setOwnerCaretRef"
+              type="button"
+              class="db-caret"
+              v-bind="ownerTriggerAttrs"
+              :title="t('generating.decisions.owner_caret_label')"
+              :aria-label="t('generating.decisions.owner_caret_label')"
+              @click.stop="toggleOwnerMenu"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div
+              :ref="setOwnerMenuRef"
+              class="db-menu db-owner-menu"
+              v-bind="ownerMenuAttrs"
+              :class="{ 'is-open': ownerMenuVisible }"
+            >
+              <div class="db-owner-menu-head">{{ t('generating.decisions.owner_menu_head') }}</div>
+              <button
+                v-for="o in ownerOptions"
+                :key="o"
+                type="button"
+                class="db-menu-item db-owner-item"
+                role="menuitem"
+                :aria-checked="o === ownerType"
+                @click.stop="onPickOwner(o)"
+              >{{ t('generating.decisions.owner_waiting_' + o) }}<span v-if="o === ownerType" class="db-owner-check">✓</span></button>
+            </div>
+          </span>
+          <button
+            v-else
+            type="button"
+            class="db-tile"
+            :class="{ 'is-active': s.id === status }"
+            role="radio"
+            :aria-checked="s.id === status"
+            @click.stop="onSelectStatus(s.id)"
+          >
+            <span class="db-tile-dot" :style="{ background: s.color }"></span>
+            {{ labelOf(s.id, locale) }}
+          </button>
+        </template>
       </div>
     </div>
 
     <!-- ⋯ 菜单进入的行内编辑态：编辑「标题 + 主文本」；正文(why)仍由下方常驻 textarea 维护 -->
     <div class="db-edit" v-if="editing">
       <label class="db-edit-field">
-        <span class="db-edit-label">{{ t('generating.todos.edit_title_label') }}</span>
+        <span class="db-edit-label">{{ t('generating.decisions.edit_title_label') }}</span>
         <input
           ref="editTitleRef"
           class="db-edit-input"
           type="text"
           maxlength="200"
           v-model="editTitle"
-          :placeholder="t('generating.todos.edit_title_placeholder')"
+          :placeholder="t('generating.decisions.edit_title_placeholder')"
           @keydown.meta.enter.prevent="saveEdit"
           @keydown.ctrl.enter.prevent="saveEdit"
         />
       </label>
       <label class="db-edit-field">
-        <span class="db-edit-label">{{ t('generating.todos.edit_content_label') }}</span>
+        <span class="db-edit-label">{{ t('generating.decisions.edit_content_label') }}</span>
         <textarea
           ref="editAreaRef"
           class="db-edit-area"
           v-model="editText"
           rows="3"
-          :placeholder="t('generating.todos.edit_content_placeholder')"
+          :placeholder="t('generating.decisions.edit_content_placeholder')"
           @input="onDateShortcut"
           @keydown="onEditKeydown"
           @blur="editMenu.onBlur"
@@ -73,8 +108,8 @@
         />
       </label>
       <div class="db-edit-actions">
-        <button type="button" class="db-edit-btn" @click="cancelEdit">{{ t('generating.todos.edit_cancel') }}</button>
-        <button type="button" class="db-edit-btn is-primary" @click="saveEdit">{{ t('generating.todos.edit_save') }}</button>
+        <button type="button" class="db-edit-btn" @click="cancelEdit">{{ t('generating.decisions.edit_cancel') }}</button>
+        <button type="button" class="db-edit-btn is-primary" @click="saveEdit">{{ t('generating.decisions.edit_save') }}</button>
       </div>
     </div>
 
@@ -84,7 +119,7 @@
         ref="contentRef"
         class="db-card-textarea"
         :value="content"
-        :placeholder="t('generating.todos.content_placeholder')"
+        :placeholder="t('generating.decisions.content_placeholder')"
         rows="2"
         spellcheck="false"
         @input="onContentInput"
@@ -98,8 +133,8 @@
     </div>
 
     <!-- 备查层证据注行：内联注已从正文剥离为 evidence，展示层在此还原（只读） -->
-    <div class="db-evidence" v-if="!editing && todo.evidence?.text">
-      {{ t('generating.todos.evidence_prefix') }}{{ todo.evidence.text }}
+    <div class="db-evidence" v-if="!editing && decision.evidence?.text">
+      {{ t('generating.decisions.evidence_prefix') }}{{ decision.evidence.text }}
     </div>
 
     <!-- 底部：操作 / Footer: actions -->
@@ -113,8 +148,8 @@
           class="db-action-btn"
           v-bind="actionTriggerAttrs"
           @click="toggleActionMenu"
-          :title="t('generating.todos.edit_menu')"
-          :aria-label="t('generating.todos.edit_menu')"
+          :title="t('generating.decisions.edit_menu')"
+          :aria-label="t('generating.decisions.edit_menu')"
         >
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
@@ -126,11 +161,11 @@
         >
           <button type="button" class="db-menu-item" role="menuitem" @click="startEdit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            {{ t('generating.todos.edit_text') }}
+            {{ t('generating.decisions.edit_text') }}
           </button>
         </div>
       </div>
-      <button class="db-delete-btn" :title="t('generating.todos.delete')" @click="emit('delete')" :aria-label="t('generating.todos.delete')">
+      <button class="db-delete-btn" :title="t('generating.decisions.delete')" @click="emit('delete')" :aria-label="t('generating.decisions.delete')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
       </button>
     </div>
@@ -138,10 +173,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onBeforeUnmount, type ComponentPublicInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { TodoItem, OwnerType } from '@/api/types'
-import type { TodoPatch } from '@/api/notes'
+import type { DecisionItem, OwnerType } from '@/api/types'
+import type { DecisionPatch } from '@/api/notes'
 import { useDecisionStatuses } from '@/composables/useDecisionStatuses'
 import { useEscClose } from '@/composables/useEscClose'
 import { usePopMenu } from '@/composables/usePopMenu'
@@ -153,14 +188,14 @@ import SlashDateMenu from '@/components/SlashDateMenu.vue'
 const { t, locale } = useI18n()
 
 const props = defineProps<{
-  todo: TodoItem
+  decision: DecisionItem
 }>()
 
 const emit = defineEmits<{
   (e: 'select-status', status: string): void
   (e: 'select-owner', owner: OwnerType): void
   (e: 'commit-content', content: string): void
-  (e: 'patch', patch: TodoPatch): void
+  (e: 'patch', patch: DecisionPatch): void
   (e: 'delete'): void
 }>()
 
@@ -172,9 +207,9 @@ const ownerOptions: OwnerType[] = ['self', 'agent', 'colleague', 'enterprise']
 const statusOptions = computed(() => statuses.value)
 
 // 状态：显式 status 优先，缺省由旧 done 布尔推导（历史 task JSON 兼容）
-const status = computed(() => props.todo.status || (props.todo.done ? 'done' : 'in_progress'))
+const status = computed(() => props.decision.status || (props.decision.done ? 'done' : 'in_progress'))
 const closing = computed(() => isClosing(status.value) || status.value === 'done')
-const ownerType = computed<OwnerType>(() => props.todo.owner_type || 'self')
+const ownerType = computed<OwnerType>(() => props.decision.owner_type || 'self')
 
 // 状态色以 CSS 变量注入卡片，色点/徽标共用一个来源（不再写死 st-* 类名）
 const statusVarStyle = computed(() => ({
@@ -187,19 +222,19 @@ const statusVarStyle = computed(() => ({
 // 但 why 为空时 text 是唯一内容，改为落到正文位置展示，不丢信息
 // RF-F1：auto 节点文本携带纪要里的成对 markdown 强调符号，仅展示层剥除，数据不回改
 const strip = stripDecisionEmphasis
-const hasTitle = computed(() => Boolean(props.todo.title && props.todo.text && props.todo.text !== props.todo.why))
+const hasTitle = computed(() => Boolean(props.decision.title && props.decision.text && props.decision.text !== props.decision.why))
 
 // 决策内容（why 字段存 Markdown）；有独立标题且 why 为空时回退展示 text
 // / Decision content (Markdown in why); falls back to text when the body is empty
-const bodyContent = computed(() => props.todo.why || (hasTitle.value ? props.todo.text : ''))
+const bodyContent = computed(() => props.decision.why || (hasTitle.value ? props.decision.text : ''))
 
-const displayTitle = computed(() => strip(props.todo.title || props.todo.text))
+const displayTitle = computed(() => strip(props.decision.title || props.decision.text))
 // tooltip 与正文取同一来源，避免悬停时重现已被收起的旧 text 摘要
 // 无独立标题的卡（多数存量）首行即 text，tooltip 仍展示完整 text
 const fullText = computed(() => {
-  if (!hasTitle.value) return strip(props.todo.text)
-  const body = strip(bodyContent.value || props.todo.text)
-  const title = strip(props.todo.title || '')
+  if (!hasTitle.value) return strip(props.decision.text)
+  const body = strip(bodyContent.value || props.decision.text)
+  const title = strip(props.decision.title || '')
   return body ? `${title}：${body}` : title
 })
 
@@ -279,6 +314,36 @@ function onSelectOwner(o: OwnerType) {
   if (o !== ownerType.value) emit('select-owner', o)
 }
 
+// ── 等待中父芯片（方案 B）：等待方是「等待中」的子级，caret 弹层选择 ──
+// 字典里承载「等待中」语义的锚点 id 是 in_progress（用户可改名，id 不可改）；
+// owner_type 切状态不重置，仅回显随 status === in_progress 显隐
+const WAITING_STATUS_ID = 'in_progress'
+const isWaiting = computed(() => status.value === WAITING_STATUS_ID)
+const ownerEchoLabel = computed(() => t('generating.decisions.owner_short_' + ownerType.value))
+
+// ref 位于 v-for 作用域内，字符串 ref 会收集成数组，改用函数 ref 绑定单例
+const ownerCaretRef = ref<HTMLElement | null>(null)
+const ownerMenuRef = ref<HTMLElement | null>(null)
+type RefEl = Element | ComponentPublicInstance | null
+function setOwnerCaretRef(el: RefEl) { ownerCaretRef.value = el instanceof HTMLElement ? el : null }
+function setOwnerMenuRef(el: RefEl) { ownerMenuRef.value = el instanceof HTMLElement ? el : null }
+
+const {
+  visible: ownerMenuVisible,
+  toggle: toggleOwnerMenu,
+  close: closeOwnerMenu,
+  triggerAttrs: ownerTriggerAttrs,
+  menuAttrs: ownerMenuAttrs,
+} = usePopMenu(ownerMenuRef, ownerCaretRef, { align: 'start' })
+
+function onPickOwner(o: OwnerType) {
+  closeOwnerMenu()
+  onSelectOwner(o)
+}
+
+// 切离等待中即收起弹层（外部数据回流也可能改 status，watch 兜底）
+watch(isWaiting, (v) => { if (!v) closeOwnerMenu() })
+
 // ── ⋯ 动作菜单 + 行内编辑态 ──
 // DC-UNIFY-01 重构后标题/主文本曾无编辑入口，这里恢复旧「⋯ → 编辑决策文本」的行内编辑能力
 // 预填与写回按节点形态区分，保证「所见即所编辑」且保存后不重复展示：
@@ -304,7 +369,7 @@ useEscClose(editing, () => cancelEdit())
 
 function startEdit() {
   closeActionMenu()
-  const t = props.todo
+  const t = props.decision
   editingHasTitle.value = Boolean(t.title && t.title.trim())
   if (editingHasTitle.value) {
     // 有独立标题：标题行=title，内容框预填正文权威源 why（why 空回退 text）

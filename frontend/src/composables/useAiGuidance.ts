@@ -28,7 +28,7 @@ const GUIDANCE_MAP: Record<string, GuidanceConfig> = {
     prompts: [
       { text: '目前讨论到哪了？', icon: ICON_SEARCH },
       { text: '帮我记录一条随记', icon: ICON_DOC },
-      { text: '目前有哪些待办？', icon: ICON_LIST },
+      { text: '目前有哪些决策？', icon: ICON_LIST },
     ],
   },
   processing: {
@@ -53,12 +53,12 @@ const GUIDANCE_MAP: Record<string, GuidanceConfig> = {
   },
   completed: {
     title: '会议已结束',
-    sub: '可以查看纪要、提取待办、分析发言',
+    sub: '可以查看纪要、提取决策、分析发言',
     icon: ICON_DOC,
     contexts: ['纪要已生成', '可编辑和导出'],
     prompts: [
       { text: '生成会议纪要', icon: ICON_DOC },
-      { text: '提取所有待办事项', icon: ICON_LIST },
+      { text: '提取所有决策事项', icon: ICON_LIST },
       { text: '分析各发言人核心观点', icon: ICON_SEARCH },
       { text: '总结关键决策', icon: ICON_CLOCK },
     ],

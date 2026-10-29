@@ -11,13 +11,13 @@ import { usePlayerStore } from '@/stores/player'
 import { useLayoutStore } from '@/stores/layout'
 import { usePolling } from '@/composables/usePolling'
 import { fetchTask, updateTask } from '@/api/tasks'
-import { fetchNotes, fetchTodos } from '@/api/notes'
+import { fetchNotes, fetchDecisions } from '@/api/notes'
 import { fetchSpeakers, type Speaker } from '@/api/speakers'
 import { fetchProjects, createProject, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
-import type { DialogueLine, TodoItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
+import type { DialogueLine, DecisionItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
 
 export function useGeneratingData(
   transcriptPanelRef: Ref<any>,
@@ -208,12 +208,12 @@ export function useGeneratingData(
   })
 
   // ─── Tab 切换 / Tab switching ───
-  const TAB_IDS = ['transcript', 'notes', 'summary', 'todos', 'insights'] as const
+  const TAB_IDS = ['transcript', 'notes', 'summary', 'decisions', 'insights'] as const
   const TABS = computed(() => [
     { id: 'transcript', label: t('generating.tabs.transcript'), icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>' },
     { id: 'notes', label: t('generating.tabs.notes'), icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
     { id: 'summary', label: t('generating.tabs.summary'), icon: '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>' },
-    { id: 'todos', label: t('generating.tabs.todos'), icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
+    { id: 'decisions', label: t('generating.tabs.decisions'), icon: '<polyline points="9,11 12,14 22,4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' },
     { id: 'insights', label: t('generating.tabs.insights'), icon: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 00-4 11.3c.6.5 1 1.3 1 2.2h6c0-.9.4-1.7 1-2.2A7 7 0 0012 2z"/>' },
   ])
 
@@ -239,7 +239,7 @@ export function useGeneratingData(
     if (!task.value) return ''
     if (tabId === 'transcript' && flatTranscript.value.length > 0) return 'is-done'
     if (tabId === 'summary' && task.value.summary) return 'is-done'
-    if (tabId === 'todos' && todos.value.length > 0) return 'is-done'
+    if (tabId === 'decisions' && decisions.value.length > 0) return 'is-done'
     // insights 圆点不再看旧洞察消息：Tab 内容已统一为洞察板 HTML 产物，
     // 有板才亮（由 GeneratingView 依据 board artifact 合并判断）
     return ''
@@ -292,11 +292,11 @@ export function useGeneratingData(
     else document.exitFullscreen()
   }
 
-  // ─── 随记 & 待办 / Notes & Todos ───
+  // ─── 随记 & 决策 / Notes & Decisions ───
   const notesContent = ref('')
   const notesSaved = ref(false)
   const summaryMd = ref('')
-  const todos = ref<TodoItem[]>([])
+  const decisions = ref<DecisionItem[]>([])
 
   watch(() => task.value, (t) => {
     if (t) {
@@ -306,7 +306,7 @@ export function useGeneratingData(
   }, { immediate: true })
 
   async function loadNotes() { notesContent.value = await fetchNotes(taskId) }
-  async function loadTodos() { todos.value = await fetchTodos(taskId) }
+  async function loadDecisions() { decisions.value = await fetchDecisions(taskId) }
 
   // ─── 音频 / Audio ───
   watch(audioUrl, (url) => { if (url) player.load(taskId, url) }, { immediate: true })
@@ -416,14 +416,14 @@ export function useGeneratingData(
   /**
    * 就地切换到完成态。原先这里是一句 window.location.reload()：
    * 整页重载会丢掉滚动位置与未保存的编辑草稿，几百毫秒白屏也被用户读作「崩溃」。
-   * 改为：显式成功反馈 + 拉取新生成的随记/待办 + 补起章节轮询。
+   * 改为：显式成功反馈 + 拉取新生成的随记/决策 + 补起章节轮询。
    * Switch to the completed state in place. The previous blanket reload threw away
    * scroll position and unsaved drafts, and its white flash read as a crash.
    */
   async function onPipelineCompleted(updated: Task) {
     showToast(t('generating.pipeline.completed'), 'success')
     if (!updated.chapters?.length && (updated.dialogue?.length ?? 0) > 0) startChapterPolling()
-    if (todos.value.length === 0) { try { await loadTodos() } catch { /* 保留空态 */ } }
+    if (decisions.value.length === 0) { try { await loadDecisions() } catch { /* 保留空态 */ } }
     if (activeTab.value !== 'notes') {
       try { await loadNotes() } catch { /* 保留空态 */ }
     } else {
@@ -515,8 +515,8 @@ export function useGeneratingData(
     metaDateShort, metaDuration, breadcrumbTitle, computeBreadcrumbs, computeCurrentProjectName,
     // 工具栏 / Toolbar
     onCopy, onExport, onFullscreen,
-    // 随记 & 待办 / Notes & Todos
-    notesContent, notesSaved, summaryMd, todos, loadNotes, loadTodos,
+    // 随记 & 决策 / Notes & Decisions
+    notesContent, notesSaved, summaryMd, decisions, loadNotes, loadDecisions,
     // 音频 / Audio
     player, seekAudio,
     // 项目 / Project

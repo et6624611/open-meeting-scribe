@@ -111,7 +111,7 @@ import { useDecisionStatuses } from '@/composables/useDecisionStatuses'
 import { useSlashDateMenu } from '@/composables/useSlashDateMenu'
 import { handleDateShortcut } from '@/utils/dateShortcuts'
 import SlashDateMenu from '@/components/SlashDateMenu.vue'
-import type { TodoCreatePayload } from '@/api/notes'
+import type { DecisionCreatePayload } from '@/api/notes'
 import type { OwnerType } from '@/api/types'
 
 const { t, locale } = useI18n()
@@ -124,7 +124,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
-  (e: 'submit', taskId: string, payload: TodoCreatePayload): void
+  (e: 'submit', taskId: string, payload: DecisionCreatePayload): void
 }>()
 
 const { dialogRef } = useDialog(computed(() => props.modelValue), () => close())

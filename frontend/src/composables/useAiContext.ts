@@ -67,11 +67,11 @@ export function useAiContext() {
     return count
   })
 
-  const todoStats = computed(() => {
+  const decisionStats = computed(() => {
     const t = taskStore.currentTask
-    if (!t?.todos?.length) return null
-    const total = t.todos.length
-    const done = t.todos.filter(td => td.done).length
+    if (!t?.decisions?.length) return null
+    const total = t.decisions.length
+    const done = t.decisions.filter(td => td.done).length
     return { total, done }
   })
 
@@ -143,7 +143,7 @@ export function useAiContext() {
     transcript: taskStore.currentTask && dialogueLines.value.length > 0 ? 1 : 0,
     summary: taskStore.currentTask?.summary ? 1 : 0,
     notes: hasNotes.value ? 1 : 0,
-    todos: todoStats.value?.total || 0,
+    decisions: decisionStats.value?.total || 0,
     files: linkedProject.value ? 1 : 0,
   }))
 
@@ -151,14 +151,14 @@ export function useAiContext() {
     contextStats.value.transcript +
     contextStats.value.summary +
     contextStats.value.notes +
-    contextStats.value.todos +
+    contextStats.value.decisions +
     contextStats.value.files +
     relatedMeetings.value.length
   )
 
   const meetingOutputCount = computed(() =>
     contextStats.value.transcript + contextStats.value.summary +
-    contextStats.value.notes + (contextStats.value.todos > 0 ? 1 : 0)
+    contextStats.value.notes + (contextStats.value.decisions > 0 ? 1 : 0)
   )
 
   const relatedMeetingCount = computed(() => relatedMeetings.value.length)
@@ -182,18 +182,18 @@ export function useAiContext() {
   const speakerCountDisplay = computed(() => speakerCount.value)
   const chapterCountDisplay = computed(() => chapterCount.value)
   const hasSummary = computed(() => !!taskStore.currentTask?.summary)
-  const todoCount = computed(() => todoStats.value?.total || 0)
-  const todoPending = computed(() => {
-    const ts = todoStats.value
+  const decisionCount = computed(() => decisionStats.value?.total || 0)
+  const decisionPending = computed(() => {
+    const ts = decisionStats.value
     return ts ? ts.total - ts.done : 0
   })
-  const todoDone = computed(() => todoStats.value?.done || 0)
+  const decisionDone = computed(() => decisionStats.value?.done || 0)
 
   const isContextEmpty = computed(() =>
     contextStats.value.transcript === 0 &&
     contextStats.value.summary === 0 &&
     contextStats.value.notes === 0 &&
-    contextStats.value.todos === 0 &&
+    contextStats.value.decisions === 0 &&
     !linkedProject.value &&
     relatedMeetings.value.length === 0
   )
@@ -226,9 +226,9 @@ export function useAiContext() {
     }
   }
 
-  function goToTodos() {
+  function goToDecisions() {
     if (taskStore.currentTask?.task_id) {
-      layoutStore.pendingGenTab = 'todos'
+      layoutStore.pendingGenTab = 'decisions'
     }
   }
 
@@ -272,9 +272,9 @@ export function useAiContext() {
     hasSummary,
     hasNotes,
     notesCharCount,
-    todoCount,
-    todoPending,
-    todoDone,
+    decisionCount,
+    decisionPending,
+    decisionDone,
     isContextEmpty,
     // 方法 / Methods
     generateSummary,
@@ -282,7 +282,7 @@ export function useAiContext() {
     goToTranscript,
     goToSummary,
     goToNotes,
-    goToTodos,
+    goToDecisions,
     goToProject,
     goToMeeting,
   }

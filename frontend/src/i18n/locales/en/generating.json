@@ -156,8 +156,8 @@
   "summary": {
     "loading": "Generating minutes...",
     "action_items": "Decisions",
-    "todos_stat": "This meeting produced {total} decision(s), {done} completed",
-    "view_todos": "View Decisions",
+    "decisions_stat": "This meeting produced {total} decision(s), {done} archived",
+    "view_decisions": "View Decisions",
     "pending": "Minutes not yet generated",
     "placeholder": "Double-click to start editing minutes… Enter for new block · ↑↓ to navigate",
     "proposal_label": "Summary rewrite proposal",
@@ -203,8 +203,8 @@
     "proposal_accept": "Accept & update notes",
     "proposal_reject": "Reject"
   },
-  "todos": {
-    "stat": "{total} total, {done} completed",
+  "decisions": {
+    "stat": "{total} total, {done} archived",
     "source_ai": "AI",
     "source_manual": "Manual",
     "locate": "Locate in transcript",
@@ -214,7 +214,7 @@
     "delete": "Delete",
     "filter_all": "All",
     "filter_active": "Active",
-    "filter_done": "Done",
+    "filter_done": "Archived",
     "select": "Select",
     "select_all": "Select all",
     "deselect_all": "Deselect all",
@@ -243,12 +243,12 @@
     "flow_progress": "Decision flow progress",
     "flow_empty": "Record your first decision",
     "flow_empty_hint": "Record key decisions and follow-up actions from the meeting",
-    "completed_group": "{count} decisions completed",
+    "completed_group": "{count} archived decisions",
     "total_count": "{count} total",
     "status_other": "Other",
     "status_to_decide": "To decide",
     "status_in_progress": "In progress",
-    "status_done": "Done",
+    "status_done": "Archived",
     "owner_label": "Owner (click to switch)",
     "owner_self": "Waiting: Self",
     "owner_agent": "Waiting: Agent",
@@ -258,6 +258,12 @@
     "owner_waiting_agent": "Waiting: Agent",
     "owner_waiting_colleague": "Waiting: Colleague",
     "owner_waiting_enterprise": "Waiting: Enterprise",
+    "owner_short_self": "Me",
+    "owner_short_agent": "Agent",
+    "owner_short_colleague": "Colleague",
+    "owner_short_enterprise": "Enterprise",
+    "owner_menu_head": "Waiting on · sub-level of Waiting",
+    "owner_caret_label": "Choose who is being waited on",
     "pending_badge": "To confirm",
     "evidence_prefix": "Note: ",
     "avatar_self": "Me"
@@ -283,7 +289,7 @@
     "transcript": "Transcript",
     "notes": "Notes",
     "summary": "Minutes",
-    "todos": "Decisions",
+    "decisions": "Decisions",
     "insights": "Insights"
   },
   "insights": {
@@ -292,9 +298,9 @@
       "empty_title": "No insight board yet",
       "empty_body": "The board is a human-AI co-created global view: in Agent mode of the chat panel, ask AI to generate the board for this meeting — it reads the transcript and the current board, then produces the full HTML artifact.",
       "co_create": "Co-create in Chat",
-      "co_create_msg": "Generate or revise the insight board from this meeting's transcript and chapters: do NOT recap decisions, topic groups, todo assignments, or who said what (the minutes and Decision Center already carry those). Address only the meeting's unresolved dilemmas, draw on external industry knowledge and proven practices, and provide the best solutions nobody raised in the room. The board is a diagram-first artifact, not an essay: each dilemma is one section drawn before the prose — a .ib-visual containing one pre.ib-mermaid mermaid source block (flowchart for flows/chains/fan-out/compare, sequenceDiagram for time-ordered interactions, edge labels as A -->|label| B) — followed by brief notes, a .ib-roadmap rollout timeline, and a .ib-tradeoff callout. Never stack plain text lists as the section body.",
+      "co_create_msg": "Generate or revise the insight board from this meeting's transcript and chapters: do NOT recap decisions, topic groups, decision assignments, or who said what (the minutes and Decision Center already carry those). Address only the meeting's unresolved dilemmas, draw on external industry knowledge and proven practices, and provide the best solutions nobody raised in the room. The board is a diagram-first artifact, not an essay: each dilemma is one section drawn before the prose — a .ib-visual containing one pre.ib-mermaid mermaid source block (flowchart for flows/chains/fan-out/compare, sequenceDiagram for time-ordered interactions, edge labels as A -->\\|label\\| B) — followed by brief notes, a .ib-roadmap rollout timeline, and a .ib-tradeoff callout. Never stack plain text lists as the section body.",
       "co_create_section": "Co-create section",
-      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, rewrite it as «.ib-dilemma bar → one mandatory .ib-visual (containing a pre.ib-mermaid mermaid diagram) → brief notes → .ib-roadmap rollout → .ib-tradeoff callout» with no decision/topic/todo lists, speaker records, or plain-text walls, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
+      "co_create_section_msg": "Revise ONLY the “{title}” section of the insight board (its data-ib-id is {id}): first read the current board and locate that section, rewrite it as «.ib-dilemma bar → one mandatory .ib-visual (containing a pre.ib-mermaid mermaid diagram) → brief notes → .ib-roadmap rollout → .ib-tradeoff callout» with no decision/topic/decision lists, speaker records, or plain-text walls, then use the revise_insight_board_section tool to write back only this section, keeping every other section byte-for-byte unchanged. My adjustment is:",
       "refresh": "Refresh",
       "loading": "Loading…",
       "mermaid_error": "Diagram render failed: "
@@ -303,7 +309,7 @@
   "ai_actions": {
     "rewrite": "Please rewrite the following, keeping the original meaning but more concise",
     "summarize": "Please summarize the following",
-    "extract_todo": "Please extract decisions from the following"
+    "extract_decision": "Please extract decisions from the following"
   },
   "correction": {
     "mapping_saved": "Mapping saved - ",

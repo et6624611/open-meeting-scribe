@@ -1,9 +1,9 @@
 /**
- * 说话人统计 — 从任务列表聚合会议/发言/待办数据 / Speaker stats — aggregates meeting/utterance/todo data from task list
+ * 说话人统计 — 从任务列表聚合会议/发言/决策数据 / Speaker stats — aggregates meeting/utterance/decision data from task list
  */
 import { ref, computed, type ComputedRef, type Ref } from 'vue'
 import { fetchTasks } from '@/api/tasks'
-import type { Task, FlatTranscriptLine, TodoItem } from '@/api/types'
+import type { Task, FlatTranscriptLine, DecisionItem } from '@/api/types'
 
 export interface MeetingStat {
   task_id: string
@@ -16,7 +16,7 @@ export interface MeetingStat {
   utterances: FlatTranscriptLine[]
 }
 
-export interface TodoStat extends TodoItem {
+export interface DecisionStat extends DecisionItem {
   fromTaskId: string
   fromTaskTitle: string
 }
@@ -25,7 +25,7 @@ export interface SpeakerStats {
   meetings: MeetingStat[]
   totalDuration: number
   utteranceCount: number
-  todos: TodoStat[]
+  decisions: DecisionStat[]
 }
 
 const statsCache = ref<Record<string, SpeakerStats>>({})
@@ -70,7 +70,7 @@ function computeStats(speakerIds: string[]) {
 
   // 初始化
   speakerIds.forEach(id => {
-    stats[id] = { meetings: [], totalDuration: 0, utteranceCount: 0, todos: [] }
+    stats[id] = { meetings: [], totalDuration: 0, utteranceCount: 0, decisions: [] }
   })
 
   // 遍历已完成的任务
@@ -117,16 +117,16 @@ function computeStats(speakerIds: string[]) {
       }
     })
 
-    // 收集待办
-    if (task.todos?.length) {
-      task.todos.forEach(todo => {
-        const assignee = todo.assignee
+    // 收集决策
+    if (task.decisions?.length) {
+      task.decisions.forEach(decision => {
+        const assignee = decision.assignee
         if (!assignee) return
         // assignee 可能是 speaker_id（数字字符串），需要映射到 UUID
         const uuid = speakerMapping[assignee] || assignee
         if (stats[uuid]) {
-          stats[uuid].todos.push({
-            ...todo,
+          stats[uuid].decisions.push({
+            ...decision,
             fromTaskId: taskId,
             fromTaskTitle: taskTitle,
           })
@@ -146,7 +146,7 @@ export function useSpeakerStat(speakerId: ComputedRef<string> | Ref<string> | st
       meetings: [],
       totalDuration: 0,
       utteranceCount: 0,
-      todos: [],
+      decisions: [],
     }
   })
 

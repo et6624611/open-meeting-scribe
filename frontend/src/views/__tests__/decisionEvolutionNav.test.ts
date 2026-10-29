@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { meetingNodeLink, parseAnchorTodoId, parseTopicKey, topicCenterLink } from '../decisionEvolutionNav'
+import { meetingNodeLink, parseAnchorDecisionId, parseTopicKey, topicCenterLink } from '../decisionEvolutionNav'
 
 describe('decisionEvolutionNav 演变链路由锚点', () => {
-  it('meetingNodeLink 带齐 tab/todo/from 三个定位参数', () => {
-    expect(meetingNodeLink('task-1', 'todo-9')).toEqual({
+  it('meetingNodeLink 带齐 tab/decision/from 三个定位参数', () => {
+    expect(meetingNodeLink('task-1', 'decision-9')).toEqual({
       name: 'generating',
       params: { taskId: 'task-1' },
-      query: { tab: 'todos', todo: 'todo-9', from: 'evolution' },
+      query: { tab: 'decisions', decision: 'decision-9', from: 'evolution' },
     })
   })
 
@@ -17,11 +17,11 @@ describe('decisionEvolutionNav 演变链路由锚点', () => {
     })
   })
 
-  it('parseAnchorTodoId 只接受字符串，数组/空值安全降级', () => {
-    expect(parseAnchorTodoId({ todo: 'x1' })).toBe('x1')
-    expect(parseAnchorTodoId({ todo: ['x1', 'x2'] })).toBe('')
-    expect(parseAnchorTodoId({})).toBe('')
-    expect(parseAnchorTodoId({ todo: null })).toBe('')
+  it('parseAnchorDecisionId 只接受字符串，数组/空值安全降级', () => {
+    expect(parseAnchorDecisionId({ decision: 'x1' })).toBe('x1')
+    expect(parseAnchorDecisionId({ decision: ['x1', 'x2'] })).toBe('')
+    expect(parseAnchorDecisionId({})).toBe('')
+    expect(parseAnchorDecisionId({ decision: null })).toBe('')
   })
 
   it('parseTopicKey 同口径解析议题 key', () => {

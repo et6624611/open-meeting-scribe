@@ -17,7 +17,7 @@ export interface AiCommand {
   action: (args?: string) => void
 }
 
-const AI_FREQUENT_KEYS = ['/待办', '/结论', '/发言']
+const AI_FREQUENT_KEYS = ['/决策', '/结论', '/发言']
 
 export function useAiCommands() {
   const cmdIndex = ref(-1)

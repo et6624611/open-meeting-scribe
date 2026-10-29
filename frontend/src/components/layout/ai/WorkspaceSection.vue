@@ -312,7 +312,7 @@ watch(
   () => [
     taskStore.currentTask?.summary,
     (taskStore.currentTask as unknown as { user_notes?: string } | null)?.user_notes,
-    taskStore.currentTask?.todos,
+    taskStore.currentTask?.decisions,
   ],
   () => {
     if (refreshTimer) clearTimeout(refreshTimer)

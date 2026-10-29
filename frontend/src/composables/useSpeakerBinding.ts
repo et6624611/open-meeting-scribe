@@ -29,7 +29,7 @@ export function useSpeakerBinding(
   }>({ visible: false, speakerId: -1, x: 0, y: 0, search: '', focusIdx: -1 })
   let dropdownEl: HTMLElement | null = null
 
-  // 默认不展示绑定横幅（不给用户待办压力）：页面以只读可编辑态打开，
+  // 默认不展示绑定横幅（不给用户决策压力）：页面以只读可编辑态打开，
   // 用户点击人员栏「编辑关联」按钮（reenterBinding）后主动进入绑定态。
   const bindingBarHidden = ref(true)
   const bindBarDismissed = ref(localStorage.getItem(`oms_bind_bar_dismissed:${taskId}`) === 'true')
@@ -166,8 +166,8 @@ export function useSpeakerBinding(
         if (result.summary != null) patch.summary = result.summary
         if (result.user_summary !== undefined) patch.user_summary = result.user_summary
         if (result.dialogue) patch.dialogue = result.dialogue
-        if (result.todos) patch.todos = result.todos
-        // [状态同步] 原地替换后刷新本地任务，驱动纪要正文/原文/待办响应式更新
+        if (result.decisions) patch.decisions = result.decisions
+        // [状态同步] 原地替换后刷新本地任务，驱动纪要正文/原文/决策响应式更新
         taskStore.patchTaskLocal(taskId, patch as Partial<Task>)
       } else {
         // 兜底：尚无纪要（如历史 awaiting_mapping）→ 沿用触发 Stage 2 生成的老路径

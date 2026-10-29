@@ -109,10 +109,10 @@
     <!-- 决策入口 / Decisions entry（预览态隐去 / hidden while previewing） -->
     <div class="sum-section" v-if="hasSummary && !(proposal && previewMode)">
       <div class="sum-section-label">{{ t('generating.summary.action_items') }}</div>
-      <button class="sum-todos-link" @click="emit('switch-tab', 'todos')" :title="t('generating.summary.view_todos')">
+      <button class="sum-decisions-link" @click="emit('switch-tab', 'decisions')" :title="t('generating.summary.view_decisions')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        <span>{{ t('generating.summary.todos_stat', { total: todosCount || '—', done: todosDoneCount || '0' }) }}</span>
-        <span class="go">{{ t('generating.summary.view_todos') }}
+        <span>{{ t('generating.summary.decisions_stat', { total: decisionsCount || '—', done: decisionsDoneCount || '0' }) }}</span>
+        <span class="go">{{ t('generating.summary.view_decisions') }}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </span>
       </button>
@@ -144,8 +144,8 @@ const props = defineProps<{
   pending: boolean
   /** 是否有纪要内容 / Whether summary content exists */
   hasSummary: boolean
-  todosCount: number
-  todosDoneCount: number
+  decisionsCount: number
+  decisionsDoneCount: number
   /** 待确认的纪要改写提案（共享单例，由 GeneratingView 透传） / Pending summary proposal (shared singleton, passed down) */
   proposal: SummaryProposal | null
   /** 原位 diff 预览态 / In-place diff preview mode */

@@ -435,7 +435,7 @@
   background: var(--surface-2);
 }
 
-/* ─── 笔记/注入/待办 Tab ─── */
+/* ─── 笔记/注入/决策 Tab ─── */
 /* ─── 笔记 Tab ─── */
 .task-notes-textarea { width: 100%; min-height: 200px; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); font-size: var(--fs-14); line-height: 1.7; resize: vertical; color: var(--fg); background: var(--surface); transition: border-color 0.15s; }
 .task-notes-textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--shadow-focus); }
@@ -449,7 +449,7 @@
 .injection-item:hover { background: var(--surface-2); }
 .injection-item.applied { opacity: 0.6; border-style: dashed; }
 .injection-type { flex-shrink: 0; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; text-transform: uppercase; }
-.injection-type.todo { background: var(--rec-soft); color: var(--rec); }
+.injection-type.decision { background: var(--rec-soft); color: var(--rec); }
 .injection-type.conclusion { background: var(--ok-soft); color: var(--ok); }
 .injection-type.decision { background: var(--accent-soft); color: var(--accent); }
 .injection-content { flex: 1; font-size: var(--fs-13); line-height: 1.6; color: var(--fg); }
@@ -458,102 +458,102 @@
 .injection-actions button:hover { background: var(--surface-2); color: var(--fg); }
 .injections-empty { text-align: center; padding: var(--s-7); color: var(--muted); font-size: var(--fs-13); }
 
-/* ─── 待办 Tab ─── */
-.todos-summary { display: flex; gap: var(--s-4); margin-bottom: var(--s-4); font-size: var(--fs-13); color: var(--muted); align-items: center; }
-.todos-summary .count { font-weight: 600; color: var(--fg); }
-.todos-list { display: flex; flex-direction: column; gap: var(--s-2); }
-.todo-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm); transition: background 0.15s; position: relative; }
-.todo-item:hover { background: var(--surface-2); }
-.todo-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; border-radius: 3px; }
-.todo-item.done .todo-text { text-decoration: line-through; color: var(--subtle); }
-.todo-text { flex: 1; font-size: var(--fs-13); line-height: 1.5; cursor: default; min-width: 0; word-break: break-word; }
-.todo-text[contenteditable="true"] { outline: none; background: var(--surface-2); border-radius: 3px; padding: 1px 4px; cursor: text; }
-.todo-assignee { font-size: 11px; color: var(--muted); padding: 2px 6px; background: var(--surface-2); border-radius: 4px; flex-shrink: 0; cursor: pointer; transition: background 0.15s; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo-assignee:hover { background: var(--border); }
-.todo-source-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; flex-shrink: 0; font-weight: 500; line-height: 1.6; white-space: nowrap; }
-.todo-source-badge.source-ai { background: oklch(0.92 0.04 250); color: oklch(0.45 0.12 250); }
-.todo-source-badge.source-manual { background: oklch(0.93 0.06 80); color: oklch(0.50 0.12 60); }
-.todo-locate-btn {
+/* ─── 决策 Tab ─── */
+.decisions-summary { display: flex; gap: var(--s-4); margin-bottom: var(--s-4); font-size: var(--fs-13); color: var(--muted); align-items: center; }
+.decisions-summary .count { font-weight: 600; color: var(--fg); }
+.decisions-list { display: flex; flex-direction: column; gap: var(--s-2); }
+.decision-item { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm); transition: background 0.15s; position: relative; }
+.decision-item:hover { background: var(--surface-2); }
+.decision-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; border-radius: 3px; }
+.decision-item.done .decision-text { text-decoration: line-through; color: var(--subtle); }
+.decision-text { flex: 1; font-size: var(--fs-13); line-height: 1.5; cursor: default; min-width: 0; word-break: break-word; }
+.decision-text[contenteditable="true"] { outline: none; background: var(--surface-2); border-radius: 3px; padding: 1px 4px; cursor: text; }
+.decision-assignee { font-size: 11px; color: var(--muted); padding: 2px 6px; background: var(--surface-2); border-radius: 4px; flex-shrink: 0; cursor: pointer; transition: background 0.15s; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.decision-assignee:hover { background: var(--border); }
+.decision-source-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; flex-shrink: 0; font-weight: 500; line-height: 1.6; white-space: nowrap; }
+.decision-source-badge.source-ai { background: oklch(0.92 0.04 250); color: oklch(0.45 0.12 250); }
+.decision-source-badge.source-manual { background: oklch(0.93 0.06 80); color: oklch(0.50 0.12 60); }
+.decision-locate-btn {
   width: 22px; height: 22px; border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--subtle); opacity: 0; flex-shrink: 0;
   border: none; background: transparent; cursor: pointer;
   transition: all 0.12s;
 }
-.todo-item:hover .todo-locate-btn { opacity: 1; }
-.todo-locate-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.todo-locate-btn svg { width: 13px; height: 13px; }
-.todo-delete-btn {
+.decision-item:hover .decision-locate-btn { opacity: 1; }
+.decision-locate-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.decision-locate-btn svg { width: 13px; height: 13px; }
+.decision-delete-btn {
   width: 22px; height: 22px; border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--subtle); opacity: 0; flex-shrink: 0;
   border: none; background: transparent; cursor: pointer;
   transition: all 0.12s;
 }
-.todo-item:hover .todo-delete-btn { opacity: 1; }
-.todo-delete-btn:hover { color: oklch(0.50 0.15 25); background: oklch(0.92 0.06 25); }
-.todo-delete-btn svg { width: 13px; height: 13px; }
-.todo-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
-.todo-item:hover .todo-actions { opacity: 1; }
-.todo-actions button { width: 24px; height: 24px; border: none; background: transparent; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: all 0.15s; padding: 0; }
-.todo-actions button:hover { background: var(--surface-2); color: var(--fg); }
-.todo-actions button.btn-delete:hover { background: oklch(0.92 0.06 25); color: oklch(0.50 0.15 25); }
-.todo-actions button svg { width: 14px; height: 14px; }
-.todo-assignee-edit { font-size: 11px; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; width: 70px; flex-shrink: 0; }
-.todos-add-bar { margin-top: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
-.todos-add-btn { display: flex; align-items: center; justify-content: center; gap: var(--s-1); padding: var(--s-2); border: 1px dashed var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: all 0.15s; width: 100%; }
-.todos-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.todos-empty { text-align: center; padding: var(--s-7); color: var(--muted); font-size: var(--fs-13); }
+.decision-item:hover .decision-delete-btn { opacity: 1; }
+.decision-delete-btn:hover { color: oklch(0.50 0.15 25); background: oklch(0.92 0.06 25); }
+.decision-delete-btn svg { width: 13px; height: 13px; }
+.decision-actions { display: flex; gap: 2px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+.decision-item:hover .decision-actions { opacity: 1; }
+.decision-actions button { width: 24px; height: 24px; border: none; background: transparent; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: all 0.15s; padding: 0; }
+.decision-actions button:hover { background: var(--surface-2); color: var(--fg); }
+.decision-actions button.btn-delete:hover { background: oklch(0.92 0.06 25); color: oklch(0.50 0.15 25); }
+.decision-actions button svg { width: 14px; height: 14px; }
+.decision-assignee-edit { font-size: 11px; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; width: 70px; flex-shrink: 0; }
+.decisions-add-bar { margin-top: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.decisions-add-btn { display: flex; align-items: center; justify-content: center; gap: var(--s-1); padding: var(--s-2); border: 1px dashed var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: all 0.15s; width: 100%; }
+.decisions-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.decisions-empty { text-align: center; padding: var(--s-7); color: var(--muted); font-size: var(--fs-13); }
 
-/* ─── 待办筛选栏 / Todos filter bar ─── */
-.todos-toolbar { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); flex-wrap: wrap; }
-.todos-stat { font-size: var(--fs-12); color: var(--muted); margin-right: auto; }
-.todos-filter-group { display: flex; gap: 2px; background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
-.todos-filter-btn { padding: 3px 10px; border: none; background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; border-radius: 3px; transition: all 0.12s; white-space: nowrap; }
-.todos-filter-btn:hover { color: var(--fg); }
-.todos-filter-btn.active { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px oklch(0 0 0 / 0.06); }
-.todos-select-btn { display: flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; white-space: nowrap; }
-.todos-select-btn:hover { border-color: var(--accent); color: var(--accent); }
-.todos-select-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.todos-select-btn svg { width: 13px; height: 13px; }
+/* ─── 决策筛选栏 / Decisions filter bar ─── */
+.decisions-toolbar { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); flex-wrap: wrap; }
+.decisions-stat { font-size: var(--fs-12); color: var(--muted); margin-right: auto; }
+.decisions-filter-group { display: flex; gap: 2px; background: var(--surface-2); border-radius: var(--radius-sm); padding: 2px; }
+.decisions-filter-btn { padding: 3px 10px; border: none; background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; border-radius: 3px; transition: all 0.12s; white-space: nowrap; }
+.decisions-filter-btn:hover { color: var(--fg); }
+.decisions-filter-btn.active { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px oklch(0 0 0 / 0.06); }
+.decisions-select-btn { display: flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-11); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; white-space: nowrap; }
+.decisions-select-btn:hover { border-color: var(--accent); color: var(--accent); }
+.decisions-select-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.decisions-select-btn svg { width: 13px; height: 13px; }
 
-/* ─── 待办批量选择栏 / Todos batch bar ─── */
-.todos-batch-bar { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); margin-bottom: var(--s-2); background: var(--accent-soft); border-radius: var(--radius-sm); font-size: var(--fs-12); }
-.todos-batch-check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
-.todos-batch-check input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
-.todos-batch-count { color: var(--muted); font-size: var(--fs-11); }
+/* ─── 决策批量选择栏 / Decisions batch bar ─── */
+.decisions-batch-bar { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); margin-bottom: var(--s-2); background: var(--accent-soft); border-radius: var(--radius-sm); font-size: var(--fs-12); }
+.decisions-batch-check { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.decisions-batch-check input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.decisions-batch-count { color: var(--muted); font-size: var(--fs-11); }
 
-/* ─── 待办选中态 / Todo selected state ─── */
-.todo-item.selected { background: var(--accent-soft); }
-.todo-select-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; border-radius: 3px; }
-.todo-done-btn {
+/* ─── 决策选中态 / Decision selected state ─── */
+.decision-item.selected { background: var(--accent-soft); }
+.decision-select-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; border-radius: 3px; }
+.decision-done-btn {
   width: 22px; height: 22px; border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--subtle); flex-shrink: 0;
   border: none; background: transparent; cursor: pointer;
   transition: all 0.12s;
 }
-.todo-done-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.todo-done-btn.done { color: var(--accent); }
-.todo-done-btn svg { width: 14px; height: 14px; }
+.decision-done-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.decision-done-btn.done { color: var(--accent); }
+.decision-done-btn svg { width: 14px; height: 14px; }
 
-/* ─── 待办行内编辑 / Todo inline edit ─── */
-.todo-edit-input { flex: 1; font-size: var(--fs-13); line-height: 1.5; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; font-family: inherit; resize: none; min-height: 28px; }
-.todo-edit-assignee { font-size: 11px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; width: 80px; flex-shrink: 0; }
-.todo-edit-assignee:focus { border-color: var(--accent); }
-.todo-edit-btn {
+/* ─── 决策行内编辑 / Decision inline edit ─── */
+.decision-edit-input { flex: 1; font-size: var(--fs-13); line-height: 1.5; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; font-family: inherit; resize: none; min-height: 28px; }
+.decision-edit-assignee { font-size: 11px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); outline: none; width: 80px; flex-shrink: 0; }
+.decision-edit-assignee:focus { border-color: var(--accent); }
+.decision-edit-btn {
   width: 22px; height: 22px; border-radius: var(--radius-sm);
   display: grid; place-items: center;
   color: var(--subtle); opacity: 0; flex-shrink: 0;
   border: none; background: transparent; cursor: pointer;
   transition: all 0.12s;
 }
-.todo-item:hover .todo-edit-btn { opacity: 1; }
-.todo-edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
-.todo-edit-btn svg { width: 13px; height: 13px; }
+.decision-item:hover .decision-edit-btn { opacity: 1; }
+.decision-edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.decision-edit-btn svg { width: 13px; height: 13px; }
 
-/* ─── 待办批量操作栏 / Todos batch action bar ─── */
-.todos-batch-actions { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); }
+/* ─── 决策批量操作栏 / Decisions batch action bar ─── */
+.decisions-batch-actions { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); margin-top: var(--s-3); border-top: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-sm); }
 .batch-btn { display: flex; align-items: center; gap: 4px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font-size: var(--fs-12); cursor: pointer; transition: all 0.12s; }
 .batch-btn:hover { background: var(--surface-2); }
 .batch-btn svg { width: 14px; height: 14px; }
@@ -770,10 +770,9 @@
 .db-row1 { display: flex; align-items: center; gap: var(--s-2); }
 .db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* 平铺选择行：状态 + 等待方，一次点击切换（替代下拉，缩短路径） */
+/* 平铺状态行：状态芯片平铺；「等待中」为父芯片，caret 弹层选等待方 */
 .db-tiles-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) 10px; margin-top: var(--s-2); }
 .db-tile-group { display: flex; flex-wrap: wrap; gap: 5px; }
-.db-tile-group-owner { margin-left: auto; }
 .db-tile {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 9px; border: 1px solid var(--border); border-radius: 999px;
@@ -784,8 +783,57 @@
 .db-tile.is-active { border-color: var(--db-status-color, var(--accent)); color: var(--db-status-color, var(--accent)); background: var(--db-status-soft, var(--accent-soft)); font-weight: 500; }
 .db-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .db-tile-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+/* ═══ 等待中父芯片（方案 B）：主体=选中状态；回显+caret=等待方子级入口 ═══
+   回显与 caret 仅在选中等待中时出现（has-child），其余状态就是一枚普通未选中芯片，
+   尺寸/配色与 .db-tile 同源（22px 高、fs-11、状态色经 --db-status-color 注入） */
+.db-parent {
+  display: inline-flex; align-items: center;
+  height: 22px; padding: 0 9px;
+  border: 1px solid var(--border); border-radius: 999px;
+  color: var(--muted); font-size: var(--fs-11); line-height: 1;
+  transition: all 0.12s; white-space: nowrap;
+}
+.db-parent:hover { color: var(--fg); border-color: var(--border-strong); }
+.db-parent.is-active {
+  border-color: var(--db-status-color, var(--accent));
+  color: var(--db-status-color, var(--accent));
+  background: var(--db-status-soft, var(--accent-soft));
+}
+.db-parent-main {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 20px; padding: 0; border: none; border-radius: 999px;
+  background: transparent; color: inherit; font-size: inherit; font-family: inherit;
+  line-height: 1; white-space: nowrap; cursor: pointer;
+}
+.db-parent.is-active .db-parent-main { font-weight: 500; }
+.db-parent-main:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.db-parent-echo { display: none; align-items: center; gap: 3px; color: inherit; }
+.db-parent.has-child .db-parent-echo { display: inline-flex; }
+.db-parent-echo .sep { opacity: .45; }
+.db-caret {
+  display: none; place-items: center;
+  width: 16px; height: 16px; margin: 0 0 0 2px; padding: 0;
+  border: none; border-radius: 50%; background: transparent; color: inherit; cursor: pointer;
+  transition: background 0.12s;
+}
+.db-parent.has-child .db-caret { display: grid; }
+.db-caret:hover { background: color-mix(in oklch, var(--accent) 20%, transparent); }
+.db-caret:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.db-caret svg { width: 10px; height: 10px; transition: transform 0.15s; }
+.db-caret[aria-expanded="true"] svg { transform: rotate(180deg); }
+/* 等待方弹层：头部一行说明从属关系，当前项右缘 ✓（定位/翻转/键盘导航全走 usePopMenu） */
+.db-owner-menu { min-width: 172px; }
+.db-owner-menu-head {
+  padding: 5px 10px 7px; margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-11); color: var(--muted); white-space: nowrap;
+}
+.db-owner-item { justify-content: space-between; }
+.db-owner-item[aria-checked="true"] { color: var(--accent); }
+.db-owner-check { font-size: var(--fs-11); color: var(--accent); }
 /* 标题 + 正文双要素：正文不再退为灰色摘要行（与正文重复，已移除） */
-.db-node.is-done .db-title { text-decoration: line-through; color: var(--subtle); }
+/* 决策已存档（闭档）：弱化文字色即可，不做删除线——决策是选择，不是被划掉的任务 */
+.db-node.is-done .db-title { color: var(--subtle); }
 /* 待确认提案徽标：pending_confirmation 为 true 的节点（与已定结论共用 to_decide 态） */
 .db-pending-badge {
   flex-shrink: 0; padding: 1px 7px; border-radius: 999px;

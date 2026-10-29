@@ -148,7 +148,7 @@
           <button class="dc-group-toggle" :aria-expanded="!collapsed.has(g.taskId)" @click="toggleGroup(g.taskId)">
             <svg class="dc-chev" :class="{ open: !collapsed.has(g.taskId) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
-          <RouterLink class="dc-group-title" :title="g.title" :to="{ name: 'generating', params: { taskId: g.taskId }, query: { tab: 'todos' } }">{{ g.title }}</RouterLink>
+          <RouterLink class="dc-group-title" :title="g.title" :to="{ name: 'generating', params: { taskId: g.taskId }, query: { tab: 'decisions' } }">{{ g.title }}</RouterLink>
           <span class="dc-group-date">{{ g.date }}</span>
           <span class="dc-group-count">{{ t('decisions.group_meeting_count', { count: g.rows.length + g.ineffective.length }) }}</span>
         </div>
@@ -156,7 +156,7 @@
           <DecisionNode
             v-for="d in g.rows"
             :key="d.id"
-            :todo="d"
+            :decision="d"
             @select-status="(s) => saveStatus(d, s)"
             @select-owner="(o) => savePatch(d, { owner_type: o })"
             @commit-content="(c) => savePatch(d, { why: c })"
@@ -173,7 +173,7 @@
               <DecisionNode
                 v-for="d in g.ineffective"
                 :key="d.id"
-                :todo="d"
+                :decision="d"
                 @select-status="(s) => saveStatus(d, s)"
                 @select-owner="(o) => savePatch(d, { owner_type: o })"
                 @commit-content="(c) => savePatch(d, { why: c })"
@@ -202,7 +202,7 @@
         <div v-show="!collapsedTopics.has(g.topic_key)" class="db-flow dc-flow">
           <!-- 主记录：纪要页同款可交互卡片（写操作仍落回自身节点） -->
           <DecisionNode
-            :todo="g.main"
+            :decision="g.main"
             @select-status="(s) => saveStatus(g.main, s)"
             @select-owner="(o) => savePatch(g.main, { owner_type: o })"
             @commit-content="(c) => savePatch(g.main, { why: c })"
@@ -250,7 +250,7 @@
                   <!-- 替代关系：指向新决策（快照标题；点击直达节点锚点）+ 撤销 -->
                   <div v-if="h.superseded_by" class="dc-evo-replaced">
                     <span class="dc-evo-replaced-label">{{ t('decisions.evo_replaced_by') }}</span>
-                    <RouterLink class="dc-evo-replaced-link" :to="meetingNodeLink(h.superseded_by.task_id, h.superseded_by.todo_id)">
+                    <RouterLink class="dc-evo-replaced-link" :to="meetingNodeLink(h.superseded_by.task_id, h.superseded_by.decision_id)">
                       {{ h.superseded_by.meeting_title ? t('decisions.evo_replaced_target', { meeting: h.superseded_by.meeting_title, title: h.superseded_by.title }) : (h.superseded_by.title || t('decisions.evo_replaced_target_gone')) }}
                     </RouterLink>
                     <button
@@ -263,7 +263,7 @@
                   <p v-if="evoBody(h)" class="dc-evo-text">{{ evoBody(h) }}</p>
                   <div class="dc-evo-foot">
                     <span class="dc-evo-meta">{{ h.meeting_title }}<template v-if="h.meeting_date"> · {{ h.meeting_date }}</template></span>
-                    <span v-if="!h.superseded_by" class="dc-evo-owner">{{ t('generating.todos.owner_waiting_' + (h.owner_type || 'self')) }}</span>
+                    <span v-if="!h.superseded_by" class="dc-evo-owner">{{ t('generating.decisions.owner_waiting_' + (h.owner_type || 'self')) }}</span>
                   </div>
                 </div>
               </li>
@@ -284,7 +284,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { extractErrorMessage } from '@/api/client'
 import { fetchFlowNodes, fetchFlowTopics, type FlowNode, type TopicGroup } from '@/api/decisions'
-import { createTodo, deleteTodo, supersedeTodo, revertSupersede, updateTodo, type TodoCreatePayload, type TodoPatch } from '@/api/notes'
+import { createDecision, deleteDecision, supersedeDecision, revertSupersede, updateDecision, type DecisionCreatePayload, type DecisionPatch } from '@/api/notes'
 import { meetingNodeLink, parseTopicKey } from '@/views/decisionEvolutionNav'
 import { fetchStatuses, statusLabel, type DecisionStatusItem } from '@/api/decisionStatuses'
 import { refreshDecisionStatuses } from '@/composables/useDecisionStatuses'
@@ -365,7 +365,7 @@ async function markSuperseded(h: FlowNode, main: FlowNode) {
   if (evoBusy.value.has(h.id)) return
   evoBusy.value = new Set(evoBusy.value).add(h.id)
   try {
-    await supersedeTodo(h.task_id, h.id, { taskId: main.task_id, todoId: main.id })
+    await supersedeDecision(h.task_id, h.id, { taskId: main.task_id, decisionId: main.id })
     await load()
     showToast(t('decisions.evo_mark_ok'), 'success')
   } catch (e) {
@@ -647,9 +647,9 @@ async function saveStatus(d: FlowNode, status: string) {
   await savePatch(d, { status })
 }
 
-async function savePatch(d: FlowNode, patch: TodoPatch) {
+async function savePatch(d: FlowNode, patch: DecisionPatch) {
   try {
-    await updateTodo(d.task_id, d.id, patch)
+    await updateDecision(d.task_id, d.id, patch)
     await Promise.all([load(), loadPool()])
   } catch (e) {
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
@@ -658,7 +658,7 @@ async function savePatch(d: FlowNode, patch: TodoPatch) {
 
 async function removeNode(d: FlowNode) {
   try {
-    await deleteTodo(d.task_id, d.id)
+    await deleteDecision(d.task_id, d.id)
     showToast(t('decisions.toast_delete_ok'), 'success')
     await Promise.all([load(), loadPool()])
   } catch (e) {
@@ -669,9 +669,9 @@ async function removeNode(d: FlowNode) {
 // ─── 补录：归属某场会议的一条决策流节点 / Manual entry into a meeting's flow ───
 const showAdd = ref(false)
 const addDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
-async function onAddSubmit(taskId: string, payload: TodoCreatePayload) {
+async function onAddSubmit(taskId: string, payload: DecisionCreatePayload) {
   try {
-    await createTodo(taskId, payload)
+    await createDecision(taskId, payload)
     showToast(t('decisions.toast_add_ok'), 'success')
     showAdd.value = false
     await Promise.all([load(), loadPool()])

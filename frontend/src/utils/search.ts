@@ -6,7 +6,7 @@
  *   2. 纪要摘要 / Summary text
  *   3. 说话人名称（speaker_mapping 的值） / Speaker names (speaker_mapping values)
  *   4. 章节标题 / Chapter titles
- *   5. 待办事项文本 / Todo item text
+ *   5. 决策事项文本 / Decision item text
  *   6. 转写全文（dialogue） / Full transcript (dialogue)
  */
 import type { Task } from '@/api/types'
@@ -52,10 +52,10 @@ export function matchTask(task: Task, q: string): boolean {
     }
   }
 
-  // 5. 待办事项 / 5. Todo items
-  const todos = task.todos
-  if (todos) {
-    for (const td of todos) {
+  // 5. 决策事项 / 5. Decision items
+  const decisions = task.decisions
+  if (decisions) {
+    for (const td of decisions) {
       if (td.text && td.text.toLowerCase().includes(lower)) return true
     }
   }

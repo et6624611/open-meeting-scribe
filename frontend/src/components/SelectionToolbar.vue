@@ -306,7 +306,7 @@ function onQuoteToAi() {
   window.dispatchEvent(new CustomEvent('quote-to-ai'))
 }
 
-// 改写/总结/提取待办已随工具栏按钮下架：能力依赖 AI 程度高，
+// 改写/总结/提取决策已随工具栏按钮下架：能力依赖 AI 程度高，
 // 由用户在「引用到 AI」中自行描述目的达成
 // Rewrite/summarize/extract retired with the toolbar buttons; users achieve those
 // intents through quote-to-AI with an explicit instruction.

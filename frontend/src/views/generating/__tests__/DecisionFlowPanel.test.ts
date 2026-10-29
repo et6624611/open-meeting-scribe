@@ -3,7 +3,7 @@ import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DecisionFlowPanel from '../DecisionFlowPanel.vue'
-import type { TodoItem } from '@/api/types'
+import type { DecisionItem } from '@/api/types'
 import type { NodeEvolution } from '@/api/decisions'
 
 // jsdom 不提供 CSS.escape，面板锚点选择器依赖它
@@ -21,7 +21,7 @@ const { STATUSES, EVOLUTION, TODOS } = vi.hoisted(() => {
     { id: 'superseded', name: '已替代', name_en: 'Superseded', color: 'var(--subtle)', closing: true, system: true },
     { id: 'done', name: '完成', name_en: 'Done', color: 'var(--ok)', closing: true, system: true },
   ]
-  const todos: TodoItem[] = [
+  const decisions: DecisionItem[] = [
     { id: 'a1', text: '主节点决策', title: '主节点决策', done: false, status: 'to_decide' },
     { id: 'a2', text: '另一条开放决策', done: false, status: 'in_progress' },
     { id: 'c1', text: '已替代的旧决策', title: '已替代的旧决策', done: true, status: 'superseded' },
@@ -29,14 +29,14 @@ const { STATUSES, EVOLUTION, TODOS } = vi.hoisted(() => {
   const evolution: Record<string, NodeEvolution> = {
     a1: {
       topic_key: 'k1', topic_title: '预算调整议题', role: 'main', meeting_count: 2,
-      latest: { task_id: 't1', todo_id: 'a1', title: '主节点决策', meeting_title: '本会议' },
+      latest: { task_id: 't1', decision_id: 'a1', title: '主节点决策', meeting_title: '本会议' },
     },
     c1: {
       topic_key: 'k1', topic_title: '预算调整议题', role: 'history', meeting_count: 2,
-      latest: { task_id: 't2', todo_id: 'b1', title: '新决策', meeting_title: '新会议' },
+      latest: { task_id: 't2', decision_id: 'b1', title: '新决策', meeting_title: '新会议' },
     },
   }
-  return { STATUSES: statuses, EVOLUTION: evolution, TODOS: todos }
+  return { STATUSES: statuses, EVOLUTION: evolution, TODOS: decisions }
 })
 
 vi.mock('@/api/decisions', () => ({ fetchTaskEvolution: vi.fn(async () => EVOLUTION) }))
@@ -59,7 +59,7 @@ const ZH = {
   },
   generating: {
     decisions_panel_link: '决策中心',
-    todos: {
+    decisions: {
       add_decision: '添加决策',
       completed_group: '已完成（{count}）',
       total_count: '共 {count} 条',
@@ -84,14 +84,14 @@ function mountPanel(props: Record<string, unknown> = {}) {
   })
   const w = mount(DecisionFlowPanel, {
     attachTo: document.body,
-    props: { visible: true, taskId: 't1', todos: TODOS, ...props },
+    props: { visible: true, taskId: 't1', decisions: TODOS, ...props },
     global: {
       plugins: [i18n, router],
       stubs: {
-        // 手动 stub 保留根节点 data-todo-id，使锚点选择器在测试中可命中
+        // 手动 stub 保留根节点 data-decision-id，使锚点选择器在测试中可命中
         DecisionNode: {
-          props: ['todo'],
-          template: '<div class="db-node" :data-todo-id="todo.id">{{ todo.title || todo.text }}</div>',
+          props: ['decision'],
+          template: '<div class="db-node" :data-decision-id="decision.id">{{ decision.title || decision.text }}</div>',
         },
       },
     },
@@ -123,7 +123,7 @@ afterEach(() => {
 describe('DecisionFlowPanel 演变角标', () => {
   it('main 节点显示跨会议角标；history 节点指向另一场会议的最新推进', async () => {
     // 借锚点把闭档组展开（history 节点 c1 在闭档组内），但不给来源横幅
-    const w = mountPanel({ anchorTodoId: 'c1' })
+    const w = mountPanel({ anchorDecisionId: 'c1' })
     await flushPromises()
     await tick(250)
 
@@ -137,19 +137,19 @@ describe('DecisionFlowPanel 演变角标', () => {
     expect(text).toContain(ZH.decisions.meeting_evo_view_topic)
 
     // 无演变归属的开放节点不出角标
-    const a2Cell = w.find('[data-todo-id="a2"]').element.parentElement
+    const a2Cell = w.find('[data-decision-id="a2"]').element.parentElement
     expect(a2Cell?.querySelector('.db-evo-badge')).toBeNull()
   })
 })
 
-describe('DecisionFlowPanel 节点锚点（?todo=&from=evolution）', () => {
+describe('DecisionFlowPanel 节点锚点（?decision=&from=evolution）', () => {
   it('锚到闭档节点：自动展开闭档组、滚动、闪烁高亮，并显示来源横幅', async () => {
-    const w = mountPanel({ anchorTodoId: 'c1', fromEvolution: true })
+    const w = mountPanel({ anchorDecisionId: 'c1', fromEvolution: true })
     await flushPromises()
     await tick(250)
 
     // 闭档组默认折叠；锚点必须先把组展开，节点才在 DOM 中
-    const node = w.find('.db-node[data-todo-id="c1"]')
+    const node = w.find('.db-node[data-decision-id="c1"]')
     expect(node.exists()).toBe(true)
     expect(node.classes()).toContain('evo-anchor-flash')
     expect(scrollSpy).toHaveBeenCalledTimes(1)
@@ -161,7 +161,7 @@ describe('DecisionFlowPanel 节点锚点（?todo=&from=evolution）', () => {
   })
 
   it('横幅可关闭', async () => {
-    const w = mountPanel({ anchorTodoId: 'a1', fromEvolution: true })
+    const w = mountPanel({ anchorDecisionId: 'a1', fromEvolution: true })
     await flushPromises()
     await tick(200)
     expect(w.find('.db-evo-banner').exists()).toBe(true)
@@ -176,7 +176,7 @@ describe('DecisionFlowPanel 节点锚点（?todo=&from=evolution）', () => {
     await tick(200)
 
     expect(w.find('.db-evo-banner').exists()).toBe(false)
-    expect(w.find('.db-node[data-todo-id="c1"]').exists()).toBe(false)
+    expect(w.find('.db-node[data-decision-id="c1"]').exists()).toBe(false)
     expect(scrollSpy).not.toHaveBeenCalled()
   })
 })

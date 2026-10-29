@@ -4,7 +4,7 @@
     v-if="open"
     class="slash-menu"
     role="menu"
-    :aria-label="t('generating.todos.date_menu_aria')"
+    :aria-label="t('generating.decisions.date_menu_aria')"
     :style="{ left: pos.left + 'px', top: pos.top + 'px' }"
   >
     <button
@@ -14,11 +14,11 @@
       role="menuitem"
       class="slash-menu-item"
       :class="{ 'is-active': i === activeIndex }"
-      :aria-label="t('generating.todos.date_menu_' + it.key) + ' ' + it.preview"
+      :aria-label="t('generating.decisions.date_menu_' + it.key) + ' ' + it.preview"
       @mousedown.prevent="$emit('select', i)"
       @mouseenter="$emit('hover', i)"
     >
-      <span class="slash-menu-name">{{ t('generating.todos.date_menu_' + it.key) }}</span>
+      <span class="slash-menu-name">{{ t('generating.decisions.date_menu_' + it.key) }}</span>
       <span class="slash-menu-token">{{ it.token }}</span>
       <span class="slash-menu-preview">{{ it.preview }}</span>
     </button>

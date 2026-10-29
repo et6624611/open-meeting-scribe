@@ -157,8 +157,8 @@
   "summary": {
     "loading": "纪要生成中...",
     "action_items": "决策",
-    "todos_stat": "本次会议共产生 {total} 项决策，已完成 {done} 项",
-    "view_todos": "查看决策",
+    "decisions_stat": "本次会议共产生 {total} 项决策，已存档 {done} 项",
+    "view_decisions": "查看决策",
     "pending": "纪要尚未生成",
     "placeholder": "双击此处开始编辑纪要… Enter 新建块 · ↑↓ 跨块移动",
     "proposal_label": "纪要改写建议",
@@ -193,7 +193,7 @@
     "placeholder": "在此记录随记… Enter 新建块 · ↑↓ 跨块移动",
     "saved": "已保存",
     "empty_title": "随手记，不用整理",
-    "empty_body": "灵感、待办、原话、链接……都可以先扔在这里。点击开始写，支持 Markdown；会后也可让 AI 帮你整理成要点与待办。",
+    "empty_body": "灵感、决策、原话、链接……都可以先扔在这里。点击开始写，支持 Markdown；会后也可让 AI 帮你整理成要点与决策。",
     "empty_foot": "开始输入后此提示自动消失",
     "proposal_label": "随记改写建议",
     "proposal_stats": "{hunks} 处修改 · +{added} / −{removed} 行",
@@ -204,8 +204,8 @@
     "proposal_accept": "接受并更新随记",
     "proposal_reject": "拒绝"
   },
-  "todos": {
-    "stat": "共 {total} 项，已完成 {done} 项",
+  "decisions": {
+    "stat": "共 {total} 项，已存档 {done} 项",
     "source_ai": "AI",
     "source_manual": "手动",
     "locate": "定位到原文",
@@ -214,7 +214,7 @@
     "delete": "删除",
     "filter_all": "全部",
     "filter_active": "进行中",
-    "filter_done": "已完成",
+    "filter_done": "已存档",
     "select": "选择",
     "select_all": "全选",
     "deselect_all": "取消全选",
@@ -243,13 +243,13 @@
     "flow_progress": "决策流推进度",
     "flow_empty": "记录第一条决策",
     "flow_empty_hint": "记录会议中的关键决策和后续行动",
-    "completed_group": "已完成 {count} 条决策",
+    "completed_group": "已存档 {count} 条决策",
     "total_count": "共 {count} 条",
     "status_other": "其他",
     "content_placeholder": "记录决策内容（Markdown，/today 插日期）…",
     "status_to_decide": "待决策",
     "status_in_progress": "进行中",
-    "status_done": "已完成",
+    "status_done": "已存档",
     "owner_label": "推进方(点击切换)",
     "owner_self": "等待:自己",
     "owner_agent": "等待:Agent",
@@ -259,6 +259,12 @@
     "owner_waiting_agent": "等待Agent",
     "owner_waiting_colleague": "等待同事",
     "owner_waiting_enterprise": "等待企业",
+    "owner_short_self": "自己",
+    "owner_short_agent": "Agent",
+    "owner_short_colleague": "同事",
+    "owner_short_enterprise": "企业",
+    "owner_menu_head": "等待方 · 等待中的下一级",
+    "owner_caret_label": "选择等待方（等待中的下一级）",
     "pending_badge": "待确认",
     "evidence_prefix": "注：",
     "avatar_self": "我"
@@ -284,7 +290,7 @@
     "transcript": "原文",
     "notes": "随记",
     "summary": "纪要",
-    "todos": "决策",
+    "decisions": "决策",
     "insights": "洞察"
   },
   "insights": {
@@ -293,9 +299,9 @@
       "empty_title": "尚无洞察板",
       "empty_body": "洞察板是一份人与 AI 共创的全局视图：在 AI 对话的「智能体」模式中说「为本次会议生成洞察板」，AI 会读取转写与当前板、产出整份 HTML 并落盘。",
       "co_create": "在对话中共创",
-      "co_create_msg": "请基于本次会议的转写与章节生成或修订洞察板：不要复述决策、议题归类、待办分工和谁说了什么（纪要页与决策中心已经承载）；只针对会上悬而未决的困境，调用你的外部行业知识与成熟实践，给出会上没人想到的最优解法。板是图不是文章：每个困境一节，先画后主文，主视觉用 mermaid 图（div.ib-visual 内放 pre.ib-mermaid 源码块，流程链路/分发聚合/前后对照用 flowchart，时序交互用 sequenceDiagram，边标签 A -->|标签| B），再配简短图文、.ib-roadmap 落地路线和 .ib-tradeoff 取舍，不要用纯文字列表堆成文章。",
+      "co_create_msg": "请基于本次会议的转写与章节生成或修订洞察板：不要复述决策、议题归类、决策分工和谁说了什么（纪要页与决策中心已经承载）；只针对会上悬而未决的困境，调用你的外部行业知识与成熟实践，给出会上没人想到的最优解法。板是图不是文章：每个困境一节，先画后主文，主视觉用 mermaid 图（div.ib-visual 内放 pre.ib-mermaid 源码块，流程链路/分发聚合/前后对照用 flowchart，时序交互用 sequenceDiagram，边标签 A -->\\|标签\\| B），再配简短图文、.ib-roadmap 落地路线和 .ib-tradeoff 取舍，不要用纯文字列表堆成文章。",
       "co_create_section": "共创此节",
-      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，按「困境条 .ib-dilemma → 主视觉 .ib-visual（内含一个 pre.ib-mermaid mermaid 图，不可缺）→ 简短图文 → .ib-roadmap 落地 → .ib-tradeoff 取舍」重写，不要放决策/议题/待办清单、发言人记录或纯文字列表，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
+      "co_create_section_msg": "请只修订洞察板中『{title}』这一节（它的 data-ib-id 为 {id}）：先读取当前板定位该节，按「困境条 .ib-dilemma → 主视觉 .ib-visual（内含一个 pre.ib-mermaid mermaid 图，不可缺）→ 简短图文 → .ib-roadmap 落地 → .ib-tradeoff 取舍」重写，不要放决策/议题/决策清单、发言人记录或纯文字列表，改完后用 revise_insight_board_section 工具只回写这一节，其余节逐字节保持不变。我的调整诉求是：",
       "refresh": "刷新",
       "loading": "加载中…",
       "mermaid_error": "图渲染失败："
@@ -304,7 +310,7 @@
   "ai_actions": {
     "rewrite": "请帮我改写以下内容，保持原意但更精炼",
     "summarize": "请帮我总结以下内容",
-    "extract_todo": "请从以下内容中提取决策"
+    "extract_decision": "请从以下内容中提取决策"
   },
   "correction": {
     "mapping_saved": "映射已保存，",

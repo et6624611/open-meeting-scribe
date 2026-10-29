@@ -89,14 +89,14 @@ export type OwnerType = 'self' | 'agent' | 'colleague' | 'enterprise'
 /** 决策「已被替代」关系快照：标题/会议名冗余存储，目标被删后仍可展示（死链退化为纯文本） */
 export interface SupersededBy {
   task_id: string
-  todo_id: string
+  decision_id: string
   title: string
   meeting_title: string
   prev_status: string
   marked_at: string
 }
 
-export interface TodoItem {
+export interface DecisionItem {
   id: string
   text: string          // 决策正文(沿用旧字段) / Decision body (legacy field)
   done: boolean         // 兼容字段：等价于状态属于闭档态 / Compat: status is a closing one
@@ -171,7 +171,7 @@ export interface Task {
   speaker_uuid_mapping: Record<string, string>
   roster: string[]
   title: string | null
-  todos: TodoItem[]
+  decisions: DecisionItem[]
   chapters: Chapter[]
   project_id: string | null
   source?: 'record' | 'upload' | 'import_transcript' | 'import_summary' | 'manual'

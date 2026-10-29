@@ -419,8 +419,8 @@
         :processing="!!task?.status && ['recording', 'processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(task.status)"
         :pending="task?.status === 'pending'"
         :has-summary="!!task?.summary"
-        :todos-count="todos.length"
-        :todos-done-count="todos.filter(x => x.done).length"
+        :decisions-count="decisions.length"
+        :decisions-done-count="decisions.filter(x => x.done).length"
         :proposal="sp.summaryProposal.value"
         :preview-mode="sp.summaryPreviewMode.value"
         @change="onSummaryChange"
@@ -449,13 +449,13 @@
       />
 
       <DecisionFlowPanel
-        :visible="activeTab === 'todos'"
+        :visible="activeTab === 'decisions'"
         :task-id="data.taskId"
-        :todos="todos"
-        :anchor-todo-id="anchorTodoId"
+        :decisions="decisions"
+        :anchor-decision-id="anchorDecisionId"
         :from-evolution="route.query.from === 'evolution'"
-        @delete="onDeleteTodo"
-        @update="onEditTodo"
+        @delete="onDeleteDecision"
+        @update="onEditDecision"
         @status-change="onStatusChange"
         @add="showAddDecisionDialog = true"
       />
@@ -550,7 +550,7 @@ import SummaryPanel from './generating/SummaryPanel.vue'
 import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
-import { parseAnchorTodoId } from './decisionEvolutionNav'
+import { parseAnchorDecisionId } from './decisionEvolutionNav'
 import InsightBoard from './generating/InsightBoard.vue'
 import { loadBoard, loadBoardMeta, type BoardArtifact } from '@/api/board'
 import { onBoardWritten } from '@/composables/useBoardSync'
@@ -560,7 +560,7 @@ import { dismissVoiceprintSuggestion, runVoiceprintMatch } from '@/api/voiceprin
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
-import type { TodoCreatePayload } from '@/api/notes'
+import type { DecisionCreatePayload } from '@/api/notes'
 import { extractErrorMessage } from '@/api/client'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { showToast } from '@/composables/useToast'
@@ -568,7 +568,7 @@ import { useGeneratingData } from '@/composables/useGeneratingData'
 import { useSpeakerBinding } from '@/composables/useSpeakerBinding'
 import { useSpeakerPanel } from '@/composables/useSpeakerPanel'
 import { usePlaybackFollow } from '@/composables/usePlaybackFollow'
-import { useNotesAndTodos } from '@/composables/useNotesAndTodos'
+import { useNotesAndDecisions } from '@/composables/useNotesAndDecisions'
 import { useInlineEdit } from '@/composables/useInlineEdit'
 import { useSummaryProposal } from '@/composables/useSummaryProposal'
 import { useNotesProposal } from '@/composables/useNotesProposal'
@@ -659,9 +659,9 @@ const playback = usePlaybackFollow(
   data.activeTab, data.switchTab, data.getChapterIdxAtTime,
 )
 
-const notes = useNotesAndTodos(
+const notes = useNotesAndDecisions(
   data.taskId, data.notesContent, data.notesSaved, data.summaryMd,
-  data.todos, data.activeTab, data.task,
+  data.decisions, data.activeTab, data.task,
   loadSyncStatus, // 内容修改后自动刷新同步状态 / Refresh sync status after content modification
 )
 
@@ -681,7 +681,7 @@ const {
   task, activeTab, TABS, switchTab,
   chapters, activeChapterIdx, scrollToChapter, allChaptersVisible,
   visibleChapterIndices, expandedChapters, summaryExpandedChapters,
-  transcriptItems, flatTranscript, summaryMd, todos, notesContent, notesSaved,
+  transcriptItems, flatTranscript, summaryMd, decisions, notesContent, notesSaved,
   showArchiveDialog, showDeleteDialog, metaDuration, metaDateShort,
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
   kbSearchQuery, filteredProjects, showKbCreateInput, kbCreateName, createAndLinkKb,
@@ -703,19 +703,19 @@ const {
 } = panel
 const { playingLineIdx, followPlayback, playingSpeakerId, toggleAudio, resumeFollowPlayback } = playback
 const {
-  onNotesChange, onSummaryChange, onAddTodo, onDeleteTodo, onEditTodo, onStatusChange, loadTodos, loadNotes,
+  onNotesChange, onSummaryChange, onAddDecision, onDeleteDecision, onEditDecision, onStatusChange, loadDecisions, loadNotes,
 } = notes
 
 // ─── 添加决策：复用决策中心「手动补录决策」弹层（DC-UNIFY-01 样式/数据统一） ───
 const showAddDecisionDialog = ref(false)
 const addDecisionDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
-async function onAddDecisionSubmit(taskId: string, payload: TodoCreatePayload) {
+async function onAddDecisionSubmit(taskId: string, payload: DecisionCreatePayload) {
   try {
-    await onAddTodo(payload, taskId)
+    await onAddDecision(payload, taskId)
     showToast(t('decisions.toast_add_ok'), 'success')
     showAddDecisionDialog.value = false
     // 重拉保证与后端权威数据一致（owner 解析、归属其它会议的节点不干扰本地列表）
-    void loadTodos()
+    void loadDecisions()
   } catch (e) {
     addDecisionDialogRef.value?.setSubmitting(false)
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
@@ -830,8 +830,8 @@ onMounted(() => {
     try {
       const updated = await fetchTask(data.taskId)
       taskStore.patchTaskLocal(data.taskId, updated)
-    } catch { /* 保留旧视图，切 Tab 时 loadTodos 仍会重拉 */ }
-    if (all || domains?.includes('todos')) void data.loadTodos()
+    } catch { /* 保留旧视图，切 Tab 时 loadDecisions 仍会重拉 */ }
+    if (all || domains?.includes('decisions')) void data.loadDecisions()
     // 随记：接受 AI 提案或 AI 写回后以服务端为准刷新（用 notes 版 loadNotes，它会取消挂起的自动保存）
     if (all || domains?.includes('notes')) void loadNotes()
     void loadSyncStatus()
@@ -1009,10 +1009,10 @@ async function onRenameTask() {
 }
 
 /**
- * 决策中心演变链跳转锚点：?tab=todos&todo=<id>&from=evolution
+ * 决策中心演变链跳转锚点：?tab=decisions&decision=<id>&from=evolution
  * 切到决策面板后由 DecisionFlowPanel 自行展开闭档组、滚动高亮并显示来源横幅。
  */
-const anchorTodoId = computed(() => parseAnchorTodoId(route.query))
+const anchorDecisionId = computed(() => parseAnchorDecisionId(route.query))
 
 /**
  * 决策中心跳转锚点：?tab=summary&dq=<决策文本> → 切到纪要页并在正文中定位选区高亮。
@@ -1228,7 +1228,7 @@ async function refreshAfterCorrection() {
     taskStore.patchTaskLocal(data.taskId, updated)
   } catch { /* 保留旧视图；下一轮轮询仍会拉到新值 */ }
   // 2. 决策项独立端点，不在 task 快照里
-  data.loadTodos().catch(() => { /* */ })
+  data.loadDecisions().catch(() => { /* */ })
   // 3. 随记：用户正在随记 Tab 时不覆盖其编辑中的内容（与管线完成时的既有规则一致）
   if (data.activeTab.value !== 'notes') data.loadNotes().catch(() => { /* */ })
   // 4. 洞察卡片：内存缓存不重拉会与新落盘的 insights.json 不一致，且切会议时会被写回覆盖
@@ -1239,7 +1239,7 @@ async function refreshAfterCorrection() {
 }
 
 function onSelectionAction(action: string, text: string, _source: string, _blockIndex: number, replacement?: string, createdMapping?: boolean) {
-  // 划词工具栏已下架改写/总结/提取待办，仅保留热词修正；
+  // 划词工具栏已下架改写/总结/提取决策，仅保留热词修正；
   // 其余 AI 意图由用户通过「引用到 AI」自行表达
   // Toolbar rewrite/summarize/extract retired; only hotword correction remains.
   if (action === 'correct' && replacement) {

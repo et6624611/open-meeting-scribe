@@ -115,9 +115,9 @@
           <div class="sub">{{ t('speakers.stat_duration_unit') }}</div>
         </div>
         <div class="spk-stat-card">
-          <div class="label">{{ t('speakers.stat_todos') }}</div>
-          <div class="value">{{ stat.todos.length }}</div>
-          <div class="sub">{{ t('speakers.stat_todos_unit') }}</div>
+          <div class="label">{{ t('speakers.stat_decisions') }}</div>
+          <div class="value">{{ stat.decisions.length }}</div>
+          <div class="sub">{{ t('speakers.stat_decisions_unit') }}</div>
         </div>
       </div>
 
@@ -173,8 +173,8 @@
         <button class="spk-tab" :class="{ 'is-active': activeTab === 'utterances' }" @click="activeTab = 'utterances'">
           {{ t('speakers.tab_utterances') }} <span class="spk-tab-count">{{ allUtterances.length }}</span>
         </button>
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'todos' }" @click="activeTab = 'todos'">
-          {{ t('speakers.tab_todos') }} <span class="spk-tab-count">{{ stat.todos.length }}</span>
+        <button class="spk-tab" :class="{ 'is-active': activeTab === 'decisions' }" @click="activeTab = 'decisions'">
+          {{ t('speakers.tab_decisions') }} <span class="spk-tab-count">{{ stat.decisions.length }}</span>
         </button>
       </div>
 
@@ -207,13 +207,13 @@
         <div v-if="allUtterances.length > 20" class="spk-empty">{{ t('speakers.utterances_limit') }}</div>
       </div>
 
-      <!-- 待办事项 / Todo items -->
-      <div v-show="activeTab === 'todos'" class="spk-tab-panel is-active">
-        <div v-if="stat.todos.length === 0" class="spk-empty">{{ t('speakers.empty_todos') }}</div>
-        <div v-for="todo in stat.todos" :key="todo.id" class="spk-todo-item">
-          <div class="todo-body">
-            <div class="todo-text" :class="{ 'is-done': todo.done }">{{ todo.text }}</div>
-            <div class="todo-from">{{ t('speakers.todo_from', { title: todo.fromTaskTitle }) }}</div>
+      <!-- 决策事项 / Decision items -->
+      <div v-show="activeTab === 'decisions'" class="spk-tab-panel is-active">
+        <div v-if="stat.decisions.length === 0" class="spk-empty">{{ t('speakers.empty_decisions') }}</div>
+        <div v-for="decision in stat.decisions" :key="decision.id" class="spk-decision-item">
+          <div class="decision-body">
+            <div class="decision-text" :class="{ 'is-done': decision.done }">{{ decision.text }}</div>
+            <div class="decision-from">{{ t('speakers.decision_from', { title: decision.fromTaskTitle }) }}</div>
           </div>
         </div>
       </div>
@@ -264,7 +264,7 @@ const inputText = ref('')
 const unifiedInputRef = ref<HTMLInputElement | null>(null)
 const createdSpeakerId = ref<string | null>(null)
 const selectedSpeaker = ref<Speaker | null>(null)
-const activeTab = ref<'meetings' | 'utterances' | 'todos'>('meetings')
+const activeTab = ref<'meetings' | 'utterances' | 'decisions'>('meetings')
 const voiceprintStatus = ref<VoiceprintStatus | null>(null)
 const voiceprintLoading = ref(false)
 const loading = ref(false)
@@ -747,8 +747,8 @@ onMounted(load)
 .vp-skeleton-line.short { width: 60%; }
 @keyframes vp-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-/* 待办事项 / Todo items */
-.todo-body { flex: 1; min-width: 0; }
+/* 决策事项 / Decision items */
+.decision-body { flex: 1; min-width: 0; }
 
 /* ESC 快捷键标识 / ESC shortcut indicator */
 .spk-dialog-actions kbd {

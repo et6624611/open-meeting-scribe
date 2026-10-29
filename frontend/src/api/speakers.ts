@@ -74,10 +74,10 @@ export interface ApplySpeakerNamesResult {
   dialogue?: unknown[]
   speaker_mapping?: Record<string, string>
   speaker_uuid_mapping?: Record<string, string>
-  todos?: unknown[]
+  decisions?: unknown[]
 }
 
-/** 确认关联时按真实姓名原地替换纪要/原文/待办中的通用说话人标签（不重跑 LLM） /
+/** 确认关联时按真实姓名原地替换纪要/原文/决策中的通用说话人标签（不重跑 LLM） /
  *  On confirm-binding, in-place replace generic speaker labels with real names (no LLM re-run) */
 export async function applySpeakerNames(taskId: string, mapping: Record<string, string>): Promise<ApplySpeakerNamesResult> {
   const { data } = await client.post<ApplySpeakerNamesResult>(`/api/tasks/${taskId}/apply-speaker-names`, { mapping })

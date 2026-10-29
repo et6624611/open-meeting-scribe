@@ -91,7 +91,7 @@ properties: audio_format / channels / original_sampling_rate / original_duration
 ## 5. 纪要生成（通义千问）
 - 模型：`qwen-plus`（默认）/ `qwen-max`。
 - 调用：DashScope OpenAI 兼容端点或 dashscope SDK；同一个 `DASHSCOPE_API_KEY`。
-- 输入：发言人对话稿；输出：结论 + 待办（谁 / 做什么 / 截止）+ 议题归类。
+- 输入：发言人对话稿；输出：结论 + 决策（谁 / 做什么 / 截止）+ 议题归类。
 - 提示词与解析在 `core/summarize.py`。
 
 ---
@@ -273,11 +273,12 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ## 12. 决策中心 API（DC-UNIFY-01 · 决策流是唯一决策对象）
 
-> 依据 `docs/REQUIREMENT-DECISION-CENTER.md` v0.3.0。项目方 2026-09-27 裁决：只保留**决策流**（`task["todos"]`）
-> 一种决策对象；原 `task["decisions"]`（decision 记录）及其任务级 CRUD、纪要页只读展示区全部下线，
-> 存量 decision 数据不再迁移（磁盘保留、无读路径）。
+> 依据 `docs/REQUIREMENT-DECISION-CENTER.md` v0.3.0。项目方 2026-09-27 裁决：只保留**决策流**（`task["decisions"]`）
+> 一种决策对象；原 `task["decisions"]`（decision 记录）及其任务级 CRUD、纪要页只读展示区全部下线。
+> 2026-10-28 补充裁决：决策不叫「待办/To-do」，承载字段随 API 一并改名（`todos` → `decisions`，
+> `todo_id` → `decision_id`），已下线的旧 decision 记录改存 `task["legacy_decisions"]`（磁盘保留、无读路径）。
 
-### 12.0 决策流节点（`task["todos"]` 数组元素）
+### 12.0 决策流节点（`task["decisions"]` 数组元素）
 
 ```jsonc
 {
@@ -289,7 +290,7 @@ recognition.stop()  # 阻塞直到所有结果返回
   "owner_type": "self | agent | colleague | enterprise（等待谁推进，展示用）",
   "status": "状态字典 id（默认六态 to_decide/to_start/in_progress/to_confirm/superseded/done；用户可增删改）",
   "done": false,               // 兼容字段：等价于 status 属于闭档（完成类）态
-  "superseded_by": null,       // 手动「已替代」快照：{task_id, todo_id, title, meeting_title, prev_status, marked_at}；未标记为 null
+  "superseded_by": null,       // 手动「已替代」快照：{task_id, decision_id, title, meeting_title, prev_status, marked_at}；未标记为 null
   "why": "决策正文（Markdown）",
   "how": ["执行步骤…"],         // 缺省不落盘：读侧一律视为 [text]；仅显式给出且非 [text] 冗余副本时持久化（PUT 传空表或 [text] 即清除该键）
   "outcome": "完成后带来什么",
@@ -304,26 +305,26 @@ recognition.stop()  # 阻塞直到所有结果返回
 }
 ```
 
-- **内联注结构化（2026-10-28）**：结论/待办条目句尾的 `（注：…）`/`（依据：…）` 由解析侧剥出为 `evidence` 字段，`text` 不再携带注；违反「≤40 字、至多一个」（SYSTEM_PROMPT 核心原则 6）时后端告警但仍全量保留（不丢数据）。待办解析先剥注再匹配截止日期——「（依据：…）」不再遮蔽句尾 deadline。
-- **节点构造唯一入口**：`parse_todos_from_summary` 与 `parse_decisions_with_status` 均经 `core/decision_flow.make_todo_node` 出节点，待办与决策同形状（此前待办仅 4 键）。
-- **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01 + DEBRISH-EVO）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流六态；系统锚点为 `done`（完成）与 `superseded`（已替代，闭档但语义不同于完成，专用于演变链手动替代，详见 §12.6），均不可改名不可删除，其余四态用户可维护。
+- **内联注结构化（2026-10-28）**：结论/决策条目句尾的 `（注：…）`/`（依据：…）` 由解析侧剥出为 `evidence` 字段，`text` 不再携带注；违反「≤40 字、至多一个」（SYSTEM_PROMPT 核心原则 6）时后端告警但仍全量保留（不丢数据）。决策解析先剥注再匹配截止日期——「（依据：…）」不再遮蔽句尾 deadline。
+- **节点构造唯一入口**：`parse_decision_checklist`（纪要「决策事项」checkbox）与 `parse_decisions_with_status`（主要结论）均经 `core/decision_flow.make_decision_node` 出节点，两条解析通道同形状。
+- **状态字典化（DC-R2-c D6/D7 + DC-UNIFY-01 + DEBRISH-EVO）**：`status` 取值必为 `GET /api/decision-statuses` 中的 id（非法值 422）。字典默认集 = 决策流六态；系统锚点为 `done`（已存档）与 `superseded`（已替代，闭档但语义不同于已存档，专用于演变链手动替代，详见 §12.6），均不可改名不可删除，其余四态用户可维护。闭档态是「存档」而非「划掉的待办」，展示层不做删除线。
 - **`closing`（算完成类）语义**：带此标志的状态在默认视图隐藏并沉底，同时驱动 `done=true`；读侧 `status` 缺省时由 `done` 推导（历史 task JSON 零迁移）。
 - **自动生成口径（项目方裁决）**：纪要「主要结论」章节的条目自动解析为决策流节点（模板 v1.4.0 已下线「决策」章节、改为单通道 + 终态归并；解析器仍兼容存量纪要的「决策」章节）；自动节点**统一落在 `to_decide`（待决策）态**，由用户逐条确认后才算定案；checkbox 行动项仍按既有规则入流（默认开放态）。
 - **重新生成纪要**：只覆盖 `source=auto` 节点，手动/注入节点保留；命中 `task["decision_deletions"]` 墓碑（按归一化文本）的 auto 节点不复活（DC-R2-BE）。
 - **执行人以说话人档案为权威**：`owner_id` 可解析且档案名非占位串 ⇒ 展示名取档案名（改名全局生效）；档案缺失时回退 `assignee` 快照，不报 422。
-- **旧任务 JSON 无 `todos` 字段** ⇒ 读写路径按 `[]` 处理；无 `title`/`owner_id` 键 ⇒ 读侧按 `""`/`null` 给出，展示层降级为「正文即标题」。
+- **旧任务 JSON 无 `decisions` 字段** ⇒ 读写路径按 `[]` 处理；无 `title`/`owner_id` 键 ⇒ 读侧按 `""`/`null` 给出，展示层降级为「正文即标题」。
 
 ### 12.1 节点级 CRUD（复用决策流端点，与纪要页同一套）
 
 | 方法与路径 | 请求体 | 响应 | 错误 |
 |---|---|---|---|
-| `GET /api/tasks/{task_id}/todos` | — | `{"todos": [节点 + status_name/status_name_en/status_color/status_closing + 会议元信息]}` | 404 任务不存在 |
-| `POST /api/tasks/{task_id}/todos` | `{text: str(1..500), assignee?: str="", why?: str(≤2000), title?: str(≤200), owner_id?: str|""=null, status?: <状态字典 id>}` | `{"todo": node}`（缺省 `source=manual`、`status=首个开放态`） | 404；422（含 status 不在字典内） |
-| `PUT /api/tasks/{task_id}/todos/{todo_id}` | `{text?, title?, assignee?, owner_id?, why?, how?, outcome?, status?, owner_type?}`（仅更新携带字段） | `{"todo": node}` | 404 任务/节点不存在；422 status 非法 |
-| `DELETE /api/tasks/{task_id}/todos/{todo_id}` | — | `{"ok": true}`（auto 节点同时落墓碑） | 404 |
-| `POST /api/tasks/{task_id}/todos/{todo_id}/toggle` | `{done: bool}` | `{"todo": node}` | 404 |
-| `POST /api/tasks/{task_id}/todos/{todo_id}/supersede` | `{by_task_id: str, by_todo_id: str}`（替代者节点） | `{"todo": node}`（status=`superseded`，写入 `superseded_by` 快照，原 status 存 `prev_status`） | 404 节点/替代者不存在；422 自身替代；409 已是 superseded（`detail.code=already_superseded`） |
-| `DELETE /api/tasks/{task_id}/todos/{todo_id}/supersede` | — | `{"todo": node}`（恢复 `prev_status`；该状态已不在字典则降级首个开放态；清除快照） | 404；409 当前非 superseded（`detail.code=not_superseded`） |
+| `GET /api/tasks/{task_id}/decisions` | — | `{"decisions": [节点 + status_name/status_name_en/status_color/status_closing + 会议元信息]}` | 404 任务不存在 |
+| `POST /api/tasks/{task_id}/decisions` | `{text: str(1..500), assignee?: str="", why?: str(≤2000), title?: str(≤200), owner_id?: str|""=null, status?: <状态字典 id>}` | `{"decision": node}`（缺省 `source=manual`、`status=首个开放态`） | 404；422（含 status 不在字典内） |
+| `PUT /api/tasks/{task_id}/decisions/{decision_id}` | `{text?, title?, assignee?, owner_id?, why?, how?, outcome?, status?, owner_type?}`（仅更新携带字段） | `{"decision": node}` | 404 任务/节点不存在；422 status 非法 |
+| `DELETE /api/tasks/{task_id}/decisions/{decision_id}` | — | `{"ok": true}`（auto 节点同时落墓碑） | 404 |
+| `POST /api/tasks/{task_id}/decisions/{decision_id}/toggle` | `{done: bool}` | `{"decision": node}` | 404 |
+| `POST /api/tasks/{task_id}/decisions/{decision_id}/supersede` | `{by_task_id: str, by_decision_id: str}`（替代者节点） | `{"decision": node}`（status=`superseded`，写入 `superseded_by` 快照，原 status 存 `prev_status`） | 404 节点/替代者不存在；422 自身替代；409 已是 superseded（`detail.code=already_superseded`） |
+| `DELETE /api/tasks/{task_id}/decisions/{decision_id}/supersede` | — | `{"decision": node}`（恢复 `prev_status`；该状态已不在字典则降级首个开放态；清除快照） | 404；409 当前非 superseded（`detail.code=not_superseded`） |
 
 写操作（POST/PUT/DELETE/toggle）一律触发 `_mark_modified` + `save_task_to_disk`（知识库脏检测链路，PRD AC-10）。
 
@@ -332,7 +333,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ### 12.2 聊天注入联动
 
-`POST /api/tasks/{task_id}/inject` 当 `type` 为 `todo` 或 `decision` 时，均向 `task["todos"]` 追加一条决策流节点（`id` 与注入记录同值、`source="injection"`）；`decision` 类型额外拆 `**标题**：正文` 到 `title` 并落在 `to_confirm` 态，`todo` 类型落默认开放态。删除注入记录时级联删除该节点。
+`POST /api/tasks/{task_id}/inject` 当 `type` 为 `decision` 时，向 `task["decisions"]` 追加一条决策流节点（`id` 与注入记录同值、`source="injection"`、默认落 `to_decide` 态），并拆 `**标题**：正文` 到 `title`；`conclusion` 只进注入区。删除注入记录时级联删除该节点。
 
 ### 12.3 跨会议聚合 `GET /api/decisions`（决策中心数据源）
 
@@ -379,7 +380,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 - **系统锚点为 `done` 与 `superseded`**（D6 + DEBRISH-EVO）：均不可改名、不可删除、不可改闭档位（两者默认 `closing=true`）；其余四态用户可改名/标色/排序/删除。
 - **`color` 允许 CSS 变量表达式**（如 `var(--accent)`）或十六进制色值，前端内联使用以随主题联动。
 - **`name_en` 仅内置状态有独立英文名**；自定义状态的 `name_en` 与 `name` 同值。
-- **删除自定义状态的联动**：引用该状态的**决策流节点（todos）**当场回落到删后字典的首个开放态并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
+- **删除自定义状态的联动**：引用该状态的**决策流节点（decisions）**当场回落到删后字典的首个开放态并逐任务落盘（`reassigned` 返回影响条数），不留悬空引用。
 
 ### 12.5 AI 写回快照与撤销（PROPOSAL-AGENT-REWRITE-CHANNEL §5.3/§5.4 · 已实现）
 
@@ -395,7 +396,7 @@ recognition.stop()  # 阻塞直到所有结果返回
   用户在前端的手动编辑不快照。被参数校验拒绝（400/422）的写**不留快照**。
 - **列表只回摘要不回旧值全文**（`description` 为一行人类可读描述）；`restore` 按 `turn_id` 时**逆序**回滚整轮，
   恢复本身不再写快照（避免撤销无限套娃），但落 `[agent-engine] restore_rewrites` 审计条目。
-- **工具面配套**：`get_meeting_todos` 除节点 `id/title/status` 外同时下发 `available_statuses`（`{id,name,closing}[]`）与 `status_note`，
+- **工具面配套**：`get_meeting_decisions` 除节点 `id/title/status` 外同时下发 `available_statuses`（`{id,name,closing}[]`）与 `status_note`，
   否则模型无合法 status 可用；`done.metadata` 携带 `rewritten / rewritten_tools / turn_id / task_id` 作为“本轮改了什么 + 能否撤销”的事实源。
 - **前端联动**：写回成功后 AI 面板广播 `task-written` CustomEvent，会议详情页据此重拉 task 与决策列表；
   回复尾部展示「本轮已改写：{域}」并提供「撤销本轮改写」（转 `POST …/rewrites/restore`）。
@@ -403,15 +404,15 @@ recognition.stop()  # 阻塞直到所有结果返回
 ### 12.6 决策演变链（DEBRISH-EVO · 手动替代 + 跨会议归属）
 
 设计裁决：**聚类永不自动写状态**；演变关系只由用户在演变链历史项上**逐条手动标记**，不提供自动/批量替代。
-旧决策被标记后进入系统闭档态 `superseded`，离开待办（默认视图隐藏、沉底），但保留只读快照与动作出口。
+旧决策被标记后进入系统闭档态 `superseded`，离开当前视图（默认隐藏、沉底），但保留只读快照与动作出口。
 
-**替代端点**：见 §12.1 表尾两行（`POST/DELETE /api/tasks/{task_id}/todos/{todo_id}/supersede`）。
+**替代端点**：见 §12.1 表尾两行（`POST/DELETE /api/tasks/{task_id}/decisions/{decision_id}/supersede`）。
 标记成功后写入节点字段 `superseded_by`：
 
 ```jsonc
 {
   "task_id": "替代者所在任务",
-  "todo_id": "替代者节点 id（快照；若被删除前端降级为「原决策已被删除」）",
+  "decision_id": "替代者节点 id（快照；若被删除前端降级为「原决策已被删除」）",
   "title": "替代者标题快照",
   "meeting_title": "替代者会议标题快照",
   "prev_status": "标记前的状态 id（撤销时恢复；已被字典删除则降级首个开放态）",
@@ -427,12 +428,12 @@ recognition.stop()  # 阻塞直到所有结果返回
 {
   "task_id": "<id>",
   "evolution": {
-    "<todo_id>": {
+    "<decision_id>": {
       "topic_key": "议题指纹（与 §12.3 group_by=topic 同算法同 key，可回跳决策中心定位）",
       "topic_title": "议题展示标题",
       "role": "main | history",   // main=本节点即该簇最新非闭档节点；history=最新推进在另一场会议
       "meeting_count": 3,
-      "latest": { "task_id": "...", "todo_id": "...", "title": "...", "meeting_title": "..." }
+      "latest": { "task_id": "...", "decision_id": "...", "title": "...", "meeting_title": "..." }
     }
   }
 }
@@ -445,7 +446,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 | 入口 | 路由 | 行为 |
 |---|---|---|
-| 演变链节点「查看来源会议」 | `generating?tab=todos&todo=<id>&from=evolution` | 切决策面板；闭档组自动展开；节点滚动居中并闪烁 3 次；顶部来源横幅（可关闭） |
+| 演变链节点「查看来源会议」 | `generating?tab=decisions&decision=<id>&from=evolution` | 切决策面板；闭档组自动展开；节点滚动居中并闪烁 3 次；顶部来源横幅（可关闭） |
 | 纪要页角标「议题全貌」 | `decisions?view=topic&topic=<topic_key>` | 切议题视图；展开该议题与其演变链；滚动定位 |
 | history 角标「最新推进」 | 同第一条（指向 latest 节点） | 同上 |
 
@@ -585,7 +586,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 ### 纪要面：篇幅预算块（core/summarize.py）
 
-- `build_page_budget_block(factor)` 在 system prompt 尾部追加（位于角色模板与 model_tier 防幻觉守卫之后，两条 prompt 路径同点位）：结论层总预算 ≈ factor×900 字；主要结论 ≤ 5×factor（四舍五入，最少 1）；待办 ≤ 4×factor；概要 ≤ 3 句（0.5 档 1 句）；0.5 档「议题归类」不独立成节并入概要。
+- `build_page_budget_block(factor)` 在 system prompt 尾部追加（位于角色模板与 model_tier 防幻觉守卫之后，两条 prompt 路径同点位）：结论层总预算 ≈ factor×900 字；主要结论 ≤ 5×factor（四舍五入，最少 1）；决策 ≤ 4×factor；概要 ≤ 3 句（0.5 档 1 句）；0.5 档「议题归类」不独立成节并入概要。
 - 删除规则（写入 prompt）：先裁过程性描述，再裁低优先级条目；被裁内容不得转移至其他章节；内容少于预算时如实输出不注水。
 - 链路：`generate_summary(..., one_page_factor)` ← `run_pipeline_stage2(..., one_page_factor)` ← `pipeline_runner` 读 `task.one_page.summary`（缺省 1）；`retry-summary` / `regenerate-summary` 经同一 stage2 链路自动携带。
 

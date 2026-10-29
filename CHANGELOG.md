@@ -13,6 +13,18 @@ status: published
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
 
+## [未发布] - 2026-10-28 — 决策流正名：去「待办」/ To-do 语汇
+
+### 变更
+- **字段与 API 正名**：`task["todos"]` → `task["decisions"]`，`todo_id` → `decision_id`；节点级端点改名 `/api/tasks/{id}/decisions*`（含 toggle / supersede），响应体键同步为 `{"decision": node}` / `{"decisions": [...]}`
+- **注入类型收敛**：`POST /api/tasks/{id}/inject` 只认 `decision`（入决策流）与 `conclusion`（仅注入区），原 `todo` 类型并入 `decision`
+- **闭档语汇改为「已存档」**：状态字典 `done` 的展示名由「已完成」改为「已存档」/ Archived；决策卡闭档不再加删除线（存档是智慧选择，不是划掉的待办）
+- **存量数据迁移**：一次性脚本 `scripts/migrate_todos_to_decisions.py` 把 `todos` 改名 `decisions`，旧 decision 记录改存 `legacy_decisions`（磁盘保留、无读路径）
+- **前端同步**：`TodoItem` → `DecisionItem`、`useNotesAndTodos` → `useNotesAndDecisions`、i18n `generating.todos.*` → `generating.decisions.*`，纪要页决策 Tab 参数改为 `?tab=decisions&decision=<id>`
+- **纪要模板**：第三章标题由「待办事项」改为「决策事项」，解析器 `parse_todos_from_summary` 更名 `parse_decision_checklist`
+
+---
+
 ## [未发布] - 2026-10-28 — 决策流存储层去冗与证据结构化
 
 ### 变更

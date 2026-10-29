@@ -18,7 +18,7 @@ export const TERMINAL_STATUSES = new Set(['completed', 'failed'])
  *  Fields protected when a stale snapshot regresses a terminal task back to active */
 export const GUARDED_FIELDS = [
   'status', 'progress', 'message', 'error', 'error_category', 'error_suggestion',
-  'failed_stage', 'retry_count', 'summary', 'title', 'output_path', 'chapters', 'todos',
+  'failed_stage', 'retry_count', 'summary', 'title', 'output_path', 'chapters', 'decisions',
 ] as const
 
 /**

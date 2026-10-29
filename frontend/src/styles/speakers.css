@@ -410,12 +410,12 @@
 .spk-utterance .ut-time { font-size: var(--fs-11); color: var(--muted); font-family: var(--font-mono); }
 .spk-utterance .ut-text { font-size: var(--fs-13); color: var(--fg); line-height: 1.6; }
 
-.spk-todo-item { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.spk-todo-item .todo-check { margin-top: 2px; cursor: pointer; }
-.spk-todo-item .todo-body { flex: 1; }
-.spk-todo-item .todo-text { font-size: var(--fs-13); color: var(--fg); }
-.spk-todo-item .todo-text.is-done { text-decoration: line-through; color: var(--muted); }
-.spk-todo-item .todo-from { font-size: var(--fs-11); color: var(--muted); margin-top: 2px; }
+.spk-decision-item { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.spk-decision-item .decision-check { margin-top: 2px; cursor: pointer; }
+.spk-decision-item .decision-body { flex: 1; }
+.spk-decision-item .decision-text { font-size: var(--fs-13); color: var(--fg); }
+.spk-decision-item .decision-text.is-done { color: var(--muted); }
+.spk-decision-item .decision-from { font-size: var(--fs-11); color: var(--muted); margin-top: 2px; }
 
 .spk-empty { text-align: center; padding: var(--s-8); color: var(--muted); font-size: var(--fs-13); }
 

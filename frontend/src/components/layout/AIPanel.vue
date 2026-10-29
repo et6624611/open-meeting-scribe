@@ -158,9 +158,9 @@
       :has-summary="ctx.hasSummary.value"
       :has-notes="ctx.hasNotes.value"
       :notes-char-count="ctx.notesCharCount.value"
-      :todo-count="ctx.todoCount.value"
-      :todo-pending="ctx.todoPending.value"
-      :todo-done="ctx.todoDone.value"
+      :decision-count="ctx.decisionCount.value"
+      :decision-pending="ctx.decisionPending.value"
+      :decision-done="ctx.decisionDone.value"
       :linked-project="ctx.linkedProject.value"
       :related-meetings="ctx.relatedMeetings.value"
       :visible-related-meetings="ctx.visibleRelatedMeetings.value"
@@ -173,7 +173,7 @@
       @go-transcript="ctx.goToTranscript"
       @go-summary="ctx.goToSummary"
       @go-notes="ctx.goToNotes"
-      @go-todos="ctx.goToTodos"
+      @go-decisions="ctx.goToDecisions"
       @go-project="ctx.goToProject"
       @go-meeting="ctx.goToMeeting"
     />
@@ -534,15 +534,11 @@ function onQuoteToAiEvent(e: Event) {
   aiTab.value = 'chat'
   nextTick(() => {
     chatPanelRef.value?.inputRef?.focus()
-    // prefill：只填输入框不发送（洞察板共创起跳用，用户可追加具体诉求后自己回车）
     if (detail.prefill) {
       inputText.value = detail.prefill
-      // 模式即权限（§5.1）：共创只打「改写意图」轮级标（完成护栏输入），不再按按钮升档——
-      // 智能体模式本身固有写回权；问答引擎无写工具通道，起跳时仍明确告知需切换。
       if (detail.coCreate) {
         chat.setRewriteIntent(true)
-        if (chat.chatMode.value === 'agent') showToast(t('ai-panel.agent_mode_writable'), 'info')
-        else showToast(t('ai-panel.board_cocreate_needs_agent'), 'warn')
+        if (chat.chatMode.value !== 'agent') showToast(t('ai-panel.board_cocreate_needs_agent'), 'warn')
       }
       return
     }

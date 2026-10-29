@@ -144,7 +144,7 @@ export interface ChatResponse {
   follow_ups?: string[]
   verified_changes?: Array<{
     op: string
-    todo_id: string
+    decision_id: string
     field: string
     old: unknown
     new: unknown

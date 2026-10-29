@@ -238,7 +238,7 @@ const llmStatusClass = computed(() => llmStatus.value.cls)
 const asrStatusLabel = computed(() => asrStatus.value.text)
 const asrStatusClass = computed(() => asrStatus.value.cls)
 
-/** 点色：就绪=绿（默认）/ 待办=琥珀 / 未设置=灰 */
+/** 点色：就绪=绿（默认）/ 决策=琥珀 / 未设置=灰 */
 const llmDotClass = computed(() => (llmStatusClass.value === 'is-ok' ? '' : llmStatusClass.value))
 const asrDotClass = computed(() => (asrStatusClass.value === 'is-ok' ? '' : asrStatusClass.value))
 

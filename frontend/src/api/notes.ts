@@ -1,11 +1,11 @@
 /**
- * 笔记 + 待办 API 封装 / Notes + todos API wrapper
+ * 笔记 + 决策 API 封装 / Notes + decisions API wrapper
  */
 import client from './client'
-import type { TodoItem, DecisionStatus, OwnerType } from './types'
+import type { DecisionItem, DecisionStatus, OwnerType } from './types'
 
 /** 决策流节点可更新字段 / Patchable fields for a decision-flow node */
-export interface TodoPatch {
+export interface DecisionPatch {
   text?: string
   assignee?: string
   why?: string
@@ -20,7 +20,7 @@ export interface TodoPatch {
 }
 
 /** 新建决策流节点的载荷 / Payload for creating a decision-flow node */
-export interface TodoCreatePayload {
+export interface DecisionCreatePayload {
   text: string
   assignee?: string
   why?: string
@@ -48,65 +48,65 @@ export async function saveSummary(taskId: string, summary: string): Promise<void
 }
 
 /** 获取决策流节点列表（附状态字典元信息） / Fetch decision-flow nodes with status meta */
-export async function fetchTodos(taskId: string): Promise<TodoItem[]> {
-  const { data } = await client.get<{ todos: TodoItem[] }>(`/api/tasks/${taskId}/todos`)
-  return data.todos || []
+export async function fetchDecisions(taskId: string): Promise<DecisionItem[]> {
+  const { data } = await client.get<{ decisions: DecisionItem[] }>(`/api/tasks/${taskId}/decisions`)
+  return data.decisions || []
 }
 
-/** 切换待办完成状态 / Toggle todo completion status */
-export async function toggleTodo(taskId: string, todoId: string, done: boolean): Promise<void> {
-  await client.post(`/api/tasks/${taskId}/todos/${todoId}/toggle`, { done })
+/** 切换决策完成状态 / Toggle decision completion status */
+export async function toggleDecision(taskId: string, decisionId: string, done: boolean): Promise<void> {
+  await client.post(`/api/tasks/${taskId}/decisions/${decisionId}/toggle`, { done })
 }
 
 /** 新建决策流节点 / Create a decision-flow node */
-export async function createTodo(
+export async function createDecision(
   taskId: string,
-  payload: TodoCreatePayload | string,
+  payload: DecisionCreatePayload | string,
   assignee?: string,
   why?: string,
-): Promise<TodoItem> {
-  const body: TodoCreatePayload = typeof payload === 'string'
+): Promise<DecisionItem> {
+  const body: DecisionCreatePayload = typeof payload === 'string'
     ? { text: payload, assignee, why }
     : payload
-  const { data } = await client.post<{ todo: TodoItem }>(`/api/tasks/${taskId}/todos`, body)
-  return data.todo
+  const { data } = await client.post<{ decision: DecisionItem }>(`/api/tasks/${taskId}/decisions`, body)
+  return data.decision
 }
 
 /** 删除决策流节点 / Delete a decision-flow node */
-export async function deleteTodo(taskId: string, todoId: string): Promise<void> {
-  await client.delete(`/api/tasks/${taskId}/todos/${todoId}`)
+export async function deleteDecision(taskId: string, decisionId: string): Promise<void> {
+  await client.delete(`/api/tasks/${taskId}/decisions/${decisionId}`)
 }
 
 /** 编辑决策流节点 / Update a decision-flow node */
-export async function updateTodo(
+export async function updateDecision(
   taskId: string,
-  todoId: string,
-  patch: TodoPatch,
+  decisionId: string,
+  patch: DecisionPatch,
 ): Promise<void> {
-  await client.put(`/api/tasks/${taskId}/todos/${todoId}`, patch)
+  await client.put(`/api/tasks/${taskId}/decisions/${decisionId}`, patch)
 }
 
 // ─── 决策演变链：标记/撤销「已被替代」 / Evolution: supersede & revert ───
 
 /** 标记旧决策已被新决策替代（写入 superseded_by 快照，返回更新后节点） */
-export async function supersedeTodo(
+export async function supersedeDecision(
   taskId: string,
-  todoId: string,
-  by: { taskId: string; todoId: string },
-): Promise<TodoItem> {
-  const { data } = await client.post<{ todo: TodoItem }>(
-    `/api/tasks/${taskId}/todos/${todoId}/supersede`,
-    { by_task_id: by.taskId, by_todo_id: by.todoId },
+  decisionId: string,
+  by: { taskId: string; decisionId: string },
+): Promise<DecisionItem> {
+  const { data } = await client.post<{ decision: DecisionItem }>(
+    `/api/tasks/${taskId}/decisions/${decisionId}/supersede`,
+    { by_task_id: by.taskId, by_decision_id: by.decisionId },
   )
-  return data.todo
+  return data.decision
 }
 
 /** 撤销替代标记（恢复 prev_status，已删除则安全降级），返回更新后节点 */
-export async function revertSupersede(taskId: string, todoId: string): Promise<TodoItem> {
-  const { data } = await client.delete<{ todo: TodoItem }>(
-    `/api/tasks/${taskId}/todos/${todoId}/supersede`,
+export async function revertSupersede(taskId: string, decisionId: string): Promise<DecisionItem> {
+  const { data } = await client.delete<{ decision: DecisionItem }>(
+    `/api/tasks/${taskId}/decisions/${decisionId}/supersede`,
   )
-  return data.todo
+  return data.decision
 }
 
 // ─── AI 写回快照与撤销 / AI write-back snapshots & undo（PROPOSAL §5.4） ───

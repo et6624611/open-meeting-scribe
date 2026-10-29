@@ -36,7 +36,7 @@ interface FollowUpSuggestion {
 
 interface VerifiedChange {
   op: string
-  todo_id: string
+  decision_id: string
   field: string
   old: unknown
   new: unknown
@@ -58,7 +58,7 @@ const ICON_CLOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" s
 /** 默认建议（原快捷命令），对话有内容但无 AI 推断建议时展示 / Default suggestions (original quick commands); shown when chat has content but no AI-inferred suggestions */
 const DEFAULT_SUGGESTIONS: FollowUpSuggestion[] = [
   { text: '生成会议纪要', icon: ICON_LIST },
-  { text: '提取待办事项', icon: ICON_PLUS },
+  { text: '提取决策事项', icon: ICON_PLUS },
   { text: '分析发言要点', icon: ICON_SEARCH },
 ]
 
@@ -842,9 +842,8 @@ export function useAiChat() {
   function showInjectPrompt(items: ChatExtractedItem[]) {
     const typeCounts: Record<string, number> = {}
     const typeLabels: Record<string, string> = {
-      todo: tt('ai-panel.chat.type_todo'),
-      conclusion: tt('ai-panel.chat.type_conclusion'),
       decision: tt('ai-panel.chat.type_decision'),
+      conclusion: tt('ai-panel.chat.type_conclusion'),
     }
     items.forEach(i => { typeCounts[i.type] = (typeCounts[i.type] || 0) + 1 })
     const desc = Object.entries(typeCounts)
@@ -871,9 +870,9 @@ export function useAiChat() {
     const t = (text || '').toLowerCase()
     const suggestions: FollowUpSuggestion[] = []
 
-    if (/待办|任务|行动|跟进|todo|action/.test(t)) {
-      suggestions.push({ text: '展开某个待办事项的详情', icon: ICON_PLUS })
-      suggestions.push({ text: '按责任人分类这些待办', icon: ICON_LIST })
+    if (/决策|任务|行动|跟进|decision|action/.test(t)) {
+      suggestions.push({ text: '展开某个决策事项的详情', icon: ICON_PLUS })
+      suggestions.push({ text: '按责任人分类这些决策', icon: ICON_LIST })
     }
     if (/结论|决策|决定|达成|consensus|decision/.test(t)) {
       suggestions.push({ text: '展开讨论细节', icon: ICON_SEARCH })

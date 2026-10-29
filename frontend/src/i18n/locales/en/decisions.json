@@ -19,7 +19,7 @@
   "delete_confirm_btn": "Delete",
   "toast_delete_ok": "Decision deleted",
   "add_manual": "Add decision",
-  "collapsed_title": "Done / ineffective ({count})",
+  "collapsed_title": "Archived / superseded ({count})",
   "group_meeting_count": "{count}",
   "empty_title": "No decisions captured yet",
   "empty_all": "Items explicitly decided in meetings are gathered here automatically; you can also ask the AI chat to extract decisions from any meeting.",

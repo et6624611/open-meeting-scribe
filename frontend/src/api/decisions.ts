@@ -3,19 +3,19 @@
  *
  * 契约事实源：docs/API_CONTRACTS.md §12（DC-UNIFY-01 修订，2026-09-27）。
  *
- * DC-UNIFY-01：决策只有一个对象——决策流节点（`task["todos"]`）。本模块只负责
+ * DC-UNIFY-01：决策只有一个对象——决策流节点（`task["decisions"]`）。本模块只负责
  * 跨会议聚合读取（决策中心数据源）；节点级写操作统一复用 `api/notes.ts` 的
- * `/api/tasks/{id}/todos*` 端点，纪要页与决策中心共用同一套写入路径。
+ * `/api/tasks/{id}/decisions*` 端点，纪要页与决策中心共用同一套写入路径。
  * 原 decision 对象的任务级 CRUD（§12.1/§12.2）与内存 mock 通道已随之后下线。
  */
 import client from './client'
-import type { TodoItem } from './types'
+import type { DecisionItem } from './types'
 
 /** 决策执行人选人值：null = 未指派（DC-R2-b D4，合法态） */
 export type OwnerValue = { id: string; name: string } | null
 
 /** 聚合视图条目：决策流节点 + 状态字典元信息 + 来源会议元信息（§12.3 平铺元素） */
-export interface FlowNode extends TodoItem {
+export interface FlowNode extends DecisionItem {
   task_id: string
   /** 来源会议标题（`title` 已让位给决策自身标题） */
   meeting_title: string
@@ -96,7 +96,7 @@ export async function fetchFlowTopics(q: FlowQuery = {}): Promise<TopicGroup[]> 
 /** 演变链最新推进节点快照 */
 export interface NodeEvolutionLatest {
   task_id: string
-  todo_id: string
+  decision_id: string
   title: string
   meeting_title: string
 }

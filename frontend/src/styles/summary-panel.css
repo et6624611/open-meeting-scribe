@@ -71,7 +71,7 @@
 }
 
 /* 决策入口 */
-.sum-todos-link {
+.sum-decisions-link {
   display: flex; align-items: center; gap: var(--s-3);
   padding: var(--s-3) var(--s-4);
   border: 1px dashed var(--border-strong);
@@ -80,9 +80,9 @@
   transition: all 0.12s;
   font-size: var(--fs-13); color: var(--muted);
 }
-.sum-todos-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.sum-todos-link svg { width: 15px; height: 15px; flex-shrink: 0; }
-.sum-todos-link .count { font-family: var(--font-mono); font-weight: 600; }
-.sum-todos-link .go { margin-left: auto; display: flex; align-items: center; gap: 3px; }
-.sum-todos-link .go svg { width: 13px; height: 13px; }
+.sum-decisions-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sum-decisions-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sum-decisions-link .count { font-family: var(--font-mono); font-weight: 600; }
+.sum-decisions-link .go { margin-left: auto; display: flex; align-items: center; gap: 3px; }
+.sum-decisions-link .go svg { width: 13px; height: 13px; }
 

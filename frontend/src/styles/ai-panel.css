@@ -731,7 +731,7 @@
 .ctx-item-icon.type-transcript,
 .ctx-item-icon.type-notes,
 .ctx-item-icon.type-summary,
-.ctx-item-icon.type-todo {
+.ctx-item-icon.type-decision {
   background: var(--accent-soft);
   color: var(--accent);
 }

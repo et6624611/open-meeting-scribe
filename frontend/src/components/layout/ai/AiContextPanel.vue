@@ -61,7 +61,7 @@
         <div v-if="stats.transcript > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.transcript }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_transcript') }}</div></div>
         <div v-if="stats.summary > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.summary }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_summary') }}</div></div>
         <div v-if="stats.notes > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.notes }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_notes') }}</div></div>
-        <div v-if="stats.todos > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.todos }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_todos') }}</div></div>
+        <div v-if="stats.decisions > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.decisions }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_decisions') }}</div></div>
         <div v-if="stats.files > 0" class="ctx-stat"><div class="ctx-stat-num">{{ stats.files }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_files') }}</div></div>
         <div v-if="relatedMeetingCount > 0" class="ctx-stat"><div class="ctx-stat-num">{{ relatedMeetingCount }}</div><div class="ctx-stat-label">{{ t('ai-panel.context.stat_related') }}</div></div>
       </div>
@@ -94,10 +94,10 @@
             <div class="ctx-item-body"><div class="ctx-item-title">{{ t('ai-panel.context.summary_title') }}</div><div class="ctx-item-meta"><span>{{ t('ai-panel.context.auto_generated') }}</span><span class="dot"></span><span>{{ chapterCount }} {{ t('ai-panel.context.chapters_unit') }}</span></div></div>
             <span :class="['status-tag', hasSummary ? 'is-ok' : 'is-warn']">{{ hasSummary ? t('ai-panel.context.status_generated') : t('ai-panel.context.status_pending') }}</span>
           </div>
-          <div class="ctx-item" @click="$emit('goTodos')" :title="t('ai-panel.context.todo_title', { count: todoCount })">
-            <div class="ctx-item-icon type-todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-            <div class="ctx-item-body"><div class="ctx-item-title">{{ t('ai-panel.context.todo_title_simple') }}</div><div class="ctx-item-meta"><span>{{ todoPending }} {{ t('ai-panel.context.todo_pending') }}</span><span class="dot"></span><span>{{ todoDone }} {{ t('ai-panel.context.todo_done_label') }}</span></div></div>
-            <span :class="['status-tag', todoDone > 0 ? (todoPending > 0 ? 'is-warn' : 'is-ok') : 'is-muted']">{{ todoDone > 0 ? (todoPending > 0 ? t('ai-panel.context.status_in_progress') : t('ai-panel.context.status_completed')) : t('ai-panel.context.status_pending') }}</span>
+          <div class="ctx-item" @click="$emit('goDecisions')" :title="t('ai-panel.context.decision_title', { count: decisionCount })">
+            <div class="ctx-item-icon type-decision"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="ctx-item-body"><div class="ctx-item-title">{{ t('ai-panel.context.decision_title_simple') }}</div><div class="ctx-item-meta"><span>{{ decisionPending }} {{ t('ai-panel.context.decision_pending') }}</span><span class="dot"></span><span>{{ decisionDone }} {{ t('ai-panel.context.decision_done_label') }}</span></div></div>
+            <span :class="['status-tag', decisionDone > 0 ? (decisionPending > 0 ? 'is-warn' : 'is-ok') : 'is-muted']">{{ decisionDone > 0 ? (decisionPending > 0 ? t('ai-panel.context.status_in_progress') : t('ai-panel.context.status_completed')) : t('ai-panel.context.status_pending') }}</span>
           </div>
         </div>
       </div>
@@ -183,7 +183,7 @@ const sectionTitleChars = computed(() => {
 
 const props = defineProps<{
   isEmpty: boolean
-  stats: { transcript: number; summary: number; notes: number; todos: number; files: number }
+  stats: { transcript: number; summary: number; notes: number; decisions: number; files: number }
   meetingOutputCount: number
   currentTaskDuration: string
   speakerCount: number
@@ -193,9 +193,9 @@ const props = defineProps<{
   hasNotes: boolean
   /** 随记字数（取 task 快照的 user_notes） */
   notesCharCount: number
-  todoCount: number
-  todoPending: number
-  todoDone: number
+  decisionCount: number
+  decisionPending: number
+  decisionDone: number
   linkedProject: { id: string; name: string; fileCount: number } | null
   relatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
   visibleRelatedMeetings: Array<{ id: string; title: string; date: string; duration: string; tag: string }>
@@ -216,7 +216,7 @@ defineEmits<{
   (e: 'goTranscript'): void
   (e: 'goSummary'): void
   (e: 'goNotes'): void
-  (e: 'goTodos'): void
+  (e: 'goDecisions'): void
   (e: 'goProject'): void
   (e: 'goMeeting', meetingId: string): void
   (e: 'showAllMeetings'): void

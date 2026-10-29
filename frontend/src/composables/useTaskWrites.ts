@@ -10,16 +10,16 @@
  */
 
 /** 受影响的展示域（与会议页 Tab 对应） */
-export type TaskDomain = 'todos' | 'summary' | 'notes'
+export type TaskDomain = 'decisions' | 'summary' | 'notes'
 
 /** 全局事件名：一次成功的任务写回落盘 */
 export const TASK_WRITTEN_EVENT = 'task-written'
 
 /** 写回工具 → 受影响展示域（洞察板另有 board-written 通道，不在此列） */
 const WRITE_TOOL_DOMAINS: Record<string, TaskDomain[]> = {
-  update_decision_node: ['todos'],
-  delete_decision_node: ['todos'],
-  inject_items: ['todos'],
+  update_decision_node: ['decisions'],
+  delete_decision_node: ['decisions'],
+  inject_items: ['decisions'],
   update_summary: ['summary'],
 }
 
