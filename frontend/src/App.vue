@@ -8,6 +8,9 @@
     :class="{ 'is-visible': toastVisible, ['is-' + toastVariant]: toastVariant }"
   >{{ toastMessage }}</div>
 
+  <!-- 企业版状态横幅（服务暂停/待同步；个人版形态不渲染，零变化） -->
+  <EnterpriseBanner v-if="isEnterprise" />
+
   <!-- 遗留的 #selectionToolbar 死模板已移除：无任何脚本控制其可见性，
        且改写/总结/提取决策均已从划词工具栏下架（活跃实现见 SelectionToolbar.vue） -->
 
@@ -168,6 +171,9 @@ import { useCompletionWatch } from '@/composables/useCompletionWatch'
 import { escapeHtml } from '@/utils/sanitize'
 import { useContainerSize } from '@/composables/useContainerSize'
 import { getRecordStatus } from '@/api/record'
+import { isEnterprise } from '@/edition'
+import { useInstanceStore } from '@/stores/instance'
+import EnterpriseBanner from '@/components/layout/EnterpriseBanner.vue'
 import TopBar from '@/components/layout/TopBar.vue'
 import Sidebar from '@/components/layout/Sidebar.vue'
 import ActivityRail from '@/components/layout/ActivityRail.vue'
@@ -183,6 +189,7 @@ const layout = useLayoutStore()
 const watermark = useWatermarkStore()
 const agentStore = useAgentStore()
 const engineStore = useEngineStore()
+const instanceStore = useInstanceStore()
 const { toastMessage, toastVariant, toastVisible } = useToast()
 const mainEl = ref<HTMLElement | null>(null)
 const { widthClass: mainWidthClass, tier: mainTier } = useContainerSize(mainEl)
@@ -395,6 +402,8 @@ const bodyClasses = computed(() => ({
 onMounted(async () => {
   layout.restore()
   await userStore.checkAuth()
+  // 企业形态：实例横幅位 + 同步队列轮询（个人版 store 内部空转，零变化）
+  instanceStore.startPolling()
   // [状态同步] 应用启动时加载任务列表（含活跃录音恢复） / [State Sync] Load task list on app startup (incl. active recording recovery)
   await taskStore.loadTasks()
   // 检查后端是否有进行中的录音，若有则自动导航到录音页（防止刷新后丢失录音上下文） / Check backend for active recording; auto-navigate to recording page (prevent losing recording context after refresh)

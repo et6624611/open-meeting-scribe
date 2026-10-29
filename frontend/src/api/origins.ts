@@ -19,9 +19,11 @@ export type Plane = 'server' | 'local'
 /** 录音助手默认探测地址（desktop.py/cli.py server 默认 127.0.0.1:8000） */
 const DEFAULT_LOCAL_CANDIDATES = ['http://127.0.0.1:8000', 'http://localhost:8000']
 
+/** 实测握手响应（BE 增量4 c23b247）：paired=false 时 paired_user_id 为 null（未配对，档⑦引导态） */
 interface LocalHandshake {
   local_token: string
-  paired_user_id: string
+  paired: boolean
+  paired_user_id: string | null
 }
 
 interface LocalState {
@@ -35,6 +37,8 @@ interface LocalState {
   probing: Promise<LocalState> | null
   /** 进行中的探测所属 uid（跨用户不共享探测结果） */
   probingUid?: string | null
+  /** 负缓存截止时间（探测失败后暂停重试） */
+  nextProbeAt?: number
 }
 
 const local: LocalState = { origin: '', handshake: null, handshakeUid: null, error: null, probing: null }
@@ -102,6 +106,8 @@ export function ensureLocalPlane(userId?: string | null): Promise<LocalState> {
   // W4-01/02：握手归属用户与当前用户不一致 → 视为失效，重新探测（覆盖也按当前 uid 读）
   if (local.handshake && local.origin && local.handshakeUid === uid) return Promise.resolve(local)
   if (local.handshake && local.handshakeUid !== uid) invalidateLocalPlane()
+  // 负缓存：探测失败后 30s 内不重复打网络（助手不在场时避免 404/超时噪音）
+  if (local.error && Date.now() < (local.nextProbeAt ?? 0)) return Promise.resolve(local)
   if (local.probing && local.probingUid === uid) return local.probing
   local.probingUid = uid
   local.probing = (async () => {
@@ -117,10 +123,12 @@ export function ensureLocalPlane(userId?: string | null): Promise<LocalState> {
         local.handshake = hs
         local.handshakeUid = uid
         local.error = null
+        local.nextProbeAt = 0
         return local
       }
     }
     local.error = 'assistant_unreachable'
+    local.nextProbeAt = Date.now() + 30_000
     return local
   })().finally(() => { local.probing = null; local.probingUid = null })
   return local.probing
@@ -132,6 +140,7 @@ export function invalidateLocalPlane(): void {
   local.handshake = null
   local.handshakeUid = null
   local.error = null
+  local.nextProbeAt = 0
 }
 
 /**

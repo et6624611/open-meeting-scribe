@@ -1,0 +1,105 @@
+{
+  "menu": {
+    "settings": "设置",
+    "where_is_my_data": "我的数据在哪",
+    "enter_admin": "进入管理台",
+    "logout": "退出登录"
+  },
+  "banner": {
+    "service_paused": "企业服务已暂停，仅可查看已同步内容",
+    "sync_pending": "{count} 条文字待同步到公司服务器",
+    "sync_error": "有内容同步失败，将自动重试",
+    "ai_off": "AI 助手未开启，联系管理员"
+  },
+  "admin": {
+    "title": "管理台",
+    "tab_overview": "概览",
+    "tab_users": "用户管理",
+    "tab_data": "数据与备份",
+    "back_to_workspace": "返回我的空间",
+    "service_switch": {
+      "label": "企业服务",
+      "on": "服务运行中",
+      "off": "服务已暂停",
+      "pause": "停用服务",
+      "resume": "启用服务",
+      "paused_hint": "暂停后：员工可登录页面查看已同步内容，但新的登录、录音同步与编辑保存都会被拒绝，直到你重新启用。"
+    },
+    "encryption": {
+      "title": "访问加密（HTTPS）",
+      "not_enabled": "当前为内网 HTTP 访问。会议文字在公司内网传输可被截获，建议花 2 分钟开启加密。",
+      "guide": "开启入口与证书配置见 DevOps 部署文档（deploy/private CA 引导）。本页面 P0 仅提示状态。"
+    },
+    "ai": {
+      "title": "AI 助手",
+      "current_off": "AI 助手未开启：纪要生成只使用员工本机能力，会议文字不会发给任何外部 AI 服务。",
+      "current_on": "AI 助手已开启：仅允许访问下方白名单域名。",
+      "enable": "开启 AI 助手",
+      "disable": "关闭 AI 助手",
+      "base_url": "服务地址（base_url）",
+      "model": "模型名",
+      "api_key": "API Key（只写不回显）",
+      "save": "保存",
+      "egress_notice": "开启即允许会议文字发往上述域名——这是企业版默认关闭的原因。白名单由服务端网络层强制执行。"
+    },
+    "overview_users": "用户数",
+    "overview_pending": "待接受邀请",
+    "users": {
+      "col_name": "姓名",
+      "col_account": "账号",
+      "col_status": "状态",
+      "col_created": "创建时间",
+      "status_active": "正常",
+      "status_disabled": "已停用",
+      "status_pending": "待接受邀请",
+      "new_user": "新建用户",
+      "form_name": "姓名",
+      "form_account": "账号（手机号或登录名）",
+      "form_submit": "创建并生成邀请码",
+      "invite_shown_title": "邀请码已生成（仅展示这一次）",
+      "invite_shown_hint": "把它发给同事，ta 在登录页「接受邀请」自助设置密码。你不需要也不能经手任何密码。",
+      "invite_copy": "复制邀请码",
+      "invite_copied": "已复制",
+      "act_reset": "重置密码",
+      "act_disable": "停用",
+      "act_enable": "启用",
+      "act_delete_data": "删除全部服务端数据",
+      "reset_sent": "旧会话已作废，新邀请码已生成（下方弹窗展示一次）",
+      "delete_confirm_title": "此操作不可恢复",
+      "delete_confirm_hint": "将删除该员工在服务端的全部会议文字（录音与声纹本来就不在服务器）。输入账号名 {account} 以确认。",
+      "delete_confirm_placeholder": "输入账号名",
+      "delete_confirm_btn": "确认删除",
+      "cancelled": "已取消",
+      "col_updated": "最近更新"
+    },
+    "data": {
+      "title": "数据与备份",
+      "promise_line1": "企业数据备份只保留在企业自己的服务器上",
+      "promise_line2": "自动保留 14 天",
+      "promise_line3": "永不上传外部云",
+      "backup_guide": "备份与升级回滚由 DevOps 交付物执行（backup-snapshot + compose 双版本回滚）；P0 不提供界面化备份操作。",
+      "server_text_overview": "服务端只存定稿文字：转写文本、纪要、决策流、笔记、术语。"
+    }
+  },
+  "settings": {
+    "assistant": {
+      "title": "本机录音助手",
+      "connected": "已连接：{origin}",
+      "disconnected": "这台电脑还没有连接录音助手",
+      "disconnected_hint": "不安装也可以：你可以正常查看和编辑已有会议文字，只是不能在这台电脑上新开录音。",
+      "download_guide": "从公司服务器下载录音助手（离线包，无需外网）",
+      "paired_as": "当前绑定账号：{name}",
+      "override_label": "助手地址（默认自动探测 127.0.0.1:8000）",
+      "override_save": "保存"
+    },
+    "data_location": {
+      "title": "数据位置",
+      "readonly_hint": "此分区为只读说明：P0 上云范围由管理员部署形态固定，个人不可开关。"
+    },
+    "consent": {
+      "title": "会议文字如何保存",
+      "ack": "知道了，继续",
+      "view_data_location": "查看数据位置"
+    }
+  }
+}

@@ -20,6 +20,13 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      // 档⑥管理台（UI 规格 §4）：仅企业形态 + admin 角色；员工端无入口
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/admin/AdminView.vue'),
+      meta: { requiresAdmin: true },
+    },
+    {
       path: '/',
       name: 'start',
       component: () => import('@/views/StartView.vue'),
@@ -98,6 +105,8 @@ router.beforeEach(async (to) => {
   if (!userStore.isLoggedIn) {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : {} }
   }
+  // 管理台仅 admin（越权回员工空间；服务端 §1.3 仍有 403 兜底，前端只管界面边界）
+  if (to.meta.requiresAdmin && !userStore.isAdmin) return { path: '/' }
   return true
 })
 

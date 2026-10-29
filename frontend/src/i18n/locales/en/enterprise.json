@@ -1,0 +1,105 @@
+{
+  "menu": {
+    "settings": "Settings",
+    "where_is_my_data": "Where is my data",
+    "enter_admin": "Open admin console",
+    "logout": "Sign out"
+  },
+  "banner": {
+    "service_paused": "Company service is paused — synced content only",
+    "sync_pending": "{count} meeting texts pending sync to company server",
+    "sync_error": "Some content failed to sync and will be retried automatically",
+    "ai_off": "AI assistant is off — contact your admin"
+  },
+  "admin": {
+    "title": "Admin console",
+    "tab_overview": "Overview",
+    "tab_users": "Users",
+    "tab_data": "Data & backup",
+    "back_to_workspace": "Back to my workspace",
+    "service_switch": {
+      "label": "Company service",
+      "on": "Service running",
+      "off": "Service paused",
+      "pause": "Pause service",
+      "resume": "Enable service",
+      "paused_hint": "While paused: employees can still open pages and read already-synced content, but new sign-ins, recording syncs and edits are rejected until you re-enable."
+    },
+    "encryption": {
+      "title": "Access encryption (HTTPS)",
+      "not_enabled": "This instance is served over plain HTTP inside your intranet — meeting texts could be intercepted. Recommended: spend 2 minutes enabling encryption.",
+      "guide": "Enablement and certificate setup follow the DevOps deployment guide (deploy/private CA bootstrap). This page only reflects status in P0."
+    },
+    "ai": {
+      "title": "AI assistant",
+      "current_off": "AI assistant is off: minutes are generated on each employee's own machine; meeting texts are never sent to any external AI service.",
+      "current_on": "AI assistant is on: only the domains below are reachable.",
+      "enable": "Enable AI assistant",
+      "disable": "Disable AI assistant",
+      "base_url": "Endpoint (base_url)",
+      "model": "Model name",
+      "api_key": "API key (write-only)",
+      "save": "Save",
+      "egress_notice": "Enabling this allows meeting texts to be sent to the endpoint above — exactly why enterprise ships zero-egress by default. The allowlist is enforced at the server network layer."
+    },
+    "overview_users": "Users",
+    "overview_pending": "Pending invitations",
+    "users": {
+      "col_name": "Name",
+      "col_account": "Account",
+      "col_status": "Status",
+      "col_created": "Created",
+      "status_active": "Active",
+      "status_disabled": "Disabled",
+      "status_pending": "Pending invite",
+      "new_user": "New user",
+      "form_name": "Name",
+      "form_account": "Account (phone or login name)",
+      "form_submit": "Create & generate invite code",
+      "invite_shown_title": "Invite code generated (shown only once)",
+      "invite_shown_hint": "Send it to your colleague. They set their own password via “Accept Invitation” on the login page. You never handle any password.",
+      "invite_copy": "Copy invite code",
+      "invite_copied": "Copied",
+      "act_reset": "Reset password",
+      "act_disable": "Disable",
+      "act_enable": "Enable",
+      "act_delete_data": "Delete all server data",
+      "reset_sent": "Old sessions revoked; a new invite code was issued (shown once below)",
+      "delete_confirm_title": "This cannot be undone",
+      "delete_confirm_hint": "Deletes this employee's entire server-side meeting text archive (audio and voiceprints were never on the server). Type the account name {account} to confirm.",
+      "delete_confirm_placeholder": "Type account name",
+      "delete_confirm_btn": "Confirm delete",
+      "cancelled": "Cancelled",
+      "col_updated": "Last updated"
+    },
+    "data": {
+      "title": "Data & backup",
+      "promise_line1": "Backups stay only on the company's own server",
+      "promise_line2": "Automatically retained for 14 days",
+      "promise_line3": "Never uploaded to any external cloud",
+      "backup_guide": "Backup and rollback are executed by the DevOps deliverables (backup-snapshot + compose two-version rollback); P0 offers no in-UI backup operations.",
+      "server_text_overview": "The server stores finalized text only: transcript, minutes, decision flow, notes, glossary."
+    }
+  },
+  "settings": {
+    "assistant": {
+      "title": "Local recording assistant",
+      "connected": "Connected: {origin}",
+      "disconnected": "No recording assistant on this computer yet",
+      "disconnected_hint": "You can still work without it: view and edit existing meeting texts normally; only new recordings require the assistant.",
+      "download_guide": "Download the recording assistant from the company server (offline package, no internet needed)",
+      "paired_as": "Paired account: {name}",
+      "override_label": "Assistant address (auto-detects 127.0.0.1:8000 by default)",
+      "override_save": "Save"
+    },
+    "data_location": {
+      "title": "Where data lives",
+      "readonly_hint": "Read-only: the P0 sync scope is fixed by the admin's deployment and cannot be toggled per user."
+    },
+    "consent": {
+      "title": "How meeting texts are stored",
+      "ack": "Got it, continue",
+      "view_data_location": "View data locations"
+    }
+  }
+}

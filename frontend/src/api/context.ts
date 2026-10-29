@@ -159,13 +159,15 @@ export async function putSpeakerAliasesAsset(snapshot: { aliases: Record<string,
 
 export interface SyncQueueItem {
   task_id: string
+  mutation_id?: string
   status: QueueSyncStatus
   queued_at: string
   last_error: string | null
   retry_after: string | null
 }
 
+/** 实测响应（BE c23b247）：{queue:[...]}；未配对时 409 assistant_not_paired（调用方按引导态处理） */
 export async function getSyncQueue(): Promise<SyncQueueItem[]> {
-  const { data } = await planeClient('local').get<SyncQueueItem[]>('/api/sync/queue')
-  return data
+  const { data } = await planeClient('local').get<{ queue: SyncQueueItem[] }>('/api/sync/queue')
+  return data.queue
 }
