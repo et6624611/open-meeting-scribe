@@ -202,3 +202,45 @@ L 系执行条件：L01–L03 随联调环境（assistant 进程可起即可跑�
 - U8 **PASS**：真进程重启（kill+新 uvicorn、同 DATA_ROOT、复用 httpOnly cookie）→ /auth/me 200 会话保持；instance.key 持久化实测在位。附注：本机畸形代理环境变量需 trust_env=False 隔离，实机抓包工位同法处理防噪音误判。
 
 **收口进度**：环境依赖六组中 U2/U8/M04/M06/L01–L04 本机全绿销项；剩 W 抓包系（W01–W03/W05–W08+L05）、C 系、W10 五表面运行时目检随 OPS 企业包镜像/Linux smoke 环境就绪执行——出场 gate 终局判定待最后一批。
+
+---
+
+## 基线钉桩｜main @ b6c3037 复验（2026-10-29 22:4x，合入第一棒后）
+
+- 合入实况独立核实：de8fbaa 六提交合入 diff=**3297 insertions(+)/0 deletions**（18 文件，纯新增声明属实）；origin/main=b6c3037 已同步（ls-remote 实测）；b6c3037 契约第12条 404 口径修正实查在位、shared 镜像一致。
+- **QA 四套件对 main 基线全量复跑 = 63/63 PASS**（增量1 结构 29 + HTTP 21 + M 系 6 + 本机收口 7）。终局判定基准自此钉在 main，此前分支态结果仅作过程记录。
+- 剩余仍按令：W 抓包系/C 系/W10 五表面运行时目检，待 FE 第二棒+OPS 点火后环境收口。
+
+---
+
+## 执行记录｜第二棒后基线重钉 + W10 产物级验证（2026-10-29，main=f798704→59af334）
+
+- QA 四套件对合入 FE 后的 main 全量复跑 **63/63 PASS**（终局基准改钉 f798704 树；origin 实测同步，含后续台账 docs 提交 59af334）。
+- W10 产物级验证（VITE_EDITION=enterprise 构建，dist 快照存 qa-outputs/…/evidence/enterprise-dist）：
+  - 锁定三行逐字各 **1 次**（单源组件形态与 UI 走查结论一致）；banner"企业服务已暂停，仅可查看已同步内容"、hotwords 指引、AI 说明行、paused_hint 定稿、管理台承诺卡口径全部逐字命中 ✓；
+  - 词表扫描判定："云端"42 处均系个人版字串集与已批准的"云端 AI 服务凭据"定稿措辞（W2-02 产品原文），企业命名空间内无未批准指代；独立"API 密钥"第 3 处定位于个人版 settings.api_key 标签（企业形态不复用个人设置视图，W3 裁决代码级背书），非违例；"已切换"2 处均在个人版云降级/设置语境，非数据目录迁移语境，按 v1.3 口径非违例；
+  - 运行时目检残留两项（随实机浏览器执行，UI 已认领接应）：企业表面不渲染上述个人版字串的路径确认 + 五表面视觉呈现核对。
+- W10 状态：产物级 PASS + 运行时目检待实机；C 系与 W 抓包系维持待 OPS 产物。
+
+---
+
+## 出场 gate 终局判定（2026-10-29 23:2x，基线 main=f798704+0d26fd4，OPS run 40897084410 环境）
+
+**W 抓包系（本机实进程形态，test_qa_ep0_wpack_live.py PASS）**：
+- W01 默认零出网：企业实例+助手双进程 lsof 秒级采样（操作态+空闲态≥5 样本），非 127.0.0.1 对端 = **0**；
+- W02 默认关：ai_enabled=false、allowlist 空、无 base_url 开启 422；开启态落配置+逐域回显；**开启态服务端 AI 代理=501 ai_proxy_pending（已声明边界，无任何外呼发生）**——"仅白名单域可达"的网络层强制待代理实现后补验，今晚零出网主张不受影响；
+- W03 egress_audit 与操作精确一致（applied=1 直连推送、rejected=1 哨兵拒收，无孤儿行）；
+- W06 中间态/夹带字段（draft_text/audio_ref）422 拒收，非定稿内容进不了服务端；
+- W07 服务端凭据零明文：instance.db+blobs 解压全扫 sk-/口令/音频引用零命中；ai_provider api_key 密文存储；
+- L05 助手在 HTTP(S)_PROXY=死代理环境下 register→enqueue→flush→Web 读取全链成功=**直连不采纳环境代理实证**。
+
+**W10 运行时目检（headless Chrome 对真实企业构建+真实实例）**：
+- 登录页常态：锁定三行逐字渲染 ✓、仅账号+密码+Accept Invitation、**无 GitHub/SMS 可见入口** ✓（截图 w10_login_normal.png）；
+- 登录页停用态："Company service is paused. Please contact your admin." 横幅渲染 ✓（浏览器英文 locale；中文逐字面已在产物级+vitest 锁）（截图 w10_login_service_closed.png）；
+- 激活页：锁定三行逐字渲染 ✓；
+- 残留目检三项（blocked-on-capability：本机无 CDP 登录态自动化）：数据位置表/同意卡/管理台承诺卡登录态视觉——已有产物级逐字+单源组件+API 数据源三重证据，建议并入项目方四项体验确认点实机覆盖；
+- 低优先观察（转 UI/前端，不阻塞）：登录页右侧 ai-panel 头渲染出 i18n 键字面 "ai-panel.page.login"（缺键）；顶栏 "Update Available" 徽标在企业内网形态是否应隐藏待产品定口径。
+
+**C 系**：blocked-on-environment 维持——个人版安装包形态需 Win/mac 实机窗口（v10 遗留同窗）；过程证据=合入纯新增 0 删除、CI 仅构建企业形态、FE 默认构建红线自查、后端全量 1090 passed。
+
+**终局**：实现缺口 **0**；A/B/M/L/U 域 + W 抓包系核心 + OPS 实机六步 smoke 全绿；披露三项=①C 系安装包（环境，随 v10 实机窗）②W10 登录态三表面（能力，随项目方体验确认点）③W02 开启态代理 501（已声明边界）。**QA 判定：企业版 P0 具备向项目方交付条件（附上述三项如实披露）。**
