@@ -10,6 +10,7 @@ import gzip
 import json
 import secrets
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .config import DataRoot
@@ -208,7 +209,118 @@ class EnterpriseStore:
             self.conn.execute("UPDATE device_tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, user_id))
         return code
 
-    # ---------------- 设备配对域（§1.8） ----------------
+    def change_password(self, *, actor_user_id: str, old_password: str, new_password: str) -> None:
+        _require_actor(actor_user_id)
+        row = self.conn.execute(
+            "SELECT password_hash, status FROM users WHERE user_id=?", (actor_user_id,)
+        ).fetchone()
+        if row is None or row["status"] != "active" or not verify_password(old_password, row["password_hash"]):
+            raise NotFoundError(actor_user_id)  # 统一 NotFound，不泄露账号状态
+        if not new_password or len(new_password) < 8:
+            raise ValueError("新密码长度不足")
+        with self.conn:
+            self.conn.execute(
+                "UPDATE users SET password_hash=?, updated_at=? WHERE user_id=?",
+                (hash_password(new_password), utcnow(), actor_user_id),
+            )
+
+    def set_user_status(self, *, actor_user_id: str, user_id: str, status: str) -> None:
+        """active 恢复不自动重发凭据；disabled 走 disable_user 级联。"""
+        self._require_admin(actor_user_id)
+        if status not in ("active", "disabled"):
+            raise ValueError("status 仅支持 active/disabled")
+        if status == "disabled":
+            self.disable_user(actor_user_id=actor_user_id, user_id=user_id)
+            return
+        with self.conn:
+            n = self.conn.execute(
+                "UPDATE users SET status='active', updated_at=? WHERE user_id=? AND status!='pending'",
+                (utcnow(), user_id),
+            ).rowcount
+        if n == 0:
+            raise NotFoundError(user_id)
+
+    def list_users(self, *, actor_user_id: str) -> list[dict]:
+        self._require_admin(actor_user_id)
+        rows = self.conn.execute(
+            "SELECT user_id, login_account, phone, display_name, role, status, created_at, updated_at"
+            " FROM users ORDER BY created_at"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def session_user(self, *, user_id: str) -> dict | None:
+        """会话校验用：返回 {user_id, display_name, role, status, tenant_id} 或 None。"""
+        row = self.conn.execute(
+            "SELECT user_id, display_name, role, status, tenant_id FROM users WHERE user_id=?", (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ---------------- 个人资产域（§1.5，单当前版 + 幂等 mutation） ----------------
+
+    def apply_asset(
+        self,
+        *,
+        actor_user_id: str,
+        kind: str,
+        client_mutation_id: str,
+        base_rev: int,
+        payload: Any,
+    ) -> SnapshotResult:
+        _require_actor(actor_user_id)
+        if kind not in ("hotwords", "speaker_aliases", "decision_statuses"):
+            raise ValueError(f"未知资产类型 {kind}")
+        blob_bytes = gzip.compress(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        digest = _sha256(blob_bytes)
+        row = self.conn.execute(
+            "SELECT * FROM ctx_assets WHERE owner_user_id=? AND kind=?", (actor_user_id, kind)
+        ).fetchone()
+        current_rev = row["current_rev"] if row is not None else 0
+        if row is not None and row["content_hash"] == digest:
+            # 内容幂等：同 digest 重放直接返回当前版（资产为全量快照语义）
+            return SnapshotResult(row["current_rev"], row["content_hash"], row["updated_at"], idempotent_replay=True)
+        if base_rev != current_rev:
+            raise StaleRevisionError(current_rev)
+        new_rev = current_rev + 1
+        blob_path = self.dr.blobs_dir / actor_user_id / "assets" / f"{kind}.json.gz"
+        blob_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = blob_path.with_suffix(".tmp")
+        tmp.write_bytes(blob_bytes)
+        tmp.replace(blob_path)
+        now = utcnow()
+        with self.conn:
+            if row is None:
+                self.conn.execute(
+                    "INSERT INTO ctx_assets(asset_id, owner_user_id, kind, current_rev, blob_path, content_hash, updated_at)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    (new_id("ast"), actor_user_id, kind, new_rev, str(blob_path), digest, now),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE ctx_assets SET current_rev=?, blob_path=?, content_hash=?, updated_at=?"
+                    " WHERE owner_user_id=? AND kind=?",
+                    (new_rev, str(blob_path), digest, now, actor_user_id, kind),
+                )
+        return SnapshotResult(new_rev, digest, now)
+
+    def get_asset(self, *, actor_user_id: str, kind: str) -> dict:
+        _require_actor(actor_user_id)
+        row = self.conn.execute(
+            "SELECT * FROM ctx_assets WHERE owner_user_id=? AND kind=?", (actor_user_id, kind)
+        ).fetchone()
+        if row is None:
+            return {"kind": kind, "visibility": "personal", "current_rev": 0, "content_hash": None, "payload": None}
+        payload = None
+        p = Path(row["blob_path"])
+        if p.exists():
+            payload = json.loads(gzip.decompress(p.read_bytes()).decode("utf-8"))
+        return {
+            "kind": kind,
+            "visibility": row["scope"],
+            "current_rev": row["current_rev"],
+            "content_hash": row["content_hash"],
+            "updated_at": row["updated_at"],
+            "payload": payload,
+        }
 
     def create_pairing(self, *, actor_user_id: str, ttl_minutes: int = 10) -> str:
         _require_actor(actor_user_id)

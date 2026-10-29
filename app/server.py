@@ -472,6 +472,13 @@ app.include_router(import_tasks.router)
 app.include_router(models.router)
 app.include_router(engine_component.router)
 
+# 企业版 P0 /api/v1 端点层：仅 OMS_EDITION=enterprise 时挂载（契约 v1.0 §1；个人版零影响） /
+# Enterprise P0 API: mounted only when OMS_EDITION=enterprise; zero effect on personal edition
+from .routers import enterprise_api as _enterprise_api  # noqa: E402
+
+if _enterprise_api.enterprise_mode():
+    _enterprise_api.register_enterprise_routes(app)
+
 # ============================================================
 # 软件下载分发（自建下载中转） / Software download distribution (self-hosted relay)
 # ============================================================

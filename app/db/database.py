@@ -20,7 +20,9 @@ def utcnow() -> str:
 def connect(dr: DataRoot) -> sqlite3.Connection:
     dr.root.mkdir(parents=True, exist_ok=True)
     dr.blobs_dir.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(dr.db_path)
+    # 企业实例经 FastAPI 线程池执行同步端点：连接跨线程共享（CPython libsqlite3 为 serialized 模式），
+    # 写路径另以 WAL + busy_timeout 串行化；个人版代码路径不经本模块。
+    conn = sqlite3.connect(dr.db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
