@@ -187,3 +187,18 @@ L 系执行条件：L01–L03 随联调环境（assistant 进程可起即可跑�
 - **独立防篡改探针已入 HTTP 套件并复跑通过**（哨兵 DEADBEEF_SENTINEL 提交→响应 64 位规范化哈希、DB/详情同尺；套件现 21 项全绿，77765aa 实测）。M 系对账尺子与本条同源，历史结果无需改判。
 - **W10 扫描面追加**（UI 规格 v1.3/v1.4 入册）：数据目录迁移语境全站禁用三词"已切换 / 即时生效 / 暗示已启用"；activation 原文不得进员工界面；422 拒收态文案按规格五条基准核对。四处锁定表面+管理台承诺卡=W10 运行时目检五表面（UI 已确认代码级单源 LockedPrivacyBlock，QA 保留运行时目检收口）。
 - **表面口径终版对齐（规格 v1.4 §7，2026-10-29 与 UI 确认）**：B5 逐字锁定块断言面=**四处**（登录页/激活页/同意卡/数据位置表，均 LockedPrivacyBlock 单源，任一字符差异 FAIL）；W10 运行时目检=四处锁定表面 + 管理台"数据与备份"承诺卡（产品 W2 扩围的另一组锁定文本，逐字=DevOps §6 口径）共**五表面**；词表门禁三件套（"云端 AI 服务凭据"定稿措辞、同词反向断言禁令、禁用三词）为全站扫描项，不计表面数。
+
+---
+
+## 执行记录｜合入批准批次·本机可跑六组收口（2026-10-29，@ 77765aa，等待 OPS 期间完成）
+
+套件：test_qa_ep0_closeout_local.py **7/7 PASS**（U8 用真 uvicorn 子进程重启验证，非模拟）。
+- M04 **PASS**：attribution/migration confirm·ack·receipt 类端点全 404=告知即过、无回执握手；**事实修正**：`POST /admin/invites` 实况=404 路由缺失（后端播报"501 占位"表述不准，仅 /ai/summary/generate 为 501）——用户可见语义不变（P0 不提供通用邀请码，偏差①批准口径不受影响），请后端按实况修口径、台账同步。
+- M06 **PASS**（HTTP 级）：建号→激活→写入快照+资产→停用→admin DELETE data：ctx_tasks/ctx_assets 清零、blobs/<uid> 全除、停用账号数据通道 401。
+- L01 **PASS**：/api/local/storage 无 token/伪造 token 401；字段齐；查询参数承载（oms_local_token）与 v1.1 一致。
+- L02 **PASS**：同目录/嵌套 422 migrate_rejected；合法迁移 copied>0/failed=[]/source_retained=true；重跑 copied=0 skip_identical>0；源指纹不变。
+- L03 **PASS**：activation 字段逐字含"重启助手进程…生效"；迁移后快照 data_dir 仍指旧目录=非即时切换为真，FE 文案有实现依据。
+- U2 **PASS**：未配对 queue=200 {"queue":[]}；enqueue→pending 可见；flush 未配对=skipped_unpaired 非报错。
+- U8 **PASS**：真进程重启（kill+新 uvicorn、同 DATA_ROOT、复用 httpOnly cookie）→ /auth/me 200 会话保持；instance.key 持久化实测在位。附注：本机畸形代理环境变量需 trust_env=False 隔离，实机抓包工位同法处理防噪音误判。
+
+**收口进度**：环境依赖六组中 U2/U8/M04/M06/L01–L04 本机全绿销项；剩 W 抓包系（W01–W03/W05–W08+L05）、C 系、W10 五表面运行时目检随 OPS 企业包镜像/Linux smoke 环境就绪执行——出场 gate 终局判定待最后一批。
