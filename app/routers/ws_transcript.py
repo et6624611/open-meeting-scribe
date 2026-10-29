@@ -64,6 +64,14 @@ async def websocket_transcript(websocket: WebSocket, task_id: str, locale: str =
       {"type": "heartbeat", ...}                                                     心跳 / Heartbeat
       {"type": "translation_control", "action": "start|stop|set_lang", ...}          翻译控制 / Translation control
     """
+    # EP0 契约 §1.8 v1.1：assistant 形态下的本地面 token 守卫（浏览器 WS 无法自定义头→查询参数承载）。
+    # 个人版/企业实例不设 OMS_EDITION=assistant，零行为变化。
+    from .assistant_plane import assistant_mode, verify_ws_local_token
+
+    if assistant_mode() and not verify_ws_local_token(websocket):
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     set_current_locale(locale)
 
