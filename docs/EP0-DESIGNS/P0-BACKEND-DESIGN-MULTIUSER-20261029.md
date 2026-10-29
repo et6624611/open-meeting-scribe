@@ -140,7 +140,7 @@ Response 422: 字段超出白名单（防御性拒绝，QA 出境用例断言点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/pairings` | 需 Web 登录态 → 一次性短效配对码 `{pairing_code, expires_at(10min)}`，Web"连接录音助手"页展示 |
+| POST | `/api/v1/pairings` | 需 Web 登录态 → 一次性短效配对码 `{pairing_code, expires_in_minutes: 10}`（v1.1 按实测口径修订，原 expires_at 表述作废；前端 8e8e023 已按此消费） |
 | POST | `/api/v1/auth/device-activate` | 助手凭 `{pairing_code, device_name}` 兑换**长效 device token**（服务端只存 hash；`Bearer device_token` 仅允许 §1.4/§1.5 上下文写端点与 `GET /api/v1/auth/me?as=user`，不允许登录态全量 API） |
 | GET/DELETE | `/api/v1/devices`、`/api/v1/devices/{device_id}` | 用户自助管理已绑定设备；DELETE 即刻吊销该 device token（其 outbox 后续重传 403 `code=device_revoked`） |
 
@@ -302,6 +302,10 @@ egress_audit(ts, user_id, action, object_ref, byte_len, client_mutation_id)
 4. **助手→实例通道强制直连**（不采纳环境代理变量）：代理会构成不可枚举出网点，与零出境纪律冲突；企业代理出站列 P1 显式配置项。
 5. **错误码补充实现**（QA 三缺陷修复，c23b247）：`403 account_disabled`（停用+正确密码）、`403 device_revoked`（出示 Bearer 但凭据失效）、`400 invalid_header`（畸形 If-Match-Rev，快照/资产两端）、`422 client_mutation_conflict`（mutation 跨 task 复用）；`POST /api/v1/auth/device-activate` 响应增 `user_id` 字段。
 6. 迁移命令面扩展：`python -m app.db migrate-legacy --source <dir> --account <login>`（§5 工具化落地）。
+7. POST /pairings 响应字段按实测定为 {pairing_code, expires_in_minutes:10}（§1.8 已同步修订，FE 8e8e023 实测口径背书）；GET /admin/users 增补 last_used_at（=该用户未吊销 device token 的最近使用时间，支持管理台"上次使用"列语义）。
+8. GET /api/sync/queue（本地面）未配对形态定为 **200 空队列**（FE 7a6f23c 实测背书；本地面不设 409 语义，QA 断言基准同步）。
+9. 助手面本地数据目录端点交付（77765aa）：`GET /api/local/storage`（目录/用量/可写性）、`POST /api/local/storage/migrate`（复制-校验-保留源，幂等，嵌套/同目录 422）；**切换生效=重启助手注入 OMS_DATA_ROOT**（个人版路径基座重构属 v10 债务，本片不触；UI 文案需按"迁移并重启生效"如实呈现，请产品经理知会 UI/QA）。
+10. **content_hash 权威口径（FE ba8de22 发现，后端复核后定稿）**：实现语义=**服务端权威重算**（规范化 blob 的 sha256，客户端提交值一律覆盖，哨兵伪造测试背书），契约 §1.4 原"客户端计算、服务端原样记录"表述作废——服务端权威防篡改且与 M 系对账一致。客户端可自算用于本地对账展示，冲突时以响应/详情为准；助手 outbox 3b 对账按服务端回执设计成立。
 
 ## 7. 工作量确认（设计→实施）
 

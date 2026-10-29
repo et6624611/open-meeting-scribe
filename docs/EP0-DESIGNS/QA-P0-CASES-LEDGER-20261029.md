@@ -159,3 +159,22 @@ M 系剩余：M04 归属卡无回执端点（探测 404）与 M06 服务端整�
 - 探针漂移说明（非产品缺陷）：增量4 `redeem_pairing` DAO 返回值扩为 3 元组（附 user_id 供助手展示），QA 增量1 探针已同步适配；HTTP 契约面（device-activate 响应体）不受影响。
 
 **A 域状态：全绿收口**。维持 BLOCK 不变：W01–W03/W05–W08 抓包系、C 系（安装包形态）、W10（随 FE 档⑦）、U8（随 compose 实机）、M04/M06 HTTP 级复验（随联调）。
+
+---
+
+## 口径更新与新增用例｜契约 v1.1 §7.1 第8条 + 助手面存储端点（2026-10-29，@ 77765aa）
+
+**U2 基准定稿**：`GET /api/sync/queue`（本地面）未配对形态 = **200 空队列**（契约 v1.1 §7.1 第8条，FE 7a6f23c 实测背书；本地面不设 409）。U2 用例预期同步修订：未配对设备队列可读且为空、不出现错误态红标。
+
+**W10 词表门禁扩展两条**（产品 cmsg_01m63j8pc9ymzx6skqg9v3jj41 四处表面基础上）：
+- 管理台 AI 出网区不得再出现"API 密钥"独立指代（定稿措辞"云端 AI 服务凭据"+ 说明行逐字）；全站任何"上传/保存密钥"类 UI 表述不得与承诺第三行构成同词反向断言；
+- 数据目录迁移完成态文案必须为"迁移完成，重启助手后生效"语义，**禁止即时切换表述**（activation 边界，后端如实披露口径）。
+
+**新增 L 系用例（助手面本地数据目录端点，QA-EP0-L01–L05）**：
+- L01 `GET /api/local/storage` local_token 守卫：无/失效 token 拒绝；返回字段齐（data_dir/total_bytes/recordings_bytes/tasks_files/writable/disk_free_bytes）。
+- L02 `POST /api/local/storage/migrate`：嵌套目标目录/同目录 → 422 migrate_rejected；合法目标=复制-校验-保留源三段式、重跑 skip_identical 幂等、源目录指纹前后一致（复用 M 系指纹法）。
+- L03 activation 语义断言：响应 activation 字段与 UI 文案一致（重启生效，非即时切换）；迁移后未重启态读写仍指向旧目录=如实行为。
+- L04 两平面零交集扩展：企业实例 origin 探测 `/api/local/*`、`/api/sync/queue` 全部 404（并入 A11 攻击面清单，assistant 形态端点不入企业面）。
+- L05 助手→实例通道信任边界：注入 HTTP(S)_PROXY 环境代理变量后助手推送仍直连实例（不采纳环境代理），W02 抓包阶段执行。
+
+L 系执行条件：L01–L03 随联调环境（assistant 进程可起即可跑，与 U2 同批）；L04 即时可加（下轮 HTTP 套件补挂）；L05 随实机抓包批。
