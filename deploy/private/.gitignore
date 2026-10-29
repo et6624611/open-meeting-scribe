@@ -1,0 +1,9 @@
+# 一键包运行产物不入库（数据、备份、密钥、离线镜像均属企业现场资产）
+.env
+data/
+backups/
+images/
+ca/oms-root-ca.crt
+.oms_version_prev
+proxy/certs/*
+!proxy/certs/.gitkeep

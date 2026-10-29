@@ -1,0 +1,7 @@
+{
+	local_certs
+}
+:8443 {
+	tls internal
+	reverse_proxy oms-app:8000
+}

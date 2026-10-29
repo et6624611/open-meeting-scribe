@@ -1,0 +1,54 @@
+# OpenMeetingScribe 企业版 P0 — 内网私有化一键包（EP0-OPS）
+# 日常入口不是本文件，而是 ./oms-offline-install.sh 与 ./oms-upgrade.sh
+# 数据布局依据后端冻结契约 v1.0（§2.1）：bind mount 至 DATA_ROOT 根，
+#   instance.db + blobs/<user_id>/rev*.json.gz + secrets/instance.key，
+#   用户隔离在 DB 行级，无 users/<id> 目录树。
+services:
+  oms-app:
+    image: open-meeting-scribe:${OMS_VERSION:-local}
+    restart: unless-stopped
+    environment:
+      OMS_DATA_ROOT: /app/data
+      REQUIRE_AUTH: "true"   # 企业实例强制鉴权（契约 §1），无默认放行形态
+    ports:
+      # TLS 关闭时员工直连本端口；开启 TLS 时安装脚本把本端口收敛为仅回环，员工走 oms-proxy
+      - "${OMS_PUBLIC_BIND:-0.0.0.0}:${OMS_PORT:-8000}:8000"
+      - "127.0.0.1:${OMS_ADMIN_PORT:-8001}:8001"   # 管理后台仅回环（沿用 deploy.sh 既有边界）
+    volumes:
+      - ./data:/app/data       # DATA_ROOT 根；JWT 主密钥等在 secrets/instance.key，向导生成，不在 .env
+      - ./backups:/app/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  oms-proxy:
+    image: caddy:2
+    profiles: ["tls"]
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${OMS_TLS_PORT:-8443}:8443"
+    volumes:
+      - ./proxy/Caddyfile.${OMS_TLS_MODE:-internal-ca}:/etc/caddy/Caddyfile:ro
+      - ./proxy/certs:/etc/caddy/certs:ro
+      - oms_proxy_data:/data
+    depends_on:
+      oms-app:
+        condition: service_healthy
+
+  oms-backup:
+    image: python:3.12-slim
+    restart: unless-stopped
+    volumes:
+      - ./data:/data/oms
+      - ./backups:/data/backups
+      - ./oms-backup.py:/opt/oms-backup.py:ro
+    environment:
+      OMS_BACKUP_INTERVAL_SEC: "${OMS_BACKUP_INTERVAL_SEC:-86400}"
+      OMS_BACKUP_KEEP_DAYS: "${OMS_BACKUP_KEEP_DAYS:-14}"
+    command: ["python", "/opt/oms-backup.py", "--daemon"]
+
+volumes:
+  oms_proxy_data:
