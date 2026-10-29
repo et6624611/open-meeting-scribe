@@ -85,3 +85,28 @@
 
 - 执行顺序：后端增量一到即跑对应冒烟（schema/DAO→A14/M 系；数据面端点→A01–A05、W 系；账号面→A08–A09、P 系、U6；迁移工具→M 系、C02），全量矩阵在可联调后收口。
 - 已知非阻塞默认（按契约 §6）：删除=软删 30 天回收站；决策状态字典管理台页面缺席不判 FAIL。
+
+---
+
+## 执行记录｜EP0-BE 增量1 数据层结构断言（2026-10-29，feat/ep0-datalayer-20261029-093500 @ 8b09a3f）
+
+环境：macOS arm64，仓库 venv（Python 3.14），worktree 实查与播报 commit 一致。
+证据：①开发测试独立复跑 `tests/test_ep0_datalayer.py` **13 passed**；②QA 独立对抗探针（非复用开发断言，29 项）**29 passed** — qa-outputs/open-meeting-scribe/20261029-094200/evidence/test_qa_ep0_probe_increment1.py。
+
+**数据层通过（结构支撑成立，HTTP 语义待端点层复验）**：
+- QA-EP0-A14 **PASS**：15 个业务 DAO 方法 actor_user_id 均为 keyword-only 强制，空/缺 actor 一律 ActorRequiredError；无绕过面。
+- QA-EP0-A01/A02/A03/A04/A05/A06（数据层部分）**PASS**：跨用户读/写/删同名他人 task 与不存在 task 异常类型一致（统一 NotFoundError，无存在性 oracle）；开发播报的"409→404 防枚举修正"经探针实测确认；member 执行管理操作（建号/停用/实例配置）同走 NotFound 语义。
+- QA-EP0-W09（数据层部分）**PASS**：同 mutation 重放返回首次结果不重复入库（rev 计数=1）；base_rev 过期抛 StaleRevisionError 携带 current_rev；顺序推进 rev 正常。
+- QA-EP0-W04（数据层部分）**PASS**：audio_base64/voiceprint_embedding/api_key/local_path/audio_file_ref 及 meta 夹带 audio_url 全部 PayloadNotAllowedError 拒收；五类合法字段通过。
+- QA-EP0-P01/P02/P03 **PASS**：配对码兑换即失效、ttl 过期拒绝、revoke 即刻 verify_device_token=None。
+- QA-EP0-A08（数据层部分）**PASS**：停用级联=登录失效+全部 session/device 吊销+数据保留（ctx_tasks 计数不变）；整包删除=行+blob 目录全清。
+- QA-EP0-U1/U6 **PASS**：get_task/list_tasks 恒返 visibility='personal' + sync_status 字段；建号 pending 且 password_hash=NULL（无初始密码）、服务端邀请码仅存 hash、一次性使用、弱密码拒绝、激活后可登录。
+- 回收站 30 天到期物理删+幂等 **PASS**；migrate runner 重复执行 no-op、applied_versions={1} **PASS**。
+
+**保持 BLOCK（按台账待后端增量2 端点层/迁移工具）**：A09/A10/A11/A12/A13、W01/W02/W03/W05–W10、M01–M06（oms-migrate 未交付）、C 系、U2（GET /api/sync/queue 端点）、U5/U8。
+
+**移交后端增量2 的两条端点层映射要求（防 5xx 违规，非当前 FAIL）**：
+1. `client_mutation_id` 跨 task 复用现抛裸 ValueError → 端点层必须映射 4xx（建议 409/422），直落 500 将违反 A2"禁止 5xx"判定；
+2. 密码校验类 ValueError（如长度不足）→ 422 语义，勿 500。
+
+结论：**P-001 增量1 数据层结构断言全绿，QA 侧无阻塞**；下一执行点=端点层交付后 W/A/P 系 HTTP 全量 + UI W1 走查闭环（与项目管理员检查点一致）。
