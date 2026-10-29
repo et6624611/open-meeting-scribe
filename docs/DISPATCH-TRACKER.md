@@ -16,7 +16,7 @@
 
 | 工单 | 负责人 | 实施内容 | 设计依据 | 开工条件 | 出场 gate | 状态 |
 |------|--------|----------|----------|----------|-----------|------|
-| EP0-BE | 后端工程师 | 数据层迁移（DATA_ROOT + users/<user_id> 命名空间、单租户 JSON→SQLite、存量数据归 13373013103、settings 按用户加密拆分、schema 预留 owner/scope）+ API 契约实现 + 账号体系（邀请码自助设密/管理员建号/停用即吊销会话）；契约必须含：默认零出网引擎/AI 配置开关、设备配对 token、sync_status 与 visibility 字段、邀请码自助设密端点、账号停用后定稿文字保留在企业服务器且管理台可整包删除语义 | shared/P0-BACKEND-DESIGN-MULTIUSER-20261029.md（v0.2） | 已就绪：契约已于 2026-10-29 09:30 UTC 冻结 v1.0，本单进入存储迁移开发（第一个增量：DATA_ROOT + schema + actor 强制 DAO 层） | 契约冻结（端点清单/错误码/WS schema/幂等键/JWT 策略齐备并发群）→ SQLite 迁移脚本 + 存量迁移可复现 → 账号体系端点自测通过 | 进行中（增量2 已交且偏差裁决闭环 P-010，待 QA HTTP 全量复验；增量3 oms-migrate 即刻推进，M 系交付后 QA 跑迁移对账） |
+| EP0-BE | 后端工程师 | 数据层迁移（DATA_ROOT + users/<user_id> 命名空间、单租户 JSON→SQLite、存量数据归 13373013103、settings 按用户加密拆分、schema 预留 owner/scope）+ API 契约实现 + 账号体系（邀请码自助设密/管理员建号/停用即吊销会话）；契约必须含：默认零出网引擎/AI 配置开关、设备配对 token、sync_status 与 visibility 字段、邀请码自助设密端点、账号停用后定稿文字保留在企业服务器且管理台可整包删除语义 | shared/P0-BACKEND-DESIGN-MULTIUSER-20261029.md（v0.2） | 已就绪：契约已于 2026-10-29 09:30 UTC 冻结 v1.0，本单进入存储迁移开发（第一个增量：DATA_ROOT + schema + actor 强制 DAO 层） | 契约冻结（端点清单/错误码/WS schema/幂等键/JWT 策略齐备并发群）→ SQLite 迁移脚本 + 存量迁移可复现 → 账号体系端点自测通过 | 进行中（后端三增量 8b09a3f→aba84fb→3dc5e35 齐 P-011，自测 29 passed；后端侧无阻塞项，待 QA HTTP/M 系结论回收按 FAIL 即修+联调支援） |
 | EP0-FE | 前端开发工程师 | 七档去单例化改造：①守卫+登录页+清态（S）②双 client 工厂+origin 归属打标（M）③task store 按 user 过滤（M）④录音 per-task 化（M，硬依赖 EP0-BE 契约）⑤engine 状态归位设备属性（S+M）⑥管理台页面组（M）⑦数据目录设置+上传知情同意交互（M，按 UI 规格） | shared/DESIGN-P0-FRONTEND-ARCH-20261029.md | ①⑥⑦不依赖后端，即刻开工；②③⑤随契约冻结推进；④待 EP0-BE 录音控制面契约 | ①登录守卫+退出清 localStorage（零残留）→ 全部七档完成且企业 build flag 下个人版零变化 → 同意卡/数据位置/登录页三处文案与 QA B5 逐字一致 | 进行中（档①含 W1 销项完成且走查关闭 P-007/P-008；档②⑤推进中） |
 | EP0-OPS | DevOps 工程师 | deploy/private Docker Compose 骨架（oms-app/oms-proxy/oms-backup 三服务）、离线 tar 交付包（oms-private_<版本>_linux_amd64.tar.gz）、管理员初始化向导 4 步（默认绑定 13373013103）、TLS_MODE 三态开关（出厂 off + 管理台/向导常驻一键开内置 CA + 企业自有证书文档位）、数据卷备份（每日快照 14 天轮转）与升级回滚流程（强制前置备份→事务化 migrate→/healthz 探活） | shared/DEVOPS-P0-DESIGN-20261029.md | 即刻开工（可与 EP0-BE 并行；联调点仅 db migrate 命令与 /healthz）；CA 已降级，不再是出场 gate | compose 一键包在内网 Linux 裸机跑通「管理员启用服务→Web 访问」→ 升级回滚演练一次成功 → 离线包无外网依赖验证 | 进行中（骨架+回填+CLI 冒烟全绿 P-002/P-003/P-009；剩容器全链路 smoke+CI job；新发现 /healthz 缺口见 EP0-C7） |
 | EP0-QA | QA 工程师 | 越权矩阵（资源×操作×令牌形态全矩阵，含禁止 5xx 区分存在性、WS 订阅越权、管理员默认不可读单分支、注销用户定稿保留/管理台整包删除预期、13373013103 存量专项 diff=∅ 可回滚）展开为逐条用例 + 数据出境白名单（默认零出网；非白名单对端全关；同意卡三行=抓包事实 B5 断言；域 B 按 CA 降级拆两条口径）+ 个人版升级回归门禁四条 + §3A U1–U7 | shared/QA-ENTERPRISE-P0-ACCEPTANCE-DRAFT-20261029.md（v0.2） | 框架与不依赖契约的用例即刻开写；逐条展开+升 v1.0 待 EP0-BE 契约冻结 | v1.0 定稿 → P0 六场景端到端验收（开通服务/邀请码建号/Web 查看编辑定稿文字/助手连接同步/用户隔离/备份回滚）+ 越权矩阵 100% 执行 + 白名单抓包通过 | 进行中（增量1 结构断言执行全绿 P-006；HTTP 全量待端点层，M 系待 oms-migrate） |
@@ -40,6 +40,8 @@
 | P-010 | 10-29 ~09:50 | EP0-BE | 增量2：/api/v1 端点层全量（认证/管理/上下文/配对四域）+ GET /healthz（DB 可读复合探针）+ QA 映射①②落实（422 无裸 5xx）+ 资产内容级门禁；仅企业形态条件挂载、个人版路由数不变；P0 实例级串行锁（P1 优化项已注记） | feat/ep0-datalayer-20261029-093500 @ aba84fb（本地未推送）；tests/test_ep0_api.py 11 + datalayer 13 = 24 passed，既有回归 61 passed | 已核实（commit+stat 实查）；HTTP 全量待 QA 执行 | 下一增量：oms-migrate（M 系入口）+ 管理台 Web 静态页挂载 |
 
 契约偏差两项（产品经理已裁决，PRD §8 补记 2026-10-29 09:49，cmsg_01m63h2jvwcvtrpty7rwybn3cg）：① POST /admin/invites 通用邀请码 P0 不挂载（501 占位）→ **批准**，账号绑定码即 P0 唯一需求，通用码列 P1，QA 枚举清单按此记录；② /auth/activate 在 service_closed 期间放行 → **批准，附新增验收断言**：停用期间 activate 成功→该账号 login 仍 403（service_closed 断言四扩五，入 W/A 系台账，列为 QA 出场检查项）。
+
+| P-011 | 10-29 ~09:54 | EP0-BE | 增量3：oms-migrate 存量迁移（命令面冻结 `python -m app.db migrate-legacy --source <data目录> --account 13373013103`；账号不存在拒执；三段式复制-校验-保留源、源零改动有断言；幂等台账 (legacy_id, source_hash)；文本白名单搬运，音频/声纹/凭据物理不读取）；资产内容门禁加强为递归文本态校验；service_closed 第五断言语义已实现（activate 放行、login 独立拦） | feat/ep0-datalayer-20261029-093500 @ 3dc5e35（本地未推送）；合成 5 测试+真实存量双跑（scanned 131/migrated 112/skip 19/spot_check 112/112/重跑全 already_migrated）；对账单 DATA_ROOT/logs/migration_report_<ts>.json=QA M 系门禁物证格式 | 已核实（commit+stat 实查）；M 系执行待 QA | README-admin 迁移入口由 OPS 回填；向导"老数据一键导入"可直接调该命令 |
 
 推送纪律：BE/OPS 分支与 main 提交均未推送，推送需项目方确认；FE 分支已按群纪律 push origin 不自行合 main。
 
@@ -69,3 +71,5 @@
 - 2026-10-29（晚·第五次更新）：登记 P-010（EP0-BE 增量2 端点层+/healthz+QA 两项映射落实，24 passed+61 回归零破坏，commit 实查核实）；EP0-C7 转"已交付待 QA 复验"；两项契约偏差入册待 QA/产品经理核对。目标态五条服务端能力面自此可联调。
 
 - 2026-10-29（晚·第六次更新）：两条契约偏差按产品经理裁决入册（PRD §8 补记核实，镜像同步），新增 EP0-C9 出场检查项（service_closed 五断言）；P-010 偏差核对状态转"裁决闭环"。
+
+- 2026-10-29（晚·第七次更新）：登记 P-011（EP0-BE 增量3 oms-migrate，后端三增量齐、自测 29 passed、真实存量 112/112 对账通过；M 系用例入口就绪）。EP0-BE 工单出场 gate 前两项（契约冻结✓、迁移可复现✓）已达，待 QA 执行结论收口第三项。检查点更新：QA HTTP 全量+M 系+五断言执行结果、FE 档②⑤联调播报（须带 scopedKey 注明项，EP0-C8）。
