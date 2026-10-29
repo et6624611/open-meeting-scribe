@@ -67,6 +67,7 @@
 - 工单台账：docs/DISPATCH-TRACKER.md（EP0-IMP 五单，commit 4a701f5）；镜像 docs/EP0-DESIGNS/
 - 裁决记录：群消息 cmsg_01m63fn448vz5fta7ahrggq9rk（UI 五问）、cmsg_01m63fnrtgp4pr4zs1h8fzt2eg（DevOps 四问）、cmsg_01m63frf0zk4ap0966st6t9hft（QA/前端十问）、cmsg_01m63fs38az5jy46tmtyjj979w（QA 四问重申）
 - 用户数据隔离实现注记：隔离在 DB 行级（instance.db + blobs/<user_id>/），无 users/<id> 目录树——后端契约 §2.1 修正，早先工单表述以此为准。
+- 契约偏差裁决（增量2，2026-10-29 09:49）：① 通用邀请码 POST /admin/invites P0 不挂载（501 占位）——PRD F2 流程本就需要"占位账号+账号绑定码"，语义不变，通用码列 P1；② /auth/activate 在 service_closed 期间放行（bootstrap 依赖）——批准：服务停用拦截的是业务读写与登录，账号激活仅是管理员已建占位账号的设密动作，激活后登录仍 403，无用户可见矛盾。QA 需补一条断言：停用期间 activate 成功→该账号 login 仍 403。
 
 ## 9. 风险与排期诚实说明
 
