@@ -12,26 +12,40 @@ export type Visibility = 'personal' // P0 恒 personal；P1 扩展时此处加�
 export type ServerSyncStatus = 'synced' | 'stale'
 export type QueueSyncStatus = 'pending' | 'syncing' | 'synced' | 'error'
 
+/** 列表项（实测对齐 2026-10-29 联调：list 用 current_rev/scope，detail 用 server_rev） */
 export interface ContextTaskSummary {
   task_id: string
+  title: string
+  scope?: string
+  visibility: Visibility
+  sync_status: ServerSyncStatus
+  current_rev: number
+  content_hash: string
+  updated_at: string
+}
+
+export interface ContextTaskMeta {
   title: string
   meeting_time: string | null
   participants_text: string
   source: 'client' | 'web_import' | string
   legacy_id?: string | null
+}
+
+/** 详情（§1.4）：定稿全文 + 元数据 + server_rev；insights_html null 时可能缺省 */
+export interface ContextTaskDetail {
+  task_id: string
   visibility: Visibility
   sync_status: ServerSyncStatus
   server_rev: number
   content_hash: string
+  meta: ContextTaskMeta
   updated_at: string
-}
-
-export interface ContextTaskDetail extends ContextTaskSummary {
   formal: string
   summary: string
   decisions: unknown[]
   notes: string
-  insights_html: string | null
+  insights_html?: string | null
 }
 
 export interface SnapshotResult {

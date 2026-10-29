@@ -36,8 +36,9 @@ async function onSubmit() {
   } catch (err) {
     const code = authErrorCode(err)
     const status = (err as { response?: { status?: number } })?.response?.status
-    if (code === 'invite_invalid' || status === 401 || status === 403 || status === 404) {
-      errorMsg.value = t('login.enterprise.err_invite_invalid')
+    if (code === 'activation_failed' || code === 'invite_invalid' || status === 401 || status === 403 || status === 404) {
+      // activation_failed 涵盖弱密码/邀请码失效（后端实测 422 归并同一用户向提示，避免泄露原因细节）
+      errorMsg.value = password.value.length < 8 ? t('login.enterprise.err_password_short') : t('login.enterprise.err_invite_invalid')
     } else if (status) {
       errorMsg.value = t('login.enterprise.err_service_error', { status })
     } else {

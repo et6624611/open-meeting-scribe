@@ -11,16 +11,19 @@ export type EnterpriseAuthErrorCode =
   | 'password_not_set'
   | 'service_closed'
   | 'account_disabled'
-  | 'invalid_credentials'
+  | 'bad_credentials'
+  | 'unauthenticated'
   | 'invite_invalid'
+  | 'activation_failed'
   | string
 
+/** /me 全量返回；login/activate 响应实测仅 {user_id, display_name, role}——其余字段可选（2026-10-29 联调校准） */
 export interface EnterpriseMe {
   user_id: string
   display_name: string
   role: 'admin' | 'member' | string
-  status: 'active' | 'disabled' | 'pending' | string
-  tenant_id: string
+  status?: 'active' | 'disabled' | 'pending' | string
+  tenant_id?: string | null
 }
 
 export interface InstanceInfo {
