@@ -764,9 +764,10 @@
 .db-flow { display: flex; flex-direction: column; gap: var(--s-3); width: 100%; }
 
 /* ─── 决策卡片基础布局 ─── */
-.db-node { width: 100%; box-sizing: border-box; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-sm); transition: opacity 0.12s; }
+.db-node { width: 100%; box-sizing: border-box; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-sm); transition: border-color 0.12s; }
 .db-node:hover { border-color: var(--border-strong); }
-.db-node.is-done { opacity: 0.5; }
+/* 已存档（闭档）不降权：存档内容是沉淀下来的智慧，与开放决策同等可读。
+   状态归属由状态点配色 + 平铺状态芯片 + 沉底折叠分组表达，is-done 只作语义标记 */
 .db-row1 { display: flex; align-items: center; gap: var(--s-2); }
 .db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -832,8 +833,7 @@
 .db-owner-item[aria-checked="true"] { color: var(--accent); }
 .db-owner-check { font-size: var(--fs-11); color: var(--accent); }
 /* 标题 + 正文双要素：正文不再退为灰色摘要行（与正文重复，已移除） */
-/* 决策已存档（闭档）：弱化文字色即可，不做删除线——决策是选择，不是被划掉的任务 */
-.db-node.is-done .db-title { color: var(--subtle); }
+/* 决策已存档（闭档）：标题沿用常规文字色——决策是选择，不是被划掉的任务，也不该被看成过期信息（灰显规则已移除） */
 /* 待确认提案徽标：pending_confirmation 为 true 的节点（与已定结论共用 to_decide 态） */
 .db-pending-badge {
   flex-shrink: 0; padding: 1px 7px; border-radius: 999px;
@@ -845,7 +845,7 @@
   margin-top: var(--s-1); font-size: var(--fs-11); line-height: 1.5; color: var(--subtle);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.db-completed { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
+/* 分组折叠条基元：纪要页决策流已取消分组，仅决策中心闭档沉底区使用 */
 .flow-completed-toggle { display: flex; align-items: center; gap: 6px; padding: var(--s-2) var(--s-3); border: none; background: transparent; color: var(--muted); font-size: var(--fs-12); cursor: pointer; border-radius: var(--radius-sm); transition: all 0.12s; width: 100%; }
 .flow-completed-toggle:hover { background: var(--surface-2); color: var(--fg); }
 .flow-completed-toggle .chev { transition: transform 0.15s; }

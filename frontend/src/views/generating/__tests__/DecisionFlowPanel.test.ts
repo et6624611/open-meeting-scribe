@@ -61,7 +61,6 @@ const ZH = {
     decisions_panel_link: '决策中心',
     decisions: {
       add_decision: '添加决策',
-      completed_group: '已完成（{count}）',
       total_count: '共 {count} 条',
       status_other: '其他',
       flow_empty: '暂无决策',
@@ -122,8 +121,8 @@ afterEach(() => {
 
 describe('DecisionFlowPanel 演变角标', () => {
   it('main 节点显示跨会议角标；history 节点指向另一场会议的最新推进', async () => {
-    // 借锚点把闭档组展开（history 节点 c1 在闭档组内），但不给来源横幅
-    const w = mountPanel({ anchorDecisionId: 'c1' })
+    // 分组已下线：无需锚点展开，history 节点 c1（闭档）也在平铺列表中
+    const w = mountPanel()
     await flushPromises()
     await tick(250)
 
@@ -143,12 +142,12 @@ describe('DecisionFlowPanel 演变角标', () => {
 })
 
 describe('DecisionFlowPanel 节点锚点（?decision=&from=evolution）', () => {
-  it('锚到闭档节点：自动展开闭档组、滚动、闪烁高亮，并显示来源横幅', async () => {
+  it('锚到闭档节点：直接滚动、闪烁高亮，并显示来源横幅', async () => {
     const w = mountPanel({ anchorDecisionId: 'c1', fromEvolution: true })
     await flushPromises()
     await tick(250)
 
-    // 闭档组默认折叠；锚点必须先把组展开，节点才在 DOM 中
+    // 无分组折叠：闭档节点与开放节点同列平铺，锚点无需先展开任何组
     const node = w.find('.db-node[data-decision-id="c1"]')
     expect(node.exists()).toBe(true)
     expect(node.classes()).toContain('evo-anchor-flash')
@@ -170,13 +169,17 @@ describe('DecisionFlowPanel 节点锚点（?decision=&from=evolution）', () => 
     expect(w.find('.db-evo-banner').exists()).toBe(false)
   })
 
-  it('无锚点/无来源标识：不出横幅，闭档组保持折叠（旧决策默认隐藏）', async () => {
+  it('无锚点/无来源标识：不出横幅，闭档节点与开放节点同列平铺', async () => {
     const w = mountPanel()
     await flushPromises()
     await tick(200)
 
     expect(w.find('.db-evo-banner').exists()).toBe(false)
-    expect(w.find('.db-node[data-decision-id="c1"]').exists()).toBe(false)
+    // 分组功能已移除：不再有「已存档 N 条决策」折叠区，闭档节点不再被隐藏
+    expect(w.find('.db-completed').exists()).toBe(false)
+    expect(w.findAll('.flow-completed-toggle')).toHaveLength(0)
+    expect(w.findAll('.db-node').map(n => n.attributes('data-decision-id')))
+      .toEqual(['a1', 'a2', 'c1'])
     expect(scrollSpy).not.toHaveBeenCalled()
   })
 })

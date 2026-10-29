@@ -414,7 +414,7 @@
 .spk-decision-item .decision-check { margin-top: 2px; cursor: pointer; }
 .spk-decision-item .decision-body { flex: 1; }
 .spk-decision-item .decision-text { font-size: var(--fs-13); color: var(--fg); }
-.spk-decision-item .decision-text.is-done { color: var(--muted); }
+/* 已存档决策不置灰：与决策流卡片同口径——存档内容是沉淀下来的智慧，按常规对比度可读（is-done 仅留作语义标记） */
 .spk-decision-item .decision-from { font-size: var(--fs-11); color: var(--muted); margin-top: 2px; }
 
 .spk-empty { text-align: center; padding: var(--s-8); color: var(--muted); font-size: var(--fs-13); }

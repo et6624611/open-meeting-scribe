@@ -243,7 +243,6 @@
     "flow_progress": "Decision flow progress",
     "flow_empty": "Record your first decision",
     "flow_empty_hint": "Record key decisions and follow-up actions from the meeting",
-    "completed_group": "{count} archived decisions",
     "total_count": "{count} total",
     "status_other": "Other",
     "status_to_decide": "To decide",

@@ -243,7 +243,6 @@
     "flow_progress": "决策流推进度",
     "flow_empty": "记录第一条决策",
     "flow_empty_hint": "记录会议中的关键决策和后续行动",
-    "completed_group": "已存档 {count} 条决策",
     "total_count": "共 {count} 条",
     "status_other": "其他",
     "content_placeholder": "记录决策内容（Markdown，/today 插日期）…",

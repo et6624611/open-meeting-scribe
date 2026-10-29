@@ -26,10 +26,10 @@
       <button class="db-add-btn" @click="emit('add')">+ {{ t('generating.decisions.add_decision') }}</button>
     </div>
 
-    <!-- 决策卡片列表 / Decision card list -->
-    <div class="db-flow" v-if="mainNodes.length">
+    <!-- 决策卡片列表：按产生顺序平铺，不再按开放/闭档分组折叠 -->
+    <div class="db-flow" v-if="decisions.length">
       <div
-        v-for="decision in mainNodes"
+        v-for="decision in decisions"
         :key="decision.id"
         class="db-node-cell"
         :class="{ 'is-anchor': anchorDecisionId === decision.id }"
@@ -46,39 +46,10 @@
       </div>
     </div>
 
-    <!-- 已完成分组（默认折叠） / Completed group (collapsed by default) -->
-    <div class="db-completed" v-if="completedNodes.length">
-      <button class="flow-completed-toggle" @click="showCompleted = !showCompleted">
-        <svg class="chev" :class="{ open: showCompleted }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-        {{ t('generating.decisions.completed_group', { count: completedNodes.length }) }}
-      </button>
-      <div class="db-flow" v-if="showCompleted">
-        <div
-          v-for="decision in completedNodes"
-          :key="decision.id"
-          class="db-node-cell"
-          :class="{ 'is-anchor': anchorDecisionId === decision.id }"
-        >
-          <EvolutionBadge v-if="evolution[decision.id]" :info="evolution[decision.id]" />
-          <DecisionNode
-            :decision="decision"
-            @select-status="(s) => emit('status-change', decision, s)"
-            @select-owner="(o) => emit('update', decision, { owner_type: o })"
-            @commit-content="(c) => emit('update', decision, { why: c })"
-            @patch="(p) => emit('update', decision, p)"
-            @delete="emit('delete', decision)"
-          />
-        </div>
-      </div>
-    </div>
-
     <!-- 空状态 / Empty state -->
     <div class="flow-empty" v-if="!decisions.length">
       <div class="flow-empty-title">{{ t('generating.decisions.flow_empty') }}</div>
       <div class="flow-empty-hint">{{ t('generating.decisions.flow_empty_hint') }}</div>
-    </div>
-    <div class="flow-empty" v-else-if="!mainNodes.length && !completedNodes.length">
-      {{ t('generating.decisions.empty') }}
     </div>
 
     <!-- 添加决策：与决策中心手动补录共用同一弹层表单（DC-UNIFY-01） / Add decision: same dialog as the center's manual entry -->
@@ -100,7 +71,7 @@ import type { DecisionPatch } from '@/api/notes'
 import { fetchTaskEvolution, type NodeEvolution } from '@/api/decisions'
 import { useDecisionStatuses } from '@/composables/useDecisionStatuses'
 import { meetingNodeLink, topicCenterLink } from '@/views/decisionEvolutionNav'
-import { partitionNodes, statusOf } from './decisionFlowLogic'
+import { statusOf } from './decisionFlowLogic'
 import DecisionNode from './DecisionNode.vue'
 
 const { t, locale } = useI18n()
@@ -122,16 +93,12 @@ const emit = defineEmits<{
   (e: 'add'): void
 }>()
 
-// ── 状态字典：分组与摘要都由它驱动（闭档 = 完成类，沉底折叠） ──
+// ── 状态字典：摘要分项顺序与闭档判定由它驱动 ──
 const { statuses, load, labelOf, isClosing } = useDecisionStatuses()
 onMounted(() => { void load() })
 
-// ── 节点分组 / Node grouping（逻辑见 decisionFlowLogic.ts） ──
-const grouped = computed(() => partitionNodes(props.decisions, isClosing))
-const mainNodes = computed(() => grouped.value.active)
-const completedNodes = computed(() => grouped.value.completed)
-
-const showCompleted = ref(false)
+// 节点不分组：决策流按产生顺序平铺，存档态由卡片自身的状态点 + 状态芯片表达
+// （项目方裁决：存档内容是沉淀下来的智慧，不与开放决策分高低、不折叠隐藏）
 
 // ── 跨会议演变归属（角标数据源；失败静默降级，不阻塞面板） ──
 const evolution = ref<Record<string, NodeEvolution>>({})
@@ -175,15 +142,7 @@ const anchorTitle = computed(() => {
 const anchorTopicKey = computed(() =>
   props.anchorDecisionId ? evolution.value[props.anchorDecisionId]?.topic_key : undefined)
 
-// ── 节点锚点定位：闭档组随字典加载/锚点变化响应式展开 → 滚动 → 高亮闪烁 ──
-// 不能只在锚点 watcher 里判定：挂载瞬间字典可能尚未返回，闭档节点会被误分到开放组
-const anchorInCompleted = computed(() =>
-  Boolean(props.anchorDecisionId && completedNodes.value.some(x => x.id === props.anchorDecisionId)))
-watch(anchorInCompleted, (inCompleted) => {
-  // 仅 false→true 时展开，不与用户随后的手动折叠对抗
-  if (inCompleted) showCompleted.value = true
-}, { immediate: true })
-
+// ── 节点锚点定位：等数据落 DOM → 滚动 → 高亮闪烁 ──
 watch(() => props.anchorDecisionId, (id) => {
   if (!id) return
   bannerDismissed.value = false
@@ -201,7 +160,7 @@ watch(() => props.anchorDecisionId, (id) => {
       window.setTimeout(() => el.classList.remove('evo-anchor-flash'), 2400)
     })
   }
-  // 数据/演变归属可能尚未返回，首轮延迟起轮询（同时等闭档组展开渲染）
+  // 数据/演变归属可能尚未返回，首轮延迟起轮询
   window.setTimeout(() => tryLocate(0), 120)
 }, { immediate: true })
 
