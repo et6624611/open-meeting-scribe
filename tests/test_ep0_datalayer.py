@@ -154,7 +154,7 @@ def test_pairing_and_disable_cascade(store: EnterpriseStore):
     a, _ = make_member(store, "empF")
     store.apply_snapshot(actor_user_id=a, task_id="tsk_keep", client_mutation_id="mut-keep", base_rev=0, payload=PAYLOAD)
     code = store.create_pairing(actor_user_id=a)
-    device_id, token = store.redeem_pairing(pairing_code=code, device_name="录音助手-甲")
+    device_id, token, _uid = store.redeem_pairing(pairing_code=code, device_name="录音助手-甲")
     assert store.verify_device_token(token) == a
     with pytest.raises(NotFoundError):  # 配对码一次性
         store.redeem_pairing(pairing_code=code, device_name="dup")
@@ -174,7 +174,7 @@ def test_pairing_and_disable_cascade(store: EnterpriseStore):
 def test_revoke_device_single(store: EnterpriseStore):
     a, _ = make_member(store, "empG")
     code = store.create_pairing(actor_user_id=a)
-    device_id, token = store.redeem_pairing(pairing_code=code, device_name="助手")
+    device_id, token, _uid = store.redeem_pairing(pairing_code=code, device_name="助手")
     store.revoke_device(actor_user_id=a, device_id=device_id)
     assert store.verify_device_token(token) is None
     b, _ = make_member(store, "empH")

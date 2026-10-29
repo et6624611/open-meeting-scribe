@@ -127,12 +127,22 @@ class EnterpriseStore:
         return target
 
     def verify_login(self, *, login_account: str, password: str) -> str | None:
-        """凭账号+密码认证；成功返回 user_id。服务停用属端点层语义，DAO 不管。"""
+        result = self.login_probe(login_account=login_account, password=password)
+        return None if result in ("invalid", "disabled", "password_not_set") else result
+
+    def login_probe(self, *, login_account: str, password: str) -> str:
+        """返回 'ok'|'disabled'|'invalid'|'password_not_set'——端点层据此映射契约错误码（QA D001）。"""
         row = self.conn.execute(
             "SELECT user_id, password_hash, status FROM users WHERE login_account=?", (login_account,)
         ).fetchone()
-        if row is None or row["status"] != "active" or not verify_password(password, row["password_hash"]):
-            return None
+        if row is None:
+            return "invalid"
+        if row["status"] == "disabled":
+            return "disabled"  # 正确密码也拒绝，但独立语义：求助路径=联系管理员
+        if row["status"] != "active":
+            return "password_not_set" if row["password_hash"] is None else "invalid"
+        if not verify_password(password, row["password_hash"]):
+            return "invalid"
         return row["user_id"]
 
     def get_user(self, *, actor_user_id: str, user_id: str) -> dict:
@@ -352,8 +362,8 @@ class EnterpriseStore:
             )
         return code
 
-    def redeem_pairing(self, *, pairing_code: str, device_name: str) -> tuple[str, str]:
-        """助手兑换 device token：明文 token 仅此一次返回。"""
+    def redeem_pairing(self, *, pairing_code: str, device_name: str) -> tuple[str, str, str]:
+        """助手兑换 device token：明文 token 仅此一次返回；附带归属 user_id 供助手展示。"""
         row = self.conn.execute(
             "SELECT * FROM pairings WHERE pairing_code_hash=? AND redeemed_at IS NULL",
             (hash_secret(pairing_code),),
@@ -367,7 +377,7 @@ class EnterpriseStore:
                 (device_id, row["user_id"], hash_secret(token), device_name, utcnow()),
             )
             self.conn.execute("UPDATE pairings SET redeemed_at=? WHERE pairing_id=?", (utcnow(), row["pairing_id"]))
-        return device_id, token
+        return device_id, token, row["user_id"]
 
     def verify_device_token(self, token: str) -> str | None:
         """返回可用 device token 的 user_id（仅允许上下文写端点，端点层约束）。"""

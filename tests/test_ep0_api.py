@@ -190,7 +190,7 @@ def test_pairing_device_token(client):
         "/api/v1/context/tasks/tsk_dev/snapshot", json=PAYLOAD,
         headers={"Idempotency-Key": "mut-d2", "If-Match-Rev": "1", "Authorization": f"Bearer {token}"},
     )
-    assert revoked.status_code == 401  # device 吊销后写入被拒
+    assert revoked.status_code == 403 and revoked.json()["error"]["code"] == "device_revoked"  # QA D002
 
 
 def test_disable_and_bulk_delete(client):
@@ -203,6 +203,9 @@ def test_disable_and_bulk_delete(client):
     uid = client.get("/api/v1/auth/me", cookies=emp).json()["user_id"]
     assert client.put(f"/api/v1/admin/users/{uid}/status", json={"status": "disabled"}, cookies=adm).status_code == 200
     assert client.get("/api/v1/auth/me", cookies=emp).status_code == 401  # 停用即刻踢出读取
+    # QA D001 回归：停用账号+正确密码 → 403 account_disabled（求助路径），非 401 错凭据
+    d = client.post("/api/v1/auth/login", json={"account": "emp7", "password": "Emp-Pw-0001"})
+    assert d.status_code == 403 and d.json()["error"]["code"] == "account_disabled"
     # 数据保留（QA-Q3）：整包删除前员工数据行仍在（管理员视角仅见计数）
     dl = client.delete(f"/api/v1/admin/users/{uid}/data", cookies=adm)
     assert dl.status_code == 200 and dl.json()["deleted_tasks"] == 1
@@ -257,6 +260,17 @@ def test_qa_http_mappings(client):
     c = client.post("/api/v1/admin/users", json={"display_name": "x", "account": "emp11"}, cookies=adm)
     weak = client.post("/api/v1/auth/activate", json={"invite_code": c.json()["invite_code"], "password": "short"})
     assert weak.status_code == 422 and weak.json()["error"]["code"] == "activation_failed"
+    # QA 映射③/D003：畸形 If-Match-Rev 头 → 400（禁 5xx），快照与资产两端同规则
+    malformed = client.put(
+        "/api/v1/context/tasks/tsk_q1/snapshot", json=PAYLOAD,
+        headers={"Idempotency-Key": "mut-q9", "If-Match-Rev": "abc"}, cookies=emp,
+    )
+    assert malformed.status_code == 400 and malformed.json()["error"]["code"] == "invalid_header"
+    mal_asset = client.put(
+        "/api/v1/context/assets/hotwords", json={"payload": ["a"]},
+        headers={"Idempotency-Key": "mut-q8", "If-Match-Rev": "-1"}, cookies=emp,
+    )
+    assert mal_asset.status_code == 400 and mal_asset.json()["error"]["code"] == "invalid_header"
     # 资产 embedding 夹带 → 422 内容级拒收
     emb = client.put(
         "/api/v1/context/assets/speaker-aliases", json={"payload": {"spk1": [0.1, 0.2]}},

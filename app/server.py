@@ -479,6 +479,13 @@ from .routers import enterprise_api as _enterprise_api  # noqa: E402
 if _enterprise_api.enterprise_mode():
     _enterprise_api.register_enterprise_routes(app)
 
+# 录音助手本地控制面：仅 OMS_EDITION=assistant 时挂载（契约 §1.8 v1.1 / EP0-BE 增量4） /
+# Assistant local plane: mounted only when OMS_EDITION=assistant
+from .routers import assistant_plane as _assistant_plane  # noqa: E402
+
+if _assistant_plane.assistant_mode():
+    _assistant_plane.register_assistant_routes(app)
+
 # ============================================================
 # 软件下载分发（自建下载中转） / Software download distribution (self-hosted relay)
 # ============================================================

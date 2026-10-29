@@ -119,13 +119,6 @@ def _service_open(store: EnterpriseStore) -> bool:
     return bool(store.get_instance_config("service_open", default=True))
 
 
-def _device_user(request: Request) -> str | None:
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    return get_store().verify_device_token(auth.removeprefix("Bearer ").strip())
-
-
 def write_guard(request: Request, user_id: str) -> str:
     """写操作统一门禁：服务停用 503；device token 仅限上下文写（§1.8）。"""
     store = get_store()
@@ -136,10 +129,26 @@ def write_guard(request: Request, user_id: str) -> str:
 
 def actor_for_write(request: Request) -> str:
     """会话（Web）或 device token（助手）均可作为写入主体；device 停用/账号停用在此统一拒绝。"""
-    uid = _device_user(request)
-    if uid:
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        uid = get_store().verify_device_token(auth.removeprefix("Bearer ").strip())
+        if uid is None:
+            # QA D002 修复：出示了 Bearer 凭据但被拒=通道级撤权语义，助手端可收敛重试
+            raise EHttp(403, "device_revoked", "设备凭据已吊销或失效，请重新配对")
         return uid
     return current_user(request)
+
+
+def _parse_if_match_rev(request: Request) -> int:
+    """QA D003 修复：畸形头 → 400 invalid_header，禁 5xx。"""
+    raw = request.headers.get("if-match-rev", "0") or "0"
+    try:
+        rev = int(raw)
+    except (TypeError, ValueError):
+        raise EHttp(400, "invalid_header", f"If-Match-Rev 头非法: {raw!r}（需非负整数）")
+    if rev < 0:
+        raise EHttp(400, "invalid_header", "If-Match-Rev 不能为负数")
+    return rev
 
 
 def _read_actor(request: Request) -> str:
@@ -184,12 +193,15 @@ def auth_login(request: Request, response: Response, body: dict):
     store = get_store()
     if not _service_open(store):
         raise EHttp(403, "service_closed", "企业服务已暂停，请联系管理员")
-    uid = store.verify_login(login_account=body.get("account") or "", password=body.get("password") or "")
-    if uid is None:
+    result = store.login_probe(login_account=body.get("account") or "", password=body.get("password") or "")
+    if result == "disabled":
+        # QA D001 修复：停用账号=403 account_disabled（求助路径"请联系管理员"），与错凭据区分
+        raise EHttp(403, "account_disabled", "账号已被管理员停用，请联系管理员")
+    if result in ("invalid", "password_not_set"):
         raise EHttp(401, "bad_credentials", "账号或密码错误")
-    _issue_session(store, uid, response)
-    info = store.session_user(user_id=uid)
-    return {"user_id": uid, "display_name": info["display_name"], "role": info["role"]}
+    _issue_session(store, result, response)
+    info = store.session_user(user_id=result)
+    return {"user_id": result, "display_name": info["display_name"], "role": info["role"]}
 
 
 @router.post("/auth/activate")
@@ -260,12 +272,12 @@ def device_activate(body: dict):
     if not _service_open(store):
         raise EHttp(403, "service_closed", "企业服务已暂停")
     try:
-        device_id, token = store.redeem_pairing(
+        device_id, token, user_id = store.redeem_pairing(
             pairing_code=body.get("pairing_code") or "", device_name=body.get("device_name") or ""
         )
     except NotFoundError:
         raise EHttp(404, "pairing_invalid", "配对码无效或已过期")
-    return {"device_id": device_id, "device_token": token}  # 明文仅此一次
+    return {"device_id": device_id, "device_token": token, "user_id": user_id}  # token 明文仅此一次
 
 
 @router.get("/devices")
@@ -438,7 +450,7 @@ def ctx_snapshot(task_id: str, request: Request, body: dict):
     mutation = request.headers.get("idempotency-key") or body.pop("client_mutation_id", None)
     if not mutation:
         raise EHttp(422, "missing_idempotency_key", "必须携带 Idempotency-Key 头")
-    base_rev = int(request.headers.get("if-match-rev", "0") or 0)
+    base_rev = _parse_if_match_rev(request)
     store = get_store()
     try:
         result = store.apply_snapshot(
@@ -499,7 +511,7 @@ def asset_put(kind_seg: str, request: Request, body: dict):
     mutation = request.headers.get("idempotency-key") or body.pop("client_mutation_id", None)
     if not mutation:
         raise EHttp(422, "missing_idempotency_key", "必须携带 Idempotency-Key 头")
-    base_rev = int(request.headers.get("if-match-rev", "0") or 0)
+    base_rev = _parse_if_match_rev(request)
     payload = body.get("payload", body)
     _validate_asset_payload(payload)
     try:
