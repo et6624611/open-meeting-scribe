@@ -1,7 +1,7 @@
 # 企业版 P0 后端设计：单实例多用户数据层与 API 契约
 
-- 版本：v0.2（设计稿，供产品经理汇总 PRD）
-- v0.2 变更：纳入产品经理裁决（cmsg_01m63fn448vz5fta7ahrggq9rk）——契约插单①visibility ②sync_status ③邀请码自助设密码无初始密码下发、服务停用只读语义、老数据归属"告知即过"无回执、同意卡三行文案锁定为出境契约措辞
+- 版本：**v1.1（契约 v1.0 冻结 + 增量2–4 实现校准修订，见 §7.1）**——v1.0 冻结时点 2026-10-29 09:30 UTC；v1.1 变更需在本文档"变更记录"登记并通知依赖方
+- v0.2 变更：纳入产品经理裁决（cmsg_01m63fn448vz5fta7ahrggq9rk）——契约插单①visibility ②sync_status ③邀请码自助设密码无初始密码下发、服务停用只读语义、老数据归属"告知即过"无回执、同意卡三行文案锁定为出境契约措辞；纳入 cmsg_01m63frf0zk4ap0966st6t9hft 裁决——AI 默认零出网开关（§1.7）、设备配对 token（§1.8）、账号停用数据保留语义（§1.8）、录音 per-task 契约（§1.8）
 - 作者：后端工程师
 - 日期：2026-10-29
 - 依据裁决：项目方 2026-10-29（cmsg_01m63fehgb3ewqjd24rgkb14fx）——双产品线、内网私有化、仅定稿文本上服务端、存量数据归手机账号 13373013103、管理员建号
@@ -182,6 +182,12 @@ users(user_id ULID PK, login_account TEXT UNIQUE, phone TEXT UNIQUE NULL,
       created_at, updated_at)
 sessions(session_id PK, user_id FK, jwt_jti UNIQUE, expires_at, revoked_at NULL)
 invites(code_hash UNIQUE, created_by FK, max_uses, used_count, expires_at, disabled_at)
+device_tokens(device_id PK, user_id FK, token_hash UNIQUE, device_name,
+              revoked_at NULL, last_used_at)                    -- §1.8 配对
+pairings(pairing_code_hash UNIQUE, user_id FK, expires_at, redeemed_at NULL)
+instance_config(key TEXT PK, value_json, updated_by FK, updated_at)
+  -- 键：service_open(bool), ai_enabled(bool), ai_provider{base_url,model,api_key_enc},
+  --     egress_allowlist([host]), bootstrap_done(bool)；api_key 用 instance.key AES-GCM 加密
 
 -- 上下文域（所有业务表强制三件套：owner_user_id / scope / tenant_id）
 ctx_tasks(task_id TEXT PK,                 -- 'tsk_'+ULID；legacy_id 另列
@@ -276,14 +282,32 @@ egress_audit(ts, user_id, action, object_ref, byte_len, client_mutation_id)
 
 ---
 
-## 6. 待产品经理裁决的问题
+## 6. 产品问题裁决登记（v0.2 更新）
 
-- **Q1（Web 端音频）**：企业版 Web 浏览器端默认**不提供任何音频回放/下载**（只有文本）。是否接受？若需"回听原音"，只能回到录音者本人的客户端机器——跨用户音频共享涉及原始音频出设备，需重新过裁决③。
-- **Q2（摘要生成位置，P0 最大产品分叉）**：纪要/摘要生成需要 LLM。方案 A：留在客户端（各用户本机配 Key，复用现有个人版链路，服务端只存结果）——与裁决③零冲突，但对"纯 Web 用户"（不装客户端、只用浏览器）意味着无 AI 摘要。方案 B：服务端代理 LLM（admin 在实例上配企业 Key）——Web 用户获得完整能力，但服务器出内网访问 LLM API，"内网私有化"要降级为"数据内网、模型调用出网"，属公开承诺级决策。**建议 A 起步，B 作为企业增值配置单独立项。**
-- **Q3（纯 Web 用户价值）**：P0 若不装客户端，用户只剩"浏览/编辑定稿文本 + 无录音"。是否接受 P0 的 Web 定位为"查看+补录文本"，完整体验要求装客户端？影响 UI 登录流与前端优先级。
-- **Q4（删除语义）**：用户删除会议后服务端 30 天软删回收站（管理员不可读内容）是否成立，还是要求"立即物理删除"（合规倾向）？
-- **Q5（决策状态字典）**：decision_statuses 迁为"实例级字典 + 个人自定义"两层，管理台需要新增字典维护界面——请确认 UI/管理台 MVP 范围包含它。
+已裁决并写入本契约：
+- Q1 Web 端音频 → **无音频端点**：企业版默认形态即"只能看和编辑文字、不能录音"（裁决 #2），服务端不挂载任何音频回放/下载路由。
+- Q2 摘要生成位置 → 双通道并存：客户端本机 Key 生成（默认路径，零冲突）+ **服务端 AI 代理为管理员显式开启的可选增值**（默认关、逐域白名单、强制网络层门禁）——见 §1.7（QA-Q1 裁决）。
+- Q3 纯 Web 用户价值 → 接受"查看+补录文本"为 P0 默认形态（裁决 #2，PRD 向项目方明示）。
+- Q4'（=QA-Q3）账号停用数据保留 → 保留归属企业、可整包删除、不自动到期——见 §1.8。
+
+仍开放（均不阻塞契约冻结与开工，按默认值先行）：
+- Q4 用户自助删除的回收站语义：默认按本契约"软删 30 天、管理员不可读内容"实现；若项目方合规倾向"立即物理删除"，仅需改 DELETE 端点一处，不影响 schema。
+- Q5 决策状态字典两层化（实例级+个人级）后，管理台是否含字典维护页：后端接口已按两层实现，UI 出不出页面由产品排期，不阻塞。
+
+## 7.1 v1.1 修订（增量2–4 实现校准，2026-10-29；依赖方已群内播报）
+
+1. **WS local_token 承载（前端问题裁决）**：浏览器 WebSocket 不能自定义请求头 → `/ws/transcript/{task_id}` 以查询参数 `?oms_local_token=` 承载；HTTP 面维持 `X-OMS-Local-Token` 头。契约 §1.8 相应修正。
+2. **本地控制面端点实装**（assistant 形态，`OMS_EDITION=assistant` 才挂载）：`GET /api/local/handshake`（内存态 token，TTL 1h）、`POST /api/local/register`（配对码兑换 device token，state.json 0600）、`GET /api/sync/queue`、`POST /api/local/sync/enqueue`、`POST /api/local/sync/flush`、`GET /api/local/state`。
+3. **outbox 合并策略（P0）**：409 时采纳服务端 current_rev 为新 base、同 mutation 重推（last-writer-wins）；断网指数退避（5s→5min 封顶）；恢复后到期自动收敛，重放幂等。字段级冲突合并留 P1。
+4. **助手→实例通道强制直连**（不采纳环境代理变量）：代理会构成不可枚举出网点，与零出境纪律冲突；企业代理出站列 P1 显式配置项。
+5. **错误码补充实现**（QA 三缺陷修复，c23b247）：`403 account_disabled`（停用+正确密码）、`403 device_revoked`（出示 Bearer 但凭据失效）、`400 invalid_header`（畸形 If-Match-Rev，快照/资产两端）、`422 client_mutation_conflict`（mutation 跨 task 复用）；`POST /api/v1/auth/device-activate` 响应增 `user_id` 字段。
+6. 迁移命令面扩展：`python -m app.db migrate-legacy --source <dir> --account <login>`（§5 工具化落地）。
 
 ## 7. 工作量确认（设计→实施）
 
-维持评审结论：P0 后端 ≈ 3-4 周单人。分解：DATA_ROOT+DAO 强制 actor 层（S）、SQLite schema+迁移（L）、快照/幂等/审计端点（M）、settings 加密拆分（M）、存量迁移工具+对账（M）、auth 管理员建号/邀请码（S）、JWT_SECRET 稳定化与测试基建（S）。实施顺序不可反：schema/DAO → 数据面端点 → 迁移工具 → 账号面。
+维持评审结论：P0 后端 ≈ 3-4 周单人，今晚指令下压缩推进、按增量交付。分解：DATA_ROOT+DAO 强制 actor 层（S）、SQLite schema+迁移（L）、快照/幂等/审计端点（M）、账号+邀请码+配对（M）、settings 加密拆分（M）、存量迁移工具+对账（M）、AI 出网门禁（S）、JWT_SECRET 稳定化与测试基建（S）。实施顺序不可反：schema/DAO → 数据面端点 → 迁移工具 → 账号面。
+
+对 DevOps 契约（升级回滚）：
+- 迁移命令名：`python -m app.db migrate`（幂等、事务化、失败中止不切流；`oms-db` 为其脚本别名）；健康检查沿用 `/healthz`。
+- **P0 全部 schema 变更 additive-only**（只加表/加列，不改不删既有列）——满足"schema 双版本可读"的回滚硬前提；破坏性变更最早 P1 且需配套 expand-contract 流程。
+- 数据卷契约修正：bind mount 至 `DATA_ROOT` 根即可；实例侧布局为 `instance.db + blobs/<user_id>/…`（**无 users/<id> 目录树**，用户隔离在 DB 行级，见 §2.1），compose 请以此为准微调。
