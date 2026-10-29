@@ -39,7 +39,9 @@ services:
         condition: service_healthy
 
   oms-backup:
-    image: python:3.12-slim
+    # 用企业应用镜像跑备份：快照封装 `python -m app.db backup-snapshot` 在镜像内，
+    # 同时离线交付包少一个外部基础镜像依赖（仅 oms-app + caddy 两个镜像）。
+    image: open-meeting-scribe:${OMS_VERSION:-local}
     restart: unless-stopped
     volumes:
       - ./data:/data/oms
@@ -49,6 +51,9 @@ services:
       OMS_BACKUP_INTERVAL_SEC: "${OMS_BACKUP_INTERVAL_SEC:-86400}"
       OMS_BACKUP_KEEP_DAYS: "${OMS_BACKUP_KEEP_DAYS:-14}"
     command: ["python", "/opt/oms-backup.py", "--daemon"]
+    depends_on:
+      oms-app:
+        condition: service_started
 
 volumes:
   oms_proxy_data:
