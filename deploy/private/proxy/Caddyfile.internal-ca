@@ -1,7 +1,4 @@
-{
-	local_certs
-}
 :8443 {
-	tls internal
+	tls /etc/caddy/certs/internal/server.crt /etc/caddy/certs/internal/server.key
 	reverse_proxy oms-app:8000
 }

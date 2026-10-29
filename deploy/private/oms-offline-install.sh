@@ -20,6 +20,10 @@ PROFILE_ARGS=()
 if [ "${OMS_TLS_MODE:-off}" != "off" ]; then
   PROFILE_ARGS+=(--profile tls)
   export OMS_PUBLIC_BIND=127.0.0.1   # 开加密后应用端口收敛回环，员工只经 https 代理访问
+  if [ "${OMS_TLS_MODE}" = "internal-ca" ]; then
+    command -v openssl >/dev/null 2>&1 || { echo "错误：internal-ca 模式需要 openssl（Ubuntu: apt install openssl）"; exit 1; }
+    sh ca/bootstrap-internal-ca.sh
+  fi
 fi
 
 if [ "${1:-}" = "--build" ]; then
@@ -56,10 +60,7 @@ done
 lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}'); : "${lan_ip:=127.0.0.1}"
 
 if [ "${OMS_TLS_MODE:-off}" = "internal-ca" ]; then
-  mkdir -p ca
-  if docker compose "${PROFILE_ARGS[@]}" cp oms-proxy:/data/caddy/pki/authorities/local/root.crt ca/oms-root-ca.crt 2>/dev/null; then
-    echo "已导出企业根证书：ca/oms-root-ca.crt（发给员工或用 ca/ 下导入脚本批量信任）"
-  fi
+  echo "企业根证书：ca/oms-root-ca.crt（发给员工或用 ca/ 下导入脚本批量信任）"
 fi
 
 echo ""

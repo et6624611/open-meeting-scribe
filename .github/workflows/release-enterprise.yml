@@ -82,8 +82,9 @@ jobs:
           set -euo pipefail
           sed -i "s/^OMS_TLS_MODE=.*/OMS_TLS_MODE=internal-ca/" .env
           ./oms-offline-install.sh
-          curl -kfS -o /dev/null -w "https proxy HTTP %{http_code}\n" https://127.0.0.1:8443/healthz
-          test -s ca/oms-root-ca.crt && echo "企业根证书已导出"
+          # 严格校验（不带 -k）：以根证书验证 IP 直连=员工导证书后的真实行为
+          curl -f --cacert ca/oms-root-ca.crt -o /dev/null -w "https proxy HTTP %{http_code}\n" https://127.0.0.1:8443/healthz
+          test -s ca/oms-root-ca.crt && echo "企业根证书已生成"
 
       - name: smoke — 升级（新镜像执行迁移+健康门禁）
         working-directory: dist
@@ -91,14 +92,14 @@ jobs:
           set -euo pipefail
           V="${{ steps.ver.outputs.version }}"
           ./oms-upgrade.sh "images/images_${V}-upgrade-next.tar"
-          curl -kfS -o /dev/null https://127.0.0.1:8443/healthz
+          curl -f --cacert ca/oms-root-ca.crt -o /dev/null https://127.0.0.1:8443/healthz
 
       - name: smoke — 回滚
         working-directory: dist
         run: |
           set -euo pipefail
           ./oms-upgrade.sh --rollback
-          curl -kfS -o /dev/null https://127.0.0.1:8443/healthz
+          curl -f --cacert ca/oms-root-ca.crt -o /dev/null https://127.0.0.1:8443/healthz
           docker compose --profile tls ps
 
       - name: 失败时收集日志

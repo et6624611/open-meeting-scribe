@@ -4,6 +4,7 @@ data/
 backups/
 images/
 ca/oms-root-ca.crt
+ca/ca.key
 .oms_version_prev
 proxy/certs/*
 !proxy/certs/.gitkeep

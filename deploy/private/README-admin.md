@@ -42,7 +42,8 @@ docker compose run --rm --volume "$PWD/old-data:/data/legacy:ro" oms-app \
 ## 4. 要不要开加密（建议开）
 
 默认内网明文访问——能用，但同事的密码和会议文字在内网可被抓包。
-开启方式：编辑 `.env` 把 `OMS_TLS_MODE=off` 改为 `internal-ca`，重跑 `./oms-offline-install.sh`。
+开启方式：编辑 `.env` 把 `OMS_TLS_MODE=off` 改为 `internal-ca`，重跑 `./oms-offline-install.sh`
+（脚本自动生成企业根证书并为服务器 IP 签发证书；服务器换 IP 后重跑一次即自动重签）。
 之后把 `ca/oms-root-ca.crt` 和 ca/ 目录里的导入脚本发给员工（每台电脑执行一次），
 同事改用 `https://<服务器IP>:8443` 访问。也可用 `custom-cert` 换企业自己的证书，员工零操作。
 
