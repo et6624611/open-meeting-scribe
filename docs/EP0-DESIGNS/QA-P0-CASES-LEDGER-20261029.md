@@ -105,8 +105,42 @@
 
 **保持 BLOCK（按台账待后端增量2 端点层/迁移工具）**：A09/A10/A11/A12/A13、W01/W02/W03/W05–W10、M01–M06（oms-migrate 未交付）、C 系、U2（GET /api/sync/queue 端点）、U5/U8。
 
+**增量2 交付验收点（EP0-C7，随端点层执行）**：
+- QA-EP0-X01 `GET /healthz` 挂载可用（三条运维门禁共同判定点）；
+- QA-EP0-X02 `client_mutation_id` 跨 task 复用 → HTTP 409/422（非 500，A2 判定）；
+- QA-EP0-X03 密码校验类 ValueError → HTTP 422（非 500）。
+
 **移交后端增量2 的两条端点层映射要求（防 5xx 违规，非当前 FAIL）**：
 1. `client_mutation_id` 跨 task 复用现抛裸 ValueError → 端点层必须映射 4xx（建议 409/422），直落 500 将违反 A2"禁止 5xx"判定；
 2. 密码校验类 ValueError（如长度不足）→ 422 语义，勿 500。
 
 结论：**P-001 增量1 数据层结构断言全绿，QA 侧无阻塞**；下一执行点=端点层交付后 W/A/P 系 HTTP 全量 + UI W1 走查闭环（与项目管理员检查点一致）。
+
+---
+
+## 执行记录｜EP0-BE 增量2 HTTP 全量（2026-10-29，@ aba84fb）
+
+套件：qa-outputs/open-meeting-scribe/20261029-094200/evidence/test_qa_ep0_http_increment2.py（19 项独立对抗用例，TestClient 无副作用实例）。
+结果：**16 PASS / 3 FAIL（均为错误码/5xx 契约失配；访问拒绝语义全部正确，无越权穿透）**。
+
+PASS 要点：X01 /healthz；X02 422 client_mutation_conflict；X03 422 activation_failed；匿名 401 全覆盖；跨用户统一 404 not_found（与不存在资源不可区分，无枚举 oracle）；admin 不可读员工内容（404+列表零泄漏）；member 管理面 403；幂等重放 200+rev 不增、409 rev_conflict 携带 current_rev；W04 快照/资产内容门禁（audio_base64/嵌套 float embedding 均 422 + snapshot_rejected 审计行）；**service_closed 五断言全过**（含 PM 补令⑤：停用期 activate 放行但该账号 login 仍 403）；device token 写通道可用且无读权限；ai_disabled 409；推送/订阅类路径 404；U1 visibility 恒 personal。
+
+缺陷清单（移交后端即修，出场 gate 阻断项）：
+- **QA-EP0-D001｜中**｜停用账号登录返回 `401 bad_credentials`，契约 §1.8/裁决要求 `403 account_disabled`。复现：admin PUT /admin/users/{id}/status=disabled → 该账号 POST /auth/login 正确密码。影响：前端档①已按 account_disabled 分流"请联系管理员"，实际用户将看到"账号或密码错误"——误导+求助路径断裂。grep 证实 account_disabled 码全链路未实现。
+- **QA-EP0-D002｜低-中**｜设备吊销后重传返回 `401 unauthenticated`，契约要求 `403 device_revoked`。复现：pairings→device-activate→DELETE /devices/{id}→Bearer 重传快照。影响：助手端无法区分"凭据错"与"设备被撤"，静默重试不收敛。
+- **QA-EP0-D003｜低**｜畸形 `If-Match-Rev` 头（如 "abc"）→ **500**（int() 未捕获）。违反 A2"禁止 5xx"判定。复现：PUT snapshot 带非法头。同类模式在资产 PUT 同源。修复建议：头解析失败→400/422 invalid_header。
+
+契约偏差登记核对：①通用邀请码 501 占位=PM 已批准，枚举清单记录在案（/admin/invites 返回 501 而非路由缺失，可接受）；②activate 停用期放行=PM 批准并扩第五断言，**已执行通过**。
+
+## 执行记录｜EP0-BE 增量3 迁移探针（2026-10-29，@ 3dc5e35）
+
+套件：test_qa_ep0_migrate_increment3.py；源=主 checkout **真实存量**（tasks/ 全量 169 文件副本 + 资产文件，非合成）。结果：**6/6 PASS**。
+- M05/M01：真实量级迁入、对账单计数守恒（scanned=migrated+skipped 分布全解释）、spot_check 全 ok、owner=13373013103 对应 user_id 且 scope=personal 单一归属、legacy_import_ledger=报表=DB 三方一致；
+- W 禁运零命中：全部 blob（json.gz 解压）+ ctx_entities 全库扫描 audio_path/embedding/voiceprint/sk-/recordings/.wav 等 12 项禁运 token=0 命中；
+- 幂等重跑：二次 migrated=0、already_migrated≥首次、revision 总数不增；
+- 源变更重推：改动笔记字段→该 task current_rev=2（新 mutation 安全重放）；
+- 账号缺失拒绝：SystemExit 含 13373013103 提示、ctx_tasks 零写入（向导未完成形态防护成立）；
+- 源只读：迁移前后源目录内容指纹一致；
+- 资产形态：speaker_aliases 纯字符串值、embedding 零出现。
+
+M 系剩余：M04 归属卡无回执端点（探测 404）与 M06 服务端整包撤销回滚的 HTTP 级复验随联调环境执行；C2 个人版升级回归需安装包形态，维持 BLOCK。
