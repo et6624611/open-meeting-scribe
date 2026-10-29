@@ -95,16 +95,44 @@
       "download_guide": "从公司服务器下载录音助手（离线包，无需外网）",
       "paired_as": "当前绑定账号：{name}",
       "override_label": "助手地址（默认自动探测 127.0.0.1:8000）",
-      "override_save": "保存"
+      "override_save": "保存",
+      "connected_paired": "已连接并绑定：{name}",
+      "connected_unpaired": "助手在线，尚未绑定账号",
+      "unpaired_desc": "在这台电脑打开录音助手，输入下方配对码完成绑定后即可开始录音。",
+      "pairing_generate": "生成配对码",
+      "pairing_hint": "配对码 {minutes} 分钟内有效，仅显示这一次。",
+      "override_saved": "已保存，正在重连助手…",
+      "devices_title": "已绑定设备",
+      "device_revoke": "吊销",
+      "no_devices": "暂无其他设备",
+      "download_title": "下载录音助手",
+      "download_hint": "从公司服务器下载（离线包，无需外网）——下载入口由管理员部署后提供。",
+      "probing": "正在探测本机助手…",
+      "reprobe": "重新探测"
     },
     "data_location": {
       "title": "数据位置",
-      "readonly_hint": "此分区为只读说明：P0 上云范围由管理员部署形态固定，个人不可开关。"
+      "readonly_hint": "此分区为只读说明：P0 上云范围由管理员部署形态固定，个人不可开关。",
+      "col_content": "内容",
+      "col_location": "存放位置",
+      "row1_content": "会议录音音频",
+      "row1_location": "只在你这台电脑",
+      "row2_content": "密钥、声纹识别信息",
+      "row2_location": "只在你这台电脑",
+      "row3_content": "会议文字（转写、纪要、决策流、笔记、术语）",
+      "row3_location": "公司服务器"
     },
     "consent": {
       "title": "会议文字如何保存",
       "ack": "知道了，继续",
       "view_data_location": "查看数据位置"
+    },
+    "badge": {
+      "personal": "仅你可见"
+    },
+    "nav": {
+      "assistant": "本机录音助手",
+      "data_location": "数据位置"
     }
   }
 }

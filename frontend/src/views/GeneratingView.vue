@@ -533,7 +533,10 @@
       :danger="false"
       @confirm="onCloudFallbackConfirm"
     />
+    <!-- 首次知情同意卡（档⑦，仅企业形态生效；正文=§7 锁定三行单源） -->
+    <EnterpriseConsentGate :active="!!task?.summary" />
   </div>
+
 </template>
 
 <script setup lang="ts">
@@ -551,6 +554,7 @@ import type { LayerView } from '@/utils/transcriptLayers'
 import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
+import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue'
 import SummaryPanel from './generating/SummaryPanel.vue'
 import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'

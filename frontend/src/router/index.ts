@@ -69,7 +69,8 @@ const router = createRouter({
     {
       path: '/settings',
       name: 'settings',
-      component: () => import('@/views/SettingsView.vue'),
+      // 企业形态独立设置视图（UI 规格 §2 两分区；账户/算力四段依赖的个人云端点企业实例不挂载）
+      component: () => import(isEnterprise ? '@/views/EnterpriseSettingsView.vue' : '@/views/SettingsView.vue'),
     },
     {
       path: '/library',

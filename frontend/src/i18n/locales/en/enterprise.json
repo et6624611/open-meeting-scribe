@@ -95,16 +95,44 @@
       "download_guide": "Download the recording assistant from the company server (offline package, no internet needed)",
       "paired_as": "Paired account: {name}",
       "override_label": "Assistant address (auto-detects 127.0.0.1:8000 by default)",
-      "override_save": "Save"
+      "override_save": "Save",
+      "connected_paired": "Connected & bound: {name}",
+      "connected_unpaired": "Assistant online, no account bound yet",
+      "unpaired_desc": "Open the recording assistant on this computer and enter the pairing code below to start recording.",
+      "pairing_generate": "Generate pairing code",
+      "pairing_hint": "The code is valid for {minutes} minutes and shown only once.",
+      "override_saved": "Saved — reconnecting to the assistant…",
+      "devices_title": "Bound devices",
+      "device_revoke": "Revoke",
+      "no_devices": "No other devices",
+      "download_title": "Download the assistant",
+      "download_hint": "Downloaded from the company server (offline package, no internet needed) — the link is provisioned by your admin deployment.",
+      "probing": "Detecting local assistant…",
+      "reprobe": "Re-check"
     },
     "data_location": {
       "title": "Where data lives",
-      "readonly_hint": "Read-only: the P0 sync scope is fixed by the admin's deployment and cannot be toggled per user."
+      "readonly_hint": "Read-only: the P0 sync scope is fixed by the admin's deployment and cannot be toggled per user.",
+      "col_content": "Content",
+      "col_location": "Where it lives",
+      "row1_content": "Meeting audio recordings",
+      "row1_location": "Only on this computer",
+      "row2_content": "Keys and voiceprint data",
+      "row2_location": "Only on this computer",
+      "row3_content": "Finalized meeting text (transcript, minutes, decisions, notes, glossary)",
+      "row3_location": "Company server"
     },
     "consent": {
       "title": "How meeting texts are stored",
       "ack": "Got it, continue",
       "view_data_location": "View data locations"
+    },
+    "badge": {
+      "personal": "Visible only to you"
+    },
+    "nav": {
+      "assistant": "Local recording assistant",
+      "data_location": "Where data lives"
     }
   }
 }

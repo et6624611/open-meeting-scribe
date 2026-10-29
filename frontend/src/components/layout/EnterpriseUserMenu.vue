@@ -40,7 +40,7 @@ function go(path: string) {
     </button>
     <div v-show="visible" ref="menuEl" class="ent-menu" v-bind="menuAttrs" role="menu">
       <button role="menuitem" @click="go('/settings')">{{ t('enterprise.menu.settings') }}</button>
-      <button role="menuitem" @click="go('/settings#data-location')">{{ t('enterprise.menu.where_is_my_data') }}</button>
+      <button role="menuitem" @click="go('/settings?cat=data_location')">{{ t('enterprise.menu.where_is_my_data') }}</button>
       <button v-if="userStore.isAdmin" role="menuitem" @click="go('/admin')">{{ t('enterprise.menu.enter_admin') }}</button>
       <hr class="ent-menu-sep">
       <button role="menuitem" class="is-danger" @click="onLogout">{{ t('enterprise.menu.logout') }}</button>
