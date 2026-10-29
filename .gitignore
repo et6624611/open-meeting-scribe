@@ -70,6 +70,7 @@ browser/
 # 前端构建产物（npm run build 生成，由 FastAPI 托管）
 frontend/node_modules/
 frontend/dist/
+app/static/
 # vue-tsc 增量编译缓存，每次构建都会产生无意义 diff
 # Incremental type-check cache; produces a meaningless diff on every build
 *.tsbuildinfo
