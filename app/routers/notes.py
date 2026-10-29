@@ -1,11 +1,11 @@
 """
-app/routers/notes.py — 笔记 + AI 注入 + 待办 + 改写撤销 / Notes + AI injection + todos + rewrite undo
+app/routers/notes.py — 笔记 + AI 注入 + 决策 + 改写撤销 / Notes + AI injection + decisions + rewrite undo
 
 端点清单：
   GET/PUT  /api/tasks/{id}/notes                随记读写
   PUT      /api/tasks/{id}/summary              纪要定稿写入
   GET/POST /api/tasks/{id}/injections[...]      AI 注入条目
-  GET/POST/PUT/DELETE /api/tasks/{id}/todos[...] 决策流节点
+  GET/POST/PUT/DELETE /api/tasks/{id}/decisions[...] 决策流节点
   GET      /api/tasks/{id}/rewrites             AI 写回快照列表（PROPOSAL §5.4）
   POST     /api/tasks/{id}/rewrites/restore     按快照/按轮撤销 AI 写回
 """
@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from app.store import save_task_to_disk, tasks
 from core import users as user_module
-from core.decision_flow import enrich_todo, first_open_status, make_todo_node, resolve_owner, status_of
+from core.decision_flow import enrich_decision, first_open_status, make_decision_node, resolve_owner, status_of
 from core.decision_status import (
     StatusError,
     SUPERSEDED_STATUS_ID,
@@ -47,10 +47,10 @@ OwnerType = Literal["self", "agent", "colleague", "enterprise"]
 _HOW_MAX_ITEMS = 50
 
 
-def _apply_status(todo: dict, status: str) -> None:
+def _apply_status(decision: dict, status: str) -> None:
     """写入状态并同步旧 done 布尔（闭档态 = 完成）。"""
-    todo["status"] = status
-    todo["done"] = is_closing(status)
+    decision["status"] = status
+    decision["done"] = is_closing(status)
 
 
 # ============================================================
@@ -99,12 +99,12 @@ def update_task_summary(task_id: str, req: NotesUpdate):
 # ============================================================
 
 class InjectRequest(BaseModel):
-    type: str = Field(..., max_length=50)  # todo | conclusion | decision  注入类型 / Injection type
+    type: str = Field(..., max_length=50)  # decision | conclusion | decision  注入类型 / Injection type
     content: str = Field(..., max_length=10000)
     source_message: str = Field(default="", max_length=10000)
 
 
-class TodoToggleRequest(BaseModel):
+class DecisionToggleRequest(BaseModel):
     done: bool
 
 
@@ -134,29 +134,26 @@ def inject_content(task_id: str, req: InjectRequest):
     }
     injections.append(item)
 
-    # 如果是 todo 类型，同步添加到决策流 / If todo type, also add a decision-flow node
-    if req.type in ("todo", "decision"):
-        todos = task.setdefault("todos", [])
+    # 决策条目注入即入决策流（conclusion 只进注入区）/ A decision injection also enters the flow
+    if req.type == "decision":
+        decisions = task.setdefault("decisions", [])
         user = user_module.get_current_user()
         assignee = user["name"] if user else ""
-        # DC-UNIFY-01：decision 注入不再开第二套对象，与 todo 注入合流为一条待确认节点
-        # （「**标题**：正文」写法时拆出 title，展示侧降级）
+        # DC-UNIFY-01：「**标题**：正文」写法时拆出 title，展示侧降级
         title = ""
         content = req.content
-        if req.type == "decision":
-            from core.summarize import split_decision_title
-            title, body = split_decision_title(req.content)
-            content = body or req.content
-        todo_item = make_todo_node(
+        from core.summarize import split_decision_title
+        title, body = split_decision_title(req.content)
+        content = body or req.content
+        decision_item = make_decision_node(
             content,
             assignee=assignee,
             title=title,
             source="injection",
-            status="to_decide" if req.type == "todo" else None,
             node_id=item["id"],
             extra={"injection_id": item["id"]},
         )
-        todos.append(todo_item)
+        decisions.append(decision_item)
 
     _mark_modified(task_id)
     save_task_to_disk(task_id)
@@ -186,8 +183,8 @@ def delete_injection(task_id: str, injection_id: str):
     injections = task.get("injections", [])
     task["injections"] = [i for i in injections if i["id"] != injection_id]
     # 同步删除关联的决策流节点 / Also delete the associated decision-flow node
-    todos = task.get("todos", [])
-    task["todos"] = [t for t in todos if t.get("injection_id") != injection_id]
+    decisions = task.get("decisions", [])
+    task["decisions"] = [t for t in decisions if t.get("injection_id") != injection_id]
     _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
@@ -248,11 +245,11 @@ def restore_task_rewrites(task_id: str, req: RewriteRestoreRequest):
 
 
 # ============================================================
-# 待办 API / Todos API
+# 决策 API / Decisions API
 # ============================================================
 
-@router.get("/api/tasks/{task_id}/todos")
-def get_task_todos(task_id: str):
+@router.get("/api/tasks/{task_id}/decisions")
+def get_task_decisions(task_id: str):
     """获取任务的全部决策流节点（附状态字典元信息）/ Get decision-flow nodes with status meta."""
     task = tasks.get(task_id)
     if not task:
@@ -263,38 +260,38 @@ def get_task_todos(task_id: str):
         owner_map = get_speaker_name_map()
     except Exception:
         owner_map = {}
-    todos = [
-        enrich_todo(task_id, task, t, status_meta, kb_cache, owner_map)
-        for t in task.get("todos", []) if isinstance(t, dict)
+    decisions = [
+        enrich_decision(task_id, task, t, status_meta, kb_cache, owner_map)
+        for t in task.get("decisions", []) if isinstance(t, dict)
     ]
-    return {"todos": todos}
+    return {"decisions": decisions}
 
 
-@router.post("/api/tasks/{task_id}/todos/{todo_id}/toggle")
-def toggle_todo(task_id: str, todo_id: str, req: TodoToggleRequest):
-    """切换待办完成状态 / Toggle todo completion status."""
+@router.post("/api/tasks/{task_id}/decisions/{decision_id}/toggle")
+def toggle_decision(task_id: str, decision_id: str, req: DecisionToggleRequest):
+    """切换决策完成状态 / Toggle decision completion status."""
     task = tasks.get(task_id)
     if not task:
         raise HTTPException(404, _("Task not found"))
-    for todo in task.get("todos", []):
-        if todo["id"] == todo_id:
+    for decision in task.get("decisions", []):
+        if decision["id"] == decision_id:
             # 勾选完成 = 写入闭档态；取消勾选回到首个开放态（状态字典可被用户改，不能写死）
-            _apply_status(todo, "done" if req.done else first_open_status())
-            todo["updated_at"] = datetime.now().isoformat()
+            _apply_status(decision, "done" if req.done else first_open_status())
+            decision["updated_at"] = datetime.now().isoformat()
             _mark_modified(task_id)
             save_task_to_disk(task_id)
-            return {"todo": todo}
-    raise HTTPException(404, _("To-do not found"))
+            return {"decision": decision}
+    raise HTTPException(404, _("Decision not found"))
 
 
-@router.delete("/api/tasks/{task_id}/todos/{todo_id}")
-def delete_todo(task_id: str, todo_id: str):
+@router.delete("/api/tasks/{task_id}/decisions/{decision_id}")
+def delete_decision(task_id: str, decision_id: str):
     """删除一条决策流节点 / Delete a decision-flow node."""
     task = tasks.get(task_id)
     if not task:
         raise HTTPException(404, _("Task not found"))
-    todos = task.get("todos", [])
-    target = next((t for t in todos if t.get("id") == todo_id), None)
+    decisions = task.get("decisions", [])
+    target = next((t for t in decisions if t.get("id") == decision_id), None)
     if target is not None:
         # DC-R2-BE：删掉的 auto 节点落墓碑，重新生成纪要时不复活（手动节点无此风险）
         from core.summarize import build_decision_tombstone
@@ -307,13 +304,13 @@ def delete_todo(task_id: str, todo_id: str):
             if tombstone["text_key"] not in existing_keys:
                 deletions.append(tombstone)
             task["decision_deletions"] = deletions
-    task["todos"] = [t for t in todos if t.get("id") != todo_id]
+    task["decisions"] = [t for t in decisions if t.get("id") != decision_id]
     _mark_modified(task_id)
     save_task_to_disk(task_id)
     return {"ok": True}
 
 
-class TodoCreateRequest(BaseModel):
+class DecisionCreateRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500)
     assignee: str = Field(default="", max_length=100)
     # 新建时允许直接携带决策正文（与更新接口的 why 字段一致） / Allow body text at creation (same `why` field as the update endpoint)
@@ -326,7 +323,7 @@ class TodoCreateRequest(BaseModel):
     owner_type: OwnerType | None = None
 
 
-class TodoUpdateRequest(BaseModel):
+class DecisionUpdateRequest(BaseModel):
     text: str | None = Field(default=None, max_length=500)
     assignee: str | None = Field(default=None, max_length=100)
     # 决策链字段透传 / Decision-chain pass-through fields
@@ -340,8 +337,8 @@ class TodoUpdateRequest(BaseModel):
     owner_type: OwnerType | None = None
 
 
-@router.post("/api/tasks/{task_id}/todos")
-def create_todo(task_id: str, req: TodoCreateRequest):
+@router.post("/api/tasks/{task_id}/decisions")
+def create_decision(task_id: str, req: DecisionCreateRequest):
     """手工添加一条决策流节点 / Manually add a decision-flow node."""
     task = tasks.get(task_id)
     if not task:
@@ -352,7 +349,7 @@ def create_todo(task_id: str, req: TodoCreateRequest):
             status = validate_status_id(req.status)
         except StatusError as exc:
             raise HTTPException(422, str(exc))
-    todo_item = make_todo_node(
+    decision_item = make_decision_node(
         req.text,
         assignee=req.assignee,
         owner_id=req.owner_id,
@@ -362,55 +359,55 @@ def create_todo(task_id: str, req: TodoCreateRequest):
         status=status,
         owner_type=req.owner_type or "self",
     )
-    todo_item["done"] = is_closing(todo_item["status"])
-    task.setdefault("todos", []).append(todo_item)
+    decision_item["done"] = is_closing(decision_item["status"])
+    task.setdefault("decisions", []).append(decision_item)
     _mark_modified(task_id)
     save_task_to_disk(task_id)
-    return {"todo": todo_item}
+    return {"decision": decision_item}
 
 
-@router.put("/api/tasks/{task_id}/todos/{todo_id}")
-def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
+@router.put("/api/tasks/{task_id}/decisions/{decision_id}")
+def update_decision(task_id: str, decision_id: str, req: DecisionUpdateRequest):
     """编辑决策流节点内容/执行人/状态 / Edit a decision-flow node."""
     task = tasks.get(task_id)
     if not task:
         raise HTTPException(404, _("Task not found"))
-    for todo in task.get("todos", []):
-        if todo["id"] == todo_id:
+    for decision in task.get("decisions", []):
+        if decision["id"] == decision_id:
             if req.text is not None:
-                todo["text"] = req.text
+                decision["text"] = req.text
             if req.title is not None:
-                todo["title"] = req.title.strip()
+                decision["title"] = req.title.strip()
             # 执行人：显式携带 owner_id 时按档案权威解析，否则按快照名直写
             if req.owner_id is not None:
-                oid, name = resolve_owner(req.owner_id, req.assignee or todo.get("assignee"))
-                todo["owner_id"] = oid
-                todo["assignee"] = name
+                oid, name = resolve_owner(req.owner_id, req.assignee or decision.get("assignee"))
+                decision["owner_id"] = oid
+                decision["assignee"] = name
             elif req.assignee is not None:
-                todo["assignee"] = req.assignee
+                decision["assignee"] = req.assignee
             if req.why is not None:
-                todo["why"] = req.why
+                decision["why"] = req.why
             if req.outcome is not None:
-                todo["outcome"] = req.outcome
+                decision["outcome"] = req.outcome
             if req.how is not None:
                 steps = [s.strip() for s in req.how if s and s.strip()][:_HOW_MAX_ITEMS]
                 # 空表或 [text] 冗余副本不落盘（缺省视为 [text] 是读侧约定，非存储内容）
-                if not steps or steps == [str(todo.get("text") or "").strip()]:
-                    todo.pop("how", None)
+                if not steps or steps == [str(decision.get("text") or "").strip()]:
+                    decision.pop("how", None)
                 else:
-                    todo["how"] = steps
+                    decision["how"] = steps
             if req.owner_type is not None:
-                todo["owner_type"] = req.owner_type
+                decision["owner_type"] = req.owner_type
             if req.status is not None:
                 try:
-                    _apply_status(todo, validate_status_id(req.status))
+                    _apply_status(decision, validate_status_id(req.status))
                 except StatusError as exc:
                     raise HTTPException(422, str(exc))
-            todo["updated_at"] = datetime.now().isoformat()
+            decision["updated_at"] = datetime.now().isoformat()
             _mark_modified(task_id)
             save_task_to_disk(task_id)
-            return {"todo": todo}
-    raise HTTPException(404, _("To-do not found"))
+            return {"decision": decision}
+    raise HTTPException(404, _("Decision not found"))
 
 
 # ============================================================
@@ -422,73 +419,73 @@ def update_todo(task_id: str, todo_id: str, req: TodoUpdateRequest):
 
 class SupersedeRequest(BaseModel):
     by_task_id: str = Field(..., min_length=1, max_length=100)
-    by_todo_id: str = Field(..., min_length=1, max_length=100)
+    by_decision_id: str = Field(..., min_length=1, max_length=100)
 
 
-def _find_todo(task_id: str, todo_id: str) -> tuple[dict, dict] | None:
+def _find_decision(task_id: str, decision_id: str) -> tuple[dict, dict] | None:
     task = tasks.get(task_id)
     if not isinstance(task, dict):
         return None
-    for todo in task.get("todos", []):
-        if isinstance(todo, dict) and todo.get("id") == todo_id:
-            return task, todo
+    for decision in task.get("decisions", []):
+        if isinstance(decision, dict) and decision.get("id") == decision_id:
+            return task, decision
     return None
 
 
-@router.post("/api/tasks/{task_id}/todos/{todo_id}/supersede")
-def supersede_todo(task_id: str, todo_id: str, req: SupersedeRequest):
+@router.post("/api/tasks/{task_id}/decisions/{decision_id}/supersede")
+def supersede_decision(task_id: str, decision_id: str, req: SupersedeRequest):
     """把旧决策标记为已被另一会议（或同会议）的新决策替代 / Mark a node superseded."""
-    found = _find_todo(task_id, todo_id)
+    found = _find_decision(task_id, decision_id)
     if not found:
-        raise HTTPException(404, _("To-do not found"))
-    task, todo = found
+        raise HTTPException(404, _("Decision not found"))
+    task, decision = found
 
-    if status_of(todo) == SUPERSEDED_STATUS_ID:
+    if status_of(decision) == SUPERSEDED_STATUS_ID:
         raise HTTPException(409, detail={"code": "already_superseded",
                                          "reason": "Decision is already marked as superseded"})
-    if req.by_task_id == task_id and req.by_todo_id == todo_id:
+    if req.by_task_id == task_id and req.by_decision_id == decision_id:
         raise HTTPException(422, _("A decision cannot supersede itself"))
 
-    target = _find_todo(req.by_task_id, req.by_todo_id)
+    target = _find_decision(req.by_task_id, req.by_decision_id)
     if not target:
         raise HTTPException(404, _("Superseding decision not found"))
-    target_task, target_todo = target
+    target_task, target_decision = target
 
-    prev = status_of(todo)
-    todo["superseded_by"] = {
+    prev = status_of(decision)
+    decision["superseded_by"] = {
         "task_id": req.by_task_id,
-        "todo_id": req.by_todo_id,
-        "title": str(target_todo.get("title") or target_todo.get("text") or "")[:200],
+        "decision_id": req.by_decision_id,
+        "title": str(target_decision.get("title") or target_decision.get("text") or "")[:200],
         "meeting_title": str(target_task.get("title") or "")[:200],
         "prev_status": prev,
         "marked_at": datetime.now().isoformat(),
     }
-    _apply_status(todo, SUPERSEDED_STATUS_ID)
-    todo["updated_at"] = datetime.now().isoformat()
+    _apply_status(decision, SUPERSEDED_STATUS_ID)
+    decision["updated_at"] = datetime.now().isoformat()
     _mark_modified(task_id)
     save_task_to_disk(task_id)
-    audit_logger.info("decision_superseded task=%s todo=%s by_task=%s by_todo=%s",
-                      task_id, todo_id, req.by_task_id, req.by_todo_id)
-    return {"todo": todo}
+    audit_logger.info("decision_superseded task=%s decision=%s by_task=%s by_decision=%s",
+                      task_id, decision_id, req.by_task_id, req.by_decision_id)
+    return {"decision": decision}
 
 
-@router.delete("/api/tasks/{task_id}/todos/{todo_id}/supersede")
-def revert_supersede(task_id: str, todo_id: str):
+@router.delete("/api/tasks/{task_id}/decisions/{decision_id}/supersede")
+def revert_supersede(task_id: str, decision_id: str):
     """撤销「已被替代」：恢复标记前状态 / Revert a superseded marking."""
-    found = _find_todo(task_id, todo_id)
+    found = _find_decision(task_id, decision_id)
     if not found:
-        raise HTTPException(404, _("To-do not found"))
-    task, todo = found
+        raise HTTPException(404, _("Decision not found"))
+    task, decision = found
 
-    if status_of(todo) != SUPERSEDED_STATUS_ID:
+    if status_of(decision) != SUPERSEDED_STATUS_ID:
         raise HTTPException(409, detail={"code": "not_superseded",
                                          "reason": "Decision is not marked as superseded"})
-    prev = str((todo.get("superseded_by") or {}).get("prev_status") or "")
-    todo.pop("superseded_by", None)
+    prev = str((decision.get("superseded_by") or {}).get("prev_status") or "")
+    decision.pop("superseded_by", None)
     # 原状态若已被用户从字典删除，降级到开放首态，避免复活非法状态
     restore = prev if prev in known_ids() else "to_decide"
-    _apply_status(todo, restore)
-    todo["updated_at"] = datetime.now().isoformat()
+    _apply_status(decision, restore)
+    decision["updated_at"] = datetime.now().isoformat()
     _mark_modified(task_id)
     save_task_to_disk(task_id)
-    return {"todo": todo}
+    return {"decision": decision}

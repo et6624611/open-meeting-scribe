@@ -607,7 +607,7 @@ def sanitize_board_html(html: str) -> tuple[str, list[str]]:
 # ============================================================
 #
 # 洞察板唯一任务是「针对会议暴露的困境给出 AI 最优解法」；决策清单、议题归类、
-# 待办分工、谁说了什么已由逐字稿、纪要页、决策中心承载。模型的保守倾向是把
+# 决策分工、谁说了什么已由逐字稿、纪要页、决策中心承载。模型的保守倾向是把
 # 会议内容结构化再抄一遍，故落盘前做启发式兜底：命中复述骨架即整份拒收，
 # 理由经工具结果回传 AI 形成自纠循环；旧板不动（拒收不写盘，原子语义）。
 
@@ -615,7 +615,7 @@ def sanitize_board_html(html: str) -> tuple[str, list[str]]:
 _RECAP_TITLE_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
     (re.compile(r"决策流|待确认决策|决策清单|决策列表|决议事项|决议清单"), "决策清单（决策中心已承载）"),
     (re.compile(r"议题归类|议题梳理|议题清单|议题列表|讨论议题"), "议题归类（纪要章节已承载）"),
-    (re.compile(r"待办追踪|待办事项|待办清单|待办列表|行动项清单|任务分工|人员分工|分工表"), "待办/分工清单（纪要待办已承载）"),
+    (re.compile(r"决策追踪|决策事项|决策清单|决策列表|待办追踪|待办事项|待办清单|待办列表|行动项清单|任务分工|人员分工|分工表"), "决策/分工清单（纪要决策已承载）"),
     (re.compile(r"会议全景|会议概览|会议纪要|纪要概览|会议总结|会议摘要"), "会议全景/纪要复述"),
     (re.compile(r"风险与未决|风险清单|风险梳理|未决事项"), "风险罗列式节（困境必须紧跟解法，不许只罗列）"),
 )
@@ -629,7 +629,7 @@ _TOPIC_CODE_RE = re.compile(r"议题\s*[0-9０-９]")
 _SPEAKER_REF_RE = re.compile(r"说话人\s*[0-9０-９]|Speaker\s*[0-9]", re.IGNORECASE)
 _EVIDENCE_RE = re.compile(r"依据[：:][^。；\n]{0,40}(?:说话人|Speaker)", re.IGNORECASE)
 _DEADLINE_RE = re.compile(r"截止|deadline|\d{1,2}\s*月\s*\d{1,2}\s*日", re.IGNORECASE)
-_RECAP_STAT_LABELS = ("待确认决策", "议题归类", "待办事项")
+_RECAP_STAT_LABELS = ("待确认决策", "议题归类", "决策事项", "待办事项")
 
 # 文字墙检测：顶层节与其主视觉标记 / Section + diagram-marker extraction
 _SECTION_RE = re.compile(r"<section\b[^>]*\bdata-ib-id\b[^>]*>(.*?)</section>",
@@ -686,7 +686,7 @@ _RECAP_GUIDANCE = (
     "洞察板的唯一任务是针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法"
     "（你被授权调用外部行业知识、标准实践、成熟架构来构造解法），而不是整理会议内容。"
     "请重做整份 HTML：每节按「困境（一句话界定）→ 外部最优解法（具体可执行，附原理或出处）→ 落地步骤与取舍」组织；"
-    "删除决策清单（含 DC 编号）、议题/章节归类、待办分工（谁做什么、截止日期）、参会人立场与「谁说了什么」、"
+    "删除决策清单（含 DC 编号）、议题/章节归类、决策分工（谁做什么、截止日期）、参会人立场与「谁说了什么」、"
     "带说话人/时间戳的依据流水、会议概览与摘要复述——这些逐字稿、纪要页、决策中心已经承载；"
     "风险与未决项每条必须紧跟一个可落地解法，不许只罗列问题。"
     "若读取到的旧基线本身就是复述结构，直接推倒重做为解法结构，不受版式继承条款约束。"
@@ -709,7 +709,7 @@ def detect_recap_floor(board_html: str) -> list[str]:
     Detect meeting-recap degeneration; non-empty reasons reject the save.
 
     五类互相独立的复述信号各计 1 分，≥2 分才拒收：单一弱信号（如一节标题
-    起得像待办、正文却是解法）不阻断，避免误伤真正的解法型板。
+    起得像决策、正文却是解法）不阻断，避免误伤真正的解法型板。
     """
     text, titles = _board_text_and_titles(board_html or "")
     score = 0
@@ -734,7 +734,7 @@ def detect_recap_floor(board_html: str) -> list[str]:
     stat_hits = [w for w in _RECAP_STAT_LABELS if w in text]
     if len(stat_hits) >= 2:
         score += 1
-        reasons.append("决策/议题/待办统计徽标：" + "、".join(stat_hits))
+        reasons.append("决策/议题/决策统计徽标：" + "、".join(stat_hits))
 
     speaker_hits = len(_SPEAKER_REF_RE.findall(text))
     evidence_hits = len(_EVIDENCE_RE.findall(text))
@@ -746,7 +746,7 @@ def detect_recap_floor(board_html: str) -> list[str]:
 
     if speaker_hits >= 3 and _DEADLINE_RE.search(text):
         score += 1
-        reasons.append("按人派活+截止日期的待办分工表")
+        reasons.append("按人派活+截止日期的决策分工表")
 
     return reasons if score >= 2 else []
 

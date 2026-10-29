@@ -44,8 +44,8 @@ TOOL_CATALOG: list[dict] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
-        "name": "get_meeting_todos", "kind": "read", "needs_task": True,
-        "description": "获取当前会议的待办/决策事项列表（含节点稳定 id 与状态，供按节点寻址）。",
+        "name": "get_meeting_decisions", "kind": "read", "needs_task": True,
+        "description": "获取当前会议的决策事项列表（含节点稳定 id 与状态，供按节点寻址）。",
         "input_schema": {"type": "object", "properties": {}},
     },
     {
@@ -143,7 +143,7 @@ TOOL_CATALOG: list[dict] = [
     },
     {
         "name": "inject_items", "kind": "write", "needs_task": True,
-        "description": "向会议注入结构化条目（待办 todo / 结论 conclusion / 决策 decision），逐条落库并进入决策中心。仅用于新增；修改已有节点请改用 update_decision_node。",
+        "description": "向会议注入结构化条目（决策 decision / 结论 conclusion），逐条落库并进入决策中心。仅用于新增；修改已有节点请改用 update_decision_node。",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -153,7 +153,7 @@ TOOL_CATALOG: list[dict] = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "type": {"type": "string", "enum": ["todo", "conclusion", "decision"]},
+                            "type": {"type": "string", "enum": ["decision", "conclusion"]},
                             "content": {"type": "string"},
                         },
                         "required": ["type", "content"],
@@ -164,12 +164,12 @@ TOOL_CATALOG: list[dict] = [
         },
     },
     {
-        # 决策节点改写（P3）：按节点 id 寻址，收口到 notes.update_todo 同一口径（DC-UNIFY-01）。
+        # 决策节点改写（P3）：按节点 id 寻址，收口到 notes.update_decision 同一口径（DC-UNIFY-01）。
         # 写回前强制字段级快照（core.rewrite_snapshots），因此“AI 误写可回退”成立。
         "name": "update_decision_node", "kind": "write", "needs_task": True,
         "description": (
             "改写已有的决策流节点（按节点 id 精准定位，不新建第二条）。"
-            "必先调 get_meeting_todos 拿到节点 id、当前状态与可用状态字典（status 只能取其中的 id）。"
+            "必先调 get_meeting_decisions 拿到节点 id、当前状态与可用状态字典（status 只能取其中的 id）。"
             "只传需要改的字段：title（一句话结论）、text（决策正文）、status（如用户已拍板→推进到闭档态）、"
             "why（依据）、outcome（结果）、owner_type（推进方）。"
             "用户说「按随记/纪要把这几条定为已确认」类需求时，逐条按 id 更新，不要用 inject_items 重复追加。"
@@ -177,7 +177,7 @@ TOOL_CATALOG: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "node_id": {"type": "string", "description": "节点稳定 id（来自 get_meeting_todos）"},
+                "node_id": {"type": "string", "description": "节点稳定 id（来自 get_meeting_decisions）"},
                 "title": {"type": "string", "description": "新标题（一句话结论）"},
                 "text": {"type": "string", "description": "新的决策正文"},
                 "status": {"type": "string", "description": "状态字典中的 id（如 to_decide / done）"},
@@ -189,11 +189,11 @@ TOOL_CATALOG: list[dict] = [
         },
     },
     {
-        # 决策节点删除（P3）：复用 notes.delete_todo，auto 节点同步落防复活墓碑。
+        # 决策节点删除（P3）：复用 notes.delete_decision，auto 节点同步落防复活墓碑。
         "name": "delete_decision_node", "kind": "write", "needs_task": True,
         "description": (
             "按节点 id 删除一条决策流节点（仅当用户明确要求删除/合并时）。"
-            "删前建议先 get_meeting_todos 确认对象；删错可由本轮快照撤销。"
+            "删前建议先 get_meeting_decisions 确认对象；删错可由本轮快照撤销。"
         ),
         "input_schema": {
             "type": "object",
@@ -220,7 +220,7 @@ TOOL_CATALOG: list[dict] = [
             "你被授权调用外部行业知识、标准实践、成熟架构来构造解法；会议内容只用于界定问题，不用于复述。"
             "每节按「困境（一句话界定）→ 外部最优解法（具体、可执行，附原理或出处）→ 落地步骤与取舍」组织；"
             "风险/未决项必须每条紧跟一个可落地解法，禁止只罗列问题。"
-            "严禁入板：决策清单（含 DC-1 类编号）、议题/章节归类、待办与人员分工（谁做什么、截止日期）、"
+            "严禁入板：决策清单（含 DC-1 类编号）、议题/章节归类、决策与人员分工（谁做什么、截止日期）、"
             "参会人立场与「谁说了什么」、带说话人/时间戳的依据流水、会议概览与摘要复述"
             "——这些已由逐字稿、纪要页、决策中心承载，再写一遍就是失败。"
             "若读到的旧基线是上述复述结构，允许且应当推倒重做为解法结构，不受下方版式继承条款约束。"
@@ -264,7 +264,7 @@ TOOL_CATALOG: list[dict] = [
             "html 传入修订后的完整节块（<section data-ib-id=\"…\">…</section>，保持同一 id）；"
             "同样只写片段、用应用 CSS 变量、禁全局选择器与硬编码色。适用于用户只关心改某一节的场景。"
             "内容底线与整版相同：该节必须是「困境条 .ib-dilemma → 主视觉 .ib-visual（内含一个 pre.ib-mermaid mermaid 图，不可缺）→ 图文 → .ib-roadmap → .ib-tradeoff」结构，"
-            "禁止把一节写成决策/议题/待办/分工清单、发言人记录或纯文字墙，否则整版落盘会被后端拒收（error=board_is_recap / board_is_text_wall）。"
+            "禁止把一节写成决策/议题/决策/分工清单、发言人记录或纯文字墙，否则整版落盘会被后端拒收（error=board_is_recap / board_is_text_wall）。"
         ),
         "input_schema": {
             "type": "object",

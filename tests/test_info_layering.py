@@ -15,7 +15,7 @@ from core.summarize import (
     build_page_budget_block,
     extract_conclusions_section,
     parse_decisions_with_status,
-    parse_todos_from_summary,
+    parse_decision_checklist,
     split_decision_title,
 )
 
@@ -86,36 +86,36 @@ class TestSummaryInlineNote:
         assert "依据：说话人3" not in concl
 
 
-# ─── 待办侧：内联注不遮蔽截止日期，节点与决策同形状 ───
+# ─── 决策侧：内联注不遮蔽截止日期，节点与决策同形状 ───
 
-class TestTodoInlineNote:
+class TestDecisionInlineNote:
 
     def test_note_does_not_block_deadline(self):
         """（依据：…）占位句尾时 deadline 仍须命中（先剥注再匹配）"""
-        summary = "## 三、待办事项\n\n- [ ] **王三**：提交季度报告（9月10日）（依据：说话人1 03:22）\n"
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 1
-        assert todos[0]["deadline"] == "9月10日"
-        assert todos[0]["text"] == "提交季度报告"
-        assert todos[0]["evidence"]["text"] == "说话人1 03:22"
-        assert todos[0]["evidence"]["refs"] == [{"speaker": "说话人1", "time": "03:22"}]
+        summary = "## 三、决策事项\n\n- [ ] **王三**：提交季度报告（9月10日）（依据：说话人1 03:22）\n"
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 1
+        assert decisions[0]["deadline"] == "9月10日"
+        assert decisions[0]["text"] == "提交季度报告"
+        assert decisions[0]["evidence"]["text"] == "说话人1 03:22"
+        assert decisions[0]["evidence"]["refs"] == [{"speaker": "说话人1", "time": "03:22"}]
 
-    def test_todo_node_shape_matches_decision(self):
-        """待办与决策统一 make_todo_node 形状（13 键底 + 可选键）"""
-        todos = parse_todos_from_summary("- [ ] **陈一**：完成数据迁移方案\n")
-        assert len(todos) == 1
-        node = todos[0]
+    def test_decision_node_shape_matches_decision(self):
+        """决策与决策统一 make_decision_node 形状（13 键底 + 可选键）"""
+        decisions = parse_decision_checklist("- [ ] **陈一**：完成数据迁移方案\n")
+        assert len(decisions) == 1
+        node = decisions[0]
         assert {"id", "title", "text", "assignee", "owner_id", "done", "source",
                 "status", "owner_type", "created_at", "updated_at"} <= set(node)
         assert node["status"] == "to_decide" and node["source"] == "auto"
         assert "how" not in node  # 冗余缺省不落盘
 
     def test_note_without_deadline(self):
-        todos = parse_todos_from_summary("- [ ] 更新项目文档（注：说话人4 11:40 答应跟进）\n")
-        assert len(todos) == 1
-        assert todos[0]["text"] == "更新项目文档"
-        assert "deadline" not in todos[0]
-        assert todos[0]["evidence"]["text"] == "说话人4 11:40 答应跟进"
+        decisions = parse_decision_checklist("- [ ] 更新项目文档（注：说话人4 11:40 答应跟进）\n")
+        assert len(decisions) == 1
+        assert decisions[0]["text"] == "更新项目文档"
+        assert "deadline" not in decisions[0]
+        assert decisions[0]["evidence"]["text"] == "说话人4 11:40 答应跟进"
 
 
 # ─── 上下文注入通道 ───

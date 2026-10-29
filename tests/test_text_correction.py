@@ -44,7 +44,7 @@ def sample_task(tmp_path):
                            {"begin_time": 100, "text": "另一句"}]},
         ],
         "chapters": [{"id": "ch1", "title": f"{OLD}议题", "key_points": [f"确认{OLD}排期", "其他"]}],
-        "todos": [{"id": "d1", "text": f"联系{OLD}", "how": [f"约{OLD}见面"], "status": "to_start"}],
+        "decisions": [{"id": "d1", "text": f"联系{OLD}", "how": [f"约{OLD}见面"], "status": "to_start"}],
     }
 
 
@@ -52,7 +52,7 @@ def test_cjk_term_replaced_in_all_text_fields(sample_task):
     fields = rewrite_task_payload(sample_task, OLD, NEW)
 
     # title 1 + summary 2 + user_notes 1 + dialogue.text 1 + sentence.text 1
-    # + chapter.title 1 + key_points 1 + todo.text 1 + todo.how 1
+    # + chapter.title 1 + key_points 1 + decision.text 1 + decision.how 1
     assert sum(fields.values()) == 10
     assert sample_task["summary"] == f"围绕{NEW}与{NEW}两条线展开"
     assert sample_task["dialogue"][0]["sentences"][0]["text"] == f"昨天去了{NEW}"
@@ -64,7 +64,7 @@ def test_list_str_fields_are_covered(sample_task):
     rewrite_task_payload(sample_task, OLD, NEW)
 
     assert sample_task["chapters"][0]["key_points"] == [f"确认{NEW}排期", "其他"]
-    assert sample_task["todos"][0]["how"] == [f"约{NEW}见面"]
+    assert sample_task["decisions"][0]["how"] == [f"约{NEW}见面"]
 
 
 def test_identity_and_path_fields_never_touched(sample_task):

@@ -8,7 +8,7 @@
   - 模型档：qwen2.5:1.5b-instruct / qwen2.5:3b-instruct / qwen3:4b / qwen3:8b / qwen3:14b，
     统一 temperature=0.7、max_tokens=4096、qwen3 系列关闭思考模式（think=false）；
   - 评分：
-    a) 结构正确率：7 项结构清单命中比例（标题/时间/参会/概要/结论/待办/议题）；
+    a) 结构正确率：7 项结构清单命中比例（标题/时间/参会/概要/结论/决策/议题）；
     b) 幻觉-词面：输出中不在转写原文与提示词模板内的专名/数字 token 数；
     c) 幻觉-裁判：qwen3:14b 固定裁判列出纪要中无原文依据的陈述条数；
     d) 延迟（秒）。
@@ -31,7 +31,7 @@ OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODELS = ["qwen2.5:1.5b-instruct", "qwen2.5:3b-instruct", "qwen3:4b", "qwen3:8b", "qwen3:14b"]
 JUDGE = "qwen3:14b"
 SEGMENTS = ["SEG-2P", "SEG-6P"]
-STRUCT_CHECKS = ["# 会议纪要", "会议时间", "参会人员", "一、会议概要", "二、主要结论", "三、待办事项", "四、议题归类"]
+STRUCT_CHECKS = ["# 会议纪要", "会议时间", "参会人员", "一、会议概要", "二、主要结论", "三、决策事项", "四、议题归类"]
 
 
 def build_dialogue(seg_id: str) -> tuple[list[dict], str]:
@@ -86,7 +86,7 @@ def wordface_hallucination(minutes: str, transcript: str, prompt_text: str) -> l
     src = norm_tokens(transcript) | norm_tokens(prompt_text)
     # 模板/结构性词汇白名单（来自系统提示词本身 + 常见纪要用语）
     extra = {"会议纪要", "会议时间", "参会人员", "纪要生成", "自动生成", "会议概要", "主要结论",
-             "待办事项", "议题归类", "负责人", "截止日期", "说话人", "原始录音", "仅供参考",
+             "决策事项", "议题归类", "负责人", "截止日期", "说话人", "原始录音", "仅供参考",
              "本纪要由", "会议录音", "生成", "如有疑义", "请以", "为准"}
     out = norm_tokens(minutes) - src - extra
     return sorted(out)
@@ -95,7 +95,7 @@ def wordface_hallucination(minutes: str, transcript: str, prompt_text: str) -> l
 def judge_hallucination(minutes: str, transcript: str) -> list[str]:
     prompt = (
         "你是严格的质检员。下面是会议转写原文与据其生成的会议纪要。"
-        "请列出纪要中所有在转写原文中找不到依据的陈述（编造的人名/机构/数字/日期/结论/待办/负责人等），"
+        "请列出纪要中所有在转写原文中找不到依据的陈述（编造的人名/机构/数字/日期/结论/决策/负责人等），"
         "合理的概括、去口语化改写、结构化重组不算幻觉。"
         '只输出 JSON：{"unsupported": ["..."]}，没有则输出 {"unsupported": []}。\n\n'
         f"## 转写原文\n{transcript}\n\n## 会议纪要\n{minutes}"

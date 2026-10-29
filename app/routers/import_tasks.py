@@ -348,15 +348,15 @@ def _create_import_task(
         # DC-UNIFY-01：行动项与结论合流为唯一一条决策流（结论以「待确认」态入盘）
         try:
             from core import joblog
-            from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_todos_from_summary
-            parsed_todos = parse_todos_from_summary(summary_text)
+            from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_decision_checklist
+            checklist_nodes = parse_decision_checklist(summary_text)
             parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
-            tasks[task_id]["todos"] = merge_flow_after_regen(
-                tasks[task_id].get("todos") or [],
-                parsed_todos + parsed_decisions,
+            tasks[task_id]["decisions"] = merge_flow_after_regen(
+                tasks[task_id].get("decisions") or [],
+                checklist_nodes + parsed_decisions,
                 tasks[task_id].get("decision_deletions"),  # DC-R2-BE 墓碑：导入重解析同样不复活已删 auto
             )
-            if parsed_todos or parsed_decisions or parse_status:
+            if checklist_nodes or parsed_decisions or parse_status:
                 save_task_to_disk(task_id)
             if parse_status:
                 logger.warning(f"[导入] 决策解析降级（{parse_status}）: task={task_id[:8]}")

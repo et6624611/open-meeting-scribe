@@ -296,16 +296,16 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
             lines.append(summary)
             lines.append("")
 
-    # 待办事项区块（仅在未选择纪要时独立输出，避免与纪要正文中的待办重复） / Action items section (only standalone when summary not selected, to avoid duplication)
+    # 决策事项区块（仅在未选择纪要时独立输出，避免与纪要正文中的决策重复） / Action items section (only standalone when summary not selected, to avoid duplication)
     if "action_items" in content_types and "summary" not in content_types:
-        todos = task.get("todos", []) or []
-        if todos:
-            lines.append("## 待办事项")
+        decisions = task.get("decisions", []) or []
+        if decisions:
+            lines.append("## 决策事项")
             lines.append("")
-            for todo in todos:
-                text = todo.get("text", "")
-                assignee = todo.get("assignee", "")
-                done = todo.get("done", False)
+            for decision in decisions:
+                text = decision.get("text", "")
+                assignee = decision.get("assignee", "")
+                done = decision.get("done", False)
                 checkbox = "[x]" if done else "[ ]"
                 if assignee:
                     lines.append(f"- {checkbox} **{assignee}**：{text}")

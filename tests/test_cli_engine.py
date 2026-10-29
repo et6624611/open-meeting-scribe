@@ -223,8 +223,8 @@ class TestManifest:
 
     def test_tool_label_mcp_and_unknown(self, manifest):
         assert mf.resolve_tool_label(manifest, "Write")[0] == "写入文件"
-        lab, lab_en, icon = mf.resolve_tool_label(manifest, "mcp__oms__add_todos")
-        assert "add_todos" in lab and "add_todos" in lab_en and icon == "plug"
+        lab, lab_en, icon = mf.resolve_tool_label(manifest, "mcp__oms__add_decisions")
+        assert "add_decisions" in lab and "add_decisions" in lab_en and icon == "plug"
         lab2, _en2, icon2 = mf.resolve_tool_label(manifest, "TotallyNewTool")
         assert icon2 == "wrench"  # 未知降级样式，不裸显英文 name
 
@@ -348,7 +348,7 @@ class TestContextExport:
         task = {
             "dialogue": [{"speaker_name": "张三", "sentences": [{"text": "建议 Q3 上线", "begin_time": 0}]}],
             "summary": "决定 Q3 上线。",
-            "todos": [{"text": "出方案", "done": False}],
+            "decisions": [{"text": "出方案", "done": False}],
         }
         meta = ce.export_context(engine_id="qoder-cli", task=task, task_id="t1",
                                  user_message="总结决策", page_context="当前在会议页",
@@ -379,7 +379,7 @@ class TestContextExport:
             "summary": "AI 初稿纪要",
             "user_summary": "用户手改后的纪要：以 PMS 可用额度为准",
             "user_notes": "共识：星瀚标品预算模块作为差旅预算主控平台",
-            "todos": [],
+            "decisions": [],
         }
         meta = ce.export_context(engine_id="qoder-cli", task=task, task_id="t-notes",
                                  user_message="按随记更新决策")
@@ -413,7 +413,7 @@ class TestContextExport:
             {"title": "资源冲突", "body": "测试与上线窗口重叠", "solution": "错峰", "diagram": "flowchart LR", "phase": "post_meeting"},
         ]}, ensure_ascii=False), encoding="utf-8")
         monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tasks_dir)
-        task = {"dialogue": [], "summary": "", "todos": []}
+        task = {"dialogue": [], "summary": "", "decisions": []}
         ce.export_context(engine_id="qoder-cli", task=task, task_id="t1", user_message="写跟进邮件")
         f = tmp_path / "agent-workspace" / "qoder-cli" / "t1" / "context" / "insights.md"
         assert f.is_file()
@@ -426,7 +426,7 @@ class TestContextExport:
         from core.cli_engine import context_export as ce
         monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tmp_path / "no-here")
-        task = {"dialogue": [], "summary": "", "todos": []}
+        task = {"dialogue": [], "summary": "", "decisions": []}
         ce.export_context(engine_id="qoder-cli", task=task, task_id="t9", user_message="你好")
         assert not (tmp_path / "agent-workspace" / "qoder-cli" / "t9" / "context" / "insights.md").exists()
 

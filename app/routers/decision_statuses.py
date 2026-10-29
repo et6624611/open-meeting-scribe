@@ -7,7 +7,7 @@ app/routers/decision_statuses.py — 决策状态字典 CRUD / Decision status d
 
 契约事实源：docs/API_CONTRACTS.md §12.4（REQ-DECISION-CENTER-R2 · DC-R2-c · 裁决 D6/D7）。
 DC-UNIFY-01：字典默认集 = 决策流五态；删除自定义状态时，引用该状态的
-**决策流节点（todos）**当场回落到首个开放态并落盘（不留悬空引用）。
+**决策流节点（decisions）**当场回落到首个开放态并落盘（不留悬空引用）。
 """
 
 from fastapi import APIRouter, HTTPException
@@ -83,14 +83,14 @@ def delete_status_item(sid: str):
     fallback = result["reassign_to"]
     reassigned = 0
     for task_id, task in list(tasks.items()):
-        todos = task.get("todos")
-        if not isinstance(todos, list):
+        decisions = task.get("decisions")
+        if not isinstance(decisions, list):
             continue
         touched = False
-        for todo in todos:
-            if isinstance(todo, dict) and status_of(todo) == sid:
-                todo["status"] = fallback
-                todo["done"] = is_closing(fallback)
+        for decision in decisions:
+            if isinstance(decision, dict) and status_of(decision) == sid:
+                decision["status"] = fallback
+                decision["done"] = is_closing(fallback)
                 touched = True
                 reassigned += 1
         if touched:

@@ -327,7 +327,7 @@ class TestParseDocumentContent:
         assert len(dialogue) == 2
 
     def test_summary_by_markdown_headings(self):
-        text = "# 会议纪要\n## 主要结论\n讨论了项目进度\n## 待办事项\n- [ ] 张三完成报表"
+        text = "# 会议纪要\n## 主要结论\n讨论了项目进度\n## 决策事项\n- [ ] 张三完成报表"
         ctype, dialogue, summary = parse_document_content(text, "m.md")
         assert ctype == CONTENT_TYPE_SUMMARY
         assert dialogue is None

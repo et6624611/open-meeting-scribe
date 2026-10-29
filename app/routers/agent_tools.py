@@ -84,11 +84,11 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
     from app.routers.notes import (
         InjectRequest,
         NotesUpdate,
-        TodoUpdateRequest,
-        delete_todo,
+        DecisionUpdateRequest,
+        delete_decision,
         inject_content,
         update_task_summary,
-        update_todo,
+        update_decision,
     )
     from app.store import tasks
     from core import rewrite_snapshots as rsv
@@ -100,7 +100,7 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
 
     def _find_node(node_id: str) -> dict | None:
         task = tasks.get(ctx.task_id) or {}
-        for t in task.get("todos") or []:
+        for t in task.get("decisions") or []:
             if isinstance(t, dict) and t.get("id") == node_id:
                 return t
         return None
@@ -154,15 +154,15 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
         for it in items[:50]:  # 单轮上限，防刷屏（方案 §3.9-7）
             itype = str(it.get("type", "")).strip()
             content = str(it.get("content", "")).strip()
-            if itype not in ("todo", "conclusion", "decision") or not content:
+            if itype not in ("decision", "conclusion", "decision") or not content:
                 continue
             r = inject_content(ctx.task_id, InjectRequest(type=itype, content=content,
                                                             source_message="agent-engine"))
             item_id = r.get("item", {}).get("id")
             injected.append(item_id)
-            # todo/decision 会同时开一个决策流节点（id 与注入条目一致）：快照“此前不存在”，
+            # decision/decision 会同时开一个决策流节点（id 与注入条目一致）：快照“此前不存在”，
             # 撤销本轮即等价于删掉新建节点；conclusion 不开节点，无需快照
-            if itype in ("todo", "decision") and item_id:
+            if itype in ("decision", "decision") and item_id:
                 _snapshot(rsv.decision_node_target(str(item_id)), None, absent=True)
         logger.info("[agent-tools] inject_items task=%s n=%d", ctx.task_id, len(injected))
         audit_logger.info("[agent-engine] inject_items task=%s tier=%s count=%d",
@@ -171,11 +171,11 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                                                      "restorable": True}}
 
     if name == "update_decision_node":
-        # 决策节点改写：按节点 id 寻址，收口 notes.update_todo 同一口径（状态字典校验/脏标记/落盘）
+        # 决策节点改写：按节点 id 寻址，收口 notes.update_decision 同一口径（状态字典校验/脏标记/落盘）
         node_id = str(args.get("node_id", "")).strip()
         if not node_id:
             raise HTTPException(400, {"error": "missing_node_id",
-                                      "message": "需要 node_id（先调 get_meeting_todos 取节点 id）"})
+                                      "message": "需要 node_id（先调 get_meeting_decisions 取节点 id）"})
         node = _find_node(node_id)
         if node is None:
             raise HTTPException(404, {"error": "node_not_found",
@@ -191,23 +191,23 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                 patch["status"] = validate_status_id(patch["status"])
             except StatusError as exc:
                 raise HTTPException(422, {"error": "bad_status",
-                                          "message": f"{exc}（status 只能取 get_meeting_todos 返回的 available_statuses 中的 id）"})
+                                          "message": f"{exc}（status 只能取 get_meeting_decisions 返回的 available_statuses 中的 id）"})
         # 先过 Pydantic 校验（字段超长/枚举非法回 400），再落快照：被拒的写不留空快照
         try:
-            req_model = TodoUpdateRequest(**patch)
+            req_model = DecisionUpdateRequest(**patch)
         except ValidationError as exc:
             raise HTTPException(400, {"error": "bad_patch",
                                       "message": f"字段不合法：{exc.errors()[0].get('msg', exc)}"})
         restorable = _snapshot(rsv.decision_node_target(node_id), copy.deepcopy(node))
-        res = update_todo(ctx.task_id, node_id, req_model)
-        todo = res.get("todo") or {}
+        res = update_decision(ctx.task_id, node_id, req_model)
+        decision = res.get("decision") or {}
         logger.info("[agent-tools] update_decision_node task=%s node=%s fields=%s",
                     ctx.task_id, node_id, ",".join(patch))
         audit_logger.info("[agent-engine] update_decision_node task=%s tier=%s node=%s fields=%s status=%s",
-                          ctx.task_id, ctx.auth_tier, node_id, ",".join(patch), todo.get("status"))
+                          ctx.task_id, ctx.auth_tier, node_id, ",".join(patch), decision.get("status"))
         return {"ok": True, "tool": name,
                 "result": {"updated": True, "node_id": node_id,
-                           "status": todo.get("status"), "title": todo.get("title"),
+                           "status": decision.get("status"), "title": decision.get("title"),
                            "restorable": restorable},
                 "echo": res}
 
@@ -215,13 +215,13 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
         node_id = str(args.get("node_id", "")).strip()
         if not node_id:
             raise HTTPException(400, {"error": "missing_node_id",
-                                      "message": "需要 node_id（先调 get_meeting_todos 取节点 id）"})
+                                      "message": "需要 node_id（先调 get_meeting_decisions 取节点 id）"})
         node = _find_node(node_id)
         if node is None:
             raise HTTPException(404, {"error": "node_not_found",
                                       "message": f"决策节点不存在：{node_id}"})
         restorable = _snapshot(rsv.decision_node_target(node_id), copy.deepcopy(node))
-        res = delete_todo(ctx.task_id, node_id)  # auto 节点同步落防复活墓碑
+        res = delete_decision(ctx.task_id, node_id)  # auto 节点同步落防复活墓碑
         logger.info("[agent-tools] delete_decision_node task=%s node=%s", ctx.task_id, node_id)
         audit_logger.info("[agent-engine] delete_decision_node task=%s tier=%s node=%s restorable=%s",
                           ctx.task_id, ctx.auth_tier, node_id, restorable)

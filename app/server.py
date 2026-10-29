@@ -22,7 +22,7 @@ app/server.py — FastAPI 应用入口 / FastAPI application entry point
   user      — 用户信息 + 说话人绑定 / User info + speaker binding
   hotwords  — 热词 + 映射管理 / Hotwords + mapping management
   settings  — 设置读写 / Settings read/write
-  notes     — 笔记 + AI 注入 + 待办 / Notes + AI injection + todos
+  notes     — 笔记 + AI 注入 + 决策 / Notes + AI injection + decisions
   voiceprint — 声纹注册 + 自动识别（V4 CAM++） / Voiceprint registration + auto-identification (V4 CAM++)
   philosophy — 理念传播（随机展示设计者理念） / Philosophy dissemination (random designer philosophy display)
   auth      — GitHub OAuth 登录 + JWT 会话 + 登出 / GitHub OAuth login + JWT session + logout

@@ -26,7 +26,7 @@ class TestBudgetBlock:
         assert "一页纸系数 1" in block
         assert "约 900 字" in block
         assert "不超过 5 条" in block   # 主要结论 ≤5
-        assert "不超过 4 条" in block   # 待办 ≤4
+        assert "不超过 4 条" in block   # 决策 ≤4
         assert "不超过 3 句话" in block
         assert "无需输出" not in block  # 1 页档议题归类保留（正向句式措辞，避开模板禁止行为条款）
 

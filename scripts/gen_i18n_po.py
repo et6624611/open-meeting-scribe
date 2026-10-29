@@ -45,7 +45,7 @@ ZH_MAP = {
     # notes
     "Task not found": "任务不存在",
     "Injection content not found": "注入内容不存在",
-    "To-do not found": "待办不存在",
+    "To-do not found": "决策不存在",
     # projects
     "Path not found: {path}": "路径不存在: {path}",
     "Not a directory: {path}": "不是目录: {path}",

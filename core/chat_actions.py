@@ -78,7 +78,7 @@ ACTION_REGISTRY: list[ActionDef] = [
     ActionDef("record_stop", ["停止录音", "结束录音", "停止录制", "结束会议", "stop recording", "停止录", "结束录"], "停止当前录音"),
     ActionDef("record_pause", ["暂停录音", "暂停录制", "pause recording", "暂停"], "暂停当前录音"),
     ActionDef("record_resume", ["继续录音", "恢复录音", "resume recording", "继续录", "恢复录"], "恢复录音"),
-    ActionDef("extract_todos", ["提取待办", "待办事项", "todos", "待办", "提取任务"], "从当前会议提取待办事项"),
+    ActionDef("extract_decisions", ["提取决策", "决策事项", "decisions", "决策", "提取任务"], "从当前会议提取决策事项"),
     ActionDef("summarize_conclusions", ["关键结论", "总结结论", "总结关键决策", "conclusions", "总结关键"], "总结会议关键结论"),
     ActionDef("analyze_speakers", ["发言分析", "发言占比", "说话人分析", "speaker analysis", "发言统计"], "分析各发言人发言情况"),
     ActionDef("list_tasks", ["任务列表", "会议列表", "历史记录", "list tasks", "所有会议", "会议记录"], "列出所有会议任务"),
@@ -144,8 +144,8 @@ def execute_action(action: ActionDef, task_id: str | None, message: str) -> dict
             return _exec_record_pause()
         elif action.name == "record_resume":
             return _exec_record_resume()
-        elif action.name == "extract_todos":
-            return _exec_extract_todos(task_id)
+        elif action.name == "extract_decisions":
+            return _exec_extract_decisions(task_id)
         elif action.name == "summarize_conclusions":
             return _exec_summarize_conclusions(task_id)
         elif action.name == "analyze_speakers":
@@ -274,16 +274,16 @@ def _resolve_task_id(task_id: str | None) -> str | None:
     return completed[0]["task_id"] if completed else None
 
 
-def _exec_extract_todos(task_id: str | None) -> dict:
+def _exec_extract_decisions(task_id: str | None) -> dict:
     tid = _resolve_task_id(task_id)
     if not tid:
-        return {"success": False, "message": _("No completed meetings available to extract todos"), "data": None}
+        return {"success": False, "message": _("No completed meetings available to extract decisions"), "data": None}
     task = tasks[tid]
-    todos = task.get("todos", [])
-    if not todos:
-        return {"success": True, "message": _("Meeting '{name}' has no todo items").format(name=task.get('audio_name', _('Untitled'))), "data": {"todos": []}}
-    todo_list = "\n".join([f"- [{'x' if t.get('done') else ' '}] {t['text']} ({t.get('assignee', _('Unassigned'))})" for t in todos])
-    return {"success": True, "message": _("Meeting '{name}' has {count} todo items:\n{list}").format(name=task.get('audio_name', _('Untitled')), count=len(todos), list=todo_list), "data": {"todos": todos}}
+    decisions = task.get("decisions", [])
+    if not decisions:
+        return {"success": True, "message": _("Meeting '{name}' has no decision items").format(name=task.get('audio_name', _('Untitled'))), "data": {"decisions": []}}
+    decision_list = "\n".join([f"- [{'x' if t.get('done') else ' '}] {t['text']} ({t.get('assignee', _('Unassigned'))})" for t in decisions])
+    return {"success": True, "message": _("Meeting '{name}' has {count} decision items:\n{list}").format(name=task.get('audio_name', _('Untitled')), count=len(decisions), list=decision_list), "data": {"decisions": decisions}}
 
 
 def _exec_summarize_conclusions(task_id: str | None) -> dict:

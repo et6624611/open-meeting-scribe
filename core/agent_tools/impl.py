@@ -39,7 +39,7 @@ TOOL_LABELS = {
     "get_meeting_info": "获取会议信息",
     "get_meeting_transcript": "读取会议转写",
     "get_meeting_notes": "读取会议随记",
-    "get_meeting_todos": "查询待办事项",
+    "get_meeting_decisions": "查询决策事项",
     "search_project_files": "搜索项目资料",
     "get_hotwords": "获取热词列表",
     "get_system_settings": "获取系统设置",
@@ -57,7 +57,7 @@ TOOL_ICONS = {
     "get_meeting_info": "📋",
     "get_meeting_transcript": "💬",
     "get_meeting_notes": "📝",
-    "get_meeting_todos": "✅",
+    "get_meeting_decisions": "✅",
     "search_project_files": "📂",
     "get_hotwords": "🔤",
     "get_system_settings": "⚙️",
@@ -86,8 +86,8 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             return _tool_get_meeting_transcript(task_id, arguments.get("limit", 20))
         elif name == "get_meeting_notes":
             return _tool_get_meeting_notes(task_id)
-        elif name == "get_meeting_todos":
-            return _tool_get_meeting_todos(task_id)
+        elif name == "get_meeting_decisions":
+            return _tool_get_meeting_decisions(task_id)
         elif name == "search_project_files":
             return _tool_search_project_files(project_id, arguments.get("query", ""))
         elif name == "get_hotwords":
@@ -240,15 +240,15 @@ def _tool_get_meeting_notes(task_id: str | None) -> str:
     return json.dumps(out, ensure_ascii=False)
 
 
-def _tool_get_meeting_todos(task_id: str | None) -> str:
+def _tool_get_meeting_decisions(task_id: str | None) -> str:
     if not task_id or task_id not in tasks:
         return json.dumps({"info": "当前没有关联的会议"}, ensure_ascii=False)
     task = tasks[task_id]
-    todos = task.get("todos") or []
-    if not todos:
-        return json.dumps({"info": "该会议暂无待办事项", "count": 0}, ensure_ascii=False)
+    decisions = task.get("decisions") or []
+    if not decisions:
+        return json.dumps({"info": "该会议暂无决策事项", "count": 0}, ensure_ascii=False)
     items = []
-    for t in todos:
+    for t in decisions:
         if not isinstance(t, dict):
             continue
         items.append({
@@ -266,7 +266,7 @@ def _tool_get_meeting_todos(task_id: str | None) -> str:
                     for s in load_statuses()]
     except Exception:  # noqa: BLE001 - 字典不可用不影响节点读取
         statuses = []
-    return json.dumps({"todos": items, "count": len(items),
+    return json.dumps({"decisions": items, "count": len(items),
                        "available_statuses": statuses,
                        "status_note": "改写状态时 status 只能取 available_statuses 中的 id；"
                                       "用户已拍板的决策应推进到 closing=true 的状态"},

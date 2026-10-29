@@ -172,24 +172,24 @@ def apply_restore(task: dict, rec: dict) -> tuple[bool, str]:
 
     if target.startswith(f"{TARGET_DECISION_NODE}:"):
         node_id = target.split(":", 1)[1]
-        todos = task.get("todos")
-        if not isinstance(todos, list):
-            todos = []
-            task["todos"] = todos
-        idx = next((i for i, t in enumerate(todos)
+        decisions = task.get("decisions")
+        if not isinstance(decisions, list):
+            decisions = []
+            task["decisions"] = decisions
+        idx = next((i for i, t in enumerate(decisions)
                     if isinstance(t, dict) and t.get("id") == node_id), -1)
         if absent:
             # 撤销创建：节点应不存在
             if idx < 0:
                 return False, "节点已不存在，无需恢复"
-            task["todos"] = [t for t in todos if not (isinstance(t, dict) and t.get("id") == node_id)]
+            task["decisions"] = [t for t in decisions if not (isinstance(t, dict) and t.get("id") == node_id)]
             return True, "已撤销该节点的创建"
         if not isinstance(old, dict):
             return False, "快照内容不可用"
         if idx >= 0:
-            task["todos"][idx] = old
+            task["decisions"][idx] = old
         else:
-            task["todos"].append(old)
+            task["decisions"].append(old)
         return True, "已恢复节点到改写前"
 
     if target == TARGET_SUMMARY:

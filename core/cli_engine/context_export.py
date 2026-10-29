@@ -390,7 +390,7 @@ def _build_permission_section(auth_tier: str | None) -> str:
             "仅在对话里描述计划、读取基线后就收尾，不算完成。\n"
             "- 纪要（summary）改写例外：必须调用 propose_summary 产出待确认提案，由用户在前端接受后才落盘；"
             "不得直接调用 update_summary 覆盖纪要。\n"
-            "- 决策推进（如「这些条已确认/定为结论」）：先 get_meeting_todos 取节点 id 与状态字典，"
+            "- 决策推进（如「这些条已确认/定为结论」）：先 get_meeting_decisions 取节点 id 与状态字典，"
             "再逐条调 update_decision_node（status 只取字典里的 id）；已有节点不得用 inject_items 重复追加。\n"
             "- 随记（notes）是用户原创区：改写必须调用 propose_notes 产出待确认提案，由用户在前端点「接受」后才落盘；"
             "未经接受，严禁声称已写入或修改随记。也不要把随记内容当纪要写（纪要走 propose_summary）。\n"
@@ -497,11 +497,11 @@ def export_context(
             }, notes_body)
             written.append('context/notes.md')
 
-        todos = task.get("todos") or []
-        if todos:
-            (ctx / "todos.json").write_text(
-                json.dumps(todos, ensure_ascii=False, indent=2), encoding="utf-8")
-            written.append("context/todos.json")
+        decisions = task.get("decisions") or []
+        if decisions:
+            (ctx / "decisions.json").write_text(
+                json.dumps(decisions, ensure_ascii=False, indent=2), encoding="utf-8")
+            written.append("context/decisions.json")
 
     # 洞察台观察结论（持久化文件，工作区文件模式对 token 预算宽松，全量不截断）
     # Insight Deck observations (full render; workspace-file mode tolerates larger context)
@@ -573,7 +573,7 @@ def export_context(
     agents_parts.append(
         "## 说明\n本工作区由 OpenMeetingScribe 自动生成。"
         "context/ 目录为会议只读上下文，output/ 目录为你的可写产物区。"
-        "任何对会议纪要/待办的正式修改必须通过提供的集成工具（MCP）完成，不得直接改工作区外文件。\n")
+        "任何对会议纪要/决策的正式修改必须通过提供的集成工具（MCP）完成，不得直接改工作区外文件。\n")
     agents_md = "\n".join(agents_parts)
     (ws / "AGENTS.md").write_text(agents_md, encoding="utf-8")
     written.append("AGENTS.md")
@@ -694,8 +694,8 @@ def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
                              speaker_map: dict, realtime_entries: list[dict] | None,
                              history: list[dict] | None,
                              written: list[str]) -> None:
-    """写 context/ 下的 .md 和 todos.json 文件（export_context 与 export_preview_context 共用）。
-    Write context/ .md and todos.json files (shared by export_context and export_preview_context)."""
+    """写 context/ 下的 .md 和 decisions.json 文件（export_context 与 export_preview_context 共用）。
+    Write context/ .md and decisions.json files (shared by export_context and export_preview_context)."""
     from core.chat_context import task_final_summary, task_notes
 
     if task:
@@ -748,11 +748,11 @@ def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
             }, notes_body)
             written.append('context/notes.md')
 
-        todos = task.get("todos") or []
-        if todos:
-            (ctx / "todos.json").write_text(
-                json.dumps(todos, ensure_ascii=False, indent=2), encoding="utf-8")
-            written.append("context/todos.json")
+        decisions = task.get("decisions") or []
+        if decisions:
+            (ctx / "decisions.json").write_text(
+                json.dumps(decisions, ensure_ascii=False, indent=2), encoding="utf-8")
+            written.append("context/decisions.json")
 
     insights_md = _render_insights(task_id)
     if insights_md:
@@ -801,13 +801,13 @@ def _rule_pointer(scope_note: str, level: str = "global") -> str:
     按作用层级指向真实存在的索引/台账文件——指引落空的文件名比没有指引更糟。"""
     if level == "meeting":
         pointers = ("开始前先读 `AGENTS.md`；跨会议见上级 `_INDEX.md`，"
-                    "决策与待办见上级 `_DECISIONS.md`（如有）。")
+                    "决策与决策见上级 `_DECISIONS.md`（如有）。")
     elif level == "project":
         pointers = ("开始前先读 `AGENTS.md`（工作约束与阅读顺序）与 `_INDEX.md`（会议索引）；"
-                    "决策与待办见本目录 `_DECISIONS.md`。")
+                    "决策与决策见本目录 `_DECISIONS.md`。")
     else:
         pointers = ("开始前先读 `AGENTS.md`（工作约束与阅读顺序）与 `_INDEX.md`（会议索引）；"
-                    "决策与待办见根 `_DECISIONS.md` 与各项目内 `_DECISIONS.md`。")
+                    "决策与决策见根 `_DECISIONS.md` 与各项目内 `_DECISIONS.md`。")
     return (
         "# 会议知识库\n\n"
         "本目录由 OpenMeetingScribe 生成，会议上下文已就绪。\n"
@@ -931,8 +931,8 @@ def _start_here(scope_label: str) -> str:
         "### 2. 跨会议决策梳理\n"
         "提示词：读 `_DECISIONS.md` 与相关会议，找出仍未闭环的决策，列出「议题 / 当前状态 / "
         "卡点 / 建议下一步」，不要把已完成的再列一遍。\n\n"
-        "### 3. 待办与风险盘点\n"
-        "提示词：汇总所有未完成待办，按负责人分组，标注逾期风险与来源会议；"
+        "### 3. 决策与风险盘点\n"
+        "提示词：汇总所有未完成决策，按负责人分组，标注逾期风险与来源会议；"
         "只读，不要直接改任务数据。\n\n"
         "### 说明\n正式改纪要、随记、决策请在软件内通过 AI 面板或集成工具完成；"
         "本目录的 `output/` 可写，用于放你产出的稿子。\n")
@@ -989,9 +989,9 @@ def export_preview_context(*, task_id: str, task: dict,
         f"- 目录：`{ws.name}/`\n",
         "## 说明\n本工作区由 OpenMeetingScribe 自动生成（预览模式），供浏览和外部 IDE 探索。"
         "context/ 目录为会议只读上下文，output/ 目录为可写产物区。"
-        "如需修改会议纪要/待办，请通过软件内的 AI 面板或集成工具完成。\n",
+        "如需修改会议纪要/决策，请通过软件内的 AI 面板或集成工具完成。\n",
         "## 目录结构\n"
-        "- `context/` — 会议只读上下文：transcript.md / summary.md / notes.md / insights.md / history.md / todos.json，均带 YAML frontmatter（task_id / meeting_title / generated_at / source / 等）\n"
+        "- `context/` — 会议只读上下文：transcript.md / summary.md / notes.md / insights.md / history.md / decisions.json，均带 YAML frontmatter（task_id / meeting_title / generated_at / source / 等）\n"
         "- `output/` — 可写产物区\n"
         "- `related.md` — 同项目关联会议的标题/日期/相对路径列表（带 frontmatter）\n"
         "- `AGENTS.md` — 本文件\n",
@@ -1118,7 +1118,7 @@ def update_workspace_index(task_id: str, project_id: str | None, task: dict,
         "has_summary": (ctx_dir / "summary.md").exists(),
         "has_notes": (ctx_dir / "notes.md").exists(),
         "has_insights": (ctx_dir / "insights.md").exists(),
-        "todo_count": len(task.get("todos") or []),
+        "decision_count": len(task.get("decisions") or []),
         "speaker_count": _speaker_count(task),
         "last_updated": _now_iso(),
     })
@@ -1147,15 +1147,15 @@ def _decision_rows(members: list[dict], names: dict,
     for task in members:
         date = (task.get("meeting_date") or task.get("created_at") or "")[:10]
         title = (task.get("title") or task.get("audio_name") or "未命名").replace("|", "/")
-        for todo in (task.get("todos") or []):
-            if not isinstance(todo, dict):
+        for decision in (task.get("decisions") or []):
+            if not isinstance(decision, dict):
                 continue
-            text = (todo.get("title") or todo.get("text") or "").replace("|", "/").strip()
+            text = (decision.get("title") or decision.get("text") or "").replace("|", "/").strip()
             if not text:
                 continue
-            sid = status_of(todo)
+            sid = status_of(decision)
             state = names.get(sid, sid)
-            assignee = (todo.get("assignee") or "未分配").replace("|", "/")
+            assignee = (decision.get("assignee") or "未分配").replace("|", "/")
             if project_label:
                 out.append(f"| {project_label} | {date} | {title} | {text} | {state} | {assignee} |")
             else:
@@ -1170,20 +1170,20 @@ def _decision_lines(members: list[dict]) -> list[str]:
         names = {s["id"]: s.get("name") or s["id"] for s in load_statuses()}
     except Exception:  # noqa: BLE001
         names = {}
-    return (["| 日期 | 会议 | 决策 / 待办 | 状态 | 负责人 |", "| --- | --- | --- | --- | --- |"]
+    return (["| 日期 | 会议 | 决策 | 状态 | 负责人 |", "| --- | --- | --- | --- | --- |"]
             + _decision_rows(members, names))
 
 
 def _write_global_decisions(projects_idx: list[dict], standalone_members: list[dict],
                             written: list[str]) -> None:
     """根级决策台账：聚合全部项目与独立会议（六列带项目归属）。
-    根级规则文案「决策与待办见 _DECISIONS.md」必须有真实落点，不能悬空。"""
+    根级规则文案「决策与决策见 _DECISIONS.md」必须有真实落点，不能悬空。"""
     from core.decision_status import load_statuses
     try:
         names = {s["id"]: s.get("name") or s["id"] for s in load_statuses()}
     except Exception:  # noqa: BLE001
         names = {}
-    rows = ["| 项目 | 日期 | 会议 | 决策 / 待办 | 状态 | 负责人 |",
+    rows = ["| 项目 | 日期 | 会议 | 决策 | 状态 | 负责人 |",
             "| --- | --- | --- | --- | --- | --- |"]
     for item in projects_idx:
         pid = item["index"].get("project_id")
@@ -1194,7 +1194,7 @@ def _write_global_decisions(projects_idx: list[dict], standalone_members: list[d
     if standalone_members:
         rows.extend(_decision_rows(standalone_members, names, "独立会议"))
     body = ("# 跨项目决策台账\n\n"
-            "> 聚合全部知识库项目与独立会议的决策/待办节点；项目内明细见各项目目录 `_DECISIONS.md`。\n\n"
+            "> 聚合全部知识库项目与独立会议的决策节点；项目内明细见各项目目录 `_DECISIONS.md`。\n\n"
             + "\n".join(rows) + "\n")
     _write_md_with_meta(PREVIEW_ROOT, "_DECISIONS.md",
                         {"generated_at": _now_iso(), "source": "decisions"},
@@ -1303,7 +1303,7 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
             "has_summary": bool(ctx and (ctx / "summary.md").exists()),
             "has_notes": bool(ctx and (ctx / "notes.md").exists()),
             "has_insights": bool(ctx and (ctx / "insights.md").exists()),
-            "todo_count": len(task.get("todos") or []),
+            "decision_count": len(task.get("decisions") or []),
             "speaker_count": _speaker_count(task),
             "last_updated": old.get(tid, {}).get("last_updated") or _now_iso(),
         })
@@ -1382,8 +1382,8 @@ def _write_scope_indexes(scope_dir: Path, scope_id: str, scope_name: str,
                          members: list[dict], written: list[str],
                          archive_note: bool = False) -> None:
     """写作用域级 `_INDEX.md`（会议清单）与 `_DECISIONS.md`（跨会议决策台账）。
-    项目级与独立会议区共用——「决策与待办见 _DECISIONS.md」的指引必须在每个作用域有落点。"""
-    rows = ["| 日期 | 会议 | 一句话结论 | 待办 | 目录 |", "| --- | --- | --- | --- | --- |"]
+    项目级与独立会议区共用——「决策与决策见 _DECISIONS.md」的指引必须在每个作用域有落点。"""
+    rows = ["| 日期 | 会议 | 一句话结论 | 决策 | 目录 |", "| --- | --- | --- | --- | --- |"]
     for task in members:
         ws = _find_meeting_dir(scope_dir, task["task_id"])
         if not ws:
@@ -1392,9 +1392,9 @@ def _write_scope_indexes(scope_dir: Path, scope_id: str, scope_name: str,
         title = (task.get("title") or task.get("audio_name") or "未命名").replace("|", "/")
         has_summary = (ws / "context" / "summary.md").exists()
         summary = _summary_line(task).replace("|", "/")
-        todo_count = len(task.get("todos") or [])
+        decision_count = len(task.get("decisions") or [])
         rows.append(f"| {date} | {title} | {summary or ('—' if has_summary else '（无纪要）')} "
-                    f"| {todo_count} | `{ws.name}/` |")
+                    f"| {decision_count} | `{ws.name}/` |")
     index_body = (f"# 会议索引：{scope_name}\n\n> 共 {len(members)} 场，按日期倒序。"
                   "先在这里定位，再进入目录读 context/。\n\n" + "\n".join(rows) + "\n")
     if archive_note:
@@ -1407,7 +1407,7 @@ def _write_scope_indexes(scope_dir: Path, scope_id: str, scope_name: str,
     written.append("_INDEX.md")
 
     decision_body = (f"# 跨会议决策台账：{scope_name}\n\n"
-                     "> 只列本范围内会议产生的决策/待办节点，状态取软件内决策字典。\n\n"
+                     "> 只列本范围内会议产生的决策节点，状态取软件内决策字典。\n\n"
                      + "\n".join(_decision_lines(members)) + "\n")
     _write_md_with_meta(scope_dir, "_DECISIONS.md",
                         {"project_id": scope_id, "generated_at": _now_iso(), "source": "decisions"},
@@ -1442,7 +1442,7 @@ def export_project_context(project_id: str, ide_id: str | None = None) -> dict:
         "- 单场上下文：`<会议目录>/context/`\n\n"
         "## 阅读顺序\n"
         "1. 读 `_INDEX.md`，按日期与摘要找相关会议。\n"
-        "2. 需要决策/待办时读 `_DECISIONS.md`。\n"
+        "2. 需要决策时读 `_DECISIONS.md`。\n"
         "3. 再进入对应会议目录读 `context/summary.md`，没有纪要就读 `context/transcript.md`；"
         "需要原话证据时也读它。\n"
         "4. 不要一次性通读所有转写，先索引后定点，控制上下文预算。\n\n"

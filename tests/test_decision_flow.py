@@ -3,12 +3,12 @@ tests/test_decision_flow.py — DC-UNIFY-01 单一决策流回归（2026-09-27 �
 
 契约事实源：docs/API_CONTRACTS.md §12（DC-UNIFY-01 修订）。
 覆盖口径：
-  1. 纪要「主要结论」自动解析 → 决策流节点（todos），统一落「待决策」态
+  1. 纪要「主要结论」自动解析 → 决策流节点（decisions），统一落「待决策」态
   2. 重新生成合并：只覆盖 auto、保留手动/注入、墓碑防复活、文本去重
   3. 节点级 CRUD：状态字典校验、done 跟随 closing、title/owner_id 承接三要素
-  4. 跨会议聚合：数据源为 todos、过滤/分组/状态元信息随行、未知状态降级
-  5. 注入联动：todo 与 decision 类型同写决策流
-  6. 状态字典：三态默认集、锚点仅 done、旧结构自动迁移、删除回落 todos
+  4. 跨会议聚合：数据源为 decisions、过滤/分组/状态元信息随行、未知状态降级
+  5. 注入联动：decision 与 decision 类型同写决策流
+  6. 状态字典：三态默认集、锚点仅 done、旧结构自动迁移、删除回落 decisions
 
 旧 decision 对象的回归（test_decision_center / test_dc_r2_b / test_dc_r2_be /
 test_dc_r2_c）随对象下线一并移除，其仍有效的断言已并入本文件。
@@ -38,15 +38,15 @@ SUMMARY = """# 会议纪要
 2. [待确认] 预算需财务复核
 3. 上线时间定在10月1日
 
-## 三、待办事项
+## 三、决策事项
 - [ ] **张三**：出排期（本周五前）
 """
 
 SUMMARY_NEGATIVE = """## 二、主要结论
 本次会议未形成明确结论
 
-## 三、待办事项
-无明确待办事项
+## 三、决策事项
+无明确决策事项
 """
 
 
@@ -101,7 +101,7 @@ def test_conclusions_parse_into_flow_nodes_pending_confirmation():
     assert degrade is None
     assert len(nodes) == 3
     for n in nodes:
-        # 节点形状 = todos：有 text/assignee/status（how 冗余缺省不落盘），不再有 owner_name/superseded_by
+        # 节点形状 = decisions：有 text/assignee/status（how 冗余缺省不落盘），不再有 owner_name/superseded_by
         assert {"id", "text", "assignee", "owner_id", "done", "status", "source"} <= set(n)
         assert n["status"] == "to_decide" and n["source"] == "auto" and n["done"] is False
     # 「**标题**：正文」拆出 title，正文不含 [待确认] 前缀
@@ -196,11 +196,11 @@ def test_create_node_carries_title_and_resolves_owner_from_archive(client, task_
     import core.decision_flow as flow
     monkeypatch.setattr(flow, "get_speaker_name_map", lambda: {"sp-1": "李四"})
     tid = task_factory()
-    resp = client.post(f"/api/tasks/{tid}/todos", json={
+    resp = client.post(f"/api/tasks/{tid}/decisions", json={
         "text": "采用方案A", "title": "方案选型", "owner_id": "sp-1",
     })
     assert resp.status_code == 200
-    node = resp.json()["todo"]
+    node = resp.json()["decision"]
     assert node["title"] == "方案选型"
     assert node["assignee"] == "李四" and node["owner_id"] == "sp-1"
     # 手动添加落默认开放态（待决策），而非退役的待确认态
@@ -209,34 +209,34 @@ def test_create_node_carries_title_and_resolves_owner_from_archive(client, task_
 
 def test_status_must_exist_in_dictionary(client, task_factory, store):
     store.load_statuses()
-    tid = task_factory(todos=[])
-    ok = client.put(f"/api/tasks/{tid}/todos/x", json={"status": "in_progress"})
+    tid = task_factory(decisions=[])
+    ok = client.put(f"/api/tasks/{tid}/decisions/x", json={"status": "in_progress"})
     assert ok.status_code == 404  # 节点不存在，但状态校验通过（未 422）
-    bad = client.post(f"/api/tasks/{tid}/todos", json={"text": "一条决策", "status": "not-a-status"})
+    bad = client.post(f"/api/tasks/{tid}/decisions", json={"text": "一条决策", "status": "not-a-status"})
     assert bad.status_code == 422
 
 
 def test_done_follows_closing_flag(client, task_factory, store):
     store.load_statuses()
-    tid = task_factory(todos=[])
-    created = client.post(f"/api/tasks/{tid}/todos", json={"text": "上线时间定在10月1日"}).json()["todo"]
-    done = client.put(f"/api/tasks/{tid}/todos/{created['id']}", json={"status": "done"}).json()["todo"]
+    tid = task_factory(decisions=[])
+    created = client.post(f"/api/tasks/{tid}/decisions", json={"text": "上线时间定在10月1日"}).json()["decision"]
+    done = client.put(f"/api/tasks/{tid}/decisions/{created['id']}", json={"status": "done"}).json()["decision"]
     assert done["done"] is True
-    reopened = client.put(f"/api/tasks/{tid}/todos/{done['id']}", json={"status": "in_progress"}).json()["todo"]
+    reopened = client.put(f"/api/tasks/{tid}/decisions/{done['id']}", json={"status": "in_progress"}).json()["decision"]
     assert reopened["done"] is False and reopened["status"] == "in_progress"
 
 
 def test_delete_auto_node_writes_tombstone(client, task_factory):
-    tid = task_factory(todos=[{"id": "a1", "text": "自动结论", "source": "auto", "status": "to_decide", "done": False}])
-    assert client.delete(f"/api/tasks/{tid}/todos/a1").status_code == 200
+    tid = task_factory(decisions=[{"id": "a1", "text": "自动结论", "source": "auto", "status": "to_decide", "done": False}])
+    assert client.delete(f"/api/tasks/{tid}/decisions/a1").status_code == 200
     tombstones = tasks[tid].get("decision_deletions") or []
     assert [t["text_key"] for t in tombstones] == [decision_text_key("自动结论")]
 
 
-def test_get_todos_carries_status_dictionary_meta(client, task_factory, store):
+def test_get_decisions_carries_status_dictionary_meta(client, task_factory, store):
     store.load_statuses()
-    tid = task_factory(todos=[{"id": "t1", "text": "决策", "status": "in_progress", "done": False}])
-    node = client.get(f"/api/tasks/{tid}/todos").json()["todos"][0]
+    tid = task_factory(decisions=[{"id": "t1", "text": "决策", "status": "in_progress", "done": False}])
+    node = client.get(f"/api/tasks/{tid}/decisions").json()["decisions"][0]
     assert node["status_name"] == "进行中" and node["status_closing"] is False
     assert node["meeting_title"] == "测试会议"
 
@@ -247,7 +247,7 @@ def test_get_todos_carries_status_dictionary_meta(client, task_factory, store):
 
 def test_aggregation_reads_decision_flow(client, task_factory, store):
     store.load_statuses()
-    tid = task_factory(todos=[
+    tid = task_factory(decisions=[
         {"id": "n1", "title": "方案选型", "text": "采用方案A", "status": "in_progress",
          "source": "auto", "done": False, "created_at": "2026-09-20T10:00:00"},
     ])
@@ -257,8 +257,8 @@ def test_aggregation_reads_decision_flow(client, task_factory, store):
     assert row["title"] == "方案选型"          # 决策自身标题，不与会议标题混用
     assert row["status_name"] == "进行中" and row["status_color"]
 
-    # 旧 decision 对象不再被任何读路径消费
-    task_factory(decisions=[{"id": "legacy", "text": "已下线的 decision 记录", "status": "active"}])
+    # 已下线的旧 decision 对象（存档键）不再被任何读路径消费
+    task_factory(legacy_decisions=[{"id": "legacy", "text": "已下线的 decision 记录", "status": "active"}])
     assert all(r["id"] != "legacy" for r in client.get("/api/decisions").json()["decisions"])
 
 
@@ -267,9 +267,9 @@ def test_aggregation_filters_and_groups(client, task_factory, store):
     # 真实环下会加载数百个存量任务，因此用唯一 kb/日期隔离断言范围
     kb_a, kb_b = f"kb-{uuid.uuid4().hex[:8]}-a", f"kb-{uuid.uuid4().hex[:8]}-b"
     t1 = task_factory(title="甲会议", meeting_date="2026-09-20", project_id=kb_a,
-                      todos=[{"id": "x1", "text": "甲会议决策", "status": "in_progress", "done": False}])
+                      decisions=[{"id": "x1", "text": "甲会议决策", "status": "in_progress", "done": False}])
     task_factory(title="乙会议", meeting_date="2026-08-01", project_id=kb_b,
-                 todos=[{"id": "x2", "text": "乙会议决策", "status": "done", "done": True}])
+                 decisions=[{"id": "x2", "text": "乙会议决策", "status": "done", "done": True}])
 
     assert {r["id"] for r in client.get("/api/decisions", params={"kb_id": kb_a}).json()["decisions"]} == {"x1"}
     assert {r["id"] for r in client.get("/api/decisions", params={"kb_id": kb_b}).json()["decisions"]} == {"x2"}
@@ -285,7 +285,7 @@ def test_aggregation_filters_and_groups(client, task_factory, store):
 
 def test_aggregation_degrades_unknown_status_to_open_state(client, task_factory, store):
     store.load_statuses()
-    task_factory(todos=[{"id": "z1", "text": "历史状态节点", "status": "deleted-custom-state", "done": False}])
+    task_factory(decisions=[{"id": "z1", "text": "历史状态节点", "status": "deleted-custom-state", "done": False}])
     row = next(r for r in client.get("/api/decisions").json()["decisions"] if r["id"] == "z1")
     # 字典外的历史值 → 降级到首个开放态（待决策），不抛错不丢行
     assert row["status"] == "to_decide" and row["status_name"] == "待决策"
@@ -293,13 +293,13 @@ def test_aggregation_degrades_unknown_status_to_open_state(client, task_factory,
 
 def test_legacy_task_without_status_derives_from_done(client, task_factory, store):
     store.load_statuses()
-    task_factory(todos=[{"id": "old1", "text": "无状态字段的历史节点", "done": True}])
+    task_factory(decisions=[{"id": "old1", "text": "无状态字段的历史节点", "done": True}])
     row = next(r for r in client.get("/api/decisions").json()["decisions"] if r["id"] == "old1")
     assert row["status"] == "done" and row["status_closing"] is True
 
 
 # ============================================================
-# 5. 注入联动：todo 与 decision 同写决策流
+# 5. 注入联动：decision 与 decision 同写决策流
 # ============================================================
 
 def test_decision_injection_joins_the_flow(client, task_factory):
@@ -308,14 +308,13 @@ def test_decision_injection_joins_the_flow(client, task_factory):
         "type": "decision", "content": "**预算**：Q4 预算封顶 80 万", "source_message": "m1",
     })
     assert resp.status_code == 200
-    assert "decisions" not in tasks[tid]           # 不再产生第二套对象
-    node = tasks[tid]["todos"][0]
+    node = tasks[tid]["decisions"][0]
     assert node["title"] == "预算" and node["text"] == "Q4 预算封顶 80 万"
     assert node["status"] == "to_decide" and node["source"] == "injection"
 
     inj_id = resp.json()["item"]["id"]
     client.delete(f"/api/tasks/{tid}/injections/{inj_id}")
-    assert tasks[tid]["todos"] == []
+    assert tasks[tid]["decisions"] == []
 
 
 # ============================================================
@@ -410,17 +409,17 @@ def test_backfill_script_writes_flow_and_is_idempotent():
 
     task = {
         "task_id": "bf-1", "status": "completed", "title": "存量会议", "summary": SUMMARY,
-        "todos": [{"id": "keep", "text": "手动记录的决策", "source": "manual", "status": "in_progress", "done": False}],
+        "decisions": [{"id": "keep", "text": "手动记录的决策", "source": "manual", "status": "in_progress", "done": False}],
     }
     category, added, _ = mod.backfill_task(task)
     assert category == "backfilled" and added == 3
-    assert task["todos"][0]["id"] == "keep"                     # 手动节点保留
-    backfilled = [t for t in task["todos"] if t.get("source") == "backfill"]
+    assert task["decisions"][0]["id"] == "keep"                     # 手动节点保留
+    backfilled = [t for t in task["decisions"] if t.get("source") == "backfill"]
     assert len(backfilled) == 3 and all(t["status"] == "to_decide" for t in backfilled)
 
     # 幂等：第二次直接跳过，不重复入流
     assert mod.backfill_task(task) == ("skipped_has_decisions", 0, "")
-    assert len([t for t in task["todos"] if t.get("source") == "backfill"]) == 3
+    assert len([t for t in task["decisions"] if t.get("source") == "backfill"]) == 3
 
 
 def test_delete_status_reassigns_flow_nodes(client, task_factory, store, monkeypatch):
@@ -433,12 +432,12 @@ def test_delete_status_reassigns_flow_nodes(client, task_factory, store, monkeyp
     # 新增一个自定义状态并让节点引用它
     ds.create_status("阻塞中", "#d97706", False)
     custom = next(s for s in ds.load_statuses() if s["name"] == "阻塞中")
-    tid = task_factory(todos=[{"id": "b1", "text": "被阻塞的决策", "status": custom["id"], "done": False}])
+    tid = task_factory(decisions=[{"id": "b1", "text": "被阻塞的决策", "status": custom["id"], "done": False}])
 
     resp = client.delete(f"/api/decision-statuses/{custom['id']}")
     assert resp.status_code == 200 and resp.json()["reassigned"] == 1
     # 被删状态下的节点回落到删后字典的首个开放态
-    assert tasks[tid]["todos"][0]["status"] == "to_decide"
+    assert tasks[tid]["decisions"][0]["status"] == "to_decide"
 
 
 # ============================================================
@@ -485,11 +484,11 @@ def test_cluster_topics_isolates_different_kb():
 def test_aggregation_group_by_topic(client, task_factory, store):
     store.load_statuses()
     kb = "proj-shared"
-    task_factory(project_id=kb, todos=[
+    task_factory(project_id=kb, decisions=[
         {"id": "x1", "title": "预算调整需支持跨组织跨期间", "text": "预算调整需支持跨组织跨期间",
          "source": "auto", "status": "in_progress", "created_at": "2026-09-05T10:00:00"},
     ])
-    task_factory(project_id=kb, todos=[
+    task_factory(project_id=kb, decisions=[
         {"id": "x2", "title": "预算调整功能必须支持跨组织、跨期间操作", "text": "预算调整功能必须支持跨组织、跨期间操作",
          "source": "auto", "status": "to_decide", "created_at": "2026-09-25T10:00:00"},
     ])
@@ -515,12 +514,12 @@ def _evolution_pair(task_factory, *, old_status="to_decide"):
     kb = f"proj-evo-{token}"
     t1 = task_factory(
         project_id=kb, title="旧会议", meeting_date="2026-09-05",
-        todos=[{"id": "x1", "title": f"{token}预算调整需支持跨组织跨期间",
+        decisions=[{"id": "x1", "title": f"{token}预算调整需支持跨组织跨期间",
                 "text": f"{token}预算调整需支持跨组织跨期间", "source": "auto",
                 "status": old_status, "done": old_status == "done",
                 "created_at": "2026-09-05T10:00:00"}])
     t2 = task_factory(project_id=kb, title="新会议", meeting_date="2026-09-25",
-                      todos=[{"id": "x2", "title": f"{token}预算调整功能必须支持跨组织、跨期间操作",
+                      decisions=[{"id": "x2", "title": f"{token}预算调整功能必须支持跨组织、跨期间操作",
                               "text": f"{token}预算调整功能必须支持跨组织、跨期间操作", "source": "auto",
                               "status": "to_decide", "created_at": "2026-09-25T10:00:00"}])
     return t1, t2
@@ -530,19 +529,19 @@ def test_supersede_marks_closing_with_snapshot_and_changes_main(client, task_fac
     store.load_statuses()
     t1, t2 = _evolution_pair(task_factory, old_status="in_progress")
 
-    resp = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                       json={"by_task_id": t2, "by_todo_id": "x2"})
+    resp = client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                       json={"by_task_id": t2, "by_decision_id": "x2"})
     assert resp.status_code == 200
-    node = resp.json()["todo"]
+    node = resp.json()["decision"]
     assert node["status"] == "superseded" and node["done"] is True
     link = node["superseded_by"]
-    assert link["task_id"] == t2 and link["todo_id"] == "x2"
+    assert link["task_id"] == t2 and link["decision_id"] == "x2"
     assert link["prev_status"] == "in_progress" and link["marked_at"]
     assert "预算调整功能" in link["title"] and link["meeting_title"] == "新会议"
 
     # 任务级读侧随行带出关系
-    got = client.get(f"/api/tasks/{t1}/todos").json()["todos"]
-    assert got[0]["superseded_by"]["todo_id"] == "x2"
+    got = client.get(f"/api/tasks/{t1}/decisions").json()["decisions"]
+    assert got[0]["superseded_by"]["decision_id"] == "x2"
     assert got[0]["status_closing"] is True
 
     # 议题主记录仍是新节点；旧节点闭档沉在演变链
@@ -557,21 +556,21 @@ def test_supersede_conflicts(client, task_factory, store):
     t1, t2 = _evolution_pair(task_factory)
 
     # 自身不能替代自身
-    assert client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                       json={"by_task_id": t1, "by_todo_id": "x1"}).status_code == 422
+    assert client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                       json={"by_task_id": t1, "by_decision_id": "x1"}).status_code == 422
     # 目标不存在
-    assert client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                       json={"by_task_id": t2, "by_todo_id": "nope"}).status_code == 404
+    assert client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                       json={"by_task_id": t2, "by_decision_id": "nope"}).status_code == 404
     # 节点不存在
-    assert client.post(f"/api/tasks/{t1}/todos/nope/supersede",
-                       json={"by_task_id": t2, "by_todo_id": "x2"}).status_code == 404
+    assert client.post(f"/api/tasks/{t1}/decisions/nope/supersede",
+                       json={"by_task_id": t2, "by_decision_id": "x2"}).status_code == 404
 
-    ok = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                     json={"by_task_id": t2, "by_todo_id": "x2"})
+    ok = client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                     json={"by_task_id": t2, "by_decision_id": "x2"})
     assert ok.status_code == 200
     # 重复标记 → 409 契约 {code, reason}
-    again = client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                        json={"by_task_id": t2, "by_todo_id": "x2"})
+    again = client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                        json={"by_task_id": t2, "by_decision_id": "x2"})
     assert again.status_code == 409
     assert again.json()["detail"]["code"] == "already_superseded"
 
@@ -579,17 +578,17 @@ def test_supersede_conflicts(client, task_factory, store):
 def test_revert_supersede_restores_prev_status(client, task_factory, store):
     store.load_statuses()
     t1, t2 = _evolution_pair(task_factory, old_status="in_progress")
-    client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                json={"by_task_id": t2, "by_todo_id": "x2"})
+    client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                json={"by_task_id": t2, "by_decision_id": "x2"})
 
-    resp = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    resp = client.delete(f"/api/tasks/{t1}/decisions/x1/supersede")
     assert resp.status_code == 200
-    node = resp.json()["todo"]
+    node = resp.json()["decision"]
     assert node["status"] == "in_progress" and node["done"] is False
     assert "superseded_by" not in node
 
     # 非替代态撤销 → 409
-    conflict = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    conflict = client.delete(f"/api/tasks/{t1}/decisions/x1/supersede")
     assert conflict.status_code == 409
     assert conflict.json()["detail"]["code"] == "not_superseded"
 
@@ -602,7 +601,7 @@ def test_task_evolution_reports_cluster_membership(client, task_factory, store):
     assert evo_old["x1"]["role"] == "history"
     assert evo_old["x1"]["meeting_count"] == 2
     assert evo_old["x1"]["latest"]["task_id"] == t2
-    assert evo_old["x1"]["latest"]["todo_id"] == "x2"
+    assert evo_old["x1"]["latest"]["decision_id"] == "x2"
 
     evo_new = client.get("/api/decisions/evolution", params={"task_id": t2}).json()["evolution"]
     assert evo_new["x2"]["role"] == "main"
@@ -620,18 +619,18 @@ def test_revert_supersede_falls_back_when_prev_status_deleted(client, task_facto
     custom_id = created.json()["status"]["id"]
 
     t1, t2 = _evolution_pair(task_factory)
-    put = client.put(f"/api/tasks/{t1}/todos/x1", json={"status": custom_id})
+    put = client.put(f"/api/tasks/{t1}/decisions/x1", json={"status": custom_id})
     assert put.status_code == 200
 
-    client.post(f"/api/tasks/{t1}/todos/x1/supersede",
-                json={"by_task_id": t2, "by_todo_id": "x2"})
+    client.post(f"/api/tasks/{t1}/decisions/x1/supersede",
+                json={"by_task_id": t2, "by_decision_id": "x2"})
     # 替代期间用户删掉原状态（节点当前为 superseded，不被删除联动重指派）
     gone = client.delete(f"/api/decision-statuses/{custom_id}")
     assert gone.status_code == 200
 
-    resp = client.delete(f"/api/tasks/{t1}/todos/x1/supersede")
+    resp = client.delete(f"/api/tasks/{t1}/decisions/x1/supersede")
     assert resp.status_code == 200
-    node = resp.json()["todo"]
+    node = resp.json()["decision"]
     assert node["status"] == "to_decide" and node["done"] is False
     assert "superseded_by" not in node
 
@@ -642,8 +641,8 @@ def test_evolution_main_shifts_when_main_node_superseded(client, task_factory, s
     t1, t2 = _evolution_pair(task_factory)
 
     # 反向标记：新节点（当前 main）被旧节点替代（手动路径不做时序限制）
-    resp = client.post(f"/api/tasks/{t2}/todos/x2/supersede",
-                       json={"by_task_id": t1, "by_todo_id": "x1"})
+    resp = client.post(f"/api/tasks/{t2}/decisions/x2/supersede",
+                       json={"by_task_id": t1, "by_decision_id": "x1"})
     assert resp.status_code == 200
 
     # 聚合视图主记录前移为 x1，x2 闭档沉入演变链
@@ -657,6 +656,6 @@ def test_evolution_main_shifts_when_main_node_superseded(client, task_factory, s
     # 归属角色同步反转：latest 指向旧会议节点
     evo_new = client.get("/api/decisions/evolution", params={"task_id": t2}).json()["evolution"]
     assert evo_new["x2"]["role"] == "history"
-    assert evo_new["x2"]["latest"]["todo_id"] == "x1"
+    assert evo_new["x2"]["latest"]["decision_id"] == "x1"
     evo_old = client.get("/api/decisions/evolution", params={"task_id": t1}).json()["evolution"]
     assert evo_old["x1"]["role"] == "main"

@@ -28,29 +28,29 @@ logger = logging.getLogger(__name__)
 # 编辑意图门槛关键词：仅命中消息进入意图解析
 EDIT_INTENT_KEYWORDS = [
     "改为", "改成", "应该是", "应为", "修正", "修改", "更正", "换成", "更新为",
-    "重命名", "删除待办", "去掉待办", "标记完成", "标记为", "勾选", "勾上", "改回", "写错", "名字错",
+    "重命名", "删除决策", "去掉决策", "标记完成", "标记为", "勾选", "勾上", "改回", "写错", "名字错",
 ]
 
 # 允许的编辑操作白名单
-EDIT_OP_FIELDS = {"todo_assignee": "assignee", "todo_text": "text", "todo_done": "done"}
+EDIT_OP_FIELDS = {"decision_assignee": "assignee", "decision_text": "text", "decision_done": "done"}
 
-EDIT_INTENT_SYSTEM_PROMPT = """你是 Open Meeting Scribe 会议助手的意图解析器。唯一任务：判断用户消息是否包含对当前会议待办清单的数据编辑意图，并输出结构化操作。
+EDIT_INTENT_SYSTEM_PROMPT = """你是 Open Meeting Scribe 会议助手的意图解析器。唯一任务：判断用户消息是否包含对当前会议决策清单的数据编辑意图，并输出结构化操作。
 
 允许的操作（op 仅限以下四种）：
-- todo_assignee：修改待办责任人，value 为新姓名
-- todo_text：修改待办内容，value 为新内容
-- todo_done：修改待办完成状态，value 为 true 或 false
-- todo_delete：删除待办，无需 value
+- decision_assignee：修改决策责任人，value 为新姓名
+- decision_text：修改决策内容，value 为新内容
+- decision_done：修改决策完成状态，value 为 true 或 false
+- decision_delete：删除决策，无需 value
 
 规则：
-- todo_id 必须取自给定待办清单中的 id，不得编造
-- 用户提到旧姓名/旧值且多条待办命中时，对每条命中的待办各出一条操作
-- 无编辑意图、或编辑对象不在待办清单中时，返回空操作
-- 只输出 JSON，格式：{"ops": [{"op": "...", "todo_id": "...", "value": "..."}]}"""
+- decision_id 必须取自给定决策清单中的 id，不得编造
+- 用户提到旧姓名/旧值且多条决策命中时，对每条命中的决策各出一条操作
+- 无编辑意图、或编辑对象不在决策清单中时，返回空操作
+- 只输出 JSON，格式：{"ops": [{"op": "...", "decision_id": "...", "value": "..."}]}"""
 
 # 回复中的操作声称词
 CLAIM_PATTERN = re.compile(r"已(修正|修改|更新|删除|添加|新增|重命名|勾选|替换|更改|改写|同步)")
-_FIELD_LABELS = {"assignee": "责任人", "text": "待办内容", "done": "完成状态"}
+_FIELD_LABELS = {"assignee": "责任人", "text": "决策内容", "done": "完成状态"}
 
 
 # ============================================================
@@ -69,7 +69,7 @@ def has_edit_intent(message: str) -> bool:
 
 
 def _sanitize_edit_ops(raw: str, valid_ids: set) -> list[dict]:
-    """解析 LLM 返回的 JSON，按操作白名单与合法 todo_id 过滤。"""
+    """解析 LLM 返回的 JSON，按操作白名单与合法 decision_id 过滤。"""
     text = raw.strip()
     if "```" in text:
         m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
@@ -89,36 +89,36 @@ def _sanitize_edit_ops(raw: str, valid_ids: set) -> list[dict]:
         if not isinstance(op, dict):
             continue
         name = op.get("op")
-        todo_id = op.get("todo_id")
-        if name not in EDIT_OP_FIELDS and name != "todo_delete":
+        decision_id = op.get("decision_id")
+        if name not in EDIT_OP_FIELDS and name != "decision_delete":
             continue
-        if todo_id not in valid_ids:
+        if decision_id not in valid_ids:
             continue
-        if name != "todo_delete" and "value" not in op:
+        if name != "decision_delete" and "value" not in op:
             continue
-        cleaned.append({"op": name, "todo_id": todo_id, "value": op.get("value")})
+        cleaned.append({"op": name, "decision_id": decision_id, "value": op.get("value")})
     return cleaned
 
 
 async def parse_edit_intent(message: str, task: dict) -> list[dict]:
-    """用 LLM 从用户消息解析待办编辑意图，失败返回空列表（降级为普通对话）。"""
-    todos = task.get("todos") or []
-    if not todos:
+    """用 LLM 从用户消息解析决策编辑意图，失败返回空列表（降级为普通对话）。"""
+    decisions = task.get("decisions") or []
+    if not decisions:
         return []
     brief = [
-        {"todo_id": t.get("id"), "text": t.get("text", ""), "assignee": t.get("assignee", ""), "done": bool(t.get("done"))}
-        for t in todos
+        {"decision_id": t.get("id"), "text": t.get("text", ""), "assignee": t.get("assignee", ""), "done": bool(t.get("done"))}
+        for t in decisions
     ]
     messages = [
         {"role": "system", "content": EDIT_INTENT_SYSTEM_PROMPT},
-        {"role": "user", "content": f"用户消息：{message}\n\n当前待办清单（JSON）：\n{json.dumps(brief, ensure_ascii=False)}"},
+        {"role": "user", "content": f"用户消息：{message}\n\n当前决策清单（JSON）：\n{json.dumps(brief, ensure_ascii=False)}"},
     ]
     try:
         raw = await async_chat_completion(messages, model=None, temperature=0.1, max_tokens=512)
     except Exception as e:
         logger.warning(f"编辑意图解析失败（降级为普通对话）: {e}")
         return []
-    ops = _sanitize_edit_ops(raw, {t.get("id") for t in todos})
+    ops = _sanitize_edit_ops(raw, {t.get("id") for t in decisions})
     if ops:
         logger.info(f"[AI对话] 解析到编辑意图: {ops}")
     return ops
@@ -130,28 +130,28 @@ async def parse_edit_intent(message: str, task: dict) -> list[dict]:
 
 
 def execute_and_verify_edits(task_id: str, ops: list[dict]) -> list[dict]:
-    """执行待办编辑操作，并回读磁盘逐条校验结果。
+    """执行决策编辑操作，并回读磁盘逐条校验结果。
 
     返回变更记录列表，每条带 verified 标记。
     """
     task = tasks.get(task_id)
     if not task:
         return []
-    todos = task.setdefault("todos", [])
+    decisions = task.setdefault("decisions", [])
     changes: list[dict] = []
     for op in ops:
-        name, todo_id = op["op"], op["todo_id"]
-        if name == "todo_delete":
-            target = next((t for t in todos if t.get("id") == todo_id), None)
+        name, decision_id = op["op"], op["decision_id"]
+        if name == "decision_delete":
+            target = next((t for t in decisions if t.get("id") == decision_id), None)
             if not target:
                 continue
             old = target.get("text", "")
-            task["todos"] = [t for t in task["todos"] if t.get("id") != todo_id]
-            todos = task["todos"]
-            changes.append({"op": name, "todo_id": todo_id, "field": "delete", "old": old, "new": None})
+            task["decisions"] = [t for t in task["decisions"] if t.get("id") != decision_id]
+            decisions = task["decisions"]
+            changes.append({"op": name, "decision_id": decision_id, "field": "delete", "old": old, "new": None})
         else:
             field = EDIT_OP_FIELDS[name]
-            target = next((t for t in todos if t.get("id") == todo_id), None)
+            target = next((t for t in decisions if t.get("id") == decision_id), None)
             if not target:
                 continue
             old = target.get(field)
@@ -159,22 +159,22 @@ def execute_and_verify_edits(task_id: str, ops: list[dict]) -> list[dict]:
             if old == new:
                 continue
             target[field] = new
-            changes.append({"op": name, "todo_id": todo_id, "field": field, "old": old, "new": new})
+            changes.append({"op": name, "decision_id": decision_id, "field": field, "old": old, "new": new})
     if not changes:
         return []
     save_task_to_disk(task_id)
     # 磁盘回读校验
-    disk_todos: dict = {}
+    disk_decisions: dict = {}
     try:
         disk = json.loads((TASKS_DIR / f"{task_id}.json").read_text(encoding="utf-8"))
-        disk_todos = {t.get("id"): t for t in disk.get("todos", [])}
+        disk_decisions = {t.get("id"): t for t in disk.get("decisions", [])}
     except Exception as e:
         logger.error(f"编辑校验失败（磁盘回读异常）: {e}")
     for ch in changes:
-        if ch["op"] == "todo_delete":
-            ch["verified"] = ch["todo_id"] not in disk_todos
+        if ch["op"] == "decision_delete":
+            ch["verified"] = ch["decision_id"] not in disk_decisions
         else:
-            dt = disk_todos.get(ch["todo_id"])
+            dt = disk_decisions.get(ch["decision_id"])
             ch["verified"] = dt is not None and dt.get(ch["field"]) == ch["new"]
     return changes
 
@@ -186,9 +186,9 @@ def execute_and_verify_edits(task_id: str, ops: list[dict]) -> list[dict]:
 
 def describe_change(ch: dict) -> str:
     """单条变更记录的人类可读描述。"""
-    if ch["op"] == "todo_delete":
-        return f"删除待办「{ch['old']}」"
-    return f"待办{_FIELD_LABELS.get(ch['field'], ch['field'])}「{ch['old']}」→「{ch['new']}」"
+    if ch["op"] == "decision_delete":
+        return f"删除决策「{ch['old']}」"
+    return f"决策{_FIELD_LABELS.get(ch['field'], ch['field'])}「{ch['old']}」→「{ch['new']}」"
 
 
 def audit_reply_claims(reply: str, changes: list[dict]) -> str:

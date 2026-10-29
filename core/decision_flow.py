@@ -7,15 +7,15 @@ core/decision_flow.py — 决策流（唯一决策对象）的共享读写口径
 版本：1.0.0
 
 背景（DC-UNIFY-01）：项目方裁决「决策」只有一个对象——会议内的决策流节点
-（`task["todos"]`）。原 `task["decisions"]`（decision 记录）与其只读展示区一并下线，
+（`task["decisions"]`）。原 `task["decisions"]`（decision 记录）与其只读展示区一并下线，
 本模块把过去分散在 `app/routers/decisions.py` / `notes.py` 的口径收敛为单一事实源：
 
   1. `resolve_owner`：执行人以说话人档案为权威（id 可解析则跟随档案名，改名全局生效），
      档案缺失时宽容回退快照名，不阻断写入
   2. `status_of`：读取节点状态，缺省由旧 `done` 布尔推导（兼容无 status 的历史 task JSON）
   3. `first_open_status`：状态回落用的开放态（字典可能被用户删改，不能写死 id）
-  4. `make_todo_node`：新建决策流节点的统一形状（纪要页手动添加 / AI 注入 / 决策中心补录共用）
-  5. `enrich_todo`：聚合读侧随行下发状态字典与会议/知识库元信息，前端不再写死枚举
+  4. `make_decision_node`：新建决策流节点的统一形状（纪要页手动添加 / AI 注入 / 决策中心补录共用）
+  5. `enrich_decision`：聚合读侧随行下发状态字典与会议/知识库元信息，前端不再写死枚举
 
 契约事实源：docs/API_CONTRACTS.md §12。
 """
@@ -82,7 +82,7 @@ def first_open_status() -> str:
     return statuses[-1]["id"] if statuses else MANUAL_STATUS_ID
 
 
-def make_todo_node(
+def make_decision_node(
     text: str,
     *,
     assignee: str = "",
@@ -126,7 +126,7 @@ def make_todo_node(
     return node
 
 
-def enrich_todo(
+def enrich_decision(
     task_id: str,
     task: dict,
     node: dict,

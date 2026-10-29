@@ -61,10 +61,10 @@ def norm(text: str) -> str:
 def repair_task(task: dict) -> tuple[int, int, list[str]]:
     """
     修复单个任务的碎屑节点，返回 (修复数, 待人工复核数, 修复摘要列表)。
-    就地修改 task["todos"]；调用方决定是否落盘。
+    就地修改 task["decisions"]；调用方决定是否落盘。
     """
-    todos = [t for t in (task.get("todos") or []) if isinstance(t, dict)]
-    debris = [t for t in todos if is_debris(t)]
+    decisions = [t for t in (task.get("decisions") or []) if isinstance(t, dict)]
+    debris = [t for t in decisions if is_debris(t)]
     if not debris:
         return 0, 0, []
 

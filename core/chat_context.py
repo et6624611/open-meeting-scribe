@@ -147,7 +147,7 @@ def build_page_context(page: str) -> str | None:
         return None
 
     if page == "generating":
-        return "## 当前页面\n用户正在查看已完成的会议纪要，可结合纪要、待办与洞察台结论回答问题。"
+        return "## 当前页面\n用户正在查看已完成的会议纪要，可结合纪要、决策与洞察台结论回答问题。"
 
     if page == "speakers":
         spk_list = speakers.load_speakers()
@@ -215,10 +215,10 @@ def build_page_context(page: str) -> str | None:
 # ============================================================
 
 
-def _is_duplicate_todo(content: str, existing_todos: list[dict]) -> bool:
-    """检查提取的待办是否已存在（模糊匹配）。"""
+def _is_duplicate_decision(content: str, existing_decisions: list[dict]) -> bool:
+    """检查提取的决策是否已存在（模糊匹配）。"""
     content_norm = content.strip()
-    for t in existing_todos:
+    for t in existing_decisions:
         existing = t.get("text", "").strip()
         if content_norm in existing or existing in content_norm:
             return True
@@ -230,22 +230,22 @@ def _is_duplicate_todo(content: str, existing_todos: list[dict]) -> bool:
     return False
 
 
-def extract_injectable_items(reply: str, existing_todos: list[dict] | None = None) -> list[dict]:
-    """从 AI 回复中提取可注入的结构化内容（待办/结论/决策）。"""
+def extract_injectable_items(reply: str, existing_decisions: list[dict] | None = None) -> list[dict]:
+    """从 AI 回复中提取可注入的结构化内容（决策/结论/决策）。"""
     items = []
-    existing_todos = existing_todos or []
+    existing_decisions = existing_decisions or []
 
-    # 提取待办（Markdown checkbox 格式）
+    # 提取决策（Markdown checkbox 格式）
     for m in re.finditer(r'^\s*-\s*\[\s*\]\s*(.+)$', reply, re.MULTILINE):
         content = m.group(1).strip()
-        if content and len(content) > 4 and not _is_duplicate_todo(content, existing_todos):
-            items.append({"type": "todo", "content": content})
+        if content and len(content) > 4 and not _is_duplicate_decision(content, existing_decisions):
+            items.append({"type": "decision", "content": content})
 
     # 提取带关键词的列表项
-    for m in re.finditer(r'^\s*[-•·]\s*(?:.*?(?:待办|需要|后续|跟进|完成|处理|负责|尽快)).*$', reply, re.MULTILINE):
+    for m in re.finditer(r'^\s*[-•·]\s*(?:.*?(?:决策|需要|后续|跟进|完成|处理|负责|尽快)).*$', reply, re.MULTILINE):
         content = m.group(0).strip().lstrip('-•· ').strip()
-        if content and len(content) > 4 and not any(i["content"] == content for i in items) and not _is_duplicate_todo(content, existing_todos):
-            items.append({"type": "todo", "content": content})
+        if content and len(content) > 4 and not any(i["content"] == content for i in items) and not _is_duplicate_decision(content, existing_decisions):
+            items.append({"type": "decision", "content": content})
 
     # 提取结论/决策段落
     for m in re.finditer(r'(?:^|\n)\s*(?:\d+[.、]|\*\*|•)\s*(?:.*?(?:结论|决定|确认|决策|方案|选择|确定).*)$', reply, re.MULTILINE):

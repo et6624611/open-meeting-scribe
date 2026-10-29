@@ -424,7 +424,7 @@ class TestListProjects:
 
 
 # ============================================================
-# 笔记/待办域
+# 笔记/决策域
 # ============================================================
 
 class TestNotesNotFound:
@@ -435,11 +435,11 @@ class TestNotesNotFound:
         assert resp.status_code == 404
 
 
-class TestTodosNotFound:
-    """GET /api/tasks/{id}/todos 不存在时返回 404"""
+class TestDecisionsNotFound:
+    """GET /api/tasks/{id}/decisions 不存在时返回 404"""
 
-    def test_todos_not_found(self, client):
-        resp = client.get("/api/tasks/nonexistent-id/todos")
+    def test_decisions_not_found(self, client):
+        resp = client.get("/api/tasks/nonexistent-id/decisions")
         assert resp.status_code == 404
 
 

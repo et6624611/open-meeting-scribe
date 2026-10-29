@@ -451,7 +451,7 @@ def replace_speaker_labels(text: str, name_by_sid: dict[int, str]) -> tuple[str,
     使用 `(?!\\d)` 负向前瞻避免 `说话人1` 命中 `说话人10/11…` 的前缀。
 
     Args:
-        text: 待处理文本（纪要正文 / 待办描述等）
+        text: 待处理文本（纪要正文 / 决策描述等）
         name_by_sid: {speaker_id: 真实姓名}
 
     Returns:

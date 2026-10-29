@@ -6,18 +6,18 @@ app/routers/decisions.py — 决策流跨会议聚合 / Cross-meeting decision-f
 版本：2.0.0
 
 职责（DC-UNIFY-01，2026-09-27 项目方裁决）：
-  决策只有一个对象——会议内的**决策流节点**（`task["todos"]`）。本模块只做一件事：
+  决策只有一个对象——会议内的**决策流节点**（`task["decisions"]`）。本模块只做一件事：
   为「决策中心」提供跨会议聚合查询（决策中心页数据源）。
 
   节点级写操作（改状态 / 编辑 / 删除 / 补录）统一走决策流既有的任务级端点
-  `app/routers/notes.py` 的 `/api/tasks/{task_id}/todos*`，本模块不再另开一套 CRUD。
+  `app/routers/notes.py` 的 `/api/tasks/{task_id}/decisions*`，本模块不再另开一套 CRUD。
 
 历史：v1.0.0 曾为独立的 decision 对象（`task["decisions"]`）提供任务级 CRUD 与
 跨会议聚合（REQ-DECISION-CENTER R2 / DC-R2-b / DC-R2-c）。项目方裁决「只留决策流」后，
 decision 对象与其端点一并下线，存量 `task["decisions"]` 不再被任何读路径消费。
 
 契约事实源：docs/API_CONTRACTS.md §12。
-旧任务 JSON 无 todos 字段一律按空数组读取（兼容性硬约束）。
+旧任务 JSON 无 decisions 字段一律按空数组读取（兼容性硬约束）。
 """
 
 from datetime import datetime
@@ -26,7 +26,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Literal
 
 from app.store import tasks
-from core.decision_flow import enrich_todo, status_of
+from core.decision_flow import enrich_decision, status_of
 from core.decision_status import known_ids, load_statuses
 from core.decision_topic import cluster_topics
 from core.i18n import _
@@ -59,7 +59,7 @@ def list_all_decisions(
 
     遍历内存任务表聚合（桌面单机数据量可承受，不引入数据库）。
     DC-R2-c：`status` 取值为状态字典 id（非封闭枚举）；每行附 status_name/color/closing 元信息。
-    DC-UNIFY-01：数据源为 `task["todos"]`，行形状即决策流节点（text/title/assignee/why/how/outcome…）。
+    DC-UNIFY-01：数据源为 `task["decisions"]`，行形状即决策流节点（text/title/assignee/why/how/outcome…）。
     DEBRISH-P2：`group_by=topic` 返回跨会议议题归并簇（全局视角）：同知识库下语义相近的
     节点聚为议题簇，主记录=最新非闭档，其余折叠为演变链；仅供展示，不改数据与写路径。
     """
@@ -91,10 +91,10 @@ def list_all_decisions(
         project_id = task.get("project_id") or None
         if kb_id and project_id != kb_id:
             continue
-        todos = task.get("todos")
-        if not isinstance(todos, list):
+        decisions = task.get("decisions")
+        if not isinstance(decisions, list):
             continue
-        for node in todos:
+        for node in decisions:
             if not isinstance(node, dict):
                 continue
             if status and status_of(node) != status:
@@ -107,7 +107,7 @@ def list_all_decisions(
                 ])
                 if q not in haystack:
                     continue
-            rows.append(enrich_todo(tid, task, node, status_meta, kb_cache, owner_map))
+            rows.append(enrich_decision(tid, task, node, status_meta, kb_cache, owner_map))
 
     # meeting_date 倒序，无日期沉底；同组内按创建时间倒序 / Newest meeting first, undated sink to the end
     rows.sort(key=lambda r: (r.get("meeting_date") or "", r.get("created_at") or ""), reverse=True)
@@ -140,7 +140,7 @@ def list_all_decisions(
 
 
 def _collect_flow_rows() -> list[dict]:
-    """无过滤全量聚合：全部任务的决策流节点经 enrich_todo 富化（议题归并的输入）。"""
+    """无过滤全量聚合：全部任务的决策流节点经 enrich_decision 富化（议题归并的输入）。"""
     status_meta = {s["id"]: s for s in load_statuses()}
     kb_cache: dict = {}
     try:
@@ -149,13 +149,13 @@ def _collect_flow_rows() -> list[dict]:
         owner_map = {}
     rows: list[dict] = []
     for tid, task in tasks.items():
-        todos = task.get("todos")
-        if not isinstance(todos, list):
+        decisions = task.get("decisions")
+        if not isinstance(decisions, list):
             continue
-        for node in todos:
+        for node in decisions:
             if not isinstance(node, dict):
                 continue
-            rows.append(enrich_todo(tid, task, node, status_meta, kb_cache, owner_map))
+            rows.append(enrich_decision(tid, task, node, status_meta, kb_cache, owner_map))
     return rows
 
 
@@ -182,7 +182,7 @@ def task_evolution(task_id: str = Query(..., max_length=100)):
             continue
         latest = {
             "task_id": main.get("task_id"),
-            "todo_id": main.get("id"),
+            "decision_id": main.get("id"),
             "title": str(main.get("title") or "")[:200],
             "meeting_title": str(main.get("meeting_title") or "")[:200],
         }

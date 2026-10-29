@@ -82,7 +82,8 @@ _SUMMARY_PATTERNS = [
     re.compile(r"^##\s*会议概要", re.MULTILINE),
     re.compile(r"^##\s*会议概要", re.MULTILINE),
     re.compile(r"^##\s*主要结论", re.MULTILINE),
-    re.compile(r"^##\s*待办事项", re.MULTILINE),
+    # 外部文档可能仍用旧章节名「待办事项」/ External docs may still use the legacy heading
+    re.compile(r"^##\s*(?:决策|待办)事项", re.MULTILINE),
     re.compile(r"^##\s*议题归类", re.MULTILINE),
     re.compile(r"^##\s*行动项", re.MULTILINE),
     re.compile(r"^##\s*决议", re.MULTILINE),

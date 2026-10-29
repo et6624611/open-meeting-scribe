@@ -1,7 +1,7 @@
 """
 tests/test_chat.py — AI 对话域冒烟测试
 
-覆盖对话端点、编辑校验、作业日志、待办提取、页面上下文、动作检测等。
+覆盖对话端点、编辑校验、作业日志、决策提取、页面上下文、动作检测等。
 从 test_smoke.py 拆分而来。
 
 运行方式：
@@ -101,60 +101,60 @@ class TestJoblog:
 
 
 # ============================================================
-# 待办自动提取
+# 决策自动提取
 # ============================================================
 
-class TestParseTodosFromSummary:
-    """parse_todos_from_summary 从纪要 Markdown 自动提取待办"""
+class TestParseDecisionsFromSummary:
+    """parse_decision_checklist 从纪要 Markdown 自动提取决策"""
 
     def test_basic_with_assignee(self):
-        from core.summarize import parse_todos_from_summary
-        summary = """## 三、待办事项
+        from core.summarize import parse_decision_checklist
+        summary = """## 三、决策事项
 - [ ] **陈一**：完成数据迁移方案
 - [ ] **刘二**：跟进服务器部署问题
 """
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 2
-        assert todos[0]["assignee"] == "陈一"
-        assert todos[0]["text"] == "完成数据迁移方案"
-        assert todos[0]["done"] is False
-        assert todos[0]["source"] == "auto"
-        assert todos[1]["assignee"] == "刘二"
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 2
+        assert decisions[0]["assignee"] == "陈一"
+        assert decisions[0]["text"] == "完成数据迁移方案"
+        assert decisions[0]["done"] is False
+        assert decisions[0]["source"] == "auto"
+        assert decisions[1]["assignee"] == "刘二"
 
     def test_with_deadline(self):
-        from core.summarize import parse_todos_from_summary
+        from core.summarize import parse_decision_checklist
         summary = "- [ ] **王三**：提交季度报告（9月10日）"
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 1
-        assert todos[0]["text"] == "提交季度报告"
-        assert todos[0]["assignee"] == "王三"
-        assert todos[0]["deadline"] == "9月10日"
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 1
+        assert decisions[0]["text"] == "提交季度报告"
+        assert decisions[0]["assignee"] == "王三"
+        assert decisions[0]["deadline"] == "9月10日"
 
     def test_without_assignee(self):
-        from core.summarize import parse_todos_from_summary
+        from core.summarize import parse_decision_checklist
         summary = "- [ ] 更新项目文档"
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 1
-        assert todos[0]["assignee"] == ""
-        assert todos[0]["text"] == "更新项目文档"
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 1
+        assert decisions[0]["assignee"] == ""
+        assert decisions[0]["text"] == "更新项目文档"
 
     def test_dedup(self):
-        from core.summarize import parse_todos_from_summary
+        from core.summarize import parse_decision_checklist
         summary = "- [ ] **陈一**：完成数据迁移方案\n- [ ] **陈一**：完成数据迁移方案"
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 1
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 1
 
     def test_empty_summary(self):
-        from core.summarize import parse_todos_from_summary
-        assert parse_todos_from_summary("") == []
-        assert parse_todos_from_summary("无明确待办事项") == []
+        from core.summarize import parse_decision_checklist
+        assert parse_decision_checklist("") == []
+        assert parse_decision_checklist("无明确决策事项") == []
 
     def test_skip_completed_items(self):
-        from core.summarize import parse_todos_from_summary
+        from core.summarize import parse_decision_checklist
         summary = "- [x] 已完成的任务\n- [ ] 未完成的任务"
-        todos = parse_todos_from_summary(summary)
-        assert len(todos) == 1
-        assert todos[0]["text"] == "未完成的任务"
+        decisions = parse_decision_checklist(summary)
+        assert len(decisions) == 1
+        assert decisions[0]["text"] == "未完成的任务"
 
 
 # ============================================================
@@ -162,12 +162,12 @@ class TestParseTodosFromSummary:
 # ============================================================
 
 class TestChatEditVerification:
-    """待办编辑：执行 + 磁盘回读校验 + 回复事后审计"""
+    """决策编辑：执行 + 磁盘回读校验 + 回复事后审计"""
 
     def _make_task(self, task_id):
         return {
             "task_id": task_id, "status": "completed", "audio_name": "校验测试会",
-            "todos": [
+            "decisions": [
                 {"id": "t1", "text": "梳理会计事件库案例", "assignee": "赵甲", "done": False},
                 {"id": "t2", "text": "撰写初步报告", "assignee": "郝思南", "done": False},
             ],
@@ -191,46 +191,46 @@ class TestChatEditVerification:
 
     def test_execute_and_verify_assignee(self, tmp_path, monkeypatch):
         chat_mod, json = self._patch_storage(monkeypatch, tmp_path, "unit-edit-0001")
-        ops = [{"op": "todo_assignee", "todo_id": "t1", "value": "钱乙"}]
+        ops = [{"op": "decision_assignee", "decision_id": "t1", "value": "钱乙"}]
         changes = chat_mod._execute_and_verify_edits("unit-edit-0001", ops)
         assert len(changes) == 1
         assert changes[0]["verified"] is True
         assert changes[0]["old"] == "赵甲" and changes[0]["new"] == "钱乙"
         disk = json.loads((tmp_path / "unit-edit-0001.json").read_text(encoding="utf-8"))
-        assert disk["todos"][0]["assignee"] == "钱乙"
+        assert disk["decisions"][0]["assignee"] == "钱乙"
 
     def test_execute_and_verify_delete(self, tmp_path, monkeypatch):
         chat_mod, json = self._patch_storage(monkeypatch, tmp_path, "unit-edit-0002")
-        changes = chat_mod._execute_and_verify_edits("unit-edit-0002", [{"op": "todo_delete", "todo_id": "t2"}])
+        changes = chat_mod._execute_and_verify_edits("unit-edit-0002", [{"op": "decision_delete", "decision_id": "t2"}])
         assert len(changes) == 1 and changes[0]["verified"] is True
         disk = json.loads((tmp_path / "unit-edit-0002.json").read_text(encoding="utf-8"))
-        assert [t["id"] for t in disk["todos"]] == ["t1"]
+        assert [t["id"] for t in disk["decisions"]] == ["t1"]
 
     def test_noop_produces_no_changes(self, tmp_path, monkeypatch):
         chat_mod, _ = self._patch_storage(monkeypatch, tmp_path, "unit-edit-0003")
-        ops = [{"op": "todo_assignee", "todo_id": "t1", "value": "赵甲"}]
+        ops = [{"op": "decision_assignee", "decision_id": "t1", "value": "赵甲"}]
         assert chat_mod._execute_and_verify_edits("unit-edit-0003", ops) == []
 
     def test_sanitize_ops_whitelist(self):
         from app.routers import chat as chat_mod
-        raw = '```json\n{"ops": [{"op": "todo_assignee", "todo_id": "t1", "value": "钱乙"},' \
-              ' {"op": "hack", "todo_id": "t1", "value": "x"},' \
-              ' {"op": "todo_delete", "todo_id": "nope"}]}\n```'
+        raw = '```json\n{"ops": [{"op": "decision_assignee", "decision_id": "t1", "value": "钱乙"},' \
+              ' {"op": "hack", "decision_id": "t1", "value": "x"},' \
+              ' {"op": "decision_delete", "decision_id": "nope"}]}\n```'
         ops = chat_mod._sanitize_edit_ops(raw, {"t1", "t2"})
-        assert len(ops) == 1 and ops[0]["op"] == "todo_assignee"
+        assert len(ops) == 1 and ops[0]["op"] == "decision_assignee"
 
     def test_reply_claim_audit(self):
         from app.routers import chat as chat_mod
         # 无执行却声称操作 → 追加未执行提示
-        audited = chat_mod._audit_reply_claims("已修正待办事项责任人姓名。", [])
+        audited = chat_mod._audit_reply_claims("已修正决策事项责任人姓名。", [])
         assert "系统校验" in audited and "未执行任何数据写操作" in audited
         # 有校验变更 → 追加执行结果清单
-        changes = [{"op": "todo_assignee", "todo_id": "t1", "field": "assignee",
+        changes = [{"op": "decision_assignee", "decision_id": "t1", "field": "assignee",
                     "old": "赵甲", "new": "钱乙", "verified": True}]
         audited = chat_mod._audit_reply_claims("好的。", changes)
         assert "系统校验" in audited and "钱乙" in audited and "校验通过" in audited
         # 无声称无操作 → 原样返回
-        assert chat_mod._audit_reply_claims("共 5 项待办。", []) == "共 5 项待办。"
+        assert chat_mod._audit_reply_claims("共 5 项决策。", []) == "共 5 项决策。"
 
     def test_chat_endpoint_edit_flow(self, client, tmp_path, monkeypatch):
         """端到端：编辑意图 → 执行校验 → 回复带系统校验结论与 verified_changes"""
@@ -241,11 +241,11 @@ class TestChatEditVerification:
         async def fake_llm(messages, **kwargs):
             calls["n"] += 1
             if calls["n"] == 1:  # 第一次调用为意图解析
-                return '{"ops": [{"op": "todo_assignee", "todo_id": "t1", "value": "钱乙"}]}'
-            return "相关待办责任人改为钱乙。"
+                return '{"ops": [{"op": "decision_assignee", "decision_id": "t1", "value": "钱乙"}]}'
+            return "相关决策责任人改为钱乙。"
 
         monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
-        resp = client.post("/api/chat", json={"message": "待办中赵甲应该是钱乙", "task_id": "unit-edit-0004"})
+        resp = client.post("/api/chat", json={"message": "决策中赵甲应该是钱乙", "task_id": "unit-edit-0004"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["verified_changes"] and data["verified_changes"][0]["verified"] is True
@@ -341,17 +341,17 @@ class TestChatTitle:
         import app.routers.chat as chat_mod
 
         async def fake_llm(messages, **kwargs):
-            return '"待办核对与责任人确认"'
+            return '"决策核对与责任人确认"'
 
         monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
         resp = client.post("/api/chat/title", json={
-            "first_message": "帮我把待办里的责任人核对一下",
+            "first_message": "帮我把决策里的责任人核对一下",
             "reply": "已核对，共 3 处不一致……",
         })
         assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is True
-        assert data["title"] == "待办核对与责任人确认"
+        assert data["title"] == "决策核对与责任人确认"
 
     def test_title_llm_failure_degrades_silently(self, client, monkeypatch):
         import app.routers.chat as chat_mod
@@ -537,11 +537,11 @@ class TestDetectActionFalsePositive:
 
 
 # ============================================================
-# 决策链待办 API
+# 决策链决策 API
 # ============================================================
 
-class TestDecisionFlowTodos:
-    """决策流待办端点:字段透传、create 默认值、status↔done 同步"""
+class TestDecisionFlowDecisions:
+    """决策流决策端点:字段透传、create 默认值、status↔done 同步"""
 
     @pytest.fixture
     def task_id(self, monkeypatch):
@@ -551,78 +551,78 @@ class TestDecisionFlowTodos:
         # 避免测试写入磁盘 / Prevent disk writes during tests
         monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda *_a, **_k: None)
         tid = str(uuid.uuid4())
-        notes_mod.tasks[tid] = {"task_id": tid, "status": "completed", "todos": []}
+        notes_mod.tasks[tid] = {"task_id": tid, "status": "completed", "decisions": []}
         yield tid
         notes_mod.tasks.pop(tid, None)
 
-    def test_create_todo_defaults(self, client, task_id):
+    def test_create_decision_defaults(self, client, task_id):
         """新建决策节点应带默认 status/owner_type；how 冗余缺省不落盘"""
-        resp = client.post(f"/api/tasks/{task_id}/todos", json={"text": "采用云方案", "assignee": "陈一"})
+        resp = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "采用云方案", "assignee": "陈一"})
         assert resp.status_code == 200
-        todo = resp.json()["todo"]
-        assert todo["status"] == "to_decide"
-        assert "how" not in todo  # 缺省视为 [text] 是读侧约定，不写存储层
-        assert todo["owner_type"] == "self"
-        assert todo["done"] is False
+        decision = resp.json()["decision"]
+        assert decision["status"] == "to_decide"
+        assert "how" not in decision  # 缺省视为 [text] 是读侧约定，不写存储层
+        assert decision["owner_type"] == "self"
+        assert decision["done"] is False
 
     def test_update_passes_through_decision_fields(self, client, task_id):
         """update 应透传 why/how/outcome/owner_type 并落库"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "数据迁移"}).json()["todo"]["id"]
-        resp = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "数据迁移"}).json()["decision"]["id"]
+        resp = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={
             "why": "旧库无法支撑新模型",
             "how": ["导出", "映射", "校验"],
             "outcome": "减少 30% 对账工时",
             "owner_type": "colleague",
         })
         assert resp.status_code == 200
-        todo = resp.json()["todo"]
-        assert todo["why"] == "旧库无法支撑新模型"
-        assert todo["how"] == ["导出", "映射", "校验"]
-        assert todo["outcome"] == "减少 30% 对账工时"
-        assert todo["owner_type"] == "colleague"
+        decision = resp.json()["decision"]
+        assert decision["why"] == "旧库无法支撑新模型"
+        assert decision["how"] == ["导出", "映射", "校验"]
+        assert decision["outcome"] == "减少 30% 对账工时"
+        assert decision["owner_type"] == "colleague"
 
     def test_update_how_strips_blank_items(self, client, task_id):
         """how 应剔除空白步骤"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
-        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": ["a", "  ", "b", ""]}).json()["todo"]
-        assert todo["how"] == ["a", "b"]
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "x"}).json()["decision"]["id"]
+        decision = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"how": ["a", "  ", "b", ""]}).json()["decision"]
+        assert decision["how"] == ["a", "b"]
 
     def test_update_how_trivial_copy_removed(self, client, task_id):
         """how 为 [text] 冗余副本或空表时不落盘"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "数据迁移"}).json()["todo"]["id"]
-        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": ["数据迁移"]}).json()["todo"]
-        assert "how" not in todo
-        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"how": []}).json()["todo"]
-        assert "how" not in todo
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "数据迁移"}).json()["decision"]["id"]
+        decision = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"how": ["数据迁移"]}).json()["decision"]
+        assert "how" not in decision
+        decision = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"how": []}).json()["decision"]
+        assert "how" not in decision
 
     def test_status_done_syncs_done_true(self, client, task_id):
         """status='done' 应同步 done=True"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
-        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "done"}).json()["todo"]
-        assert todo["status"] == "done"
-        assert todo["done"] is True
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "x"}).json()["decision"]["id"]
+        decision = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"status": "done"}).json()["decision"]
+        assert decision["status"] == "done"
+        assert decision["done"] is True
 
     def test_status_in_progress_syncs_done_false(self, client, task_id):
         """从 done 回到 in_progress 应同步 done=False"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
-        client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "done"})
-        todo = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "in_progress"}).json()["todo"]
-        assert todo["status"] == "in_progress"
-        assert todo["done"] is False
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "x"}).json()["decision"]["id"]
+        client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"status": "done"})
+        decision = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"status": "in_progress"}).json()["decision"]
+        assert decision["status"] == "in_progress"
+        assert decision["done"] is False
 
     def test_toggle_syncs_status(self, client, task_id):
         """toggle 完成态应同步 status"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
-        todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": True}).json()["todo"]
-        assert todo["done"] is True and todo["status"] == "done"
-        todo = client.post(f"/api/tasks/{task_id}/todos/{todo_id}/toggle", json={"done": False}).json()["todo"]
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "x"}).json()["decision"]["id"]
+        decision = client.post(f"/api/tasks/{task_id}/decisions/{decision_id}/toggle", json={"done": True}).json()["decision"]
+        assert decision["done"] is True and decision["status"] == "done"
+        decision = client.post(f"/api/tasks/{task_id}/decisions/{decision_id}/toggle", json={"done": False}).json()["decision"]
         # DC-UNIFY-01：取消勾选回到状态字典的首个开放态（不再写死 in_progress）
-        assert todo["done"] is False and todo["status"] == "to_decide"
+        assert decision["done"] is False and decision["status"] == "to_decide"
 
     def test_invalid_status_rejected(self, client, task_id):
         """非法 status 应被拒绝(422)"""
-        todo_id = client.post(f"/api/tasks/{task_id}/todos", json={"text": "x"}).json()["todo"]["id"]
-        resp = client.put(f"/api/tasks/{task_id}/todos/{todo_id}", json={"status": "not_a_status"})
+        decision_id = client.post(f"/api/tasks/{task_id}/decisions", json={"text": "x"}).json()["decision"]["id"]
+        resp = client.put(f"/api/tasks/{task_id}/decisions/{decision_id}", json={"status": "not_a_status"})
         assert resp.status_code == 422
 
 

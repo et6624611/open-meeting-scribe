@@ -164,14 +164,14 @@ class TestSaveSection:
 # 2c. 内容底线：会议复述型板拒收（board_is_recap）
 # ============================================================
 
-# 真实事故板的精简复刻：决策清单 + 议题归类 + 待办分工 + 风险罗列，零解法
+# 真实事故板的精简复刻：决策清单 + 议题归类 + 决策分工 + 风险罗列，零解法
 _RECAP_BOARD = """
 <section data-ib-id="s-overview" data-ib-title="会议全景">
   <div class="ib-card"><h3>某系统协同机制</h3>
   <div class="ib-stats">
     <div class="ib-stat"><span class="ib-stat-value">5</span><span class="ib-stat-label">待确认决策</span></div>
     <div class="ib-stat"><span class="ib-stat-value">4</span><span class="ib-stat-label">议题归类</span></div>
-    <div class="ib-stat"><span class="ib-stat-value">4</span><span class="ib-stat-label">待办事项</span></div>
+    <div class="ib-stat"><span class="ib-stat-value">4</span><span class="ib-stat-label">决策事项</span></div>
   </div></div>
 </section>
 <section data-ib-id="s-decisions" data-ib-title="决策流（待确认）">
@@ -185,7 +185,7 @@ _RECAP_BOARD = """
 <section data-ib-id="s-topics" data-ib-title="议题归类">
   <div class="ib-card"><p><strong>议题1</strong> 数据同步与维度对齐</p><p><strong>议题2</strong> 权责与技术实现</p></div>
 </section>
-<section data-ib-id="s-todos" data-ib-title="待办追踪">
+<section data-ib-id="s-decisions" data-ib-title="决策追踪">
   <div class="ib-card"><ul>
     <li><strong>Speaker 3 / Speaker 4</strong>：整理字段字典，3 个工作日内共享 <span>截止 2026-10-03</span></li>
     <li><strong>Speaker 1 / Speaker 2</strong>：牵头组织功能说明会 <span>截止 2026-10-07</span></li>
@@ -263,7 +263,7 @@ class TestRecapFloor:
 
     def test_single_weak_signal_does_not_reject(self):
         # 仅一节旧标题未改、正文已是解法：单一弱信号放行，避免误伤
-        html = ('<section data-ib-id="s1" data-ib-title="待办追踪">'
+        html = ('<section data-ib-id="s1" data-ib-title="决策追踪">'
                 '<div><h3>用 CDC 事件流替代人工跟进</h3>'
                 '<p>解法：接入变更数据捕获，异常事件自动派单，SLA 状态由看板实时呈现。</p></div></section>')
         assert ib.detect_recap_floor(html) == []

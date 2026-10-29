@@ -7,11 +7,11 @@ core/decision_status.py — 决策状态字典 / Decision status dictionary
 
 职责（REQ-DECISION-CENTER-R2 · DC-R2-c · 裁决 D6/D7 → DC-UNIFY-01 收敛为单一决策流 → 2026-09-28 精简为三态）：
   1. 决策状态是**用户可维护的状态字典**（改名 / 新增 / 删除 / 排序 / 标色）
-  2. 字典的默认集合 = **决策流三态**（待决策 / 进行中 / 已完成），
-     因为决策流（`task["todos"]`）是唯一的决策对象；系统锚点只有 `done`（已完成），
-     不可改名不可删除，其余两态用户可自由维护（D6 口径：只固定完成为系统保底）
+  2. 字典的默认集合 = **决策流三态**（待决策 / 进行中 / 已存档），
+     因为决策流（`task["decisions"]`）是唯一的决策对象；系统锚点只有 `done`（已存档），
+     不可改名不可删除，其余两态用户可自由维护（D6 口径：只固定存档为系统保底）
   3. 每个状态携带 `closing` 布尔（是否算「完成类」）：闭档状态在默认视图隐藏并沉底（D7），
-     同时驱动 todo.done 旧字段同步（兼容只认布尔的读侧）
+     同时驱动 decision.done 旧字段同步（兼容只认布尔的读侧）
   4. 一次性迁移：剪除未被用户改过名的旧遗留态（active/superseded/revoked）与已退役的五态
      （to_start/to_confirm），补齐缺失的三态种子；残留携带退役态的节点由读侧降级到首个开放态
 
@@ -41,7 +41,7 @@ DEFAULT_STATUS_ID = "to_decide"
 # 被新决策替代的系统闭档态（决策演变链「标记已被替代」动作写入）
 SUPERSEDED_STATUS_ID = "superseded"
 
-# 决策流状态种子：id 沿用历史枚举值，保证存量 task JSON 的 todo.status 零迁移合法
+# 决策流状态种子：id 沿用历史枚举值，保证存量 task JSON 的 decision.status 零迁移合法
 FLOW_STATUS_IDS = ("to_decide", "in_progress", "done", "superseded")
 
 # 五态精简为三态后退役的历史态：这些 id 只可能由系统种子产生（用户自建态 id 形如 st-xxxx），
@@ -91,7 +91,7 @@ def _defaults() -> list[dict]:
         {"id": "to_decide", "name": "待决策", "name_en": "To decide", "color": "var(--st-decide)", "closing": False, "system": False},
         {"id": "in_progress", "name": "进行中", "name_en": "In progress", "color": "var(--st-progress)", "closing": False, "system": False},
         {"id": "superseded", "name": "已替代", "name_en": "Superseded", "color": "var(--subtle)", "closing": True, "system": True},
-        {"id": "done", "name": "已完成", "name_en": "Done", "color": "var(--st-done)", "closing": True, "system": True},
+        {"id": "done", "name": "已存档", "name_en": "Archived", "color": "var(--st-done)", "closing": True, "system": True},
     ]
     return [{**i, "created_at": now, "updated_at": now} for i in items]
 

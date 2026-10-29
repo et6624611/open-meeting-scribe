@@ -118,17 +118,17 @@ class TestInvokeEndpoint:
         from app.store import tasks
         monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda tid: None)
         tid = "tooltest-0001"
-        tasks[tid] = {"task_id": tid, "status": "completed", "todos": [], "title": "T"}
+        tasks[tid] = {"task_id": tid, "status": "completed", "decisions": [], "title": "T"}
         try:
             ctx = self._issue("full_task", task_id=tid)
             r = client.post("/api/agent-tools/invoke",
                             json={"name": "inject_items",
-                                  "arguments": {"items": [{"type": "todo", "content": "出方案"}]}},
+                                  "arguments": {"items": [{"type": "decision", "content": "出方案"}]}},
                             headers={"Authorization": f"Bearer {ctx.token}"})
             assert r.status_code == 200
             assert r.json()["result"]["injected"] == 1
             # 写操作确实落到共享 tasks（复用受控入口，非另开写路径）
-            assert any(t["text"] == "出方案" for t in tasks[tid]["todos"])
+            assert any(t["text"] == "出方案" for t in tasks[tid]["decisions"])
         finally:
             tasks.pop(tid, None)
 
@@ -142,7 +142,7 @@ class TestInvokeEndpoint:
         # 注入一个带 user_summary 的任务，invoke propose_summary 后应返回 ok/proposed，但 user_summary 不变
         from app.store import tasks
         tid = "propstest-0001"
-        tasks[tid] = {"task_id": tid, "status": "completed", "summary": "旧纪要", "user_summary": "旧纪要", "todos": []}
+        tasks[tid] = {"task_id": tid, "status": "completed", "summary": "旧纪要", "user_summary": "旧纪要", "decisions": []}
         try:
             ctx = self._issue("workspace_write", task_id=tid)
             r = client.post("/api/agent-tools/invoke",
@@ -178,7 +178,7 @@ class TestInvokeEndpoint:
     def test_propose_notes_does_not_persist(self, client):
         from app.store import tasks
         tid = "propntest-0001"
-        tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "旧随记", "todos": []}
+        tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "旧随记", "decisions": []}
         try:
             ctx = self._issue("workspace_write", task_id=tid)
             r = client.post("/api/agent-tools/invoke",
@@ -459,17 +459,17 @@ class TestMeetingNotesTool:
         finally:
             tasks.pop(tid, None)
 
-    def test_todos_tool_exposes_node_ids(self):
+    def test_decisions_tool_exposes_node_ids(self):
         """决策节点稳定 id 必须回给工具面（改写/删除按 id 寻址的前置项）。"""
         from app.store import tasks
         from core.agent_tools import impl
         tid = "notestool-5"
         tasks[tid] = {"task_id": tid, "status": "completed",
-                      "todos": [{"id": "node-1", "text": "预算版本双轨", "title": "版本双轨",
+                      "decisions": [{"id": "node-1", "text": "预算版本双轨", "title": "版本双轨",
                                   "status": "to_decide", "done": False, "assignee": "张三"}]}
         try:
-            out = json.loads(impl._tool_get_meeting_todos(tid))
-            item = out["todos"][0]
+            out = json.loads(impl._tool_get_meeting_decisions(tid))
+            item = out["decisions"][0]
             assert item["id"] == "node-1" and item["status"] == "to_decide"
             assert item["title"] == "版本双轨"
         finally:

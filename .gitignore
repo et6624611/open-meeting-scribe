@@ -29,6 +29,10 @@ data/*.mp3
 data/*.m4a
 data/*.raw
 
+# 任务数据一次性快照（124MB，仅本地留档，避免 git add -A 误纳）
+# One-off task data snapshot (124MB, local archive only; keep it out of `git add -A`)
+data/_backup_20261028/
+
 # 测试音频（大文件，不入库；需要共享请走 LFS 或外部存储）
 samples/*.mp3
 samples/*.wav

@@ -21,7 +21,7 @@ def _task(task_id: str, title: str = "产品周会", *, project_id=None, date="2
         "title": title,
         "meeting_date": date,
         "project_id": project_id,
-        "todos": [],
+        "decisions": [],
         "dialogue": [],
     }
 
@@ -297,7 +297,7 @@ def test_global_export_writes_standalone_and_root_decisions(preview_root, monkey
     si_decisions = (preview_root / "_standalone" / "_DECISIONS.md").read_text(encoding="utf-8")
     assert "独立会议" in si_decisions
 
-    # 根级决策台账（规则文案「决策与待办见 _DECISIONS.md」的根级落点）
+    # 根级决策台账（规则文案「决策与决策见 _DECISIONS.md」的根级落点）
     root_decisions = (preview_root / "_DECISIONS.md").read_text(encoding="utf-8")
     assert "跨项目决策台账" in root_decisions
 

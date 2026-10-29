@@ -32,7 +32,7 @@ def heavy_task():
         "created_at": "2026-10-01T10:00:00",
         "dialogue": [{"speaker_id": 0, "text": "x", "sentences": [{"text": "x"}]}],
         "chapters": [{"title": "第一章"}],
-        "todos": [{"id": "t1", "text": "待办"}],
+        "decisions": [{"id": "t1", "text": "决策"}],
     }
     yield task_store[TID]
     task_store.pop(TID, None)
@@ -48,14 +48,14 @@ class TestTaskListLite:
         assert lite["title"] == "重任务"
         assert "dialogue" not in lite
         assert "chapters" not in lite
-        assert "todos" not in lite
+        assert "decisions" not in lite
 
     def test_full_keeps_artifacts(self, client, heavy_task):
         resp = client.get("/api/tasks")
         full = next(t for t in resp.json()["tasks"] if t["task_id"] == TID)
         assert "dialogue" in full
         assert "chapters" in full
-        assert "todos" in full
+        assert "decisions" in full
 
     def test_unknown_view_falls_back_to_full(self, client, heavy_task):
         resp = client.get("/api/tasks", params={"view": "wat"})

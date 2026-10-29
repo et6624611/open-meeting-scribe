@@ -255,7 +255,7 @@ def _with_transcript_layers(task: dict) -> dict:
     return {**task, **response}
 
 
-# 轻量列表（完成侦测器 5s 轮询用）：只回状态与标识字段，不含 dialogue/chapters/todos
+# 轻量列表（完成侦测器 5s 轮询用）：只回状态与标识字段，不含 dialogue/chapters/decisions
 # Lite list for the completion watcher poll: status/identity fields only, no heavy artifacts.
 _LIST_LITE_FIELDS = (
     "task_id", "status", "progress", "message", "title", "audio_name",

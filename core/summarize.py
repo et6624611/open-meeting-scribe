@@ -8,7 +8,7 @@ core/summarize.py — 纪要提示词与解析
 职责：
   1. 构造纪要生成提示词
   2. 调用 LLM 生成纪要
-  3. 解析输出为结构化格式（结论/待办/议题）
+  3. 解析输出为结构化格式（结论/决策/议题）
   4. 生成会议标题
 
 输出格式：Markdown
@@ -175,14 +175,14 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 - 未敲定条目（见核心原则「区分已定结论与待确认提案」）必须以 `[待确认]` 前缀开头，且 `[待确认]` 写在加粗标题内部：`1. **[待确认] 短标题**：正文`
 - 未敲定事项只保留一条当前状态的 `[待确认]` 条目，同一议题的"提案→质疑→再提案"不得各成一条
 - 内联注只能以 `（注：…）` 形式出现在条目句尾同一行内：≤40 字、至多一个、须满足注释内容资格（核心原则 6）；禁止把注释写成独立行（会被误抽取为条目）
-- 本节不要求写执行人/负责人（负责人归「待办事项」章节），无执行人不构成格式错误
+- 本节不要求写执行人/负责人（负责人归「决策事项」章节），无执行人不构成格式错误
 - 本节除有序列表项外禁止出现其他文本；无结论时仅输出一行"本次会议未形成明确结论"
 
-## 三、待办事项
+## 三、决策事项
 [列出明确提到的后续任务]
 [格式：- [ ] **负责人**：任务描述（截止日期）（注：…）]
 [内联注置句尾最后（截止日期之后），遵循核心原则 6 的注释资格：≤40 字、每条至多一个，无合格素材时省略]
-[如无待办，写"无明确待办事项"]
+[如无决策，写"无明确决策事项"]
 
 - [ ] ...
 
@@ -238,7 +238,7 @@ def build_page_budget_block(one_page_factor: float = 1.0) -> str:
     total_chars = int(_PAGE_BASIS_CHARS * one_page_factor)
     # 四舍五入口径显式取整（避开 round() 银行家舍入的半值漂移），最少 1 条
     concl_limit = max(1, int(5 * one_page_factor + 0.5))   # 1 页 ≈ 5 条结论
-    todo_limit = max(1, int(4 * one_page_factor + 0.5))    # 1 页 ≈ 4 条待办
+    decision_limit = max(1, int(4 * one_page_factor + 0.5))    # 1 页 ≈ 4 条决策
     overview_rule = "不超过 1 句话" if one_page_factor <= 0.5 else "不超过 3 句话"
     if one_page_factor <= 0.5:
         # 措辞避开「禁止/不要」句式：与模板「禁止行为」条款同词会诱发模型短路输出容错文案（实测教训）
@@ -251,7 +251,7 @@ def build_page_budget_block(one_page_factor: float = 1.0) -> str:
         f"本纪要的结论层总预算约 {total_chars} 字，超出时按以下配额取舍：\n"
         f"- 一、会议概要：{overview_rule}\n"
         f"- 二、主要结论：不超过 {concl_limit} 条\n"
-        f"- 三、待办事项：不超过 {todo_limit} 条\n"
+        f"- 三、决策事项：不超过 {decision_limit} 条\n"
         f"{topic_rule}\n"
         "（注：…）内联注与议题 `> ` 引用块注释属备查层，不计入上述字数预算；"
         "但须满足注释内容资格，无合格素材时省略，不得为注而注。\n"
@@ -518,9 +518,9 @@ def build_note_evidence(note_raw: str | None, note_count: int, *, context: str =
     return {"text": note_raw, "refs": parse_note_refs(note_raw)}
 
 
-def parse_todos_from_summary(summary: str) -> list[dict]:
+def parse_decision_checklist(summary: str) -> list[dict]:
     """
-    从纪要 Markdown 中解析待办事项。
+    从纪要「决策事项」章节的 checkbox 行解析决策流节点。
 
     匹配格式：
       - [ ] **负责人**：任务描述（截止日期）
@@ -529,16 +529,16 @@ def parse_todos_from_summary(summary: str) -> list[dict]:
       - [ ] 任务描述
 
     解析顺序：先剥句尾内联注（注/依据），再匹配截止日期——否则「（依据：…）」
-    会占位句尾遮蔽 deadline 正则。节点统一由 make_todo_node 构造（与决策同形状）。
+    会占位句尾遮蔽 deadline 正则。节点统一由 make_decision_node 构造（与结论同形状）。
 
     Returns:
-        决策流节点列表（make_todo_node 形状；含 deadline/evidence 时有对应键）
+        决策流节点列表（make_decision_node 形状；含 deadline/evidence 时有对应键）
     """
     import re
 
-    from core.decision_flow import make_todo_node
+    from core.decision_flow import make_decision_node
 
-    todos = []
+    decisions = []
     seen_texts = set()
 
     checkbox_pattern = re.compile(
@@ -586,13 +586,13 @@ def parse_todos_from_summary(summary: str) -> list[dict]:
         extra: dict = {}
         if deadline:
             extra["deadline"] = deadline
-        evidence = build_note_evidence(note_raw, note_count, context="待办")
+        evidence = build_note_evidence(note_raw, note_count, context="决策")
         if evidence:
             extra["evidence"] = evidence
-        todos.append(make_todo_node(task_text, assignee=assignee, source="auto", extra=extra))
+        decisions.append(make_decision_node(task_text, assignee=assignee, source="auto", extra=extra))
 
-    logger.info(f"从纪要中解析出 {len(todos)} 条待办")
-    return todos
+    logger.info(f"从纪要中解析出 {len(decisions)} 条决策")
+    return decisions
 
 
 # ============================================================
@@ -693,13 +693,13 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
     """
     从纪要「主要结论」与「决策」两个章节解析决策流节点（RF-1），并返回降级状态。
 
-    DC-UNIFY-01：解析结果不再是独立的 decision 对象，而是**决策流节点**（todos 形状），
+    DC-UNIFY-01：解析结果不再是独立的 decision 对象，而是**决策流节点**（decisions 形状），
     默认落在「待确认」态（项目方裁决：自动生成但不擅自定案，由用户逐条确认）。
 
     内置默认模板下两节分工不同（结论清单 vs 可跟进决策点），两节结果按出现顺序
     合并去重（同一表述保留「主要结论」中的先见项）。
 
-    与 parse_todos_from_summary() 并列的确定性解析（不引入第二次 LLM 调用）。
+    与 parse_decisions_from_summary() 并列的确定性解析（不引入第二次 LLM 调用）。
     宽容解析：优先有序列表项（"1. " 起），兼容裸行条目（存量回填写法多样）。
 
     Returns:
@@ -708,7 +708,7 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                         "missing_section"=两章节均缺失；
                         "no_items"=章节存在但既无条目也非阴性说明（格式异常）
     """
-    from core.decision_flow import make_todo_node
+    from core.decision_flow import make_decision_node
 
     sections = [s for s in (
         extract_conclusions_section(summary),
@@ -768,13 +768,13 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
                 continue
             seen_texts.add(dedup_key)
 
-            # 决策流节点统一由 make_todo_node 构造（与待办同形状）；
+            # 决策流节点统一由 make_decision_node 构造（与决策同形状）；
             # status=to_decide 由项目方裁决「自动生成但待用户定案」（三态口径）
             extra: dict = {"pending_confirmation": pending}
             evidence = build_note_evidence(note_raw, note_count, context="结论")
             if evidence:
                 extra["evidence"] = evidence
-            nodes.append(make_todo_node(
+            nodes.append(make_decision_node(
                 text,
                 title=title,
                 source="auto",
@@ -794,10 +794,10 @@ def parse_decisions_with_status(summary: str) -> tuple[list[dict], str | None]:
 
 def parse_decisions_from_summary(summary: str) -> list[dict]:
     """
-    从纪要「主要结论」/「决策」章节解析决策流节点（简化签名，与 parse_todos_from_summary 并列）。
+    从纪要「主要结论」/「决策」章节解析决策流节点（简化签名，与 parse_decision_checklist 并列）。
 
     Returns:
-        make_todo_node 形状节点列表（另含 pending_confirmation；有内联注时含 evidence）
+        make_decision_node 形状节点列表（另含 pending_confirmation；有内联注时含 evidence）
     """
     nodes, _ = parse_decisions_with_status(summary)
     return nodes
@@ -837,8 +837,8 @@ def merge_flow_after_regen(
       3. 保留项与新增项按归一化文本去重（行动项与结论条目常同文本）
 
     Args:
-        existing: 任务当前 todos
-        parsed: 本次解析出的 auto 节点（checkbox 待办 + 结论决策）
+        existing: 任务当前 decisions
+        parsed: 本次解析出的 auto 节点（checkbox 决策 + 结论决策）
         deletions: 墓碑列表 [{"text_key": str, "deleted_at": str}]；None/缺省保持既有行为
 
     Returns:

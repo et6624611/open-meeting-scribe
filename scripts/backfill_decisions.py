@@ -3,11 +3,11 @@
 一次性脚本：为存量会议纪要回填决策流节点。 / One-off script: backfill decision-flow nodes for existing minutes.
 
 遍历 data/tasks/ 下所有任务 JSON，解析 user_summary（优先）或 summary 的
-「主要结论」/「决策」章节（双章节合并去重）→ 合入 task["todos"]（source=backfill、status=to_decide）。
+「主要结论」/「决策」章节（双章节合并去重）→ 合入 task["decisions"]（source=backfill、status=to_decide）。
 DC-UNIFY-01（2026-09-27）：回填目标从已下线的 task["decisions"] 改为决策流，
 回填出的节点与自动生成节点一样默认落在「待决策」态，由用户逐条定案（三态口径）。
 Iterate task JSONs under data/tasks/, parse the conclusion/decision sections of
-user_summary (preferred) or summary, and merge them into task["todos"].
+user_summary (preferred) or summary, and merge them into task["decisions"].
 
 幂等：任务已有 backfill 来源节点或存在 flow_backfilled_at 标记则跳过；
 解析降级（章节缺失/无条目）不写标记、计入失败清单，修正纪要后可重跑。
@@ -47,7 +47,7 @@ def backfill_task(task: dict) -> tuple[str, int, str]:
     处理单个任务，返回 (结果类别, 回填条数, 失败原因)。
     Process one task; returns (category, added_count, failure_reason).
     """
-    existing = [t for t in (task.get("todos") or []) if isinstance(t, dict)]
+    existing = [t for t in (task.get("decisions") or []) if isinstance(t, dict)]
     if any(t.get("source") == "backfill" for t in existing):
         return "skipped_has_decisions", 0, ""
     if task.get("flow_backfilled_at") or task.get("decisions_backfilled_at"):
@@ -70,7 +70,7 @@ def backfill_task(task: dict) -> tuple[str, int, str]:
             item["status"] = "to_decide"
         merged = merge_flow_after_regen(existing, nodes, task.get("decision_deletions"))
         added = len(merged) - len(existing)
-        task["todos"] = merged
+        task["decisions"] = merged
         _mark_backfilled(task)
         return "backfilled", added, ""
 
@@ -129,7 +129,7 @@ def main() -> int:
             report["backfilled"] += 1
             report["decisions_added"] += added
             print(f"  已回填 {task_id[:8]}... | {added} 条决策 | {title}")
-            for item in task.get("todos", []):
+            for item in task.get("decisions", []):
                 if item.get("source") != "backfill" or not isinstance(item, dict):
                     continue
                 pending = " [待决策]" if item.get("status") == "to_decide" else ""

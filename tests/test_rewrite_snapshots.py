@@ -7,7 +7,7 @@ tests/test_rewrite_snapshots.py — AI 写回快照与撤销（PROPOSAL-AGENT-RE
     未知节点 404、空补丁 400、写回前强制快照
   - inject_items 新建节点也进快照（撤销 = 删掉新建）
   - 按轮撤销（turn_id 逆序回滚）与 /api/tasks/{id}/rewrites 端点
-  - get_meeting_todos 下发节点 id 与状态字典（否则模型只能猜 status）
+  - get_meeting_decisions 下发节点 id 与状态字典（否则模型只能猜 status）
 
 全部离线：SNAPSHOT_DIR 与 TASKS_DIR 已由 conftest 会话级隔离。
 运行 / Run: pytest tests/test_rewrite_snapshots.py -v
@@ -52,7 +52,7 @@ def flow_task(monkeypatch):
         "task_id": tid, "status": "completed", "title": "差旅预算机制讨论",
         "summary": "AI 初稿纪要",
         "user_notes": "共识：差旅预算统一纳入星瀚标品预算模块",
-        "todos": [
+        "decisions": [
             {"id": "node-a", "title": "版本双轨", "text": "预算版本管理规则明确定义",
              "status": "to_decide", "done": False, "assignee": "张三", "source": "auto"},
             {"id": "node-b", "title": "接口同步", "text": "商旅平台提供结构化接口同步执行数据",
@@ -139,7 +139,7 @@ class TestDecisionNodeRewrite:
         body = r.json()
         assert body["result"]["updated"] is True and body["result"]["restorable"] is True
         from app.store import tasks
-        node = next(t for t in tasks[flow_task]["todos"] if t["id"] == "node-a")
+        node = next(t for t in tasks[flow_task]["decisions"] if t["id"] == "node-a")
         assert node["status"] == "done" and node["done"] is True and node["title"] == "版本双轨已确认"
         # 快照存的是改写前的整节点
         snap = rsv.latest_snapshot(flow_task, rsv.decision_node_target("node-a"))
@@ -166,26 +166,26 @@ class TestDecisionNodeRewrite:
         r = _invoke(client, "delete_decision_node", {"node_id": "node-b"}, task_id=flow_task)
         assert r.status_code == 200 and r.json()["result"]["deleted"] is True
         from app.store import tasks
-        assert all(t["id"] != "node-b" for t in tasks[flow_task]["todos"])
-        # 删除的 auto 节点应落防复活墓碑（复用 notes.delete_todo 口径）
+        assert all(t["id"] != "node-b" for t in tasks[flow_task]["decisions"])
+        # 删除的 auto 节点应落防复活墓碑（复用 notes.delete_decision 口径）
         assert tasks[flow_task].get("decision_deletions")
         snap = rsv.latest_snapshot(flow_task, rsv.decision_node_target("node-b"))
         res = rsv.restore_task(flow_task, snapshot_id=snap["id"])
         assert res["ok"] is True
-        back = next(t for t in tasks[flow_task]["todos"] if t["id"] == "node-b")
+        back = next(t for t in tasks[flow_task]["decisions"] if t["id"] == "node-b")
         assert back["text"].startswith("商旅平台")
 
     def test_inject_then_restore_removes_created_node(self, client, flow_task):
         from app.store import tasks
-        before = len(tasks[flow_task]["todos"])
+        before = len(tasks[flow_task]["decisions"])
         r = _invoke(client, "inject_items",
-                    {"items": [{"type": "todo", "content": "补录：手工导入值口径"}]},
+                    {"items": [{"type": "decision", "content": "补录：手工导入值口径"}]},
                     task_id=flow_task, turn_id="turn-inj")
         assert r.status_code == 200 and r.json()["result"]["injected"] == 1
-        assert len(tasks[flow_task]["todos"]) == before + 1
+        assert len(tasks[flow_task]["decisions"]) == before + 1
         res = rsv.restore_task(flow_task, turn_id="turn-inj")
         assert res["ok"] is True and res["restored"] == 1
-        assert len(tasks[flow_task]["todos"]) == before, "撤销创建应删掉新建节点"
+        assert len(tasks[flow_task]["decisions"]) == before, "撤销创建应删掉新建节点"
 
     def test_overlong_field_rejected_without_snapshot(self, client, flow_task):
         """被校验拦下的写不应留下快照，否则撤销面板会出现空条目。"""
@@ -206,10 +206,10 @@ class TestTurnRestore:
         _invoke(client, "update_decision_node", {"node_id": "node-b", "status": "in_progress"},
                 task_id=flow_task, turn_id="turn-x")
         from app.store import tasks
-        assert [t["status"] for t in tasks[flow_task]["todos"]] == ["done", "in_progress"]
+        assert [t["status"] for t in tasks[flow_task]["decisions"]] == ["done", "in_progress"]
         res = rsv.restore_task(flow_task, turn_id="turn-x")
         assert res["ok"] is True and res["restored"] == 2
-        assert [t["status"] for t in tasks[flow_task]["todos"]] == ["to_decide", "to_decide"]
+        assert [t["status"] for t in tasks[flow_task]["decisions"]] == ["to_decide", "to_decide"]
 
     def test_restore_turn_without_snapshots_404_path(self, flow_task):
         res = rsv.restore_task(flow_task, turn_id="never-happened")
@@ -238,7 +238,7 @@ class TestTurnRestore:
                            json={"turn_id": "turn-e2e"})
         assert back.status_code == 200 and back.json()["restored"] == 1
         from app.store import tasks
-        assert tasks[flow_task]["todos"][0]["status"] == "to_decide"
+        assert tasks[flow_task]["decisions"][0]["status"] == "to_decide"
         assert tasks[flow_task].get("last_modified_at")
 
     def test_restore_endpoint_400_without_args(self, client, flow_task):
@@ -277,11 +277,11 @@ class TestTurnRestore:
 # 读侧配套：节点 id 与状态字典必须下发给工具面
 # ============================================================
 
-class TestTodosToolFeedsRewrite:
-    def test_todos_output_has_ids_and_status_dictionary(self, flow_task):
-        from core.agent_tools.impl import _tool_get_meeting_todos
-        out = json.loads(_tool_get_meeting_todos(flow_task))
-        assert {t["id"] for t in out["todos"]} == {"node-a", "node-b"}
+class TestDecisionsToolFeedsRewrite:
+    def test_decisions_output_has_ids_and_status_dictionary(self, flow_task):
+        from core.agent_tools.impl import _tool_get_meeting_decisions
+        out = json.loads(_tool_get_meeting_decisions(flow_task))
+        assert {t["id"] for t in out["decisions"]} == {"node-a", "node-b"}
         ids = {s["id"] for s in out["available_statuses"]}
         assert {"to_decide", "done"} <= ids
         assert any(s["closing"] for s in out["available_statuses"])
@@ -290,11 +290,11 @@ class TestTodosToolFeedsRewrite:
     def test_legacy_node_without_status_reports_derived(self, monkeypatch):
         """历史 task JSON 无 status 字段时，读侧按 done 推导（不空报）。"""
         from app.store import tasks
-        from core.agent_tools.impl import _tool_get_meeting_todos
+        from core.agent_tools.impl import _tool_get_meeting_decisions
         tid = "rewtest-legacy"
-        tasks[tid] = {"task_id": tid, "todos": [{"id": "n1", "text": "旧节点", "done": True}]}
+        tasks[tid] = {"task_id": tid, "decisions": [{"id": "n1", "text": "旧节点", "done": True}]}
         try:
-            out = json.loads(_tool_get_meeting_todos(tid))
-            assert out["todos"][0]["status"] == "done"
+            out = json.loads(_tool_get_meeting_decisions(tid))
+            assert out["decisions"][0]["status"] == "done"
         finally:
             tasks.pop(tid, None)

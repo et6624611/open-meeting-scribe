@@ -399,10 +399,10 @@ CHAT_SYSTEM_PROMPT = """<role>
 <capabilities>
 ## 核心能力
 1. **会议处理**：录音控制、转写、说话人分离、纪要生成
-2. **内容分析**：提取待办、总结结论、分析发言占比
+2. **内容分析**：提取决策、总结结论、分析发言占比
 3. **项目问答**：基于用户关联的项目资料文件夹，回答业务问题
 4. **动作执行**：系统自动检测用户意图并执行操作（录音、分析、主题等）
-5. **数据编辑**：待办修改由系统解析、执行、磁盘回读校验，你只转述结果
+5. **数据编辑**：决策修改由系统解析、执行、磁盘回读校验，你只转述结果
 </capabilities>
 
 <constraints>
@@ -410,11 +410,11 @@ CHAT_SYSTEM_PROMPT = """<role>
 - 你**没有执行权**：不能修改、删除、写入任何数据
 - 操作结果只能引用「系统动作执行结果」块，那是系统验证过的唯一事实
 - 若该块不存在或标明失败，禁止使用"已修正/已更新/已删除"等表述
-- 不要在回复中复述待办清单或纪要全文（系统界面已展示）
+- 不要在回复中复述决策清单或纪要全文（系统界面已展示）
 
 ## 已支持的操作（全部已实现，禁止回答"不支持"）
 - 录音控制：开始/停止/暂停/恢复录音
-- 会议分析：提取待办、总结结论、发言分析
+- 会议分析：提取决策、总结结论、发言分析
 - 任务管理：列出所有会议任务
 - 信息查询：热词、热词映射、系统设置、录制状态
 - 重新处理：重新识别音频、重新生成纪要
@@ -430,7 +430,7 @@ CHAT_SYSTEM_PROMPT = """<role>
 <output_format>
 ## 回复规范（第一优先级：简洁）
 
-本系统已承载大量信息（转写全文、结构化纪要、待办清单、项目资料），用户不缺信息，缺的是提炼。
+本系统已承载大量信息（转写全文、结构化纪要、决策清单、项目资料），用户不缺信息，缺的是提炼。
 
 1. **直击要点**：第一句话就是答案或结论，不要铺垫
 2. **不复述已知信息**：系统已展示的内容不要重复搬运
@@ -711,14 +711,14 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
                 if dialogue_text:
                     context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
 
-        todos = task.get("todos") or []
-        if todos:
-            todo_lines = []
-            for t in todos:
+        decisions = task.get("decisions") or []
+        if decisions:
+            decision_lines = []
+            for t in decisions:
                 status = "✅" if t.get("done") else "⬜"
                 assignee = t.get("assignee", "未分配")
-                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
-            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
+                decision_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
+            context_blocks.append("## 当前会议决策事项\n" + "\n".join(decision_lines))
 
         # 洞察台观察结论（持久化文件，供参考非事实源） / Insight Deck observations (persisted; advisory, not source of truth)
         insights_block = build_insights_context_block(data.task_id)
@@ -843,12 +843,12 @@ async def chat(data: ChatRequest):
                 result_text = "未产生实际变更（当前状态已符合用户要求）"
             context_blocks.append(
                 "## 系统动作执行结果（已验证，唯一事实）\n"
-                f"系统已执行待办编辑并磁盘回读校验：\n{result_text}\n"
+                f"系统已执行决策编辑并磁盘回读校验：\n{result_text}\n"
                 "回复中的操作结果只能引用以上内容，不得声称其他变更。"
             )
             joblog.append_event(
                 data.task_id, joblog.STAGE_CHAT_ACTION,
-                f"会议助手执行待办编辑: {len(edit_changes)} 项变更（校验通过 {sum(1 for c in edit_changes if c.get('verified'))}）",
+                f"会议助手执行决策编辑: {len(edit_changes)} 项变更（校验通过 {sum(1 for c in edit_changes if c.get('verified'))}）",
                 level="info" if edit_changes else "warn",
             )
 
@@ -900,8 +900,8 @@ async def chat(data: ChatRequest):
         llm_result = await async_chat_completion_full(messages, model=chat_model, max_tokens=2048)
         llm_latency_ms = round((time.perf_counter() - llm_start) * 1000)
         reply = audit_reply_claims(llm_result.content, edit_changes)
-        existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
-        extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_todos)
+        existing_decisions = tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
+        extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_decisions)
 
         # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
         diagram = ""
@@ -1066,14 +1066,14 @@ def _build_chat_messages(data: ChatRequest) -> tuple[list[dict], str, list]:
                 if dialogue_text:
                     context_blocks.append(f"## 当前会议对话时间轴（含时间戳，智能采样覆盖所有说话人）\n{dialogue_text}")
 
-        todos = task.get("todos") or []
-        if todos:
-            todo_lines = []
-            for t in todos:
+        decisions = task.get("decisions") or []
+        if decisions:
+            decision_lines = []
+            for t in decisions:
                 status = "✅" if t.get("done") else "⬜"
                 assignee = t.get("assignee", "未分配")
-                todo_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
-            context_blocks.append("## 当前会议待办事项\n" + "\n".join(todo_lines))
+                decision_lines.append(f"- [{status}] {t.get('text', '')}（责任人：{assignee}）")
+            context_blocks.append("## 当前会议决策事项\n" + "\n".join(decision_lines))
 
         # 洞察台观察结论（与 _build_chat_context_blocks 对等） / Insight Deck observations (parity with shared builder)
         insights_block = build_insights_context_block(data.task_id)
@@ -1536,8 +1536,8 @@ async def chat_stream(data: ChatRequest, request: Request):
                 "latency_ms": round((time.perf_counter() - start_time) * 1000),
             }
             # 后处理：提取可注入项 / Post-processing: extract injectable items
-            existing_todos = tasks.get(data.task_id, {}).get("todos", []) if data.task_id else []
-            extracted_items = extract_injectable_items(full_content, existing_todos)
+            existing_decisions = tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
+            extracted_items = extract_injectable_items(full_content, existing_decisions)
             event["extracted_items"] = extracted_items
             # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）
             event["model_usage"] = _model_usage_meta(chat_model)

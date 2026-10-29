@@ -297,9 +297,9 @@ def apply_speaker_names_endpoint(
     background_tasks: BackgroundTasks,
     data: TaskSpeakerMapping,
 ):
-    """确认关联时按真实姓名原地替换纪要/原文/待办中的通用说话人标签，不重跑 LLM。
+    """确认关联时按真实姓名原地替换纪要/原文/决策中的通用说话人标签，不重跑 LLM。
     On confirm-binding, in-place replace generic speaker labels with real names across
-    summary / dialogue / todos, without re-running Stage 2 (no LLM call).
+    summary / dialogue / decisions, without re-running Stage 2 (no LLM call).
 
     与 `/speaker-mapping`（触发 Stage 2 全量重生成）解耦：本端点仅做即时文本替换，
     不覆盖用户对纪要的手工编辑，也不消耗 LLM 配额；若需将姓名改写进纪要叙述，
@@ -344,15 +344,15 @@ def apply_speaker_names_endpoint(
     if user_summary is not None:
         new_user_summary, _uh = speakers.replace_speaker_labels(user_summary, name_by_sid)
 
-    # 3) 待办负责人/描述原地替换 / In-place replace in todos
-    new_todos = []
-    for td in (task.get("todos") or []):
+    # 3) 决策负责人/描述原地替换 / In-place replace in decisions
+    new_decisions = []
+    for td in (task.get("decisions") or []):
         t2 = dict(td)
         if t2.get("assignee"):
             t2["assignee"], _ah = speakers.replace_speaker_labels(t2["assignee"], name_by_sid)
         if t2.get("text"):
             t2["text"], _th = speakers.replace_speaker_labels(t2["text"], name_by_sid)
-        new_todos.append(t2)
+        new_decisions.append(t2)
 
     # 4) 落库 / Persist
     tasks[task_id]["speaker_uuid_mapping"] = {str(k): v for k, v in mapping.items()}
@@ -365,8 +365,8 @@ def apply_speaker_names_endpoint(
         tasks[task_id]["user_summary"] = new_user_summary
     if dialogue:
         tasks[task_id]["dialogue"] = new_dialogue
-    if task.get("todos") is not None:
-        tasks[task_id]["todos"] = new_todos
+    if task.get("decisions") is not None:
+        tasks[task_id]["decisions"] = new_decisions
     _mark_modified(task_id)
     save_task_to_disk(task_id)
 
@@ -412,7 +412,7 @@ def _speaker_names_response(task_id: str) -> dict:
         "dialogue": t.get("dialogue"),
         "speaker_mapping": t.get("speaker_mapping", {}),
         "speaker_uuid_mapping": t.get("speaker_uuid_mapping", {}),
-        "todos": t.get("todos"),
+        "decisions": t.get("decisions"),
     }
 
 
