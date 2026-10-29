@@ -1,0 +1,177 @@
+{
+  "menu": {
+    "settings": "Settings",
+    "where_is_my_data": "Where is my data",
+    "enter_admin": "Open admin console",
+    "logout": "Sign out"
+  },
+  "banner": {
+    "service_paused": "Company service is paused — synced content only",
+    "sync_pending": "{count} meeting texts pending sync to company server",
+    "sync_error": "Some content failed to sync and will be retried automatically",
+    "ai_off": "AI assistant is off — contact your admin"
+  },
+  "admin": {
+    "title": "Admin console",
+    "tab_overview": "Overview",
+    "tab_users": "Users",
+    "tab_data": "Data & backup",
+    "back_to_workspace": "Back to my workspace",
+    "service_switch": {
+      "label": "Company service",
+      "on": "Service running",
+      "off": "Service paused",
+      "pause": "Pause service",
+      "resume": "Enable service",
+      "paused_hint": "Once paused, employees already signed in can still read synced content but cannot edit; new sign-ins are blocked until the service is re-enabled."
+    },
+    "encryption": {
+      "title": "Access encryption (HTTPS)",
+      "current_http": "Current: plain HTTP inside your intranet — colleagues’ meeting texts could be intercepted.",
+      "current_https": "Current: encrypted access is enabled.",
+      "benefit": "Once enabled, meeting texts are encrypted in transit on your intranet; ~2 minutes of setup plus a one-time root certificate import per device.",
+      "guide_cmd": "Set TLS_MODE=internal-ca in the .env under deploy/private, run docker compose up -d oms-proxy; then install the root certificate from the ca/ folder on each device (macOS / Windows import scripts included).",
+      "copy_guide": "Copy setup guide"
+    },
+    "ai": {
+      "title": "AI assistant",
+      "current_off": "AI assistant is off: minutes are generated on each employee's own machine; meeting texts are never sent to any external AI service.",
+      "current_on": "AI assistant is on: only the domains below are reachable.",
+      "enable": "Enable AI assistant",
+      "disable": "Disable AI assistant",
+      "base_url": "Endpoint (base_url)",
+      "model": "Model name",
+      "save": "Save",
+      "egress_notice": "Enabling this allows meeting texts to be sent to the endpoint above — exactly why enterprise ships zero-egress by default. The allowlist is enforced at the server network layer.",
+      "cloud_credential": "Cloud AI service credential",
+      "credential_note": "Used only for the AI egress feature; stored on the company server, unrelated to API keys on employees’ own machines."
+    },
+    "overview_users": "Users",
+    "overview_pending": "Pending invitations",
+    "users": {
+      "col_name": "Name",
+      "col_account": "Account",
+      "col_status": "Status",
+      "col_created": "Created",
+      "status_active": "Active",
+      "status_disabled": "Disabled",
+      "status_pending": "Pending invite",
+      "new_user": "New user",
+      "form_name": "Name",
+      "form_account": "Account (phone or login name)",
+      "form_submit": "Create & generate invite code",
+      "invite_shown_title": "Invite code generated (shown only once)",
+      "invite_shown_hint": "Send it to your colleague. They set their own password via “Accept Invitation” on the login page. You never handle any password.",
+      "invite_copy": "Copy invite code",
+      "invite_copied": "Copied",
+      "act_reset": "Reset password",
+      "act_disable": "Disable",
+      "act_enable": "Enable",
+      "act_delete_data": "Delete all server data",
+      "reset_sent": "Old sessions revoked; a new invite code was issued (shown once below)",
+      "delete_confirm_title": "This cannot be undone",
+      "delete_confirm_hint": "Deletes this employee's entire server-side meeting text archive (audio and voiceprints were never on the server). Type the account name {account} to confirm.",
+      "delete_confirm_placeholder": "Type account name",
+      "delete_confirm_btn": "Confirm delete",
+      "cancelled": "Cancelled",
+      "col_updated": "Last updated",
+      "col_last_used": "Last used"
+    },
+    "data": {
+      "title": "Data & backup",
+      "promise_line1": "Backups stay only on the company's own server",
+      "promise_line2": "Automatically retained for 14 days",
+      "promise_line3": "Never uploaded to any external cloud",
+      "backup_guide": "Backup and rollback are executed by the DevOps deliverables (backup-snapshot + compose two-version rollback); P0 offers no in-UI backup operations.",
+      "server_text_overview": "The server stores finalized text only: transcript, minutes, decision flow, notes, glossary."
+    }
+  },
+  "settings": {
+    "assistant": {
+      "title": "Local recording assistant",
+      "connected": "Connected: {origin}",
+      "disconnected": "No recording assistant on this computer yet",
+      "disconnected_hint": "You can still work without it: view and edit existing meeting texts normally; only new recordings require the assistant.",
+      "download_guide": "Download the recording assistant from the company server (offline package, no internet needed)",
+      "paired_as": "Paired account: {name}",
+      "override_label": "Assistant address (auto-detects 127.0.0.1:8000 by default)",
+      "override_save": "Save",
+      "connected_paired": "Connected & bound: {name}",
+      "connected_unpaired": "Assistant online, no account bound yet",
+      "unpaired_desc": "Open the recording assistant on this computer and enter the pairing code below to start recording.",
+      "pairing_generate": "Generate pairing code",
+      "pairing_hint": "The code is valid for {minutes} minutes and shown only once.",
+      "override_saved": "Saved — reconnecting to the assistant…",
+      "devices_title": "Bound devices",
+      "device_revoke": "Revoke",
+      "no_devices": "No other devices",
+      "download_title": "Download the assistant",
+      "download_hint": "Downloaded from the company server (offline package, no internet needed) — the link is provisioned by your admin deployment.",
+      "probing": "Detecting local assistant…",
+      "reprobe": "Re-check",
+      "storage_dir": "Data folder: {dir}",
+      "storage_used": "Used {used} · {free} free",
+      "storage_tasks": "{n} recording tasks",
+      "migrate_btn": "Change data folder",
+      "migrate_confirm": "Recording data is copied to the new folder you choose. The original folder is left untouched; after the copy is verified, you decide when to clean up the old files.",
+      "migrate_done": "Migration complete. After restarting the local recording assistant, the new folder location takes effect. Files in the original folder remain unchanged.",
+      "migrate_note": "Folder change applies after the assistant restarts",
+      "migrate_rejected": "Choose a folder that differs from and does not nest with the current one",
+      "migrate_target": "New folder path",
+      "advanced": "Advanced"
+    },
+    "data_location": {
+      "title": "Where data lives",
+      "readonly_hint": "Read-only: the P0 sync scope is fixed by the admin's deployment and cannot be toggled per user.",
+      "col_content": "Content",
+      "col_location": "Where it lives",
+      "row1_content": "Meeting audio recordings",
+      "row1_location": "Only on this computer",
+      "row2_content": "Keys and voiceprint data",
+      "row2_location": "Only on this computer",
+      "row3_content": "Finalized meeting text (transcript, minutes, decisions, notes, glossary)",
+      "row3_location": "Company server"
+    },
+    "consent": {
+      "title": "How meeting texts are stored",
+      "ack": "Got it, continue",
+      "view_data_location": "View data locations"
+    },
+    "badge": {
+      "personal": "Visible only to you"
+    },
+    "nav": {
+      "assistant": "Local recording assistant",
+      "data_location": "Where data lives"
+    }
+  },
+  "library": {
+    "title": "My meetings",
+    "empty": "No meetings yet — let the local assistant record your first meeting",
+    "last_synced": "Last synced {time}",
+    "loading": "Loading…"
+  },
+  "detail": {
+    "formal": "Transcript (final)",
+    "summary": "Minutes",
+    "notes": "Notes",
+    "decisions": "Decisions",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved to company server",
+    "unsaved": "Unsaved changes",
+    "conflict_reload": "Content changed elsewhere; reloaded latest — please re-apply your edits",
+    "save_failed": "Save failed, please retry",
+    "not_found": "Meeting not found or deleted",
+    "audio_local": "Audio stays on the recording device"
+  },
+  "assets": {
+    "hotwords_title": "Hot words",
+    "speakers_title": "Speaker aliases",
+    "hotwords_guide": "Hot words are edited on computers with the local recording assistant. This shows the latest version stored on your company server.",
+    "speakers_guide": "Speaker naming and voiceprint binding happen on computers with the local recording assistant. This shows the latest alias mapping from your company server.",
+    "empty": "Nothing uploaded from your assistant devices yet",
+    "alias_speaker": "Speaker tag",
+    "alias_name": "Display name"
+  }
+}

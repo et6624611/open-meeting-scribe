@@ -1,0 +1,177 @@
+{
+  "menu": {
+    "settings": "设置",
+    "where_is_my_data": "我的数据在哪",
+    "enter_admin": "进入管理台",
+    "logout": "退出登录"
+  },
+  "banner": {
+    "service_paused": "企业服务已暂停，仅可查看已同步内容",
+    "sync_pending": "{count} 条文字待同步到公司服务器",
+    "sync_error": "有内容同步失败，将自动重试",
+    "ai_off": "AI 助手未开启，联系管理员"
+  },
+  "admin": {
+    "title": "管理台",
+    "tab_overview": "概览",
+    "tab_users": "用户管理",
+    "tab_data": "数据与备份",
+    "back_to_workspace": "返回我的空间",
+    "service_switch": {
+      "label": "企业服务",
+      "on": "服务运行中",
+      "off": "服务已暂停",
+      "pause": "停用服务",
+      "resume": "启用服务",
+      "paused_hint": "停用后，已登录的员工仍可查看已同步内容，但不能编辑；新的登录将被拦截，重新启用服务后恢复。"
+    },
+    "encryption": {
+      "title": "访问加密（HTTPS）",
+      "current_http": "当前：内网 HTTP 访问——同事的会议文字在内网传输可被截获。",
+      "current_https": "当前：已开启加密访问。",
+      "benefit": "开启后会议文字在内网传输即加密，约 2 分钟配置 + 每台终端导入一次根证书。",
+      "guide_cmd": "把 deploy/private 目录 .env 中的 TLS_MODE 改为 internal-ca，执行 docker compose up -d oms-proxy；再在每台终端安装 ca/ 目录的根证书（含 macOS / Windows 导入脚本）。",
+      "copy_guide": "复制配置指引"
+    },
+    "ai": {
+      "title": "AI 助手",
+      "current_off": "AI 助手未开启：纪要生成只使用员工本机能力，会议文字不会发给任何外部 AI 服务。",
+      "current_on": "AI 助手已开启：仅允许访问下方白名单域名。",
+      "enable": "开启 AI 助手",
+      "disable": "关闭 AI 助手",
+      "base_url": "服务地址（base_url）",
+      "model": "模型名",
+      "save": "保存",
+      "egress_notice": "开启即允许会议文字发往上述域名——这是企业版默认关闭的原因。白名单由服务端网络层强制执行。",
+      "cloud_credential": "云端 AI 服务凭据",
+      "credential_note": "仅用于 AI 出网功能，存放于公司服务器，与员工本机的 API 密钥无关。"
+    },
+    "overview_users": "用户数",
+    "overview_pending": "待接受邀请",
+    "users": {
+      "col_name": "姓名",
+      "col_account": "账号",
+      "col_status": "状态",
+      "col_created": "创建时间",
+      "status_active": "正常",
+      "status_disabled": "已停用",
+      "status_pending": "待接受邀请",
+      "new_user": "新建用户",
+      "form_name": "姓名",
+      "form_account": "账号（手机号或登录名）",
+      "form_submit": "创建并生成邀请码",
+      "invite_shown_title": "邀请码已生成（仅展示这一次）",
+      "invite_shown_hint": "把它发给同事，ta 在登录页「接受邀请」自助设置密码。你不需要也不能经手任何密码。",
+      "invite_copy": "复制邀请码",
+      "invite_copied": "已复制",
+      "act_reset": "重置密码",
+      "act_disable": "停用",
+      "act_enable": "启用",
+      "act_delete_data": "删除全部服务端数据",
+      "reset_sent": "旧会话已作废，新邀请码已生成（下方弹窗展示一次）",
+      "delete_confirm_title": "此操作不可恢复",
+      "delete_confirm_hint": "将删除该员工在服务端的全部会议文字（录音与声纹本来就不在服务器）。输入账号名 {account} 以确认。",
+      "delete_confirm_placeholder": "输入账号名",
+      "delete_confirm_btn": "确认删除",
+      "cancelled": "已取消",
+      "col_updated": "最近更新",
+      "col_last_used": "上次使用"
+    },
+    "data": {
+      "title": "数据与备份",
+      "promise_line1": "企业数据备份只保留在企业自己的服务器上",
+      "promise_line2": "自动保留 14 天",
+      "promise_line3": "永不上传外部云",
+      "backup_guide": "备份与升级回滚由 DevOps 交付物执行（backup-snapshot + compose 双版本回滚）；P0 不提供界面化备份操作。",
+      "server_text_overview": "服务端只存定稿文字：转写文本、纪要、决策流、笔记、术语。"
+    }
+  },
+  "settings": {
+    "assistant": {
+      "title": "本机录音助手",
+      "connected": "已连接：{origin}",
+      "disconnected": "这台电脑还没有连接录音助手",
+      "disconnected_hint": "不安装也可以：你可以正常查看和编辑已有会议文字，只是不能在这台电脑上新开录音。",
+      "download_guide": "从公司服务器下载录音助手（离线包，无需外网）",
+      "paired_as": "当前绑定账号：{name}",
+      "override_label": "助手地址（默认自动探测 127.0.0.1:8000）",
+      "override_save": "保存",
+      "connected_paired": "已连接并绑定：{name}",
+      "connected_unpaired": "助手在线，尚未绑定账号",
+      "unpaired_desc": "在这台电脑打开录音助手，输入下方配对码完成绑定后即可开始录音。",
+      "pairing_generate": "生成配对码",
+      "pairing_hint": "配对码 {minutes} 分钟内有效，仅显示这一次。",
+      "override_saved": "已保存，正在重连助手…",
+      "devices_title": "已绑定设备",
+      "device_revoke": "吊销",
+      "no_devices": "暂无其他设备",
+      "download_title": "下载录音助手",
+      "download_hint": "从公司服务器下载（离线包，无需外网）——下载入口由管理员部署后提供。",
+      "probing": "正在探测本机助手…",
+      "reprobe": "重新探测",
+      "storage_dir": "数据目录：{dir}",
+      "storage_used": "已用 {used} · 剩余 {free}",
+      "storage_tasks": "{n} 场录音任务",
+      "migrate_btn": "修改数据目录",
+      "migrate_confirm": "把录音数据复制到你选择的新文件夹。原文件夹不会被改动，复制校验完成后你可以自己决定何时清理旧文件。",
+      "migrate_done": "迁移完成。重启“本机录音助手”后，新的文件夹位置生效。原文件夹中的文件保持不变。",
+      "migrate_note": "修改位置需在重启助手后生效",
+      "migrate_rejected": "请选择一个与当前目录不同、且不互相包含的新文件夹",
+      "migrate_target": "新文件夹路径",
+      "advanced": "高级设置"
+    },
+    "data_location": {
+      "title": "数据位置",
+      "readonly_hint": "此分区为只读说明：P0 上云范围由管理员部署形态固定，个人不可开关。",
+      "col_content": "内容",
+      "col_location": "存放位置",
+      "row1_content": "会议录音音频",
+      "row1_location": "只在你这台电脑",
+      "row2_content": "密钥、声纹识别信息",
+      "row2_location": "只在你这台电脑",
+      "row3_content": "会议文字（转写、纪要、决策流、笔记、术语）",
+      "row3_location": "公司服务器"
+    },
+    "consent": {
+      "title": "会议文字如何保存",
+      "ack": "知道了，继续",
+      "view_data_location": "查看数据位置"
+    },
+    "badge": {
+      "personal": "仅你可见"
+    },
+    "nav": {
+      "assistant": "本机录音助手",
+      "data_location": "数据位置"
+    }
+  },
+  "library": {
+    "title": "我的会议",
+    "empty": "还没有会议，让本机录音助手记录第一场会议",
+    "last_synced": "最后同步于 {time}",
+    "loading": "加载中…"
+  },
+  "detail": {
+    "formal": "转写定稿",
+    "summary": "纪要",
+    "notes": "笔记",
+    "decisions": "决策流",
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "已保存到公司服务器",
+    "unsaved": "有未保存修改",
+    "conflict_reload": "该内容刚在别处更新，已为你载入最新版，请重新编辑",
+    "save_failed": "保存失败，请稍后重试",
+    "not_found": "会议不存在或已被删除",
+    "audio_local": "录音音频保留在录制设备本机"
+  },
+  "assets": {
+    "hotwords_title": "热词",
+    "speakers_title": "发言人别名",
+    "hotwords_guide": "热词在安装了本机录音助手的电脑上编辑，这里显示的是公司服务器上的最新版本。",
+    "speakers_guide": "发言人命名与声纹绑定在安装了本机录音助手的电脑上完成，这里显示的是公司服务器上的最新别名映射。",
+    "empty": "公司服务器上还没有你在助手设备上上传过的内容",
+    "alias_speaker": "发言人标签",
+    "alias_name": "显示名"
+  }
+}

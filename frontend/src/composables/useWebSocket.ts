@@ -6,6 +6,8 @@
 import { ref, onUnmounted } from 'vue'
 import { useRealtimeStore } from '@/stores/realtime'
 import { getLocale } from '@/i18n'
+import { transcriptWsUrl, invalidateLocalPlane } from '@/api/origins'
+import { isEnterprise } from '@/edition'
 
 /** 口语清理单条规则流水（与后端 core.transcript_cleanup 的 ops 契约一致） / One cleanup op record */
 export interface CleanOp {
@@ -118,45 +120,62 @@ export function useWebSocketTranscript() {
     disconnect()
     error.value = ''
 
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     const locale = getLocale().replace('-', '_')
-    const url = `${protocol}//${location.host}/ws/transcript/${taskId}?locale=${locale}`
-
-    ws = new WebSocket(url)
-
-    ws.onopen = () => {
-      connected.value = true
-      // 连接成功，重置重连计数 / Connected; reset reconnect counter
-      wsRetryCount.value = 0
-      if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
-    }
-
-    ws.onmessage = (event) => {
+    // 地址统一由 transcriptWsUrl 构造（企业形态连本机助手并携本地 token，契约 §1.8）
+    void (async () => {
+      let url: string
       try {
-        const msg = JSON.parse(event.data)
-        handleMessage(msg)
-      } catch (e) {
-        console.error('[WS] message parse failed:', e)
+        url = await transcriptWsUrl(taskId, locale)
+      } catch {
+        error.value = 'Assistant connection unavailable'
+        return
       }
-    }
+      // 异步解析地址期间可能被 disconnect()/新 connect() 取代 / Re-check after async URL resolution
+      if (ws || error.value) return
+      const socket = new WebSocket(url)
+      ws = socket
 
-    ws.onerror = () => {
-      error.value = 'Connection error'
-      connected.value = false
-    }
+      socket.onopen = () => {
+        if (ws !== socket) return
+        connected.value = true
+        // 连接成功，重置重连计数 / Connected; reset reconnect counter
+        wsRetryCount.value = 0
+        if (wsRetryTimer) { clearTimeout(wsRetryTimer); wsRetryTimer = null }
+      }
 
-    ws.onclose = () => {
-      connected.value = false
-      // 区分主动断开（disconnect() 已将 ws 置 null）和意外断开 / Distinguish intentional disconnect (disconnect() set ws to null) from unexpected
-      if (!ws || wsRetryCount.value >= MAX_WS_RETRIES) return
-      // 指数退避重连：2s → 4s → 8s → 16s → 30s（上限） / Exponential backoff reconnect: 2s → 4s → 8s → 16s → 30s (cap)
-      wsRetryCount.value++
-      const delay = Math.min(2000 * Math.pow(2, wsRetryCount.value - 1), 30000)
-      console.warn(`[WS] 意外断开，${delay}ms 后第 ${wsRetryCount.value} 次重连...`)
-      wsRetryTimer = setTimeout(() => {
-        connect(taskId)
-      }, delay)
-    }
+      socket.onmessage = (event) => {
+        if (ws !== socket) return
+        try {
+          const msg = JSON.parse(event.data)
+          handleMessage(msg)
+        } catch (e) {
+          console.error('[WS] message parse failed:', e)
+        }
+      }
+
+      socket.onerror = () => {
+        if (ws !== socket) return
+        error.value = 'Connection error'
+        connected.value = false
+      }
+
+      socket.onclose = () => {
+        if (ws !== socket) return
+        connected.value = false
+        ws = null
+        // 区分主动断开（disconnect() 已将 ws 置 null）和意外断开 / Distinguish intentional disconnect (disconnect() set ws to null) from unexpected
+        if (wsRetryCount.value >= MAX_WS_RETRIES) return
+        // 指数退避重连：2s → 4s → 8s → 16s → 30s（上限）；重连前 invalidate 以便重新握手换 token
+        // Exponential backoff reconnect: 2s → 4s → 8s → 16s → 30s (cap); refresh handshake on retry
+        wsRetryCount.value++
+        const delay = Math.min(2000 * Math.pow(2, wsRetryCount.value - 1), 30000)
+        console.warn(`[WS] 意外断开，${delay}ms 后第 ${wsRetryCount.value} 次重连...`)
+        wsRetryTimer = setTimeout(() => {
+          if (isEnterprise) invalidateLocalPlane()
+          connect(taskId)
+        }, delay)
+      }
+    })()
   }
 
   function handleMessage(msg: Record<string, unknown>) {

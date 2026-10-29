@@ -27,7 +27,9 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
       </IconButton>
+      <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
       <IconButton
+        v-if="!isEnterprise"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'projects' }"
         :label="t('sidebar.rail_projects')"
@@ -54,7 +56,9 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
       </IconButton>
+      <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
       <IconButton
+        v-if="!isEnterprise"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'decisions' }"
         :label="t('sidebar.rail_decisions')"
@@ -63,7 +67,9 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M8 21h8"/><path d="M5 7h14"/><path d="M5 7 2.5 13a3 3 0 0 0 5 0L5 7z"/><path d="M19 7l-2.5 6a3 3 0 0 0 5 0L19 7z"/><path d="M12 3l7 4"/><path d="M12 3 5 7"/></svg>
       </IconButton>
+      <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
       <IconButton
+        v-if="!isEnterprise"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'agents' }"
         :label="t('sidebar.rail_agents')"
@@ -93,6 +99,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { isEnterprise } from '@/edition'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
 import IconButton from '@/components/common/IconButton.vue'

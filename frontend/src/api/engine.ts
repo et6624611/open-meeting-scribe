@@ -8,8 +8,11 @@
  * 权限（D-R2）：GET 面所有用户只读；POST 变更面仅管理员（后端 require_admin 兜底）。
  * Permissions (D-R2): GETs are read-only for all users; POST mutations admin-only (enforced backend-side).
  */
-import client from './client'
+// 契约 §4：/api/engine/* 属本地控制面（录音助手设备态，档位⑤"引擎状态=设备属性"）
+import { planeClient } from './origins'
 import { fetchSettings } from './settings'
+
+const client = planeClient('local')
 
 /** 引擎模式（settings.engine.mode 契约，PRD §9） / Engine mode (settings.engine.mode contract, PRD §9) */
 export type EngineMode = 'cloud' | 'proxy' | 'direct' | 'local'

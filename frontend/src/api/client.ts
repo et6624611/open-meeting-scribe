@@ -7,11 +7,41 @@
  */
 import axios from 'axios'
 import { getLocale } from '@/i18n'
+import { isEnterprise } from '@/edition'
 
 const client = axios.create({
   timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+/**
+ * 企业版会话过期处理（UI 规格 §1）：已登录状态下 API 返回 401
+ * → 清登录态并跳登录页（带 expired 提示）。
+ * 仅在 user store 判定已登录时触发，避免启动期 /me 探测的 401 造成误跳。
+ * Enterprise session-expiry: 401 while logged in → clear state and go to /login?expired=1.
+ */
+function handleEnterprise401() {
+  void (async () => {
+    try {
+      const [{ useUserStore }, { setActiveUser }] = await Promise.all([
+        import('@/stores/user'),
+        import('./origins'),
+      ])
+      const userStore = useUserStore()
+      if (!userStore.isLoggedIn) return
+      userStore.user = null
+      userStore.checked = false
+      // W4-01：过期清态与登出同口径——内存握手一并失效
+      setActiveUser(null)
+      const { pathname, search } = window.location
+      // W1-01：跳登录页携带 redirect，重新登录回到被中断的工作页（排除登录/激活页自身）
+      if (!pathname.startsWith('/login') && !pathname.startsWith('/activate')) {
+        const redirect = encodeURIComponent(pathname + search)
+        window.location.assign(`/login?expired=1&redirect=${redirect}`)
+      }
+    } catch { /* pinia 未就绪等场景静默 */ }
+  })()
+}
 
 // 请求拦截：自动携带当前语言偏好 / Request interceptor: auto-attach current language preference
 client.interceptors.request.use((config) => {
@@ -28,6 +58,8 @@ client.interceptors.response.use(
       const detail = err.response?.data?.detail || err.message
       // 401 未登录 → 由 user store 处理跳转 / 401 not logged in → handled by user store for redirect
       if (status === 401) {
+        // 企业版：已登录态下的 401 = 会话过期，走统一过期跳转（个人版静默交 user store，行为不变）
+        if (isEnterprise) handleEnterprise401()
         // 不弹错误提示，静默交给 user store / No error toast; silently delegate to user store
         return Promise.reject(err)
       }

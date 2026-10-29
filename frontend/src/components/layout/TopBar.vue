@@ -96,6 +96,8 @@
             </div>
           </div>
         </div>
+        <!-- 企业版头像菜单（UI 规格 §1：设置/我的数据在哪/退出登录，管理员额外进入管理台；个人版零变化） -->
+        <EnterpriseUserMenu v-if="isEnterprise" />
         <button
           class="topbar-new-btn"
           :class="{ 'is-hidden': isStartRoute || showRecPill || isOnRecTaskPage }"
@@ -185,6 +187,8 @@ import { extractErrorMessage } from '@/api/client'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
 import { getRecordStatus } from '@/api/record'
 import { modKey } from '@/utils/platform'
+import { isEnterprise } from '@/edition'
+import EnterpriseUserMenu from '@/components/layout/EnterpriseUserMenu.vue'
 
 const { t } = useI18n()
 const router = useRouter()

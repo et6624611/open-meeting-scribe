@@ -9,7 +9,24 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { fetchMe, logout as apiLogout, probeSession } from '@/api/auth'
+import { isEnterprise } from '@/edition'
+import { enterpriseFetchMe, enterpriseLogout, type EnterpriseMe } from '@/api/enterpriseAuth'
+import { setActiveUser } from '@/api/origins'
+import { purgeUserScopedData } from '@/utils/scopedStorage'
 import type { User } from '@/api/types'
+
+/** 契约 EnterpriseMe → 现有 User 结构适配（档位①最小映射，role/display_name 直映） */
+function toUser(me: EnterpriseMe): User {
+  return {
+    id: me.user_id,
+    name: me.display_name,
+    avatar_url: '',
+    email: '',
+    role: me.role,
+    provider: 'local',
+    prefs: {},
+  }
+}
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
@@ -29,15 +46,22 @@ export const useUserStore = defineStore('user', () => {
   async function checkAuth() {
     loading.value = true
     try {
-      // DEF-01: 先探测会话，无会话时跳过 /auth/me，避免本地/匿名模式每页一次 401 控制台噪音。
-      // 探测返回 null（不可用/旧后端）时回退为直接请求 /auth/me，保证登录态检测不受影响。
-      // Probe the session first; skip /auth/me when there is none. null (probe
-      // unavailable) falls back to the legacy direct call so login detection is preserved.
-      const hasSession = await probeSession()
-      if (hasSession === false) {
-        user.value = null
+      if (isEnterprise) {
+        // 企业版 REQUIRE_AUTH 恒开（契约 §1.1），直接 /api/v1/auth/me；401 即未登录
+        const me = await enterpriseFetchMe()
+        user.value = toUser(me)
+        setActiveUser(me.user_id)
       } else {
-        user.value = await fetchMe()
+        // DEF-01: 先探测会话，无会话时跳过 /auth/me，避免本地/匿名模式每页一次 401 控制台噪音。
+        // 探测返回 null（不可用/旧后端）时回退为直接请求 /auth/me，保证登录态检测不受影响。
+        // Probe the session first; skip /auth/me when there is none. null (probe
+        // unavailable) falls back to the legacy direct call so login detection is preserved.
+        const hasSession = await probeSession()
+        if (hasSession === false) {
+          user.value = null
+        } else {
+          user.value = await fetchMe()
+        }
       }
     } catch {
       user.value = null
@@ -47,15 +71,31 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /** 登录/激活成功后直接注入会话用户（免二次 /me 往返） */
+  function setUser(me: EnterpriseMe) {
+    user.value = toUser(me)
+    checked.value = true
+    if (isEnterprise) setActiveUser(me.user_id)
+  }
+
   /** 登出 / Logout */
   async function logout() {
+    const purgeId = user.value?.id ?? null
     try {
-      await apiLogout()
+      if (isEnterprise) await enterpriseLogout()
+      else await apiLogout()
     } catch {
       // 即使后端失败，也清除本地状态 / Clear local state even if server fails
     }
     user.value = null
+    checked.value = false
+    // 档位①清态：登出必须清空该用户命名空间下全部本地缓存（UI 规格 §1 走查硬项）
+    // W4-01：内存握手态同属"该用户的状态"——失效并重探测，防同机下一用户沿用上一用户的 local_token
+    if (isEnterprise) {
+      setActiveUser(null)
+      purgeUserScopedData(purgeId)
+    }
   }
 
-  return { user, loading, checked, isLoggedIn, isAdmin, displayName, avatarLetter, checkAuth, logout }
+  return { user, loading, checked, isLoggedIn, isAdmin, displayName, avatarLetter, checkAuth, setUser, logout }
 })
