@@ -48,7 +48,7 @@ for _ in $(seq 1 30); do
   if [ "$status" = healthy ]; then ok=1; break; fi
   sleep 2
 done
-[ "$ok" = 1 ] || { echo "错误：探活超时，请查看日志：docker compose logs oms-app"; exit 1; }
+[ "$ok" = 1 ] || { echo "错误：探活超时（${OMS_HEALTH_PATH:-/healthz}），请查看日志：docker compose logs oms-app"; echo "提示：若当前版本尚未提供 /healthz 端点，可在 .env 设置 OMS_HEALTH_PATH=/ 后重跑本脚本。"; exit 1; }
 
 lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}'); : "${lan_ip:=127.0.0.1}"
 
