@@ -18,7 +18,7 @@ services:
       - ./data:/app/data       # DATA_ROOT 根；JWT 主密钥等在 secrets/instance.key，向导生成，不在 .env
       - ./backups:/app/backups
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000${OMS_HEALTH_PATH:-/healthz}', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 3
