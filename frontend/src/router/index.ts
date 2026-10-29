@@ -39,7 +39,8 @@ const router = createRouter({
     {
       path: '/meeting/:taskId',
       name: 'generating',
-      component: () => import('@/views/GeneratingView.vue'),
+      // 企业形态 Web 定稿查看/编辑面（无音频回放，契约 §1.4）；个人版不变
+      component: () => import(isEnterprise ? '@/views/ContextDetailView.vue' : '@/views/GeneratingView.vue'),
     },
     // 别名：/meetings/:taskId 重定向到 /meeting/:taskId（用户习惯用复数形式的 URL）
     {
@@ -75,7 +76,8 @@ const router = createRouter({
     {
       path: '/library',
       name: 'library',
-      component: () => import('@/views/LibraryView.vue'),
+      // 企业形态库=服务端 context tasks 列表（本人 owner）；个人版不变
+      component: () => import(isEnterprise ? '@/views/ContextsView.vue' : '@/views/LibraryView.vue'),
     },
     {
       path: '/decisions',

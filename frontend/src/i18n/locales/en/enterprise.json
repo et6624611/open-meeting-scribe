@@ -108,7 +108,17 @@
       "download_title": "Download the assistant",
       "download_hint": "Downloaded from the company server (offline package, no internet needed) — the link is provisioned by your admin deployment.",
       "probing": "Detecting local assistant…",
-      "reprobe": "Re-check"
+      "reprobe": "Re-check",
+      "storage_dir": "Data folder: {dir}",
+      "storage_used": "Used {used} · {free} free",
+      "storage_tasks": "{n} recording tasks",
+      "migrate_btn": "Change data folder",
+      "migrate_confirm": "Recording data is copied to the new folder you choose. The original folder is left untouched; after the copy is verified, you decide when to clean up the old files.",
+      "migrate_done": "Migration complete. After restarting the local recording assistant, the new folder location takes effect. Files in the original folder remain unchanged.",
+      "migrate_note": "Folder change applies after the assistant restarts",
+      "migrate_rejected": "Choose a folder that differs from and does not nest with the current one",
+      "migrate_target": "New folder path",
+      "advanced": "Advanced"
     },
     "data_location": {
       "title": "Where data lives",
@@ -134,5 +144,24 @@
       "assistant": "Local recording assistant",
       "data_location": "Where data lives"
     }
+  },
+  "library": {
+    "title": "My meetings",
+    "empty": "No meetings yet — let the local assistant record your first meeting",
+    "last_synced": "Last synced {time}"
+  },
+  "detail": {
+    "formal": "Transcript (final)",
+    "summary": "Minutes",
+    "notes": "Notes",
+    "decisions": "Decisions",
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved to company server",
+    "unsaved": "Unsaved changes",
+    "conflict_reload": "Content changed elsewhere; reloaded latest — please re-apply your edits",
+    "save_failed": "Save failed, please retry",
+    "not_found": "Meeting not found or deleted",
+    "audio_local": "Audio stays on the recording device"
   }
 }

@@ -265,7 +265,7 @@ function statusLabel(s: string): string {
         <p class="adm-hint">{{ t('enterprise.admin.users.invite_shown_hint') }}</p>
         <div class="adm-ai-actions">
           <button class="adm-btn" @click="copyCode">{{ copied ? t('enterprise.admin.users.invite_copied') : t('enterprise.admin.users.invite_copy') }}</button>
-          <button class="adm-btn is-ghost" @click="revealedCode = null; copied = false">{{ t('common.ok') }}</button>
+          <button class="adm-btn is-ghost" @click="revealedCode = null; copied = false">{{ t('common.action.close') }}</button>
         </div>
       </div>
     </div>

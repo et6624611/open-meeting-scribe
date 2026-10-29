@@ -11,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { ensureLocalPlane, localPlaneError, pairedUserId, setLocalOriginOverride, invalidateLocalPlane } from '@/api/origins'
 import { useUserStore } from '@/stores/user'
 import { createPairing, listDevices, deleteDevice, type DeviceInfo, type PairingResult } from '@/api/pairings'
-import { getLocalState, type AssistantState } from '@/api/assistant'
+import { getLocalState, getLocalStorage, migrateLocalStorage, type AssistantState, type LocalStorageInfo } from '@/api/assistant'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -24,6 +24,12 @@ const devices = ref<DeviceInfo[]>([])
 const pairing = ref<PairingResult | null>(null)
 const overrideInput = ref('')
 const notice = ref('')
+const storage = ref<LocalStorageInfo | null>(null)
+const showAdvanced = ref(false)
+const migrating = ref(false)
+const migrateTarget = ref('')
+const migrateConfirm = ref(false)
+const migrateDone = ref(false)
 
 async function probe() {
   probing.value = true
@@ -35,6 +41,7 @@ async function probe() {
     paired.value = !!state.value?.paired || !!pairedUserId()
     if (state.value) {
       try { devices.value = await listDevices() } catch { devices.value = [] }
+      storage.value = await getLocalStorage()
     } else {
       reachable.value = false
     }
@@ -43,11 +50,33 @@ async function probe() {
 }
 onMounted(probe)
 
+function fmtSize(n: number | null | undefined): string {
+  if (n == null) return '—'
+  const gb = n / 1024 ** 3
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1024 ** 2))} MB`
+}
+
 async function revoke(d: DeviceInfo) {
   try {
     await deleteDevice(d.device_id)
     devices.value = devices.value.filter(x => x.device_id !== d.device_id)
   } catch { notice.value = t('login.enterprise.err_service_error', { status: '-' }) }
+}
+
+async function runMigrate() {
+  if (migrating.value || !migrateTarget.value.trim()) return
+  migrating.value = true
+  migrateDone.value = false
+  try {
+    const r = await migrateLocalStorage(migrateTarget.value.trim())
+    migrateDone.value = true
+    migrateConfirm.value = false
+    storage.value = await getLocalStorage()
+    void r
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    notice.value = status === 422 ? t('enterprise.settings.assistant.migrate_rejected') : t('login.enterprise.err_service_error', { status: status ?? '-' })
+  } finally { migrating.value = false }
 }
 
 async function generatePairing() {
@@ -91,6 +120,19 @@ async function saveOverride() {
           <code class="ap-code">{{ pairing.pairing_code }}</code>
           <p class="ap-sub">{{ t('enterprise.settings.assistant.pairing_hint', { minutes: pairing.expires_in_minutes }) }}</p>
         </div>
+        <div v-if="storage" class="ap-storage">
+          <div class="ap-sub">{{ t('enterprise.settings.assistant.storage_dir', { dir: storage.data_dir }) }}</div>
+          <div class="ap-sub">{{ t('enterprise.settings.assistant.storage_used', { used: fmtSize(storage.total_bytes), free: fmtSize(storage.disk_free_bytes) }) }} · {{ t('enterprise.settings.assistant.storage_tasks', { n: storage.tasks_files }) }}</div>
+          <button class="ap-btn is-ghost" @click="migrateConfirm = true; migrateDone = false">{{ t('enterprise.settings.assistant.migrate_btn') }}</button>
+          <p class="ap-sub">{{ t('enterprise.settings.assistant.migrate_note') }}</p>
+        </div>
+        <details class="ap-advanced" :open="showAdvanced" @toggle="showAdvanced = ($event.target as HTMLDetailsElement).open">
+          <summary>{{ t('enterprise.settings.assistant.advanced') }}</summary>
+          <div class="ap-override">
+            <input v-model="overrideInput" :placeholder="t('enterprise.settings.assistant.override_label')" autocomplete="off">
+            <button class="ap-btn is-ghost" @click="saveOverride">{{ t('enterprise.settings.assistant.override_save') }}</button>
+          </div>
+        </details>
         <div v-if="(state?.paired || paired) && devices.length > 1" class="ap-devices">
           <div class="ap-devices-title">{{ t('enterprise.settings.assistant.devices_title') }}</div>
           <div v-for="d in devices" :key="d.device_id" class="ap-device-row">
@@ -120,6 +162,23 @@ async function saveOverride() {
         <p v-if="notice" class="ap-sub" role="status">{{ notice }}</p>
       </div>
     </div>
+    <!-- 迁移确认/完成弹窗（产品 cmsg_01m63k7hhh7pgjxsg39cq3ka8t 措辞 1-2 逐字） -->
+    <div v-if="migrateConfirm" class="ap-mask">
+      <div class="ap-modal" role="alertdialog" aria-modal="true">
+        <p class="ap-hint">{{ t('enterprise.settings.assistant.migrate_confirm') }}</p>
+        <input v-model="migrateTarget" :placeholder="t('enterprise.settings.assistant.migrate_target')" class="ap-modal-input">
+        <div class="ap-modal-actions">
+          <button class="ap-btn" :disabled="migrating || !migrateTarget.trim()" @click="runMigrate">{{ t('enterprise.settings.assistant.migrate_btn') }}</button>
+          <button class="ap-btn is-ghost" @click="migrateConfirm = false">{{ t('topbar.abandon_cancel') }}</button>
+        </div>
+      </div>
+    </div>
+    <div v-if="migrateDone" class="ap-mask">
+      <div class="ap-modal" role="status">
+        <p class="ap-hint">{{ t('enterprise.settings.assistant.migrate_done') }}</p>
+        <div class="ap-modal-actions"><button class="ap-btn" @click="migrateDone = false">{{ t('common.action.close') }}</button></div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -146,4 +205,11 @@ async function saveOverride() {
 .ap-override input { flex: 1; min-width: 200px; padding: 7px 10px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); font-size: var(--fs-12, 12px); }
 .ap-link { border: none; background: none; padding: 0; cursor: pointer; color: var(--accent, #2a6); font-size: var(--fs-12, 12px); text-align: left; }
 .ap-link.is-danger { color: var(--warn, #c33); }
+.ap-storage { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--border, #eee); padding-top: var(--s-2, 8px); }
+.ap-advanced { font-size: var(--fs-12, 12px); color: var(--muted, #666); }
+.ap-advanced summary { cursor: pointer; }
+.ap-mask { position: fixed; inset: 0; background: rgb(0 0 0 / 0.35); display: grid; place-items: center; z-index: var(--z-toast, 1200); }
+.ap-modal { width: min(420px, calc(100vw - 32px)); background: var(--surface, #fff); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 24px); box-shadow: 0 16px 48px rgb(0 0 0 / 0.2); }
+.ap-modal-input { width: 100%; margin-top: var(--s-2, 8px); padding: 8px 10px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); box-sizing: border-box; font-size: var(--fs-12, 12px); }
+.ap-modal-actions { display: flex; gap: var(--s-2, 8px); margin-top: var(--s-3, 16px); }
 </style>
