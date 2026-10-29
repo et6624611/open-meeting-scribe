@@ -1,8 +1,13 @@
 /**
  * 声纹 API 封装 / Voiceprint API wrapper
+ *
+ * 契约 §4：/api/voiceprint/* 属本地控制面；声纹 embedding 永不出本机（裁决③），
+ * 企业形态经 local plane 带 X-OMS-Local-Token 连本机助手。
  */
-import client from './client'
+import { planeClient } from './origins'
 import type { VoiceprintMatchItem } from './types'
+
+const client = planeClient('local')
 
 export interface VoiceprintMatchResponse {
   task_id: string

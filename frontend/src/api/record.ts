@@ -1,7 +1,13 @@
 /**
  * 录音控制 API 封装 / Recording control API wrapper
+ *
+ * 契约 §4：/api/record/* 属本地控制面（永不出现在企业实例）。
+ * 个人版形态下 local plane 即 same-origin，行为零变化；
+ * 企业版形态经 OriginRegistry 本机助手地址注入 X-OMS-Local-Token（§1.8）。
  */
-import client from './client'
+import { planeClient } from './origins'
+
+const client = planeClient('local')
 
 export interface RecordStartResult {
   task_id: string
@@ -38,8 +44,14 @@ export async function abandonRecord(): Promise<void> {
   await client.post('/api/record/abandon')
 }
 
-export async function getRecordStatus(): Promise<RecordStatusResult> {
-  const { data } = await client.get<RecordStatusResult>('/api/record/status')
+/**
+ * 录音状态查询。契约 §1.8：企业形态按 task_id 参数化（per-task 化，档位②）；
+ * 不传 taskId 时返回本机当前录音（个人版既有语义，零变化）。
+ */
+export async function getRecordStatus(taskId?: string): Promise<RecordStatusResult> {
+  const { data } = await client.get<RecordStatusResult>('/api/record/status', {
+    params: taskId ? { task_id: taskId } : {},
+  })
   return data
 }
 
