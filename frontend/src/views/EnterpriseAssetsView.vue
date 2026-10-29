@@ -15,6 +15,8 @@ const { t } = useI18n()
 
 const loading = ref(true)
 const rev = ref(0)
+// 徽标数据属性单源：消费响应 visibility 字段（UI W4 备案项顺手落地，P0 值恒 personal）
+const visibility = ref<'personal'>('personal')
 const hotwordsText = ref('')
 const aliases = ref<Record<string, string>>({})
 
@@ -23,10 +25,12 @@ onMounted(async () => {
     if (props.kind === 'hotwords') {
       const a = await getHotwordsAsset()
       rev.value = a.current_rev
+      visibility.value = (a.visibility ?? 'personal') as 'personal'
       hotwordsText.value = a.payload?.hotwords ?? ''
     } else {
       const a = await getSpeakerAliasesAsset()
       rev.value = a.current_rev
+      visibility.value = (a.visibility ?? 'personal') as 'personal'
       aliases.value = a.payload?.aliases ?? {}
     }
   } finally { loading.value = false }
@@ -40,7 +44,7 @@ const aliasRows = computed(() => Object.entries(aliases.value))
   <div class="ea-root">
     <header class="ea-head">
       <h1>{{ kind === 'hotwords' ? t('enterprise.assets.hotwords_title') : t('enterprise.assets.speakers_title') }}</h1>
-      <VisibilityBadge :visibility="'personal'" />
+      <VisibilityBadge :visibility="visibility" />
     </header>
 
     <!-- 产品逐字指引（热词）；发言人同逻辑口径 -->
