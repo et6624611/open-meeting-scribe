@@ -16,7 +16,10 @@
     "projects": "Knowledge Base",
     "library": "Meeting Library",
     "decisions": "Decision Center",
-    "agents": "Agents"
+    "agents": "Agents",
+    "login": "Sign in",
+    "activate": "Accept invitation",
+    "admin": "Admin console"
   },
   "tab_chat": "Chat",
   "tab_context": "Context",

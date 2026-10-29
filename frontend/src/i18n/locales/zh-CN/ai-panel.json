@@ -16,7 +16,10 @@
     "projects": "知识库",
     "library": "会议库",
     "decisions": "决策中心",
-    "agents": "智能体"
+    "agents": "智能体",
+    "login": "登录",
+    "activate": "接受邀请",
+    "admin": "管理台"
   },
   "tab_chat": "对话",
   "tab_context": "上下文",

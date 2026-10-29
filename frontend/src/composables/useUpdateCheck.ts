@@ -7,6 +7,7 @@
  *  - 管理更新提示状态 / Manage update notification state
  *  - 根据用户 OS 匹配平台下载链接 / Match platform download URL based on user OS
  */
+import { isEnterprise } from '@/edition'
 import { ref, computed } from 'vue'
 import { checkForUpdate, fetchCurrentVersion } from '@/api/update'
 import type { VersionCheckResult } from '@/api/update'
@@ -61,6 +62,9 @@ export function useUpdateCheck() {
    * Silent startup check (only when update_check is enabled and notification hasn't been dismissed)
    */
   async function startupCheck(enabled: boolean) {
+    // 企业内网形态无"员工自助升级"语义（产品裁决 cmsg_01m643swhgaaj87f8e2s7fbjsf：
+    // 更新=管理员换安装包），不发起检查、不产生徽标/横幅数据源
+    if (isEnterprise) return
     if (!enabled || dismissed.value) return
     if (initialized) return
     initialized = true

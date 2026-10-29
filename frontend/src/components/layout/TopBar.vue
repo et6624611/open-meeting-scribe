@@ -19,7 +19,8 @@
       </div>
       <div class="topbar-right">
         <!-- 引擎/接入状态已统一收敛至底部状态栏 footer.status（单处显示，避免顶栏与底部两处并存且表达不一致） -->
-        <button class="update-badge" id="updateBadge" :title="t('common.update.title')">
+        <!-- 企业形态隐藏（产品裁决：更新是管理员动作，不给员工制造无人可操作的期待） -->
+        <button v-if="!isEnterprise" class="update-badge" id="updateBadge" :title="t('common.update.title')">
           <span class="ub-dot"></span>
           <span>{{ t('common.update.available') }}</span>
         </button>
