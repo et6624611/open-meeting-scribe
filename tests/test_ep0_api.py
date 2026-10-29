@@ -95,6 +95,7 @@ def test_admin_surface_guards(client):
     users = client.get("/api/v1/admin/users", cookies=adm)
     assert users.status_code == 200
     assert all("password_hash" not in u for u in users.json()["users"])
+    assert all("last_used_at" in u for u in users.json()["users"])  # FE 档⑥"上次使用"列语义
 
 
 def test_snapshot_contract(client):
@@ -182,6 +183,10 @@ def test_pairing_device_token(client):
         headers={"Idempotency-Key": "mut-d1", "If-Match-Rev": "0", "Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 201  # 助手写入
+    adm_ck = login(client, "13373013103", "Admin-Pw-001").cookies
+    row = [u for u in client.get("/api/v1/admin/users", cookies=adm_ck).json()["users"]
+           if u["user_id"] == client.get("/api/v1/auth/me", cookies=emp).json()["user_id"]][0]
+    assert row["last_used_at"]  # device 使用后"上次使用"即刻可见
     devs = client.get("/api/v1/devices", cookies=emp).json()["devices"]
     assert len(devs) == 1
     client.delete(f"/api/v1/devices/{devs[0]['device_id']}", cookies=emp)

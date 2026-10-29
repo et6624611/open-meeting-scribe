@@ -253,8 +253,10 @@ class EnterpriseStore:
     def list_users(self, *, actor_user_id: str) -> list[dict]:
         self._require_admin(actor_user_id)
         rows = self.conn.execute(
-            "SELECT user_id, login_account, phone, display_name, role, status, created_at, updated_at"
-            " FROM users ORDER BY created_at"
+            "SELECT u.user_id, u.login_account, u.phone, u.display_name, u.role, u.status, u.created_at, u.updated_at,"
+            " (SELECT MAX(d.last_used_at) FROM device_tokens d"
+            "  WHERE d.user_id=u.user_id AND d.revoked_at IS NULL) AS last_used_at"
+            " FROM users u ORDER BY u.created_at"
         ).fetchall()
         return [dict(r) for r in rows]
 
