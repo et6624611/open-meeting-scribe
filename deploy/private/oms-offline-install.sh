@@ -38,6 +38,9 @@ elif ! docker image inspect "open-meeting-scribe:${OMS_VERSION}" >/dev/null 2>&1
   fi
 fi
 
+echo "应用数据库迁移（幂等，重复执行 no-op）…"
+docker compose "${PROFILE_ARGS[@]}" run --rm oms-app python -m app.db migrate
+
 docker compose "${PROFILE_ARGS[@]}" up -d
 
 echo "等待服务健康（/healthz）…"

@@ -14,6 +14,9 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# 双产品线开关：默认 personal（个人版行为零变化）；企业包构建传 --build-arg VITE_EDITION=enterprise
+ARG VITE_EDITION=personal
+ENV VITE_EDITION=${VITE_EDITION}
 RUN npm run build
 
 # ── Stage 2: runtime (FastAPI + built frontend) ──

@@ -1,0 +1,119 @@
+# 企业版 P0 私有化交付包（EP0-OPS）——构建 oms-app 企业镜像 + deploy/private 离线包，
+# 并在 ubuntu runner（Linux 实机等价环境）执行全链路 smoke：
+#   install → /healthz → 页面可达 → 备份落盘 → TLS(internal-ca) 切换 → upgrade → rollback。
+# 红线：个人版镜像构建不经过本 workflow（默认 VITE_EDITION=personal 的 Dockerfile 路径零变化）。
+name: release-enterprise
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 测试版本号（非 tag 触发时使用）
+        type: string
+        default: "0.0.0-ci"
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 计算版本（事件数据经 env 传递并做字符白名单校验）
+        id: ver
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            V="${GITHUB_REF_NAME}"
+          else
+            V="${INPUT_VERSION:-0.0.0-ci}"
+          fi
+          if ! printf '%s' "$V" | grep -Eq '^[A-Za-z0-9._-]{1,64}$'; then
+            echo "非法版本号：仅允许 [A-Za-z0-9._-]，长度 1-64"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: 构建企业镜像（linux/amd64，两个版本标签供升级/回滚演练）
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          docker build -f Dockerfile --build-arg VITE_EDITION=enterprise -t "open-meeting-scribe:${V}" .
+          docker tag "open-meeting-scribe:${V}" "open-meeting-scribe:${V}-upgrade-next"
+          docker pull caddy:2   # 离线包含入（TLS internal-ca/custom-cert 所需）
+
+      - name: 组装离线交付包并解包到部署位
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p pkg/images dist
+          cp -r deploy/private/. pkg/
+          docker save "open-meeting-scribe:${V}" caddy:2 > "pkg/images/images_${V}.tar"
+          docker save "open-meeting-scribe:${V}-upgrade-next" > "pkg/images/images_${V}-upgrade-next.tar"
+          sed -i "s/^OMS_VERSION=.*/OMS_VERSION=${V}/" pkg/.env.example
+          tar czf "oms-private_${V}_linux_amd64.tar.gz" -C pkg .
+          tar xzf "oms-private_${V}_linux_amd64.tar.gz" -C dist
+          mv "oms-private_${V}_linux_amd64.tar.gz" dist/
+
+      - name: smoke — 离线安装
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ./oms-offline-install.sh
+          curl -fsS http://127.0.0.1:8000/healthz
+          curl -fsS -o /dev/null -w "root page HTTP %{http_code}\n" http://127.0.0.1:8000/
+          echo "--- 登录/初始化页可达断言完成（未初始化态由应用侧引导，向导交互归 QA U 系）"
+
+      - name: smoke — 备份落盘
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            [ -s "$(ls backups/instance_*.db 2>/dev/null | head -1)" ] && exit 0
+            sleep 5
+          done
+          echo "错误：备份 sidecar 未在 60s 内产出首份快照"; docker compose logs oms-backup; exit 1
+
+      - name: smoke — 切换 internal-ca 加密访问
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sed -i "s/^OMS_TLS_MODE=.*/OMS_TLS_MODE=internal-ca/" .env
+          ./oms-offline-install.sh
+          curl -kfS -o /dev/null -w "https proxy HTTP %{http_code}\n" https://127.0.0.1:8443/healthz
+          test -s ca/oms-root-ca.crt && echo "企业根证书已导出"
+
+      - name: smoke — 升级（新镜像执行迁移+健康门禁）
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          ./oms-upgrade.sh "images/images_${V}-upgrade-next.tar"
+          curl -kfS -o /dev/null https://127.0.0.1:8443/healthz
+
+      - name: smoke — 回滚
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ./oms-upgrade.sh --rollback
+          curl -kfS -o /dev/null https://127.0.0.1:8443/healthz
+          docker compose --profile tls ps
+
+      - name: 失败时收集日志
+        if: failure()
+        working-directory: dist
+        run: docker compose --profile tls logs --tail=200 > failure_logs.txt 2>&1; cat failure_logs.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oms-private-package-${{ steps.ver.outputs.version }}
+          path: dist/oms-private_*.tar.gz
+
+      - name: tag 触发时发布 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/oms-private_*.tar.gz
