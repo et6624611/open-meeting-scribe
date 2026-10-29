@@ -23,7 +23,7 @@
       "off": "Service paused",
       "pause": "Pause service",
       "resume": "Enable service",
-      "paused_hint": "While paused: employees can still open pages and read already-synced content, but new sign-ins, recording syncs and edits are rejected until you re-enable."
+      "paused_hint": "While paused: employees already signed in can keep reading synced content (no editing or syncing); new sign-ins are blocked until you re-enable the service."
     },
     "encryption": {
       "title": "Access encryption (HTTPS)",
