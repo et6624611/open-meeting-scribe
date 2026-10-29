@@ -620,7 +620,6 @@ def export_context(
 
 def cleanup_workspace(engine_id: str, task_id: str | None) -> None:
     """删除指定工作区（面板会话删除时联动清理，方案 D5 修订要求）。"""
-    import shutil
     tid = task_id or "general"
     ws = (WORKSPACE_ROOT / engine_id / tid).resolve()
     if ws.is_dir() and WORKSPACE_ROOT in ws.parents:
@@ -635,7 +634,6 @@ def sweep_expired_workspaces(retention_days: int) -> int:
     retention_days <= 0 视为“不自动清理”，返回 0。返回删除的任务工作区目录数。
     仅删除 WORKSPACE_ROOT 之下两层（<engine_id>/<task_id>）的目录，避免误删。
     """
-    import shutil
     import time
     if retention_days is None or retention_days <= 0:
         return 0
