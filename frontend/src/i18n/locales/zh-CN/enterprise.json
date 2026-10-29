@@ -23,12 +23,15 @@
       "off": "服务已暂停",
       "pause": "停用服务",
       "resume": "启用服务",
-      "paused_hint": "暂停后：已登录的员工可以继续查看已同步内容（不可编辑、不同步）；新的登录将被拦截，需你重新启用后才能登录。"
+      "paused_hint": "停用后，已登录的员工仍可查看已同步内容，但不能编辑；新的登录将被拦截，重新启用服务后恢复。"
     },
     "encryption": {
       "title": "访问加密（HTTPS）",
-      "not_enabled": "当前为内网 HTTP 访问。会议文字在公司内网传输可被截获，建议花 2 分钟开启加密。",
-      "guide": "开启入口与证书配置见 DevOps 部署文档（deploy/private CA 引导）。本页面 P0 仅提示状态。"
+      "current_http": "当前：内网 HTTP 访问——同事的会议文字在内网传输可被截获。",
+      "current_https": "当前：已开启加密访问。",
+      "benefit": "开启后会议文字在内网传输即加密，约 2 分钟配置 + 每台终端导入一次根证书。",
+      "guide_cmd": "把 deploy/private 目录 .env 中的 TLS_MODE 改为 internal-ca，执行 docker compose up -d oms-proxy；再在每台终端安装 ca/ 目录的根证书（含 macOS / Windows 导入脚本）。",
+      "copy_guide": "复制配置指引"
     },
     "ai": {
       "title": "AI 助手",
@@ -38,9 +41,10 @@
       "disable": "关闭 AI 助手",
       "base_url": "服务地址（base_url）",
       "model": "模型名",
-      "api_key": "API Key（只写不回显）",
       "save": "保存",
-      "egress_notice": "开启即允许会议文字发往上述域名——这是企业版默认关闭的原因。白名单由服务端网络层强制执行。"
+      "egress_notice": "开启即允许会议文字发往上述域名——这是企业版默认关闭的原因。白名单由服务端网络层强制执行。",
+      "cloud_credential": "云端 AI 服务凭据",
+      "credential_note": "仅用于 AI 出网功能，存放于公司服务器，与员工本机的 API 密钥无关。"
     },
     "overview_users": "用户数",
     "overview_pending": "待接受邀请",
@@ -70,7 +74,8 @@
       "delete_confirm_placeholder": "输入账号名",
       "delete_confirm_btn": "确认删除",
       "cancelled": "已取消",
-      "col_updated": "最近更新"
+      "col_updated": "最近更新",
+      "col_last_used": "上次使用"
     },
     "data": {
       "title": "数据与备份",

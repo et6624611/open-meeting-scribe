@@ -20,13 +20,20 @@ const instance = useInstanceStore()
 const tab = ref<'overview' | 'users' | 'data'>('overview')
 const users = ref<AdminUser[]>([])
 const usersLoading = ref(false)
+// W2-04：「最近更新」保留为排序列（数据新鲜度判断），默认降序
+const sortUpdatedDesc = ref(true)
+function toggleSortUpdated() { sortUpdatedDesc.value = !sortUpdatedDesc.value }
 
 const activeCount = computed(() => users.value.filter(u => u.status === 'active').length)
 const pendingCount = computed(() => users.value.filter(u => u.status === 'pending').length)
 
 async function loadUsers() {
   usersLoading.value = true
-  try { users.value = await adminListUsers() } catch { showToast(t('login.enterprise.err_service_error', { status: '-' }), 'error') }
+  try {
+    const list = await adminListUsers()
+    list.sort((a, b) => (sortUpdatedDesc.value ? b.updated_at.localeCompare(a.updated_at) : a.updated_at.localeCompare(b.updated_at)))
+    users.value = list
+  } catch { showToast(t('login.enterprise.err_service_error', { status: '-' }), 'error') }
   finally { usersLoading.value = false }
 }
 
@@ -106,6 +113,13 @@ async function confirmDelete() {
   } catch { showToast(t('login.enterprise.err_service_error', { status: '-' }), 'error') }
 }
 
+/* ── 加密状态（W2-01：常驻状态卡=状态+收益+可复制指引；执行走 DevOps 重配流程） ── */
+const httpsMode = location.protocol === 'https:'
+const guideCopied = ref(false)
+async function copyGuide() {
+  try { await navigator.clipboard.writeText(t('enterprise.admin.encryption.guide_cmd')); guideCopied.value = true } catch { /* 剪贴板不可用时文本可选中手抄 */ }
+}
+
 /* ── AI 出网开关（§1.7，实测扁平 DTO；api_key 只写不回显） ── */
 const ai = ref<AiSettings>({ enabled: false, base_url: null, model: null })
 const aiBaseUrl = ref('')
@@ -166,8 +180,10 @@ function statusLabel(s: string): string {
       </div>
       <div class="adm-card">
         <div class="adm-card-title">{{ t('enterprise.admin.encryption.title') }}</div>
-        <p class="adm-hint">{{ t('enterprise.admin.encryption.not_enabled') }}</p>
-        <p class="adm-sub">{{ t('enterprise.admin.encryption.guide') }}</p>
+        <p class="adm-hint">{{ httpsMode ? t('enterprise.admin.encryption.current_https') : t('enterprise.admin.encryption.current_http') }}</p>
+        <p class="adm-sub">{{ t('enterprise.admin.encryption.benefit') }}</p>
+        <code v-if="!httpsMode" class="adm-code adm-guide-cmd">{{ t('enterprise.admin.encryption.guide_cmd') }}</code>
+        <button v-if="!httpsMode" class="adm-btn is-ghost adm-guide-copy" @click="copyGuide">{{ guideCopied ? t('enterprise.admin.users.invite_copied') : t('enterprise.admin.encryption.copy_guide') }}</button>
       </div>
       <div class="adm-card">
         <div class="adm-card-title">{{ t('enterprise.admin.ai.title') }}</div>
@@ -175,8 +191,9 @@ function statusLabel(s: string): string {
         <div class="adm-ai-form">
           <input v-model="aiBaseUrl" :placeholder="t('enterprise.admin.ai.base_url')" autocomplete="off">
           <input v-model="aiModel" :placeholder="t('enterprise.admin.ai.model')" autocomplete="off">
-          <input v-model="aiKey" type="password" :placeholder="t('enterprise.admin.ai.api_key')" autocomplete="new-password">
+          <input v-model="aiKey" type="password" :placeholder="t('enterprise.admin.ai.cloud_credential')" autocomplete="new-password">
         </div>
+        <p class="adm-sub">{{ t('enterprise.admin.ai.credential_note') }}</p>
         <p class="adm-sub">{{ t('enterprise.admin.ai.egress_notice') }}</p>
         <div class="adm-ai-actions">
           <button class="adm-btn" :disabled="aiSaving" @click="saveAi(true)">{{ t('enterprise.admin.ai.enable') }}</button>
@@ -203,7 +220,8 @@ function statusLabel(s: string): string {
             <th>{{ t('enterprise.admin.users.col_account') }}</th>
             <th>{{ t('enterprise.admin.users.col_status') }}</th>
             <th>{{ t('enterprise.admin.users.col_created') }}</th>
-            <th>{{ t('enterprise.admin.users.col_updated') }}</th>
+            <th>{{ t('enterprise.admin.users.col_last_used') }}</th>
+            <th><button class="adm-th-sort" @click="toggleSortUpdated">{{ t('enterprise.admin.users.col_updated') }}{{ sortUpdatedDesc ? ' ↓' : ' ↑' }}</button></th>
             <th></th>
           </tr>
         </thead>
@@ -213,6 +231,7 @@ function statusLabel(s: string): string {
             <td>{{ u.login_account }}</td>
             <td><span class="adm-status" :class="'is-' + u.status">{{ statusLabel(u.status) }}</span></td>
             <td>{{ u.created_at.slice(0, 10) }}</td>
+            <td>{{ u.last_used_at ? u.last_used_at.slice(0, 10) : '—' }}</td>
             <td>{{ u.updated_at.slice(0, 10) }}</td>
             <td class="adm-row-actions">
               <button v-if="u.status !== 'pending'" class="adm-link" @click="resetUser(u)">{{ t('enterprise.admin.users.act_reset') }}</button>
@@ -314,5 +333,8 @@ function statusLabel(s: string): string {
 .adm-modal { width: min(420px, calc(100vw - 32px)); background: var(--surface, #fff); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 24px); box-shadow: 0 16px 48px rgb(0 0 0 / 0.2); }
 .adm-code { display: block; margin: var(--s-2, 8px) 0; padding: 10px 12px; background: var(--surface-2, #f4f4f2); border-radius: var(--radius-sm, 8px); font-family: var(--font-mono, monospace); font-size: 15px; letter-spacing: 1px; user-select: all; }
 .adm-confirm-input { width: 100%; margin-top: var(--s-2, 8px); padding: 8px 10px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); box-sizing: border-box; }
+.adm-th-sort { border: none; background: none; cursor: pointer; font: inherit; color: inherit; padding: 0; }
+.adm-guide-cmd { white-space: pre-wrap; user-select: all; }
+.adm-guide-copy { margin-top: var(--s-2, 8px); align-self: flex-start; }
 .adm-promise { margin: var(--s-2, 8px) 0 0; padding-left: 18px; font-size: var(--fs-12, 12px); display: flex; flex-direction: column; gap: 4px; }
 </style>

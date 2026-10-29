@@ -23,12 +23,15 @@
       "off": "Service paused",
       "pause": "Pause service",
       "resume": "Enable service",
-      "paused_hint": "While paused: employees already signed in can keep reading synced content (no editing or syncing); new sign-ins are blocked until you re-enable the service."
+      "paused_hint": "Once paused, employees already signed in can still read synced content but cannot edit; new sign-ins are blocked until the service is re-enabled."
     },
     "encryption": {
       "title": "Access encryption (HTTPS)",
-      "not_enabled": "This instance is served over plain HTTP inside your intranet — meeting texts could be intercepted. Recommended: spend 2 minutes enabling encryption.",
-      "guide": "Enablement and certificate setup follow the DevOps deployment guide (deploy/private CA bootstrap). This page only reflects status in P0."
+      "current_http": "Current: plain HTTP inside your intranet — colleagues’ meeting texts could be intercepted.",
+      "current_https": "Current: encrypted access is enabled.",
+      "benefit": "Once enabled, meeting texts are encrypted in transit on your intranet; ~2 minutes of setup plus a one-time root certificate import per device.",
+      "guide_cmd": "Set TLS_MODE=internal-ca in the .env under deploy/private, run docker compose up -d oms-proxy; then install the root certificate from the ca/ folder on each device (macOS / Windows import scripts included).",
+      "copy_guide": "Copy setup guide"
     },
     "ai": {
       "title": "AI assistant",
@@ -38,9 +41,10 @@
       "disable": "Disable AI assistant",
       "base_url": "Endpoint (base_url)",
       "model": "Model name",
-      "api_key": "API key (write-only)",
       "save": "Save",
-      "egress_notice": "Enabling this allows meeting texts to be sent to the endpoint above — exactly why enterprise ships zero-egress by default. The allowlist is enforced at the server network layer."
+      "egress_notice": "Enabling this allows meeting texts to be sent to the endpoint above — exactly why enterprise ships zero-egress by default. The allowlist is enforced at the server network layer.",
+      "cloud_credential": "Cloud AI service credential",
+      "credential_note": "Used only for the AI egress feature; stored on the company server, unrelated to API keys on employees’ own machines."
     },
     "overview_users": "Users",
     "overview_pending": "Pending invitations",
@@ -70,7 +74,8 @@
       "delete_confirm_placeholder": "Type account name",
       "delete_confirm_btn": "Confirm delete",
       "cancelled": "Cancelled",
-      "col_updated": "Last updated"
+      "col_updated": "Last updated",
+      "col_last_used": "Last used"
     },
     "data": {
       "title": "Data & backup",

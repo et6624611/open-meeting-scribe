@@ -4,7 +4,7 @@
  */
 import client from './client'
 
-/** 实测列表项（BE c23b247 校准）：account 字段名为 login_account；无 last_used_at（P0 以 updated_at 呈现"最近变化"） */
+/** 实测列表项（BE c23b247 + 53ecb55 校准）：account 字段名为 login_account；last_used_at 真语义=未吊销设备最近使用（未使用为 null，W2-04） */
 export interface AdminUser {
   user_id: string
   display_name: string
@@ -15,6 +15,7 @@ export interface AdminUser {
   status: 'active' | 'disabled' | 'pending' | string
   created_at: string
   updated_at: string
+  last_used_at?: string | null
 }
 
 export interface InviteCodeResult {
