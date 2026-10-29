@@ -9,12 +9,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { isEnterprise } from '@/edition'
 import { listContextTasks, getContextTask, putContextSnapshot, snapshotConflictRev, type ContextTaskSummary, type ContextTaskDetail, type SnapshotPayload } from '@/api/context'
-import { sha256Hex } from '@/utils/sha256'
 
-/** 契约 §1.4 规范化正文：白名单内容字段固定顺序 JSON（客户端与服务端对账同一算法） */
-export function computeContentHash(body: Pick<SnapshotPayload, 'formal' | 'summary' | 'decisions' | 'notes' | 'insights_html'>): string {
-  return sha256Hex(JSON.stringify([body.formal, body.summary, body.decisions, body.notes, body.insights_html ?? null]))
-}
+/**
+ * content_hash 口径（2026-10-29 实测发现，待后端契约确认）：服务端对入库正文**重算并覆盖**
+ * 客户端送值（sentinel 用例：送 h2-sentinel → 记录为服务端规范化 hash）。因此 Web 端
+ * 不自算哈希、不做客户端对账——提交占位值、以响应/详情的 content_hash 为权威。
+ * 助手侧 outbox 对账同样应以服务端回执为准（3b 接线时对齐）。
+ */
+const HASH_SERVER_AUTHORITATIVE_PLACEHOLDER = ''
 
 /** Idempotency-Key：每次用户变更一个新 mutation id（UUIDv7 形态不强制，全局唯一即可；重传不变由 outbox 语义约束，Web 端一次编辑=一次提交） */
 function newMutationId(): string {
@@ -58,9 +60,8 @@ export const useContextsStore = defineStore('contexts', () => {
       decisions: base.decisions,
       notes: edits.notes,
       insights_html: base.insights_html ?? null,
-      content_hash: '',
+      content_hash: HASH_SERVER_AUTHORITATIVE_PLACEHOLDER,
     }
-    body.content_hash = computeContentHash(body)
 
     const r1 = await putContextSnapshotSafe(base.task_id, body, newMutationId(), base.server_rev)
     if (r1.kind === 'ok') return { ok: true }
@@ -68,7 +69,6 @@ export const useContextsStore = defineStore('contexts', () => {
       const latest = await getContextTask(base.task_id)
       if (!latest) return { ok: false, conflict: true }
       const merged: SnapshotPayload = { ...body, formal: latest.formal, decisions: latest.decisions, insights_html: latest.insights_html ?? null }
-      merged.content_hash = computeContentHash(merged)
       const r2 = await putContextSnapshotSafe(base.task_id, merged, newMutationId(), latest.server_rev)
       if (r2.kind === 'ok') return { ok: true }
       return { ok: false, conflict: true }
