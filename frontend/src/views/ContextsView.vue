@@ -26,7 +26,7 @@ function fmtDate(s: string | null): string {
       <button class="cx-refresh" @click="contexts.loadTasks()">{{ t('common.action.retry') }}</button>
     </header>
 
-    <p v-if="contexts.loading && !contexts.tasks.length" class="cx-empty">{{ t('enterprise.settings.assistant.probing') }}</p>
+    <p v-if="contexts.loading && !contexts.tasks.length" class="cx-empty">{{ t('enterprise.library.loading') }}</p>
     <p v-else-if="contexts.loadError" class="cx-error" role="alert">{{ contexts.loadError }}</p>
     <p v-else-if="!contexts.tasks.length" class="cx-empty">{{ t('enterprise.library.empty') }}</p>
 
@@ -62,7 +62,7 @@ function fmtDate(s: string | null): string {
 .cx-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2, 8px); }
 .cx-title { font-weight: 600; font-size: var(--fs-13, 13px); }
 .cx-meta { margin-top: 4px; font-size: var(--fs-11, 11px); color: var(--muted, #666); }
-.cx-stale { color: var(--warn, #b60); }
+.cx-stale { color: var(--muted, #666); }
 .cx-empty { color: var(--muted, #666); font-size: var(--fs-12, 12px); }
 .cx-error { color: var(--warn, #c33); font-size: var(--fs-12, 12px); }
 </style>

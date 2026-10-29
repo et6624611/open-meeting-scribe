@@ -148,7 +148,8 @@
   "library": {
     "title": "My meetings",
     "empty": "No meetings yet — let the local assistant record your first meeting",
-    "last_synced": "Last synced {time}"
+    "last_synced": "Last synced {time}",
+    "loading": "Loading…"
   },
   "detail": {
     "formal": "Transcript (final)",
