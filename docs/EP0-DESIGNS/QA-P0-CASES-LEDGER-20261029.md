@@ -317,3 +317,13 @@ QA 双销项批一次性执行：七套件 **67/67 PASS**（X05-4 新套件 + X0
 - SetupView 运行时目检（前批已完成）：自动跳转、锁定三行第五表面、零命令行文案。
 
 **销项终态**：D004 ✓销 / D005 ✓销（W-D005-B 死循环根因消除实测） / D006 ✓销。交付形态披露项收敛为两项：C 系安装包实机窗（v10 同窗）+ W10 登录态三表面并入项目方体验确认点现场。"Docker 首装全产品内完成"叙事自本盖章起**恢复无条件**（报告 §7 注记可撤，归项目管理员终局回转）。
+
+
+---
+
+## 用例扩充｜T-001 回环形态并入 X05-4a（2026-10-30，main@070af37 独立验证 12/12 PASS）
+
+- 单元面 11 形态：127/8 全段、::1、**IPv6 长格式 0:0:0:0:0:0:0:1**、**IPv4-mapped ::ffff:127.0.0.1**、localhost 判真；LAN/::ffff:LAN/10.x/None/非 IP 判假——_is_loopback_host 语义化修复实测吻合；
+- 真进程面（T-001 原场景复刻）：uvicorn --host localhost 双栈绑定 + REQUIRE_AUTH=true + 客户端 http://localhost（macOS IPv6 优先）→ bootstrap **200**（reentered:false）→ 残留 pending 重入 200（reentered:true 换新码）→ 激活 200 → needs_bootstrap=false 全链通；
+- 盲区根因备案：QA 67 项跑在 127.0.0.1/TestClient 形态，未覆盖 macOS 浏览器真实回环形态——X05-4a 永久扩充"真进程 localhost(IPv6 优先)"一条，与"组合面至少一条端到端"同训；套件 test_qa_ep0_t001_loopback.py 入 C 类回归。
+- T-001 销项支撑：8010 以 ≥070af37 重启后项目方直接重走第一步即可（重入无感换新码），DevOps 亲测后交还。
