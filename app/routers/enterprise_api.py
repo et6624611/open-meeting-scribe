@@ -100,6 +100,11 @@ def _session_user_id(request: Request) -> str | None:
     return data["uid"]
 
 
+def session_is_valid(request: Request) -> bool:
+    """供 server.py 认证网关复用：企业会话（oms_e_session）是否有效（含吊销检查）。"""
+    return _session_user_id(request) is not None
+
+
 def current_user(request: Request) -> str:
     uid = _session_user_id(request)
     if uid is None:
@@ -242,6 +247,33 @@ def auth_logout(request: Request, response: Response):
 def auth_me(user_id: str = Depends(current_user)):
     info = get_store().session_user(user_id=user_id)
     return info
+
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+@router.post("/auth/bootstrap")
+def auth_bootstrap(request: Request, body: dict):
+    """首个管理员的产品内通道（缺口①修复）：仅服务器本机回环可达、仅在零管理员时有效。
+
+    语义=初始化向导第一步的 API 化：建 pending admin + 一次性邀请码，密码仍由管理员本人
+    经 /auth/activate 自设（无密码下发纪律不变）。经反代/Caddy 的外部请求源 IP 非回环，天然 403。
+    """
+    client = request.client
+    if client is None or client.host not in _LOOPBACK_HOSTS:
+        raise EHttp(403, "bootstrap_loopback_only", "仅服务器本机可执行初始化")
+    store = get_store()
+    try:
+        user_id, invite = store.bootstrap_admin(
+            display_name=body.get("display_name") or "管理员",
+            login_account=body.get("account") or "",
+            phone=body.get("phone"),
+        )
+    except ValueError as exc:
+        raise EHttp(422, "invalid_admin", str(exc))
+    except RuntimeError as exc:
+        raise EHttp(409, "bootstrap_done", str(exc))
+    return {"user_id": user_id, "invite_code": invite, "next": "凭邀请码调用 POST /api/v1/auth/activate 自助设置密码"}
 
 
 @router.post("/auth/change-password")
