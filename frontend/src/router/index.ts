@@ -20,6 +20,13 @@ const router = createRouter({
       meta: { public: true },
     },
     {
+      // D005 初始化向导（产品裁决：首管理员必须产品内完成）：needs_bootstrap 时登录页自动跳转至此
+      path: '/setup',
+      name: 'setup',
+      component: () => import('@/views/SetupView.vue'),
+      meta: { public: true },
+    },
+    {
       // 档⑥管理台（UI 规格 §4）：仅企业形态 + admin 角色；员工端无入口
       path: '/admin',
       name: 'admin',
@@ -107,7 +114,7 @@ router.beforeEach(async (to) => {
   if (!userStore.checked) await userStore.checkAuth()
   if (to.meta.public) {
     // 已登录用户不再进登录/邀请页
-    if (userStore.isLoggedIn && (to.name === 'login' || to.name === 'activate')) return { path: '/' }
+    if (userStore.isLoggedIn && (to.name === 'login' || to.name === 'activate' || to.name === 'setup')) return { path: '/' }
     return true
   }
   if (!userStore.isLoggedIn) {

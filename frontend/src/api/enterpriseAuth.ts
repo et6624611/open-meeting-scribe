@@ -15,6 +15,9 @@ export type EnterpriseAuthErrorCode =
   | 'unauthenticated'
   | 'invite_invalid'
   | 'activation_failed'
+  | 'bootstrap_loopback_only'
+  | 'bootstrap_done'
+  | 'invalid_admin'
   | string
 
 /** /me 全量返回；login/activate 响应实测仅 {user_id, display_name, role}——其余字段可选（2026-10-29 联调校准） */
@@ -69,6 +72,22 @@ export async function enterpriseLogout(): Promise<void> {
 /** 主动改密（验证旧密码） / Change password with old-password check */
 export async function enterpriseChangePassword(oldPassword: string, newPassword: string): Promise<void> {
   await client.post('/api/v1/auth/change-password', { old_password: oldPassword, new_password: newPassword })
+}
+
+/**
+ * 首个管理员产品内 bootstrap（D005 契约 34ed119）：仅服务器本机回环 + 零 admin 实例可用；
+ * 建 pending admin + 一次性邀请码，密码由本人经 activate 自设（无密码下发纪律不变）。
+ * 完成即 409 bootstrap_done 永久关闭；X05 纪律：界面不得出现命令行引导。
+ */
+export interface BootstrapResult {
+  user_id: string
+  invite_code: string
+  next?: string
+}
+
+export async function bootstrapCreateAdmin(input: { display_name: string; account: string }): Promise<BootstrapResult> {
+  const { data } = await client.post<BootstrapResult>('/api/v1/auth/bootstrap', input)
+  return data
 }
 
 /** 免登录实例信息（登录页服务暂停拦截横幅与 AI 开关态依赖，§1.6） */

@@ -46,6 +46,25 @@
     "err_invite_invalid": "Invite code is invalid or already used. Contact your admin.",
     "err_password_mismatch": "Passwords do not match",
     "err_password_short": "Password must be at least 8 characters",
-    "back_to_login": "Back to sign in"
+    "back_to_login": "Back to sign in",
+    "setup": {
+      "step1_tag": "Setup wizard · Step 1 of 2",
+      "step2_tag": "Setup wizard · Step 2 of 2",
+      "title1": "Set up the admin account",
+      "title2": "Set your own admin password",
+      "hint1": "This server has no admin yet. Fill in the two fields below to complete the first step.",
+      "hint2": "A one-time activation code has been generated. After choosing a password you will be signed in as the admin. Nobody handles your password.",
+      "name_placeholder": "Display name (what colleagues see)",
+      "account_placeholder": "Account (phone or login name)",
+      "default_name": "Admin",
+      "bind_note": "This account will automatically claim the legacy meeting records from this computer.",
+      "create_btn": "Continue",
+      "creating": "创建中...",
+      "finish_btn": "Finish and enter",
+      "account_required": "Account is required",
+      "loopback": "Setup must be done in a browser on the server itself.",
+      "closed": "Setup has already completed and this channel is now permanently closed. Please sign in normally.",
+      "invalid_admin": "Account or display name is invalid; adjust and retry."
+    }
   }
 }
