@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
 import json
 import os
 import uuid
@@ -249,7 +250,22 @@ def auth_me(user_id: str = Depends(current_user)):
     return info
 
 
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+def _is_loopback_host(host: str | None) -> bool:
+    """回环判定（T-001 修复）：ipaddress 语义化，覆盖精确匹配漏掉的三形态——
+    IPv6 长格式（0:0:0:0:0:0:0:1）、IPv4-mapped（::ffff:127.0.0.1，dual-stack 下 macOS 浏览器经
+    localhost 访问的常见呈现）、整段 127.0.0.0/8。非回环（LAN IP 及 ::ffff:LAN）判定不变。"""
+    if not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return ip.is_loopback
 
 
 @router.post("/auth/bootstrap")
@@ -260,7 +276,7 @@ def auth_bootstrap(request: Request, body: dict):
     激活完成后（bootstrap_done 置位）永久 409。密码全程由管理员本人经 /auth/activate 自设。
     """
     client = request.client
-    if client is None or client.host not in _LOOPBACK_HOSTS:
+    if client is None or not _is_loopback_host(client.host):
         raise EHttp(403, "bootstrap_loopback_only", "仅服务器本机可执行初始化")
     store = get_store()
     try:
