@@ -255,3 +255,50 @@ L 系执行条件：L01–L03 随联调环境（assistant 进程可起即可跑�
 - **验收盲区根因（QA 自认计入）**：QA 63 项以 register_enterprise_routes 最小应用测（无外层网关），CI smoke 六步不含登录流——两层都绕开"完整 server×强制鉴权"组合。教训入册：**交付形态的组合面（网关×路由×env）必须至少一条端到端用例**。
 - **新增用例 QA-EP0-X04（C 类回归，永久）**：REQUIRE_AUTH=true + enterprise 真进程 → ①instance/info 免登录 200 ②login 达企业路由（200/企业信封）③登录后业务面正常 ④停用/错误码语义不变。修复合入后以 X04 复验销 D004；建议 CI smoke 插入登录断言（DevOps 裁量）。
 - **终局判定修订**：**Docker 正式形态在 D004 修复+X04 复验前不可交付试用企业**；开发体验形态与已交付报告结论不受追溯影响，但报告读者须知该形态差异。
+
+
+---
+
+## 新增用例登记｜X05 首管理员 bootstrap 端到端（D005，产品裁决语义，待后端契约+前端落地后执行）
+
+断言三件套（验收=后端 bootstrap 契约 + 前端 SetupView 合入后真进程执行）：
+- X05-1 本机首建：needs_bootstrap=true 时，回环来源（127.0.0.1/::1）POST bootstrap 建号端点 → 成功创建首个 admin（绑定 13373013103 认领存量语义，与裁决④一致）+ 该账号可登录 + instance/info.needs_bootstrap 转 false；
+- X05-2 非回环拒绝：needs_bootstrap=true 时，非回环来源调用同一端点 → 拒绝（403/401，不泄漏端点存在性差异）；
+- X05-3 通道永久关闭：bootstrap 完成后（needs_bootstrap=false），任何来源（含回环）再调 bootstrap 端点 → 拒绝；重复首建不存在第二管理员通道。
+- 附带目检（随 W10 补注）：needs_bootstrap=true 时登录页自动跳转 SetupView（前端落地后浏览器实测）；SetupView 不含命令行要求文案（"产品内完成"承诺）。
+- 反向纪律断言：DevOps 本机 SQL bootstrap 不再作为部署路径——文档/向导文案若引导命令行建管理员判 FAIL（应急工具属性仅限"忘记管理员密码"级）。
+
+执行状态：BLOCK（等后端契约+实现、前端 SetupView 跳转；播报到达即跑）。与 X04 同为交付形态（Docker）出场 gate 恢复无条件版本的必要条件。
+
+
+---
+
+## 销项记录｜X04+X05+D006 双销项完成（2026-10-30，main@34ed119，真完整 server 进程）
+
+套件 test_qa_ep0_x04_x05_d006.py **2/2 PASS**（uvicorn app.server:app 完整服务，非最小应用）：
+- X04 四断言全绿：REQUIRE_AUTH=true 下 ①instance/info 免登录 200 ②login 达企业路由建会话 ③业务面无会话 401 企业信封/有会话 200+快照可写 ④422 payload_not_allowed 语义不变——**D004 销项**；
+- X05 三断言全绿：①回环首建 pending admin+一次性码（激活前 needs_bootstrap 保持 true，激活后转 false）②**真非回环（本机 LAN IP 经 0.0.0.0 绑定）403 bootstrap_loopback_only 实测**③完成后回环再调 409 bootstrap_done 通道永久关闭——**D005 API 面销项**（SetupView 前端一屏未落地前，Docker 首装的 UI 跳转仍差最后一屏，端到端目检项随 FE 落地补 W10 补注）；
+- D006 双形态锁死：true 与 **false 误配对照实例**下个人遗留业务面（/api/tasks）均无条件 401 企业信封——**D006 销项**；
+- 豁免面探针（网关三分后 _AUTH_EXEMPT_PREFIXES 透传面）：/api/models、/api/config/announcements、/api/health=200（设计公开面）；/api/download/、/api/admin/users=404（企业实例未挂载个人数据面）——无企业数据裸露。
+- 全量回归：QA 五套件 64/64 PASS（增量1 结构+HTTP+M+本机收口+W 抓包）于修复后 main 复跑，零破坏。
+
+**交付形态判定恢复**：后端侧三单（D004/D005/D006）QA 复验全绿；Docker 正式形态剩余唯一差项=FE SetupView（契约 v1.1 第13条已备），落地+X05 目检补注后"首个试用企业部署"叙事可恢复无条件版本。
+
+
+---
+
+## 缺陷登记 D007（=UI 走查 W-D005-B）+ 新用例 X06（2026-10-30，main@d598b2e 实测坐实）
+
+**D007｜P0（Docker 首装场景必踩）｜首管中断死循环**：needs_bootstrap 判定=无 active admin，而 bootstrap 门槛=存在任何 admin 即 409——两步之间刷新/关页（邀请码仅存内存必然丢失）后：重进登录页 needs_bootstrap=true → 自动跳 /setup → 第一步重放 → 409 bootstrap_done（**错误码语义还是假的：根本没 done**）→ 前端"通道已永久关闭"误导 → 回登录页 → 再跳 setup → **产品内无恢复路径**，违背 D005"产品内完成"承诺本体。
+- QA 复现（真进程全新库）：bootstrap 首建 200 → 立即重入 → 409 bootstrap_done 且 needs_bootstrap 仍 true——死循环成立，与 UI 源码推演互证一致。
+- 影响面：8010 体验实例不受影响（admin 已激活）；正式客户首装中途关一次浏览器即踩中。
+
+**X05-4 重入用例（产品裁决定稿编号，原登记 X06 并入；入 C 类回归永久）**：
+- X05-4a 首建后未激活重入：bootstrap 成功→再次 bootstrap → **200 重发新邀请码**（旧码作废），needs_bootstrap 保持 true，新码可正常 activate；
+- X05-4b 激活后永久关闭（X05-3 语义保留）：activate 完成后任何再调 → 409（此时 bootstrap_done 语义为真）；
+- X05-4c 前端该态文案如实：重入引导"重新生成激活码并继续"，不得出现"已完成/永久关闭"误导；
+- X05-4d 重入仍受回环限制（非回环重入 403，不因可重入而放宽）。
+
+**双销项状态修订**：X04/D004、D006 销项维持；**D005 转"有条件"——SetupView 本体+契约面通过，D007(=W-D005-B) 修复+X05-4 复验前 Docker 首装叙事维持带雷状态**。
+
+> 产品裁决（cmsg_01m659k6gamgww226acq8vdn8h）已采纳：重入语义=无 active admin 时撤旧码原子重发、bootstrap_done 置位后才永久 409；X05-4 四断言与裁决三点一一对应，随双销项批执行。
