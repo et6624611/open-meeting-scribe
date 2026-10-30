@@ -219,6 +219,38 @@ class EnterpriseStore:
             self.conn.execute("UPDATE device_tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, user_id))
         return code
 
+    def bootstrap_admin(self, *, display_name: str, login_account: str, phone: str | None = None) -> tuple[str, str]:
+        """实例初始化专用：仅当系统中不存在任何 admin 时可用（首个管理员的产品内通道，缺口①）。
+
+        与 create_user 不同：无 actor 门槛（此刻还没有管理员），凭据语义完全一致——
+        建 pending admin + 一次性邀请码，密码由本人经 activate 自设。
+        """
+        if not display_name or not login_account:
+            raise ValueError("display_name/login_account 必填")
+        existing = self.conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'").fetchone()["c"]
+        if existing:
+            raise RuntimeError("实例已初始化（管理员已存在），请走常规登录/邀请码流程")
+        user_id = new_id("usr")
+        invite_code = generate_secret_code()
+        now = utcnow()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO users(user_id, login_account, phone, display_name, role, status, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,'pending',?,?)",
+                (user_id, login_account, phone, display_name, "admin", now, now),
+            )
+            self.conn.execute(
+                "INSERT INTO invites(invite_id, code_hash, created_by, target_user_id, max_uses, expires_at)"
+                " VALUES (?,?,NULL,?,1,?)",
+                (new_id("inv"), hash_secret(invite_code), user_id, now_add_days(30)),
+            )
+            self.conn.execute(
+                "INSERT INTO instance_config(key, value_json, updated_by, updated_at) VALUES ('bootstrap_done','true',?,?)"
+                " ON CONFLICT(key) DO UPDATE SET value_json='true', updated_at=excluded.updated_at",
+                (user_id, now),
+            )
+        return user_id, invite_code
+
     def change_password(self, *, actor_user_id: str, old_password: str, new_password: str) -> None:
         _require_actor(actor_user_id)
         row = self.conn.execute(

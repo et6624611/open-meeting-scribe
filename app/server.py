@@ -290,7 +290,30 @@ async def enforce_auth_middleware(request: Request, call_next):
     多用户部署认证网关 / Multi-user deployment auth gateway: REQUIRE_AUTH=true 时，除白名单外的所有 /api/*
     请求必须携带有效的 JWT 会话 cookie，否则返回 401 / all /api/* requests (except whitelisted) must carry valid JWT session cookie; returns 401 otherwise.
     本地模式（REQUIRE_AUTH=false）直接放行，不做任何拦截 / Local mode (REQUIRE_AUTH=false) passes through without interception.
+
+    企业形态（OMS_EDITION=enterprise，EP0 缺口修复 2026-10-30）：
+    - /api/v1/* 由端点层自带 oms_e_session 守卫（含吊销检查）与契约公开面（auth 流程/instance/info），
+      外层网关不再以个人版 oms_session 语义拦截——修复 REQUIRE_AUTH=true 下登录面 401 自锁；
+    - 其余 /api/*（个人版路由在企业实例上的遗留挂载面）**无条件**要求有效企业会话，
+      不依赖 REQUIRE_AUTH 环境变量——防误配导致企业实例裸露无鉴权写面（DevOps 实测缺口同源修复）。
     """
+    from .routers import enterprise_api as _ent
+
+    if _ent.enterprise_mode():
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        path = request.url.path
+        if (
+            path.startswith("/api/")
+            and not path.startswith("/api/v1/")
+            and not path.startswith(_AUTH_EXEMPT_PREFIXES)
+        ):
+            if not _ent.session_is_valid(request):
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": {"code": "unauthenticated", "message": "需要登录"}},
+                )
+        return await call_next(request)
     if _REQUIRE_AUTH:
         # CORS 预检请求（OPTIONS）直接放行，由 CORSMiddleware 处理响应头 /
         # Let CORS preflight (OPTIONS) pass through; CORSMiddleware handles response headers.
