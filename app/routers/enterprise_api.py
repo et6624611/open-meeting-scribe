@@ -254,17 +254,17 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 @router.post("/auth/bootstrap")
 def auth_bootstrap(request: Request, body: dict):
-    """首个管理员的产品内通道（缺口①修复）：仅服务器本机回环可达、仅在零管理员时有效。
+    """首个管理员的产品内通道（契约 v1.1 第13条 + W-D005-B 重入语义）。
 
-    语义=初始化向导第一步的 API 化：建 pending admin + 一次性邀请码，密码仍由管理员本人
-    经 /auth/activate 自设（无密码下发纪律不变）。经反代/Caddy 的外部请求源 IP 非回环，天然 403。
+    仅服务器本机回环可达；无 active admin 期间可重入（撤旧码原子重发新码，返回第二步所需全部状态），
+    激活完成后（bootstrap_done 置位）永久 409。密码全程由管理员本人经 /auth/activate 自设。
     """
     client = request.client
     if client is None or client.host not in _LOOPBACK_HOSTS:
         raise EHttp(403, "bootstrap_loopback_only", "仅服务器本机可执行初始化")
     store = get_store()
     try:
-        user_id, invite = store.bootstrap_admin(
+        result = store.bootstrap_admin(
             display_name=body.get("display_name") or "管理员",
             login_account=body.get("account") or "",
             phone=body.get("phone"),
@@ -273,7 +273,14 @@ def auth_bootstrap(request: Request, body: dict):
         raise EHttp(422, "invalid_admin", str(exc))
     except RuntimeError as exc:
         raise EHttp(409, "bootstrap_done", str(exc))
-    return {"user_id": user_id, "invite_code": invite, "next": "凭邀请码调用 POST /api/v1/auth/activate 自助设置密码"}
+    return {
+        "user_id": result["user_id"],
+        "invite_code": result["invite_code"],
+        "display_name": result["display_name"],
+        "login_account": result["login_account"],
+        "reentered": result["reentered"],
+        "next": "凭邀请码调用 POST /api/v1/auth/activate 自助设置密码",
+    }
 
 
 @router.post("/auth/change-password")

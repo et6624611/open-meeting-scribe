@@ -124,6 +124,12 @@ class EnterpriseStore:
                 params.insert(0, display_name)
             self.conn.execute(f"UPDATE users SET {sets} WHERE user_id=?", (*params, target))
             self.conn.execute("UPDATE invites SET used_count = used_count + 1 WHERE invite_id=?", (row["invite_id"],))
+        # 首管激活完成 → bootstrap_done 置位（通道自此永久关闭）
+        info = self.session_user(user_id=target)
+        if info and info["role"] == "admin" and self.conn.execute(
+            "SELECT COUNT(*) c FROM users WHERE role='admin' AND status='active'"
+        ).fetchone()["c"] == 1:
+            self.mark_bootstrap_done(user_id=target)
         return target
 
     def verify_login(self, *, login_account: str, password: str) -> str | None:
@@ -219,21 +225,56 @@ class EnterpriseStore:
             self.conn.execute("UPDATE device_tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL", (now, user_id))
         return code
 
-    def bootstrap_admin(self, *, display_name: str, login_account: str, phone: str | None = None) -> tuple[str, str]:
-        """实例初始化专用：仅当系统中不存在任何 admin 时可用（首个管理员的产品内通道，缺口①）。
+    def bootstrap_admin(self, *, display_name: str, login_account: str, phone: str | None = None) -> dict:
+        """实例初始化专用（契约 v1.1 第13条 + W-D005-B 重入语义）。
 
-        与 create_user 不同：无 actor 门槛（此刻还没有管理员），凭据语义完全一致——
-        建 pending admin + 一次性邀请码，密码由本人经 activate 自设。
+        门槛只看 **active** admin：
+        - 存在 active admin → RuntimeError（409，通道永久关闭，与 QA X05-3 断言一致）；
+        - 无 active admin 且已有 pending 首管 → **可重入**：撤未用旧码、原子重发新码、复用同一账号行
+          （不重建；display_name 保留用户第一次输入，login_account/phone 按本次输入更新）；
+        - 完全空白实例 → 建 pending admin + 一次性邀请码。
+        凭据语义全程不变：密码由本人经 activate 自设，服务端不经手。
         """
         if not display_name or not login_account:
             raise ValueError("display_name/login_account 必填")
-        existing = self.conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'").fetchone()["c"]
-        if existing:
-            raise RuntimeError("实例已初始化（管理员已存在），请走常规登录/邀请码流程")
-        user_id = new_id("usr")
+        active = self.conn.execute(
+            "SELECT COUNT(*) c FROM users WHERE role='admin' AND status='active'"
+        ).fetchone()["c"]
+        if active:
+            raise RuntimeError("初始化已完成，此通道已永久关闭")
+        pending = self.conn.execute(
+            "SELECT user_id FROM users WHERE role='admin' AND status='pending' ORDER BY created_at LIMIT 1"
+        ).fetchone()
         invite_code = generate_secret_code()
         now = utcnow()
         with self.conn:
+            if pending is not None:
+                user_id = pending["user_id"]
+                # 复用首管账号行：更新登录名/手机，display_name 保留第一次输入（裁决原文）
+                self.conn.execute(
+                    "UPDATE users SET login_account=?, phone=?, updated_at=? WHERE user_id=?",
+                    (login_account, phone, now, user_id),
+                )
+                stored = self.conn.execute(
+                    "SELECT display_name FROM users WHERE user_id=?", (user_id,)
+                ).fetchone()["display_name"]
+                self.conn.execute(
+                    "UPDATE invites SET disabled_at=? WHERE target_user_id=? AND disabled_at IS NULL",
+                    (now, user_id),
+                )
+                self.conn.execute(
+                    "INSERT INTO invites(invite_id, code_hash, created_by, target_user_id, max_uses, expires_at)"
+                    " VALUES (?,?,NULL,?,1,?)",
+                    (new_id("inv"), hash_secret(invite_code), user_id, now_add_days(30)),
+                )
+                return {
+                    "user_id": user_id,
+                    "invite_code": invite_code,
+                    "display_name": stored,
+                    "login_account": login_account,
+                    "reentered": True,
+                }
+            user_id = new_id("usr")
             self.conn.execute(
                 "INSERT INTO users(user_id, login_account, phone, display_name, role, status, created_at, updated_at)"
                 " VALUES (?,?,?,?,?,'pending',?,?)",
@@ -244,12 +285,23 @@ class EnterpriseStore:
                 " VALUES (?,?,NULL,?,1,?)",
                 (new_id("inv"), hash_secret(invite_code), user_id, now_add_days(30)),
             )
+        return {
+            "user_id": user_id,
+            "invite_code": invite_code,
+            "display_name": display_name,
+            "login_account": login_account,
+            "reentered": False,
+        }
+
+    def mark_bootstrap_done(self, *, user_id: str) -> None:
+        """bootstrap_done 状态位=首管**激活完成**时置位（W-D005-B 修正：原在第一步置位属误导）。"""
+        with self.conn:
             self.conn.execute(
-                "INSERT INTO instance_config(key, value_json, updated_by, updated_at) VALUES ('bootstrap_done','true',?,?)"
+                "INSERT INTO instance_config(key, value_json, updated_by, updated_at)"
+                " VALUES ('bootstrap_done','true',?,?)"
                 " ON CONFLICT(key) DO UPDATE SET value_json='true', updated_at=excluded.updated_at",
-                (user_id, now),
+                (user_id, utcnow()),
             )
-        return user_id, invite_code
 
     def change_password(self, *, actor_user_id: str, old_password: str, new_password: str) -> None:
         _require_actor(actor_user_id)

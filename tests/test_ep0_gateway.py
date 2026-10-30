@@ -11,6 +11,7 @@ import importlib
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db.dao import NotFoundError
 from app.routers import enterprise_api
 
 
@@ -25,7 +26,8 @@ def _boot_env(monkeypatch, tmp_path, require_auth: str):
     srv = importlib.reload(srv)
     c = TestClient(srv.app)
     store = enterprise_api.get_store()
-    uid, code = store.bootstrap_admin(display_name="管理员", login_account="13373013103", phone="13373013103")
+    res = store.bootstrap_admin(display_name="管理员", login_account="13373013103", phone="13373013103")
+    uid, code = res["user_id"], res["invite_code"]
     store.activate_invite(invite_code=code, password="Admin-Pw-0001")
     return c, store, uid
 
@@ -75,16 +77,43 @@ def test_bootstrap_http_rejects_non_loopback(tmp_path, monkeypatch):
 def test_bootstrap_channel_zero_admin_only(tmp_path, monkeypatch):
     root = tmp_path / "BOOT"
     monkeypatch.setenv("OMS_DATA_ROOT", str(root))
-    enterprise_api.reset_store_cache()
     from app.db.config import DataRoot
     from app.db.dao import EnterpriseStore
     from app.db.database import migrate
 
     store = EnterpriseStore(DataRoot(root=root))
     migrate(store.conn)
-    uid, code = store.bootstrap_admin(display_name="A", login_account="13373013103")
-    with pytest.raises(RuntimeError):  # 已有 admin 后再 bootstrap 被拒
-        store.bootstrap_admin(display_name="B", login_account="13900000000")
-    assert store.activate_invite(invite_code=code, password="First-Admin-Pw") == uid
-    assert store.verify_login(login_account="13373013103", password="First-Admin-Pw") == uid
+    first = store.bootstrap_admin(display_name="张三", login_account="13373013103")
+    assert first["reentered"] is False
+    # W-D005-B 重入语义：激活前 bootstrap 可重入（首装中途关浏览器不再死循环）
+    second = store.bootstrap_admin(display_name="李四", login_account="13373013103")
+    assert second["reentered"] is True
+    assert second["user_id"] == first["user_id"]  # 同账号不重建
+    assert second["display_name"] == "张三"  # 显示名保留用户第一次输入（裁决原文）
+    # 旧码作废：撤未用旧邀请码
+    with pytest.raises(NotFoundError):
+        store.activate_invite(invite_code=first["invite_code"], password="Old-Code-Pw-1")
+    # 新码激活 + verify
+    assert store.activate_invite(invite_code=second["invite_code"], password="First-Admin-Pw") == first["user_id"]
+    assert store.verify_login(login_account="13373013103", password="First-Admin-Pw") == first["user_id"]
+    # 激活完成后通道永久关闭（X05-3 断言语义不变）
+    with pytest.raises(RuntimeError):
+        store.bootstrap_admin(display_name="王五", login_account="13900000000")
+    # bootstrap_done 状态位=激活完成时置位（非第一步）
+    assert store.get_instance_config("bootstrap_done", default=None) is True
+    store.close()
+
+
+def test_bootstrap_done_flag_not_set_at_step_one(tmp_path, monkeypatch):
+    """第一步建号后（未激活）bootstrap_done 必须为假——needs_bootstrap 与通道状态自洽。"""
+    root = tmp_path / "BD"
+    monkeypatch.setenv("OMS_DATA_ROOT", str(root))
+    from app.db.config import DataRoot
+    from app.db.dao import EnterpriseStore
+    from app.db.database import migrate
+
+    store = EnterpriseStore(DataRoot(root=root))
+    migrate(store.conn)
+    store.bootstrap_admin(display_name="A", login_account="13373013103")
+    assert store.get_instance_config("bootstrap_done", default=None) is None
     store.close()
