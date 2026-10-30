@@ -29,6 +29,8 @@ onMounted(async () => {
   try {
     instance.value = await fetchInstanceInfo()
     if (instance.value.service_open === false) noticeMsg.value = t('login.enterprise.paused_notice')
+    // D005：零管理员实例 → 首屏即初始化向导（产品裁决，PM cmsg_01m658z46dkzb2whkw814g62y1）
+    if (instance.value.needs_bootstrap) router.replace('/setup')
   } catch {
     /* 免登录端点不可达时不阻塞表单，提交时以后端错误为准 */
   }
