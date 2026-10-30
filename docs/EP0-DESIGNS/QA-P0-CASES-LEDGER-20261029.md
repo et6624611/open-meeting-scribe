@@ -244,3 +244,14 @@ L 系执行条件：L01–L03 随联调环境（assistant 进程可起即可跑�
 **C 系**：blocked-on-environment 维持——个人版安装包形态需 Win/mac 实机窗口（v10 遗留同窗）；过程证据=合入纯新增 0 删除、CI 仅构建企业形态、FE 默认构建红线自查、后端全量 1090 passed。
 
 **终局**：实现缺口 **0**；A/B/M/L/U 域 + W 抓包系核心 + OPS 实机六步 smoke 全绿；披露三项=①C 系安装包（环境，随 v10 实机窗）②W10 登录态三表面（能力，随项目方体验确认点）③W02 开启态代理 501（已声明边界）。**QA 判定：企业版 P0 具备向项目方交付条件（附上述三项如实披露）。**
+
+
+---
+
+## 终局判定补录｜D004：REQUIRE_AUTH=true 强制形态登录面断（2026-10-30，DevOps 发现、QA 实进程复现坐实）
+
+- **严重级 P0（仅对正式 Docker 交付形态）**：deploy/private/docker-compose.yml:12 硬置 REQUIRE_AUTH=true，而 server.py 外层网关 `_AUTH_EXEMPT_PREFIXES` 不含 `/api/v1/auth/*` 与 `/api/v1/instance/info` → 正式包形态下登录/激活/免登录预取在网关层 401，**企业实例无法登录**。项目方当前体验路径（开发形态 REQUIRE_AUTH=false）不受影响。
+- **QA 复现证据（本机真进程 app.server:app）**：true 形态 GET /api/v1/instance/info → 401 `{"detail":"Authentication required"}`（网关信封）、POST login → 401 同体未达企业路由；false+已迁移对照 → info 200 正常 DTO、login 401 `{"error":{"code":"bad_credentials"}}` 企业信封可达。
+- **验收盲区根因（QA 自认计入）**：QA 63 项以 register_enterprise_routes 最小应用测（无外层网关），CI smoke 六步不含登录流——两层都绕开"完整 server×强制鉴权"组合。教训入册：**交付形态的组合面（网关×路由×env）必须至少一条端到端用例**。
+- **新增用例 QA-EP0-X04（C 类回归，永久）**：REQUIRE_AUTH=true + enterprise 真进程 → ①instance/info 免登录 200 ②login 达企业路由（200/企业信封）③登录后业务面正常 ④停用/错误码语义不变。修复合入后以 X04 复验销 D004；建议 CI smoke 插入登录断言（DevOps 裁量）。
+- **终局判定修订**：**Docker 正式形态在 D004 修复+X04 复验前不可交付试用企业**；开发体验形态与已交付报告结论不受追溯影响，但报告读者须知该形态差异。
