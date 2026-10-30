@@ -304,6 +304,10 @@ egress_audit(ts, user_id, action, object_ref, byte_len, client_mutation_id)
 6. 迁移命令面扩展：`python -m app.db migrate-legacy --source <dir> --account <login>`（§5 工具化落地）。
 7. POST /pairings 响应字段按实测定为 {pairing_code, expires_in_minutes:10}（§1.8 已同步修订，FE 8e8e023 实测口径背书）；GET /admin/users 增补 last_used_at（=该用户未吊销 device token 的最近使用时间，支持管理台"上次使用"列语义）。
 12. **/api/v1/admin/invites 实况修正（QA cmsg_01m641x2d0m2wxqs989ysh2wj4）**：P0 实测=404 路由未挂载；此前两处播报"501 占位"为失实表述（501 实际仅 /ai/summary/generate），§1.3 已按实况改注。用户可见语义不变（偏差①批准口径与 P1 候补资格不受影响）。
+13. **交付形态网关与 bootstrap（34ed119/5d0a66a，D004/D005/D006 修复）**：
+    - 企业形态（OMS_EDITION=enterprise）认证网关三分：`/api/v1/*` 由端点层自守卫（oms_e_session+吊销检查，含 login/activate/instance/info 公开面）不再被个人版网关拦截（D004 修复）；其余 `/api/*` 个人版遗留挂载面**无条件**要求有效企业会话、不依赖 REQUIRE_AUTH 环境变量（D006 误配防护）；个人版分支逻辑零改动。
+    - `POST /api/v1/auth/bootstrap`：**仅服务器本机回环可达 + 仅零 admin 实例可用**，建 pending admin + 一次性邀请码（密码仍经 /auth/activate 自设，无密码下发纪律不变），二次调用 409 bootstrap_done——初始化向导第一步的产品内 API 化（D005）。SetupView 消费口径：needs_bootstrap=true 时登录页自动跳转；**首屏默认账号=13373013103**（裁决④认领语义，FE 预填并允许修改显示名）；存量数据认领仍走 migrate-legacy --account。经反代/Caddy 的外部来源因源 IP 非回环天然 403。
+    - 验收断言面：QA X04（true+enterprise 真进程四断言）+ bootstrap 三断言（本机首建/非回环拒绝/完成后通道关闭）。
 8. GET /api/sync/queue（本地面）未配对形态定为 **200 空队列**（FE 7a6f23c 实测背书；本地面不设 409 语义，QA 断言基准同步）。
 9. 助手面本地数据目录端点交付（77765aa）：`GET /api/local/storage`（目录/用量/可写性）、`POST /api/local/storage/migrate`（复制-校验-保留源，幂等，嵌套/同目录 422）；**切换生效=重启助手注入 OMS_DATA_ROOT**（个人版路径基座重构属 v10 债务，本片不触；UI 文案需按"迁移并重启生效"如实呈现，请产品经理知会 UI/QA）。
 10. **content_hash 权威口径（FE ba8de22 发现，后端复核后定稿）**：实现语义=**服务端权威重算**（规范化 blob 的 sha256，客户端提交值一律覆盖，哨兵伪造测试背书），契约 §1.4 原"客户端计算、服务端原样记录"表述作废——服务端权威防篡改且与 M 系对账一致。客户端可自算用于本地对账展示，冲突时以响应/详情为准；助手 outbox 3b 对账按服务端回执设计成立。
