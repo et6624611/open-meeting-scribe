@@ -104,7 +104,37 @@ def test_bootstrap_channel_zero_admin_only(tmp_path, monkeypatch):
     store.close()
 
 
-def test_bootstrap_done_flag_not_set_at_step_one(tmp_path, monkeypatch):
+def test_loopback_host_forms_t001(tmp_path, monkeypatch):
+    """T-001：macOS 浏览器 localhost 经 IPv6/dual-stack 的回环形态必须全部判真，LAN 形态判假。"""
+    from types import SimpleNamespace
+
+    from app.routers.enterprise_api import _is_loopback_host
+
+    for h in ("127.0.0.1", "::1", "0:0:0:0:0:0:0:1", "::ffff:127.0.0.1", "127.0.0.53", "localhost"):
+        assert _is_loopback_host(h), h
+    for h in ("10.0.0.5", "::ffff:10.0.0.5", "192.168.1.7", "", None, "testclient"):
+        assert not _is_loopback_host(h), h
+
+    # 端点级：长格式/映射形态来源首建成功（此前精确匹配会 403——T-001 根因形态）
+    root = tmp_path / "LB"
+    monkeypatch.setenv("OMS_DATA_ROOT", str(root))
+    monkeypatch.setenv("OMS_EDITION", "enterprise")
+    enterprise_api.reset_store_cache()
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    enterprise_api.register_enterprise_routes(app)
+    for host in ("0:0:0:0:0:0:0:1", "::ffff:127.0.0.1"):
+        req = SimpleNamespace(client=SimpleNamespace(host=host))
+        result = enterprise_api.auth_bootstrap(request=req, body={"account": "13373013103", "display_name": "A"})
+        assert result["invite_code"] and result["reentered"] in (False, True)  # 首建或重入均非 403
+    # LAN 来源拒绝（含 IPv4-mapped LAN）
+    for host in ("10.0.0.5", "::ffff:10.0.0.5"):
+        req = SimpleNamespace(client=SimpleNamespace(host=host))
+        with pytest.raises(enterprise_api.EHttp) as exc:
+            enterprise_api.auth_bootstrap(request=req, body={"account": "x", "display_name": "A"})
+        assert exc.value.status == 403
+    enterprise_api.reset_store_cache()
     """第一步建号后（未激活）bootstrap_done 必须为假——needs_bootstrap 与通道状态自洽。"""
     root = tmp_path / "BD"
     monkeypatch.setenv("OMS_DATA_ROOT", str(root))
