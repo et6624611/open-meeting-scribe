@@ -38,10 +38,13 @@ async function createAdmin() {
   if (!account.value.trim()) { errorMsg.value = t('login.enterprise.setup.account_required'); return }
   submitting.value = true
   try {
-    boot.value = await bootstrapCreateAdmin({
-      display_name: displayName.value.trim() || t('login.enterprise.setup.default_name'),
-      account: account.value.trim(),
-    })
+    // W-D005-B 裁决1（重入不覆盖语义）：显示名留空时省略字段——
+    // 首建由后端落默认"管理员"，重入时后端保留用户第一次输入，前端不代传默认值
+    boot.value = await bootstrapCreateAdmin(
+      displayName.value.trim()
+        ? { display_name: displayName.value.trim(), account: account.value.trim() }
+        : { account: account.value.trim() },
+    )
     step.value = 2
   } catch (err) {
     const code = authErrorCode(err)

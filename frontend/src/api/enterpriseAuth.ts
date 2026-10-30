@@ -85,7 +85,7 @@ export interface BootstrapResult {
   next?: string
 }
 
-export async function bootstrapCreateAdmin(input: { display_name: string; account: string }): Promise<BootstrapResult> {
+export async function bootstrapCreateAdmin(input: { display_name?: string; account: string }): Promise<BootstrapResult> {
   const { data } = await client.post<BootstrapResult>('/api/v1/auth/bootstrap', input)
   return data
 }
