@@ -9,7 +9,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { isEnterprise } from '@/edition'
-import { listMyTeams, listTeamMembers, type TeamRole, type TeamSummary } from '@/api/teams'
+import { listMyTeams, listTeamMembers, type TeamMember, type TeamRole, type TeamSummary } from '@/api/teams'
 import { scopedGet, scopedSet } from '@/utils/scopedStorage'
 import { useUserStore } from './user'
 
@@ -36,22 +36,33 @@ export const useSpaceStore = defineStore('space', () => {
   }
 
   /**
-   * 成员显示名缓存（uid→name，按团队加载；GET /teams/{id}/members 端点 BE 尚在排期——
-   * 请求失败静默空缓存，消费侧回退不渲染"公开人"行，不猜名不显裸 id。端点落地零改动生效） */
+   * 成员显示名缓存（uid→name，按团队加载）+按团队原始列表（WP-4 成员管理面/首访轻提示的 X 取数）。
+   * 段五后 GET members 已在服；请求失败仍静默空缓存回退不猜。 */
   const memberNames = ref<Record<string, string>>({})
+  const membersByTeam = ref<Record<string, TeamMember[]>>({})
+  /** 本次会话刚创建的团队 id（规格 §2 空态引导语取数；运行时态不持久化） */
+  const justCreatedTeamId = ref<string | null>(null)
 
   function memberName(uid: string): string | null {
     return memberNames.value[uid] ?? null
   }
 
-  async function loadMembers(teamId: string): Promise<void> {
-    if (!isEnterprise || teamId === PRIVATE_SPACE) return
+  function teamMembers(teamId: string): TeamMember[] {
+    return membersByTeam.value[teamId] ?? []
+  }
+
+  async function loadMembers(teamId: string): Promise<TeamMember[]> {
+    if (!isEnterprise || teamId === PRIVATE_SPACE) return []
     try {
       const members = await listTeamMembers(teamId)
+      membersByTeam.value = { ...membersByTeam.value, [teamId]: members }
       const next = { ...memberNames.value }
       for (const m of members) next[m.user_id] = m.display_name
       memberNames.value = next
-    } catch { /* 端点未就位（404）静默回退：显示名缺省 */ }
+      return members
+    } catch {
+      return []
+    }
   }
 
   /** 幂等加载（并发共享同一次请求）；完成后校验/恢复最近所在空间，失效（被移出团队等）静默回私有 */
@@ -118,6 +129,8 @@ export const useSpaceStore = defineStore('space', () => {
   function reset(): void {
     teams.value = []
     memberNames.value = {}
+    membersByTeam.value = {}
+    justCreatedTeamId.value = null
     loaded.value = false
     loadError.value = false
     loading = null
@@ -127,6 +140,6 @@ export const useSpaceStore = defineStore('space', () => {
   return {
     teams, loaded, loadError, currentId,
     isTeamSpace, currentTeam, myRole, canEdit, isTeamAdmin, currentSpaceName,
-    loadTeams, switchSpace, reset, memberName, loadMembers, ensureReady,
+    loadTeams, switchSpace, reset, memberName, loadMembers, teamMembers, ensureReady, justCreatedTeamId,
   }
 })

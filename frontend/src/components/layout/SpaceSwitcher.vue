@@ -5,16 +5,24 @@
  * 挂载在 ActivityRail 顶部（企业形态）：rail 宽度受限，触发按钮显图标+截断空间名，
  * 完整空间名与角色标注在下拉内呈现（挂载形态差异已随批次播报请 UI 复核）。
  * 角色标注是"只读成员理解为什么不能改"的第一入口（规格 §1.1）——必须显性。
- * "+ 新建团队"入口随 WP-4 建团队弹窗落地（本批不建无行为的占位按钮）。
+ * WP-4 增件："+ 新建团队"入口（下拉底部，规格 §1.1 mock 位置）+ 首访轻提示（§2.3）。
+ * 首访轻提示：非管理员成员首次进入团队=一次性 toast"您已被 X 加入团队「Y」（角色：R）"，
+ * 已读键 oms.u.<uid>.team_seen.<team_id>（scopedKey 纪律）；X=团队首个管理员显示名，
+ * 缺 members 数据降级"您已加入团队「Y」"——不猜名，确认即散不留守踪。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PRIVATE_SPACE, useSpaceStore } from '@/stores/space'
-import { isTeamArchived } from '@/api/teams'
+import { firstAdminName, isTeamArchived } from '@/api/teams'
 import { usePopMenu } from '@/composables/usePopMenu'
+import { useUserStore } from '@/stores/user'
+import { scopedGet, scopedSet } from '@/utils/scopedStorage'
+import { showToast } from '@/composables/useToast'
+import TeamCreateDialog from '@/components/modals/TeamCreateDialog.vue'
 
 const { t } = useI18n()
 const space = useSpaceStore()
+const userStore = useUserStore()
 
 const btnEl = ref<HTMLElement | null>(null)
 const menuEl = ref<HTMLElement | null>(null)
@@ -30,6 +38,32 @@ const displayName = computed(() => (space.isTeamSpace ? space.currentSpaceName :
 const triggerTitle = computed(() => t('enterprise.space.current_aria', { name: displayName.value }))
 
 onMounted(() => { void space.ensureReady() })
+
+const showCreate = ref(false)
+
+/** 首访轻提示（watch 覆盖初始恢复的团队空间与应用内切换两种到达路径） */
+watch(
+  () => [space.currentId, space.loaded, space.myRole] as const,
+  async ([id, loaded, role]) => {
+    if (!loaded || id === PRIVATE_SPACE || !role) return
+    if (role === 'admin') return // 自建/受让管理员不打扰；规格场景=被拉入团队的成员
+    const uid = userStore.user?.id
+    if (!uid) return
+    const seenKey = `team_seen.${id}`
+    if (scopedGet(uid, seenKey)) return
+    const members = space.teamMembers(id).length ? space.teamMembers(id) : await space.loadMembers(id)
+    const adminName = firstAdminName(members)
+    const roleName = t(role === 'viewer' ? 'enterprise.space.role_viewer' : 'enterprise.space.role_editor')
+    showToast(
+      adminName
+        ? t('enterprise.space.joined_toast', { admin: adminName, team: space.currentSpaceName, role: roleName })
+        : t('enterprise.space.joined_toast_no_admin', { team: space.currentSpaceName, role: roleName }),
+      'success',
+    )
+    scopedSet(uid, seenKey, new Date().toISOString())
+  },
+  { immediate: true },
+)
 
 function pick(id: string) {
   space.switchSpace(id)
@@ -104,7 +138,15 @@ function roleLabel(role: string): string {
       </template>
       <p v-else-if="space.loaded && !space.loadError" class="ss-empty">{{ t('enterprise.space.no_teams') }}</p>
       <p v-else-if="space.loadError" class="ss-empty" role="alert">{{ t('enterprise.space.load_error') }}</p>
+
+      <hr class="ss-sep">
+      <button role="menuitem" class="ss-item ss-create" @click="showCreate = true">
+        <span class="ss-item-name">{{ t('enterprise.space.new_team') }}</span>
+        <span class="ss-hint" aria-hidden="true">＋</span>
+      </button>
     </div>
+
+    <TeamCreateDialog v-if="showCreate" @close="showCreate = false" />
   </div>
 </template>
 
@@ -194,4 +236,6 @@ function roleLabel(role: string): string {
 }
 .ss-archived { color: var(--subtle, #999); font-size: var(--fs-11, 11px); }
 .ss-empty { margin: 6px 14px; font-size: var(--fs-11, 11px); color: var(--subtle, #999); }
+.ss-sep { margin: var(--s-2, 8px) 0 0; border: none; border-top: 1px solid var(--border, #eee); }
+.ss-create { color: var(--accent, #2a6); font-weight: 600; }
 </style>

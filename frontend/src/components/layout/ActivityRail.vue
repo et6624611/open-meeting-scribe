@@ -82,6 +82,17 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
       </IconButton>
+      <!-- 团队空间·管理员：成员管理（规格 §3 可编辑成员无此入口=不渲染不解释） -->
+      <IconButton
+        v-if="isEnterprise && space.isTeamSpace && space.isTeamAdmin"
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'members' }"
+        :label="t('sidebar.rail_members')"
+        tip-position="right"
+        @click="navigate('/members')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+      </IconButton>
       <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
       <IconButton
         v-if="!isEnterprise"
@@ -133,7 +144,7 @@ const space = useSpaceStore()
 const appVersion = 'v2.0.0'
 
 /** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
-const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/changes', '/settings'])
+const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/changes', '/members', '/settings'])
 
 /** Origin route before entering a secondary page, for toggle-back / 进入二级管理页前的来源路径 */
 const previousRoute = ref('')

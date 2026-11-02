@@ -235,8 +235,10 @@ export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
   return data.members
 }
 
-export async function addTeamMembers(teamId: string, userIds: string[]): Promise<void> {
-  await client.post(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, { user_ids: userIds })
+/** 批量加成员（D010 终态 {user_ids:[...], role?}；added/failed 双载由调用方按 ok 处理，
+ *  非成员/权限不足先行 404/403 不被批量结果吞掉——BE 语义） */
+export async function addTeamMembers(teamId: string, userIds: string[], role?: TeamRole): Promise<void> {
+  await client.post(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, role ? { user_ids: userIds, role } : { user_ids: userIds })
 }
 
 export async function removeTeamMember(teamId: string, userId: string): Promise<void> {
@@ -245,4 +247,21 @@ export async function removeTeamMember(teamId: string, userId: string): Promise<
 
 export async function setMemberRole(teamId: string, userId: string, role: TeamRole): Promise<void> {
   await client.put(`/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/role`, { role })
+}
+
+/** 转让管理员（BE transfer-admin 实码 body={to_user_id}；单事务+role_transfer 留痕） */
+export async function transferTeamAdmin(teamId: string, toUserId: string): Promise<void> {
+  await client.post(`/api/v1/teams/${encodeURIComponent(teamId)}/transfer-admin`, { to_user_id: toUserId })
+}
+
+/** 建团队选成员搜索（§8.5：仅 active，只回 user_id/display_name，形状逐键对实码） */
+export interface UserSearchHit { user_id: string; display_name: string }
+export async function searchUsers(q: string): Promise<UserSearchHit[]> {
+  const { data } = await client.get<{ users: UserSearchHit[] }>('/api/v1/users/search', { params: { q } })
+  return data.users
+}
+
+/** 首个管理员显示名（首访轻提示"被 X 加入"的 X 取数；无 members 数据时 null 走省略分支） */
+export function firstAdminName(members: Array<{ role: string; display_name: string }>): string | null {
+  return members.find((m) => m.role === 'admin')?.display_name ?? null
 }

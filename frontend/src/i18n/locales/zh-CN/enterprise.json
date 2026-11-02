@@ -16,7 +16,10 @@
     "archived_tag": "已归档",
     "search_placeholder": "搜索团队",
     "no_teams": "还没有加入任何团队。",
-    "load_error": "团队列表加载失败，请稍后重试"
+    "load_error": "团队列表加载失败，请稍后重试",
+    "new_team": "新建团队",
+    "joined_toast": "您已被 {admin} 加入团队「{team}」（角色：{role}）",
+    "joined_toast_no_admin": "您已加入团队「{team}」（角色：{role}）"
   },
   "publish": {
     "entry_task": "公开到团队…",
@@ -27,7 +30,7 @@
     "scope_decision": "只公开选中的这一条决策。",
     "teams_label": "公开给",
     "already_published_tag": "已公开到该团队",
-    "no_teams_hint": "您还没有加入任何团队，可以请团队管理员把您加入团队。",
+    "no_teams_hint": "您还没有加入任何团队。可用空间切换器里的\"新建团队\"创建，或请团队管理员把您加入团队。",
     "excluded_heading": "不会出现（永远留在您的设备）：",
     "excluded_items": "录音音频 · 逐字转写",
     "after_note": "公开后：团队能看到这份内容；您私有空间里的原件不受影响，同事的修改也不会改动您的原件。您可以随时撤回。",
@@ -238,7 +241,8 @@
     "empty": "还没有人公开内容。您可以把自己的纪要或决策公开进来。",
     "published_by": "由 {name} 公开",
     "self": "您",
-    "viewer_note": "您在这个团队是只读成员，如需编辑内容，请联系团队管理员。"
+    "viewer_note": "您在这个团队是只读成员，如需编辑内容，请联系团队管理员。",
+    "created_empty": "团队建好了。把您的纪要或决策公开进来，同事就能看到。"
   },
   "changes": {
     "title": "变更记录",
@@ -282,5 +286,45 @@
     "empty": "还没有公开的决策。在会议详情页可以把单条决策公开到团队。",
     "no_match": "没有匹配的决策",
     "from": "来自《{title}》"
+  },
+  "create": {
+    "title": "新建团队",
+    "name_label": "团队名称",
+    "name_placeholder": "给团队起个名字",
+    "members_label": "选择成员（可跳过，稍后在成员管理中添加）",
+    "search_placeholder": "搜索同事姓名",
+    "no_users": "没有找到匹配的同事",
+    "note": "您自动成为团队管理员；成员由您从同事中挑选，随时可调整。",
+    "btn": "创建",
+    "creating": "创建中…",
+    "toast_done": "团队建好了",
+    "err_forbidden": "当前账号不能创建团队",
+    "err_failed": "创建失败，请稍后重试",
+    "remove_member_aria": "移除所选成员"
+  },
+  "members": {
+    "title": "成员管理 · {name}",
+    "private_hint": "成员管理在团队空间里进行——先切换到团队。",
+    "not_admin_hint": "您不是这个团队的管理员，成员管理由管理员进行。",
+    "change_role_aria": "调整该成员角色",
+    "remove_btn": "移出团队",
+    "remove_confirm": "移出后其不再看到团队内容；他已公开的内容会保留。",
+    "removed": "已移出 {name}",
+    "err_action": "操作未成功，请稍后重试",
+    "transfer_btn": "转让管理员",
+    "transfer_confirm": "转让后您将不再是管理员，此操作即时生效。",
+    "transfer_aria": "选择转让对象",
+    "transfer_pick": "选择同事…",
+    "transferred": "管理员已转让",
+    "add_title": "添加成员",
+    "add_btn": "添加所选",
+    "added": "成员已添加",
+    "search_placeholder": "搜索同事姓名",
+    "add_role_aria": "新成员角色",
+    "admin_title": "转让与归档",
+    "archive_btn": "归档团队",
+    "archive_note": "归档后您和同事仍可查看历史内容，但不再接受新的公开和编辑。彻底删除请联系实例管理员。",
+    "archive_input_placeholder": "输入团队名称以确认",
+    "archived": "团队已归档，内容保留只读"
   }
 }

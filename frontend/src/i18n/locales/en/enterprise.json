@@ -16,7 +16,10 @@
     "archived_tag": "Archived",
     "search_placeholder": "Search teams",
     "no_teams": "You have not joined any teams yet.",
-    "load_error": "Failed to load your teams. Please try again later."
+    "load_error": "Failed to load your teams. Please try again later.",
+    "new_team": "New team",
+    "joined_toast": "{admin} added you to team “{team}” (role: {role})",
+    "joined_toast_no_admin": "You have joined team “{team}” (role: {role})"
   },
   "publish": {
     "entry_task": "Publish to team…",
@@ -27,7 +30,7 @@
     "scope_decision": "Only the selected decision will be published.",
     "teams_label": "Publish to",
     "already_published_tag": "Already published to this team",
-    "no_teams_hint": "You have not joined any teams yet. A team admin can add you to one.",
+    "no_teams_hint": "You have not joined any teams yet. Use \"New team\" in the space switcher, or ask a team admin to add you.",
     "excluded_heading": "Never included (stays on your device):",
     "excluded_items": "Recording audio · verbatim transcript",
     "after_note": "After publishing: the team sees this content; your original in the private space is untouched, and teammates' edits never change your original. You can withdraw it at any time.",
@@ -238,7 +241,8 @@
     "empty": "Nothing has been published yet. You can publish your minutes or decisions to the team.",
     "published_by": "Published by {name}",
     "self": "You",
-    "viewer_note": "You are a read-only member of this team. To edit content, contact the team admin."
+    "viewer_note": "You are a read-only member of this team. To edit content, contact the team admin.",
+    "created_empty": "Team created. Publish your minutes or decisions here and teammates will see them."
   },
   "changes": {
     "title": "Change log",
@@ -282,5 +286,45 @@
     "empty": "No published decisions yet. Publish a single decision from a meeting's detail page.",
     "no_match": "No matching decisions",
     "from": "From “{title}”"
+  },
+  "create": {
+    "title": "New team",
+    "name_label": "Team name",
+    "name_placeholder": "Name your team",
+    "members_label": "Choose members (optional; add later in member management)",
+    "search_placeholder": "Search colleagues by name",
+    "no_users": "No matching colleagues",
+    "note": "You automatically become the team admin; pick members from your colleagues anytime.",
+    "btn": "Create",
+    "creating": "Creating…",
+    "toast_done": "Team created",
+    "err_forbidden": "This account cannot create teams",
+    "err_failed": "Creation failed. Please try again later.",
+    "remove_member_aria": "Remove selected member"
+  },
+  "members": {
+    "title": "Members · {name}",
+    "private_hint": "Member management lives in team spaces — switch to a team first.",
+    "not_admin_hint": "You are not the admin of this team; member management is admin-only.",
+    "change_role_aria": "Change this member's role",
+    "remove_btn": "Remove from team",
+    "remove_confirm": "After removal they no longer see team content; what they already published stays.",
+    "removed": "{name} removed",
+    "err_action": "Action failed. Please try again later.",
+    "transfer_btn": "Transfer admin",
+    "transfer_confirm": "You will no longer be an admin once transferred; effective immediately.",
+    "transfer_aria": "Choose transfer target",
+    "transfer_pick": "Choose a colleague…",
+    "transferred": "Admin role transferred",
+    "add_title": "Add members",
+    "add_btn": "Add selected",
+    "added": "Members added",
+    "search_placeholder": "Search colleagues by name",
+    "add_role_aria": "New members' role",
+    "admin_title": "Transfer & archive",
+    "archive_btn": "Archive team",
+    "archive_note": "After archiving, you and teammates can still view history, but no new publishing or editing. For permanent deletion, contact the instance admin.",
+    "archive_input_placeholder": "Type the team name to confirm",
+    "archived": "Team archived — content kept read-only"
   }
 }

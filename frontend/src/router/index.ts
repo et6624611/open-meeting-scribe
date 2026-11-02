@@ -105,6 +105,13 @@ const router = createRouter({
       component: () => import('@/views/ChangesView.vue'),
       beforeEnter: () => (isEnterprise ? true : { path: '/' }),
     },
+    {
+      path: '/members',
+      name: 'members',
+      // 成员管理（P1-WP-4，规格 §2 管理员形态）：仅企业形态存在；非管理员/私有空间页内提示态
+      component: () => import('@/views/MembersView.vue'),
+      beforeEnter: () => (isEnterprise ? true : { path: '/' }),
+    },
     // 洞察板独立浏览页：“在浏览器中打开”落在这里，而不是直接打开 raw 字节
     // （raw 不跑桥接，mermaid 图不渲染、主题令牌不下发）
     {
