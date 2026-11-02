@@ -22,6 +22,8 @@ from ..db.dao import (
     NotFoundError,
     PayloadNotAllowedError,
     StaleRevisionError,
+    TeamConflictError,
+    TeamRoleError,
 )
 from ..db.database import instance_key, migrate
 
@@ -583,6 +585,150 @@ def asset_put(kind_seg: str, request: Request, body: dict):
         "content_hash": result.content_hash,
         "idempotent_replay": result.idempotent_replay,
     }
+
+
+# ---- 团队域（P1 契约 v1.0 §8；错误语义：非成员=404 防枚举、角色不足=403 明示） ----
+
+
+def _team_http(exc: Exception):
+    if isinstance(exc, TeamRoleError):
+        return EHttp(403, "team_role_required", f"需要团队角色 ≥ {exc.min_role}")
+    if isinstance(exc, TeamConflictError):
+        code = str(exc)
+        status = 422 if code in ("team_name_required",) else 409
+        return EHttp(status, code, "团队操作冲突")
+    return EHttp(500, "internal", "internal")
+
+
+@router.get("/teams")
+def teams_list(request: Request):
+    uid = _read_actor(request)
+    return {"teams": get_store().list_my_teams(actor_user_id=uid)}
+
+
+@router.get("/context/teams")
+def context_teams_list(request: Request):
+    """切换器数据源别名路径（契约 §8.1 `GET /api/v1/context/teams` 逐字口径）。"""
+    return teams_list(request)
+
+
+@router.post("/teams")
+def teams_create(request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        team = get_store().create_team(actor_user_id=uid, name=str(body.get("name", "")))
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+    return JSONResponse(status_code=201, content=team)
+
+
+@router.get("/teams/{team_id}")
+def teams_get(team_id: str, request: Request):
+    uid = _read_actor(request)
+    try:
+        return get_store().get_team(actor_user_id=uid, team_id=team_id)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.put("/teams/{team_id}")
+def teams_rename(team_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().rename_team(actor_user_id=uid, team_id=team_id, name=str(body.get("name", "")))
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.put("/teams/{team_id}/archive")
+def teams_archive(team_id: str, request: Request):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().archive_team(actor_user_id=uid, team_id=team_id)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.post("/teams/{team_id}/members")
+def teams_member_add(team_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        member = get_store().add_member(
+            actor_user_id=uid, team_id=team_id, user_id=str(body.get("user_id", "")),
+            role=str(body.get("role", "editor")),
+        )
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+    return JSONResponse(status_code=201, content=member)
+
+
+@router.delete("/teams/{team_id}/members/{user_id}")
+def teams_member_remove(team_id: str, user_id: str, request: Request):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().remove_member(actor_user_id=uid, team_id=team_id, user_id=user_id)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.put("/teams/{team_id}/members/{user_id}/role")
+def teams_member_role(team_id: str, user_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().change_member_role(
+            actor_user_id=uid, team_id=team_id, user_id=user_id, role=str(body.get("role", ""))
+        )
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.post("/teams/{team_id}/transfer-admin")
+def teams_transfer_admin(team_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().transfer_admin(actor_user_id=uid, team_id=team_id, to_user_id=str(body.get("to_user_id", "")))
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.get("/teams/{team_id}/audit")
+def teams_audit(team_id: str, request: Request, cursor: str | None = None, limit: int = 30):
+    uid = _read_actor(request)
+    limit = max(1, min(limit, 100))
+    try:
+        return get_store().audit_page(actor_user_id=uid, team_id=team_id, cursor=cursor, limit=limit)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.get("/users/search")
+def users_search(request: Request, q: str = ""):
+    """建团队拉成员场景（契约 §8.5）：仅 active 用户，只回 user_id/display_name。"""
+    uid = _read_actor(request)
+    return {"users": get_store().search_users(actor_user_id=uid, q=q)}
 
 
 # ---- AI 面（默认关闭；代理执行属增量3） ----
