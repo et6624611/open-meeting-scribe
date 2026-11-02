@@ -15,6 +15,8 @@ import { useContextsStore } from '@/stores/contexts'
 import { listTeamAudit, restoreTeamDecision, type TeamAuditItem } from '@/api/teams'
 import { auditLabelKey, isAssetAuditEdit } from '@/utils/teamSpacesLogic'
 import { showToast } from '@/composables/useToast'
+import EmptyHint from '@/components/common/EmptyHint.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 import type { Router } from 'vue-router'
 import { useRouter } from 'vue-router'
 
@@ -98,10 +100,19 @@ onMounted(() => { void fetchPage(true) })
 
     <p v-if="!space.isTeamSpace" class="ch-empty">{{ t('enterprise.changes.private_hint') }}</p>
     <p v-else-if="error" class="ch-error" role="alert">{{ t('enterprise.changes.load_failed') }}</p>
-    <p v-else-if="!loading && !items.length" class="ch-empty">{{ t('enterprise.changes.empty') }}</p>
+    <SkeletonList v-else-if="loading && !items.length" :rows="6" />
+    <div v-else-if="!loading && !items.length" class="ch-empty-wrap">
+      <!-- B2 空态插画化（原文案不动，仅呈现升级） -->
+      <EmptyHint card>
+        <template #icon>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 7.1L3 10"/><path d="M12 7v5l4 2"/></svg>
+        </template>
+        <p class="ch-empty">{{ t('enterprise.changes.empty') }}</p>
+      </EmptyHint>
+    </div>
 
     <ul v-if="items.length" class="ch-list">
-      <li v-for="item in items" :key="item.audit_id" class="ch-item">
+      <li v-for="(item, idx) in items" :key="item.audit_id" class="ch-item" :style="{ animationDelay: `${Math.min(idx, 8) * 35}ms` }">
         <div class="ch-line">
           <span class="ch-actor">{{ item.actor_name }}</span>
           <span class="ch-action">{{ label(item) }}</span>
@@ -131,7 +142,11 @@ onMounted(() => { void fetchPage(true) })
 .ch-head h1 { font-size: 17px; margin: 0; }
 .ch-refresh, .ch-more { border: none; background: none; color: var(--accent, #2a6); cursor: pointer; font-size: var(--fs-12, 12px); }
 .ch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2, 10px); }
-.ch-item { background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); padding: var(--s-2, 10px) var(--s-3, 14px); display: flex; flex-direction: column; gap: 4px; }
+.ch-item { background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); padding: var(--s-2, 10px) var(--s-3, 14px); display: flex; flex-direction: column; gap: 4px; animation: ch-rise 0.26s ease both; transition: border-color 0.16s ease; }
+.ch-item:hover { border-color: var(--accent, #2a6); }
+@keyframes ch-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ch-item { animation: none; transition: none; } }
+.ch-empty-wrap { display: flex; justify-content: center; padding: var(--s-5, 24px) 0; }
 .ch-line { display: flex; gap: 8px; font-size: var(--fs-12, 12px); flex-wrap: wrap; }
 .ch-actor { font-weight: 600; }
 .ch-action { color: var(--fg, #222); }

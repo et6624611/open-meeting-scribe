@@ -16,6 +16,7 @@ import { getTeamAsset, isTeamArchived, putTeamAsset } from '@/api/teams'
 import { useSpaceStore } from '@/stores/space'
 import { showToast } from '@/composables/useToast'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
+import EmptyHint from '@/components/common/EmptyHint.vue'
 
 const props = defineProps<{ kind: 'hotwords' | 'speakers' }>()
 const { t } = useI18n()
@@ -124,7 +125,15 @@ function removeWord(word: string) {
     <p v-if="teamArchived" class="ea-guide">{{ t('enterprise.assets.team_archived_note') }}</p>
 
     <p v-if="loading" class="ea-muted">{{ t('enterprise.library.loading') }}</p>
-    <p v-else-if="isEmpty && !canEditTeamWords" class="ea-muted">{{ t('enterprise.assets.empty') }}</p>
+    <div v-else-if="isEmpty && !canEditTeamWords" class="ea-empty-wrap">
+      <!-- B2 空态插画化：只读窗口无内容=图标+原文案，不新增能力 -->
+      <EmptyHint card>
+        <template #icon>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </template>
+        <p class="ea-muted">{{ t('enterprise.assets.empty') }}</p>
+      </EmptyHint>
+    </div>
 
     <!-- 团队热词=共享词表（editor+ 可增删，viewer 纯列表） -->
     <template v-else-if="teamMode">
@@ -169,6 +178,7 @@ function removeWord(word: string) {
 .ea-head h1 { font-size: 17px; margin: 0; }
 .ea-guide { font-size: var(--fs-12, 12px); color: var(--muted, #666); margin: 0 0 var(--s-3, 16px); }
 .ea-muted { color: var(--muted, #666); font-size: var(--fs-12, 12px); }
+.ea-empty-wrap { display: flex; justify-content: center; padding: var(--s-5, 24px) 0; }
 .ea-hotwords { white-space: pre-wrap; font-family: inherit; font-size: var(--fs-12, 13px); line-height: 1.8; background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 16px); margin: 0; }
 .ea-words { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .ea-word { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); padding: 8px 12px; font-size: var(--fs-12, 13px); }

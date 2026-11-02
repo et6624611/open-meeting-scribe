@@ -18,6 +18,8 @@ import { useContextsStore } from '@/stores/contexts'
 import { useSpaceStore } from '@/stores/space'
 import { deleteTeamDecision } from '@/api/teams'
 import type { ContextTaskDetail, PublishedCopy } from '@/api/context'
+import { parseFormalSegments } from '@/utils/formalLayout'
+import { getSpeakerNameBg, getSpeakerNameTextColor } from '@/utils/speakerColors'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
 import PublishedCopiesMenu from '@/components/common/PublishedCopiesMenu.vue'
 import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue'
@@ -44,6 +46,12 @@ const decisionCount = computed(() => (detail.value?.decisions as unknown[] | und
 /** 空间形态单源=服务端 visibility 字段（D013 后私有面 DTO 不可能出现 team 值） */
 const isTeamDetail = computed(() => detail.value?.visibility === 'team')
 const hasInsights = computed(() => !!detail.value?.insights_html)
+/** B5（版式找回）：formal 纯文本呈现层分段——不改变任何字符内容，仅发言人 chip+分段留白 */
+const formalSegments = computed(() => parseFormalSegments(detail.value?.formal ?? ''))
+/** B4：洞察板"在浏览器中打开"全屏形态（BoardViewerView 企业分支=同源 sandbox iframe 铺满视口） */
+const boardHref = computed(() => (detail.value ? `/board/${detail.value.task_id}` : ''))
+function segNameColor(name: string): string { return getSpeakerNameTextColor(name) }
+function segNameBg(name: string): string { return getSpeakerNameBg(name) }
 /** 编辑权单源：detail.my_role（服务端随行下发）；私有面恒可编辑（本人原件） */
 const canEdit = computed(() => {
   if (!detail.value) return false
@@ -84,7 +92,10 @@ async function load() {
   // 团队副本无逐字稿 Tab（结构性缺失）：默认落纪要 Tab；?tab=/?restore= 深链（决策聚合/变更记录）直落决策 Tab
   if (d.visibility === 'team') {
     const qTab = route.query.tab
-    activeTab.value = (qTab === 'decisions' || typeof route.query.restore === 'string') ? 'decisions' : 'summary'
+    activeTab.value = (qTab === 'decisions' || typeof route.query.restore === 'string')
+      ? 'decisions'
+      // B4：洞察板全屏页"返回会议"回洞察 Tab（仅当副本确有板内容）
+      : (qTab === 'insights' && d.insights_html ? 'insights' : 'summary')
   } else {
     activeTab.value = 'formal'
   }
@@ -198,11 +209,24 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         <button type="button" class="cd-conflict-reload" @click="load()">{{ t('common.action.retry') }}</button>
       </div>
 
-      <!-- 内容面板（对齐个人版 gen-panel 宽度节奏） -->
+      <!-- 内容面板（对齐个人版 gen-panel 宽度节奏；B3：Tab 切换淡入淡出过渡） -->
       <section class="cd-panel">
+        <Transition name="cd-fade" mode="out-in">
+        <div :key="activeTab">
         <div v-show="activeTab === 'formal'" class="cd-pane">
           <p class="cd-readonly-hint">{{ t('enterprise.detail.formal_hint') }}</p>
-          <div class="cd-formal">{{ detail.formal }}</div>
+          <div class="cd-formal cd-formal-seg">
+            <template v-for="(seg, i) in formalSegments" :key="i">
+              <p v-if="seg.kind === 'speaker'" class="cd-seg is-speaker">
+                <span class="cd-seg-name" :style="{ color: segNameColor(seg.name), background: segNameBg(seg.name) }">{{ seg.name }}</span>
+                <span class="cd-seg-text">{{ seg.text }}</span>
+              </p>
+              <p v-else-if="seg.kind === 'heading'" class="cd-seg is-heading">
+                <span class="cd-seg-heading">{{ seg.name }}</span><span v-if="seg.text" class="cd-seg-text">{{ seg.text }}</span>
+              </p>
+              <p v-else class="cd-seg"><span class="cd-seg-text">{{ seg.text }}</span></p>
+            </template>
+          </div>
         </div>
 
         <div v-show="activeTab === 'summary'" class="cd-pane">
@@ -241,6 +265,14 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         </div>
 
         <div v-show="activeTab === 'insights'" class="cd-pane">
+          <!-- B4：洞察板全屏入口——同页 iframe 之外给"在浏览器中打开"（/board 企业分支=副本 insights_html 铺满视口，
+               仍是 sandbox iframe 承载，安全边界不因换入口而变） -->
+          <div class="cd-insights-bar">
+            <a v-if="boardHref" class="cd-insights-open" :href="boardHref" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              {{ t('enterprise.detail.open_in_browser') }}
+            </a>
+          </div>
           <!-- 团队洞察板=内容面只读窗口（裁决⑤随副本进团队）：sandbox iframe 承载 HTML 串，
                无 same-origin 授权、无脚本触达宿主；桥接渲染一致性列窗口C 联调观察项 -->
           <iframe
@@ -252,6 +284,8 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
             referrerpolicy="no-referrer"
           ></iframe>
         </div>
+        </div>
+        </Transition>
       </section>
     </template>
 
@@ -305,9 +339,22 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
 .cd-tab-count { font-size: var(--fs-11, 11px); background: var(--surface-2, #f0f0ee); border-radius: 999px; padding: 0 6px; color: var(--muted, #666); }
 .cd-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--subtle, #bbb); display: inline-block; }
 .cd-panel { width: 80%; min-width: min(600px, 100%); max-width: 960px; margin: 0 auto; padding: var(--s-6, 28px) 0 var(--s-7, 48px); box-sizing: border-box; }
+.cd-fade-enter-active, .cd-fade-leave-active { transition: opacity 0.16s ease; }
+.cd-fade-enter-from, .cd-fade-leave-to { opacity: 0; }
 .cd-pane { display: flex; flex-direction: column; gap: var(--s-2, 10px); }
 .cd-readonly-hint { margin: 0; font-size: var(--fs-11, 11px); color: var(--subtle, #999); }
 .cd-formal { white-space: pre-wrap; font-size: var(--fs-13, 14px); line-height: 2; }
+/* B5 版式找回：发言人分段 chip（色板=个人版 speakerColors 同源 oklch 体系，名字哈希确定性取色） */
+.cd-formal-seg { display: flex; flex-direction: column; gap: 6px; }
+.cd-seg { margin: 0; white-space: pre-wrap; }
+.cd-seg.is-speaker { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; border-radius: var(--radius-sm, 8px); }
+.cd-seg-name { flex: none; font-size: var(--fs-11, 11px); font-weight: 600; line-height: 1.6; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+.cd-seg.is-heading .cd-seg-heading { font-weight: 700; }
+.cd-seg-text { min-width: 0; }
+.cd-insights-bar { display: flex; justify-content: flex-end; }
+.cd-insights-open { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-12, 12px); color: var(--muted, #666); text-decoration: none; padding: 4px 10px; border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); background: var(--surface, #fff); }
+.cd-insights-open:hover { color: var(--accent, #2a6); border-color: var(--accent, #2a6); }
+.cd-insights-open:focus-visible { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 1px; }
 .cd-area { width: 100%; box-sizing: border-box; border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 10px); padding: var(--s-4, 20px); font: inherit; font-size: var(--fs-13, 14px); line-height: 1.9; background: var(--surface, #fff); color: var(--fg, #222); resize: vertical; }
 .cd-area:focus { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 1px; }
 .cd-decision { background: var(--surface, #fff); border: 1px solid var(--border, #e6e6e2); border-left: 3px solid var(--accent, #2a6); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 14px) var(--s-4, 18px); display: flex; flex-direction: column; gap: 6px; }

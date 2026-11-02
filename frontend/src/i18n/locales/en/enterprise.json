@@ -187,6 +187,7 @@
     },
     "nav": {
       "assistant": "Local recording assistant",
+      "appearance": "Appearance",
       "data_location": "Where data lives"
     }
   },
@@ -194,7 +195,12 @@
     "title": "My meetings",
     "empty": "No meetings yet — let the local assistant record your first meeting",
     "last_synced": "Last synced {time}",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "eyebrow": "Meeting notes",
+    "group_today": "Today",
+    "group_yesterday": "Yesterday",
+    "group_week": "Last 7 days",
+    "group_earlier": "Earlier"
   },
   "detail": {
     "formal": "Transcript (final)",
@@ -213,6 +219,8 @@
     "summary_placeholder": "Minutes will appear here",
     "notes_placeholder": "Meeting notes",
     "insights": "Insights",
+    "open_in_browser": "Open in browser",
+    "insights_empty": "This content has no insight board yet.",
     "empty_summary": "(no minutes yet)",
     "empty_notes": "(no notes yet)",
     "conflict_team": "A teammate changed this content while you were editing. Your draft is kept and nothing was overwritten — reconcile against the latest version and try again.",

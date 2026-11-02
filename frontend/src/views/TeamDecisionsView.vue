@@ -15,6 +15,8 @@ import { getTeamTask, deleteTeamDecision } from '@/api/teams'
 import { aggregateDecisions, type AggregatedDecision } from '@/utils/teamSpacesLogic'
 import { showToast } from '@/composables/useToast'
 import { useRoute, useRouter } from 'vue-router'
+import EmptyHint from '@/components/common/EmptyHint.vue'
+import SkeletonList from '@/components/common/SkeletonList.vue'
 
 const { t } = useI18n()
 const space = useSpaceStore()
@@ -96,11 +98,19 @@ void route
         </select>
       </div>
 
-      <p v-else-if="loading" class="td-empty">{{ t('enterprise.library.loading') }}</p>
-      <p v-else-if="!rows.length && !error" class="td-empty">{{ t('enterprise.decisionsTeam.empty') }}</p>
+      <SkeletonList v-else-if="loading" :rows="5" />
+      <div v-else-if="!rows.length && !error" class="td-empty-wrap">
+        <!-- B2 空态插画化：图标+原文案+错峰浮现，不新增能力 -->
+        <EmptyHint card>
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </template>
+          <p class="td-empty">{{ t('enterprise.decisionsTeam.empty') }}</p>
+        </EmptyHint>
+      </div>
 
       <ul v-if="filtered.length" class="td-list">
-        <li v-for="r in filtered" :key="`${r.teamTaskId}-${r.decisionId}`" class="td-card">
+        <li v-for="(r, idx) in filtered" :key="`${r.teamTaskId}-${r.decisionId}`" class="td-card" :style="{ animationDelay: `${Math.min(idx, 8) * 45}ms` }">
           <p class="td-text">{{ r.text }}</p>
           <div class="td-meta">
             <span v-if="r.statusText" class="td-status">{{ r.statusText }}</span>
@@ -132,7 +142,11 @@ void route
 .td-search { flex: 1; min-width: 180px; padding: 7px 10px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); background: var(--surface-2, #fafaf8); font-size: var(--fs-12, 12px); color: var(--fg, #222); }
 .td-source { padding: 7px 10px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); background: var(--surface, #fff); font-size: var(--fs-12, 12px); color: var(--fg, #222); }
 .td-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2, 10px); }
-.td-card { background: var(--surface, #fff); border: 1px solid var(--border, #e6e6e2); border-left: 3px solid var(--accent, #2a6); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 14px) var(--s-4, 18px); display: flex; flex-direction: column; gap: 6px; }
+.td-card { background: var(--surface, #fff); border: 1px solid var(--border, #e6e6e2); border-left: 3px solid var(--accent, #2a6); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 14px) var(--s-4, 18px); display: flex; flex-direction: column; gap: 6px; animation: td-rise 0.28s ease both; transition: border-color 0.16s ease, box-shadow 0.16s ease; }
+.td-card:hover { border-color: var(--accent, #2a6); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05); }
+@keyframes td-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .td-card { animation: none; transition: none; } }
+.td-empty-wrap { display: flex; justify-content: center; padding: var(--s-5, 24px) 0; }
 .td-text { margin: 0; font-size: var(--fs-13, 13px); line-height: 1.7; }
 .td-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-11, 11px); color: var(--muted, #666); }
 .td-status { background: var(--surface-2, #f2f2f0); padding: 1px 8px; border-radius: 999px; }
