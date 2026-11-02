@@ -9,7 +9,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { isEnterprise } from '@/edition'
-import { listMyTeams, type TeamRole, type TeamSummary } from '@/api/teams'
+import { listMyTeams, listTeamMembers, type TeamRole, type TeamSummary } from '@/api/teams'
 import { scopedGet, scopedSet } from '@/utils/scopedStorage'
 import { useUserStore } from './user'
 
@@ -35,6 +35,25 @@ export const useSpaceStore = defineStore('space', () => {
     return useUserStore().user?.id ?? null
   }
 
+  /**
+   * 成员显示名缓存（uid→name，按团队加载；GET /teams/{id}/members 端点 BE 尚在排期——
+   * 请求失败静默空缓存，消费侧回退不渲染"公开人"行，不猜名不显裸 id。端点落地零改动生效） */
+  const memberNames = ref<Record<string, string>>({})
+
+  function memberName(uid: string): string | null {
+    return memberNames.value[uid] ?? null
+  }
+
+  async function loadMembers(teamId: string): Promise<void> {
+    if (!isEnterprise || teamId === PRIVATE_SPACE) return
+    try {
+      const members = await listTeamMembers(teamId)
+      const next = { ...memberNames.value }
+      for (const m of members) next[m.user_id] = m.display_name
+      memberNames.value = next
+    } catch { /* 端点未就位（404）静默回退：显示名缺省 */ }
+  }
+
   /** 幂等加载（并发共享同一次请求）；完成后校验/恢复最近所在空间，失效（被移出团队等）静默回私有 */
   async function loadTeams(): Promise<void> {
     if (!isEnterprise) return
@@ -55,7 +74,12 @@ export const useSpaceStore = defineStore('space', () => {
       } else if (!isTeamSpace.value) {
         const uid = userId()
         const saved = uid ? scopedGet(uid, LAST_SPACE_KEY) : null
-        if (saved && teams.value.some((t) => t.team_id === saved)) currentId.value = saved
+        if (saved && teams.value.some((t) => t.team_id === saved)) {
+          currentId.value = saved
+          void loadMembers(saved)
+        }
+      } else {
+        void loadMembers(currentId.value)
       }
     })()
     return loading
@@ -67,6 +91,7 @@ export const useSpaceStore = defineStore('space', () => {
     currentId.value = id
     const uid = userId()
     if (uid) scopedSet(uid, LAST_SPACE_KEY, id)
+    void loadMembers(id)
     // 切换即失效（动态 import 避免与 contexts store 的静态环依赖；同 removeTask 延迟加载惯例）
     void (async () => {
       const { useContextsStore } = await import('./contexts')
@@ -79,6 +104,7 @@ export const useSpaceStore = defineStore('space', () => {
   /** 登出清态（EnterpriseUserMenu 调用；401 路径走整页跳转天然覆盖） */
   function reset(): void {
     teams.value = []
+    memberNames.value = {}
     loaded.value = false
     loadError.value = false
     loading = null
@@ -88,6 +114,6 @@ export const useSpaceStore = defineStore('space', () => {
   return {
     teams, loaded, loadError, currentId,
     isTeamSpace, currentTeam, myRole, canEdit, isTeamAdmin, currentSpaceName,
-    loadTeams, switchSpace, reset,
+    loadTeams, switchSpace, reset, memberName, loadMembers,
   }
 })

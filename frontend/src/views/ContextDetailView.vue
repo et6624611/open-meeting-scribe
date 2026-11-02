@@ -1,17 +1,22 @@
 <script setup lang="ts">
 /**
- * 企业版定稿文本查看/编辑面（档③ 3a + A项版式对齐升级）
+ * 企业版定稿文本查看/编辑面（档③ 3a + A项版式对齐 + P1-WP-3 团队形态）
  *
- * 读：GET /api/v1/context/tasks/{id}；写：PUT snapshot（Idempotency-Key 新 mutation +
- * If-Match-Rev，409 拉新合并重推一次——逻辑与 3a 一致，本次只升版式）。
- * 版式对齐个人版详情面：下划线 Tab 栏（原文/纪要/决策/笔记）、标题行徽标、决策卡片；
- * 数据边界不变（§1.4）：无音频回放、无洞察板、转写只读锚点。
+ * 私有面：契约 §1.4 原语义零变化（D013 守卫后个人端点恒限 scope='personal'）。
+ * 团队形态（detail.visibility==='team'，服务端单源判定）：
+ *  - Tab=纪要/决策/笔记/洞察（insights_html 有才渲染；**无逐字稿 Tab=结构性缺失不渲染不解释**，
+ *    复制器白名单在数据层已排除 formal）；
+ *  - 编辑权=detail.my_role 单源（editor/admin 渲染编辑面，viewer 无任何编辑控件+一行说明，不灰态不解释缺失）；
+ *  - 保存冲突=保稿不覆盖（返回 latest 呈现冲突条；diff 合并 UI=WP-5 交付形态）；
+ *  - 决策条目删除（裁决③，二次确认）；恢复入口在变更记录（WP-3 ChangesView）。
+ * 读：GET 团队/个人详情端点；写：PUT snapshot（Idempotency-Key + If-Match-Rev）。
  */
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextsStore } from '@/stores/contexts'
 import { useSpaceStore } from '@/stores/space'
+import { deleteTeamDecision } from '@/api/teams'
 import type { ContextTaskDetail, PublishedCopy } from '@/api/context'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
 import PublishedCopiesMenu from '@/components/common/PublishedCopiesMenu.vue'
@@ -19,7 +24,7 @@ import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue
 import PublishToTeamDialog from '@/components/modals/PublishToTeamDialog.vue'
 import { showToast } from '@/composables/useToast'
 
-type TabId = 'formal' | 'summary' | 'decisions' | 'notes'
+type TabId = 'formal' | 'summary' | 'decisions' | 'notes' | 'insights'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -32,8 +37,20 @@ const summary = ref('')
 const notes = ref('')
 const saving = ref(false)
 const activeTab = ref<TabId>('formal')
+const conflictNote = ref(false)
 const dirty = computed(() => detail.value != null && (summary.value !== detail.value.summary || notes.value !== detail.value.notes))
 const decisionCount = computed(() => (detail.value?.decisions as unknown[] | undefined)?.length ?? 0)
+
+/** 空间形态单源=服务端 visibility 字段（D013 后私有面 DTO 不可能出现 team 值） */
+const isTeamDetail = computed(() => detail.value?.visibility === 'team')
+const hasInsights = computed(() => !!detail.value?.insights_html)
+/** 编辑权单源：detail.my_role（服务端随行下发）；私有面恒可编辑（本人原件） */
+const canEdit = computed(() => {
+  if (!detail.value) return false
+  if (!isTeamDetail.value) return true
+  return detail.value.my_role === 'editor' || detail.value.my_role === 'admin'
+})
+const isTeamViewer = computed(() => isTeamDetail.value && !canEdit.value)
 
 /** 发布入口=私有空间原件面（团队副本空间不渲染发布动作——副本不二次发布） */
 const canPublish = computed(() => !space.isTeamSpace)
@@ -54,34 +71,67 @@ function afterPublishChange() {
 async function load() {
   const taskId = typeof route.params.taskId === 'string' ? route.params.taskId : ''
   notFound.value = false
+  conflictNote.value = false
   detail.value = null
-  activeTab.value = 'formal'
   if (!taskId) { notFound.value = true; return }
   const d = await contexts.loadDetail(taskId)
   if (!d) { notFound.value = true; return }
   detail.value = d
   summary.value = d.summary ?? ''
   notes.value = d.notes ?? ''
+  // 团队副本无逐字稿 Tab（结构性缺失）：默认落纪要 Tab；?tab=/?restore= 深链（决策聚合/变更记录）直落决策 Tab
+  if (d.visibility === 'team') {
+    const qTab = route.query.tab
+    activeTab.value = (qTab === 'decisions' || typeof route.query.restore === 'string') ? 'decisions' : 'summary'
+  } else {
+    activeTab.value = 'formal'
+  }
 }
 onMounted(load)
 watch(() => route.params.taskId, load)
 
 async function onSave() {
-  if (!detail.value || !dirty.value || saving.value) return
+  if (!detail.value || !dirty.value || saving.value || !canEdit.value) return
   saving.value = true
   try {
-    const r = await contexts.saveSnapshot(detail.value, { summary: summary.value, notes: notes.value })
+    const r = isTeamDetail.value
+      ? await contexts.saveTeamSnapshot(detail.value, { summary: summary.value, notes: notes.value })
+      : await contexts.saveSnapshot(detail.value, { summary: summary.value, notes: notes.value })
     if (r.ok) {
       await load()
       showToast(t('enterprise.detail.saved'), 'success')
       void contexts.loadTasks()
     } else if (r.conflict) {
-      showToast(t('enterprise.detail.conflict_reload'), 'error')
-      await load()
+      if (isTeamDetail.value) {
+        // 团队面绝不静默覆盖（后端裁决）：保留用户草稿 + 呈现冲突条（diff 合并 UI=WP-5）
+        conflictNote.value = true
+        showToast(t('enterprise.detail.conflict_team'), 'error')
+      } else {
+        showToast(t('enterprise.detail.conflict_reload'), 'error')
+        await load()
+      }
     } else {
       showToast(t('enterprise.detail.save_failed'), 'error')
     }
   } finally { saving.value = false }
+}
+
+/** 决策条目删除（裁决③）：行内两步确认，删除写 decision_delete 留痕（携 pre_delete_rev=恢复依据） */
+const pendingDeleteDecisionId = ref('')
+function askDeleteDecision(id: string) { pendingDeleteDecisionId.value = pendingDeleteDecisionId.value === id ? '' : id }
+
+async function confirmDeleteDecision(id: string) {
+  const d = detail.value
+  if (!d?.team_id || !d) return
+  try {
+    await deleteTeamDecision(d.team_id, d.task_id, id)
+    showToast(t('enterprise.decisions.deleted'), 'success')
+    pendingDeleteDecisionId.value = ''
+    await load()
+    void contexts.loadTasks()
+  } catch {
+    showToast(t('enterprise.decisions.delete_failed'), 'error')
+  }
 }
 
 function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(0, 16) : '—' }
@@ -106,10 +156,10 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
           <VisibilityBadge :visibility="detail.visibility" />
         </div>
         <div class="cd-actions">
-          <span v-if="dirty" class="cd-dirty">{{ t('enterprise.detail.unsaved') }}</span>
+          <span v-if="dirty && canEdit" class="cd-dirty">{{ t('enterprise.detail.unsaved') }}</span>
           <PublishedCopiesMenu :copies="publishedCopies" @withdrawn="afterPublishChange" />
           <button v-if="canPublish" class="cd-publish" @click="openPublish(null)">{{ t('enterprise.publish.entry_task') }}</button>
-          <button class="cd-save" :disabled="!dirty || saving" @click="onSave">{{ saving ? t('enterprise.detail.saving') : t('enterprise.detail.save') }}</button>
+          <button v-if="canEdit" class="cd-save" :disabled="!dirty || saving" @click="onSave">{{ saving ? t('enterprise.detail.saving') : t('enterprise.detail.save') }}</button>
         </div>
       </header>
 
@@ -123,9 +173,9 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         </span>
       </div>
 
-      <!-- Tab 栏：个人版同款下划线视觉语言 -->
+      <!-- Tab 栏：个人版同款下划线视觉语言；团队形态无"原文"Tab（结构性缺失不渲染不解释），洞察 Tab 仅有内容时出现 -->
       <nav class="cd-tabs" role="tablist">
-        <button role="tab" :aria-selected="activeTab === 'formal'" :class="{ 'is-active': activeTab === 'formal' }" @click="activeTab = 'formal'">{{ t('enterprise.detail.formal') }}</button>
+        <button v-if="!isTeamDetail" role="tab" :aria-selected="activeTab === 'formal'" :class="{ 'is-active': activeTab === 'formal' }" @click="activeTab = 'formal'">{{ t('enterprise.detail.formal') }}</button>
         <button role="tab" :aria-selected="activeTab === 'summary'" :class="{ 'is-active': activeTab === 'summary' }" @click="activeTab = 'summary'">
           {{ t('enterprise.detail.summary') }}<span v-if="!detail.summary" class="cd-tab-dot is-empty"></span>
         </button>
@@ -133,7 +183,16 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
           {{ t('enterprise.detail.decisions') }}<span class="cd-tab-count">{{ decisionCount }}</span>
         </button>
         <button role="tab" :aria-selected="activeTab === 'notes'" :class="{ 'is-active': activeTab === 'notes' }" @click="activeTab = 'notes'">{{ t('enterprise.detail.notes') }}</button>
+        <button v-if="hasInsights" role="tab" :aria-selected="activeTab === 'insights'" :class="{ 'is-active': activeTab === 'insights' }" @click="activeTab = 'insights'">{{ t('enterprise.detail.insights') }}</button>
       </nav>
+
+      <!-- 只读成员一行中性说明（规格 §3：给出口不制造缺失感）；团队面 viewer 唯一渲染 -->
+      <p v-if="isTeamViewer" class="cd-viewer-note">{{ t('enterprise.team.viewer_note') }}</p>
+      <!-- 团队面冲突条：保稿不覆盖（diff 合并 UI 随 WP-5 交付形态） -->
+      <div v-if="conflictNote" class="cd-conflict" role="alert">
+        {{ t('enterprise.detail.conflict_team') }}
+        <button type="button" class="cd-conflict-reload" @click="load()">{{ t('common.action.retry') }}</button>
+      </div>
 
       <!-- 内容面板（对齐个人版 gen-panel 宽度节奏） -->
       <section class="cd-panel">
@@ -143,7 +202,8 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         </div>
 
         <div v-show="activeTab === 'summary'" class="cd-pane">
-          <textarea v-model="summary" rows="14" class="cd-area" :aria-label="t('enterprise.detail.summary')" :placeholder="t('enterprise.detail.summary_placeholder')"></textarea>
+          <textarea v-if="canEdit" v-model="summary" rows="14" class="cd-area" :aria-label="t('enterprise.detail.summary')" :placeholder="t('enterprise.detail.summary_placeholder')"></textarea>
+          <div v-else class="cd-formal cd-readonly-block">{{ detail.summary || t('enterprise.detail.empty_summary') }}</div>
         </div>
 
         <div v-show="activeTab === 'decisions'" class="cd-pane">
@@ -156,11 +216,37 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
               class="cd-decision-publish"
               @click="openPublish({ id: d.id, text: d.text ?? '' })"
             >{{ t('enterprise.publish.entry_decision') }}</button>
+            <div v-else-if="isTeamDetail && canEdit && d.id" class="cd-decision-ops">
+              <template v-if="pendingDeleteDecisionId !== d.id">
+                <button type="button" class="cd-decision-publish is-danger" @click="askDeleteDecision(d.id!)">{{ t('enterprise.decisions.delete_btn') }}</button>
+              </template>
+              <template v-else>
+                <p class="cd-delete-confirm-text">{{ t('enterprise.decisions.delete_confirm') }}</p>
+                <div class="cd-delete-confirm-actions">
+                  <button type="button" class="cd-decision-publish is-ghost" @click="pendingDeleteDecisionId = ''">{{ t('common.action.cancel') }}</button>
+                  <button type="button" class="cd-decision-publish is-danger" @click="confirmDeleteDecision(d.id!)">{{ t('enterprise.decisions.delete_btn') }}</button>
+                </div>
+              </template>
+            </div>
           </article>
         </div>
 
         <div v-show="activeTab === 'notes'" class="cd-pane">
-          <textarea v-model="notes" rows="10" class="cd-area" :aria-label="t('enterprise.detail.notes')" :placeholder="t('enterprise.detail.notes_placeholder')"></textarea>
+          <textarea v-if="canEdit" v-model="notes" rows="10" class="cd-area" :aria-label="t('enterprise.detail.notes')" :placeholder="t('enterprise.detail.notes_placeholder')"></textarea>
+          <div v-else class="cd-formal cd-readonly-block">{{ detail.notes || t('enterprise.detail.empty_notes') }}</div>
+        </div>
+
+        <div v-show="activeTab === 'insights'" class="cd-pane">
+          <!-- 团队洞察板=内容面只读窗口（裁决⑤随副本进团队）：sandbox iframe 承载 HTML 串，
+               无 same-origin 授权、无脚本触达宿主；桥接渲染一致性列窗口C 联调观察项 -->
+          <iframe
+            v-if="hasInsights"
+            class="cd-insights-frame"
+            :srcdoc="detail.insights_html ?? ''"
+            sandbox="allow-scripts"
+            :title="t('enterprise.detail.insights')"
+            referrerpolicy="no-referrer"
+          ></iframe>
         </div>
       </section>
     </template>
@@ -196,6 +282,16 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
 .cd-decision-publish { align-self: flex-start; border: none; background: none; color: var(--muted, #666); font-size: var(--fs-11, 11px); cursor: pointer; padding: 2px 0; text-decoration: underline; text-underline-offset: 3px; }
 .cd-decision-publish:hover { color: var(--accent, #2a6); }
 .cd-decision-publish:focus-visible { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 1px; }
+.cd-decision-publish.is-danger { color: var(--warn, #c33); }
+.cd-decision-publish.is-ghost { color: var(--muted, #666); }
+.cd-decision-ops { display: flex; flex-direction: column; gap: 4px; align-self: flex-start; }
+.cd-delete-confirm-text { margin: 0; font-size: var(--fs-11, 11px); color: var(--muted, #666); }
+.cd-delete-confirm-actions { display: flex; gap: 10px; }
+.cd-viewer-note { margin: var(--s-2, 8px) var(--s-6, 28px) 0; font-size: var(--fs-11, 11px); color: var(--muted, #666); }
+.cd-conflict { margin: var(--s-2, 8px) var(--s-6, 28px) 0; display: flex; align-items: center; gap: 10px; font-size: var(--fs-12, 12px); color: var(--warn, #b60); background: var(--warn-soft, #fdf6e3); border: 1px solid var(--border, #f0e0b0); border-radius: var(--radius-sm, 8px); padding: 8px 12px; }
+.cd-conflict-reload { border: none; background: none; color: var(--accent, #2a6); cursor: pointer; font-size: var(--fs-12, 12px); }
+.cd-readonly-block { background: var(--surface, #fff); border: 1px solid var(--border, #e6e6e2); border-radius: var(--radius-sm, 10px); padding: var(--s-4, 20px); }
+.cd-insights-frame { width: 100%; min-height: 480px; border: 1px solid var(--border, #e6e6e2); border-radius: var(--radius-sm, 10px); background: #fff; }
 .cd-meta { display: flex; gap: 8px; align-items: center; padding: 6px var(--s-6, 28px) 0; font-size: var(--fs-11, 11px); color: var(--muted, #666); flex-wrap: wrap; }
 .cd-meta-audio { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 8px; border-radius: 999px; background: var(--surface-2, #f2f2f0); color: var(--subtle, #999); }
 .cd-tabs { display: flex; gap: 2px; padding: var(--s-3, 14px) var(--s-6, 28px) 0; border-bottom: 1px solid var(--border, #e6e6e2); }

@@ -10,9 +10,10 @@ import type { Visibility } from '@/api/context'
 
 const props = defineProps<{ visibility: Visibility }>()
 const { t } = useI18n()
-// P0 恒"个人"（接口 visibility 固定 personal）；P1 加 team/enterprise 文案分支时改此映射
-const label = computed(() => t('enterprise.settings.badge.personal'))
-void props
+// P1-WP-3 三态落地：personal=仅你可见 / team=团队可见（企业档无 UI 面——资产层零暴露红线，枚举不引入第三值）
+const label = computed(() =>
+  props.visibility === 'team' ? t('enterprise.settings.badge.team') : t('enterprise.settings.badge.personal'),
+)
 </script>
 
 <template>

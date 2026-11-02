@@ -179,7 +179,8 @@
       "view_data_location": "View data locations"
     },
     "badge": {
-      "personal": "Visible only to you"
+      "personal": "Visible only to you",
+      "team": "Team visible"
     },
     "nav": {
       "assistant": "Local recording assistant",
@@ -207,7 +208,11 @@
     "audio_local": "Audio stays on the recording device",
     "formal_hint": "Final transcript is a read-only anchor; revise it on the recording device",
     "summary_placeholder": "Minutes will appear here",
-    "notes_placeholder": "Meeting notes"
+    "notes_placeholder": "Meeting notes",
+    "insights": "Insights",
+    "empty_summary": "(no minutes yet)",
+    "empty_notes": "(no notes yet)",
+    "conflict_team": "A teammate changed this content while you were editing. Your draft is kept and nothing was overwritten — reconcile against the latest version and try again."
   },
   "assets": {
     "hotwords_title": "Hot words",
@@ -217,5 +222,54 @@
     "empty": "Nothing uploaded from your assistant devices yet",
     "alias_speaker": "Speaker tag",
     "alias_name": "Display name"
+  },
+  "team": {
+    "empty": "Nothing has been published yet. You can publish your minutes or decisions to the team.",
+    "published_by": "Published by {name}",
+    "self": "You",
+    "viewer_note": "You are a read-only member of this team. To edit content, contact the team admin."
+  },
+  "changes": {
+    "title": "Change log",
+    "private_hint": "Change logs live in team spaces — switch to a team first.",
+    "empty": "No changes yet.",
+    "load_failed": "Failed to load the change log. Please try again later.",
+    "load_more": "Load more",
+    "restoring": "Restoring…",
+    "open_source": "View content"
+  },
+  "audit": {
+    "act_publish": "{name} published “{title}”",
+    "act_edit": "{name} edited “{title}”",
+    "act_withdraw": "{name} withdrew “{title}”",
+    "act_decision_publish": "{name} published a decision (from “{title}”)",
+    "act_decision_withdraw": "{name} withdrew a decision (from “{title}”)",
+    "act_decision_delete": "{name} deleted a decision (from “{title}”)",
+    "act_decision_restore": "{name} restored a decision (from “{title}”)",
+    "act_member_add": "{name} added a member",
+    "act_member_role_change": "{name} changed a member role",
+    "act_member_remove": "{name} removed a member",
+    "act_role_transfer": "{name} transferred the admin role",
+    "act_team_archive": "{name} archived the team",
+    "restore_btn": "Restore",
+    "restore_done": "Restored — the operation is recorded in the change log",
+    "restore_failed": "Restore failed. Please try again later."
+  },
+  "decisions": {
+    "delete_btn": "Delete",
+    "delete_confirm": "After deletion teammates will no longer see this decision; it can be restored from the change log",
+    "deleted": "Deleted — restore it from the change log",
+    "delete_failed": "Delete failed. Please try again later."
+  },
+  "decisionsTeam": {
+    "title": "Team decisions",
+    "private_hint": "Decision aggregation lives in team spaces — switch to a team, or publish a decision to one.",
+    "load_failed": "Failed to load team decisions. Please try again later.",
+    "search_placeholder": "Search decisions or meetings",
+    "filter_source": "Filter by source meeting",
+    "filter_all": "All sources",
+    "empty": "No published decisions yet. Publish a single decision from a meeting's detail page.",
+    "no_match": "No matching decisions",
+    "from": "From “{title}”"
   }
 }

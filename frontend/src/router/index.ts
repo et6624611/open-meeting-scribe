@@ -95,8 +95,15 @@ const router = createRouter({
     {
       path: '/decisions',
       name: 'decisions',
-      component: () => import('@/views/DecisionCenterView.vue'),
-      meta: { enterpriseRedirect: '/library' },
+      // 企业形态=P1 团队决策聚合视图（T-002 债偿还面，规格 §5.2；私有空间显示引导语）；个人版不变
+      component: () => import(isEnterprise ? '@/views/TeamDecisionsView.vue' : '@/views/DecisionCenterView.vue'),
+    },
+    {
+      path: '/changes',
+      name: 'changes',
+      // 团队变更记录（P1-WP-3，规格 §7/Q4 裁决）：仅企业形态存在；个人形态直链回首页
+      component: () => import('@/views/ChangesView.vue'),
+      beforeEnter: () => (isEnterprise ? true : { path: '/' }),
     },
     // 洞察板独立浏览页：“在浏览器中打开”落在这里，而不是直接打开 raw 字节
     // （raw 不跑桥接，mermaid 图不渲染、主题令牌不下发）

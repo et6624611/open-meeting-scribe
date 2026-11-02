@@ -179,7 +179,8 @@
       "view_data_location": "查看数据位置"
     },
     "badge": {
-      "personal": "仅你可见"
+      "personal": "仅你可见",
+      "team": "团队可见"
     },
     "nav": {
       "assistant": "本机录音助手",
@@ -207,7 +208,11 @@
     "audio_local": "录音音频保留在录制设备本机",
     "formal_hint": "转写定稿为只读锚点，如需修订请在录制设备上操作",
     "summary_placeholder": "纪要内容将显示在这里",
-    "notes_placeholder": "会议笔记"
+    "notes_placeholder": "会议笔记",
+    "insights": "洞察板",
+    "empty_summary": "（暂无纪要）",
+    "empty_notes": "（暂无笔记）",
+    "conflict_team": "同事在您编辑期间修改了这份内容。您的草稿已保留，本次保存未覆盖他人修改——请对照最新内容调整后重试。"
   },
   "assets": {
     "hotwords_title": "热词",
@@ -217,5 +222,54 @@
     "empty": "公司服务器上还没有你在助手设备上上传过的内容",
     "alias_speaker": "发言人标签",
     "alias_name": "显示名"
+  },
+  "team": {
+    "empty": "还没有人公开内容。您可以把自己的纪要或决策公开进来。",
+    "published_by": "由 {name} 公开",
+    "self": "您",
+    "viewer_note": "您在这个团队是只读成员，如需编辑内容，请联系团队管理员。"
+  },
+  "changes": {
+    "title": "变更记录",
+    "private_hint": "变更记录在团队空间里查看——先切换到团队。",
+    "empty": "还没有变更记录。",
+    "load_failed": "变更记录加载失败，请稍后重试",
+    "load_more": "加载更多",
+    "restoring": "恢复中…",
+    "open_source": "查看所在内容"
+  },
+  "audit": {
+    "act_publish": "{name} 公开了《{title}》",
+    "act_edit": "{name} 修改了《{title}》",
+    "act_withdraw": "{name} 撤回了《{title}》",
+    "act_decision_publish": "{name} 公开了一条决策（来自《{title}》）",
+    "act_decision_withdraw": "{name} 撤回了一条决策（来自《{title}》）",
+    "act_decision_delete": "{name} 删除了一条决策（来自《{title}》）",
+    "act_decision_restore": "{name} 恢复了一条决策（来自《{title}》）",
+    "act_member_add": "{name} 添加了成员",
+    "act_member_role_change": "{name} 调整了成员角色",
+    "act_member_remove": "{name} 移除了成员",
+    "act_role_transfer": "{name} 转让了管理员",
+    "act_team_archive": "{name} 归档了团队",
+    "restore_btn": "恢复",
+    "restore_done": "已恢复，本次操作已写入变更记录",
+    "restore_failed": "恢复失败，请稍后重试"
+  },
+  "decisions": {
+    "delete_btn": "删除",
+    "delete_confirm": "删除后同事不再看到这条决策，可在变更记录中恢复",
+    "deleted": "已删除，可在变更记录中恢复",
+    "delete_failed": "删除失败，请稍后重试"
+  },
+  "decisionsTeam": {
+    "title": "团队决策",
+    "private_hint": "决策聚合在团队空间查看——先切换到团队，或把决策公开到团队。",
+    "load_failed": "团队决策加载失败，请稍后重试",
+    "search_placeholder": "搜索决策内容或会议",
+    "filter_source": "按来源会议筛选",
+    "filter_all": "全部来源",
+    "empty": "还没有公开的决策。在会议详情页可以把单条决策公开到团队。",
+    "no_match": "没有匹配的决策",
+    "from": "来自《{title}》"
   }
 }
