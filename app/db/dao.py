@@ -966,6 +966,71 @@ class EnterpriseStore:
             ).rowcount
         return n
 
+    def team_members(self, *, actor_user_id: str, team_id: str) -> list[dict]:
+        """GET /teams/{id}/members（契约 §8；FE"公开人"显示名数据源）：effective 成员行。"""
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        rows = self.conn.execute(
+            "SELECT m.user_id, u.display_name, m.role, m.joined_at FROM team_members m"
+            " JOIN users u ON u.user_id=m.user_id WHERE m.team_id=? AND m.effective=1 ORDER BY m.joined_at",
+            (team_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---------------- 团队共享词表（契约 §4/§8：team_assets 表，editor+ 写、viewer+ 读） ----------------
+
+    def get_team_asset(self, *, actor_user_id: str, team_id: str, kind: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        self._live_team(team_id)
+        row = self.conn.execute(
+            "SELECT * FROM team_assets WHERE team_id=? AND kind=?", (team_id, kind)
+        ).fetchone()
+        if row is None:
+            return {"kind": kind, "visibility": "team", "team_id": team_id,
+                    "current_rev": 0, "content_hash": None, "payload": None}
+        payload = json.loads(gzip.decompress(Path(row["blob_path"]).read_bytes()).decode("utf-8"))
+        return {"kind": kind, "visibility": "team", "team_id": team_id,
+                "current_rev": row["current_rev"], "content_hash": row["content_hash"], "payload": payload}
+
+    def apply_team_asset(self, *, actor_user_id: str, team_id: str, kind: str,
+                         base_rev: int, payload: Any) -> SnapshotResult:
+        """团队词表 PUT：editor+、归档拒绝新写（词表属团队内容面）；内容幂等+If-Match-Rev 同 §1.4 协议。"""
+        self.require_team_role(team_id, actor_user_id, "editor")
+        if self._live_team(team_id)["status"] != "active":
+            raise TeamConflictError("team_archived")
+        if kind not in ("hotwords", "speaker_aliases", "decision_statuses"):
+            raise ValueError(f"未知资产类型 {kind}")
+        blob_bytes = gzip.compress(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        digest = _sha256(blob_bytes)
+        row = self.conn.execute(
+            "SELECT * FROM team_assets WHERE team_id=? AND kind=?", (team_id, kind)
+        ).fetchone()
+        current_rev = row["current_rev"] if row is not None else 0
+        if row is not None and row["content_hash"] == digest:
+            return SnapshotResult(row["current_rev"], row["content_hash"], row["updated_at"], idempotent_replay=True)
+        if base_rev != current_rev:
+            raise StaleRevisionError(current_rev)
+        new_rev = current_rev + 1
+        blob_path = self.dr.blobs_dir / team_id / "assets" / f"{kind}.json.gz"
+        blob_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = blob_path.with_suffix(".tmp")
+        tmp.write_bytes(blob_bytes)
+        tmp.replace(blob_path)
+        now = utcnow()
+        with self.conn:
+            if row is None:
+                self.conn.execute(
+                    "INSERT INTO team_assets(team_id, kind, current_rev, blob_path, content_hash, updated_at)"
+                    " VALUES (?,?,?,?,?,?)", (team_id, kind, new_rev, str(blob_path), digest, now),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE team_assets SET current_rev=?, blob_path=?, content_hash=?, updated_at=?"
+                    " WHERE team_id=? AND kind=?", (new_rev, str(blob_path), digest, now, team_id, kind),
+                )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="edit",
+                    task_id=None, rev=new_rev, target_ref=f"asset:{kind}", content_hash=digest)
+        return SnapshotResult(new_rev, digest, now)
+
     def audit_page(self, *, actor_user_id: str, team_id: str, cursor: str | None, limit: int) -> dict:
         """变更记录端点数据源（§8.4 倒序分页；K1 十二值原样透出）。"""
         self.require_team_role(team_id, actor_user_id, "viewer")
@@ -1002,7 +1067,9 @@ class EnterpriseStore:
         marks = ",".join("?" * len(src_ids))
         rows = self.conn.execute(
             "SELECT c.source_task_id, c.task_id AS copy_task_id, c.team_id, t.name AS team_name,"
-            " c.acl AS granularity_marker, c.current_rev, c.updated_at"
+            " c.acl AS granularity_marker, c.current_rev, c.updated_at,"
+            " COALESCE((SELECT MIN(a.ts) FROM team_edit_audit a WHERE a.task_id=c.task_id"
+            "   AND a.action IN ('publish','decision_publish')), c.updated_at) AS published_at"
             f" FROM ctx_tasks c JOIN teams t ON t.team_id=c.team_id"
             f" WHERE c.owner_user_id=? AND c.scope='team' AND c.status='active'"
             f" AND c.source_task_id IN ({marks}) ORDER BY c.updated_at",
@@ -1270,6 +1337,7 @@ class EnterpriseStore:
             "source_task_id": d["source_task_id"], "publisher_user_id": d["owner_user_id"],
             "my_role": self.team_role(team_id, actor_user_id),
             "server_rev": d["current_rev"], "content_hash": d["content_hash"],
+            "published_at": self._copy_published_at(task_id),
             "meta": {
                 "title": d["title"], "meeting_time": d["meeting_time"],
                 "participants_text": d["participants_text"], "source": d["source"],
@@ -1278,11 +1346,24 @@ class EnterpriseStore:
             **entities,
         }
 
+    def _copy_published_at(self, task_id: str) -> str | None:
+        """K4 定版：副本创建时刻=首次 publish 留痕 ts（ctx_tasks 无 created_at 列，属透出非新造，零迁移）。"""
+        row = self.conn.execute(
+            "SELECT COALESCE(MIN(a.ts), t.updated_at) AS ts FROM ctx_tasks t"
+            " LEFT JOIN team_edit_audit a ON a.task_id=t.task_id AND a.action IN ('publish','decision_publish')"
+            " WHERE t.task_id=?",
+            (task_id,),
+        ).fetchone()
+        return row["ts"] if row else None
+
     def list_team_tasks(self, *, actor_user_id: str, team_id: str) -> list[dict]:
         self.require_team_role(team_id, actor_user_id, "viewer")
         rows = self.conn.execute(
             "SELECT task_id, title, current_rev, content_hash, source_task_id, owner_user_id AS publisher_user_id,"
-            " updated_at FROM ctx_tasks WHERE team_id=? AND scope='team' AND status='active'"
+            " updated_at,"
+            " COALESCE((SELECT MIN(a.ts) FROM team_edit_audit a WHERE a.task_id=ctx_tasks.task_id"
+            "   AND a.action IN ('publish','decision_publish')), ctx_tasks.updated_at) AS published_at"
+            " FROM ctx_tasks WHERE team_id=? AND scope='team' AND status='active'"
             " ORDER BY updated_at DESC",
             (team_id,),
         ).fetchall()
