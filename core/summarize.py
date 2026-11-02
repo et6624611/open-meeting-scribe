@@ -269,6 +269,8 @@ def generate_summary(
     meeting_time: str | None = None,
     user_notes: str | None = None,
     one_page_factor: float = 1.0,
+    mode: str = "full",
+    timeout: float | None = None,
 ) -> str:
     """
     根据对话稿生成会议纪要。
@@ -280,6 +282,10 @@ def generate_summary(
         meeting_time: 会议时间（来自音频采集时间），如 "2026-09-03 14:30"
         user_notes: 用户录音期间输入的笔记，作为纪要生成的额外上下文
         one_page_factor: 一页纸系数（会议级篇幅预算，作用于提示词取舍），缺省 1.0
+        mode: "full"=纪要正文+主要结论/决策事项（默认，行为与旧版一致）；
+            "body_only"=D018a 降级模式，只要求纪要正文，决策章节由模型省略、
+            后续人工补录（配合 pipeline 的 decisions_pending 语义）
+        timeout: LLM 调用独立超时预算（None=全局配置），body_only 重试传入宽预算
 
     Returns:
         Markdown 格式的纪要
@@ -360,13 +366,21 @@ def generate_summary(
     # 一页纸系数预算块：与角色模板路径同点位追加，两条路径口径一致
     summary_prompt += build_page_budget_block(one_page_factor)
 
+    # D018a 降级模式：只要正文，明示跳过决策类章节——降级重试的目标是"纪要已出"，
+    # 决策留待人工补录（body_only 下模板章节约束整体让位，追加在 user 末尾以获得末位优先权）
+    if mode == "body_only":
+        user_content += (
+            "\n---\n【本次输出约束】只生成纪要正文主体（会议概要与讨论要点）。"
+            "不要输出「主要结论」「决策事项」章节，也不要自造决策清单——决策部分将另行补录。\n"
+        )
+
     messages = [
         {"role": "system", "content": summary_prompt},
         {"role": "user", "content": user_content},
     ]
 
     logger.info(f"生成纪要: {unique_speaker_count} 位说话人（{len(dialogue)} 条对话）, 会议时间={meeting_time}")
-    summary = chat_completion(messages, model=model)
+    summary = chat_completion(messages, model=model, timeout=timeout)
 
     if is_summary_refusal(summary, total_sentences):
         # 误拒二次机会：模板「内容不足如实说明」出口被模型套用到转写不清晰的充足对话上
@@ -382,7 +396,7 @@ def generate_summary(
                 "generate the minutes based on the recognizable content. Do not refuse."
             ).format(count=total_sentences)},
         ]
-        summary = chat_completion(retry_messages, model=model)
+        summary = chat_completion(retry_messages, model=model, timeout=timeout)
 
     if is_summary_refusal(summary, total_sentences):
         raise SummaryRefusalError(f"模型误判对话内容不足（实际 {total_sentences} 句）: {(summary or '')[:60]}")

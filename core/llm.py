@@ -32,6 +32,33 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+def _env_timeout(name: str, default: float) -> float:
+    """读超时配置 env（D018a：超时可配）。未设置/非法/非正 → 维持 default（个人版零行为变化）。"""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        v = float(raw)
+    except ValueError:
+        logger.warning(f"{name}={raw!r} 非法，回退默认 {default}s")
+        return default
+    return v if v > 0 else default
+
+
+def llm_timeout_seconds() -> float:
+    """LLM 请求读超时主预算。OMS_LLM_TIMEOUT_SECONDS，默认 120=原写死值。"""
+    return _env_timeout("OMS_LLM_TIMEOUT_SECONDS", 120.0)
+
+
+def summary_retry_timeout_seconds() -> float:
+    """D018a 降级链路独立超时预算：纪要/决策合体调用超时后，仅正文纪要重试用的单独预算。
+
+    OMS_LLM_SUMMARY_RETRY_TIMEOUT_SECONDS，默认 180s——独立预算的意义是把"保正文产出"
+    的降级重试与主调用解耦：主调用快速失败触发降级，降级重试给更宽时间兜住产出。
+    """
+    return _env_timeout("OMS_LLM_SUMMARY_RETRY_TIMEOUT_SECONDS", 180.0)
+
+
 # 异步 HTTP 客户端（连接池复用，避免每次请求重建连接）
 _async_client: httpx.AsyncClient | None = None
 
@@ -41,7 +68,7 @@ def _get_async_client() -> httpx.AsyncClient:
     global _async_client
     if _async_client is None or _async_client.is_closed:
         _async_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0, connect=10.0),
+            timeout=httpx.Timeout(llm_timeout_seconds(), connect=10.0),
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
     return _async_client
@@ -262,9 +289,13 @@ def chat_completion(
     model: str = None,
     temperature: float = 0.7,
     max_tokens: int = 4096,
+    timeout: float | None = None,
 ) -> str:
     """
     同步调用 LLM（供后台线程使用）。
+
+    timeout：D018a 独立超时预算（None=全局 llm_timeout_seconds()），供降级重试等
+    差异化预算调用方使用；缺省路径行为与旧签名一致。
 
     安全守卫：若从 asyncio 事件循环线程直接调用，自动委托到线程池，
     防止阻塞事件循环。后台线程（管线、Timer）中仍同步执行。
@@ -285,11 +316,11 @@ def chat_completion(
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(
-                _chat_completion_raw, messages, model, temperature, max_tokens
+                _chat_completion_raw, messages, model, temperature, max_tokens, timeout
             )
             return future.result()
 
-    return _chat_completion_raw(messages, model, temperature, max_tokens)
+    return _chat_completion_raw(messages, model, temperature, max_tokens, timeout)
 
 
 # ============================================================
@@ -321,6 +352,7 @@ def _chat_completion_raw(
     model: str = None,
     temperature: float = 0.7,
     max_tokens: int = 4096,
+    timeout: float | None = None,
 ) -> str:
     """同步 LLM 调用的实际执行体（无事件循环守卫，供线程池委托使用）"""
     # 云端代理回退 / Cloud proxy fallback
@@ -339,7 +371,7 @@ def _chat_completion_raw(
             f"{base_url}/chat/completions",
             headers=headers,
             json=body,
-            timeout=120,
+            timeout=timeout or llm_timeout_seconds(),
         )
         resp.raise_for_status()
         content = _extract_content(resp.json())
@@ -398,7 +430,7 @@ def chat_completion_full(
                 f"{base_url}/chat/completions",
                 headers=headers,
                 json=body,
-                timeout=120,
+                timeout=llm_timeout_seconds(),
             )
             resp.raise_for_status()
             result = _extract_full_result(resp.json())
@@ -580,7 +612,7 @@ def chat_completion_stream(
         f"{base_url}/chat/completions",
         headers=headers,
         json=body,
-        timeout=120,
+        timeout=llm_timeout_seconds(),
         stream=True,
     )
     resp.raise_for_status()
