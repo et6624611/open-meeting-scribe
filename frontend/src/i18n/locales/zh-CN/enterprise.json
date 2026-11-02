@@ -5,6 +5,19 @@
     "enter_admin": "进入管理台",
     "logout": "退出登录"
   },
+  "space": {
+    "current_aria": "当前空间：{name}（点击切换）",
+    "private": "私有空间",
+    "private_hint": "仅你可见",
+    "my_teams": "我的团队",
+    "role_admin": "管理员",
+    "role_editor": "可编辑",
+    "role_viewer": "只读",
+    "archived_tag": "已归档",
+    "search_placeholder": "搜索团队",
+    "no_teams": "还没有加入任何团队。",
+    "load_error": "团队列表加载失败，请稍后重试"
+  },
   "banner": {
     "service_paused": "企业服务已暂停，仅可查看已同步内容",
     "sync_pending": "{count} 条文字待同步到公司服务器",

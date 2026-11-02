@@ -1,0 +1,127 @@
+/**
+ * 空间基座（P1-WP1）核心语义回归：切换即失效单点 + last_space 恢复/校验 + 登出清态。
+ * 对应改造方案 §0 决策 2/3 的钉死行为——这几条是 P1 防串数据的骨架断言。
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+
+vi.mock('@/edition', () => ({ EDITION: 'enterprise', isEnterprise: true }))
+vi.mock('@/api/teams', () => ({
+  listMyTeams: vi.fn(async () => []),
+  listTeamTasks: vi.fn(async () => []),
+  getTeamTask: vi.fn(),
+}))
+vi.mock('@/api/context', () => ({
+  listContextTasks: vi.fn(async () => []),
+  getContextTask: vi.fn(),
+  putContextSnapshot: vi.fn(),
+  snapshotConflictRev: vi.fn(() => null),
+  deleteContextTask: vi.fn(),
+}))
+
+import * as teamsApi from '@/api/teams'
+import { listContextTasks } from '@/api/context'
+import { useSpaceStore, PRIVATE_SPACE } from '@/stores/space'
+import { useContextsStore } from '@/stores/contexts'
+import { useUserStore } from '@/stores/user'
+
+const TEAMS = [
+  { team_id: 't1', name: '产品组', my_role: 'editor' as const },
+  { team_id: 't2', name: '外部顾问小组', my_role: 'viewer' as const },
+  { team_id: 't3', name: '旧项目组', my_role: 'admin' as const, status: 'archived' },
+]
+
+function seedUser(id: string) {
+  const user = useUserStore()
+  user.user = { id, name: '测试', avatar_url: '', email: '', role: 'member', provider: 'enterprise', prefs: {} }
+}
+
+async function flushAsync() {
+  // switchSpace 的失效链为 fire-and-forget（动态 import + 异步重载）：等两拍落位
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  localStorage.clear()
+  vi.mocked(teamsApi.listMyTeams).mockReset().mockResolvedValue([])
+  vi.mocked(teamsApi.listTeamTasks).mockReset().mockResolvedValue([])
+  vi.mocked(listContextTasks).mockReset().mockResolvedValue([])
+})
+
+describe('space store · 切换即失效单点', () => {
+  it('loadTeams 完成后恢复最近所在空间（scopedKey 命名空间内）', async () => {
+    seedUser('u9')
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    localStorage.setItem('oms.u.u9.last_space', 't2')
+    const space = useSpaceStore()
+    await space.loadTeams()
+    expect(space.currentId).toBe('t2')
+    expect(space.myRole).toBe('viewer')
+    expect(space.canEdit).toBe(false)
+  })
+
+  it('最近空间失效（已被移出团队）静默回私有，不报错', async () => {
+    seedUser('u9')
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    localStorage.setItem('oms.u.u9.last_space', 'gone-team')
+    const space = useSpaceStore()
+    await space.loadTeams()
+    expect(space.currentId).toBe(PRIVATE_SPACE)
+    expect(space.isTeamSpace).toBe(false)
+  })
+
+  it('switchSpace 切换=清空缓存并按空间重载（私有列表不串进团队，切回亦然）', async () => {
+    seedUser('u9')
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.loadTeams()
+
+    const contexts = useContextsStore()
+    contexts.tasks = [{ task_id: 'private-1' } as never]
+    vi.mocked(teamsApi.listTeamTasks).mockResolvedValue([{ task_id: 'copy-1' } as never])
+
+    space.switchSpace('t1')
+    expect(space.currentId).toBe('t1')
+    await flushAsync()
+    expect(teamsApi.listTeamTasks).toHaveBeenCalledWith('t1')
+    expect(contexts.tasks.map((t) => t.task_id)).toEqual(['copy-1'])
+
+    vi.mocked(listContextTasks).mockResolvedValue([{ task_id: 'private-2' } as never])
+    space.switchSpace(PRIVATE_SPACE)
+    await flushAsync()
+    expect(listContextTasks).toHaveBeenCalled()
+    expect(contexts.tasks.map((t) => t.task_id)).toEqual(['private-2'])
+  })
+
+  it('switchSpace 拒绝不在我团队清单里的 id（防注入/越权探测面）', async () => {
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.loadTeams()
+    space.switchSpace('not-my-team')
+    expect(space.currentId).toBe(PRIVATE_SPACE)
+  })
+
+  it('归档团队仍可切换进入（裁决④=只读可浏览）；archived 与 myRole 双源下发给视图', async () => {
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.loadTeams()
+    space.switchSpace('t3')
+    expect(space.currentId).toBe('t3')
+    expect(space.currentTeam?.status).toBe('archived') // D009：服务端权威态；渲染判定单源在 teams.ts isTeamArchived
+    // 角色本身不因归档反转——写入拒绝在服务端（409 team_archived），前端消费 myRole+archived 两源渲染
+    expect(space.canEdit).toBe(true)
+  })
+
+  it('reset（登出清态）回私有并清列表', async () => {
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.loadTeams()
+    space.switchSpace('t1')
+    space.reset()
+    expect(space.currentId).toBe(PRIVATE_SPACE)
+    expect(space.teams).toEqual([])
+    expect(space.loaded).toBe(false)
+  })
+})

@@ -7,6 +7,7 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useSpaceStore } from '@/stores/space'
 import { usePopMenu } from '@/composables/usePopMenu'
 
 const { t } = useI18n()
@@ -20,6 +21,8 @@ const { visible, close, toggle, triggerAttrs, menuAttrs } = usePopMenu(menuEl, b
 async function onLogout() {
   close()
   await userStore.logout()
+  // 空间上下文随登出清态（W1-04 清态纪律；last_space 键本身由 purgeUserScopedData 覆盖）
+  useSpaceStore().reset()
   router.replace('/login')
 }
 

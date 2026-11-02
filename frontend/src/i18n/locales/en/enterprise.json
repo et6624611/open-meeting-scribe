@@ -5,6 +5,19 @@
     "enter_admin": "Open admin console",
     "logout": "Sign out"
   },
+  "space": {
+    "current_aria": "Current space: {name} (click to switch)",
+    "private": "Private space",
+    "private_hint": "Only you can see",
+    "my_teams": "My teams",
+    "role_admin": "Admin",
+    "role_editor": "Can edit",
+    "role_viewer": "Read-only",
+    "archived_tag": "Archived",
+    "search_placeholder": "Search teams",
+    "no_teams": "You have not joined any teams yet.",
+    "load_error": "Failed to load your teams. Please try again later."
+  },
   "banner": {
     "service_paused": "Company service is paused — synced content only",
     "sync_pending": "{count} meeting texts pending sync to company server",
