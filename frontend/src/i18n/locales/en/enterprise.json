@@ -323,7 +323,7 @@
     "add_role_aria": "New members' role",
     "admin_title": "Transfer & archive",
     "archive_btn": "Archive team",
-    "archive_note": "After archiving, you and teammates can still view history, but no new publishing or editing. For permanent deletion, contact the instance admin.",
+    "archive_note": "After archiving, you and teammates can still view history, but no new publishing or editing is accepted.",
     "archive_input_placeholder": "Type the team name to confirm",
     "archived": "Team archived — content kept read-only"
   }

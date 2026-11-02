@@ -323,7 +323,7 @@
     "add_role_aria": "新成员角色",
     "admin_title": "转让与归档",
     "archive_btn": "归档团队",
-    "archive_note": "归档后您和同事仍可查看历史内容，但不再接受新的公开和编辑。彻底删除请联系实例管理员。",
+    "archive_note": "归档后您和同事仍可查看历史内容，但不再接受新的公开和编辑。",
     "archive_input_placeholder": "输入团队名称以确认",
     "archived": "团队已归档，内容保留只读"
   }
