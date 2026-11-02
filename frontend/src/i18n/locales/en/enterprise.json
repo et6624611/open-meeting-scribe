@@ -30,7 +30,7 @@
     "no_teams_hint": "You have not joined any teams yet. A team admin can add you to one.",
     "excluded_heading": "Never included (stays on your device):",
     "excluded_items": "Recording audio · verbatim transcript",
-    "after_note": "After publishing: the team sees this copy; your original in the private space is untouched, and teammates' edits never change your original. You can withdraw it at any time.",
+    "after_note": "After publishing: the team sees this content; your original in the private space is untouched, and teammates' edits never change your original. You can withdraw it at any time.",
     "btn_confirm": "Confirm publish",
     "submitting": "Publishing…",
     "toast_done": "Published to {count} team(s)",
