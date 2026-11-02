@@ -146,6 +146,35 @@ def test_snapshot_contract(client):
     assert client.get("/api/v1/context/tasks").status_code == 401
 
 
+def test_context_task_accepts_legacy_reference(client):
+    """迁移存量：旧本机 task_id 作为 URL 引用可读可写（Web 首页/书签/助手 outbox 持旧键）。"""
+    emp = make_member(client, "emp5")
+    legacy = "8ad489d1-d893-4e59-a020-d03d6736190e"
+    r = client.put(
+        "/api/v1/context/tasks/tsk_legacy/snapshot",
+        json={**PAYLOAD, "meta": {**PAYLOAD["meta"], "legacy_id": legacy}},
+        headers={"Idempotency-Key": "mut-lg1", "If-Match-Rev": "0"},
+        cookies=emp,
+    )
+    assert r.status_code == 201, r.text
+    got = client.get(f"/api/v1/context/tasks/{legacy}", cookies=emp)
+    assert got.status_code == 200, got.text
+    assert got.json()["task_id"] == "tsk_legacy"  # 回显权威 id，后续编辑走同一口径
+    # 助手按旧 task_id 重推 → 更新同一行，不另建副本
+    p = client.put(
+        f"/api/v1/context/tasks/{legacy}/snapshot",
+        json=PAYLOAD,
+        headers={"Idempotency-Key": "mut-lg2", "If-Match-Rev": "1"},
+        cookies=emp,
+    )
+    assert p.status_code == 200 and p.json()["server_rev"] == 2
+    tasks = client.get("/api/v1/context/tasks", cookies=emp).json()["tasks"]
+    assert [t["task_id"] for t in tasks] == ["tsk_legacy"]  # 未因旧引用重复入库
+    # 他人即使知道旧 task_id 也解析不出 → 与不存在同码
+    other = make_member(client, "emp6")
+    assert client.get(f"/api/v1/context/tasks/{legacy}", cookies=other).status_code == 404
+
+
 def test_service_closed_semantics(client):
     emp = make_member(client, "emp5")
     adm = login(client, "13373013103", "Admin-Pw-001").cookies

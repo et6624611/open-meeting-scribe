@@ -357,10 +357,34 @@ class EnterpriseStore:
         _require_actor(actor_user_id)
         return new_id("tsk")
 
+    def _canonical_task_id(self, actor_user_id: str, task_id: str) -> str:
+        """请求携带的标识 → 服务端权威 task_id（解析不出即原样返回，由调用方走统一 NotFound）。
+
+        存量迁移按契约 §1.1 以 `tsk_`+ULID 入库、旧本机 task_id 另存 `legacy_id` 列；而 Web 首页
+        最近会议、浏览器书签、助手 outbox 仍持旧 UUID。只按 task_id 查会让同一场会议出现两个面：
+        旧引用一律 404（“会议不存在或已被删除”），且客户端按 UUID 重推会另建一份副本。
+        解析严格限定在本人名下（含 legacy_id 命中也需 owner 匹配）：他人资源解析不出，落回原有
+        统一 NotFound 口径，不新增存在性 oracle。
+        """
+        _require_actor(actor_user_id)
+        if not task_id:
+            return task_id
+        exact = self.conn.execute(
+            "SELECT task_id FROM ctx_tasks WHERE task_id=? AND owner_user_id=?", (task_id, actor_user_id)
+        ).fetchone()
+        if exact is not None:
+            return exact["task_id"]
+        legacy = self.conn.execute(
+            "SELECT task_id FROM ctx_tasks WHERE legacy_id=? AND owner_user_id=? AND status='active'",
+            (task_id, actor_user_id),
+        ).fetchone()
+        return legacy["task_id"] if legacy is not None else task_id
+
     def task_current_rev(self, actor_user_id: str, task_id: str) -> int:
         _require_actor(actor_user_id)
         row = self.conn.execute(
-            "SELECT current_rev FROM ctx_tasks WHERE task_id=? AND owner_user_id=?", (task_id, actor_user_id)
+            "SELECT current_rev FROM ctx_tasks WHERE task_id=? AND owner_user_id=?",
+            (self._canonical_task_id(actor_user_id, task_id), actor_user_id),
         ).fetchone()
         return row["current_rev"] if row else 0
 
@@ -509,6 +533,8 @@ class EnterpriseStore:
     ) -> SnapshotResult:
         _require_actor(actor_user_id)
         self._validate_payload(payload)
+        # 旧 UUID 引用先解析为权威 task_id，幂等重放判断必须在解析之后（否则同 mutation 记到两个键上）
+        task_id = self._canonical_task_id(actor_user_id, task_id)
         blob_bytes = gzip.compress(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
         digest = _sha256(blob_bytes)
 
@@ -599,6 +625,7 @@ class EnterpriseStore:
 
     def get_task(self, *, actor_user_id: str, task_id: str) -> dict:
         _require_actor(actor_user_id)
+        task_id = self._canonical_task_id(actor_user_id, task_id)
         row = self.conn.execute(
             "SELECT * FROM ctx_tasks WHERE task_id=? AND owner_user_id=? AND status='active'",
             (task_id, actor_user_id),
@@ -644,6 +671,7 @@ class EnterpriseStore:
     def delete_task(self, *, actor_user_id: str, task_id: str) -> None:
         """软删 30 天回收站（PRD 定稿口径）；管理员不可读内容。"""
         _require_actor(actor_user_id)
+        task_id = self._canonical_task_id(actor_user_id, task_id)
         with self.conn:
             n = self.conn.execute(
                 "UPDATE ctx_tasks SET status='deleted', deleted_at=?, updated_at=? WHERE task_id=? AND owner_user_id=? AND status='active'",

@@ -137,6 +137,37 @@ def test_snapshot_flow(store: EnterpriseStore):
         store.apply_snapshot(actor_user_id=b, task_id="tsk_1", client_mutation_id="mut-9", base_rev=2, payload=PAYLOAD)
 
 
+# ---------------- 迁移存量的旧 task_id 引用 ----------------
+
+
+def test_legacy_task_reference_resolves(store: EnterpriseStore):
+    """旧本机 task_id（UUID）作为引用可读/可写/可删，且不产生第二份副本。"""
+    a, _ = make_member(store, "empLegacy")
+    legacy = "8ad489d1-d893-4e59-a020-d03d6736190e"
+    store.apply_snapshot(
+        actor_user_id=a,
+        task_id="tsk_legacy",
+        client_mutation_id="mut-L0",
+        base_rev=0,
+        payload=dict(PAYLOAD, meta={**PAYLOAD["meta"], "legacy_id": legacy}),
+    )
+    got = store.get_task(actor_user_id=a, task_id=legacy)  # Web 首页/书签持旧键
+    assert got["task_id"] == "tsk_legacy" and got["meta"]["legacy_id"] == legacy
+    # 助手 outbox 按旧 task_id 重推 → 命中同一行（契约 §1.1 legacy_id 映射的意义所在）
+    store.apply_snapshot(actor_user_id=a, task_id=legacy, client_mutation_id="mut-L1", base_rev=1, payload=PAYLOAD)
+    assert store.task_current_rev(a, legacy) == 2
+    assert store.task_current_rev(a, "tsk_legacy") == 2
+    assert store.conn.execute("SELECT COUNT(*) c FROM ctx_tasks").fetchone()["c"] == 1
+    # 越权与不存在同码：他人的 legacy_id 解析不出，落回统一 NotFound
+    b, _ = make_member(store, "empLegacy2")
+    with pytest.raises(NotFoundError):
+        store.get_task(actor_user_id=b, task_id=legacy)
+    # 按旧引用删除同样命中（软删后旧引用不再可解）
+    store.delete_task(actor_user_id=a, task_id=legacy)
+    with pytest.raises(NotFoundError):
+        store.get_task(actor_user_id=a, task_id=legacy)
+
+
 def test_snapshot_egress_whitelist(store: EnterpriseStore):
     a, _ = make_member(store, "empE")
     bad = dict(PAYLOAD, audio_base64="...")
