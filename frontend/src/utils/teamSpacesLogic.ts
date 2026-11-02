@@ -66,3 +66,13 @@ export function aggregateDecisions(rows: Array<{ summary: TeamTaskSummary; detai
 export function copyCount(copies: PublishedCopy[] | undefined): number {
   return new Set((copies ?? []).map((c) => c.team_id)).size
 }
+
+/**
+ * D021：留痕行展示判定（纯函数入回归基线）。
+ * - 词表类 edit（task_id=null 且 target_ref=asset:*）→ 专用键，不渲染《》空壳；
+ * - 标题回退链在调用侧（teamTasks 查询失效→neutral 词，禁裸 id——"藏而不释"同族）；
+ * - 成员/归档类无标题 → 无《》形态。
+ */
+export function isAssetAuditEdit(item: { action: string; task_id: string | null; target_ref: string | null }): boolean {
+  return item.action === 'edit' && item.task_id === null && !!item.target_ref?.startsWith('asset:')
+}

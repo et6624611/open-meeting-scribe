@@ -3,7 +3,7 @@
  * + 决策聚合摊平/排序（规格 §5.2 倒序）。
  */
 import { describe, expect, it } from 'vitest'
-import { K1_ACTIONS, aggregateDecisions, auditLabelKey } from '@/utils/teamSpacesLogic'
+import { K1_ACTIONS, aggregateDecisions, auditLabelKey, isAssetAuditEdit } from '@/utils/teamSpacesLogic'
 
 const CONTRACT_K1 = ['publish', 'edit', 'withdraw', 'decision_publish', 'decision_withdraw',
   'decision_delete', 'decision_restore', 'member_add', 'member_role_change', 'member_remove',
@@ -54,5 +54,17 @@ describe('aggregateDecisions · 决策聚合摊平', () => {
     const anchorless = [{ summary: { ...rows[0]!.summary, published_at: undefined }, detail: rows[0]!.detail }]
     const out = aggregateDecisions(anchorless)
     expect(out[0]?.publishAnchor).toBe('2026-11-01T10:00:00Z') // updated_at 回退
+  })
+})
+
+describe('isAssetAuditEdit · D021 词表留痕判定', () => {
+  it('edit+无 task+asset: 前缀 → 词表条目（不渲染《》空壳）', () => {
+    expect(isAssetAuditEdit({ action: 'edit', task_id: null, target_ref: 'asset:hotwords' })).toBe(true)
+    expect(isAssetAuditEdit({ action: 'edit', task_id: null, target_ref: 'asset:speaker_aliases' })).toBe(true)
+  })
+  it('纪要 edit/其他 action/无 target_ref 均不误判', () => {
+    expect(isAssetAuditEdit({ action: 'edit', task_id: 't1', target_ref: null })).toBe(false)
+    expect(isAssetAuditEdit({ action: 'publish', task_id: null, target_ref: 'asset:hotwords' })).toBe(false)
+    expect(isAssetAuditEdit({ action: 'edit', task_id: null, target_ref: null })).toBe(false)
   })
 })

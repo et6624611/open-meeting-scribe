@@ -13,7 +13,7 @@ import { isEnterprise } from '@/edition'
 import { useSpaceStore } from '@/stores/space'
 import { useContextsStore } from '@/stores/contexts'
 import { listTeamAudit, restoreTeamDecision, type TeamAuditItem } from '@/api/teams'
-import { auditLabelKey } from '@/utils/teamSpacesLogic'
+import { auditLabelKey, isAssetAuditEdit } from '@/utils/teamSpacesLogic'
 import { showToast } from '@/composables/useToast'
 import type { Router } from 'vue-router'
 import { useRouter } from 'vue-router'
@@ -30,14 +30,16 @@ const done = ref(false)
 const error = ref(false)
 const restoring = ref('')
 
-function taskTitle(taskId: string | null): string {
-  if (!taskId) return ''
-  return contexts.teamTasks.find((x) => x.task_id === taskId)?.title || taskId.slice(-6)
+/** D021 标题回退链：teamTasks 在列→真标题；引用失效（已撤回副本等）→中性词，禁裸 id */
+function displayTitle(item: TeamAuditItem): string {
+  if (!item.task_id) return ''
+  return contexts.teamTasks.find((x) => x.task_id === item.task_id)?.title ?? t('enterprise.changes.unknown_task')
 }
 
 function label(item: TeamAuditItem): string {
+  if (isAssetAuditEdit(item)) return t('enterprise.audit.act_edit_asset', { name: item.actor_name })
   const key = auditLabelKey(item.action)
-  const title = taskTitle(item.task_id)
+  const title = displayTitle(item)
   if (!key) return `${item.action}${title ? `《${title}》` : ''}`
   return t(`enterprise.${key}`, { name: item.actor_name, title })
 }

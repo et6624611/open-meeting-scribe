@@ -63,7 +63,11 @@ async function confirmWithdraw() {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       {{ t('enterprise.publish.badge_count', { n: teamCount }) }}
     </button>
-    <div v-show="visible" ref="menuEl" class="pc-menu" v-bind="menuAttrs" @click.stop>
+    <!-- D019 修复：Teleport 挂 body + position:fixed——usePopMenu 的视口坐标不再被卡片容器
+         原点二次偏移（右列角标菜单出屏=撤回不可达）；祖先 overflow/transform 劫持同解，
+         同 ResponsiveButtonGroup 既定模式 -->
+    <Teleport to="body">
+      <div v-show="visible" ref="menuEl" class="pc-menu" v-bind="menuAttrs" @click.stop>
       <p class="pc-section">{{ t('enterprise.publish.published_to') }}</p>
       <div v-for="(c, i) in copies" :key="`${c.team_id}-${c.copy_task_id}-${i}`" class="pc-row">
         <template v-if="confirming !== c">
@@ -81,7 +85,8 @@ async function confirmWithdraw() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -90,7 +95,7 @@ async function confirmWithdraw() {
 .pc-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--border, #e6e6e2); border-radius: 999px; background: var(--surface-2, #f2f2f0); color: var(--muted, #666); font-size: var(--fs-11, 11px); cursor: pointer; }
 .pc-badge:hover { border-color: var(--accent-mid, #4a7); color: var(--fg, #222); }
 .pc-badge svg { width: 11px; height: 11px; }
-.pc-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: var(--z-popover, 1000); min-width: 240px; max-width: 300px; padding: var(--s-2, 8px) 0; background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); box-shadow: 0 8px 24px rgb(0 0 0 / 0.1); }
+.pc-menu { position: fixed; z-index: var(--z-popover, 1000); min-width: 240px; max-width: 300px; padding: var(--s-2, 8px) 0; background: var(--surface, #fff); border: 1px solid var(--border, #e2e2de); border-radius: var(--radius-sm, 8px); box-shadow: 0 8px 24px rgb(0 0 0 / 0.1); }
 .pc-section { margin: 2px 14px 6px; font-size: var(--fs-11, 11px); color: var(--subtle, #999); font-weight: 600; }
 .pc-row { padding: 4px 14px; }
 .pc-row-info { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
