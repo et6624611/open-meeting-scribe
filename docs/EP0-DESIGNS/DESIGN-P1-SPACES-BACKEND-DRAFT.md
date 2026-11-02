@@ -127,6 +127,7 @@ enterprise_decision_assets(asset_id PK,
 - 触发：团队副本 decisions 字段任何新增/变更/删除 → 同步 upsert enterprise_decision_assets（同事务，幂等按 (source_task_id, decision_id)）。
 - 消费面 P1 **零界面**：无 API 读端点暴露列表（内部 status 维护脚本除外）；数据字典与追溯钩子（rev/哈希/collected_by/时间）齐全即履行"先收好、可追溯"。
 - 明示预留：未来"汇总/检索/看板"立项时，本表是唯一事实源——避免届时做数据考古。
+- 状态机定版终态（K3 观察项，PM 拍板 cmsg_01m6d86be2y0r5fe370f4d7n1y）：`stale` 是资产行"源内容已变"的终态标记，撤回不追溯改写；`withdrawn` 仅作用于撤回时仍有效（collected）的行。状态机不加边，未来裁决消费时再议。
 
 ---
 
