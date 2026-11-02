@@ -37,11 +37,13 @@ const router = createRouter({
       path: '/',
       name: 'start',
       component: () => import('@/views/StartView.vue'),
+      meta: { enterpriseRedirect: '/library' },
     },
     {
       path: '/recording/:taskId?',
       name: 'recording',
       component: () => import('@/views/RecordingView.vue'),
+      meta: { enterpriseRedirect: '/library' },
     },
     {
       path: '/meeting/:taskId',
