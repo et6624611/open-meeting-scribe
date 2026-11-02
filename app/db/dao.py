@@ -565,6 +565,10 @@ class EnterpriseStore:
         task = self.conn.execute(
             "SELECT * FROM ctx_tasks WHERE task_id=? AND owner_user_id=?", (task_id, actor_user_id)
         ).fetchone()
+        # D013 空间语义守卫：个人面读写恒限 personal 行——team 副本在个人端点=404（"非本空间"），
+        # 副本编辑唯一入口是团队副本端点（ACL/归档门/留痕在那侧强制），防止绕开团队面二次发布链。
+        if task is not None and task["scope"] != "personal":
+            raise NotFoundError(task_id)
         if task is None:
             # 防枚举：他人名下同名 task → 统一 NotFound（QA 域 A：禁止以 409/5xx 区分存在性）
             foreign = self.conn.execute(
@@ -641,7 +645,7 @@ class EnterpriseStore:
         _require_actor(actor_user_id)
         task_id = self._canonical_task_id(actor_user_id, task_id)
         row = self.conn.execute(
-            "SELECT * FROM ctx_tasks WHERE task_id=? AND owner_user_id=? AND status='active'",
+            "SELECT * FROM ctx_tasks WHERE task_id=? AND owner_user_id=? AND status='active' AND scope='personal'",
             (task_id, actor_user_id),
         ).fetchone()
         if row is None:
@@ -674,7 +678,7 @@ class EnterpriseStore:
         _require_actor(actor_user_id)
         sql = (
             "SELECT task_id, title, scope, current_rev, content_hash, updated_at FROM ctx_tasks"
-            " WHERE owner_user_id=? AND status='active'"
+            " WHERE owner_user_id=? AND status='active' AND scope='personal'"
         )
         params: tuple = (actor_user_id,)
         if since:
@@ -691,7 +695,7 @@ class EnterpriseStore:
         task_id = self._canonical_task_id(actor_user_id, task_id)
         with self.conn:
             n = self.conn.execute(
-                "UPDATE ctx_tasks SET status='deleted', deleted_at=?, updated_at=? WHERE task_id=? AND owner_user_id=? AND status='active'",
+                "UPDATE ctx_tasks SET status='deleted', deleted_at=?, updated_at=? WHERE task_id=? AND owner_user_id=? AND status='active' AND scope='personal'",
                 (utcnow(), utcnow(), task_id, actor_user_id),
             ).rowcount
         if n == 0:
