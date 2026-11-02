@@ -40,6 +40,18 @@ class NotFoundError(LookupError):
     """不存在或不属于 actor —— 一律同码，防枚举。"""
 
 
+class TeamRoleError(RuntimeError):
+    """成员门槛不足 —— 403 明示语义（契约 §8：角色是明示语义非资源隐藏）。"""
+
+    def __init__(self, min_role: str):
+        super().__init__(f"需要团队角色 ≥ {min_role}")
+        self.min_role = min_role
+
+
+class TeamConflictError(RuntimeError):
+    """团队域 409/422 冲突（last_admin、already_member、归档态等，端点层映射语义码）。"""
+
+
 # ---------------------------------------------------------------------------
 # ID 生成（可排序前缀 + 随机，等价 ULID 的单调性需求）
 # ---------------------------------------------------------------------------
@@ -167,6 +179,8 @@ class EnterpriseStore:
             self.conn.execute("UPDATE users SET status='disabled', updated_at=? WHERE user_id=?", (utcnow(), user_id))
             self.revoke_all_sessions(actor_user_id=user_id)
             self.revoke_all_devices(actor_user_id=user_id)
+        # P1 承接（契约 §2 离职撤权）：撤全部 effective 团队成员身份，行保留审计；发布的团队副本不随人走
+        self.deactivate_membership(user_id=user_id)
 
     def bulk_delete_user_data(self, *, actor_user_id: str, user_id: str) -> int:
         """管理台整包删除停用账号数据（物理删；内容对管理员不可读，仅元数据可见）。"""
@@ -750,6 +764,227 @@ class EnterpriseStore:
         _require_actor(actor_user_id)
         if not self._is_admin(actor_user_id):
             raise NotFoundError(actor_user_id)
+
+    # ---------------- 团队域（契约 v1.0 §2/§8：三档 ACL + K1 留痕） ----------------
+
+    TEAM_ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
+
+    def _audit(
+        self,
+        *,
+        team_id: str,
+        actor_user_id: str,
+        action: str,
+        task_id: str | None = None,
+        rev: int | None = None,
+        target_ref: str | None = None,
+        pre_delete_rev: int | None = None,
+        content_hash: str | None = None,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO team_edit_audit(audit_id, team_id, task_id, rev, actor_user_id, action,"
+                " target_ref, pre_delete_rev, content_hash, ts) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (new_id("aud"), team_id, task_id, rev, actor_user_id, action,
+                 target_ref, pre_delete_rev, content_hash, utcnow()),
+            )
+
+    def team_role(self, team_id: str, user_id: str) -> str | None:
+        """effective 成员角色；非成员/停用成员返回 None（§2 离职撤权）。"""
+        _require_actor(user_id)
+        row = self.conn.execute(
+            "SELECT role FROM team_members WHERE team_id=? AND user_id=? AND effective=1",
+            (team_id, user_id),
+        ).fetchone()
+        return row["role"] if row else None
+
+    def require_team_role(self, team_id: str, user_id: str, min_role: str) -> str:
+        """ACL 判定（契约 §8 错误语义）：非成员=NotFoundError(404 防枚举)；角色不足=TeamRoleError(403 明示)。"""
+        role = self.team_role(team_id, user_id)
+        if role is None:
+            raise NotFoundError(team_id)
+        if self.TEAM_ROLE_RANK[role] < self.TEAM_ROLE_RANK[min_role]:
+            raise TeamRoleError(min_role)
+        return role
+
+    def _live_team(self, team_id: str) -> dict:
+        row = self.conn.execute("SELECT * FROM teams WHERE team_id=?", (team_id,)).fetchone()
+        if row is None:
+            raise NotFoundError(team_id)
+        return dict(row)
+
+    def create_team(self, *, actor_user_id: str, name: str) -> dict:
+        """裁决2：任何 active 用户可建团队；创建者自动 admin（§2"至少一名 admin"的应用层约束起点）。"""
+        _require_actor(actor_user_id)
+        if not name or not name.strip():
+            raise TeamConflictError("team_name_required")
+        u = self.conn.execute("SELECT tenant_id, status FROM users WHERE user_id=?", (actor_user_id,)).fetchone()
+        if u is None or u["status"] != "active":
+            raise NotFoundError(actor_user_id)
+        team_id = new_id("team")
+        now = utcnow()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO teams(team_id, tenant_id, name, created_by, status, created_at) VALUES (?,?,?,?, 'active', ?)",
+                (team_id, u["tenant_id"], name.strip(), actor_user_id, now),
+            )
+            self.conn.execute(
+                "INSERT INTO team_members(team_id, user_id, role, added_by, joined_at, effective) VALUES (?,?,?,?,?,1)",
+                (team_id, actor_user_id, "admin", actor_user_id, now),
+            )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_add")
+        return {"team_id": team_id, "name": name.strip(), "my_role": "admin", "created_at": now, "status": "active"}
+
+    def list_my_teams(self, *, actor_user_id: str) -> list[dict]:
+        """UI 切换器数据源（契约 §8.1 逐字字段）。"""
+        _require_actor(actor_user_id)
+        rows = self.conn.execute(
+            "SELECT t.team_id, t.name, t.status, m.role AS my_role, m.joined_at,"
+            " (SELECT COUNT(*) FROM team_members x WHERE x.team_id=t.team_id AND x.effective=1) AS member_count"
+            " FROM teams t JOIN team_members m ON m.team_id=t.team_id"
+            " WHERE m.user_id=? AND m.effective=1 ORDER BY m.joined_at",
+            (actor_user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_team(self, *, actor_user_id: str, team_id: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        t = self._live_team(team_id)
+        members = [
+            dict(r)
+            for r in self.conn.execute(
+                "SELECT m.user_id, u.display_name, m.role, m.joined_at FROM team_members m"
+                " JOIN users u ON u.user_id=m.user_id WHERE m.team_id=? AND m.effective=1 ORDER BY m.joined_at",
+                (team_id,),
+            ).fetchall()
+        ]
+        return {
+            "team_id": t["team_id"], "name": t["name"], "status": t["status"],
+            "my_role": self.team_role(team_id, actor_user_id), "members": members,
+        }
+
+    def rename_team(self, *, actor_user_id: str, team_id: str, name: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "admin")
+        if not name or not name.strip():
+            raise TeamConflictError("team_name_required")
+        with self.conn:
+            self.conn.execute("UPDATE teams SET name=? WHERE team_id=?", (name.strip(), team_id))
+        return {"team_id": team_id, "name": name.strip()}
+
+    def add_member(self, *, actor_user_id: str, team_id: str, user_id: str, role: str = "editor") -> dict:
+        self.require_team_role(team_id, actor_user_id, "admin")
+        self._live_team(team_id)
+        if role not in self.TEAM_ROLE_RANK:
+            raise TeamConflictError(f"非法角色 {role}")
+        target = self.conn.execute("SELECT status FROM users WHERE user_id=?", (user_id,)).fetchone()
+        if target is None or target["status"] != "active":
+            raise NotFoundError(user_id)
+        if self.team_role(team_id, user_id) is not None:
+            raise TeamConflictError("already_member")
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO team_members(team_id, user_id, role, added_by, joined_at, effective) VALUES (?,?,?,?,?,1)",
+                (team_id, user_id, role, actor_user_id, utcnow()),
+            )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_add")
+        return {"team_id": team_id, "user_id": user_id, "role": role}
+
+    def change_member_role(self, *, actor_user_id: str, team_id: str, user_id: str, role: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "admin")
+        if role not in self.TEAM_ROLE_RANK:
+            raise TeamConflictError(f"非法角色 {role}")
+        cur = self.team_role(team_id, user_id)
+        if cur is None:
+            raise NotFoundError(user_id)
+        if cur == "admin" and role != "admin" and self._admin_count(team_id) <= 1:
+            raise TeamConflictError("last_admin")  # §1 应用层约束：最后一名 admin 离开前必须移交
+        with self.conn:
+            self.conn.execute(
+                "UPDATE team_members SET role=? WHERE team_id=? AND user_id=?", (role, team_id, user_id)
+            )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_role_change")
+        return {"team_id": team_id, "user_id": user_id, "role": role}
+
+    def _admin_count(self, team_id: str) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) c FROM team_members WHERE team_id=? AND role='admin' AND effective=1", (team_id,)
+        ).fetchone()["c"]
+
+    def transfer_admin(self, *, actor_user_id: str, team_id: str, to_user_id: str) -> dict:
+        """转让团队管理员：目标升 admin，actor 降 editor；单事务（K1 role_transfer）。"""
+        self.require_team_role(team_id, actor_user_id, "admin")
+        if self.team_role(team_id, to_user_id) is None:
+            raise NotFoundError(to_user_id)
+        with self.conn:
+            self.conn.execute(
+                "UPDATE team_members SET role='editor' WHERE team_id=? AND user_id=?", (team_id, actor_user_id)
+            )
+            self.conn.execute(
+                "UPDATE team_members SET role='admin' WHERE team_id=? AND user_id=?", (team_id, to_user_id)
+            )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="role_transfer")
+        return {"team_id": team_id, "new_admin": to_user_id}
+
+    def remove_member(self, *, actor_user_id: str, team_id: str, user_id: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "admin")
+        cur = self.team_role(team_id, user_id)
+        if cur is None:
+            raise NotFoundError(user_id)
+        if cur == "admin" and self._admin_count(team_id) <= 1:
+            raise TeamConflictError("last_admin")
+        with self.conn:
+            self.conn.execute(
+                "UPDATE team_members SET effective=0 WHERE team_id=? AND user_id=?", (team_id, user_id)
+            )
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_remove")
+        return {"team_id": team_id, "user_id": user_id, "removed": True}
+
+    def archive_team(self, *, actor_user_id: str, team_id: str) -> dict:
+        """裁决④归档只读：拒绝新写入（409 team_archived 由端点层判定），既有副本仍可撤回。"""
+        self.require_team_role(team_id, actor_user_id, "admin")
+        t = self._live_team(team_id)
+        if t["status"] == "archived":
+            raise TeamConflictError("already_archived")
+        with self.conn:
+            self.conn.execute("UPDATE teams SET status='archived', archived_at=? WHERE team_id=?", (utcnow(), team_id))
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="team_archive")
+        return {"team_id": team_id, "status": "archived"}
+
+    def deactivate_membership(self, *, user_id: str) -> int:
+        """P0 停用级联承接（§2 离职撤权）：全部 effective 成员身份置 0，行保留审计。返回撤权数。"""
+        _require_actor(user_id)
+        with self.conn:
+            n = self.conn.execute(
+                "UPDATE team_members SET effective=0 WHERE user_id=? AND effective=1", (user_id,)
+            ).rowcount
+        return n
+
+    def audit_page(self, *, actor_user_id: str, team_id: str, cursor: str | None, limit: int) -> dict:
+        """变更记录端点数据源（§8.4 倒序分页；K1 十二值原样透出）。"""
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        rows = self.conn.execute(
+            "SELECT a.audit_id, a.action, a.actor_user_id, u.display_name AS actor_name,"
+            " a.task_id, a.rev, a.target_ref, a.pre_delete_rev, a.ts"
+            " FROM team_edit_audit a JOIN users u ON u.user_id=a.actor_user_id"
+            " WHERE a.team_id=? AND (a.ts < ? OR ? IS NULL) ORDER BY a.ts DESC LIMIT ?",
+            (team_id, cursor, cursor, limit + 1),
+        ).fetchall()
+        items = [dict(r) for r in rows[:limit]]
+        return {"items": items, "next_cursor": rows[limit - 1]["ts"] if len(rows) > limit else None}
+
+    def search_users(self, *, actor_user_id: str, q: str) -> list[dict]:
+        """契约 §8.5：任何 active 用户可调（建团队选成员）；只回 user_id/display_name，不暴露联系面。"""
+        _require_actor(actor_user_id)
+        me = self.conn.execute("SELECT status FROM users WHERE user_id=?", (actor_user_id,)).fetchone()
+        if me is None or me["status"] != "active":
+            raise NotFoundError(actor_user_id)
+        like = f"%{q.strip()}%" if q and q.strip() else "%"
+        rows = self.conn.execute(
+            "SELECT user_id, display_name FROM users WHERE status='active' AND display_name LIKE ?"
+            " ORDER BY display_name LIMIT 20",
+            (like,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def _require_actor(actor_user_id: str | None) -> str:

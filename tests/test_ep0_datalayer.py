@@ -25,7 +25,7 @@ def store(tmp_path) -> EnterpriseStore:
     dr = DataRoot(root=tmp_path / "DATA_ROOT")
     s = EnterpriseStore(dr)
     applied = migrate(s.conn)
-    assert applied == ["0001_enterprise_p0"]
+    assert applied == ["0001_enterprise_p0", "0002_enterprise_p1"]
     now = "2026-10-29T00:00:00+00:00"
     with s.conn:
         s.conn.execute(
@@ -53,7 +53,7 @@ def make_member(store: EnterpriseStore, account: str) -> tuple[str, str]:
 def test_migrate_is_idempotent(store: EnterpriseStore):
     assert migrate(store.conn) == []  # 重复执行为 no-op
     versions = {r[0] for r in store.conn.execute("SELECT version FROM schema_version")}
-    assert versions == {1}
+    assert versions == {1, 2}
 
 
 def test_migrate_creates_wal_mode(tmp_path):
