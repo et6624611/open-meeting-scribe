@@ -212,7 +212,8 @@
     "insights": "Insights",
     "empty_summary": "(no minutes yet)",
     "empty_notes": "(no notes yet)",
-    "conflict_team": "A teammate changed this content while you were editing. Your draft is kept and nothing was overwritten — reconcile against the latest version and try again."
+    "conflict_team": "A teammate changed this content while you were editing. Your draft is kept and nothing was overwritten — reconcile against the latest version and try again.",
+    "link_team_hint": "If this link points to content a teammate published to a team, switch to that team in the space switcher at the top of the sidebar, then open it again."
   },
   "assets": {
     "hotwords_title": "Hot words",
