@@ -473,6 +473,8 @@ function onReloadRequested() {
 
 /** 检查后端是否有进行中的录音，自动恢复到录音页 / Check backend for active recording; auto-restore to recording page */
 async function checkActiveRecording() {
+  // 企业形态录音归助手侧，Web 无录音恢复面（#9 最小修：不发设备面注定失败请求）
+  if (isEnterprise) return
   try {
     const status = await getRecordStatus()
     if (status.recording && status.task_id) {
