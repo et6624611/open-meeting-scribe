@@ -102,7 +102,7 @@
       <div class="bb-clip">
     <footer class="status" ref="statusBarEl" :class="statusCapsMode === 'full' ? '' : 'is-' + statusCapsMode">
       <div class="left">
-        <div class="caps" ref="statusCapsEl" data-od-id="statusbar-caps" aria-live="polite">
+        <div class="caps" ref="statusCapsEl" data-od-id="statusbar-caps" aria-live="polite" v-if="!isEnterprise">
           <button
             type="button"
             class="cap"
@@ -146,8 +146,10 @@
     </div>
   </div>
 
-  <!-- 登录遮罩层 / Login modal overlay -->
-  <LoginModal />
+  <!-- 登录遮罩层 / Login modal overlay：仅个人版挂载。
+       企业形态裁决⑥=账号密码唯一入口（SMS/GitHub 均不挂载）；此前靠 is-hidden 隐藏，
+       但 opacity:0 不出栈，GitHub/手机号（内测）按钮仍在无障碍树内可 Tab 聚焦。 -->
+  <LoginModal v-if="!isEnterprise" />
 </template>
 
 <script setup lang="ts">
