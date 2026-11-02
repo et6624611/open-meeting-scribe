@@ -2,6 +2,8 @@
   <nav class="activity-rail">
     <!-- 顶部：Sidebar 折叠/展开 / Top: Sidebar collapse/expand -->
     <div class="ar-top">
+      <!-- 企业形态空间切换器（P1-WP1，UI 规格 §1.1：侧栏顶部常驻） -->
+      <SpaceSwitcher v-if="isEnterprise" />
       <IconButton
         class="ar-btn ar-toggle-btn"
         :class="{ 'is-collapsed': layout.sidebarCollapsed }"
@@ -103,6 +105,7 @@ import { isEnterprise } from '@/edition'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
 import IconButton from '@/components/common/IconButton.vue'
+import SpaceSwitcher from '@/components/layout/SpaceSwitcher.vue'
 import { modKey } from '@/utils/platform'
 
 const { t } = useI18n()

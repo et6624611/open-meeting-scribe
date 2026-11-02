@@ -9,6 +9,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { isEnterprise } from '@/edition'
 import { listContextTasks, getContextTask, putContextSnapshot, snapshotConflictRev, type ContextTaskSummary, type ContextTaskDetail, type SnapshotPayload } from '@/api/context'
+import { listTeamTasks, getTeamTask } from '@/api/teams'
+import { useSpaceStore } from './space'
 
 /**
  * content_hash 口径（2026-10-29 实测发现，待后端契约确认）：服务端对入库正文**重算并覆盖**
@@ -28,17 +30,30 @@ export const useContextsStore = defineStore('contexts', () => {
   const loading = ref(false)
   const loadError = ref<string | null>(null)
 
+  /** 空间态清理（spaceStore.switchSpace 的失效单点消费口；列表缓存键=当前空间，防串数据） */
+  function forgetSpaceState() {
+    tasks.value = []
+    loadError.value = null
+  }
+
   async function loadTasks() {
     if (!isEnterprise) return
     loading.value = true
     loadError.value = null
-    try { tasks.value = await listContextTasks() } catch (err) {
+    try {
+      const space = useSpaceStore()
+      // 空间=运行时上下文（方案 §0 决策 1）：私有=本人 owner 列表；团队=该团队公开副本列表
+      tasks.value = space.isTeamSpace ? await listTeamTasks(space.currentId) : await listContextTasks()
+    } catch (err) {
       loadError.value = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'load_failed'
     } finally { loading.value = false }
   }
 
   async function loadDetail(taskId: string): Promise<ContextTaskDetail | null> {
-    try { return await getContextTask(taskId) } catch { return null }
+    try {
+      const space = useSpaceStore()
+      return space.isTeamSpace ? await getTeamTask(space.currentId, taskId) : await getContextTask(taskId)
+    } catch { return null }
   }
 
   /**
@@ -94,5 +109,5 @@ export const useContextsStore = defineStore('contexts', () => {
     try { await deleteContextTask(taskId); tasks.value = tasks.value.filter(t => t.task_id !== taskId); return true } catch { return false }
   }
 
-  return { tasks, loading, loadError, loadTasks, loadDetail, saveSnapshot, removeTask }
+  return { tasks, loading, loadError, loadTasks, loadDetail, saveSnapshot, removeTask, forgetSpaceState }
 })
