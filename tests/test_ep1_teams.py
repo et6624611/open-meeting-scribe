@@ -227,3 +227,40 @@ def test_d010_batch_member_payload(env):
     assert ghost.status_code == 201
     assert ghost.json()["added"] == [] and ghost.json()["failed"][0]["code"] == "user_not_found"
     assert ghost.json()["failed"][1]["code"] == "already_member"
+
+
+# ---------------- D016 回归：建队带人单事务原子（一个用户动作不拆两次网络调用） ----------------
+
+
+def test_d016_create_team_with_members(env):
+    c, store = env
+    boss = create_member(c, "d16_boss", "建队人")
+    u1, u2 = create_member(c, "d16_u1", "带人一"), create_member(c, "d16_u2", "带人二")
+    r = c.post("/api/v1/teams", json={
+        "name": "D016 队", "member_user_ids": [u1["user_id"], u2["user_id"], "usr_ghost", boss["user_id"], u1["user_id"]],
+        "role": "editor",
+    }, cookies=boss["cookies"])
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert {a["user_id"] for a in body["added"]} == {u1["user_id"], u2["user_id"]}  # 重复 u1 去重取首次
+    assert len(body["added"]) == 2
+    codes = {f["user_id"]: f["code"] for f in body["failed"]}
+    assert codes["usr_ghost"] == "user_not_found" and codes[boss["user_id"]] == "already_member"
+    # 原子性直读：创建成功即三人在列（无"队建成人没进"中间态）
+    det = c.get(f"/api/v1/teams/{body['team_id']}", cookies=boss["cookies"]).json()
+    roles = {m["user_id"]: m["role"] for m in det["members"]}
+    assert roles == {boss["user_id"]: "admin", u1["user_id"]: "editor", u2["user_id"]: "editor"}
+    # 留痕对偶：创建者自 1 条 + 每个 added 1 条 member_add=3（failed 不留）
+    feed = c.get(f"/api/v1/teams/{body['team_id']}/audit", cookies=boss["cookies"]).json()["items"]
+    assert sum(1 for i in feed if i["action"] == "member_add") == 3
+    # 带进来的人切换器即时可见（被选者下拉即时=治理面数据前提）
+    lst = c.get("/api/v1/context/teams", cookies=u1["cookies"]).json()["teams"]
+    assert [t["team_id"] for t in lst] == [body["team_id"]] and lst[0]["member_count"] == 3
+    # 错误面同 D010 结构：非数组=422；非法 role=422；无选人保持旧形状兼容（added/failed 空数组）
+    bad = c.post("/api/v1/teams", json={"name": "x", "member_user_ids": "not-a-list"}, cookies=boss["cookies"])
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_member_payload"
+    bad2 = c.post("/api/v1/teams", json={"name": "x", "member_user_ids": [u1["user_id"]], "role": "boss"},
+                  cookies=boss["cookies"])
+    assert bad2.status_code == 422 and bad2.json()["error"]["code"] == "invalid_member_role"
+    plain = c.post("/api/v1/teams", json={"name": "素队"}, cookies=boss["cookies"]).json()
+    assert plain["added"] == [] and plain["failed"] == [] and plain["my_role"] == "admin"

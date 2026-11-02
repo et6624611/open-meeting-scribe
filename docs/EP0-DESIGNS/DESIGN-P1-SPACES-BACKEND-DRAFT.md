@@ -157,6 +157,7 @@ enterprise_decision_assets(asset_id PK,
 
 端点清单：
 - `GET/POST /api/v1/teams`、`GET/PUT /api/v1/teams/{id}`、`PUT /api/v1/teams/{id}/archive`
+  - `POST /api/v1/teams` 请求体定版（D016 补漏注，PM 拍板 cmsg_01m6dg263122dgqqt5wjcbttra，规格 §2"多选成员"的承载属设计期漏项）：`{name, member_user_ids?: [...], role?}`——建队带人单事务原子（复用 D010 added/failed 语义+每员 member_add 留痕；同批重复 id 去重取首次；创建者自送落 failed.already_member；幽灵/停用落 failed.user_not_found 不毁创建）；`member_user_ids` 非数组=422 invalid_member_payload，role 非法=422 invalid_member_role；响应新增 added/failed 两键（无选人时空数组）
 - `POST /api/v1/teams/{id}/members` 请求体终态（D010 拍板，冻结后原地补注）：`{user_ids: [...], role?}` 批量形态；字段缺失/非数组/空数组=422 invalid_member_payload 明示（禁 404 静默）；个体不存在/已成员 → `failed:[{user_id, code}]` 承载，`added` 与 `failed` 同时返回 201；权限判定先行（非成员 404/viewer·editor 403 不因批量结果吞掉）。`GET/DELETE /api/v1/teams/{id}/members[/{user_id}]`、`PUT .../members/{user_id}/role` 不变
 - `POST /api/v1/context/tasks/{id}/publish`、`DELETE /api/v1/context/teams/{id}/tasks/{task_id}`（撤回）
 - 团队副本读写：`GET /api/v1/context/teams/{id}/tasks[/{task_id}]`、快照 PUT 复用 §1.4 协议（actor 从会话取，无新增头）

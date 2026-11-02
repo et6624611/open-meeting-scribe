@@ -820,16 +820,31 @@ class EnterpriseStore:
             raise NotFoundError(team_id)
         return dict(row)
 
-    def create_team(self, *, actor_user_id: str, name: str) -> dict:
-        """裁决2：任何 active 用户可建团队；创建者自动 admin（§2"至少一名 admin"的应用层约束起点）。"""
+    def create_team(self, *, actor_user_id: str, name: str,
+                    member_user_ids: list | None = None, role: str = "editor") -> dict:
+        """裁决2：任何 active 用户可建团队；创建者自动 admin（§2"至少一名 admin"的应用层约束起点）。
+
+        D016（PM 拍板 cmsg_01m6dg263122dgqqt5wjcbttra）：建队带人=一个用户动作，事务内消费
+        member_user_ids（复用 D010 批量 added/failed 语义+每员 member_add 留痕）——队成则人在，
+        不存在"队建成人没进"的中间态；个体不合法不毁创建（幽灵/停用入 failed.user_not_found）。
+        """
         _require_actor(actor_user_id)
         if not name or not name.strip():
             raise TeamConflictError("team_name_required")
+        if member_user_ids is None:
+            member_user_ids = []
+        if not isinstance(member_user_ids, list):
+            raise TeamConflictError("invalid_member_payload")
+        if role not in self.TEAM_ROLE_RANK:
+            raise TeamConflictError("invalid_member_role")
         u = self.conn.execute("SELECT tenant_id, status FROM users WHERE user_id=?", (actor_user_id,)).fetchone()
         if u is None or u["status"] != "active":
             raise NotFoundError(actor_user_id)
         team_id = new_id("team")
         now = utcnow()
+        added: list[dict] = []
+        failed: list[dict] = []
+        seen: set[str] = set()
         with self.conn:
             self.conn.execute(
                 "INSERT INTO teams(team_id, tenant_id, name, created_by, status, created_at) VALUES (?,?,?,?, 'active', ?)",
@@ -839,8 +854,28 @@ class EnterpriseStore:
                 "INSERT INTO team_members(team_id, user_id, role, added_by, joined_at, effective) VALUES (?,?,?,?,?,1)",
                 (team_id, actor_user_id, "admin", actor_user_id, now),
             )
+            for raw in member_user_ids:
+                target = str(raw or "")
+                if target in seen:
+                    continue  # 同批重复 id 去重取首次
+                seen.add(target)
+                if target == actor_user_id:
+                    failed.append({"user_id": target, "code": "already_member"})
+                    continue
+                row = self.conn.execute("SELECT status FROM users WHERE user_id=?", (target,)).fetchone()
+                if row is None or row["status"] != "active":
+                    failed.append({"user_id": target, "code": "user_not_found"})
+                    continue
+                self.conn.execute(
+                    "INSERT INTO team_members(team_id, user_id, role, added_by, joined_at, effective) VALUES (?,?,?,?,?,1)",
+                    (team_id, target, role, actor_user_id, now),
+                )
+                added.append({"user_id": target, "role": role})
         self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_add")
-        return {"team_id": team_id, "name": name.strip(), "my_role": "admin", "created_at": now, "status": "active"}
+        for _ in added:
+            self._audit(team_id=team_id, actor_user_id=actor_user_id, action="member_add")
+        return {"team_id": team_id, "name": name.strip(), "my_role": "admin", "created_at": now,
+                "status": "active", "added": added, "failed": failed}
 
     def list_my_teams(self, *, actor_user_id: str) -> list[dict]:
         """UI 切换器数据源（契约 §8.1 逐字字段）。"""

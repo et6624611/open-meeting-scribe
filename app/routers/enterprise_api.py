@@ -595,7 +595,7 @@ def _team_http(exc: Exception):
         return EHttp(403, "team_role_required", f"需要团队角色 ≥ {exc.min_role}")
     if isinstance(exc, TeamConflictError):
         code = str(exc)
-        status = 422 if code in ("team_name_required",) else 409
+        status = 422 if code in ("team_name_required", "invalid_member_payload", "invalid_member_role") else 409
         return EHttp(status, code, "团队操作冲突")
     return EHttp(500, "internal", "internal")
 
@@ -616,8 +616,14 @@ def context_teams_list(request: Request):
 def teams_create(request: Request, body: dict):
     uid = actor_for_write(request)
     write_guard(request, uid)
+    member_ids = body.get("member_user_ids")
+    if member_ids is not None and not isinstance(member_ids, list):
+        raise EHttp(422, "invalid_member_payload", "member_user_ids 必须为数组（D016 请求体定版）")
     try:
-        team = get_store().create_team(actor_user_id=uid, name=str(body.get("name", "")))
+        team = get_store().create_team(
+            actor_user_id=uid, name=str(body.get("name", "")),
+            member_user_ids=member_ids, role=str(body.get("role", "editor")),
+        )
     except (TeamRoleError, TeamConflictError) as exc:
         raise _team_http(exc)
     return JSONResponse(status_code=201, content=team)
