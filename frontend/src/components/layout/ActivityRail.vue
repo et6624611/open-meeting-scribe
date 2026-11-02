@@ -40,7 +40,10 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       </IconButton>
+      <!-- 团队词表端点 BE 尚未落地（契约 §8 在文）：团队空间暂不渲染词表/发言人入口，
+           避免把个人词表面误标为团队共享——端点就位批次随角标一并解禁（联调缺项已播报） -->
       <IconButton
+        v-if="!isEnterprise || !space.isTeamSpace"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'speakers' }"
         :label="t('sidebar.rail_speakers')"
@@ -50,6 +53,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </IconButton>
       <IconButton
+        v-if="!isEnterprise || !space.isTeamSpace"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'hotwords' }"
         :label="t('sidebar.rail_hotwords')"
@@ -58,9 +62,9 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h6l5 5v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5z"/><path d="M14 5v6h6"/></svg>
       </IconButton>
-      <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
+      <!-- 个人版=本地决策面板；企业形态=团队空间决策聚合（P1-WP-3 承接"决策面板回归"；私有空间不渲染） -->
       <IconButton
-        v-if="!isEnterprise"
+        v-if="!isEnterprise || space.isTeamSpace"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'decisions' }"
         :label="t('sidebar.rail_decisions')"
@@ -68,6 +72,17 @@
         @click="navigate('/decisions')"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M8 21h8"/><path d="M5 7h14"/><path d="M5 7 2.5 13a3 3 0 0 0 5 0L5 7z"/><path d="M19 7l-2.5 6a3 3 0 0 0 5 0L19 7z"/><path d="M12 3l7 4"/><path d="M12 3 5 7"/></svg>
+      </IconButton>
+      <!-- 团队空间：变更记录（全员可见的轻量操作记录，规格 §7/Q4 信任透明） -->
+      <IconButton
+        v-if="isEnterprise && space.isTeamSpace"
+        class="ar-btn"
+        :class="{ 'is-active': route.name === 'changes' }"
+        :label="t('sidebar.rail_changes')"
+        tip-position="right"
+        @click="navigate('/changes')"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
       </IconButton>
       <!-- 企业形态隐藏（产品 cmsg_01m63m8f1zb261meqx14xsqs9k：无服务端承接，不渲染不解释） -->
       <IconButton
@@ -82,10 +97,11 @@
       </IconButton>
     </div>
 
-    <!-- 底部：设置 / Bottom: settings -->
+    <!-- 底部：设置 / Bottom: settings（规格 §1.2：设置=设备属性，团队空间不出现） -->
     <div class="ar-bottom">
       <!-- 设置按钮（tooltip 含版本号） / Settings button (tooltip includes version) -->
       <IconButton
+        v-if="!isEnterprise || !space.isTeamSpace"
         class="ar-btn ar-settings"
         :class="{ 'is-active': route.name === 'settings' }"
         :label="t('sidebar.rail_settings_version', { version: appVersion })"
@@ -102,6 +118,7 @@
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { isEnterprise } from '@/edition'
+import { useSpaceStore } from '@/stores/space'
 import { useI18n } from 'vue-i18n'
 import { useLayoutStore } from '@/stores/layout'
 import IconButton from '@/components/common/IconButton.vue'
@@ -112,12 +129,13 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const layout = useLayoutStore()
+const space = useSpaceStore()
 
 /** 应用版本号（与 Sidebar 原版本号一致） / App version (consistent with Sidebar version) */
 const appVersion = 'v2.0.0'
 
 /** Rail navigation pages that should record origin before navigating / Rail 导航页（跳转前需记录来源） */
-const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/settings'])
+const RAIL_NAV_PAGES = new Set(['/library', '/projects', '/speakers', '/hotwords', '/agents', '/decisions', '/changes', '/settings'])
 
 /** Origin route before entering a secondary page, for toggle-back / 进入二级管理页前的来源路径 */
 const previousRoute = ref('')

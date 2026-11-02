@@ -10,6 +10,9 @@ vi.mock('@/api/teams', () => ({
   listMyTeams: vi.fn(async () => []),
   listTeamTasks: vi.fn(async () => []),
   getTeamTask: vi.fn(),
+  listTeamMembers: vi.fn(async () => []),
+  putTeamSnapshot: vi.fn(),
+  snapshotTeamConflict: vi.fn(() => null),
 }))
 vi.mock('@/api/context', () => ({
   listContextTasks: vi.fn(async () => []),
@@ -72,7 +75,7 @@ describe('space store · 切换即失效单点', () => {
     expect(space.isTeamSpace).toBe(false)
   })
 
-  it('switchSpace 切换=清空缓存并按空间重载（私有列表不串进团队，切回亦然）', async () => {
+  it('switchSpace 切换=清空缓存并按空间重载；两空间数组物理分离（D013 硬核对项：私有列表消费面与副本行互不渗入）', async () => {
     seedUser('u9')
     vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
     const space = useSpaceStore()
@@ -86,13 +89,18 @@ describe('space store · 切换即失效单点', () => {
     expect(space.currentId).toBe('t1')
     await flushAsync()
     expect(teamsApi.listTeamTasks).toHaveBeenCalledWith('t1')
-    expect(contexts.tasks.map((t) => t.task_id)).toEqual(['copy-1'])
+    // 团队副本只进 teamTasks；tasks 被失效单点清空且不因团队加载回填
+    expect(contexts.teamTasks.map((x) => x.task_id)).toEqual(['copy-1'])
+    expect(contexts.tasks).toEqual([])
 
-    vi.mocked(listContextTasks).mockResolvedValue([{ task_id: 'private-2' } as never])
+    vi.mocked(listContextTasks).mockResolvedValue([{ task_id: 'private-2', published_copies: [{ team_id: 't1', team_name: '产品组', copy_task_id: 'copy-1', granularity: 'task', current_rev: 1, updated_at: 'x' }] } as never])
     space.switchSpace(PRIVATE_SPACE)
     await flushAsync()
     expect(listContextTasks).toHaveBeenCalled()
-    expect(contexts.tasks.map((t) => t.task_id)).toEqual(['private-2'])
+    // 私有面数据源=仅原件（published_copies 角标数据随行在位=行过滤不误伤角标读面，D013 修复承诺面）
+    expect(contexts.tasks.map((x) => x.task_id)).toEqual(['private-2'])
+    expect(contexts.tasks[0]?.published_copies?.length).toBe(1)
+    expect(contexts.teamTasks).toEqual([])
   })
 
   it('switchSpace 拒绝不在我团队清单里的 id（防注入/越权探测面）', async () => {

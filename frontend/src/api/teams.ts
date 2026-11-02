@@ -8,7 +8,80 @@
  * 发布/撤回端点随 WP-2 扩展（publishToTeam/unpublishFromTeam），本批不含。
  */
 import client from './client'
-import type { ContextTaskSummary, ContextTaskDetail } from './context'
+import type { ContextTaskDetail, PublishedCopy, SnapshotResult } from './context'
+
+export type { PublishedCopy }
+
+/** 团队公开面列表行（BE dao.list_team_tasks 实码逐键：无 sync_status，visibility 恒 'team'；
+ *  publisher_user_id=发布人，显示名待 GET members 端点补齐（已随批播报 BE 缺项），渲染缺名回退不猜 */
+export interface TeamTaskSummary {
+  task_id: string
+  title: string
+  current_rev: number
+  content_hash: string
+  source_task_id: string | null
+  publisher_user_id: string
+  updated_at: string
+  visibility: 'team'
+}
+
+/** 变更记录行（K1 十二值原样透出；未知值前端回退显原文不崩——FE 兜底纪律） */
+export interface TeamAuditItem {
+  audit_id: string
+  action: string
+  actor_user_id: string
+  actor_name: string
+  task_id: string | null
+  rev: number | null
+  target_ref: string | null
+  pre_delete_rev: number | null
+  ts: string
+}
+
+/** 团队面快照 PUT（§8 复用 §1.4 协议；409 必含项① latest 全文经 snapshotTeamConflict 提取） */
+export async function putTeamSnapshot(
+  teamId: string, taskId: string, payload: Record<string, unknown>,
+  headers: { idempotencyKey: string; baseRev: number },
+): Promise<SnapshotResult> {
+  const { data } = await client.put<SnapshotResult>(
+    `/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}/snapshot`,
+    payload,
+    {
+      headers: {
+        'Idempotency-Key': headers.idempotencyKey,
+        'If-Match-Rev': String(headers.baseRev),
+      },
+    },
+  )
+  return data
+}
+
+/** 团队面 409 提取（必含项①）：current_rev + latest 全文快照（形态=get_team_task DTO） */
+export function snapshotTeamConflict(err: unknown): { currentRev: number; latest: ContextTaskDetail | null } | null {
+  const data = (err as { response?: { status?: number; data?: { error?: { code?: string; current_rev?: number; latest?: ContextTaskDetail } } } })?.response
+  if (data?.status !== 409 || data.data?.error?.code !== 'rev_conflict') return null
+  const rev = data.data.error.current_rev
+  return { currentRev: typeof rev === 'number' ? rev : -1, latest: data.data.error.latest ?? null }
+}
+
+/** 决策条目删除（裁决③；留痕 decision_delete 携 target_ref+pre_delete_rev） */
+export async function deleteTeamDecision(teamId: string, taskId: string, decisionId: string): Promise<void> {
+  await client.delete(`/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}/decisions/${encodeURIComponent(decisionId)}`)
+}
+
+/** 决策恢复（§6.5 闭环：from_rev=decision_delete 留痕的 pre_delete_rev） */
+export async function restoreTeamDecision(teamId: string, taskId: string, decisionId: string, fromRev: number): Promise<void> {
+  await client.post(`/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}/decisions/${encodeURIComponent(decisionId)}/restore`, { from_rev: fromRev })
+}
+
+/** 变更记录分页（§8.4 倒序；viewer+ 可读） */
+export async function listTeamAudit(teamId: string, cursor?: string | null, limit = 30): Promise<{ items: TeamAuditItem[]; next_cursor: string | null }> {
+  const { data } = await client.get<{ items: TeamAuditItem[]; next_cursor: string | null }>(
+    `/api/v1/teams/${encodeURIComponent(teamId)}/audit`,
+    { params: { limit, ...(cursor ? { cursor } : {}) } },
+  )
+  return data
+}
 
 export type TeamRole = 'admin' | 'editor' | 'viewer'
 
@@ -56,8 +129,8 @@ export async function listMyTeams(): Promise<TeamSummary[]> {
 }
 
 /** 团队公开面列表（§8 团队副本读；空团队=空数组，私有原件结构性不在此结果） */
-export async function listTeamTasks(teamId: string): Promise<ContextTaskSummary[]> {
-  const { data } = await client.get<{ tasks: ContextTaskSummary[] }>(
+export async function listTeamTasks(teamId: string): Promise<TeamTaskSummary[]> {
+  const { data } = await client.get<{ tasks: TeamTaskSummary[] }>(
     `/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks`,
   )
   return data.tasks

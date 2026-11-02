@@ -8,7 +8,9 @@
 import client from './client'
 import { planeClient } from './origins'
 
-export type Visibility = 'personal' // P0 恒 personal；P1 扩展时此处加枚举
+/** P1 扩展落地（WP-3）：团队副本行 visibility='team'（BE dao 实码单源）；
+ *  企业档无 UI 面（资产层零暴露红线），枚举不引入第三值。 */
+export type Visibility = 'personal' | 'team'
 export type ServerSyncStatus = 'synced' | 'stale'
 export type QueueSyncStatus = 'pending' | 'syncing' | 'synced' | 'error'
 
@@ -44,7 +46,8 @@ export interface ContextTaskMeta {
   legacy_id?: string | null
 }
 
-/** 详情（§1.4）：定稿全文 + 元数据 + server_rev；insights_html null 时可能缺省 */
+/** 详情（§1.4）：定稿全文 + 元数据 + server_rev；insights_html null 时可能缺省。
+ *  团队副本详情（get_team_task 实码）附带 team 面可选键——个人面响应不含，消费侧零变化（D013 纪律） */
 export interface ContextTaskDetail {
   task_id: string
   visibility: Visibility
@@ -58,6 +61,11 @@ export interface ContextTaskDetail {
   decisions: unknown[]
   notes: string
   insights_html?: string | null
+  /** 以下四键仅团队副本详情在位（BE 实码逐键对齐，不猜） */
+  team_id?: string
+  source_task_id?: string | null
+  publisher_user_id?: string
+  my_role?: string
 }
 
 export interface SnapshotResult {
