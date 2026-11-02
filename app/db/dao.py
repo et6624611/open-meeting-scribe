@@ -623,9 +623,9 @@ class EnterpriseStore:
                     ),
                 )
             self.conn.execute(
-                "INSERT INTO ctx_revisions(rev_id, task_id, owner_user_id, rev, client_mutation_id,"
-                " blob_path, content_hash, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (new_id("rvw"), task_id, actor_user_id, new_rev, client_mutation_id, str(blob_path), digest, now),
+                "INSERT INTO ctx_revisions(rev_id, task_id, owner_user_id, actor_user_id, rev, client_mutation_id,"
+                " blob_path, content_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (new_id("rvw"), task_id, actor_user_id, actor_user_id, new_rev, client_mutation_id, str(blob_path), digest, now),
             )
             for kind in ("formal", "summary", "decisions", "notes", "insights_html"):
                 if kind in payload and payload[kind] is not None:
@@ -1073,9 +1073,11 @@ class EnterpriseStore:
         if any(k in payload for k in self.TEAM_EXCLUDED_FIELDS):
             raise PayloadNotAllowedError("团队副本不包含逐字转写（裁决⑤结构性排除）")
         self._validate_payload(payload)
+        # D011 修复（QA 契约完整性门）：幂等判定按 (actor, mutation) 应用层进行——
+        # owner_user_id 列保持"行归属人=发布人"（契约 §6B 语义修正 B），不再挪用写作者位。
         existing = self.conn.execute(
             "SELECT r.rev, r.content_hash, r.created_at, r.task_id FROM ctx_revisions r"
-            " WHERE r.owner_user_id=? AND r.client_mutation_id=?",
+            " WHERE r.actor_user_id=? AND r.client_mutation_id=?",
             (actor_user_id, client_mutation_id),
         ).fetchone()
         if existing is not None:
@@ -1110,7 +1112,7 @@ class EnterpriseStore:
             self.conn.execute(
                 "INSERT INTO ctx_revisions(rev_id, task_id, owner_user_id, actor_user_id, rev,"
                 " client_mutation_id, blob_path, content_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (new_id("rvw"), task_id, actor_user_id, actor_user_id, new_rev, client_mutation_id,
+                (new_id("rvw"), task_id, row["owner_user_id"], actor_user_id, new_rev, client_mutation_id,
                  str(blob_path), digest, now),
             )
             for kind in ("summary", "decisions", "notes", "insights_html"):  # formal 结构性不在列

@@ -137,6 +137,7 @@ def test_team_snapshot_edit_and_409_latest(env):
         "SELECT owner_user_id, actor_user_id FROM ctx_revisions WHERE task_id=? AND rev=2", (copy_id,)
     ).fetchone()
     assert row["actor_user_id"] == bob["user_id"]
+    assert row["owner_user_id"] == alice["user_id"], "D011：owner 必须保持行归属人=发布人，不得写为本次写作者"
     # bob 用过期 base_rev 再写 → 409 含 current_rev + latest 全文（必含项①，QA TA2-7）
     conf = c.put(f"/api/v1/context/teams/{tid}/tasks/{copy_id}/snapshot", json={"summary": "串位"},
                  headers={"Idempotency-Key": "mut-b2", "If-Match-Rev": "1"}, cookies=bob["cookies"])
