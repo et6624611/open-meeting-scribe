@@ -431,9 +431,32 @@ app.add_middleware(
 # 写请求的 Origin 是 5173 而不是宿主自地址，按「等于宿主」会误杀；因此沿用 _cors_origins
 # 这份已有白名单。桌面形态（desktop.py 以 http://host:port 装载窗口）前后端同源，同样命中。
 #
+# 企业面例外（T-001 复发修复，2026-11-02）：/api/v1/* 的部署地址=任意 LAN ip:port，
+# 不可枚举，_cors_origins 白名单（只含个人版宿主端口）天然不适配 ⇒ 浏览器写请求必被误杀。
+# 对企业面前缀改用**同源判定**（Origin 的 host:port == 请求 Host）：CSRF 防护语义完整保留
+# ——sandbox 文档的 Origin: null、外部站点 origin、伪造 Host 与 Origin 不匹配一律仍拒；
+# 个人版面（非 /api/v1/ 前缀）零改动。
+#
 # 预留兼底（尚未实现）：若将来改用 file:// 或自定义 scheme 装载前端，会出现
 # “Origin 真为 null 的合法宿主”，届时改为启动 nonce + X-App-Nonce 头。
 _WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+_ENTERPRISE_API_PREFIX = "/api/v1/"
+
+
+def _same_origin_for_enterprise(origin: str | None, host: str | None) -> bool:
+    """Origin host:port 与请求 Host 严格相等才放行（企业面同源判定）。"""
+    if not origin or not host:
+        return False
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(origin)
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return False
+    return parts.netloc == host.strip()
 
 
 @app.middleware("http")
@@ -451,16 +474,20 @@ async def cross_origin_write_guard(request: Request, call_next):
         if path.startswith("/api/") and not path.startswith(_AUTH_EXEMPT_PREFIXES):
             origin = request.headers.get("origin")
             if origin is not None and origin not in _cors_origins:
-                audit_logger.warning(
-                    "ORIGIN_GUARD | ip=%s | %s %s | origin=%s",
-                    request.client.host if request.client else "unknown",
-                    request.method, path, origin or "(empty)",
+                same_origin_enterprise = path.startswith(_ENTERPRISE_API_PREFIX) and _same_origin_for_enterprise(
+                    origin, request.headers.get("host")
                 )
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "cross_origin_write_blocked",
-                             "message": "非本站来源的写请求已拦截（洞察板等沙箱文档无写权限）"},
-                )
+                if not same_origin_enterprise:
+                    audit_logger.warning(
+                        "ORIGIN_GUARD | ip=%s | %s %s | origin=%s",
+                        request.client.host if request.client else "unknown",
+                        request.method, path, origin or "(empty)",
+                    )
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "cross_origin_write_blocked",
+                                 "message": "非本站来源的写请求已拦截（洞察板等沙箱文档无写权限）"},
+                    )
     return await call_next(request)
 
 
