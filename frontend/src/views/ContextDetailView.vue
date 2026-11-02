@@ -74,6 +74,8 @@ async function load() {
   conflictNote.value = false
   detail.value = null
   if (!taskId) { notFound.value = true; return }
+  // D014：副本详情深链/重载——首帧必须等空间恢复，否则团队副本 id 落个人端点必 404（D013 守卫放大态）
+  await space.ensureReady()
   const d = await contexts.loadDetail(taskId)
   if (!d) { notFound.value = true; return }
   detail.value = d

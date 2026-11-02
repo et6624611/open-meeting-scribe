@@ -29,11 +29,11 @@ describe('auditLabelKey · K1 十二值（契约 §8.4 逐字）', () => {
 describe('aggregateDecisions · 决策聚合摊平', () => {
   const rows = [
     {
-      summary: { task_id: 'c1', title: '评审会', updated_at: '2026-11-01T10:00:00Z', current_rev: 1, content_hash: 'h', source_task_id: 'p1', publisher_user_id: 'u1', visibility: 'team' as const },
+      summary: { task_id: 'c1', title: '评审会', updated_at: '2026-11-01T10:00:00Z', published_at: '2026-10-30T09:00:00Z', current_rev: 3, content_hash: 'h', source_task_id: 'p1', publisher_user_id: 'u1', visibility: 'team' as const },
       detail: { decisions: [{ id: 'd1', text: '选 A 方案', status_text: '已确认' }, { text: '无 id 条目跳过' }, null] } as never,
     },
     {
-      summary: { task_id: 'c2', title: '周会', updated_at: '2026-11-02T10:00:00Z', current_rev: 1, content_hash: 'h', source_task_id: 'p2', publisher_user_id: 'u2', visibility: 'team' as const },
+      summary: { task_id: 'c2', title: '周会', updated_at: '2026-10-01T10:00:00Z', published_at: '2026-11-02T10:00:00Z', current_rev: 1, content_hash: 'h', source_task_id: 'p2', publisher_user_id: 'u2', visibility: 'team' as const },
       detail: { decisions: [{ id: 'd2', text: '上线 WP-3' }] } as never,
     },
     {
@@ -42,10 +42,17 @@ describe('aggregateDecisions · 决策聚合摊平', () => {
     },
   ]
 
-  it('摊平+按公开时间倒序（规格 §5.2）；无 id 条目与详情缺失行跳过', () => {
+  it('摊平+按公开时刻倒序（规格 §5.2 + K4 定版：编辑不顶序——c1 编辑时间更新但公开更早，位次在后）；无 id 条目与详情缺失行跳过', () => {
     const out = aggregateDecisions(rows)
     expect(out.map((r) => r.decisionId)).toEqual(['d2', 'd1'])
     expect(out[0]?.taskTitle).toBe('周会')
     expect(out[1]?.statusText).toBe('已确认')
+    expect(out[1]?.publishAnchor).toBe('2026-10-30T09:00:00Z')
+  })
+
+  it('旧部署态缺 published_at 键：回退 updated_at 排序不崩（兼容锚）', () => {
+    const anchorless = [{ summary: { ...rows[0]!.summary, published_at: undefined }, detail: rows[0]!.detail }]
+    const out = aggregateDecisions(anchorless)
+    expect(out[0]?.publishAnchor).toBe('2026-11-01T10:00:00Z') // updated_at 回退
   })
 })

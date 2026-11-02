@@ -23,6 +23,9 @@ export interface TeamTaskSummary {
   publisher_user_id: string
   updated_at: string
   visibility: 'team'
+  /** K4 定版（段五 74cfe95 供给）：首次 publish 留痕时间=公开时刻，决策聚合排序锚。
+   *  旧部署态缺键时消费侧回退 updated_at（内容新鲜度序），发布即自动升定版语义 */
+  published_at?: string
 }
 
 /** 变更记录行（K1 十二值原样透出；未知值前端回退显原文不崩——FE 兜底纪律） */

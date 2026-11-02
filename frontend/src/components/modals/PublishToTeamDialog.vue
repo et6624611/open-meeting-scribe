@@ -76,7 +76,7 @@ async function onConfirm() {
 }
 
 onMounted(() => {
-  void space.loadTeams()
+  void space.ensureReady()
   nextTick(() => firstFocusEl.value?.focus())
 })
 </script>

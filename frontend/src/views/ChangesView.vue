@@ -9,6 +9,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isEnterprise } from '@/edition'
 import { useSpaceStore } from '@/stores/space'
 import { useContextsStore } from '@/stores/contexts'
 import { listTeamAudit, restoreTeamDecision, type TeamAuditItem } from '@/api/teams'
@@ -46,10 +47,13 @@ function canRestore(item: TeamAuditItem): boolean {
 }
 
 async function fetchPage(reset = false) {
-  if (!space.isTeamSpace || loading.value) return
+  if (!isEnterprise || loading.value) return
   loading.value = true
   error.value = false
   try {
+    // D014：重载/刷新形态下先等空间就绪，currentId 恢复后 isTeamSpace 判定才可信
+    await space.ensureReady()
+    if (!space.isTeamSpace) return
     const page = await listTeamAudit(space.currentId, reset ? null : cursor.value)
     items.value = reset ? page.items : [...items.value, ...page.items]
     cursor.value = page.next_cursor

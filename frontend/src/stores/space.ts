@@ -101,6 +101,19 @@ export const useSpaceStore = defineStore('space', () => {
     })()
   }
 
+  /**
+   * D014 首帧就绪单点（PM 拍板"一次修全部同模式面孔"）：整页重载/深链时视图首帧必须等
+   * ①user 会话探测完成（last_space 恢复的 uid 依据）与②teams 恢复完成后才取数——
+   * 消费方一律 await ensureReady() 再 fetch，不再各自赌挂载顺序。
+   * 可重入：checkAuth/loadTeams 均有并发去重；teams 加载失败后再次调用即重试（loaded 仅成功置真）。
+   */
+  async function ensureReady(): Promise<void> {
+    if (!isEnterprise) return
+    const user = useUserStore()
+    if (!user.checked) await user.checkAuth()
+    await loadTeams()
+  }
+
   /** 登出清态（EnterpriseUserMenu 调用；401 路径走整页跳转天然覆盖） */
   function reset(): void {
     teams.value = []
@@ -114,6 +127,6 @@ export const useSpaceStore = defineStore('space', () => {
   return {
     teams, loaded, loadError, currentId,
     isTeamSpace, currentTeam, myRole, canEdit, isTeamAdmin, currentSpaceName,
-    loadTeams, switchSpace, reset, memberName, loadMembers,
+    loadTeams, switchSpace, reset, memberName, loadMembers, ensureReady,
   }
 })

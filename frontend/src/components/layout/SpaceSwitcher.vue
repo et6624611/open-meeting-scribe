@@ -29,7 +29,7 @@ const filteredTeams = computed(() => {
 const displayName = computed(() => (space.isTeamSpace ? space.currentSpaceName : t('enterprise.space.private')))
 const triggerTitle = computed(() => t('enterprise.space.current_aria', { name: displayName.value }))
 
-onMounted(() => { void space.loadTeams() })
+onMounted(() => { void space.ensureReady() })
 
 function pick(id: string) {
   space.switchSpace(id)
