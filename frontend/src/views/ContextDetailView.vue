@@ -143,6 +143,8 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
   <div class="cd-root">
     <div v-if="notFound" class="cd-missing" role="alert">
       {{ t('enterprise.detail.not_found') }}
+      <!-- PM 窗口D 收口拍板：错误空间打开副本链接=提示态非空白（不解析不点名团队，给出口） -->
+      <p v-if="!space.isTeamSpace" class="cd-missing-hint">{{ t('enterprise.detail.link_team_hint') }}</p>
       <RouterLink to="/library" class="cd-back">← {{ t('enterprise.library.title') }}</RouterLink>
     </div>
 
@@ -311,6 +313,7 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
 .cd-decision { background: var(--surface, #fff); border: 1px solid var(--border, #e6e6e2); border-left: 3px solid var(--accent, #2a6); border-radius: var(--radius-sm, 8px); padding: var(--s-3, 14px) var(--s-4, 18px); display: flex; flex-direction: column; gap: 6px; }
 .cd-decision-text { margin: 0; font-size: var(--fs-13, 13px); line-height: 1.7; }
 .cd-decision-status { align-self: flex-start; font-size: var(--fs-11, 11px); color: var(--muted, #666); background: var(--surface-2, #f2f2f0); padding: 1px 8px; border-radius: 999px; }
-.cd-missing { padding: var(--s-7, 48px); color: var(--warn, #c33); font-size: var(--fs-12, 12px); display: flex; gap: var(--s-3, 16px); align-items: center; }
+.cd-missing { padding: var(--s-7, 48px); color: var(--warn, #c33); font-size: var(--fs-12, 12px); display: flex; gap: var(--s-3, 16px); align-items: center; flex-wrap: wrap; }
+.cd-missing-hint { margin: 0; width: 100%; color: var(--muted, #666); font-size: var(--fs-12, 12px); }
 .cd-back { color: var(--muted, #666); }
 </style>

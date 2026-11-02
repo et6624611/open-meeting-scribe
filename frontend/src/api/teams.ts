@@ -177,6 +177,42 @@ export async function unpublishTeamTask(teamId: string, taskId: string): Promise
   await client.delete(`/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}`)
 }
 
+/** 团队词表 kind 路径段（BE TEAM_ASSET_KIND_MAP 逐字：hotwords / speaker-aliases） */
+export type TeamAssetKindSeg = 'hotwords' | 'speaker-aliases'
+
+/** 团队资产信封（BE get_team_asset 实码：kind/visibility='team'/team_id/current_rev/content_hash/payload；
+ *  空态 rev=0 payload=null——FE 空态判定单源 current_rev===0，与个人面同构） */
+export interface TeamAssetEnvelope<T> {
+  kind: string
+  visibility: 'team'
+  team_id: string
+  current_rev: number
+  content_hash: string | null
+  payload: T | null
+}
+
+export async function getTeamAsset<T>(teamId: string, kindSeg: TeamAssetKindSeg): Promise<TeamAssetEnvelope<T>> {
+  const { data } = await client.get<TeamAssetEnvelope<T>>(
+    `/api/v1/context/teams/${encodeURIComponent(teamId)}/assets/${kindSeg}`,
+  )
+  return data
+}
+
+/** 团队词表 PUT（editor+；§1.4 同协议；归档写 409 team_archived 读放行=裁决④）。
+ *  409 形态={error:'rev_conflict'...current_rev}——冲突方界面重拉最新（词表无逐行 diff 需求，
+ *  与团队纪要的 WP-5 diff 流刻意不同：整表重读后用户重改，绝不静默覆盖）。 */
+export async function putTeamAsset(
+  teamId: string, kindSeg: TeamAssetKindSeg, payload: Record<string, unknown>,
+  headers: { idempotencyKey: string; baseRev: number },
+): Promise<{ current_rev: number; content_hash: string; idempotent_replay: boolean }> {
+  const { data } = await client.put(
+    `/api/v1/context/teams/${encodeURIComponent(teamId)}/assets/${kindSeg}`,
+    { payload },
+    { headers: { 'Idempotency-Key': headers.idempotencyKey, 'If-Match-Rev': String(headers.baseRev) } },
+  )
+  return data
+}
+
 // ─── 治理面端点绑定（WP-4 消费；纯契约映射，本批无 UI） ───
 
 export async function createTeam(input: { name: string; member_user_ids: string[] }): Promise<TeamSummary> {
