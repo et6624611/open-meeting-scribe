@@ -85,23 +85,25 @@ def test_acl_matrix(env):
 
     for acc, role in ((bob, "editor"), (carol, "viewer")):
         r = c.post("/api/v1/teams/{t}/members".replace("{t}", tid),
-                   json={"user_id": acc["user_id"], "role": role}, cookies=owner["cookies"])
+                   json={"user_ids": [acc["user_id"]], "role": role}, cookies=owner["cookies"])
         assert r.status_code == 201, r.text
 
     # 局外人：读团队=404（防枚举），加成员=404
     assert c.get(f"/api/v1/teams/{tid}", cookies=out["cookies"]).status_code == 404
-    assert c.post(f"/api/v1/teams/{tid}/members", json={"user_id": out["user_id"]},
+    assert c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [out["user_id"]]},
                   cookies=out["cookies"]).status_code == 404
     # viewer 调角色：403 明示（角色是明示语义非资源隐藏）
     d403 = c.put(f"/api/v1/teams/{tid}/members/{bob['user_id']}/role", json={"role": "viewer"},
                  cookies=carol["cookies"])
     assert d403.status_code == 403 and d403.json()["error"]["code"] == "team_role_required"
     # editor 加成员：403
-    assert c.post(f"/api/v1/teams/{tid}/members", json={"user_id": carol["user_id"]},
+    assert c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [carol["user_id"]]},
                   cookies=bob["cookies"]).status_code == 403
-    # 重复加同一人：409 already_member
-    assert c.post(f"/api/v1/teams/{tid}/members", json={"user_id": bob["user_id"]},
-                  cookies=owner["cookies"]).status_code == 409
+    # D010 终态：重复加同一人 → 批量形态 failed 列表承载 already_member（不整体 409/404）
+    dup = c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [bob["user_id"]]},
+                 cookies=owner["cookies"])
+    assert dup.status_code == 201 and dup.json()["added"] == []
+    assert dup.json()["failed"] == [{"user_id": bob["user_id"], "code": "already_member"}]
     # 团队详情成员表
     detail = c.get(f"/api/v1/teams/{tid}", cookies=bob["cookies"]).json()
     assert {m["role"] for m in detail["members"]} == {"admin", "editor", "viewer"}
@@ -115,7 +117,7 @@ def test_last_admin_guard_and_transfer(env):
     owner = create_member(c, "o2", "组长二")
     dave = create_member(c, "dave", "Dave")
     tid = c.post("/api/v1/teams", json={"name": "T2"}, cookies=owner["cookies"]).json()["team_id"]
-    c.post(f"/api/v1/teams/{tid}/members", json={"user_id": dave["user_id"], "role": "editor"},
+    c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [dave["user_id"]], "role": "editor"},
            cookies=owner["cookies"])
     # 降级/移除最后一名 admin → 409 last_admin
     assert c.put(f"/api/v1/teams/{tid}/members/{owner['user_id']}/role", json={"role": "editor"},
@@ -142,7 +144,7 @@ def test_archive_and_audit_feed(env):
     owner = create_member(c, "o3", "组长三")
     viewer = create_member(c, "v3", "读三")
     tid = c.post("/api/v1/teams", json={"name": "T3"}, cookies=owner["cookies"]).json()["team_id"]
-    c.post(f"/api/v1/teams/{tid}/members", json={"user_id": viewer["user_id"], "role": "viewer"},
+    c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [viewer["user_id"]], "role": "viewer"},
            cookies=owner["cookies"])
     ar = c.put(f"/api/v1/teams/{tid}/archive", cookies=owner["cookies"])
     assert ar.status_code == 200 and ar.json()["status"] == "archived"
@@ -182,7 +184,7 @@ def test_disable_user_revokes_membership(env):
     owner = create_member(c, "o4", "组长四")
     gone = create_member(c, "g4", "将离")
     tid = c.post("/api/v1/teams", json={"name": "T4"}, cookies=owner["cookies"]).json()["team_id"]
-    c.post(f"/api/v1/teams/{tid}/members", json={"user_id": gone["user_id"], "role": "editor"},
+    c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [gone["user_id"]], "role": "editor"},
            cookies=owner["cookies"])
     adm = c.post("/api/v1/auth/login", json={"account": "13373013103", "password": "Admin-Pw-001"}).cookies
     assert c.put(f"/api/v1/admin/users/{gone['user_id']}/status", json={"status": "disabled"},
@@ -197,3 +199,31 @@ def test_disable_user_revokes_membership(env):
         "SELECT effective FROM team_members WHERE team_id=? AND user_id=?", (tid, gone["user_id"])
     ).fetchone()
     assert kept is not None and kept["effective"] == 0
+
+
+# ---------------- D010 缺陷回归：批量终态 + 错误面明示（禁 404 静默） ----------------
+
+
+def test_d010_batch_member_payload(env):
+    c, _ = env
+    boss = create_member(c, "d10_boss", "老板")
+    u1, u2 = create_member(c, "d10_u1", "成员一"), create_member(c, "d10_u2", "成员二")
+    tid = c.post("/api/v1/teams", json={"name": "D10"}, cookies=boss["cookies"]).json()["team_id"]
+    # FE 终态形态：user_ids 批量 → 201，added 两条
+    ok = c.post(f"/api/v1/teams/{tid}/members",
+                json={"user_ids": [u1["user_id"], u2["user_id"]], "role": "editor"}, cookies=boss["cookies"])
+    assert ok.status_code == 201, ok.text
+    assert len(ok.json()["added"]) == 2 and ok.json()["failed"] == []
+    # 旧单值形态 = 客户端构造错误 → 422 明示（缺陷原形态为 404 静默，整改依据即 PM 拍板三）
+    legacy = c.post(f"/api/v1/teams/{tid}/members", json={"user_id": u1["user_id"]}, cookies=boss["cookies"])
+    assert legacy.status_code == 422 and legacy.json()["error"]["code"] == "invalid_member_payload"
+    # 缺字段/空数组/非数组 → 422
+    for bad in ({}, {"user_ids": []}, {"user_ids": "not-a-list"}):
+        r = c.post(f"/api/v1/teams/{tid}/members", json=bad, cookies=boss["cookies"])
+        assert r.status_code == 422, bad
+    # 混合批量：合法+幽灵 id → added 1 条 + failed 承载，不整体失败
+    ghost = c.post(f"/api/v1/teams/{tid}/members",
+                   json={"user_ids": ["usr_ghost", u2["user_id"]]}, cookies=boss["cookies"])
+    assert ghost.status_code == 201
+    assert ghost.json()["added"] == [] and ghost.json()["failed"][0]["code"] == "user_not_found"
+    assert ghost.json()["failed"][1]["code"] == "already_member"

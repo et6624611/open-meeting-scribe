@@ -66,7 +66,7 @@ def make_source_task(client, cookies) -> None:
 
 def setup_team(client, alice, bob):
     tid = client.post("/api/v1/teams", json={"name": "空间组"}, cookies=alice["cookies"]).json()["team_id"]
-    r = client.post(f"/api/v1/teams/{tid}/members", json={"user_id": bob["user_id"], "role": "editor"},
+    r = client.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [bob["user_id"]], "role": "editor"},
                     cookies=alice["cookies"])
     assert r.status_code == 201
     return tid
@@ -119,7 +119,7 @@ def test_team_snapshot_edit_and_409_latest(env):
     make_source_task(c, alice["cookies"])
     tid = setup_team(c, alice, bob)
     carol = create_member(c, "edi_c")
-    c.post(f"/api/v1/teams/{tid}/members", json={"user_id": carol["user_id"], "role": "viewer"},
+    c.post(f"/api/v1/teams/{tid}/members", json={"user_ids": [carol["user_id"]], "role": "viewer"},
            cookies=alice["cookies"])
     copy_id = publish(c, alice["cookies"], tid).json()["task_id"]
     # viewer 写 → 403 明示

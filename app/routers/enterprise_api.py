@@ -660,18 +660,42 @@ def teams_archive(team_id: str, request: Request):
 
 @router.post("/teams/{team_id}/members")
 def teams_member_add(team_id: str, request: Request, body: dict):
+    """D010 终态（PM 拍板 cmsg_01m6d6s8g6nmd6sdetqh125qvk）：批量 {user_ids:[...], role?}。
+    请求体字段不符=422 明示（禁 404 静默）；个体不存在/已成员 → failed 列表，不整体失败。"""
     uid = actor_for_write(request)
     write_guard(request, uid)
+    user_ids = body.get("user_ids")
+    if "user_id" in body and user_ids is None:
+        raise EHttp(422, "invalid_member_payload", "字段已定版批量形态，请使用 user_ids:[...]（D010）")
+    if not isinstance(user_ids, list) or not user_ids:
+        raise EHttp(422, "invalid_member_payload", "user_ids 必须为非空数组")
+    role = str(body.get("role", "editor"))
+    store = get_store()
     try:
-        member = get_store().add_member(
-            actor_user_id=uid, team_id=team_id, user_id=str(body.get("user_id", "")),
-            role=str(body.get("role", "editor")),
-        )
+        store.require_team_role(team_id, uid, "admin")  # 权限先行判定：403/404 不因批量个体结果吞掉
     except NotFoundError:
         raise EHttp(404, "not_found", "资源不存在")
-    except (TeamRoleError, TeamConflictError) as exc:
+    except TeamRoleError as exc:
         raise _team_http(exc)
-    return JSONResponse(status_code=201, content=member)
+    added: list[dict] = []
+    failed: list[dict] = []
+    for raw in user_ids:
+        target = str(raw or "")
+        try:
+            added.append(store.add_member(actor_user_id=uid, team_id=team_id, user_id=target, role=role))
+        except NotFoundError:
+            failed.append({"user_id": target, "code": "user_not_found"})
+        except TeamConflictError as exc:
+            code = str(exc)
+            if code == "already_member":
+                failed.append({"user_id": target, "code": code})
+            elif code == "team_name_required":
+                raise EHttp(422, code, "参数非法")
+            else:
+                raise EHttp(409, code, "团队操作冲突")
+    if not added and failed and {f["code"] for f in failed} == {"user_not_found"}:
+        raise EHttp(404, "not_found", "目标用户不存在或不可用")
+    return JSONResponse(status_code=201, content={"added": added, "failed": failed})
 
 
 @router.delete("/teams/{team_id}/members/{user_id}")
