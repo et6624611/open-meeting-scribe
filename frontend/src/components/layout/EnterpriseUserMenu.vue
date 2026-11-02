@@ -41,13 +41,16 @@ function go(path: string) {
       <span class="ent-avatar" aria-hidden="true">{{ userStore.avatarLetter }}</span>
       <span class="ent-avatar-name">{{ userStore.displayName }}</span>
     </button>
-    <div v-show="visible" ref="menuEl" class="ent-menu" v-bind="menuAttrs" role="menu">
-      <button role="menuitem" @click="go('/settings')">{{ t('enterprise.menu.settings') }}</button>
-      <button role="menuitem" @click="go('/settings?cat=data_location')">{{ t('enterprise.menu.where_is_my_data') }}</button>
-      <button v-if="userStore.isAdmin" role="menuitem" @click="go('/admin')">{{ t('enterprise.menu.enter_admin') }}</button>
-      <hr class="ent-menu-sep">
-      <button role="menuitem" class="is-danger" @click="onLogout">{{ t('enterprise.menu.logout') }}</button>
-    </div>
+    <!-- D019 同族归正：视口坐标菜单挂 body+fixed（消除容器原点二次偏移） -->
+    <Teleport to="body">
+      <div v-show="visible" ref="menuEl" class="ent-menu" v-bind="menuAttrs" role="menu">
+        <button role="menuitem" @click="go('/settings')">{{ t('enterprise.menu.settings') }}</button>
+        <button role="menuitem" @click="go('/settings?cat=data_location')">{{ t('enterprise.menu.where_is_my_data') }}</button>
+        <button v-if="userStore.isAdmin" role="menuitem" @click="go('/admin')">{{ t('enterprise.menu.enter_admin') }}</button>
+        <hr class="ent-menu-sep">
+        <button role="menuitem" class="is-danger" @click="onLogout">{{ t('enterprise.menu.logout') }}</button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -79,9 +82,7 @@ function go(path: string) {
   font-weight: 600;
 }
 .ent-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  position: fixed;
   z-index: var(--z-popover, 1000);
   min-width: 180px;
   padding: var(--s-2, 8px) 0;

@@ -15,10 +15,14 @@ const instance = useInstanceStore()
 const showPaused = computed(() => isEnterprise && !instance.serviceOpen)
 const showPending = computed(() => isEnterprise && instance.pendingCount > 0 && instance.serviceOpen)
 const showError = computed(() => isEnterprise && instance.hasError)
+// D020 销项：契约句"AI 助手未开启，联系管理员"（enterprise.banner.ai_off）原为零消费孤儿键——
+// info 未到达前不判（防启动瞬间误显）；服务开放但实例 AI 关闭时呈现
+const showAiOff = computed(() => isEnterprise && !!instance.info && instance.serviceOpen && !instance.aiEnabled)
 </script>
 
 <template>
   <div v-if="showPaused" class="ent-banner is-paused" role="status">{{ t('enterprise.banner.service_paused') }}</div>
+  <div v-else-if="showAiOff" class="ent-banner is-pending" role="status">{{ t('enterprise.banner.ai_off') }}</div>
   <div v-else-if="showError" class="ent-banner is-error" role="alert">{{ t('enterprise.banner.sync_error') }}</div>
   <div v-else-if="showPending" class="ent-banner is-pending" role="status">
     {{ t('enterprise.banner.sync_pending', { count: instance.pendingCount }) }}

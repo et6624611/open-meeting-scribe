@@ -98,7 +98,9 @@ function roleLabel(role: string): string {
       <svg class="ss-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
 
-    <div v-show="visible" ref="menuEl" class="ss-menu" v-bind="menuAttrs">
+    <!-- D019 同族归正：视口坐标菜单挂 body+fixed（原 absolute 于 rail 内 root，偏移=容器原点） -->
+    <Teleport to="body">
+      <div v-show="visible" ref="menuEl" class="ss-menu" v-bind="menuAttrs">
       <input
         v-if="showSearch"
         v-model="query"
@@ -144,7 +146,8 @@ function roleLabel(role: string): string {
         <span class="ss-item-name">{{ t('enterprise.space.new_team') }}</span>
         <span class="ss-hint" aria-hidden="true">＋</span>
       </button>
-    </div>
+      </div>
+    </Teleport>
 
     <TeamCreateDialog v-if="showCreate" @close="showCreate = false" />
   </div>
@@ -178,9 +181,7 @@ function roleLabel(role: string): string {
 }
 .ss-caret { width: 10px; height: 10px; flex: none; color: var(--muted, #666); }
 .ss-menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 4px);
+  position: fixed;
   z-index: var(--z-popover, 1000);
   min-width: 232px;
   max-width: 280px;

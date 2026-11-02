@@ -251,7 +251,8 @@
     "load_failed": "变更记录加载失败，请稍后重试",
     "load_more": "加载更多",
     "restoring": "恢复中…",
-    "open_source": "查看所在内容"
+    "open_source": "查看所在内容",
+    "unknown_task": "某会议"
   },
   "audit": {
     "act_publish": "{name} 公开了《{title}》",
@@ -268,7 +269,8 @@
     "act_team_archive": "{name} 归档了团队",
     "restore_btn": "恢复",
     "restore_done": "已恢复，本次操作已写入变更记录",
-    "restore_failed": "恢复失败，请稍后重试"
+    "restore_failed": "恢复失败，请稍后重试",
+    "act_edit_asset": "{name} 修改了团队共享词表"
   },
   "decisions": {
     "delete_btn": "删除",

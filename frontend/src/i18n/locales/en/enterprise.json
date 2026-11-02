@@ -251,7 +251,8 @@
     "load_failed": "Failed to load the change log. Please try again later.",
     "load_more": "Load more",
     "restoring": "Restoring…",
-    "open_source": "View content"
+    "open_source": "View content",
+    "unknown_task": "a meeting"
   },
   "audit": {
     "act_publish": "{name} published “{title}”",
@@ -268,7 +269,8 @@
     "act_team_archive": "{name} archived the team",
     "restore_btn": "Restore",
     "restore_done": "Restored — the operation is recorded in the change log",
-    "restore_failed": "Restore failed. Please try again later."
+    "restore_failed": "Restore failed. Please try again later.",
+    "act_edit_asset": "{name} updated the team word list"
   },
   "decisions": {
     "delete_btn": "Delete",
