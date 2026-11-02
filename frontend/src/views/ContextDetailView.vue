@@ -7,7 +7,9 @@
  *  - Tab=纪要/决策/笔记/洞察（insights_html 有才渲染；**无逐字稿 Tab=结构性缺失不渲染不解释**，
  *    复制器白名单在数据层已排除 formal）；
  *  - 编辑权=detail.my_role 单源（editor/admin 渲染编辑面，viewer 无任何编辑控件+一行说明，不灰态不解释缺失）；
- *  - 保存冲突=保稿不覆盖（返回 latest 呈现冲突条；diff 合并 UI=WP-5 交付形态）；
+ *  - 保存冲突=对照合并弹窗（WP-5，规格 §6）：409{current_rev, latest} → ConflictDiffDialog 装载两版
+ *    逐段取舍 → 以 latest 为 base 新 mutation id 重推；latest 缺形回退"保稿冲突条"下限态（联调首查项注记）；
+ *    取消=弃稿装载新版；再 409 重入循环；绝不静默覆盖、冲突不记留痕（P1 裁）。
  *  - 决策条目删除（裁决③，二次确认）；恢复入口在变更记录（WP-3 ChangesView）。
  * 读：GET 团队/个人详情端点；写：PUT snapshot（Idempotency-Key + If-Match-Rev）。
  */
@@ -24,6 +26,7 @@ import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
 import PublishedCopiesMenu from '@/components/common/PublishedCopiesMenu.vue'
 import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue'
 import PublishToTeamDialog from '@/components/modals/PublishToTeamDialog.vue'
+import ConflictDiffDialog, { type DiffField } from '@/components/modals/ConflictDiffDialog.vue'
 import { showToast } from '@/composables/useToast'
 
 type TabId = 'formal' | 'summary' | 'decisions' | 'notes' | 'insights'
@@ -48,8 +51,9 @@ const isTeamDetail = computed(() => detail.value?.visibility === 'team')
 const hasInsights = computed(() => !!detail.value?.insights_html)
 /** B5（版式找回）：formal 纯文本呈现层分段——不改变任何字符内容，仅发言人 chip+分段留白 */
 const formalSegments = computed(() => parseFormalSegments(detail.value?.formal ?? ''))
-/** B4：洞察板"在浏览器中打开"全屏形态（BoardViewerView 企业分支=同源 sandbox iframe 铺满视口） */
-const boardHref = computed(() => (detail.value ? `/board/${detail.value.task_id}` : ''))
+/** B4：洞察板"在浏览器中打开"全屏形态（BoardViewerView 企业分支=同源 sandbox iframe 铺满视口）；
+ *  备案 4：task_id encodeURIComponent 对齐 meetingUrl 口径 */
+const boardHref = computed(() => (detail.value ? `/board/${encodeURIComponent(detail.value.task_id)}` : ''))
 function segNameColor(name: string): string { return getSpeakerNameTextColor(name) }
 function segNameBg(name: string): string { return getSpeakerNameBg(name) }
 /** 编辑权单源：detail.my_role（服务端随行下发）；私有面恒可编辑（本人原件） */
@@ -107,26 +111,80 @@ async function onSave() {
   if (!detail.value || !dirty.value || saving.value || !canEdit.value) return
   saving.value = true
   try {
-    const r = isTeamDetail.value
-      ? await contexts.saveTeamSnapshot(detail.value, { summary: summary.value, notes: notes.value })
-      : await contexts.saveSnapshot(detail.value, { summary: summary.value, notes: notes.value })
+    if (isTeamDetail.value) {
+      const r = await contexts.saveTeamSnapshot(detail.value, { summary: summary.value, notes: notes.value })
+      if (r.ok) {
+        await load()
+        showToast(t('enterprise.detail.saved'), 'success')
+        void contexts.loadTasks()
+      } else if (r.conflict && r.latest) {
+        // WP-5：latest 在位→对照合并弹窗（409 必含项①）
+        openConflictDialog(r.latest)
+      } else if (r.conflict) {
+        // latest 缺形→保稿冲突条下限态回退（联调首查项注记；绝不静默覆盖）
+        conflictNote.value = true
+        showToast(t('enterprise.detail.conflict_team'), 'error')
+      } else {
+        showToast(t('enterprise.detail.save_failed'), 'error')
+      }
+      return
+    }
+    const r = await contexts.saveSnapshot(detail.value, { summary: summary.value, notes: notes.value })
     if (r.ok) {
       await load()
       showToast(t('enterprise.detail.saved'), 'success')
       void contexts.loadTasks()
     } else if (r.conflict) {
-      if (isTeamDetail.value) {
-        // 团队面绝不静默覆盖（后端裁决）：保留用户草稿 + 呈现冲突条（diff 合并 UI=WP-5）
-        conflictNote.value = true
-        showToast(t('enterprise.detail.conflict_team'), 'error')
-      } else {
-        showToast(t('enterprise.detail.conflict_reload'), 'error')
-        await load()
-      }
+      showToast(t('enterprise.detail.conflict_reload'), 'error')
+      await load()
     } else {
       showToast(t('enterprise.detail.save_failed'), 'error')
     }
   } finally { saving.value = false }
+}
+
+// ─── WP-5 冲突对照合并流（规格 §6）：弹窗装载 409 latest 两版 → 逐段取舍 → 以 latest 为 base 重推 ───
+const conflictDialog = ref<DiffField[] | null>(null)
+const conflictSubmitting = ref(false)
+let conflictBase: ContextTaskDetail | null = null
+
+function openConflictDialog(latest: ContextTaskDetail) {
+  conflictBase = latest
+  conflictDialog.value = [
+    { key: 'summary', label: t('enterprise.detail.summary'), serverText: latest.summary ?? '', myText: summary.value },
+    { key: 'notes', label: t('enterprise.detail.notes'), serverText: latest.notes ?? '', myText: notes.value },
+  ]
+}
+
+async function onConflictConfirm(merged: Record<string, string>) {
+  if (!conflictBase || conflictSubmitting.value) return
+  conflictSubmitting.value = true
+  try {
+    // 重推三钉：base=latest（If-Match=其 server_rev）+ 新 mutation id + 合并文本——再 409 重入弹窗换新 latest
+    const r = await contexts.saveTeamSnapshot(conflictBase, { summary: merged.summary ?? '', notes: merged.notes ?? '' })
+    if (r.ok) {
+      conflictDialog.value = null
+      conflictBase = null
+      await load()
+      showToast(t('enterprise.detail.saved'), 'success')
+      void contexts.loadTasks()
+    } else if (r.conflict && r.latest) {
+      openConflictDialog(r.latest)
+    } else if (r.conflict) {
+      conflictDialog.value = null
+      conflictNote.value = true
+      showToast(t('enterprise.detail.conflict_team'), 'error')
+    } else {
+      showToast(t('enterprise.detail.save_failed'), 'error')
+    }
+  } finally { conflictSubmitting.value = false }
+}
+
+function onConflictCancel() {
+  // 规格逐字语义：取消=弃稿装载新版
+  conflictDialog.value = null
+  conflictBase = null
+  void load()
 }
 
 /** 决策条目删除（裁决③）：行内两步确认，删除写 decision_delete 留痕（携 pre_delete_rev=恢复依据） */
@@ -298,6 +356,15 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
       :published-copies="publishedCopies"
       @close="publishOpen = false"
       @published="afterPublishChange"
+    />
+
+    <!-- WP-5 冲突对照合并弹窗（latest 装载→逐段取舍→重推由本视图执行） -->
+    <ConflictDiffDialog
+      v-if="conflictDialog"
+      :fields="conflictDialog"
+      :submitting="conflictSubmitting"
+      @cancel="onConflictCancel"
+      @confirm="onConflictConfirm"
     />
   </div>
 </template>

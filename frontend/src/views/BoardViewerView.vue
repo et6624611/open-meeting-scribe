@@ -34,6 +34,8 @@
       @seek="backToMeeting"
       @open-in-browser="() => {}"
     />
+    <!-- UI 走查低项 2：企业慢网装载空窗占位（复用加载文案，不新增键） -->
+    <p v-else-if="loading" class="ibv-ent-loading">{{ t('enterprise.library.loading') }}</p>
   </div>
 </template>
 
@@ -154,4 +156,5 @@ onMounted(async () => {
 <style scoped>
 /* B4 企业形态全屏窗口：宽度铺满内容区（页头保持窄栏阅读节奏），iframe 内部版式由板自身 CSS 决定 */
 .ibv-ent-frame { display: block; width: 100%; height: calc(100vh - 120px); min-height: 480px; border: none; border-radius: var(--radius-lg, 12px); background: #fff; box-sizing: border-box; }
+.ibv-ent-loading { margin: var(--s-5, 24px) auto; font-size: var(--fs-12, 12px); color: var(--muted, #666); }
 </style>

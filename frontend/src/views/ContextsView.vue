@@ -54,10 +54,13 @@ interface HoverPreview { title: string; date: string; summary: string; left: str
 const hover = ref<HoverPreview | null>(null)
 const summaryCache = new Map<string, string | null>()
 let hoverTimer: ReturnType<typeof setTimeout> | null = null
+// UI 走查低项 1（cmsg_01m6e6ry0ksvgq66dbdv4shmq4）：await 期间鼠标离开→代际 token 过期，落地不置幽灵卡
+let hoverGen = 0
 
 function onCardEnter(e: MouseEvent, taskId: string, title: string, date: string) {
   const el = e.currentTarget as HTMLElement
   if (hoverTimer) clearTimeout(hoverTimer)
+  const gen = ++hoverGen
   hoverTimer = setTimeout(async () => {
     let summary: string | null
     if (summaryCache.has(taskId)) {
@@ -67,7 +70,7 @@ function onCardEnter(e: MouseEvent, taskId: string, title: string, date: string)
       summary = d?.summary?.trim() ? d.summary : null
       summaryCache.set(taskId, summary)
     }
-    if (!summary) return // 无摘要/取失败=不弹（不猜不空弹）
+    if (gen !== hoverGen || !summary) return // 离开过/无摘要/取失败=不弹（不猜不幽灵残留）
     const rect = el.getBoundingClientRect()
     const cardW = 280
     const left = rect.right + cardW + 16 <= window.innerWidth ? rect.right + 10 : Math.max(8, rect.left - cardW - 10)
@@ -81,6 +84,7 @@ function onCardEnter(e: MouseEvent, taskId: string, title: string, date: string)
   }, 600)
 }
 function onCardLeave() {
+  hoverGen++
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
   hover.value = null
 }
