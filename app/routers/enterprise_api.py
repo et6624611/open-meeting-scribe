@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import ipaddress
 import json
@@ -606,14 +607,19 @@ def register_enterprise_routes(app: FastAPI) -> None:
 
     # P0 并发口径：实例级串行锁包住每个请求的全部 DB 访问（WAL+单写者语义的保守实现；
     # 企业单实例并发量级下可接受，P1 随快照域改为行级事务优化）。
-    import threading
-
-    api_lock = threading.Lock()
+    #
+    # 必须是 asyncio.Lock，不得用 threading.Lock（2026-10-30 现场：进 /admin 并发三个
+    # /api/v1 请求后整站挂死，连 /healthz 都超时，活体栈示主线程停在 lock.acquire）：
+    # 本中间件跑在事件循环线程上，而 with 锁内要 await call_next——下游同步（def）端点
+    # 在 AnyIO 线程池执行、其完成必须回到本事件循环恢复 await。循环线程若同步阻塞在
+    # threading.Lock.acquire()，线程池结果永远投递不回来，锁也就永不释放，形成
+    # loop↔worker 交叉死锁。asyncio.Lock 等待期间循环照常运转，串行语义不变。
+    db_gate = asyncio.Lock()
 
     @app.middleware("http")
     async def _serialize_db(request: Request, call_next):
         if request.url.path == "/healthz" or request.url.path.startswith("/api/v1"):
-            with api_lock:
+            async with db_gate:
                 return await call_next(request)
         return await call_next(request)
 
