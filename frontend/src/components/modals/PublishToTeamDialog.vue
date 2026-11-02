@@ -7,7 +7,9 @@
  * "不会出现"区恒显示、不可勾选、无开关（规格生命线）。
  * 多团队=独立发布（裁决①）：每团队一次独立调用，失败互不牵连；K2 同团队重复发布=刷新。
  * 已公开团队置灰依据=原件 published_copies 读面（§6.5 补漏注）；decision 粒度不置灰
- * （published_copies 行无 decision id，置灰依据不足则不禁——服务端幂等刷新兜底）。
+ * （published_copies 行无 decision id，置灰依据不足则不禁——K2 服务端幂等刷新兜底，联调观察项）。
+ * no_teams_hint 两段式（PM 拍板）：本批=窗口期如实文案（请管理员拉入）；WP-4 建团队按钮
+ * 上线时随批升到含"创建团队"终态——文案与出口按钮必须同批出现。
  */
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'

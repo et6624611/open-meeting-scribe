@@ -27,7 +27,7 @@
     "scope_decision": "只公开选中的这一条决策。",
     "teams_label": "公开给",
     "already_published_tag": "已公开到该团队",
-    "no_teams_hint": "您还没有加入任何团队，可先从左下角切换器创建团队。",
+    "no_teams_hint": "您还没有加入任何团队，可以请团队管理员把您加入团队。",
     "excluded_heading": "不会出现（永远留在您的设备）：",
     "excluded_items": "录音音频 · 逐字转写",
     "after_note": "公开后：团队能看到这份副本；您私有空间里的原件不受影响，同事的修改也不会改动您的原件。您可以随时撤回。",
