@@ -31,6 +31,17 @@ export function isTeamArchived(t: TeamSummary): boolean {
   return t.archived === true
 }
 
+/** 发布弹窗可选团队（规格 §4.2：归档团队不出现；已公开团队置灰标注、重复选择无效）。
+ *  publishedTeamIds 由发布态读面供给——段三契约补注定版前缺省=全可选（服务端幂等兜底）。 */
+export function selectablePublishTeams(
+  teams: TeamSummary[],
+  publishedTeamIds: string[] = [],
+): Array<{ team: TeamSummary; alreadyPublished: boolean }> {
+  return teams
+    .filter((t) => !isTeamArchived(t))
+    .map((t) => ({ team: t, alreadyPublished: publishedTeamIds.includes(t.team_id) }))
+}
+
 export interface TeamMember {
   user_id: string
   display_name: string
@@ -58,6 +69,36 @@ export async function getTeamTask(teamId: string, taskId: string): Promise<Conte
     `/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}`,
   )
   return data
+}
+
+// ─── 发布链（WP-2） ───
+
+/** 发布粒度（契约 §9.2 终形态 + BE ffcb709 实码对齐）：task=整包副本；decision=单条决策独立时间线 */
+export type PublishMode = 'task' | 'decision'
+
+/**
+ * 发布请求体序列化（单点换向器）。契约终形态 `{team_id, mode, decision_id?}`（§9.2；
+ * BE 实码 enterprise_api.py ctx_publish 逐字对齐，D009 纪律=以实测为准不猜键名）。
+ * 注：服务端无内容勾选面（task 模式=全量定稿文本包）——规格 §4.2 勾选区的承载缺口
+ * 已随 WP-2 播报提请产品/后端裁决，如 §6.5 补注 include 字段只改此函数与弹窗映射。
+ */
+export function buildPublishBody(teamId: string, mode: PublishMode, decisionId: string | null): Record<string, unknown> {
+  return mode === 'decision' && decisionId
+    ? { team_id: teamId, mode, decision_id: decisionId }
+    : { team_id: teamId, mode: 'task' }
+}
+
+/** 发布=创建/刷新团队副本（裁决①原件可多发：每团队一次独立调用；K2 同团队重复发布=刷新不产生第二份） */
+export async function publishTaskToTeam(taskId: string, body: Record<string, unknown>): Promise<{ task_id: string; republished?: boolean }> {
+  const { data } = await client.post<{ task_id: string; republished?: boolean }>(
+    `/api/v1/context/tasks/${encodeURIComponent(taskId)}/publish`, body,
+  )
+  return data
+}
+
+/** 撤回=归档副本（§8 明示端点；按团队独立，原件与已收集资产不受影响） */
+export async function unpublishTeamTask(teamId: string, taskId: string): Promise<void> {
+  await client.delete(`/api/v1/context/teams/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}`)
 }
 
 // ─── 治理面端点绑定（WP-4 消费；纯契约映射，本批无 UI） ───
