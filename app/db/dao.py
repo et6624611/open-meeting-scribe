@@ -986,6 +986,374 @@ class EnterpriseStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    # ---------------- 团队副本域（契约 §3 发布/编辑/撤回；裁决⑤白名单结构性排除） ----------------
+
+    TEAM_EXCLUDED_FIELDS = ("formal",)  # 逐字稿永不进团队空间；音频字段本就不在 P0 白名单——双保险
+
+    def _team_copy_payload(self, payload: dict) -> dict:
+        out = {k: v for k, v in payload.items() if k in SNAPSHOT_FIELDS and k not in self.TEAM_EXCLUDED_FIELDS}
+        meta = payload.get("meta") or {}
+        out["meta"] = {k: meta[k] for k in ("title", "meeting_time", "participants_text") if meta.get(k) is not None}
+        out["meta"]["source"] = meta.get("source", "client")
+        return out
+
+    def _copy_row(self, team_id: str, task_id: str) -> dict:
+        row = self.conn.execute(
+            "SELECT * FROM ctx_tasks WHERE task_id=? AND team_id=? AND scope='team' AND status='active'",
+            (task_id, team_id),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(task_id)
+        return dict(row)
+
+    def _read_rev_payload(self, task_id: str, rev: int) -> dict:
+        r = self.conn.execute(
+            "SELECT blob_path FROM ctx_revisions WHERE task_id=? AND rev=?", (task_id, rev)
+        ).fetchone()
+        if r is None:
+            raise NotFoundError(f"{task_id}@{rev}")
+        return json.loads(gzip.decompress(Path(r["blob_path"]).read_bytes()).decode("utf-8"))
+
+    def _current_payload(self, task_id: str) -> dict:
+        d = self.conn.execute("SELECT * FROM ctx_tasks WHERE task_id=?", (task_id,)).fetchone()
+        if d is None:
+            raise NotFoundError(task_id)
+        payload = {
+            r["kind"]: json.loads(r["payload_json"])
+            for r in self.conn.execute("SELECT kind, payload_json FROM ctx_entities WHERE task_id=?", (task_id,))
+        }
+        payload["meta"] = {
+            "title": d["title"], "meeting_time": d["meeting_time"],
+            "participants_text": d["participants_text"], "source": d["source"],
+        }
+        return payload
+
+    def apply_team_snapshot(
+        self,
+        *,
+        actor_user_id: str,
+        team_id: str,
+        task_id: str,
+        client_mutation_id: str,
+        base_rev: int,
+        payload: dict,
+        audit_action: str | None = "edit",
+        audit_target_ref: str | None = None,
+        audit_pre_delete_rev: int | None = None,
+    ) -> SnapshotResult:
+        """团队副本快照 PUT（契约 §3.2/§8.3）：editor+ 可写；actor=写作者、owner 仍为行归属人（§6B）。"""
+        self.require_team_role(team_id, actor_user_id, "editor")
+        if self._live_team(team_id)["status"] != "active":
+            raise TeamConflictError("team_archived")  # 裁决④：归档拒绝新写入（撤回路径不走本函数）
+        row = self._copy_row(team_id, task_id)
+        if any(k in payload for k in self.TEAM_EXCLUDED_FIELDS):
+            raise PayloadNotAllowedError("团队副本不包含逐字转写（裁决⑤结构性排除）")
+        self._validate_payload(payload)
+        existing = self.conn.execute(
+            "SELECT r.rev, r.content_hash, r.created_at, r.task_id FROM ctx_revisions r"
+            " WHERE r.owner_user_id=? AND r.client_mutation_id=?",
+            (actor_user_id, client_mutation_id),
+        ).fetchone()
+        if existing is not None:
+            if existing["task_id"] != task_id:
+                raise ValueError("client_mutation_id 已用于其他 task")
+            return SnapshotResult(existing["rev"], existing["content_hash"], existing["created_at"], idempotent_replay=True)
+        current_rev = row["current_rev"]
+        if base_rev != current_rev:
+            raise StaleRevisionError(current_rev)
+        blob_bytes = gzip.compress(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        digest = _sha256(blob_bytes)
+        now = utcnow()
+        new_rev = current_rev + 1
+        blob_path = self.dr.blob_path(actor_user_id, task_id, new_rev)
+        blob_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = blob_path.with_suffix(".tmp")
+        tmp.write_bytes(blob_bytes)
+        tmp.replace(blob_path)
+        meta = payload.get("meta") or {}
+        with self.conn:
+            self.conn.execute(
+                "UPDATE ctx_tasks SET current_rev=?, content_hash=?, updated_at=?"
+                " , title=COALESCE(?, title), meeting_time=COALESCE(?, meeting_time),"
+                " participants_text=COALESCE(?, participants_text)"
+                " WHERE task_id=? AND team_id=? AND current_rev=?",
+                (
+                    new_rev, digest, now,
+                    meta.get("title") or None, meta.get("meeting_time"), meta.get("participants_text"),
+                    task_id, team_id, current_rev,
+                ),
+            )
+            self.conn.execute(
+                "INSERT INTO ctx_revisions(rev_id, task_id, owner_user_id, actor_user_id, rev,"
+                " client_mutation_id, blob_path, content_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (new_id("rvw"), task_id, actor_user_id, actor_user_id, new_rev, client_mutation_id,
+                 str(blob_path), digest, now),
+            )
+            for kind in ("summary", "decisions", "notes", "insights_html"):  # formal 结构性不在列
+                if payload.get(kind) is not None:
+                    self.conn.execute("DELETE FROM ctx_entities WHERE task_id=? AND kind=?", (task_id, kind))
+                    self.conn.execute(
+                        "INSERT INTO ctx_entities(task_id, kind, payload_json, current) VALUES (?,?,?,1)",
+                        (task_id, kind, json.dumps(payload[kind], ensure_ascii=False)),
+                    )
+        if audit_action is not None:
+            self._audit(
+                team_id=team_id, actor_user_id=actor_user_id, action=audit_action, task_id=task_id,
+                rev=new_rev, content_hash=digest, target_ref=audit_target_ref,
+                pre_delete_rev=audit_pre_delete_rev,
+            )
+        if payload.get("decisions") is not None:
+            self.collect_team_decisions(
+                team_id=team_id, task_id=task_id, rev=new_rev,
+                decisions=payload["decisions"], actor_user_id=actor_user_id,
+            )
+        return SnapshotResult(new_rev, digest, now)
+
+    def collect_team_decisions(self, *, team_id: str, task_id: str, rev: int,
+                               decisions: list, actor_user_id: str) -> None:
+        """契约 §5：副本 decisions 任何变化 → 同幂等键 upsert 资产快照（只收集不消费，追溯锚=rev+哈希）。"""
+        seen: list[str] = []
+        now = utcnow()
+        with self.conn:
+            for d in decisions or []:
+                if not isinstance(d, dict) or d.get("id") is None:
+                    continue
+                did = str(d["id"])
+                seen.append(did)
+                snap = json.dumps(d, ensure_ascii=False, sort_keys=True)
+                digest = _sha256(snap.encode("utf-8"))
+                self.conn.execute(
+                    "INSERT INTO enterprise_decision_assets(asset_id, source_task_id, source_team_id,"
+                    " source_rev, decision_id, snapshot_json, content_hash, collected_by, collected_at, status)"
+                    " VALUES (?,?,?,?,?,?,?,?,?, 'collected')"
+                    " ON CONFLICT(source_task_id, decision_id) DO UPDATE SET"
+                    " source_rev=excluded.source_rev, snapshot_json=excluded.snapshot_json,"
+                    " content_hash=excluded.content_hash, collected_by=excluded.collected_by,"
+                    " collected_at=excluded.collected_at,"
+                    " withdrawn_at=NULL,"
+                    " status=CASE WHEN enterprise_decision_assets.status='withdrawn'"
+                    "        THEN 'withdrawn' ELSE 'collected' END",
+                    (new_id("edas"), task_id, team_id, rev, did, snap, digest, actor_user_id, now),
+                )
+            if seen:
+                marks = ",".join("?" * len(seen))
+                self.conn.execute(
+                    f"UPDATE enterprise_decision_assets SET status='stale'"
+                    f" WHERE source_task_id=? AND status='collected' AND decision_id NOT IN ({marks})",
+                    (task_id, *seen),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE enterprise_decision_assets SET status='stale' WHERE source_task_id=?"
+                    " AND status='collected'",
+                    (task_id,),
+                )
+
+    def publish_to_team(
+        self,
+        *,
+        actor_user_id: str,
+        task_id: str,
+        team_id: str,
+        mode: str = "task",
+        decision_id: str | None = None,
+    ) -> dict:
+        """发布=创建/刷新团队副本（契约 §3.1；裁决①多团队独立副本；K2 形态：同团队重复发布=刷新既有副本）。"""
+        _require_actor(actor_user_id)
+        if mode not in ("task", "decision"):
+            raise TeamConflictError(f"unknown_mode:{mode}")
+        if mode == "decision" and not decision_id:
+            raise TeamConflictError("decision_id_required")
+        src = self.conn.execute(
+            "SELECT * FROM ctx_tasks WHERE task_id=? AND owner_user_id=? AND status='active' AND scope='personal'",
+            (task_id, actor_user_id),
+        ).fetchone()
+        if src is None:
+            raise NotFoundError(task_id)
+        self.require_team_role(team_id, actor_user_id, "editor")
+        if self._live_team(team_id)["status"] != "active":
+            raise TeamConflictError("team_archived")
+        src_payload = self._read_rev_payload(task_id, src["current_rev"]) if src["current_rev"] > 0 else {}
+        copy_payload = self._team_copy_payload(src_payload)
+        if mode == "decision":
+            keep = [d for d in (copy_payload.get("decisions") or [])
+                    if isinstance(d, dict) and d.get("id") == decision_id]
+            if not keep:
+                raise NotFoundError(decision_id)
+            copy_payload = {"meta": copy_payload["meta"], "decisions": keep}
+        # K2 形态（本实现定版，报数待 QA 实测）：
+        # - 纪要粒度发布：同(源,团队)已有纪要粒度副本 → 刷新之（不产生第二份）；
+        # - 单条决策粒度发布：按 decision 独立行（acl 标记 decision:<id>），重复发布同一决策刷新对应行；
+        #   两种粒度互不覆盖——"整会副本"与"单决策副本"是两条时间线。
+        pub_key = f"{mode}-{decision_id or 'all'}"
+        if mode == "task":
+            existing = self.conn.execute(
+                "SELECT task_id, current_rev FROM ctx_tasks WHERE source_task_id=? AND team_id=?"
+                " AND status='active' AND acl IS NULL",
+                (task_id, team_id),
+            ).fetchone()
+        else:
+            existing = self.conn.execute(
+                "SELECT task_id, current_rev FROM ctx_tasks WHERE source_task_id=? AND team_id=?"
+                " AND status='active' AND acl=?",
+                (task_id, team_id, f"decision:{decision_id}"),
+            ).fetchone()
+        if existing is not None:
+            self.apply_team_snapshot(
+                actor_user_id=actor_user_id, team_id=team_id, task_id=existing["task_id"],
+                client_mutation_id=f"pub-{task_id}-{team_id}-{pub_key}-r{src['current_rev']}",
+                base_rev=existing["current_rev"], payload=copy_payload,
+                audit_action="decision_publish" if mode == "decision" else "publish",
+            )
+            return {**self.get_team_task(actor_user_id=actor_user_id, team_id=team_id, task_id=existing["task_id"]),
+                    "republished": True}
+        copy_task_id = new_id("tsk")
+        now = utcnow()
+        meta = copy_payload.get("meta") or {}
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO ctx_tasks(task_id, owner_user_id, scope, team_id, source_task_id, acl, tenant_id,"
+                " title, meeting_time, participants_text, source, status, current_rev, updated_at)"
+                " VALUES (?,?, 'team', ?, ?, ?, (SELECT tenant_id FROM users WHERE user_id=?),"
+                " ?,?,?,'client', 'active', 0, ?)",
+                (copy_task_id, actor_user_id, team_id, task_id,
+                 None if mode == "task" else f"decision:{decision_id}", actor_user_id,
+                 meta.get("title", ""), meta.get("meeting_time"), meta.get("participants_text"), now),
+            )
+        self.apply_team_snapshot(
+            actor_user_id=actor_user_id, team_id=team_id, task_id=copy_task_id,
+            client_mutation_id=f"pub-{task_id}-{team_id}-{pub_key}-v1", base_rev=0, payload=copy_payload,
+            audit_action="decision_publish" if mode == "decision" else "publish",
+        )
+        return {**self.get_team_task(actor_user_id=actor_user_id, team_id=team_id, task_id=copy_task_id),
+                "republished": False}
+
+    def get_team_task(self, *, actor_user_id: str, team_id: str, task_id: str) -> dict:
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        d = self._copy_row(team_id, task_id)
+        entities = {
+            r["kind"]: json.loads(r["payload_json"])
+            for r in self.conn.execute("SELECT kind, payload_json FROM ctx_entities WHERE task_id=?", (task_id,))
+        }
+        return {
+            "task_id": d["task_id"], "visibility": "team", "team_id": team_id,
+            "source_task_id": d["source_task_id"], "publisher_user_id": d["owner_user_id"],
+            "my_role": self.team_role(team_id, actor_user_id),
+            "server_rev": d["current_rev"], "content_hash": d["content_hash"],
+            "meta": {
+                "title": d["title"], "meeting_time": d["meeting_time"],
+                "participants_text": d["participants_text"], "source": d["source"],
+            },
+            "updated_at": d["updated_at"],
+            **entities,
+        }
+
+    def list_team_tasks(self, *, actor_user_id: str, team_id: str) -> list[dict]:
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        rows = self.conn.execute(
+            "SELECT task_id, title, current_rev, content_hash, source_task_id, owner_user_id AS publisher_user_id,"
+            " updated_at FROM ctx_tasks WHERE team_id=? AND scope='team' AND status='active'"
+            " ORDER BY updated_at DESC",
+            (team_id,),
+        ).fetchall()
+        return [{**dict(r), "visibility": "team"} for r in rows]
+
+    def get_team_task_revision(self, *, actor_user_id: str, team_id: str, task_id: str, rev: int) -> dict:
+        """历史版本全文（§6 并排 diff 与"恢复"按钮的数据面；viewer+）。"""
+        self.require_team_role(team_id, actor_user_id, "viewer")
+        self._copy_row(team_id, task_id)
+        payload = self._read_rev_payload(task_id, rev)
+        return {"task_id": task_id, "team_id": team_id, "rev": rev, "payload": payload}
+
+    def withdraw_team_task(self, *, actor_user_id: str, team_id: str, task_id: str) -> dict:
+        """撤回（契约 §3.3）：editor 撤自己发布、admin 撤任意；归档团队仍可撤回中项（裁决④）。原件不受影响。"""
+        row = self._copy_row(team_id, task_id)
+        role = self.require_team_role(team_id, actor_user_id, "editor")
+        if row["owner_user_id"] != actor_user_id and role != "admin":
+            raise TeamRoleError("admin")
+        now = utcnow()
+        with self.conn:
+            self.conn.execute(
+                "UPDATE ctx_tasks SET status='deleted', deleted_at=?, updated_at=?"
+                " WHERE task_id=? AND status='active'",
+                (now, now, task_id),
+            )
+        self.mark_assets_withdrawn(source_task_id=task_id)
+        self._audit(team_id=team_id, actor_user_id=actor_user_id, action="withdraw", task_id=task_id)
+        return {"task_id": task_id, "withdrawn": True}
+
+    def delete_team_decision(self, *, actor_user_id: str, team_id: str, task_id: str, decision_id: str) -> dict:
+        """裁决③：editor 删他人副本内决策条目；留痕 decision_delete 携 target_ref+pre_delete_rev。"""
+        payload = self._current_payload(task_id)
+        decisions = payload.get("decisions") or []
+        keep = [d for d in decisions if not (isinstance(d, dict) and d.get("id") == decision_id)]
+        if len(keep) == len(decisions):
+            raise NotFoundError(decision_id)
+        pre_rev = self._copy_row(team_id, task_id)["current_rev"]
+        result = self.apply_team_snapshot(
+            actor_user_id=actor_user_id, team_id=team_id, task_id=task_id,
+            client_mutation_id=f"del-dec-{decision_id}-r{pre_rev}-{utcnow()}",
+            base_rev=pre_rev, payload={**payload, "decisions": keep}, audit_action=None,
+        )
+        self._audit(
+            team_id=team_id, actor_user_id=actor_user_id, action="decision_delete", task_id=task_id,
+            rev=result.server_rev, target_ref=decision_id, pre_delete_rev=pre_rev,
+            content_hash=result.content_hash,
+        )
+        self.mark_asset_stale(source_task_id=task_id, decision_id=decision_id)
+        return {"task_id": task_id, "decision_id": decision_id, "server_rev": result.server_rev,
+                "pre_delete_rev": pre_rev}
+
+    def restore_team_decision(self, *, actor_user_id: str, team_id: str, task_id: str,
+                              decision_id: str, from_rev: int) -> dict:
+        """恢复=从 pre_delete_rev 历史版本重推该条目为新版（裁决③闭环；恢复本身新留痕 decision_restore）。"""
+        old_payload = self._read_rev_payload(task_id, from_rev)
+        item = [d for d in (old_payload.get("decisions") or [])
+                if isinstance(d, dict) and d.get("id") == decision_id]
+        if not item:
+            raise NotFoundError(decision_id)
+        payload = self._current_payload(task_id)
+        cur = payload.get("decisions") or []
+        if any(isinstance(d, dict) and d.get("id") == decision_id for d in cur):
+            raise TeamConflictError("already_present")
+        cur_row = self._copy_row(team_id, task_id)
+        result = self.apply_team_snapshot(
+            actor_user_id=actor_user_id, team_id=team_id, task_id=task_id,
+            client_mutation_id=f"res-dec-{decision_id}-from{from_rev}-{utcnow()}",
+            base_rev=cur_row["current_rev"], payload={**payload, "decisions": [*cur, item[0]]},
+            audit_action=None,
+        )
+        self._audit(
+            team_id=team_id, actor_user_id=actor_user_id, action="decision_restore", task_id=task_id,
+            rev=result.server_rev, target_ref=decision_id, pre_delete_rev=from_rev,
+            content_hash=result.content_hash,
+        )
+        return {"task_id": task_id, "decision_id": decision_id, "server_rev": result.server_rev,
+                "restored_from_rev": from_rev}
+
+    # ---------------- 决策资产只收集层维护原语（契约 §5；零读端点） ----------------
+
+    def mark_assets_withdrawn(self, *, source_task_id: str) -> int:
+        """撤回副本 → 该副本源资产行转 withdrawn 保留（Q1：前台只显示"已撤回"，资产层零界面）。"""
+        now = utcnow()
+        with self.conn:
+            n = self.conn.execute(
+                "UPDATE enterprise_decision_assets SET status='withdrawn', withdrawn_at=?"
+                " WHERE source_task_id=? AND status='collected'",
+                (now, source_task_id),
+            ).rowcount
+        return n
+
+    def mark_asset_stale(self, *, source_task_id: str, decision_id: str) -> int:
+        """源决策其后被修改或删除 → 标 stale 不删除（追溯性是裁决4核心承诺）。"""
+        with self.conn:
+            n = self.conn.execute(
+                "UPDATE enterprise_decision_assets SET status='stale'"
+                " WHERE source_task_id=? AND decision_id=? AND status='collected'",
+                (source_task_id, decision_id),
+            ).rowcount
+        return n
+
 
 def _require_actor(actor_user_id: str | None) -> str:
     if not actor_user_id:

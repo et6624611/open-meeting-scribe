@@ -731,6 +731,150 @@ def users_search(request: Request, q: str = ""):
     return {"users": get_store().search_users(actor_user_id=uid, q=q)}
 
 
+# ---- 团队副本面（P1 契约 §3/§8.2/§8.3；必含项①：团队面 409 含 current_rev+最新全文快照） ----
+
+
+@router.post("/context/tasks/{task_id}/publish")
+def ctx_publish(task_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    team_id = str(body.get("team_id", ""))
+    if not team_id:
+        raise EHttp(422, "team_id_required", "发布必须指定 team_id")
+    store = get_store()
+    try:
+        copy = store.publish_to_team(
+            actor_user_id=uid, task_id=task_id, team_id=team_id,
+            mode=str(body.get("mode", "task")), decision_id=body.get("decision_id"),
+        )
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except TeamConflictError as exc:
+        code = str(exc)
+        if code.startswith("unknown_mode") or code == "decision_id_required":
+            raise EHttp(422, code, "发布参数非法")
+        raise _team_http(exc)
+    return JSONResponse(status_code=200 if copy.get("republished") else 201, content=copy)
+
+
+@router.get("/context/teams/{team_id}/tasks")
+def team_tasks(team_id: str, request: Request):
+    uid = _read_actor(request)
+    try:
+        return {"tasks": get_store().list_team_tasks(actor_user_id=uid, team_id=team_id)}
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.get("/context/teams/{team_id}/tasks/{task_id}")
+def team_task_get(team_id: str, task_id: str, request: Request):
+    uid = _read_actor(request)
+    try:
+        return get_store().get_team_task(actor_user_id=uid, team_id=team_id, task_id=task_id)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.get("/context/teams/{team_id}/tasks/{task_id}/revisions/{rev}")
+def team_task_revision(team_id: str, task_id: str, rev: int, request: Request):
+    uid = _read_actor(request)
+    try:
+        return get_store().get_team_task_revision(actor_user_id=uid, team_id=team_id, task_id=task_id, rev=rev)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.put("/context/teams/{team_id}/tasks/{task_id}/snapshot")
+def team_task_snapshot(team_id: str, task_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    mutation = request.headers.get("idempotency-key") or body.pop("client_mutation_id", None)
+    if not mutation:
+        raise EHttp(422, "missing_idempotency_key", "必须携带 Idempotency-Key 头")
+    base_rev = _parse_if_match_rev(request)
+    store = get_store()
+    try:
+        result = store.apply_team_snapshot(
+            actor_user_id=uid, team_id=team_id, task_id=task_id,
+            client_mutation_id=mutation, base_rev=base_rev, payload=body,
+        )
+    except StaleRevisionError as exc:
+        # 必含项①（冻结令拍板四，QA TA2-7 断言面）：409 必须含 current_rev + 最新全文快照
+        try:
+            latest = store.get_team_task(actor_user_id=uid, team_id=team_id, task_id=task_id)
+        except NotFoundError:
+            latest = None
+        raise EHttp(409, "rev_conflict", "版本冲突，响应已含最新版全文，可直接并排 diff",
+                    current_rev=exc.current_rev, latest=latest)
+    except PayloadNotAllowedError as exc:
+        store.audit_egress(user_id=uid, action="team_snapshot_rejected", object_ref=task_id)
+        raise EHttp(422, "payload_not_allowed", str(exc))
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+    except ValueError as exc:
+        raise EHttp(422, "client_mutation_conflict", str(exc))
+    store.audit_egress(user_id=uid, action="team_snapshot_applied", object_ref=task_id,
+                       byte_len=len(json.dumps(body)), client_mutation_id=mutation)
+    status = 200 if (result.idempotent_replay or base_rev > 0) else 201
+    return JSONResponse(status_code=status, content={
+        "server_rev": result.server_rev, "content_hash": result.content_hash,
+        "stored_at": result.stored_at, "idempotent_replay": result.idempotent_replay,
+    })
+
+
+@router.delete("/context/teams/{team_id}/tasks/{task_id}")
+def team_task_withdraw(team_id: str, task_id: str, request: Request):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().withdraw_team_task(actor_user_id=uid, team_id=team_id, task_id=task_id)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.delete("/context/teams/{team_id}/tasks/{task_id}/decisions/{decision_id}")
+def team_task_decision_delete(team_id: str, task_id: str, decision_id: str, request: Request):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    try:
+        return get_store().delete_team_decision(
+            actor_user_id=uid, team_id=team_id, task_id=task_id, decision_id=decision_id
+        )
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.post("/context/teams/{team_id}/tasks/{task_id}/decisions/{decision_id}/restore")
+def team_task_decision_restore(team_id: str, task_id: str, decision_id: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    if "from_rev" not in body:
+        raise EHttp(422, "from_rev_required", "恢复必须指定 pre_delete_rev（来自 decision_delete 留痕）")
+    try:
+        return get_store().restore_team_decision(
+            actor_user_id=uid, team_id=team_id, task_id=task_id,
+            decision_id=decision_id, from_rev=int(body["from_rev"])
+        )
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+    except (TypeError, ValueError):
+        raise EHttp(422, "invalid_from_rev", "from_rev 必须为整数")
+
+
 # ---- AI 面（默认关闭；代理执行属增量3） ----
 
 
