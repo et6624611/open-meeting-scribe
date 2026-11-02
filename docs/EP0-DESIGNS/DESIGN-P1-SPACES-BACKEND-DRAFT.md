@@ -175,6 +175,8 @@ enterprise_decision_assets(asset_id PK,
 5. **用户搜索（依赖 5）**：`GET /api/v1/users/search?q=`——任何 active 用户可调（建团队拉成员场景）；仅返回 `[{user_id, display_name}]`，不暴露手机号/邮箱等联系面（管理台列表端点权限面不同，不开放给普通成员复用）。
 6.5 **发布态读面（v1.0 补漏注，PM 拍板二 cmsg_01m6d71fe7b1nbgkaq3eh1pmpf：属补漏不属改冻结）**：规格 §4.3"已公开到 N 个团队"角标与逐团队撤回的数据面定版为**内嵌原件 DTO**，不建独立端点——`GET /api/v1/context/tasks[/{id}]` 返回增加 `published_copies: [{team_id, team_name, copy_task_id, granularity(task|decision), current_rev, updated_at}]`（仅 active 副本；撤回即从该列表消失，撤回面=读面闭环）；角标"N 个团队"由 FE 按 distinct team_id 归并。
 
+6.6 **排序锚定版（K4，PM 拍板 cmsg_01m6dbsdbtz5ehe9n6nc4z1ky0）**：团队内容面/决策聚合的排序锚=**公开时刻** `published_at`——语义为副本首次 publish 留痕时间（`MIN(team_edit_audit.ts) where action∈{publish,decision_publish}`，无留痕回退行 updated_at；ctx_tasks 无 created_at 列，属透出非新造、零迁移）。**编辑不顶序**：后续 edit/republish 不改 published_at，变更可见性由变更记录页承担，两页各司其职（§7 设计本意）。字段统一出现在三处 DTO：published_copies 行、`GET /context/teams/{id}/tasks` 列表行、团队副本详情。
+
 7. **B5 第五锁定文案基准（冻结令拍板一，逐字）**：
    > 公开到团队的内容里不会包含录音音频和逐字转写，它们永远只保存在您的设备上。
 

@@ -748,6 +748,69 @@ def teams_audit(team_id: str, request: Request, cursor: str | None = None, limit
         raise _team_http(exc)
 
 
+@router.get("/teams/{team_id}/members")
+def teams_members_list(team_id: str, request: Request):
+    uid = _read_actor(request)
+    try:
+        return {"members": get_store().team_members(actor_user_id=uid, team_id=team_id)}
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+TEAM_ASSET_KIND_MAP = {"hotwords": "hotwords", "speaker-aliases": "speaker_aliases"}
+
+
+def _team_asset_kind(segment: str) -> str:
+    kind = TEAM_ASSET_KIND_MAP.get(segment)
+    if kind is None:
+        raise EHttp(404, "not_found", "资产类型不存在")
+    return kind
+
+
+@router.get("/context/teams/{team_id}/assets/{kind_seg}")
+def team_asset_get(team_id: str, kind_seg: str, request: Request):
+    uid = _read_actor(request)
+    try:
+        return get_store().get_team_asset(actor_user_id=uid, team_id=team_id, kind=_team_asset_kind(kind_seg))
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+
+
+@router.put("/context/teams/{team_id}/assets/{kind_seg}")
+def team_asset_put(team_id: str, kind_seg: str, request: Request, body: dict):
+    uid = actor_for_write(request)
+    write_guard(request, uid)
+    kind = _team_asset_kind(kind_seg)
+    mutation = request.headers.get("idempotency-key") or body.pop("client_mutation_id", None)
+    if not mutation:
+        raise EHttp(422, "missing_idempotency_key", "必须携带 Idempotency-Key 头")
+    base_rev = _parse_if_match_rev(request)
+    payload = body.get("payload", body)
+    _validate_asset_payload(payload)
+    store = get_store()
+    try:
+        result = store.apply_team_asset(
+            actor_user_id=uid, team_id=team_id, kind=kind, base_rev=base_rev, payload=payload
+        )
+    except StaleRevisionError as exc:
+        raise EHttp(409, "rev_conflict", "版本冲突", current_rev=exc.current_rev)
+    except NotFoundError:
+        raise EHttp(404, "not_found", "资源不存在")
+    except (TeamRoleError, TeamConflictError) as exc:
+        raise _team_http(exc)
+    except ValueError as exc:
+        raise EHttp(422, "client_mutation_conflict", str(exc))
+    return {
+        "current_rev": result.server_rev,
+        "content_hash": result.content_hash,
+        "idempotent_replay": result.idempotent_replay,
+    }
+
+
 @router.get("/users/search")
 def users_search(request: Request, q: str = ""):
     """建团队拉成员场景（契约 §8.5）：仅 active 用户，只回 user_id/display_name。"""
