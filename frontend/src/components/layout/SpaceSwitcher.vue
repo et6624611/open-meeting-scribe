@@ -10,6 +10,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { PRIVATE_SPACE, useSpaceStore } from '@/stores/space'
+import { isTeamArchived } from '@/api/teams'
 import { usePopMenu } from '@/composables/usePopMenu'
 
 const { t } = useI18n()
@@ -96,7 +97,7 @@ function roleLabel(role: string): string {
         >
           <span class="ss-item-name">
             {{ tm.name }}
-            <span v-if="tm.archived" class="ss-archived">{{ t('enterprise.space.archived_tag') }}</span>
+            <span v-if="isTeamArchived(tm)" class="ss-archived">{{ t('enterprise.space.archived_tag') }}</span>
           </span>
           <span class="ss-role">{{ roleLabel(tm.my_role) }}</span>
         </button>

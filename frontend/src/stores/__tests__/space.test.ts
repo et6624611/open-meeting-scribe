@@ -28,7 +28,7 @@ import { useUserStore } from '@/stores/user'
 const TEAMS = [
   { team_id: 't1', name: '产品组', my_role: 'editor' as const },
   { team_id: 't2', name: '外部顾问小组', my_role: 'viewer' as const },
-  { team_id: 't3', name: '旧项目组', my_role: 'admin' as const, archived: true },
+  { team_id: 't3', name: '旧项目组', my_role: 'admin' as const, status: 'archived' },
 ]
 
 function seedUser(id: string) {
@@ -109,7 +109,7 @@ describe('space store · 切换即失效单点', () => {
     await space.loadTeams()
     space.switchSpace('t3')
     expect(space.currentId).toBe('t3')
-    expect(space.currentTeam?.archived).toBe(true)
+    expect(space.currentTeam?.status).toBe('archived') // D009：服务端权威态；渲染判定单源在 teams.ts isTeamArchived
     // 角色本身不因归档反转——写入拒绝在服务端（409 team_archived），前端消费 myRole+archived 两源渲染
     expect(space.canEdit).toBe(true)
   })

@@ -12,13 +12,23 @@ import type { ContextTaskSummary, ContextTaskDetail } from './context'
 
 export type TeamRole = 'admin' | 'editor' | 'viewer'
 
-/** 切换器数据源 DTO（契约 §9.1 直用）；archived=裁决④归档只读态 */
+/** 切换器数据源 DTO（契约 §9.1 直用；BE 段二实核字段=team_id/name/my_role/member_count/joined_at/status）。
+ *  D009 收敛（QA 探针，随 WP-1 修复）：归档权威态走 status='archived'（服务端权威优先）；
+ *  archived 布尔仅作兼容读入，消费面一律走 teams.ts isTeamArchived() 单源映射。 */
 export interface TeamSummary {
   team_id: string
   name: string
   my_role: TeamRole | string
+  status?: string
   archived?: boolean
   member_count?: number
+  joined_at?: string | null
+}
+
+/** 归档判定单源（D009）：status 优先，兼容期回退 archived 布尔——消费方禁止各自散判 */
+export function isTeamArchived(t: TeamSummary): boolean {
+  if (typeof t.status === 'string') return t.status === 'archived'
+  return t.archived === true
 }
 
 export interface TeamMember {
