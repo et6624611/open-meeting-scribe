@@ -17,6 +17,7 @@ import { useSpaceStore } from '@/stores/space'
 import { showToast } from '@/composables/useToast'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
 import EmptyHint from '@/components/common/EmptyHint.vue'
+import ConflictDiffDialog, { type DiffField } from '@/components/modals/ConflictDiffDialog.vue'
 
 const props = defineProps<{ kind: 'hotwords' | 'speakers' }>()
 const { t } = useI18n()
@@ -75,8 +76,46 @@ const isEmpty = computed(() => rev.value === 0)
 const aliasRows = computed(() => Object.entries(aliases.value))
 const wordRows = computed(() => hotwordsText.value.split('\n').map((w) => w.trim()).filter(Boolean))
 
+// WP-5 词表冲突=ConflictDiffDialog 并排退化（lineMode：每词条一段行级取舍）；
+// 409 后重读最新装载两版，绝不静默覆盖；取消=弃稿载入最新（与快照冲突流同语义）。
+const wordsConflict = ref<DiffField[] | null>(null)
+const conflictSubmitting = ref(false)
+let conflictBaseRev = 0
+
+async function openWordsConflict(draft: string) {
+  try {
+    const a = await getTeamAsset<HotwordsPayload>(space.currentId, 'hotwords')
+    conflictBaseRev = a.current_rev
+    hotwordsText.value = a.payload?.hotwords ?? ''
+    wordsConflict.value = [{ key: 'hotwords', label: t('enterprise.assets.hotwords_title'), serverText: a.payload?.hotwords ?? '', myText: draft }]
+  } catch {
+    // 重读失败回下限态：toast+重载（不猜最新版内容）
+    showToast(t('enterprise.assets.team_conflict'), 'error')
+    await load()
+  }
+}
+
+async function onWordsConflictConfirm(merged: Record<string, string>) {
+  if (conflictSubmitting.value || !space.currentTeam) return
+  conflictSubmitting.value = true
+  try {
+    const r = await putTeamAsset(space.currentId, 'hotwords', { hotwords: merged.hotwords ?? '' }, { idempotencyKey: newMutationId(), baseRev: conflictBaseRev })
+    rev.value = r.current_rev
+    hotwordsText.value = merged.hotwords ?? ''
+    wordsConflict.value = null
+    showToast(t('enterprise.assets.team_saved'), 'success')
+  } catch {
+    showToast(t('enterprise.assets.team_failed'), 'error')
+  } finally { conflictSubmitting.value = false }
+}
+
+function onWordsConflictCancel() {
+  wordsConflict.value = null
+  void load()
+}
+
 async function pushWords(next: string[]) {
-  if (saving.value || !space.currentTeam) return
+  if (saving.value || !space.currentTeam || wordsConflict.value) return
   saving.value = true
   try {
     await putTeamAsset(space.currentId, 'hotwords', { hotwords: next.join('\n') }, { idempotencyKey: newMutationId(), baseRev: rev.value })
@@ -86,9 +125,7 @@ async function pushWords(next: string[]) {
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status
     if (status === 409) {
-      // 词表冲突=整表重读后用户重改（绝不静默覆盖；纪要级 diff 流在 WP-5，词表不做）
-      showToast(t('enterprise.assets.team_conflict'), 'error')
-      await load()
+      await openWordsConflict(next.join('\n'))
     } else if (status === 403) {
       showToast(t('enterprise.assets.team_forbidden'), 'error')
     } else {
@@ -169,6 +206,16 @@ function removeWord(word: string) {
         </tbody>
       </table>
     </template>
+
+    <!-- WP-5：词表冲突并排退化（lineMode 行级取舍，同快照冲突弹窗组件） -->
+    <ConflictDiffDialog
+      v-if="wordsConflict"
+      :fields="wordsConflict"
+      :submitting="conflictSubmitting"
+      line-mode
+      @cancel="onWordsConflictCancel"
+      @confirm="onWordsConflictConfirm"
+    />
   </div>
 </template>
 

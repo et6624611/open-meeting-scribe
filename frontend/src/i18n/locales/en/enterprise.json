@@ -226,6 +226,17 @@
     "conflict_team": "A teammate changed this content while you were editing. Your draft is kept and nothing was overwritten — reconcile against the latest version and try again.",
     "link_team_hint": "If this link points to content a teammate published to a team, switch to that team in the space switcher at the top of the sidebar, then open it again."
   },
+  "diff": {
+    "title": "Save conflict — reconcile versions",
+    "desc": "A teammate saved a newer version while you were editing. Choose what to keep for each section, then save; canceling discards your draft and loads the latest version.",
+    "server_new": "Newer server version",
+    "my_change": "My changes (unsaved)",
+    "all_theirs": "Take all from server",
+    "all_mine": "Keep all mine",
+    "confirm": "Merge & save",
+    "cancel_hint": "Cancel discards your draft and loads the latest version",
+    "empty_side": "(nothing on this side)"
+  },
   "assets": {
     "hotwords_title": "Hot words",
     "speakers_title": "Speaker aliases",

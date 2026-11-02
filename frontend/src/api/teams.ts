@@ -199,8 +199,8 @@ export async function getTeamAsset<T>(teamId: string, kindSeg: TeamAssetKindSeg)
 }
 
 /** 团队词表 PUT（editor+；§1.4 同协议；归档写 409 team_archived 读放行=裁决④）。
- *  409 形态={error:'rev_conflict'...current_rev}——冲突方界面重拉最新（词表无逐行 diff 需求，
- *  与团队纪要的 WP-5 diff 流刻意不同：整表重读后用户重改，绝不静默覆盖）。 */
+ *  409 形态={error:'rev_conflict'...current_rev}——冲突方界面重拉最新（WP-5 起词表=ConflictDiffDialog
+ *  并排退化形态 lineMode 行级取舍；重读失败回"整表重读后用户重改"下限态，绝不静默覆盖）。 */
 export async function putTeamAsset(
   teamId: string, kindSeg: TeamAssetKindSeg, payload: Record<string, unknown>,
   headers: { idempotencyKey: string; baseRev: number },
