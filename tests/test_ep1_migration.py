@@ -165,8 +165,18 @@ def test_audit_enum_matches_contract_k1(tmp_path):
 
 def test_revisions_actor_backfill_and_p1_columns(tmp_path):
     s = _boot_store(tmp_path, _p0_only_dir(tmp_path))
-    payload = {"meta": {"title": "T"}, "summary": "s"}
-    s.apply_snapshot(actor_user_id="usr_mem", task_id="tsk_x", client_mutation_id="mut-1", base_rev=0, payload=payload)
+    # 以 P0 老代码形态裸写存量行（不填 actor 列）——生产态 DAO 恒在迁移后运行，存量行只能来自 P0
+    now = "2026-10-29T00:00:00+00:00"
+    with s.conn:
+        s.conn.execute(
+            "INSERT INTO ctx_tasks(task_id, owner_user_id, title, source, status, current_rev, updated_at)"
+            " VALUES ('tsk_x','usr_mem','T','client','active',1,?)", (now,)
+        )
+        s.conn.execute(
+            "INSERT INTO ctx_revisions(rev_id, task_id, owner_user_id, rev, client_mutation_id,"
+            " blob_path, content_hash, created_at) VALUES ('rvw_x','tsk_x','usr_mem',1,'mut-1','/dev/x','h',?)",
+            (now,),
+        )
     migrate(s.conn)
     row = s.conn.execute("SELECT owner_user_id, actor_user_id FROM ctx_revisions").fetchone()
     assert row["actor_user_id"] == row["owner_user_id"]  # 旧行回填 owner=actor
