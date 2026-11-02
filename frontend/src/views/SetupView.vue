@@ -32,6 +32,13 @@ const confirm = ref('')
 
 function clearError() { errorMsg.value = '' }
 
+/** 如实引导文案的落地地址：把当前主机名换成 localhost（保留协议与端口），如 http://localhost:8010 */
+function localAdminUrl(): string {
+  const { protocol, port } = window.location
+  const scheme = protocol === 'https:' ? 'https' : 'http'
+  return port ? `${scheme}://localhost:${port}` : `${scheme}://localhost`
+}
+
 async function createAdmin() {
   if (submitting.value) return
   errorMsg.value = ''
@@ -49,7 +56,12 @@ async function createAdmin() {
   } catch (err) {
     const code = authErrorCode(err)
     const status = (err as { response?: { status?: number } })?.response?.status
-    if (code === 'bootstrap_loopback_only') errorMsg.value = t('login.enterprise.setup.loopback')
+    // PM 裁决 + DevOps 口径更新（T-001 复发派工）：403 两类如实引导，不再落入笼统"服务异常"兜底——
+    //  ① 契约信封 bootstrap_loopback_only（来源非回环=设计正确的引导坑）→ 回环如实文案；
+    //  ② 网关信封 403（如跨源写守卫 {detail:cross_origin_write_blocked}，非企业错误码）→ 通用拒绝文案。
+    // 两者都动态带出服务器本机地址，勿按回环单一根因写死。
+    if (code === 'bootstrap_loopback_only') errorMsg.value = t('login.enterprise.setup.loopback', { url: localAdminUrl() })
+    else if (status === 403) errorMsg.value = t('login.enterprise.setup.forbidden', { url: localAdminUrl() })
     else if (code === 'bootstrap_done' || status === 409) errorMsg.value = t('login.enterprise.setup.closed')
     else if (code === 'invalid_admin' || status === 422) errorMsg.value = t('login.enterprise.setup.invalid_admin')
     else if (status) errorMsg.value = t('login.enterprise.err_service_error', { status })
