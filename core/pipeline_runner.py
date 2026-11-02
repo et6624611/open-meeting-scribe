@@ -36,6 +36,25 @@ logger = logging.getLogger(__name__)
 
 # 自动重试配置（仅针对瞬时错误）
 PIPELINE_MAX_RETRIES = 2
+
+
+def _is_llm_timeout(e: BaseException) -> bool:
+    """LLM 请求超时判定（D018a 降级触发面）：requests/httpx/builtin TimeoutError 三口径。"""
+    if isinstance(e, TimeoutError) or "timeout" in type(e).__name__.lower():
+        return True
+    try:
+        import requests
+        if isinstance(e, requests.exceptions.Timeout):
+            return True
+    except ImportError:
+        pass
+    try:
+        import httpx
+        if isinstance(e, httpx.TimeoutException):
+            return True
+    except ImportError:
+        pass
+    return False
 PIPELINE_RETRY_DELAYS = [2, 5]  # 秒
 
 
@@ -572,19 +591,49 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "开始生成纪要（stage2）")
             # 一页纸系数：从属单个会议，旧任务缺字段按 1 兜底（契约见 docs/API_CONTRACTS.md）
             one_page_factor = float((tasks[task_id].get("one_page") or {}).get("summary", 1) or 1)
-            result = run_pipeline_stage2(
-                dialogue=dialogue,
-                speaker_mapping=speaker_mapping,
-                audio_path=audio_path,
-                on_progress=on_progress,
-                meeting_time=meeting_time,
-                user_notes=tasks[task_id].get("user_notes"),
-                one_page_factor=one_page_factor,
-            )
+            summary_mode = "full"
+            try:
+                result = run_pipeline_stage2(
+                    dialogue=dialogue,
+                    speaker_mapping=speaker_mapping,
+                    audio_path=audio_path,
+                    on_progress=on_progress,
+                    meeting_time=meeting_time,
+                    user_notes=tasks[task_id].get("user_notes"),
+                    one_page_factor=one_page_factor,
+                )
+            except Exception as e:
+                # D018a：纪要/决策合体调用超时不连坐已成功的转写——以"仅正文纪要"+
+                # 独立超时预算降级重试一次。成功=任务完成、auto 决策置空、decisions_pending
+                # 可见提示；再失败=维持原 on_failure 路径（外圈 except 承接）。
+                if not (_is_llm_timeout(e) and dialogue):
+                    raise
+                logger.warning(f"[{task_id[:8]}] 纪要生成超时，降级为仅正文重试（决策待补录）: {e}")
+                joblog.append_event(
+                    task_id, joblog.STAGE_SUMMARY,
+                    "纪要/决策合体调用超时，降级仅正文重试（独立超时预算），决策自动抽取待补录", level="warn",
+                )
+                summary_mode = "body_only"
+                from core.llm import summary_retry_timeout_seconds
+                result = run_pipeline_stage2(
+                    dialogue=dialogue,
+                    speaker_mapping=speaker_mapping,
+                    audio_path=audio_path,
+                    on_progress=on_progress,
+                    meeting_time=meeting_time,
+                    user_notes=tasks[task_id].get("user_notes"),
+                    one_page_factor=one_page_factor,
+                    summary_mode="body_only",
+                    summary_timeout=summary_retry_timeout_seconds(),
+                )
 
             tasks[task_id]["status"] = "completed"
             tasks[task_id]["progress"] = 100
             tasks[task_id]["message"] = _("Completed")
+            if summary_mode == "body_only":
+                # D018a 降级完成语义：纪要已出、决策待补——不连坐已成功环节，用户可见提示
+                tasks[task_id]["decisions_pending"] = True
+                tasks[task_id]["message"] = _("Completed with decisions pending")
             tasks[task_id]["summary"] = result.get("summary")
             tasks[task_id]["title"] = result.get("title")
             tasks[task_id]["output_path"] = result.get("output_path")

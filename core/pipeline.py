@@ -192,9 +192,14 @@ def run_pipeline_stage2(
     meeting_time: str | None = None,
     user_notes: str | None = None,
     one_page_factor: float = 1.0,
+    summary_mode: str = "full",
+    summary_timeout: float | None = None,
 ) -> dict:
     """
     管线第二阶段：对话稿 → 纪要 / Pipeline stage 2: dialogue → summary.
+
+    summary_mode/summary_timeout：D018a 降级通道（full=默认旧行为零变化；
+    body_only=只出正文纪要+独立超时预算，供 pipeline_runner 超时降级重试调用）。
 
     应用说话人姓名映射，生成纪要并保存 / Apply speaker name mapping, generate and save summary.
 
@@ -265,7 +270,7 @@ def run_pipeline_stage2(
     progress("summarize", "正在生成纪要...", 85)
     with perf_timer("纪要生成", category="llm_sync"):
         summary = generate_summary(consumer_dialogue, model=cfg["llm_model"], meeting_time=meeting_time, user_notes=user_notes,
-                                   one_page_factor=one_page_factor)
+                                   one_page_factor=one_page_factor, mode=summary_mode, timeout=summary_timeout)
     progress("summarize", "纪要生成完成", 90)
     result["summary"] = summary
 
