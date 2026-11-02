@@ -9,7 +9,7 @@
  * 徽标单源=响应 visibility 字段（本批起真值可为 team，'personal' 硬断言已清理）；
  * 首帧取数走 space.ensureReady 单点（D014 纪律，团队词表深链重载同形态防护）。
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getHotwordsAsset, getSpeakerAliasesAsset, type HotwordsPayload, type Visibility } from '@/api/context'
 import { getTeamAsset, isTeamArchived, putTeamAsset } from '@/api/teams'
@@ -65,6 +65,10 @@ onMounted(async () => {
   await space.ensureReady()
   await load()
 })
+
+// D015 销项（QA 断言③注记）：词表页内直接切团队=同路由 space 上下文变更，须重载；
+// 私有↔团队切换改变 teamMode 同理由一行覆盖（currentId 变更即重取，无陈旧显示窗口）
+watch(() => space.currentId, () => { void load() })
 
 const isEmpty = computed(() => rev.value === 0)
 const aliasRows = computed(() => Object.entries(aliases.value))
