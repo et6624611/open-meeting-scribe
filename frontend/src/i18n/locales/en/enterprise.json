@@ -163,7 +163,10 @@
     "conflict_reload": "Content changed elsewhere; reloaded latest — please re-apply your edits",
     "save_failed": "Save failed, please retry",
     "not_found": "Meeting not found or deleted",
-    "audio_local": "Audio stays on the recording device"
+    "audio_local": "Audio stays on the recording device",
+    "formal_hint": "Final transcript is a read-only anchor; revise it on the recording device",
+    "summary_placeholder": "Minutes will appear here",
+    "notes_placeholder": "Meeting notes"
   },
   "assets": {
     "hotwords_title": "Hot words",

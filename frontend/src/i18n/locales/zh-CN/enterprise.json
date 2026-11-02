@@ -163,7 +163,10 @@
     "conflict_reload": "该内容刚在别处更新，已为你载入最新版，请重新编辑",
     "save_failed": "保存失败，请稍后重试",
     "not_found": "会议不存在或已被删除",
-    "audio_local": "录音音频保留在录制设备本机"
+    "audio_local": "录音音频保留在录制设备本机",
+    "formal_hint": "转写定稿为只读锚点，如需修订请在录制设备上操作",
+    "summary_placeholder": "纪要内容将显示在这里",
+    "notes_placeholder": "会议笔记"
   },
   "assets": {
     "hotwords_title": "热词",
