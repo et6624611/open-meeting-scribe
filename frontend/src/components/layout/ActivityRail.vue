@@ -40,10 +40,9 @@
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       </IconButton>
-      <!-- 团队词表端点 BE 尚未落地（契约 §8 在文）：团队空间暂不渲染词表/发言人入口，
-           避免把个人词表面误标为团队共享——端点就位批次随角标一并解禁（联调缺项已播报） -->
+      <!-- 词表解禁批（窗口 D 后，PM 排程）：段五端点已在服——团队空间热词=共享词表（§5.3），
+           发言人=U4 裁决维持只读窗口不升共享级；两入口恢复渲染 -->
       <IconButton
-        v-if="!isEnterprise || !space.isTeamSpace"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'speakers' }"
         :label="t('sidebar.rail_speakers')"
@@ -53,7 +52,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </IconButton>
       <IconButton
-        v-if="!isEnterprise || !space.isTeamSpace"
         class="ar-btn"
         :class="{ 'is-active': route.name === 'hotwords' }"
         :label="t('sidebar.rail_hotwords')"

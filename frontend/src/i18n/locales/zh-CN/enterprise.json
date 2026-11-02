@@ -221,7 +221,17 @@
     "speakers_guide": "发言人命名与声纹绑定在安装了本机录音助手的电脑上完成，这里显示的是公司服务器上的最新别名映射。",
     "empty": "公司服务器上还没有你在助手设备上上传过的内容",
     "alias_speaker": "发言人标签",
-    "alias_name": "显示名"
+    "alias_name": "显示名",
+    "team_hotwords_guide": "这里的词表团队共享，修改会在同事的转写中逐步生效。",
+    "team_empty": "团队词表还是空的，添加第一个词吧。",
+    "team_archived_note": "团队已归档，词表只读。",
+    "add_placeholder": "添加一个热词",
+    "add_btn": "添加",
+    "remove_word_aria": "删除该词条",
+    "team_saved": "团队词表已更新",
+    "team_conflict": "同事刚改过词表，已加载最新版，请重新修改",
+    "team_forbidden": "您在团队中的角色不能修改共享词表",
+    "team_failed": "词表保存失败，请稍后重试"
   },
   "team": {
     "empty": "还没有人公开内容。您可以把自己的纪要或决策公开进来。",

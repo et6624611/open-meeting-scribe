@@ -221,7 +221,17 @@
     "speakers_guide": "Speaker naming and voiceprint binding happen on computers with the local recording assistant. This shows the latest alias mapping from your company server.",
     "empty": "Nothing uploaded from your assistant devices yet",
     "alias_speaker": "Speaker tag",
-    "alias_name": "Display name"
+    "alias_name": "Display name",
+    "team_hotwords_guide": "This word list is shared across the team; changes take effect in teammates' transcripts progressively.",
+    "team_empty": "The team word list is empty — add the first word.",
+    "team_archived_note": "This team is archived; the word list is read-only.",
+    "add_placeholder": "Add a hotword",
+    "add_btn": "Add",
+    "remove_word_aria": "Remove this word",
+    "team_saved": "Team word list updated",
+    "team_conflict": "A teammate just changed the word list; the latest version has been loaded — please re-apply your edit",
+    "team_forbidden": "Your role in this team cannot edit the shared word list",
+    "team_failed": "Failed to save the word list. Please try again later."
   },
   "team": {
     "empty": "Nothing has been published yet. You can publish your minutes or decisions to the team.",
