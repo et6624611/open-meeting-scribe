@@ -3,8 +3,9 @@
  * 企业版设置页（UI 规格 §2 两分区，档⑦）
  *
  * 企业形态不复用个人版 SettingsView：账户/算力四段依赖个人云端点（企业实例不挂载，契约 §4），
- * AI 能力由管理员管理台控制、员工端无开关。P0 员工 Settings 即两分区：本机录音助手 / 数据位置。
- * 深链 ?cat=assistant|data_location（头像菜单"我的数据在哪"→ data_location）。
+ * AI 能力由管理员管理台控制、员工端无开关。P0 员工 Settings=本机录音助手 / 数据位置两分区；
+ * B6 版式找回追加第三分区"外观"（主题/语言=设备偏好，零上服务端、不入团队，与两分区裁决兼容）。
+ * 深链 ?cat=assistant|data_location|appearance（头像菜单"我的数据在哪"→ data_location）。
  */
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -12,12 +13,13 @@ import { useI18n } from 'vue-i18n'
 import { usePageBack } from '@/composables/usePageBack'
 import EnterpriseAssistantPanel from '@/components/settings/enterprise/EnterpriseAssistantPanel.vue'
 import DataLocationPanel from '@/components/settings/enterprise/DataLocationPanel.vue'
+import EnterpriseAppearancePanel from '@/components/settings/enterprise/EnterpriseAppearancePanel.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const { goBack } = usePageBack()
 
-const CATS = ['assistant', 'data_location'] as const
+const CATS = ['assistant', 'appearance', 'data_location'] as const
 const raw = typeof route.query.cat === 'string' ? route.query.cat : ''
 const activeCategory = ref<string>(CATS.includes(raw as typeof CATS[number]) ? raw : 'assistant')
 </script>
@@ -33,12 +35,16 @@ const activeCategory = ref<string>(CATS.includes(raw as typeof CATS[number]) ? r
       <button class="es-nav-item" :class="{ 'is-active': activeCategory === 'assistant' }" @click="activeCategory = 'assistant'">
         {{ t('enterprise.settings.nav.assistant') }}
       </button>
+      <button class="es-nav-item" :class="{ 'is-active': activeCategory === 'appearance' }" @click="activeCategory = 'appearance'">
+        {{ t('enterprise.settings.nav.appearance') }}
+      </button>
       <button class="es-nav-item" :class="{ 'is-active': activeCategory === 'data_location' }" @click="activeCategory = 'data_location'">
         {{ t('enterprise.settings.nav.data_location') }}
       </button>
     </nav>
     <div class="es-content">
       <EnterpriseAssistantPanel v-show="activeCategory === 'assistant'" />
+      <EnterpriseAppearancePanel v-show="activeCategory === 'appearance'" />
       <DataLocationPanel v-show="activeCategory === 'data_location'" />
     </div>
   </div>

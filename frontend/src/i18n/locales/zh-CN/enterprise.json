@@ -187,6 +187,7 @@
     },
     "nav": {
       "assistant": "本机录音助手",
+      "appearance": "外观",
       "data_location": "数据位置"
     }
   },
@@ -194,7 +195,12 @@
     "title": "我的会议",
     "empty": "还没有会议，让本机录音助手记录第一场会议",
     "last_synced": "最后同步于 {time}",
-    "loading": "加载中…"
+    "loading": "加载中…",
+    "eyebrow": "会议纪要",
+    "group_today": "今天",
+    "group_yesterday": "昨天",
+    "group_week": "近 7 天",
+    "group_earlier": "更早"
   },
   "detail": {
     "formal": "转写定稿",
@@ -213,6 +219,8 @@
     "summary_placeholder": "纪要内容将显示在这里",
     "notes_placeholder": "会议笔记",
     "insights": "洞察板",
+    "open_in_browser": "在浏览器中打开",
+    "insights_empty": "这份内容还没有洞察板。",
     "empty_summary": "（暂无纪要）",
     "empty_notes": "（暂无笔记）",
     "conflict_team": "同事在您编辑期间修改了这份内容。您的草稿已保留，本次保存未覆盖他人修改——请对照最新内容调整后重试。",
