@@ -63,6 +63,7 @@
       "finish_btn": "Finish and enter",
       "account_required": "Account is required",
       "loopback": "Setup can only be completed in a browser on the server itself. Open {url} on the server and try again.",
+      "forbidden": "The setup request was rejected by the server (HTTP 403). Open {url} in a browser on the server itself and try again; if it still fails, contact your administrator.",
       "closed": "Setup has already completed and this channel is now permanently closed. Please sign in normally.",
       "invalid_admin": "Account or display name is invalid; adjust and retry."
     }
