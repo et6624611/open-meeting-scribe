@@ -95,9 +95,9 @@ export function mergeParas(ops: ParaOp[], choices: Record<number, ChangeChoice>)
   return out
 }
 
-/** 合并文本输出（段间单空行归一——原文的多空行属排版噪声，不承诺保真） */
-export function mergedText(ops: ParaOp[], choices: Record<number, ChangeChoice>): string {
-  return mergeParas(ops, choices).join('\n\n')
+/** 合并文本输出（段间分隔可参数化：纪要/笔记默认 '\n\n' 段落语义；词表 lineMode 传 '\n' 保"一行一词"原形态——UI 走查低 1） */
+export function mergedText(ops: ParaOp[], choices: Record<number, ChangeChoice>, sep = '\n\n'): string {
+  return mergeParas(ops, choices).join(sep)
 }
 
 /** 快捷全量选择表 */

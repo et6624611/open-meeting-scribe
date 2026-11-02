@@ -58,10 +58,14 @@ describe('mergeParas/mergedText（逐段可验合并）', () => {
     expect(out).toEqual(['T1', 'K', 'M2'])
   })
 
-  it('词表单文本框退化形态=每行一段同样可 diff（行级合并）', () => {
-    const t = splitParas('苹果\n香蕉')
-    const m = splitParas('苹果\n橘子\n西瓜')
-    const merged = mergedText(diffParas(t, m), allChoices(diffParas(t, m), 'mine'))
-    expect(merged).toBe('苹果\n橘子\n西瓜')
+  it('词表单文本框退化形态=lineMode 每行一段+sep 传 \\n 保一行一词（UI 低 1 钉）', () => {
+    // 组件 splitUnits 口径：每词条一段；默认 sep 下多段合并会显空行（错形态），lineMode 必须传 '\n'
+    const lineUnits = (s: string) => s.split('\n').map((w) => w.trim()).filter(Boolean)
+    const ops = diffParas(lineUnits('苹果\n香蕉'), lineUnits('苹果\n橘子\n西瓜'))
+    expect(ops.map((o) => o.kind)).toEqual(['same', 'change'])
+    expect(mergedText(ops, allChoices(ops, 'mine'), '\n')).toBe('苹果\n橘子\n西瓜')
+    expect(mergedText(ops, allChoices(ops, 'theirs'), '\n')).toBe('苹果\n香蕉')
+    // 反例钉：漏传 sep 时空行形态可见可查（提醒消费侧 lineMode 必配 sep='\n'）
+    expect(mergedText(ops, allChoices(ops, 'mine'))).toBe('苹果\n\n橘子\n\n西瓜')
   })
 })

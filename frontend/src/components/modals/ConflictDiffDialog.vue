@@ -55,8 +55,9 @@ function setAll(pick: ChangeChoice) {
 const hasChangeBlocks = computed(() => blocksByField.value.some((b) => b.ops.some((o) => o.kind === 'change')))
 
 function onConfirm() {
+  const sep = props.lineMode ? '\n' : '\n\n' // 低 1 销项：词表合并输出保"一行一词"，不显空行
   const out: Record<string, string> = {}
-  for (const b of blocksByField.value) out[b.key] = mergedText(b.ops, choices.value[b.key] ?? {})
+  for (const b of blocksByField.value) out[b.key] = mergedText(b.ops, choices.value[b.key] ?? {}, sep)
   emit('confirm', out)
 }
 
