@@ -300,7 +300,8 @@
     "toast_done": "团队建好了",
     "err_forbidden": "当前账号不能创建团队",
     "err_failed": "创建失败，请稍后重试",
-    "remove_member_aria": "移除所选成员"
+    "remove_member_aria": "移除所选成员",
+    "err_switch": "团队已创建，但未能自动进入。请在空间切换器里选择它。"
   },
   "members": {
     "title": "成员管理 · {name}",

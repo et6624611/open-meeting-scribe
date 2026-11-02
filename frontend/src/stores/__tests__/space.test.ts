@@ -133,6 +133,21 @@ describe('space store · 切换即失效单点', () => {
     expect(space.canEdit).toBe(true)
   })
 
+  it('D017：loadTeams(true) 强制重拉后新团队即时可切换；未刷新前拒绝切换（不静默假成功）', async () => {
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.loadTeams()
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue([
+      ...TEAMS, { team_id: 't9', name: '新队', my_role: 'admin' as const },
+    ])
+    // 幂等 loaded 下新队不在列：switchSpace 返回 false（对话框据此报错而非闪过 toast）
+    expect(space.switchSpace('t9')).toBe(false)
+    expect(space.currentId).toBe(PRIVATE_SPACE)
+    await space.loadTeams(true)
+    expect(space.switchSpace('t9')).toBe(true)
+    expect(space.currentId).toBe('t9')
+  })
+
   it('reset（登出清态）回私有并清列表', async () => {
     vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
     const space = useSpaceStore()

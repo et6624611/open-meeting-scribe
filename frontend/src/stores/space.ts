@@ -66,9 +66,10 @@ export const useSpaceStore = defineStore('space', () => {
   }
 
   /** 幂等加载（并发共享同一次请求）；完成后校验/恢复最近所在空间，失效（被移出团队等）静默回私有 */
-  async function loadTeams(): Promise<void> {
+  /** D017 修复：force=绕过 loaded 幂等重拉（建团队成功后的最后一跳刷新链）；在飞请求仍共享 */
+  async function loadTeams(force = false): Promise<void> {
     if (!isEnterprise) return
-    if (loaded.value) return
+    if (loaded.value && !force) return
     if (loading) return loading
     loading = (async () => {
       loadError.value = false
@@ -96,9 +97,10 @@ export const useSpaceStore = defineStore('space', () => {
     return loading
   }
 
-  function switchSpace(id: string): void {
-    if (!isEnterprise || id === currentId.value) return
-    if (id !== PRIVATE_SPACE && !teams.value.some((t) => t.team_id === id)) return
+  /** 返回是否执行了切换（D017：调用方可对"清单外拒绝"给用户反馈，不静默） */
+  function switchSpace(id: string): boolean {
+    if (!isEnterprise || id === currentId.value) return false
+    if (id !== PRIVATE_SPACE && !teams.value.some((t) => t.team_id === id)) return false
     currentId.value = id
     const uid = userId()
     if (uid) scopedSet(uid, LAST_SPACE_KEY, id)
@@ -110,6 +112,7 @@ export const useSpaceStore = defineStore('space', () => {
       contexts.forgetSpaceState()
       await contexts.loadTasks()
     })()
+    return true
   }
 
   /**

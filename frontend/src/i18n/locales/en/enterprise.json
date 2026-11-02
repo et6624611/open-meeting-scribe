@@ -300,7 +300,8 @@
     "toast_done": "Team created",
     "err_forbidden": "This account cannot create teams",
     "err_failed": "Creation failed. Please try again later.",
-    "remove_member_aria": "Remove selected member"
+    "remove_member_aria": "Remove selected member",
+    "err_switch": "Team created, but we couldn't switch into it. Pick it from the space switcher."
   },
   "members": {
     "title": "Members · {name}",

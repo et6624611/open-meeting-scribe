@@ -56,12 +56,17 @@ async function onCreate() {
   error.value = ''
   try {
     const team = await createTeam({ name: name.value.trim(), member_user_ids: picked.value.map((p) => p.user_id) })
-    await space.loadTeams()
+    // D017 修复：force 重拉新团队列表→切换校验→**同一帧事实**才报成功——
+    // "引导语落地和切换器新团队在列"必须一致，拒绝 toast 闪过分寸即断链的错觉形态
+    await space.loadTeams(true)
     space.justCreatedTeamId = team.team_id
-    space.switchSpace(team.team_id)
-    showToast(t('enterprise.create.toast_done'), 'success')
-    emit('created', team.team_id)
-    emit('close')
+    if (space.switchSpace(team.team_id)) {
+      showToast(t('enterprise.create.toast_done'), 'success')
+      emit('created', team.team_id)
+      emit('close')
+    } else {
+      error.value = t('enterprise.create.err_switch')
+    }
   } catch (err) {
     const status = (err as { response?: { status?: number } })?.response?.status
     error.value = status === 403
