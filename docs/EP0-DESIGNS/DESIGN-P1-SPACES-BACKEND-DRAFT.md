@@ -172,7 +172,9 @@ enterprise_decision_assets(asset_id PK,
    `409 {"error":"rev_conflict","current_rev":<int>,"latest":<当前最新 rev 的全文快照，形态同 GET 任务 DTO>}`——UI 单响应即得新旧两版全文做并排 diff。个人面 409 保持 P0 `{current_rev}` 形态不变；团队面新增 `latest` 字段为单向兼容扩展。
 4. **变更记录端点（必含项②，裁决③回滚面硬依赖）**：`GET /api/v1/teams/{id}/audit?cursor&limit` 倒序分页、团队全员可读（viewer 只读无操作）。操作类型枚举终值（K1 拍板定名，= §1 team_edit_audit action CHECK 全集，十二值逐字）：`publish / edit / withdraw / decision_publish / decision_withdraw / decision_delete / decision_restore / member_add / member_role_change / member_remove / role_transfer / team_archive`。**"删除→恢复"闭环**：`decision_delete` 条目携带 `target_ref` + `pre_delete_rev`，前端"恢复"按钮据二者重推历史版本；`decision_restore` 本身亦为新留痕条目（规格 §7），恢复后内容=删除前 rev 内容。措辞归一：全文无"解散/dissolve"类值，归档语义统一 `team_archive`（UI §9.4"解散"字样以本节为准）；红线：枚举只到"操作记录"粒度，不含任何审批/待确认状态值（pending_approval 类出现即 FAIL）。§1 表为 0002 全新表，枚举定名无存量迁移问题。
 5. **用户搜索（依赖 5）**：`GET /api/v1/users/search?q=`——任何 active 用户可调（建团队拉成员场景）；仅返回 `[{user_id, display_name}]`，不暴露手机号/邮箱等联系面（管理台列表端点权限面不同，不开放给普通成员复用）。
-6. **B5 第五锁定文案基准（冻结令拍板一，逐字）**：
+6.5 **发布态读面（v1.0 补漏注，PM 拍板二 cmsg_01m6d71fe7b1nbgkaq3eh1pmpf：属补漏不属改冻结）**：规格 §4.3"已公开到 N 个团队"角标与逐团队撤回的数据面定版为**内嵌原件 DTO**，不建独立端点——`GET /api/v1/context/tasks[/{id}]` 返回增加 `published_copies: [{team_id, team_name, copy_task_id, granularity(task|decision), current_rev, updated_at}]`（仅 active 副本；撤回即从该列表消失，撤回面=读面闭环）；角标"N 个团队"由 FE 按 distinct team_id 归并。
+
+7. **B5 第五锁定文案基准（冻结令拍板一，逐字）**：
    > 公开到团队的内容里不会包含录音音频和逐字转写，它们永远只保存在您的设备上。
 
    挂点仅公开确认弹窗一处（FE lockedCopy.ts 单源扩行，禁手抄；防锁定面扩张纪律沿用）。后端与该文辞互为表里：§3.1 复制器白名单**结构性排除** formal 与音频引用 + blob schema 禁字段 422 兜底，即此承诺的可证伪实现面——QA 后端断言走白名单用例，UI 断言走逐字（六表面之一，与 P0 三行卡同级）。变更记录/团队首页同义表述用普通文案，不入 B5 逐字范围。
