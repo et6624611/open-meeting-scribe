@@ -11,9 +11,12 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextsStore } from '@/stores/contexts'
-import type { ContextTaskDetail } from '@/api/context'
+import { useSpaceStore } from '@/stores/space'
+import type { ContextTaskDetail, PublishedCopy } from '@/api/context'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
+import PublishedCopiesMenu from '@/components/common/PublishedCopiesMenu.vue'
 import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue'
+import PublishToTeamDialog from '@/components/modals/PublishToTeamDialog.vue'
 import { showToast } from '@/composables/useToast'
 
 type TabId = 'formal' | 'summary' | 'decisions' | 'notes'
@@ -21,6 +24,7 @@ type TabId = 'formal' | 'summary' | 'decisions' | 'notes'
 const { t } = useI18n()
 const route = useRoute()
 const contexts = useContextsStore()
+const space = useSpaceStore()
 
 const detail = ref<ContextTaskDetail | null>(null)
 const notFound = ref(false)
@@ -30,6 +34,22 @@ const saving = ref(false)
 const activeTab = ref<TabId>('formal')
 const dirty = computed(() => detail.value != null && (summary.value !== detail.value.summary || notes.value !== detail.value.notes))
 const decisionCount = computed(() => (detail.value?.decisions as unknown[] | undefined)?.length ?? 0)
+
+/** 发布入口=私有空间原件面（团队副本空间不渲染发布动作——副本不二次发布） */
+const canPublish = computed(() => !space.isTeamSpace)
+const publishedCopies = computed<PublishedCopy[]>(() => (detail.value as { published_copies?: PublishedCopy[] } | null)?.published_copies ?? [])
+const publishOpen = ref(false)
+const publishDecision = ref<{ id: string; text: string } | null>(null)
+
+function openPublish(decision: { id: string; text: string } | null) {
+  publishDecision.value = decision
+  publishOpen.value = true
+}
+
+function afterPublishChange() {
+  void load()
+  void contexts.loadTasks()
+}
 
 async function load() {
   const taskId = typeof route.params.taskId === 'string' ? route.params.taskId : ''
@@ -87,6 +107,8 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         </div>
         <div class="cd-actions">
           <span v-if="dirty" class="cd-dirty">{{ t('enterprise.detail.unsaved') }}</span>
+          <PublishedCopiesMenu :copies="publishedCopies" @withdrawn="afterPublishChange" />
+          <button v-if="canPublish" class="cd-publish" @click="openPublish(null)">{{ t('enterprise.publish.entry_task') }}</button>
           <button class="cd-save" :disabled="!dirty || saving" @click="onSave">{{ saving ? t('enterprise.detail.saving') : t('enterprise.detail.save') }}</button>
         </div>
       </header>
@@ -125,9 +147,15 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
         </div>
 
         <div v-show="activeTab === 'decisions'" class="cd-pane">
-          <article v-for="(d, i) in detail.decisions as Array<{ text?: string; status_text?: string; status_id?: string }>" :key="i" class="cd-decision">
+          <article v-for="(d, i) in detail.decisions as Array<{ id?: string; text?: string; status_text?: string; status_id?: string }>" :key="d.id ?? i" class="cd-decision">
             <p class="cd-decision-text">{{ d.text ?? '' }}</p>
             <span v-if="d.status_text" class="cd-decision-status" :class="'rev-' + (d.status_id ?? '')">{{ d.status_text }}</span>
+            <button
+              v-if="canPublish && d.id"
+              type="button"
+              class="cd-decision-publish"
+              @click="openPublish({ id: d.id, text: d.text ?? '' })"
+            >{{ t('enterprise.publish.entry_decision') }}</button>
           </article>
         </div>
 
@@ -138,6 +166,15 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
     </template>
 
     <EnterpriseConsentGate :active="!!detail?.summary" />
+
+    <PublishToTeamDialog
+      v-if="publishOpen && detail"
+      :task-id="detail.task_id"
+      :decision-only="publishDecision"
+      :published-copies="publishedCopies"
+      @close="publishOpen = false"
+      @published="afterPublishChange"
+    />
   </div>
 </template>
 
@@ -152,6 +189,13 @@ function fmtDT(s: string | null): string { return s ? s.replace('T', ' ').slice(
 .cd-dirty { font-size: var(--fs-11, 11px); color: var(--warn, #b60); }
 .cd-save { padding: 6px 16px; border: none; border-radius: var(--radius-sm, 8px); background: var(--accent, #2a6); color: var(--accent-fg, #fff); font-weight: 600; font-size: var(--fs-12, 12px); cursor: pointer; }
 .cd-save:disabled { opacity: 0.45; cursor: not-allowed; }
+.cd-publish { padding: 6px 12px; border: 1px solid var(--border, #d8d8d4); border-radius: var(--radius-sm, 8px); background: var(--surface, #fff); color: var(--fg, #222); font-size: var(--fs-12, 12px); cursor: pointer; }
+.cd-publish:hover { border-color: var(--accent, #2a6); color: var(--accent, #2a6); }
+.cd-publish:focus-visible { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 1px; }
+.cd-decision { position: relative; }
+.cd-decision-publish { align-self: flex-start; border: none; background: none; color: var(--muted, #666); font-size: var(--fs-11, 11px); cursor: pointer; padding: 2px 0; text-decoration: underline; text-underline-offset: 3px; }
+.cd-decision-publish:hover { color: var(--accent, #2a6); }
+.cd-decision-publish:focus-visible { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 1px; }
 .cd-meta { display: flex; gap: 8px; align-items: center; padding: 6px var(--s-6, 28px) 0; font-size: var(--fs-11, 11px); color: var(--muted, #666); flex-wrap: wrap; }
 .cd-meta-audio { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 2px 8px; border-radius: 999px; background: var(--surface-2, #f2f2f0); color: var(--subtle, #999); }
 .cd-tabs { display: flex; gap: 2px; padding: var(--s-3, 14px) var(--s-6, 28px) 0; border-bottom: 1px solid var(--border, #e6e6e2); }

@@ -12,6 +12,17 @@ export type Visibility = 'personal' // P0 恒 personal；P1 扩展时此处加�
 export type ServerSyncStatus = 'synced' | 'stale'
 export type QueueSyncStatus = 'pending' | 'syncing' | 'synced' | 'error'
 
+/** 发布态副本行（P1 契约 §6.5 补漏注，BE ffcb709 定版：原件 DTO/列表项内嵌，仅计 active 副本；
+ *  撤回即从数组消失。列表端点不返回时缺省=无副本） */
+export interface PublishedCopy {
+  team_id: string
+  team_name: string
+  copy_task_id: string
+  granularity: 'task' | 'decision' | string
+  current_rev: number
+  updated_at: string
+}
+
 /** 列表项（实测对齐 2026-10-29 联调：list 用 current_rev/scope，detail 用 server_rev） */
 export interface ContextTaskSummary {
   task_id: string
@@ -22,6 +33,7 @@ export interface ContextTaskSummary {
   current_rev: number
   content_hash: string
   updated_at: string
+  published_copies?: PublishedCopy[]
 }
 
 export interface ContextTaskMeta {

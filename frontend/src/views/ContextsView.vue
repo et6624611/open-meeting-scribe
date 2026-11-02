@@ -8,6 +8,7 @@ import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useContextsStore } from '@/stores/contexts'
 import VisibilityBadge from '@/components/common/VisibilityBadge.vue'
+import PublishedCopiesMenu from '@/components/common/PublishedCopiesMenu.vue'
 import EnterpriseConsentGate from '@/components/modals/EnterpriseConsentGate.vue'
 
 const { t } = useI18n()
@@ -35,6 +36,7 @@ function fmtDate(s: string | null): string {
         <RouterLink class="cx-card" :to="`/meeting/${task.task_id}`">
           <div class="cx-card-top">
             <span class="cx-title">{{ task.title || task.task_id }}</span>
+            <PublishedCopiesMenu :copies="task.published_copies ?? []" @withdrawn="contexts.loadTasks()" />
             <VisibilityBadge :visibility="task.visibility" />
           </div>
           <div class="cx-meta">
@@ -60,7 +62,7 @@ function fmtDate(s: string | null): string {
 .cx-card:hover { border-color: var(--accent, #2a6); }
 .cx-card:focus-visible { outline: 2px solid var(--accent-mid, #4a7); outline-offset: 2px; }
 .cx-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2, 8px); }
-.cx-title { font-weight: 600; font-size: var(--fs-13, 13px); }
+.cx-title { font-weight: 600; font-size: var(--fs-13, 13px); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cx-meta { margin-top: 4px; font-size: var(--fs-11, 11px); color: var(--muted, #666); }
 .cx-stale { color: var(--muted, #666); }
 .cx-empty { color: var(--muted, #666); font-size: var(--fs-12, 12px); }
