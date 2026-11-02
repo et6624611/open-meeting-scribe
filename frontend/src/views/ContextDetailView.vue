@@ -51,8 +51,9 @@ const isTeamDetail = computed(() => detail.value?.visibility === 'team')
 const hasInsights = computed(() => !!detail.value?.insights_html)
 /** B5（版式找回）：formal 纯文本呈现层分段——不改变任何字符内容，仅发言人 chip+分段留白 */
 const formalSegments = computed(() => parseFormalSegments(detail.value?.formal ?? ''))
-/** B4：洞察板"在浏览器中打开"全屏形态（BoardViewerView 企业分支=同源 sandbox iframe 铺满视口） */
-const boardHref = computed(() => (detail.value ? `/board/${detail.value.task_id}` : ''))
+/** B4：洞察板"在浏览器中打开"全屏形态（BoardViewerView 企业分支=同源 sandbox iframe 铺满视口）；
+ *  备案 4：task_id encodeURIComponent 对齐 meetingUrl 口径 */
+const boardHref = computed(() => (detail.value ? `/board/${encodeURIComponent(detail.value.task_id)}` : ''))
 function segNameColor(name: string): string { return getSpeakerNameTextColor(name) }
 function segNameBg(name: string): string { return getSpeakerNameBg(name) }
 /** 编辑权单源：detail.my_role（服务端随行下发）；私有面恒可编辑（本人原件） */
