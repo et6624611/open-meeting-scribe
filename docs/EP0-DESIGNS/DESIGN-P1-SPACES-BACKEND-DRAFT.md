@@ -2,7 +2,7 @@
 
 - 版本：**v1.0（正式基线，随产品经理 2026-11-02 契约冻结令 cmsg_01m6d3zqvc3esgbhryqgzj9d6k 冻结；文件名保留 DRAFT 后缀仅作历史引用，版本号以本行为准）**
 - v0.1→v1.0-draft 变更：§7 五题全部裁决销项；缺口A expand-contract 获产品批准（additive-only 首个例外成立）
-- v1.0-draft→v1.0 变更（冻结令四项拍板落账）：① B5 第五锁定文案逐字入 §8；② U4 落定——发言人别名团队面维持只读；③ U5 落定——"项目=跨会议归组"不进 P1 首版；④ UI 规格 §9 字段依赖六条全部入 §8 核对项，两条冻结必含项（团队面 409 含 current_rev+最新全文快照；变更记录枚举覆盖"删除→恢复"闭环）写入契约正文，§1 审计枚举同步扩容
+- v1.0-draft→v1.0 变更（冻结令四项拍板落账）：① B5 第五锁定文案逐字入 §8；② U4 落定——发言人别名团队面维持只读；③ U5 落定——"项目=跨会议归组"不进 P1 首版；④ UI 规格 §9 字段依赖六条全部入 §8 核对项，两条冻结必含项（团队面 409 含 current_rev+最新全文快照；变更记录枚举覆盖"删除→恢复"闭环）写入契约正文。**K1 阻塞项随拍板定版**：§1/§8 审计枚举终名十二值（decision_delete/decision_restore 回滚面 + member_add/member_role_change/member_remove/role_transfer/team_archive 成员治理域），无"解散"字样、无审批态值
 - 作者：后端工程师
 - 日期：2026-11-02
 - 裁决依据：项目方 2026-11-02（cmsg_01m6d392sd0cq3vaggs3rcgvqc）+ 产品经理复述定稿 v0.2（shared/REQUIREMENT-SPACES-P1-DRAFT-v0.2.md）+ UI 交互规格 v1.0（shared/P1-SPACES-UX-SPEC-v1.0.md）+ 产品经理冻结令（cmsg_01m6d3zqvc3esgbhryqgzj9d6k）
@@ -43,13 +43,13 @@ CREATE INDEX idx_ctx_tasks_team ON ctx_tasks(team_id, status, updated_at);
 ALTER TABLE ctx_revisions ADD COLUMN actor_user_id REFERENCES users(user_id);
 -- 回填 actor_user_id = owner_user_id；新写入两列都填（owner=行归属人/发布人，actor=本次写作者）
 
--- 团队内容留痕（裁决 3"改动留痕"+ 冻结必含项②"删除→恢复"闭环）
+-- 团队内容留痕（裁决 3"改动留痕"+ 冻结必含项②"删除→恢复"闭环；K1 拍板定名，无"解散"字样、无审批态值）
 team_edit_audit(audit_id PK, team_id FK, task_id FK NULL, rev INT NULL, actor_user_id FK,
-                action CHECK('publish','edit','withdraw','delete','restore',
-                             'member_add','member_remove','role_change','transfer_admin','archive',
-                             'decision_publish','decision_withdraw'),
-                target_ref TEXT NULL,      -- delete/restore 指向的条目（决策/纪要段稳定 ID）；恢复按钮定位锚
-                pre_delete_rev INT NULL,   -- delete 类留痕额外记录删除前 rev，回滚=重推该历史版本（裁决③）
+                action CHECK('publish','edit','withdraw','decision_publish','decision_withdraw',
+                             'decision_delete','decision_restore',
+                             'member_add','member_role_change','member_remove','role_transfer','team_archive'),
+                target_ref TEXT NULL,      -- decision_delete/decision_restore 指向的决策条目稳定 ID；恢复按钮定位锚
+                pre_delete_rev INT NULL,   -- decision_delete 留痕额外记录删除前 rev；decision_restore=重推该历史版本（裁决③）
                 content_hash, ts)          -- 只存指针与哈希，不存正文（隐私口径与 P0 egress_audit 同尺）
 
 -- 企业级资产收集层（裁决 4"只收集不消费"）
@@ -169,7 +169,7 @@ enterprise_decision_assets(asset_id PK,
 2. **发布/撤回粒度（依赖 2）**：发布与撤回端点支持**纪要粒度与单条决策粒度**两种 payload：`POST .../publish {team_id, mode: "task"|"decision", decision_id?}`；撤回同构。决策粒度发布即触发资产收集钩子（§5），并写 decision_publish 留痕。
 3. **团队面 409 形态（必含项①，§6 并排对比硬依赖）**：团队副本快照 PUT 冲突响应升级为
    `409 {"error":"rev_conflict","current_rev":<int>,"latest":<当前最新 rev 的全文快照，形态同 GET 任务 DTO>}`——UI 单响应即得新旧两版全文做并排 diff。个人面 409 保持 P0 `{current_rev}` 形态不变；团队面新增 `latest` 字段为单向兼容扩展。
-4. **变更记录端点（必含项②，裁决③回滚面硬依赖）**：`GET /api/v1/teams/{id}/audit?cursor&limit` 倒序分页、团队全员可读（viewer 只读无操作）。操作类型枚举 = §1 team_edit_audit action 全集：`publish | edit | withdraw | delete | restore | member_add | member_remove | role_change | transfer_admin | archive | decision_publish | decision_withdraw`。**"删除→恢复"闭环**：`delete` 条目携带 `target_ref` + `pre_delete_rev`，前端"恢复"按钮据二者重推历史版本；`restore` 本身亦为新留痕条目（规格 §7）。§1 表为 0002 全新表，枚举扩容无存量迁移问题。
+4. **变更记录端点（必含项②，裁决③回滚面硬依赖）**：`GET /api/v1/teams/{id}/audit?cursor&limit` 倒序分页、团队全员可读（viewer 只读无操作）。操作类型枚举终值（K1 拍板定名，= §1 team_edit_audit action CHECK 全集，十二值逐字）：`publish / edit / withdraw / decision_publish / decision_withdraw / decision_delete / decision_restore / member_add / member_role_change / member_remove / role_transfer / team_archive`。**"删除→恢复"闭环**：`decision_delete` 条目携带 `target_ref` + `pre_delete_rev`，前端"恢复"按钮据二者重推历史版本；`decision_restore` 本身亦为新留痕条目（规格 §7），恢复后内容=删除前 rev 内容。措辞归一：全文无"解散/dissolve"类值，归档语义统一 `team_archive`（UI §9.4"解散"字样以本节为准）；红线：枚举只到"操作记录"粒度，不含任何审批/待确认状态值（pending_approval 类出现即 FAIL）。§1 表为 0002 全新表，枚举定名无存量迁移问题。
 5. **用户搜索（依赖 5）**：`GET /api/v1/users/search?q=`——任何 active 用户可调（建团队拉成员场景）；仅返回 `[{user_id, display_name}]`，不暴露手机号/邮箱等联系面（管理台列表端点权限面不同，不开放给普通成员复用）。
 6. **B5 第五锁定文案基准（冻结令拍板一，逐字）**：
    > 公开到团队的内容里不会包含录音音频和逐字转写，它们永远只保存在您的设备上。
