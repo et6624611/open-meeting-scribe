@@ -1,10 +1,11 @@
-# 企业版 P1 后端设计草案：多团队空间数据模型与权限契约
+# 企业版 P1 后端契约：多团队空间数据模型与权限契约
 
-- 版本：**v1.0-draft（产品裁决五点+缺口A批准已落账 §7/§6，2026-11-02；终冻结仅待 UI 交互规格）**
+- 版本：**v1.0（正式基线，随产品经理 2026-11-02 契约冻结令 cmsg_01m6d3zqvc3esgbhryqgzj9d6k 冻结；文件名保留 DRAFT 后缀仅作历史引用，版本号以本行为准）**
 - v0.1→v1.0-draft 变更：§7 五题全部裁决销项；缺口A expand-contract 获产品批准（additive-only 首个例外成立）
+- v1.0-draft→v1.0 变更（冻结令四项拍板落账）：① B5 第五锁定文案逐字入 §8；② U4 落定——发言人别名团队面维持只读；③ U5 落定——"项目=跨会议归组"不进 P1 首版；④ UI 规格 §9 字段依赖六条全部入 §8 核对项，两条冻结必含项（团队面 409 含 current_rev+最新全文快照；变更记录枚举覆盖"删除→恢复"闭环）写入契约正文，§1 审计枚举同步扩容
 - 作者：后端工程师
 - 日期：2026-11-02
-- 裁决依据：项目方 2026-11-02（cmsg_01m6d392sd0cq3vaggs3rcgvqc）+ 产品经理复述定稿 v0.2（shared/REQUIREMENT-SPACES-P1-DRAFT-v0.2.md）
+- 裁决依据：项目方 2026-11-02（cmsg_01m6d392sd0cq3vaggs3rcgvqc）+ 产品经理复述定稿 v0.2（shared/REQUIREMENT-SPACES-P1-DRAFT-v0.2.md）+ UI 交互规格 v1.0（shared/P1-SPACES-UX-SPEC-v1.0.md）+ 产品经理冻结令（cmsg_01m6d3zqvc3esgbhryqgzj9d6k）
 - 基线契约：P0-BACKEND-DESIGN-MULTIUSER-20261029.md v1.1（P0 已上线 schema 与 API）
 
 ---
@@ -42,10 +43,14 @@ CREATE INDEX idx_ctx_tasks_team ON ctx_tasks(team_id, status, updated_at);
 ALTER TABLE ctx_revisions ADD COLUMN actor_user_id REFERENCES users(user_id);
 -- 回填 actor_user_id = owner_user_id；新写入两列都填（owner=行归属人/发布人，actor=本次写作者）
 
--- 团队内容留痕（裁决 3"改动留痕"）
-team_edit_audit(audit_id PK, team_id FK, task_id FK, rev INT, actor_user_id FK,
-                action CHECK('publish','edit','withdraw','decision_publish','decision_withdraw'),
-                content_hash, ts)   -- 只存指针与哈希，不存正文（隐私口径与 P0 egress_audit 同尺）
+-- 团队内容留痕（裁决 3"改动留痕"+ 冻结必含项②"删除→恢复"闭环）
+team_edit_audit(audit_id PK, team_id FK, task_id FK NULL, rev INT NULL, actor_user_id FK,
+                action CHECK('publish','edit','withdraw','delete','restore',
+                             'member_add','member_remove','role_change','transfer_admin','archive',
+                             'decision_publish','decision_withdraw'),
+                target_ref TEXT NULL,      -- delete/restore 指向的条目（决策/纪要段稳定 ID）；恢复按钮定位锚
+                pre_delete_rev INT NULL,   -- delete 类留痕额外记录删除前 rev，回滚=重推该历史版本（裁决③）
+                content_hash, ts)          -- 只存指针与哈希，不存正文（隐私口径与 P0 egress_audit 同尺）
 
 -- 企业级资产收集层（裁决 4"只收集不消费"）
 enterprise_decision_assets(asset_id PK,
@@ -94,7 +99,7 @@ enterprise_decision_assets(asset_id PK,
 
 ### 3.2 副本编辑（多编辑者）
 - 复用 P0 快照 PUT 协议（Idempotency-Key/If-Match-Rev/409），作用于**副本行**；任何 editor+ 成员可写，actor_user_id 记录写作者。
-- 冲突语义升级：P0 是"单人离线队列 last-writer-wins"；P1 团队面 409 时客户端**必须**拉新版 diff 后重推（前端方案需配 diff UI；后端保留 409+current_rev 契约形态不变）。这是 P0→P1 语义变化点之一，须显式进前端/UI 派工单。
+- 冲突语义升级：P0 是"单人离线队列 last-writer-wins"；P1 团队面冲突走 409→diff 合并（UI 规格 §6 并排对比）。**冻结必含项①**：团队面 409 响应必须携带 `current_rev` + 最新 rev 的**全文快照**（形态见 §8），使 UI 无需二次 GET 即可渲染新旧两版全文。个人面 409 形态保持 P0 不变，团队面扩展为单向兼容新增。这是 P0→P1 语义变化点之一，已随冻结令进前端/UI 派工单。
 - 原件与副本**不双向同步**：发布后两条时间线独立；撤回=归档副本（原件不受影响）——避免 P1 就背上双向合并的复杂度（P1 风险清单同源规避）。
 
 ### 3.3 撤回
@@ -111,8 +116,8 @@ enterprise_decision_assets(asset_id PK,
 ## 4. 团队共享资产（热词/发言人"全团队一份"）
 
 - 团队词表为 **team-owned asset**（非每人一份）：新表 team_assets(team_id, kind, current_rev, blob_path, content_hash, updated_at, PRIMARY KEY(team_id,kind))，编辑权=editor+，留痕入 team_edit_audit。
-- 个人词表与团队词表的**应用合成规则**（转写时用哪份、优先级）属助手本地行为——P1 契约只定义服务端权威态；合成策略列 §7 待裁决。
-- 发言人别名：团队副本携带映射后的显示名文本（声纹仍不出本机，与 P0 边界一致）。
+- 个人词表与团队词表的**应用合成规则**（转写时用哪份、优先级）属助手本地行为——P1 契约只定义服务端权威态；合成策略已裁决：并集、冲突个人为准（§7.2，不进契约承诺面）。
+- 发言人别名：**团队面维持只读（U4 冻结拍板：P1 首版不做共享词表级，避免与声纹本地边界纠缠；需求如有再入 backlog）**。团队副本携带映射后的显示名文本（声纹仍不出本机，与 P0 边界一致）。
 
 ---
 
@@ -136,23 +141,42 @@ enterprise_decision_assets(asset_id PK,
 - **语义修正 B（文档层，无迁移）**：ctx_revisions.owner_user_id 实际一直是"写作者"而非"归属人"（P0 actor==owner 恒等所以无暴露）；P1 起拆 owner/actor 两列，旧行回填 owner=actor。幂等键 P0 是 (owner,mutation)——P1 团队副本上建议按 (actor,mutation) 判定（应用层实现，旧表约束保留不冲突，UUID 串号概率可忽略，如实记录该放宽）。
 - **纪律提醒 C**：P0"additive-only"承诺因缺口 A 出现**首个例外**——例外本身在 P0 文档 §7 预留的"P1 需 expand-contract"路径上，非违约，但播报义务在此：升级脚本与回滚演练必须覆盖该迁移。
 
-## 7. 待产品经理裁决（均不阻塞 UI/前端并行设计）
+## 7. 裁决档案（原"待产品经理裁决"——随冻结令全部销项）
 
 1. 原件发多团队 → **允许**。每团队独立副本、撤回互不影响（已落 §3.1）。
 2. 词表合成 → **并集、冲突个人为准**；助手本地策略，不进契约承诺面（已落 §4）。
 3. editor 删他人条目 → **能删 + 留痕可回滚**（已落 §3.3；"只能加不能删会让团队空间退化成只进不出的垃圾场"为产品定性）。
 4. 归档团队 → **保留只读**、拒绝新写入（409 team_archived）、可撤回既有副本；整包删除留 P2（已落 §3.3 后段）。
 5. 洞察板 HTML → **随副本进团队**，按项目方边界原话（"除音频、转写以外"）直接推导，无需再问（已落 §3.1 携带清单）。
+6. U4 发言人别名 → **P1 首版团队面维持只读**，不做共享词表级；需求如有再入 backlog（冻结令拍板二，已落 §4）。
+7. U5 "项目=跨会议归组" → **不进 P1 首版**，登记后续单列；T-002 债由决策聚合视图+团队词表偿还（冻结令拍板三）。
 
-## 8. API 契约草案（v1.0-draft 即本基线；终冻结仅待 UI 交互规格——其中"团队副本 409 冲突的 diff 交互"已被产品列为 UI 规格必答题，建议形态：展示双方差异摘要+选择保留版本，不面对裸 JSON）
+## 8. API 契约（v1.0 已冻结；UI 交互规格 v1.0 §9 字段依赖六条全部为本节核对项，其中①②为冻结必含项）
 
+端点清单：
 - `GET/POST /api/v1/teams`、`GET/PUT /api/v1/teams/{id}`、`PUT /api/v1/teams/{id}/archive`
 - `GET/POST/DELETE /api/v1/teams/{id}/members[/{user_id}]`、`PUT .../members/{user_id}/role`
-- `POST /api/v1/context/tasks/{id}/publish {team_id}` → 副本 DTO；`DELETE /api/v1/context/teams/{id}/tasks/{task_id}`（撤回）
-- 团队副本读写：`GET /api/v1/context/teams/{id}/tasks[/{task_id}]`、快照 PUT 复用 §1.4 协议（新增头 `X-OMS-Actor`? 不需要——actor 从会话取）
+- `POST /api/v1/context/tasks/{id}/publish`、`DELETE /api/v1/context/teams/{id}/tasks/{task_id}`（撤回）
+- 团队副本读写：`GET /api/v1/context/teams/{id}/tasks[/{task_id}]`、快照 PUT 复用 §1.4 协议（actor 从会话取，无新增头）
 - `GET/PUT /api/v1/context/teams/{id}/assets/{kind}`（团队词表）
-- 空间上下文切换的列表面：`GET /api/v1/context/teams` 返回我所在团队（含 role）——UI 切换器数据源
-- 错误码延续：成员门槛不足=403（角色是明示语义非资源隐藏）；非成员访问团队资源=404；决策资产层无公开端点（404 by design，QA 断言点）
+- `GET /api/v1/teams/{id}/audit`（变更记录，新增，核对项②）
+- `GET /api/v1/users/search`（建团队选成员，新增，依赖 5）
+- 空间上下文切换的列表面：`GET /api/v1/context/teams`（依赖 1/6）
 
-## 9. 工作量粗估（设计→实现，待契约冻结后细拆）
-teams/成员/ACL 域：M；副本发布/编辑/撤回链（含复制器白名单+diff UI 契约）：L；团队词表+ctx_assets 重建：M；决策资产收集钩子：S；审计留痕：S。合计后端 ≈ 4-5 周单人（与 P1"硬骨头"预判一致），副本编辑的前端 diff 体验为最大不确定项。
+字段依赖核对项（逐条对 UI 规格 v1.0 §9）：
+
+1. **团队列表（依赖 1+6）**：`GET /api/v1/context/teams` 返回 `[{team_id, name, my_role(admin/editor/viewer), member_count, joined_at, status}]`——切换器直用；"我已被加入团队"轻提示按 joined_at 首访判断，不建未读态端点。归档团队按规格 §2 以只读标记随列表返回。
+2. **发布/撤回粒度（依赖 2）**：发布与撤回端点支持**纪要粒度与单条决策粒度**两种 payload：`POST .../publish {team_id, mode: "task"|"decision", decision_id?}`；撤回同构。决策粒度发布即触发资产收集钩子（§5），并写 decision_publish 留痕。
+3. **团队面 409 形态（必含项①，§6 并排对比硬依赖）**：团队副本快照 PUT 冲突响应升级为
+   `409 {"error":"rev_conflict","current_rev":<int>,"latest":<当前最新 rev 的全文快照，形态同 GET 任务 DTO>}`——UI 单响应即得新旧两版全文做并排 diff。个人面 409 保持 P0 `{current_rev}` 形态不变；团队面新增 `latest` 字段为单向兼容扩展。
+4. **变更记录端点（必含项②，裁决③回滚面硬依赖）**：`GET /api/v1/teams/{id}/audit?cursor&limit` 倒序分页、团队全员可读（viewer 只读无操作）。操作类型枚举 = §1 team_edit_audit action 全集：`publish | edit | withdraw | delete | restore | member_add | member_remove | role_change | transfer_admin | archive | decision_publish | decision_withdraw`。**"删除→恢复"闭环**：`delete` 条目携带 `target_ref` + `pre_delete_rev`，前端"恢复"按钮据二者重推历史版本；`restore` 本身亦为新留痕条目（规格 §7）。§1 表为 0002 全新表，枚举扩容无存量迁移问题。
+5. **用户搜索（依赖 5）**：`GET /api/v1/users/search?q=`——任何 active 用户可调（建团队拉成员场景）；仅返回 `[{user_id, display_name}]`，不暴露手机号/邮箱等联系面（管理台列表端点权限面不同，不开放给普通成员复用）。
+6. **B5 第五锁定文案基准（冻结令拍板一，逐字）**：
+   > 公开到团队的内容里不会包含录音音频和逐字转写，它们永远只保存在您的设备上。
+
+   挂点仅公开确认弹窗一处（FE lockedCopy.ts 单源扩行，禁手抄；防锁定面扩张纪律沿用）。后端与该文辞互为表里：§3.1 复制器白名单**结构性排除** formal 与音频引用 + blob schema 禁字段 422 兜底，即此承诺的可证伪实现面——QA 后端断言走白名单用例，UI 断言走逐字（六表面之一，与 P0 三行卡同级）。变更记录/团队首页同义表述用普通文案，不入 B5 逐字范围。
+
+错误码延续：成员门槛不足=403（角色是明示语义非资源隐藏）；非成员访问团队资源=404；归档团队写入=409 team_archived；决策资产层无公开端点（404 by design，QA 断言点）。
+
+## 9. 工作量粗估（P1-IMP 批次细拆见项目管理员台账登记）
+teams/成员/ACL 域：M；副本发布/编辑/撤回链（含复制器白名单+diff UI 契约）：L；团队词表+ctx_assets 重建：M；决策资产收集钩子：S；审计留痕（含 §8 必含项②双字段）：S。合计后端 ≈ 4-5 周单人（与 P1"硬骨头"预判一致），副本编辑的前端 diff 体验为最大不确定项。
