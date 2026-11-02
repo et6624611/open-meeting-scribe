@@ -28,20 +28,22 @@ export function auditLabelKey(action: string): string {
   return AUDIT_KEYS[action] ?? ''
 }
 
-/** 聚合决策条目（团队决策视图行源；仅摊平在位副本详情，不请求资产层——零消费红线） */
+/** 聚合决策条目（团队决策视图行源；仅摊平在位副本详情，不请求资产层——零消费红线）。
+ *  排序锚=K4 定版"公开时刻"published_at（编辑不顶序）；旧部署态缺键回退 updated_at 兼容 */
 export interface AggregatedDecision {
   decisionId: string
   text: string
   statusText: string
   teamTaskId: string
   taskTitle: string
-  updatedAt: string
+  publishAnchor: string
 }
 
 export function aggregateDecisions(rows: Array<{ summary: TeamTaskSummary; detail: ContextTaskDetail | null }>): AggregatedDecision[] {
   const out: AggregatedDecision[] = []
   for (const { summary, detail } of rows) {
     if (!detail) continue
+    const anchor = summary.published_at ?? summary.updated_at
     for (const raw of detail.decisions ?? []) {
       if (!raw || typeof raw !== 'object') continue
       const d = raw as { id?: string; text?: string; status_text?: string }
@@ -52,12 +54,12 @@ export function aggregateDecisions(rows: Array<{ summary: TeamTaskSummary; detai
         statusText: d.status_text ?? '',
         teamTaskId: summary.task_id,
         taskTitle: summary.title || summary.task_id,
-        updatedAt: summary.updated_at,
+        publishAnchor: anchor,
       })
     }
   }
-  // 按公开时间倒序（规格 §5.2）
-  return out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+  // 按公开时间倒序（规格 §5.2 + K4 定版：排序锚=公开时刻，编辑不顶序）
+  return out.sort((a, b) => (a.publishAnchor < b.publishAnchor ? 1 : -1))
 }
 
 /** 副本行是否已被撤回（读面即真相：published_copies 不含即撤；本批私有角标数据源回归钉用） */

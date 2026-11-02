@@ -43,6 +43,7 @@ const sources = computed(() => {
 })
 
 async function loadAll() {
+  await space.ensureReady() // D014：重载/深链首帧等空间就绪再判定团队上下文取数
   if (!space.isTeamSpace) return
   loading.value = true
   error.value = false
@@ -72,11 +73,7 @@ function openSource(r: AggregatedDecision) {
   router.push(`/meeting/${r.teamTaskId}?tab=decisions`)
 }
 
-onMounted(() => {
-  void space.loadTeams().then(() => {
-    if (space.isTeamSpace) void loadAll()
-  })
-})
+onMounted(() => { void loadAll() })
 void route
 </script>
 

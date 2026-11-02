@@ -21,6 +21,17 @@ vi.mock('@/api/context', () => ({
   snapshotConflictRev: vi.fn(() => null),
   deleteContextTask: vi.fn(),
 }))
+// D014 回归需要：ensureReady 走真实 checkAuth（并发去重）→ mock 企业 /me 与个人 auth 面
+vi.mock('@/api/enterpriseAuth', () => ({
+  enterpriseFetchMe: vi.fn(async () => ({ user_id: 'u9', display_name: '测试', role: 'admin' })),
+  enterpriseLogout: vi.fn(async () => {}),
+}))
+vi.mock('@/api/auth', () => ({
+  fetchMe: vi.fn(async () => null),
+  logout: vi.fn(async () => {}),
+  probeSession: vi.fn(async () => false),
+}))
+vi.mock('@/api/origins', () => ({ setActiveUser: vi.fn() }))
 
 import * as teamsApi from '@/api/teams'
 import { listContextTasks } from '@/api/context'
@@ -131,5 +142,29 @@ describe('space store · 切换即失效单点', () => {
     expect(space.currentId).toBe(PRIVATE_SPACE)
     expect(space.teams).toEqual([])
     expect(space.loaded).toBe(false)
+  })
+
+  it('D014 重载首帧：ensureReady 等会话+teams 就绪后才恢复 last_space（视图首帧取数不再赌挂载顺序）', async () => {
+    localStorage.setItem('oms.u.u9.last_space', 't2')
+    vi.mocked(teamsApi.listMyTeams).mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    // 不预置 user：走真实 checkAuth（mock /me）→ 恢复链
+    await space.ensureReady()
+    expect(space.currentId).toBe('t2')
+    expect(space.myRole).toBe('viewer')
+  })
+
+  it('D014 失败重试：teams 首载失败后 ensureReady 再次调用可恢复（loaded 仅成功置真）', async () => {
+    localStorage.setItem('oms.u.u9.last_space', 't1')
+    vi.mocked(teamsApi.listMyTeams)
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValue(TEAMS)
+    const space = useSpaceStore()
+    await space.ensureReady()
+    expect(space.loaded).toBe(false)
+    expect(space.currentId).toBe(PRIVATE_SPACE)
+    await space.ensureReady()
+    expect(space.loaded).toBe(true)
+    expect(space.currentId).toBe('t1')
   })
 })

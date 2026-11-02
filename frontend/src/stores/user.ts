@@ -42,8 +42,17 @@ export const useUserStore = defineStore('user', () => {
     return name.charAt(0).toUpperCase() || '?'
   })
 
-  /** 检测登录态（应用启动时调用一次） / Check login state (called once on app startup) */
+  /** 检测登录态（应用启动时调用一次）；D014：并发去重——首帧多个视图 ensureReady 与路由守卫
+   *  同时触发时只发一次 /me 探测，完成后再次调用仍按新会话语义重新检测（原语义不破坏） */
+  let checkInflight: Promise<void> | null = null
   async function checkAuth() {
+    if (checkInflight) return checkInflight
+    const run = doCheckAuth()
+    checkInflight = run
+    try { await run } finally { if (checkInflight === run) checkInflight = null }
+  }
+
+  async function doCheckAuth() {
     loading.value = true
     try {
       if (isEnterprise) {

@@ -19,9 +19,12 @@ const contexts = useContextsStore()
 const space = useSpaceStore()
 const userStore = useUserStore()
 
+// D014：整页重载首帧先等空间就绪（user 会话+teams+last_space 恢复），再按真实空间取数
 onMounted(() => {
-  void contexts.loadTasks()
-  void space.loadTeams()
+  void (async () => {
+    await space.ensureReady()
+    await contexts.loadTasks()
+  })()
 })
 
 function fmtDate(s: string | null): string {
