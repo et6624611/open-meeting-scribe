@@ -1,6 +1,7 @@
 # 企业版 P1 后端契约：多团队空间数据模型与权限契约
 
 - 版本：**v1.0（正式基线，随产品经理 2026-11-02 契约冻结令 cmsg_01m6d3zqvc3esgbhryqgzj9d6k 冻结；文件名保留 DRAFT 后缀仅作历史引用，版本号以本行为准）**
+- v1.0 原地补注（2026-11-02，PM 拍板 cmsg_01m6d6s8g6nmd6sdetqh125qvk）：§8 成员端点请求体终态 {user_ids:[...]} 批量+422 错误面（D010），其余冻结内容不动
 - v0.1→v1.0-draft 变更：§7 五题全部裁决销项；缺口A expand-contract 获产品批准（additive-only 首个例外成立）
 - v1.0-draft→v1.0 变更（冻结令四项拍板落账）：① B5 第五锁定文案逐字入 §8；② U4 落定——发言人别名团队面维持只读；③ U5 落定——"项目=跨会议归组"不进 P1 首版；④ UI 规格 §9 字段依赖六条全部入 §8 核对项，两条冻结必含项（团队面 409 含 current_rev+最新全文快照；变更记录枚举覆盖"删除→恢复"闭环）写入契约正文。**K1 阻塞项随拍板定版**：§1/§8 审计枚举终名十二值（decision_delete/decision_restore 回滚面 + member_add/member_role_change/member_remove/role_transfer/team_archive 成员治理域），无"解散"字样、无审批态值
 - 作者：后端工程师
@@ -155,7 +156,7 @@ enterprise_decision_assets(asset_id PK,
 
 端点清单：
 - `GET/POST /api/v1/teams`、`GET/PUT /api/v1/teams/{id}`、`PUT /api/v1/teams/{id}/archive`
-- `GET/POST/DELETE /api/v1/teams/{id}/members[/{user_id}]`、`PUT .../members/{user_id}/role`
+- `POST /api/v1/teams/{id}/members` 请求体终态（D010 拍板，冻结后原地补注）：`{user_ids: [...], role?}` 批量形态；字段缺失/非数组/空数组=422 invalid_member_payload 明示（禁 404 静默）；个体不存在/已成员 → `failed:[{user_id, code}]` 承载，`added` 与 `failed` 同时返回 201；权限判定先行（非成员 404/viewer·editor 403 不因批量结果吞掉）。`GET/DELETE /api/v1/teams/{id}/members[/{user_id}]`、`PUT .../members/{user_id}/role` 不变
 - `POST /api/v1/context/tasks/{id}/publish`、`DELETE /api/v1/context/teams/{id}/tasks/{task_id}`（撤回）
 - 团队副本读写：`GET /api/v1/context/teams/{id}/tasks[/{task_id}]`、快照 PUT 复用 §1.4 协议（actor 从会话取，无新增头）
 - `GET/PUT /api/v1/context/teams/{id}/assets/{kind}`（团队词表）
