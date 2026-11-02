@@ -666,6 +666,7 @@ class EnterpriseStore:
                 "legacy_id": d["legacy_id"],
             },
             "updated_at": d["updated_at"],
+            "published_copies": self._published_copies(actor_user_id, [task_id]).get(task_id, []),
             **entities,
         }
 
@@ -680,7 +681,9 @@ class EnterpriseStore:
             sql += " AND updated_at > ?"
             params = (*params, since)
         rows = self.conn.execute(sql + " ORDER BY updated_at DESC", params).fetchall()
-        return [{**dict(r), "visibility": r["scope"], "sync_status": "synced"} for r in rows]
+        copies = self._published_copies(actor_user_id, [r["task_id"] for r in rows])
+        return [{**dict(r), "visibility": r["scope"], "sync_status": "synced",
+                 "published_copies": copies.get(r["task_id"], [])} for r in rows]
 
     def delete_task(self, *, actor_user_id: str, task_id: str) -> None:
         """软删 30 天回收站（PRD 定稿口径）；管理员不可读内容。"""
@@ -987,6 +990,27 @@ class EnterpriseStore:
         return [dict(r) for r in rows]
 
     # ---------------- 团队副本域（契约 §3 发布/编辑/撤回；裁决⑤白名单结构性排除） ----------------
+
+    def _published_copies(self, owner: str, src_ids: list[str]) -> dict[str, list[dict]]:
+        """发布态读面（规格 §4.3 角标+逐团队撤回；PM 拍板二定版：内嵌原件 DTO，不建独立端点）。"""
+        if not src_ids:
+            return {}
+        marks = ",".join("?" * len(src_ids))
+        rows = self.conn.execute(
+            "SELECT c.source_task_id, c.task_id AS copy_task_id, c.team_id, t.name AS team_name,"
+            " c.acl AS granularity_marker, c.current_rev, c.updated_at"
+            f" FROM ctx_tasks c JOIN teams t ON t.team_id=c.team_id"
+            f" WHERE c.owner_user_id=? AND c.scope='team' AND c.status='active'"
+            f" AND c.source_task_id IN ({marks}) ORDER BY c.updated_at",
+            (owner, *src_ids),
+        ).fetchall()
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            d = dict(r)
+            marker = d.pop("granularity_marker")
+            d["granularity"] = "task" if marker is None else "decision"
+            out.setdefault(d["source_task_id"], []).append(d)
+        return out
 
     TEAM_EXCLUDED_FIELDS = ("formal",)  # 逐字稿永不进团队空间；音频字段本就不在 P0 白名单——双保险
 

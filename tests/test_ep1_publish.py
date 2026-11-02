@@ -218,6 +218,38 @@ def test_withdraw_and_archived_rules(env):
     assert c.get(f"/api/v1/context/teams/{tid}/tasks/{copy_id}", cookies=out["cookies"]).status_code == 404
 
 
+# ---------------- 发布态读面（规格 §4.3 角标+逐团队撤回；拍板二定版：内嵌原件 DTO） ----------------
+
+
+def test_published_copies_read_surface(env):
+    c, _ = env
+    alice, bob = create_member(c, "ps_a"), create_member(c, "ps_b")
+    make_source_task(c, alice["cookies"])
+    t1 = setup_team(c, alice, bob)
+    t2 = c.post("/api/v1/teams", json={"name": "第二队"}, cookies=alice["cookies"]).json()["team_id"]
+    copy1 = publish(c, alice["cookies"], t1).json()
+    copy2 = publish(c, alice["cookies"], t2).json()
+    src = c.get(f"/api/v1/context/tasks/{SRC_TASK}", cookies=alice["cookies"]).json()
+    pcs = src["published_copies"]
+    assert len(pcs) == 2
+    by_team = {p["team_id"]: p for p in pcs}
+    assert by_team[t1]["copy_task_id"] == copy1["task_id"] and by_team[t1]["granularity"] == "task"
+    assert by_team[t2]["team_name"] == "第二队"
+    # 列表面同样内嵌（角标在列表也要渲染）
+    lst = c.get("/api/v1/context/tasks", cookies=alice["cookies"]).json()["tasks"]
+    row = next(t for t in lst if t["task_id"] == SRC_TASK)
+    assert "published_copies" in row and len(row["published_copies"]) == 2
+    # 决策粒度发布 → 第三条行 granularity=decision（角标 N 团队按 distinct team 归并，FE 侧职责）
+    publish(c, alice["cookies"], t2, mode="decision", decision_id="dec_1")
+    src2 = c.get(f"/api/v1/context/tasks/{SRC_TASK}", cookies=alice["cookies"]).json()
+    assert len(src2["published_copies"]) == 3
+    assert sum(1 for p in src2["published_copies"] if p["granularity"] == "decision") == 1
+    # 逐团队撤回 → 对应行消失、其余保留（撤回面即读面闭环）
+    c.delete(f"/api/v1/context/teams/{t1}/tasks/{copy1['task_id']}", cookies=alice["cookies"])
+    src3 = c.get(f"/api/v1/context/tasks/{SRC_TASK}", cookies=alice["cookies"]).json()
+    assert {p["team_id"] for p in src3["published_copies"]} == {t2}
+
+
 # ---------------- 删除→恢复闭环（裁决③，QA 四步 E2E 的服务端承载） ----------------
 
 
