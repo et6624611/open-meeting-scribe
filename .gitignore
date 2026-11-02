@@ -119,3 +119,7 @@ agent-workspace/
 
 # 浏览器验证截图与临时探针产物（本地取证，不入库）
 .screenshots/
+
+# Qoder 协作运行时产物（物化的插件/system-prompt 会话残留，不入库）
+# Qoder collab runtime artifacts (materialized plugin & system-prompt leftovers; never commit)
+.qoder-collab-runtime/
