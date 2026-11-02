@@ -49,13 +49,13 @@ function publisherLabel(uid: string): string | null {
     <template v-if="space.isTeamSpace">
       <p v-if="contexts.loading && !contexts.teamTasks.length" class="cx-empty">{{ t('enterprise.library.loading') }}</p>
       <p v-else-if="contexts.loadError" class="cx-error" role="alert">{{ contexts.loadError }}</p>
-      <p v-else-if="!contexts.teamTasks.length" class="cx-empty">{{ t('enterprise.team.empty') }}</p>
+      <p v-else-if="!contexts.teamTasks.length" class="cx-empty">{{ space.justCreatedTeamId === space.currentId ? t('enterprise.team.created_empty') : t('enterprise.team.empty') }}</p>
       <ul v-else class="cx-list">
         <li v-for="task in contexts.teamTasks" :key="task.task_id">
           <RouterLink class="cx-card" :to="`/meeting/${task.task_id}`">
             <div class="cx-card-top">
               <span class="cx-title">{{ task.title || task.task_id }}</span>
-              <VisibilityBadge visibility="team" />
+              <VisibilityBadge :visibility="task.visibility" />
             </div>
             <div class="cx-meta">
               <span>{{ fmtDate(task.updated_at) }}</span>
