@@ -13,7 +13,35 @@
         </div>
         <template v-if="showTaskInfo">
           <div class="topbar-divider"></div>
-          <div class="topbar-title"><strong id="currentTaskTitle">{{ taskTitle }}</strong></div>
+          <!-- 标题 + 重命名（E2E T-021：原位内联编辑，替代浏览器原生 prompt 弹窗） -->
+          <!-- Title with in-place rename, replacing the native prompt() dialog -->
+          <div class="topbar-title-wrap">
+            <div class="topbar-title">
+              <input
+                v-if="isTitleEditor"
+                ref="titleEditorRef"
+                v-model="renameDraft"
+                class="topbar-title-input"
+                maxlength="120"
+                :aria-label="t('task.rename')"
+                :placeholder="t('task.rename_prompt')"
+                @click.stop
+                @keyup.enter="titleRename.commit"
+                @keydown.escape.stop.prevent="titleRename.cancel"
+                @blur="titleRename.commit"
+              />
+              <strong v-else id="currentTaskTitle" :title="displayTaskTitle" @click="onRenameTitle">{{ displayTaskTitle }}</strong>
+            </div>
+            <button
+              v-if="!isTitleEditor"
+              class="topbar-rename-btn"
+              :aria-label="t('task.rename')"
+              :title="t('task.rename')"
+              @click.stop="onRenameTitle"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </button>
+          </div>
           <span v-if="showStatePill" class="state-pill" :class="statePillClass"><span class="pip"></span><span>{{ stateText }}</span></span>
         </template>
       </div>
@@ -169,7 +197,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useThemeStore, type ThemeId } from '@/stores/theme'
@@ -180,6 +208,7 @@ import IconButton from '@/components/common/IconButton.vue'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEscClose } from '@/composables/useEscClose'
+import { useTitleRename } from '@/composables/useTitleRename'
 import { showToast } from '@/composables/useToast'
 import { extractErrorMessage } from '@/api/client'
 import { setI18nLocale, getLocale, type SupportedLocale } from '@/i18n'
@@ -417,6 +446,32 @@ const showStatePill = computed(() => {
 })
 
 const taskTitle = computed(() => taskStore.currentTask?.title || taskStore.currentTask?.audio_name || '')
+
+// ─── 标题内联重命名（E2E T-021） / Inline title rename ───
+const titleRename = useTitleRename()
+const renameDraft = titleRename.draft
+const titleEditorRef = ref<HTMLInputElement | null>(null)
+/** 顶栏是否持有本次重命名的编辑器 / Whether the top bar owns the editor for this rename */
+const isTitleEditor = computed(() => titleRename.owns('topbar', taskStore.currentTaskId))
+/** 编辑态下让未保存的草稿在原位可见（从卡片菜单改名时，顶栏只做纯文本回显） */
+const displayTaskTitle = computed(() => titleRename.displayTitle(taskStore.currentTaskId, taskTitle.value))
+
+function onRenameTitle() {
+  if (isTitleEditor.value || !taskStore.currentTaskId) return
+  titleRename.start(taskStore.currentTaskId, taskTitle.value, 'topbar')
+}
+
+watch(isTitleEditor, (on) => {
+  if (!on) return
+  nextTick(() => { titleEditorRef.value?.focus(); titleEditorRef.value?.select() })
+})
+
+// 离开会议页时顶栏不再承载标题，丢弃未提交的草稿，避免下次进同一会议时编辑器复活
+// The top bar stops owning the title off meeting routes, so drop the uncommitted draft
+watch(showTaskInfo, (visible) => {
+  if (!visible && titleRename.scope.value === 'topbar') titleRename.cancel()
+})
+
 const stateText = computed(() => {
   const task = taskStore.currentTask
   if (!task) return t('common.status.idle')

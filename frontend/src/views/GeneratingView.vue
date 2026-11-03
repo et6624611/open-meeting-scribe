@@ -67,7 +67,16 @@
             </button>
             <span class="gen-breadcrumb-sep">/</span>
           </template>
-          <span class="gen-breadcrumb-current" :title="breadcrumbTitle">{{ breadcrumbTitle }}</span>
+          <!-- 页面级标题：点击即原位重命名（编辑器落在顶栏标题，E2E T-021） / Page title: click to rename in place -->
+          <span
+            class="gen-breadcrumb-current"
+            role="button"
+            tabindex="0"
+            :class="{ 'is-renaming': isTitleRenaming }"
+            :title="t('task.rename')"
+            @click="onRenameTask"
+            @keydown.enter.prevent="onRenameTask"
+          >{{ breadcrumbDisplayTitle }}</span>
         </nav>
       </div>
       <div class="gen-toolbar-right">
@@ -579,6 +588,7 @@ import { useSummaryProposal } from '@/composables/useSummaryProposal'
 import { useNotesProposal } from '@/composables/useNotesProposal'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
+import { useTitleRename } from '@/composables/useTitleRename'
 import { useWorkspace } from '@/composables/useWorkspace'
 import type { WorkspaceScope } from '@/api/workspace'
 import { getDockBounds, positionDropdown } from '@/utils/popoverPosition'
@@ -1066,21 +1076,17 @@ async function onCopySummary() {
   try { await navigator.clipboard.writeText(summary) } catch { /* 剪贴板不可用静默降级 */ }
 }
 
-/** 重命名 / Rename */
-async function onRenameTask() {
+/** 重命名 / Rename（内联编辑：顶栏标题原位变输入框，不再用浏览器原生 prompt） */
+const titleRename = useTitleRename()
+/** 面包屑标题实时跟随未保存的草稿 / Breadcrumb echoes the unsaved draft */
+const breadcrumbDisplayTitle = computed(() => titleRename.displayTitle(data.taskId, breadcrumbTitle.value))
+const isTitleRenaming = computed(() => titleRename.isRenaming(data.taskId))
+
+function onRenameTask() {
   closeGenMore()
+  if (isTitleRenaming.value && titleRename.owns('topbar', data.taskId)) return
   const cur = task.value
-  const current = cur?.title || cur?.audio_name || ''
-  const newName = prompt(t('task.rename_prompt'), current)
-  if (!newName || !newName.trim() || newName.trim() === current) return
-  try {
-    const { updateTask } = await import('@/api/tasks')
-    const updated = await updateTask(data.taskId, { title: newName.trim() })
-    taskStore.patchTaskLocal(data.taskId, { title: updated.title })
-  } catch (e) {
-    console.error('rename failed:', e)
-    alert(t('task.errors.rename_failed'))
-  }
+  titleRename.start(data.taskId, cur?.title || cur?.audio_name || '', 'topbar')
 }
 
 /**

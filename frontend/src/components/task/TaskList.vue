@@ -217,7 +217,7 @@ function onSelect(taskId: string) {
   }
 }
 
-async function onMenu(taskId: string, event: MouseEvent, newName?: string) {
+async function onMenu(taskId: string, event: MouseEvent) {
   if (event.type === 'delete') {
     try {
       await taskStore.removeTask(taskId)
@@ -227,16 +227,6 @@ async function onMenu(taskId: string, event: MouseEvent, newName?: string) {
     } catch (e) {
       console.error('delete failed:', e)
       alert(t('task.errors.delete_failed'))
-    }
-  } else if (event.type === 'rename' && newName) {
-    try {
-      const { updateTask } = await import('@/api/tasks')
-      const updated = await updateTask(taskId, { title: newName })
-      // 增量更新：直接用返回值 patch 本地，避免全量 reload / Incremental update: patch local directly with return value, avoid full reload
-      taskStore.patchTaskLocal(taskId, { title: updated.title })
-    } catch (e) {
-      console.error('rename failed:', e)
-      alert(t('task.errors.rename_failed'))
     }
   } else if (event.type === 'retry_summary') {
     try {

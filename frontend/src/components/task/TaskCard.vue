@@ -6,11 +6,26 @@
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
   >
-    <!-- 标题 / Title -->
+    <!-- 标题 / Title（重命名时原位变输入框，E2E T-021） -->
     <div class="sb-tl-title">
       <PlayingEq v-if="player.taskId === task.task_id" :playing="player.playing" />
-      <span v-if="searchQuery" v-html="highlightedTitle"></span>
-      <span v-else>{{ displayTitle }}</span>
+      <input
+        v-if="isCardEditor"
+        ref="titleEditorRef"
+        v-model="renameDraft"
+        class="sb-tl-title-input"
+        maxlength="120"
+        :aria-label="t('task.rename')"
+        :placeholder="t('task.rename_prompt')"
+        @click.stop
+        @keyup.enter="titleRename.commit"
+        @keydown.escape.stop.prevent="titleRename.cancel"
+        @blur="titleRename.commit"
+      />
+      <template v-else>
+        <span v-if="searchQuery" v-html="highlightedTitle"></span>
+        <span v-else>{{ displayTitle }}</span>
+      </template>
       <!-- 完成待查看角标（REQ-TRANSCRIBE-PROGRESS R2 站内提醒）；置于标题行以兼容窄栏 meta 隐藏态 -->
       <span v-if="isUnseenDone" class="sb-tl-new">{{ t('processing.badge_new') }}</span>
     </div>
@@ -115,13 +130,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Task } from '@/api/types'
 import { STATUS_CONFIG } from '@/api/types'
 import { isPlaceholderName, countUnidentified } from '@/utils/speakerDisplay'
 import { usePlayerStore } from '@/stores/player'
 import { useTaskStore } from '@/stores/task'
+import { useTitleRename } from '@/composables/useTitleRename'
 import PlayingEq from '@/components/common/PlayingEq.vue'
 import DurationDial from '@/components/common/DurationDial.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -142,7 +158,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [taskId: string]
-  menu: [taskId: string, event: MouseEvent, newName?: string]
+  menu: [taskId: string, event: MouseEvent]
   hover: [taskId: string, anchor: HTMLElement]
   'hover-end': []
   retry: [taskId: string]
@@ -164,8 +180,27 @@ const sidebarEl = ref<HTMLElement | null>(null)
 const buttonRect = ref<DOMRect | null>(null)
 const hoverStyle = ref<Record<string, string>>({})
 
+// ─── 标题内联重命名（E2E T-021） / Inline title rename ───
+const titleRename = useTitleRename()
+const renameDraft = titleRename.draft
+const titleEditorRef = ref<HTMLInputElement | null>(null)
+/** 本卡片是否持有编辑器 / Whether this card owns the editor */
+const isCardEditor = computed(() => titleRename.owns('card', props.task.task_id))
+
+watch(isCardEditor, (on) => {
+  if (!on) return
+  nextTick(() => { titleEditorRef.value?.focus(); titleEditorRef.value?.select() })
+})
+
+// 虚拟列表滚动会卸载卡片，编辑器随之消失，此处一并丢弃草稿避免状态残留 / virtualized
+// lists unmount cards on scroll, so drop the draft instead of leaving a dangling session
+onBeforeUnmount(() => { if (isCardEditor.value) titleRename.cancel() })
+
 const displayTitle = computed(() =>
-  props.task.title || props.task.audio_name || t('task.untitled'),
+  titleRename.displayTitle(
+    props.task.task_id,
+    props.task.title || props.task.audio_name || t('task.untitled'),
+  ),
 )
 
 /** 搜索高亮标题（HTML） / Search highlighted title (HTML) */
@@ -260,11 +295,11 @@ let hoverTimer: ReturnType<typeof setTimeout> | null = null
 function onMouseEnter(e: MouseEvent) {
   // 冲突修复：鼠标位于“更多”按钮上，或右键菜单已打开时，不弹悬停卡片 / Conflict resolution: suppress hover card when cursor is on "more" button or context menu is open
   const target = e.target as HTMLElement
-  if (showContextMenu.value || target.closest('.sb-more')) return
+  if (showContextMenu.value || isCardEditor.value || target.closest('.sb-more')) return
   const el = e.currentTarget as HTMLElement
   hoverTimer = setTimeout(() => {
-    // 定时到期时再次检查：若期间打开了菜单或移到更多按钮，则不显示 / Recheck when timer expires: skip if menu opened or moved to more button
-    if (showContextMenu.value) return
+    // 定时到期时再次检查：若期间打开了菜单、进入重命名或移到更多按钮，则不显示 / Recheck when timer expires: skip if menu opened, rename started or moved to more button
+    if (showContextMenu.value || isCardEditor.value) return
     const moreBtn = el.querySelector('.sb-more')
     if (moreBtn && moreBtn.matches(':hover')) return
     const rect = el.getBoundingClientRect()
@@ -378,10 +413,7 @@ function closeMenu() { showContextMenu.value = false }
 
 function onRename() {
   closeMenu()
-  const newName = prompt(t('task.rename_prompt'), props.task.title || props.task.audio_name || '')
-  if (newName && newName.trim()) {
-    emit('menu', props.task.task_id, new MouseEvent('rename'), newName.trim())
-  }
+  titleRename.start(props.task.task_id, props.task.title || props.task.audio_name || '', 'card')
 }
 
 function onRegenerate() {

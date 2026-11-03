@@ -20,6 +20,26 @@
 .topbar-title { font-size: var(--fs-13); color: var(--muted); }
 .topbar-title strong { color: var(--fg); font-weight: 500; }
 
+/* ─── 标题内联重命名（E2E T-021）─── */
+/* 包裹层保持与 .topbar-title 一致的溢出收缩：窄栏时省略号仍作用在标题文本上 */
+.topbar-title-wrap { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; }
+.topbar-title strong { cursor: text; }
+.topbar-rename-btn {
+  width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+  display: grid; place-items: center; color: var(--subtle);
+  opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.topbar-rename-btn svg { width: 13px; height: 13px; }
+.topbar-title-wrap:hover .topbar-rename-btn,
+.topbar-rename-btn:focus-visible { opacity: 1; }
+.topbar-rename-btn:hover { background: var(--surface-2); color: var(--fg); }
+.topbar-title-input {
+  width: 100%; min-width: 0; font: inherit; font-size: var(--fs-13); font-weight: 500;
+  color: var(--fg); background: var(--surface-2);
+  border: 1px solid var(--accent); border-radius: 5px; padding: 2px 6px;
+}
+.topbar-title-input:focus { outline: none; box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent); }
+
 /* ─── 视图预设切换器 ─── */
 .view-switcher {
   display: flex; align-items: center;

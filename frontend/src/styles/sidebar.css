@@ -298,3 +298,11 @@ body.is-divider-dragging .ai { transition: none !important; }
 /* 角标存在时标题行转 flex：标题可省略号截断，角标不被裁掉 / Title row becomes flex when badge present */
 .sb-tl-title:has(.sb-tl-new) { display: flex; align-items: center; gap: 6px; }
 .sb-tl-title:has(.sb-tl-new) > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* 标题内联重命名（E2E T-021：原位变 input，不再依赖浏览器原生 prompt） / Inline title rename */
+.sb-tl-title:has(.sb-tl-title-input) { display: flex; align-items: center; gap: 6px; }
+.sb-tl-title-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-weight: 500; color: var(--fg);
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 5px; padding: 1px 6px;
+}
+.sb-tl-title-input:focus { outline: none; box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 22%, transparent); }

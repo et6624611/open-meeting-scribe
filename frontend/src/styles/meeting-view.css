@@ -64,7 +64,11 @@
 .gen-breadcrumb-item:hover { background: var(--surface-2); color: var(--fg); }
 .gen-breadcrumb-item svg { width: 13px; height: 13px; flex-shrink: 0; }
 .gen-breadcrumb-sep { color: var(--subtle); font-size: 11px; flex-shrink: 0; margin: 0 1px; }
-.gen-breadcrumb-current { color: var(--fg); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; cursor: default; padding: 2px 4px; border-radius: 4px; }
+.gen-breadcrumb-current { color: var(--fg); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; cursor: text; padding: 2px 4px; border-radius: 4px; transition: background 0.12s, color 0.12s; }
+/* 页面标题即重命名入口（编辑器落在顶栏）；重命名进行中置灰表示“未保存的草稿” */
+.gen-breadcrumb-current:hover { background: var(--surface-2); }
+.gen-breadcrumb-current:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gen-breadcrumb-current.is-renaming { color: var(--muted); }
 
 /* 控制区：Tab */
 .gen-control-zone { background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; height: 44px; padding: 0 var(--s-5); }
