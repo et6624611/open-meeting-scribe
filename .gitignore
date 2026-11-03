@@ -119,3 +119,9 @@ agent-workspace/
 
 # 浏览器验证截图与临时探针产物（本地取证，不入库）
 .screenshots/
+
+# QoderWake 协作运行时产物（IDE 生成，随会话反复出现，不入库）
+.qoder-collab-runtime/
+
+# data 目录本地快照备份（一次性清理留档，含敏感会议上下文，不入库）
+data/_backup_*/

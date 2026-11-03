@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Open Meeting Scribe 本地服务开机自启（登录级 LaunchAgent，无需管理员权限）
+         安装：cp 本文件到 ~/Library/LaunchAgents/ 后 launchctl bootstrap gui/$(id -u) <文件>
+         卸载：launchctl bootout gui/$(id -u)/com.finance.meetingscribe -->
+    <key>Label</key>
+    <string>com.finance.meetingscribe</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe/venv/bin/python</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>app.server:app</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8000</string>
+        <string>--log-level</string>
+        <string>info</string>
+    </array>
+
+    <!-- 必须显式设定：代码里 data/uploads、data/tasks 等全是相对路径，锚定在工作目录上 -->
+    <key>WorkingDirectory</key>
+    <string>/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe</string>
+
+    <!-- launchd 默认 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，
+         不含 /opt/homebrew/bin → 录音链路调不到 ffmpeg/ffprobe，会静默降级 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe/venv/bin</string>
+        <key>PYTHONPATH</key>
+        <string>/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- 进程崩溃/被杀后自动拉起；15 秒节流避免启动失败时疯狂重启 -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/wangyongliang/Documents/我的微云文件/409 Qoder/open-meeting-scribe/logs/launchd.err.log</string>
+</dict>
+</plist>
