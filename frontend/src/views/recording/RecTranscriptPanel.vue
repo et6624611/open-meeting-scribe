@@ -16,119 +16,119 @@
           @seek-to-time="onSeekToTime"
         />
         <div class="rec-transcript-actions">
-        <!-- 三层分段控件：书面版（会中锁定）/ 清理版（默认）/ 原文 / Layer segmented control: formal (locked live) / cleaned (default) / verbatim -->
-        <div class="rec-layer-seg" role="tablist" :aria-label="t('recording.layer.list_label')" @keydown="onSegKeydown">
-          <button
-            type="button"
-            role="tab"
-            ref="segFormalBtn"
-            class="rec-layer-btn"
-            :class="{ 'is-active': layerView === 'formal' }"
-            :aria-selected="layerView === 'formal'"
-            @click="layerView = 'formal'"
-          >
-            <svg v-if="!formalUnlocked" class="rec-layer-lock" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            {{ t('recording.layer.formal') }}
-            <span class="rec-layer-ai">AI</span>
+          <!-- 三层分段控件：书面版（会中锁定）/ 清理版（默认）/ 原文 / Layer segmented control: formal (locked live) / cleaned (default) / verbatim -->
+          <div class="rec-layer-seg" role="tablist" :aria-label="t('recording.layer.list_label')" @keydown="onSegKeydown">
+            <button
+              type="button"
+              role="tab"
+              ref="segFormalBtn"
+              class="rec-layer-btn"
+              :class="{ 'is-active': layerView === 'formal' }"
+              :aria-selected="layerView === 'formal'"
+              @click="layerView = 'formal'"
+            >
+              <svg v-if="!formalUnlocked" class="rec-layer-lock" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              {{ t('recording.layer.formal') }}
+              <span class="rec-layer-ai">AI</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              ref="segCleanBtn"
+              class="rec-layer-btn"
+              :class="{ 'is-active': layerView === 'clean' }"
+              :aria-selected="layerView === 'clean'"
+              :disabled="!cleanupEnabled"
+              @click="layerView = 'clean'"
+            >{{ t('recording.layer.clean') }}</button>
+            <button
+              type="button"
+              role="tab"
+              ref="segRawBtn"
+              class="rec-layer-btn"
+              :class="{ 'is-active': layerView === 'raw' }"
+              :aria-selected="layerView === 'raw'"
+              @click="layerView = 'raw'"
+            >{{ t('recording.layer.raw') }}</button>
+          </div>
+          <!-- 显示/隐藏原文 / Show/hide transcript -->
+          <button class="action-btn" :class="{ 'is-active': showTranscript }" @click="$emit('update:showTranscript', !showTranscript)" :title="showTranscript ? t('recording.transcript.hide_title') : t('recording.transcript.show_title')">
+            <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>{{ showTranscript ? t('recording.transcript.hide') : t('recording.transcript.show') }}</span>
           </button>
-          <button
-            type="button"
-            role="tab"
-            ref="segCleanBtn"
-            class="rec-layer-btn"
-            :class="{ 'is-active': layerView === 'clean' }"
-            :aria-selected="layerView === 'clean'"
-            :disabled="!cleanupEnabled"
-            @click="layerView = 'clean'"
-          >{{ t('recording.layer.clean') }}</button>
-          <button
-            type="button"
-            role="tab"
-            ref="segRawBtn"
-            class="rec-layer-btn"
-            :class="{ 'is-active': layerView === 'raw' }"
-            :aria-selected="layerView === 'raw'"
-            @click="layerView = 'raw'"
-          >{{ t('recording.layer.raw') }}</button>
-        </div>
-        <!-- 显示/隐藏原文 / Show/hide transcript -->
-        <button class="action-btn" :class="{ 'is-active': showTranscript }" @click="$emit('update:showTranscript', !showTranscript)" :title="showTranscript ? t('recording.transcript.hide_title') : t('recording.transcript.show_title')">
-          <svg class="toggle-icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          <svg class="toggle-icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          <span>{{ showTranscript ? t('recording.transcript.hide') : t('recording.transcript.show') }}</span>
-        </button>
-        <!-- 翻译更多菜单 / Translation more menu -->
-        <div class="transcript-more-wrap">
-          <button ref="moreBtn" class="transcript-more-btn" v-bind="moreTriggerAttrs" @click="toggleMore" :title="t('common.action.more')" :aria-label="t('common.action.more')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
-          </button>
-          <Teleport to="body">
-            <div ref="moreDropdown" class="transcript-more-dropdown" v-bind="moreMenuAttrs" :class="{ 'is-open': showMore }">
-              <!-- 翻译开关 / Translation toggle -->
-              <div class="transcript-more-item transcript-more-toggle">
-                <div
-                  class="toggle-switch"
-                  role="menuitemcheckbox"
-                  tabindex="0"
-                  :aria-checked="translateEnabled"
-                  :class="{ 'is-on': translateEnabled }"
-                  @click="$emit('toggleTranslate')"
-                  @keydown.enter.prevent="$emit('toggleTranslate')"
-                  @keydown.space.prevent="$emit('toggleTranslate')"
-                >
-                  <div class="toggle-switch-track">
-                    <div class="toggle-switch-knob"></div>
+          <!-- 翻译更多菜单 / Translation more menu -->
+          <div class="transcript-more-wrap">
+            <button ref="moreBtn" class="transcript-more-btn" v-bind="moreTriggerAttrs" @click="toggleMore" :title="t('common.action.more')" :aria-label="t('common.action.more')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+            </button>
+            <Teleport to="body">
+              <div ref="moreDropdown" class="transcript-more-dropdown" v-bind="moreMenuAttrs" :class="{ 'is-open': showMore }">
+                <!-- 翻译开关 / Translation toggle -->
+                <div class="transcript-more-item transcript-more-toggle">
+                  <div
+                    class="toggle-switch"
+                    role="menuitemcheckbox"
+                    tabindex="0"
+                    :aria-checked="translateEnabled"
+                    :class="{ 'is-on': translateEnabled }"
+                    @click="$emit('toggleTranslate')"
+                    @keydown.enter.prevent="$emit('toggleTranslate')"
+                    @keydown.space.prevent="$emit('toggleTranslate')"
+                  >
+                    <div class="toggle-switch-track">
+                      <div class="toggle-switch-knob"></div>
+                    </div>
+                    <span class="toggle-switch-label">{{ t('recording.translate.title') }}</span>
                   </div>
-                  <span class="toggle-switch-label">{{ t('recording.translate.title') }}</span>
+                  <span v-if="translateEnabled" class="transcript-more-lang">{{ targetLangLabel }}</span>
                 </div>
-                <span v-if="translateEnabled" class="transcript-more-lang">{{ targetLangLabel }}</span>
-              </div>
-              <!-- 语言选择 / Language selection -->
-              <template v-if="translateEnabled">
-                <button v-for="lang in supportedLanguages" :key="lang.code" class="transcript-more-item transcript-more-lang-item" role="menuitem" :aria-selected="lang.code === targetLang" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); closeMore()">
-                  {{ lang.label }}
-                  <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <!-- 语言选择 / Language selection -->
+                <template v-if="translateEnabled">
+                  <button v-for="lang in supportedLanguages" :key="lang.code" class="transcript-more-item transcript-more-lang-item" role="menuitem" :aria-selected="lang.code === targetLang" :class="{ 'is-selected': lang.code === targetLang }" @click="$emit('setTranslateLang', lang.code); closeMore()">
+                    {{ lang.label }}
+                    <svg v-if="lang.code === targetLang" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                </template>
+                <!-- 文本处理 / Text processing -->
+                <div class="transcript-more-sep" role="separator"></div>
+                <div class="transcript-more-label">{{ t('recording.layer.more_section') }}</div>
+                <!-- 口语清理开关（本地规则，默认开，逃生通道）/ Spoken cleanup toggle (local rules, default on, escape hatch) -->
+                <div class="transcript-more-item transcript-more-toggle">
+                  <div
+                    class="toggle-switch"
+                    role="menuitemcheckbox"
+                    tabindex="0"
+                    :aria-checked="cleanupEnabled"
+                    :class="{ 'is-on': cleanupEnabled }"
+                    @click="toggleCleanup"
+                    @keydown.enter.prevent="toggleCleanup"
+                    @keydown.space.prevent="toggleCleanup"
+                  >
+                    <div class="toggle-switch-track">
+                      <div class="toggle-switch-knob"></div>
+                    </div>
+                    <span class="toggle-switch-label">
+                      {{ t('recording.layer.cleanup_name') }}
+                      <span class="transcript-more-side">{{ t('recording.layer.cleanup_side') }}</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="transcript-more-sub">{{ t('recording.layer.cleanup_sub') }}</div>
+                <!-- AI 书面化：会中禁用，仅会后可用 / AI formal rewrite: disabled live, post-meeting only -->
+                <button class="transcript-more-item transcript-more-item-disabled" type="button" disabled :aria-disabled="true">
+                  <span class="transcript-more-item-text">
+                    <span class="transcript-more-item-name">
+                      {{ t('recording.layer.formal_name') }}
+                      <span class="transcript-more-side">{{ t('recording.layer.formal_side') }}</span>
+                    </span>
+                    <span class="transcript-more-sub">{{ t('recording.layer.formal_sub') }}</span>
+                  </span>
+                  <span class="transcript-more-go">{{ t('recording.layer.formal_post_only') }}</span>
                 </button>
-              </template>
-              <!-- 文本处理 / Text processing -->
-              <div class="transcript-more-sep" role="separator"></div>
-              <div class="transcript-more-label">{{ t('recording.layer.more_section') }}</div>
-              <!-- 口语清理开关（本地规则，默认开，逃生通道）/ Spoken cleanup toggle (local rules, default on, escape hatch) -->
-              <div class="transcript-more-item transcript-more-toggle">
-                <div
-                  class="toggle-switch"
-                  role="menuitemcheckbox"
-                  tabindex="0"
-                  :aria-checked="cleanupEnabled"
-                  :class="{ 'is-on': cleanupEnabled }"
-                  @click="toggleCleanup"
-                  @keydown.enter.prevent="toggleCleanup"
-                  @keydown.space.prevent="toggleCleanup"
-                >
-                  <div class="toggle-switch-track">
-                    <div class="toggle-switch-knob"></div>
-                  </div>
-                  <span class="toggle-switch-label">
-                    {{ t('recording.layer.cleanup_name') }}
-                    <span class="transcript-more-side">{{ t('recording.layer.cleanup_side') }}</span>
-                  </span>
-                </div>
               </div>
-              <div class="transcript-more-sub">{{ t('recording.layer.cleanup_sub') }}</div>
-              <!-- AI 书面化：会中禁用，仅会后可用 / AI formal rewrite: disabled live, post-meeting only -->
-              <button class="transcript-more-item transcript-more-item-disabled" type="button" disabled :aria-disabled="true">
-                <span class="transcript-more-item-text">
-                  <span class="transcript-more-item-name">
-                    {{ t('recording.layer.formal_name') }}
-                    <span class="transcript-more-side">{{ t('recording.layer.formal_side') }}</span>
-                  </span>
-                  <span class="transcript-more-sub">{{ t('recording.layer.formal_sub') }}</span>
-                </span>
-                <span class="transcript-more-go">{{ t('recording.layer.formal_post_only') }}</span>
-              </button>
-            </div>
-          </Teleport>
-        </div>
+            </Teleport>
+          </div>
         </div>
       </div>
     </div>
@@ -170,85 +170,85 @@
             :data-index="index"
           >
             <div class="rec-transcript-item">
-          <!-- 章节分隔卡片 / Chapter divider card -->
-          <div v-if="item.type === 'chapter'" class="chapter-divider" :class="{ 'is-current': item.chapterIdx === chapters.length - 1, 'is-expanded': expandedChapters.has(item.chapterIdx) }" @click="$emit('toggleChapter', item.chapterIdx)">
-            <div class="chapter-header">
-              <div class="chapter-number">{{ chapters[item.chapterIdx].id || item.chapterIdx + 1 }}</div>
-              <div class="chapter-info">
-                <div class="chapter-title">{{ chapters[item.chapterIdx].title }}</div>
-                <div class="chapter-meta">
-                  <span>{{ formatTime(chapters[item.chapterIdx].start_ms) }}</span>
-                  <template v-if="chapters[item.chapterIdx].end_ms"><span class="sep">–</span><span>{{ formatTime(chapters[item.chapterIdx].end_ms || 0) }}</span></template>
-                  <template v-if="(chapters[item.chapterIdx].key_points || []).length"><span class="sep">·</span><span>{{ t('recording.chapter.key_points_count', { count: (chapters[item.chapterIdx].key_points || []).length }) }}</span></template>
+              <!-- 章节分隔卡片 / Chapter divider card -->
+              <div v-if="item.type === 'chapter'" class="chapter-divider" :class="{ 'is-current': item.chapterIdx === chapters.length - 1, 'is-expanded': expandedChapters.has(item.chapterIdx) }" @click="$emit('toggleChapter', item.chapterIdx)">
+                <div class="chapter-header">
+                  <div class="chapter-number">{{ chapters[item.chapterIdx].id || item.chapterIdx + 1 }}</div>
+                  <div class="chapter-info">
+                    <div class="chapter-title">{{ chapters[item.chapterIdx].title }}</div>
+                    <div class="chapter-meta">
+                      <span>{{ formatTime(chapters[item.chapterIdx].start_ms) }}</span>
+                      <template v-if="chapters[item.chapterIdx].end_ms"><span class="sep">–</span><span>{{ formatTime(chapters[item.chapterIdx].end_ms || 0) }}</span></template>
+                      <template v-if="(chapters[item.chapterIdx].key_points || []).length"><span class="sep">·</span><span>{{ t('recording.chapter.key_points_count', { count: (chapters[item.chapterIdx].key_points || []).length }) }}</span></template>
+                    </div>
+                    <div v-if="chapters[item.chapterIdx].summary" class="chapter-summary-text">{{ chapters[item.chapterIdx].summary }}</div>
+                  </div>
+                  <div class="chapter-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
                 </div>
-                <div v-if="chapters[item.chapterIdx].summary" class="chapter-summary-text">{{ chapters[item.chapterIdx].summary }}</div>
+                <div v-if="expandedChapters.has(item.chapterIdx)" class="chapter-body"><div class="chapter-body-inner"><div class="chapter-key-points" v-if="chapters[item.chapterIdx].key_points?.length"><div class="chapter-key-points-title">{{ t('recording.chapter.key_points') }}</div><div v-for="(p, pi) in chapters[item.chapterIdx].key_points" :key="pi" class="chapter-key-point">{{ p }}</div></div></div></div>
               </div>
-              <div class="chapter-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg></div>
-            </div>
-            <div v-if="expandedChapters.has(item.chapterIdx)" class="chapter-body"><div class="chapter-body-inner"><div class="chapter-key-points" v-if="chapters[item.chapterIdx].key_points?.length"><div class="chapter-key-points-title">{{ t('recording.chapter.key_points') }}</div><div v-for="(p, pi) in chapters[item.chapterIdx].key_points" :key="pi" class="chapter-key-point">{{ p }}</div></div></div></div>
-          </div>
-          <!-- 转写行 / Transcript line -->
-          <div v-else-if="item.type === 'line'" class="rec-line" :class="{ 'is-me': isMe(lineOf(item).speaker_id), 'is-located': locateId === lineOf(item).speaker_id, 'is-dimmed': locateId !== null && locateId !== lineOf(item).speaker_id }">
-            <div class="rec-line-avatar" :style="{ background: speakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(getSpeakerName(lineOf(item)), lineOf(item).speaker_id) }}</div>
-            <div class="rec-line-content">
-              <div class="rec-line-head">
-                <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ getSpeakerName(lineOf(item)) }}</span>
-                <button v-if="!locateId || locateId === lineOf(item).speaker_id" class="rec-line-locate-btn" @click.stop="$emit('toggleLocate', lineOf(item).speaker_id)" :title="t('recording.speaker.locate')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
-                <!-- 清理视图：已清理行的原文回览入口 / Clean view: peek-verbatim entry on cleaned lines -->
-                <button
-                  v-if="isCleanedView(lineOf(item))"
-                  type="button"
-                  class="rec-line-clean-tag"
-                  :aria-expanded="peeked.has(item.lineIdx)"
-                  :title="t('recording.layer.tag_cleaned_title')"
-                  @click.stop="togglePeek(item.lineIdx)"
-                >{{ t('recording.layer.tag_cleaned') }}</button>
+              <!-- 转写行 / Transcript line -->
+              <div v-else-if="item.type === 'line'" class="rec-line" :class="{ 'is-me': isMe(lineOf(item).speaker_id), 'is-located': locateId === lineOf(item).speaker_id, 'is-dimmed': locateId !== null && locateId !== lineOf(item).speaker_id }">
+                <div class="rec-line-avatar" :style="{ background: speakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(getSpeakerName(lineOf(item)), lineOf(item).speaker_id) }}</div>
+                <div class="rec-line-content">
+                  <div class="rec-line-head">
+                    <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ getSpeakerName(lineOf(item)) }}</span>
+                    <button v-if="!locateId || locateId === lineOf(item).speaker_id" class="rec-line-locate-btn" @click.stop="$emit('toggleLocate', lineOf(item).speaker_id)" :title="t('recording.speaker.locate')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+                    <!-- 清理视图：已清理行的原文回览入口 / Clean view: peek-verbatim entry on cleaned lines -->
+                    <button
+                      v-if="isCleanedView(lineOf(item))"
+                      type="button"
+                      class="rec-line-clean-tag"
+                      :aria-expanded="peeked.has(item.lineIdx)"
+                      :title="t('recording.layer.tag_cleaned_title')"
+                      @click.stop="togglePeek(item.lineIdx)"
+                    >{{ t('recording.layer.tag_cleaned') }}</button>
+                  </div>
+                  <div class="rec-line-body">
+                    <span v-if="translationDisplay !== 'translation'" class="rec-line-text">{{ displayText(lineOf(item)) }}</span>
+                    <span v-if="translationDisplay !== 'original' && translationMap.get(item.lineIdx)" class="rec-line-translation">{{ translationMap.get(item.lineIdx) }}</span>
+                  </div>
+                  <!-- 原文回览块（只读原文 + 清理明细）/ Verbatim peek block (read-only raw + cleanup detail) -->
+                  <div v-if="isCleanedView(lineOf(item)) && peeked.has(item.lineIdx)" class="rec-peek">
+                    <div class="rec-peek-label">{{ t('recording.layer.peek_label') }}</div>
+                    <div class="rec-peek-text">{{ lineOf(item).text }}</div>
+                    <div v-if="cleanupRuleText(lineOf(item).clean_ops)" class="rec-peek-rule">{{ cleanupRuleText(lineOf(item).clean_ops) }}</div>
+                  </div>
+                  <!-- 已发送随记：点击文本原地编辑（Enter 保存 · Shift+Enter 换行 · Esc 取消 · 清空即删除） -->
+                  <div v-if="notesByLine[item.lineIdx]" class="note-inline-card">
+                    <textarea
+                      v-if="editingNoteIdx === item.lineIdx"
+                      ref="noteEditRef"
+                      class="note-inline-edit"
+                      rows="2"
+                      :value="noteDraft"
+                      @input="noteDraft = ($event.target as HTMLTextAreaElement).value"
+                      @keydown.enter.exact="onNoteEditEnter"
+                      @keydown.esc.stop.prevent="cancelNoteEdit"
+                      @blur="saveNoteEdit"
+                    ></textarea>
+                    <template v-else>
+                      <span class="note-inline-text" role="button" tabindex="0" :title="t('recording.notes.edit')" @click.stop="startNoteEdit(item.lineIdx)" @keydown.enter.prevent="startNoteEdit(item.lineIdx)">{{ notesByLine[item.lineIdx] }}</span>
+                      <button class="note-inline-delete" @click.stop="$emit('deleteNote', item.lineIdx)" :title="t('recording.notes.delete')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </template>
+                  </div>
+                </div>
               </div>
-              <div class="rec-line-body">
-                <span v-if="translationDisplay !== 'translation'" class="rec-line-text">{{ displayText(lineOf(item)) }}</span>
-                <span v-if="translationDisplay !== 'original' && translationMap.get(item.lineIdx)" class="rec-line-translation">{{ translationMap.get(item.lineIdx) }}</span>
+              <!-- 正在聆听指示器 / Listening indicator -->
+              <div v-else-if="item.type === 'listening'" class="rec-line rec-line-listening">
+                <div class="rec-line-avatar" style="background: var(--subtle)">
+                  <span class="listening-dots"><span></span><span></span><span></span></span>
+                </div>
+                <div class="rec-line-content">
+                  <div class="rec-line-head"><span class="rec-line-speaker">…</span></div>
+                  <div class="rec-line-body"><span class="rec-line-text rec-line-text--listening">{{ t('recording.transcript.listening') }}</span></div>
+                </div>
               </div>
-              <!-- 原文回览块（只读原文 + 清理明细）/ Verbatim peek block (read-only raw + cleanup detail) -->
-              <div v-if="isCleanedView(lineOf(item)) && peeked.has(item.lineIdx)" class="rec-peek">
-                <div class="rec-peek-label">{{ t('recording.layer.peek_label') }}</div>
-                <div class="rec-peek-text">{{ lineOf(item).text }}</div>
-                <div v-if="cleanupRuleText(lineOf(item).clean_ops)" class="rec-peek-rule">{{ cleanupRuleText(lineOf(item).clean_ops) }}</div>
+              <!-- 空状态（本地批转写降级时换口径：会中不出字属正常） / Empty state (batch-degraded local mode: no live text by design) -->
+              <div v-else-if="item.type === 'empty'" class="rec-empty">
+                <p>{{ t(localBatchDegraded ? 'recording.transcript.batch_empty' : 'recording.transcript.empty') }}</p>
+                <p class="rec-empty-hint">{{ t(localBatchDegraded ? 'recording.transcript.batch_empty_hint' : 'recording.transcript.empty_hint') }}</p>
               </div>
-              <!-- 已发送随记：点击文本原地编辑（Enter 保存 · Shift+Enter 换行 · Esc 取消 · 清空即删除） -->
-              <div v-if="notesByLine[item.lineIdx]" class="note-inline-card">
-                <textarea
-                  v-if="editingNoteIdx === item.lineIdx"
-                  ref="noteEditRef"
-                  class="note-inline-edit"
-                  rows="2"
-                  :value="noteDraft"
-                  @input="noteDraft = ($event.target as HTMLTextAreaElement).value"
-                  @keydown.enter.exact="onNoteEditEnter"
-                  @keydown.esc.stop.prevent="cancelNoteEdit"
-                  @blur="saveNoteEdit"
-                ></textarea>
-                <template v-else>
-                  <span class="note-inline-text" role="button" tabindex="0" :title="t('recording.notes.edit')" @click.stop="startNoteEdit(item.lineIdx)" @keydown.enter.prevent="startNoteEdit(item.lineIdx)">{{ notesByLine[item.lineIdx] }}</span>
-                  <button class="note-inline-delete" @click.stop="$emit('deleteNote', item.lineIdx)" :title="t('recording.notes.delete')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                </template>
-              </div>
-            </div>
-          </div>
-          <!-- 正在聆听指示器 / Listening indicator -->
-          <div v-else-if="item.type === 'listening'" class="rec-line rec-line-listening">
-            <div class="rec-line-avatar" style="background: var(--subtle)">
-              <span class="listening-dots"><span></span><span></span><span></span></span>
-            </div>
-            <div class="rec-line-content">
-              <div class="rec-line-head"><span class="rec-line-speaker">…</span></div>
-              <div class="rec-line-body"><span class="rec-line-text rec-line-text--listening">{{ t('recording.transcript.listening') }}</span></div>
-            </div>
-          </div>
-          <!-- 空状态（本地批转写降级时换口径：会中不出字属正常） / Empty state (batch-degraded local mode: no live text by design) -->
-          <div v-else-if="item.type === 'empty'" class="rec-empty">
-            <p>{{ t(localBatchDegraded ? 'recording.transcript.batch_empty' : 'recording.transcript.empty') }}</p>
-            <p class="rec-empty-hint">{{ t(localBatchDegraded ? 'recording.transcript.batch_empty_hint' : 'recording.transcript.empty_hint') }}</p>
-          </div>
             </div>
           </DynamicScrollerItem>
         </template>

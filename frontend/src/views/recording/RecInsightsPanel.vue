@@ -46,121 +46,121 @@
         @open-in-browser="onBoardOpen"
       />
       <template v-else>
-      <div v-if="messages.length === 0" class="rec-insights-empty">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-        <div class="rec-insights-empty-text">{{ t('recording.insights.empty') }}</div>
-        <div class="rec-insights-empty-hint">{{ t('recording.insights.empty_hint') }}</div>
-      </div>
-      <div v-else class="rec-insights-list">
-        <div
-          v-for="msg in activeMessages" :key="msg.id"
-          class="rec-insight-card"
-          :class="{ 'is-expanded': msg.expanded, 'is-acknowledged': msg.acknowledged }"
-        >
-          <div class="rec-insight-card-header" @click="$emit('toggleMessage', msg.id)">
-            <span class="rec-insight-cat">{{ msg.category || t('ai-panel.insights.cat_insight') }}</span>
-            <span class="rec-insight-card-title">{{ msg.title }}</span>
-            <svg v-if="!msg.expanded" class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
-          </div>
-          <div v-if="msg.expanded" class="rec-insight-card-body">
-            <!-- 历史会话兼容：旧版结构化图谱（新分析不再产出 graph，仅旧消息重载时存在）
+        <div v-if="messages.length === 0" class="rec-insights-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          <div class="rec-insights-empty-text">{{ t('recording.insights.empty') }}</div>
+          <div class="rec-insights-empty-hint">{{ t('recording.insights.empty_hint') }}</div>
+        </div>
+        <div v-else class="rec-insights-list">
+          <div
+            v-for="msg in activeMessages" :key="msg.id"
+            class="rec-insight-card"
+            :class="{ 'is-expanded': msg.expanded, 'is-acknowledged': msg.acknowledged }"
+          >
+            <div class="rec-insight-card-header" @click="$emit('toggleMessage', msg.id)">
+              <span class="rec-insight-cat">{{ msg.category || t('ai-panel.insights.cat_insight') }}</span>
+              <span class="rec-insight-card-title">{{ msg.title }}</span>
+              <svg v-if="!msg.expanded" class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg v-else class="rec-insight-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+            </div>
+            <div v-if="msg.expanded" class="rec-insight-card-body">
+              <!-- 历史会话兼容：旧版结构化图谱（新分析不再产出 graph，仅旧消息重载时存在）
                  Legacy session compat: old structured graph (new analyses never emit graph, only reloaded legacy messages carry it) -->
-            <div v-if="hasLegacyGraph(msg)" class="rec-insight-diagram-wrap">
-              <InsightGraph
-                :data="legacyGraphOf(msg)"
-                class="rec-insight-diagram rec-insight-diagram-primary"
-                @seek-to="$emit('seekTo', $event)"
-              />
+              <div v-if="hasLegacyGraph(msg)" class="rec-insight-diagram-wrap">
+                <InsightGraph
+                  :data="legacyGraphOf(msg)"
+                  class="rec-insight-diagram rec-insight-diagram-primary"
+                  @seek-to="$emit('seekTo', $event)"
+                />
               <!-- 【已退役】图重生成按钮：单轮重生成不属于共创路径，修订改由会话发起 -->
-            </div>
-            <!-- 洞察台画布：受约束 Mermaid 解析成功时渲染 workflow 阶段卡 / Insight Deck canvas: workflow phase cards when constrained Mermaid parses -->
-            <div v-else-if="flowOf(msg)" class="rec-insight-diagram-wrap">
-              <InsightFlow
-                :data="flowOf(msg)!"
-                class="rec-insight-diagram rec-insight-diagram-primary"
-                @seek-to="$emit('seekTo', $event)"
-              />
-              <!-- 图操作工具栏 / Diagram action toolbar -->
-              <div class="rec-insight-diagram-toolbar">
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
-                </button>
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
-                </button>
               </div>
-            </div>
-            <!-- 降级：不符合画布书写规范时用通用 Mermaid 渲染，用户永远有图看
+              <!-- 洞察台画布：受约束 Mermaid 解析成功时渲染 workflow 阶段卡 / Insight Deck canvas: workflow phase cards when constrained Mermaid parses -->
+              <div v-else-if="flowOf(msg)" class="rec-insight-diagram-wrap">
+                <InsightFlow
+                  :data="flowOf(msg)!"
+                  class="rec-insight-diagram rec-insight-diagram-primary"
+                  @seek-to="$emit('seekTo', $event)"
+                />
+                <!-- 图操作工具栏 / Diagram action toolbar -->
+                <div class="rec-insight-diagram-toolbar">
+                  <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
+                  </button>
+                  <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
+                  </button>
+                </div>
+              </div>
+              <!-- 降级：不符合画布书写规范时用通用 Mermaid 渲染，用户永远有图看
                  Fallback: non-conforming Mermaid rendered generically — the user always sees a diagram -->
-            <div v-else-if="msg.diagram" class="rec-insight-diagram-wrap">
-              <MermaidDiagram
-                :code="msg.diagram"
-                class="rec-insight-diagram rec-insight-diagram-primary"
-              />
-              <!-- 图操作工具栏（重生成按钮已退役） / Diagram action toolbar (regenerate retired) -->
-              <div class="rec-insight-diagram-toolbar">
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
-                </button>
-                <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
-                </button>
+              <div v-else-if="msg.diagram" class="rec-insight-diagram-wrap">
+                <MermaidDiagram
+                  :code="msg.diagram"
+                  class="rec-insight-diagram rec-insight-diagram-primary"
+                />
+                <!-- 图操作工具栏（重生成按钮已退役） / Diagram action toolbar (regenerate retired) -->
+                <div class="rec-insight-diagram-toolbar">
+                  <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_copy')" @click.stop="onCopyDiagram(msg.diagram)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>{{ t('ai-panel.insights.diagram_copy') }}</span>
+                  </button>
+                  <button class="rec-insight-diagram-btn" :title="t('ai-panel.insights.diagram_edit_in_chat')" @click.stop="onEditInChat(msg.diagram)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>{{ t('ai-panel.insights.diagram_edit_in_chat') }}</span>
+                  </button>
+                </div>
+              </div>
+              <!-- 图的注释 / Diagram annotations -->
+              <div
+                class="rec-insight-body-text"
+                :class="{ 'is-clamped': isLongBody(msg) && !fullBodyIds.has(msg.id) }"
+                v-html="renderInsightMarkdown(msg.body)"
+              ></div>
+              <button
+                v-if="isLongBody(msg)"
+                class="rec-insight-body-toggle"
+                @click.stop="toggleFullBody(msg.id)"
+              >{{ fullBodyIds.has(msg.id) ? t('ai-panel.insights.collapse_full') : t('ai-panel.insights.expand_full') }}</button>
+              <!-- 备查注释层（三层信息写作）：退可忽略、进可查看 / Note layer: skippable yet answerable -->
+              <div v-if="msg.note" class="rec-insight-note">
+                <span class="rec-insight-note-label">{{ t('ai-panel.insights.note_label') }}</span>
+                <span class="rec-insight-note-text">{{ msg.note }}</span>
+              </div>
+              <div v-if="msg.solution" class="rec-insight-solution">
+                <span class="rec-insight-solution-label">{{ t('ai-panel.insights.expand_detail') }}</span>
+                <div class="rec-insight-solution-text" v-html="renderInsightMarkdown(msg.solution)"></div>
+              </div>
+              <div class="rec-insight-actions" v-if="msg.actions.length > 0">
+                <button
+                  v-for="act in msg.actions" :key="act.key"
+                  class="rec-insight-action-btn"
+                  :class="{ 'is-primary': act.primary, 'is-done': actedActions[msg.id + ':' + act.key] }"
+                  @click.stop="$emit('action', msg, act)"
+                >{{ act.label }}</button>
+              </div>
+              <div class="rec-insight-meta">
+                {{ msg.source === 'user' ? t('ai-panel.insights.meta_manual') : t('ai-panel.insights.meta_auto') }} · {{ formatTime(msg.timestamp) }}
               </div>
             </div>
-            <!-- 图的注释 / Diagram annotations -->
-            <div
-              class="rec-insight-body-text"
-              :class="{ 'is-clamped': isLongBody(msg) && !fullBodyIds.has(msg.id) }"
-              v-html="renderInsightMarkdown(msg.body)"
-            ></div>
-            <button
-              v-if="isLongBody(msg)"
-              class="rec-insight-body-toggle"
-              @click.stop="toggleFullBody(msg.id)"
-            >{{ fullBodyIds.has(msg.id) ? t('ai-panel.insights.collapse_full') : t('ai-panel.insights.expand_full') }}</button>
-            <!-- 备查注释层（三层信息写作）：退可忽略、进可查看 / Note layer: skippable yet answerable -->
-            <div v-if="msg.note" class="rec-insight-note">
-              <span class="rec-insight-note-label">{{ t('ai-panel.insights.note_label') }}</span>
-              <span class="rec-insight-note-text">{{ msg.note }}</span>
-            </div>
-            <div v-if="msg.solution" class="rec-insight-solution">
-              <span class="rec-insight-solution-label">{{ t('ai-panel.insights.expand_detail') }}</span>
-              <div class="rec-insight-solution-text" v-html="renderInsightMarkdown(msg.solution)"></div>
-            </div>
-            <div class="rec-insight-actions" v-if="msg.actions.length > 0">
-              <button
-                v-for="act in msg.actions" :key="act.key"
-                class="rec-insight-action-btn"
-                :class="{ 'is-primary': act.primary, 'is-done': actedActions[msg.id + ':' + act.key] }"
-                @click.stop="$emit('action', msg, act)"
-              >{{ act.label }}</button>
-            </div>
-            <div class="rec-insight-meta">
-              {{ msg.source === 'user' ? t('ai-panel.insights.meta_manual') : t('ai-panel.insights.meta_auto') }} · {{ formatTime(msg.timestamp) }}
-            </div>
           </div>
-        </div>
-        <!-- 历史观察折叠层：超出一页预算的降级卡（不删除，进可读退可略）
+          <!-- 历史观察折叠层：超出一页预算的降级卡（不删除，进可读退可略）
              History layer: deferred cards beyond the one-page budget -->
-        <div v-if="deferredMessages.length > 0" class="rec-insights-deferred">
-          <button class="rec-insights-deferred-toggle" :aria-expanded="openDeferred" @click="openDeferred = !openDeferred">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline v-if="!openDeferred" points="6 9 12 15 18 9"/><polyline v-else points="18 15 12 9 6 15"/></svg>
-            {{ t('recording.insights.deferred_title', { count: deferredMessages.length }) }}
-          </button>
-          <div v-show="openDeferred" class="rec-insights-deferred-list">
-            <div v-for="msg in deferredMessages" :key="'deferred-' + msg.id" class="rec-insights-deferred-item" :title="msg.body">
-              <span class="rec-insights-deferred-dot"></span>
-              <span class="rec-insights-deferred-item-title">{{ msg.title }}</span>
-              <span class="rec-insights-deferred-time">{{ formatTime(msg.timestamp) }}</span>
+          <div v-if="deferredMessages.length > 0" class="rec-insights-deferred">
+            <button class="rec-insights-deferred-toggle" :aria-expanded="openDeferred" @click="openDeferred = !openDeferred">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline v-if="!openDeferred" points="6 9 12 15 18 9"/><polyline v-else points="18 15 12 9 6 15"/></svg>
+              {{ t('recording.insights.deferred_title', { count: deferredMessages.length }) }}
+            </button>
+            <div v-show="openDeferred" class="rec-insights-deferred-list">
+              <div v-for="msg in deferredMessages" :key="'deferred-' + msg.id" class="rec-insights-deferred-item" :title="msg.body">
+                <span class="rec-insights-deferred-dot"></span>
+                <span class="rec-insights-deferred-item-title">{{ msg.title }}</span>
+                <span class="rec-insights-deferred-time">{{ formatTime(msg.timestamp) }}</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       </template>
     </div>
   </div>

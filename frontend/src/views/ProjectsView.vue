@@ -1,246 +1,246 @@
 <template>
   <div class="proj-page">
     <Transition name="fade" mode="out-in">
-    <!-- ═══ 列表视图 / List view ═══ -->
-    <div v-if="!selectedProject" key="list">
-      <div class="main-head">
-        <div class="title-row">
-          <h1>{{ t('projects.title') }}</h1>
-          <span class="page-count">{{ t('projects.count', { count: projects.length }) }}</span>
+      <!-- ═══ 列表视图 / List view ═══ -->
+      <div v-if="!selectedProject" key="list">
+        <div class="main-head">
+          <div class="title-row">
+            <h1>{{ t('projects.title') }}</h1>
+            <span class="page-count">{{ t('projects.count', { count: projects.length }) }}</span>
+          </div>
         </div>
-      </div>
-      <!-- 统一输入框 / Unified input -->
-      <div class="proj-unified">
-        <div class="proj-unified-field">
-          <svg class="proj-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <template v-if="showCreateHint">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </template>
-            <template v-else>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </template>
-          </svg>
-          <input
-            v-model="inputText"
-            class="proj-unified-input"
-            type="text"
-            :placeholder="t('projects.unified_placeholder')"
-            @keyup.enter="onUnifiedEnter"
-          />
+        <!-- 统一输入框 / Unified input -->
+        <div class="proj-unified">
+          <div class="proj-unified-field">
+            <svg class="proj-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <template v-if="showCreateHint">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </template>
+              <template v-else>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </template>
+            </svg>
+            <input
+              v-model="inputText"
+              class="proj-unified-input"
+              type="text"
+              :placeholder="t('projects.unified_placeholder')"
+              @keyup.enter="onUnifiedEnter"
+            />
+          </div>
         </div>
+        <!-- 知识库列表 / Project list -->
+        <div v-if="filteredProjects.length > 0 || showCreateHint" class="proj-list">
+          <div v-for="proj in filteredProjects" :key="proj.id" class="proj-card" @click="openDetail(proj)">
+            <div class="proj-card-header">
+              <h3 class="proj-card-name">{{ proj.name }}</h3>
+              <div class="proj-card-actions" @click.stop>
+                <button class="proj-card-action" :title="t('projects.open_folder')" @click="onOpenFolder(proj)" v-if="proj.folders?.length">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                </button>
+                <button class="proj-card-action danger" @click="confirmDelete(proj)" :title="t('common.action.delete')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="proj-card-meta">
+              <span>{{ t('projects.folders_count', { count: proj.folders?.length || 0 }) }}</span>
+              <span v-if="proj.file_count"> · {{ t('projects.stat_files') }}: {{ proj.file_count }}</span>
+            </div>
+          </div>
+          <!-- 新建提示 / Create new hint -->
+          <div v-if="showCreateHint" class="proj-create-hint" @click="onCreate">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>{{ t('projects.create_hint', { name: inputText.trim() }) }}</span>
+          </div>
+        </div>
+        <div v-else-if="!inputText.trim()" class="empty-state">{{ t('projects.empty') }}</div>
       </div>
-      <!-- 知识库列表 / Project list -->
-      <div v-if="filteredProjects.length > 0 || showCreateHint" class="proj-list">
-        <div v-for="proj in filteredProjects" :key="proj.id" class="proj-card" @click="openDetail(proj)">
-          <div class="proj-card-header">
-            <h3 class="proj-card-name">{{ proj.name }}</h3>
-            <div class="proj-card-actions" @click.stop>
-              <button class="proj-card-action" :title="t('projects.open_folder')" @click="onOpenFolder(proj)" v-if="proj.folders?.length">
+
+      <!-- ═══ 详情视图 / Detail view ═══ -->
+      <div v-else key="detail" class="proj-detail">
+        <button class="proj-back-btn" @click="backToList">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
+          {{ t('projects.back_list') }}
+        </button>
+
+        <div class="proj-detail-head">
+          <div class="proj-detail-left">
+            <div class="proj-detail-name" @click="startRename">
+              <span v-if="!isRenaming" class="proj-name-clickable">{{ selectedProject.name }}</span>
+              <input v-else ref="renameInputRef" v-model="renameValue" class="proj-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
+            </div>
+            <div class="proj-index-status" :class="indexStatusClass">
+              {{ indexStatusText }}
+            </div>
+          </div>
+          <div class="proj-detail-actions">
+            <button class="btn btn-secondary btn-sm" @click="onRebuildIndex" :disabled="scanning">
+              {{ scanning ? t('projects.rebuilding') : t('projects.rebuild_index') }}
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="onTriggerSync" :disabled="syncing">
+              {{ syncing ? t('projects.syncing') : t('projects.sync_trigger') }}
+            </button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedProject)">
+              {{ t('common.action.delete') }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 统计卡片 / Stat cards -->
+        <div class="proj-stat-cards">
+          <div class="proj-stat-card">
+            <div class="label">{{ t('projects.stat_files') }}</div>
+            <div class="value">{{ detailData?.file_count || 0 }}</div>
+            <div class="sub">{{ t('projects.stat_files_unit') }}</div>
+          </div>
+          <div class="proj-stat-card">
+            <div class="label">{{ t('projects.stat_meetings') }}</div>
+            <div class="value">{{ detailData?.meetings?.length || 0 }}</div>
+            <div class="sub">{{ t('projects.stat_meetings_unit') }}</div>
+          </div>
+          <div class="proj-stat-card">
+            <div class="label">{{ t('projects.stat_folders') }}</div>
+            <div class="value">{{ selectedProject.folders?.length || 0 }}</div>
+            <div class="sub">{{ t('projects.stat_folders_unit') }}</div>
+          </div>
+        </div>
+
+        <!-- 文件夹管理 / Folder management -->
+        <div class="proj-folders-section">
+          <h3 class="proj-section-title">{{ t('projects.stat_folders') }}</h3>
+          <div v-if="selectedProject.folders?.length" class="proj-folders-list">
+            <div v-for="folder in selectedProject.folders" :key="folder.path" class="proj-folder-row">
+              <div class="proj-folder-info">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              </button>
-              <button class="proj-card-action danger" @click="confirmDelete(proj)" :title="t('common.action.delete')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+                <span class="proj-folder-path">{{ folder.path }}</span>
+              </div>
+              <div class="proj-folder-controls">
+                <!-- 同步开关 / Sync toggle -->
+                <label class="proj-sync-toggle">
+                  <span class="proj-sync-label">{{ t('projects.sync_enabled') }}</span>
+                  <div class="wm-toggle-wrap">
+                    <div
+                      class="wm-toggle"
+                      :class="{ 'is-on': folder.sync_enabled }"
+                      role="switch"
+                      :aria-checked="folder.sync_enabled"
+                      tabindex="0"
+                      @click="toggleSync(folder)"
+                      @keydown.enter.prevent="toggleSync(folder)"
+                      @keydown.space.prevent="toggleSync(folder)"
+                    ></div>
+                  </div>
+                </label>
+                <button class="proj-folder-btn" :title="t('projects.open_folder')" @click="onOpenFolderByPath(folder.path)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </button>
+                <button class="proj-folder-btn danger" :title="t('projects.remove_folder')" @click="onRemoveFolder(selectedProject.id, folder.path)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
             </div>
           </div>
-          <div class="proj-card-meta">
-            <span>{{ t('projects.folders_count', { count: proj.folders?.length || 0 }) }}</span>
-            <span v-if="proj.file_count"> · {{ t('projects.stat_files') }}: {{ proj.file_count }}</span>
-          </div>
-        </div>
-        <!-- 新建提示 / Create new hint -->
-        <div v-if="showCreateHint" class="proj-create-hint" @click="onCreate">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>{{ t('projects.create_hint', { name: inputText.trim() }) }}</span>
-        </div>
-      </div>
-      <div v-else-if="!inputText.trim()" class="empty-state">{{ t('projects.empty') }}</div>
-    </div>
-
-    <!-- ═══ 详情视图 / Detail view ═══ -->
-    <div v-else key="detail" class="proj-detail">
-      <button class="proj-back-btn" @click="backToList">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
-        {{ t('projects.back_list') }}
-      </button>
-
-      <div class="proj-detail-head">
-        <div class="proj-detail-left">
-          <div class="proj-detail-name" @click="startRename">
-            <span v-if="!isRenaming" class="proj-name-clickable">{{ selectedProject.name }}</span>
-            <input v-else ref="renameInputRef" v-model="renameValue" class="proj-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
-          </div>
-          <div class="proj-index-status" :class="indexStatusClass">
-            {{ indexStatusText }}
-          </div>
-        </div>
-        <div class="proj-detail-actions">
-          <button class="btn btn-secondary btn-sm" @click="onRebuildIndex" :disabled="scanning">
-            {{ scanning ? t('projects.rebuilding') : t('projects.rebuild_index') }}
-          </button>
-          <button class="btn btn-secondary btn-sm" @click="onTriggerSync" :disabled="syncing">
-            {{ syncing ? t('projects.syncing') : t('projects.sync_trigger') }}
-          </button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedProject)">
-            {{ t('common.action.delete') }}
+          <button class="btn btn-secondary btn-sm" @click="showFolderBrowser = true">
+            {{ t('projects.add_folder') }}
           </button>
         </div>
-      </div>
 
-      <!-- 统计卡片 / Stat cards -->
-      <div class="proj-stat-cards">
-        <div class="proj-stat-card">
-          <div class="label">{{ t('projects.stat_files') }}</div>
-          <div class="value">{{ detailData?.file_count || 0 }}</div>
-          <div class="sub">{{ t('projects.stat_files_unit') }}</div>
+        <!-- Tab 切换 / Tab switcher -->
+        <div class="proj-tabs">
+          <button class="proj-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">
+            {{ t('projects.meetings_tab') }} <span class="proj-tab-count">{{ detailData?.meetings?.length || 0 }}</span>
+          </button>
+          <button class="proj-tab" :class="{ 'is-active': activeTab === 'files' }" @click="switchToFiles">
+            {{ t('projects.files_tab') }} <span class="proj-tab-count">{{ indexedFiles.length }}</span>
+          </button>
+          <button class="proj-tab" :class="{ 'is-active': activeTab === 'search' }" @click="activeTab = 'search'">
+            {{ t('projects.search_tab') }}
+          </button>
         </div>
-        <div class="proj-stat-card">
-          <div class="label">{{ t('projects.stat_meetings') }}</div>
-          <div class="value">{{ detailData?.meetings?.length || 0 }}</div>
-          <div class="sub">{{ t('projects.stat_meetings_unit') }}</div>
-        </div>
-        <div class="proj-stat-card">
-          <div class="label">{{ t('projects.stat_folders') }}</div>
-          <div class="value">{{ selectedProject.folders?.length || 0 }}</div>
-          <div class="sub">{{ t('projects.stat_folders_unit') }}</div>
-        </div>
-      </div>
 
-      <!-- 文件夹管理 / Folder management -->
-      <div class="proj-folders-section">
-        <h3 class="proj-section-title">{{ t('projects.stat_folders') }}</h3>
-        <div v-if="selectedProject.folders?.length" class="proj-folders-list">
-          <div v-for="folder in selectedProject.folders" :key="folder.path" class="proj-folder-row">
-            <div class="proj-folder-info">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              <span class="proj-folder-path">{{ folder.path }}</span>
+        <!-- 关联会议 / Meetings tab -->
+        <div v-show="activeTab === 'meetings'" class="proj-tab-panel">
+          <div v-if="!detailData?.meetings?.length" class="proj-empty">{{ t('projects.meetings_empty') }}</div>
+          <div v-for="m in detailData?.meetings" :key="m.task_id" class="proj-meeting-card" @click="openTask(m.task_id)">
+            <div class="pmc-head">
+              <span class="pmc-title">{{ m.title }}</span>
+              <span class="pmc-date">{{ formatDate(m.meeting_date || m.created_at) }}</span>
             </div>
-            <div class="proj-folder-controls">
-              <!-- 同步开关 / Sync toggle -->
-              <label class="proj-sync-toggle">
-                <span class="proj-sync-label">{{ t('projects.sync_enabled') }}</span>
-                <div class="wm-toggle-wrap">
-                  <div
-                    class="wm-toggle"
-                    :class="{ 'is-on': folder.sync_enabled }"
-                    role="switch"
-                    :aria-checked="folder.sync_enabled"
-                    tabindex="0"
-                    @click="toggleSync(folder)"
-                    @keydown.enter.prevent="toggleSync(folder)"
-                    @keydown.space.prevent="toggleSync(folder)"
-                  ></div>
-                </div>
-              </label>
-              <button class="proj-folder-btn" :title="t('projects.open_folder')" @click="onOpenFolderByPath(folder.path)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              </button>
-              <button class="proj-folder-btn danger" :title="t('projects.remove_folder')" @click="onRemoveFolder(selectedProject.id, folder.path)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+            <div class="pmc-meta">
+              <DurationDial v-if="m.audio_duration" :seconds="m.audio_duration" />
+              <span v-if="m.speaker_count">{{ m.speaker_count }} {{ t('projects.meeting_speakers_unit') }}</span>
+              <span v-if="m.status !== 'completed'" class="pmc-status" :class="'status-' + m.status">{{ formatStatus(m.status) }}</span>
             </div>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" @click="showFolderBrowser = true">
-          {{ t('projects.add_folder') }}
-        </button>
-      </div>
 
-      <!-- Tab 切换 / Tab switcher -->
-      <div class="proj-tabs">
-        <button class="proj-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">
-          {{ t('projects.meetings_tab') }} <span class="proj-tab-count">{{ detailData?.meetings?.length || 0 }}</span>
-        </button>
-        <button class="proj-tab" :class="{ 'is-active': activeTab === 'files' }" @click="switchToFiles">
-          {{ t('projects.files_tab') }} <span class="proj-tab-count">{{ indexedFiles.length }}</span>
-        </button>
-        <button class="proj-tab" :class="{ 'is-active': activeTab === 'search' }" @click="activeTab = 'search'">
-          {{ t('projects.search_tab') }}
-        </button>
-      </div>
+        <!-- 索引文件 / Files tab -->
+        <div v-show="activeTab === 'files'" class="proj-tab-panel">
+          <div v-if="filesLoading" class="proj-loading"><div class="proj-spinner"></div></div>
+          <div v-else-if="indexedFiles.length === 0" class="proj-empty">{{ t('projects.files_empty') }}</div>
+          <table v-else class="proj-files-table">
+            <thead>
+              <tr>
+                <th>{{ t('projects.file_name') }}</th>
+                <th style="width:60px">{{ t('projects.file_type') }}</th>
+                <th style="width:80px">{{ t('projects.file_size') }}</th>
+                <th style="width:140px">{{ t('projects.file_modified') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="f in indexedFiles" :key="f.path">
+                <td class="file-name-cell">
+                  <span class="file-title">{{ f.title || f.name }}</span>
+                  <span v-if="f.relative_path" class="file-rel-path">{{ f.relative_path }}</span>
+                </td>
+                <td><span class="file-type-badge">{{ f.type }}</span></td>
+                <td class="file-size">{{ formatSize(f.size) }}</td>
+                <td class="file-date">{{ formatDate(f.modified_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <!-- 关联会议 / Meetings tab -->
-      <div v-show="activeTab === 'meetings'" class="proj-tab-panel">
-        <div v-if="!detailData?.meetings?.length" class="proj-empty">{{ t('projects.meetings_empty') }}</div>
-        <div v-for="m in detailData?.meetings" :key="m.task_id" class="proj-meeting-card" @click="openTask(m.task_id)">
-          <div class="pmc-head">
-            <span class="pmc-title">{{ m.title }}</span>
-            <span class="pmc-date">{{ formatDate(m.meeting_date || m.created_at) }}</span>
+        <!-- 搜索 / Search tab -->
+        <div v-show="activeTab === 'search'" class="proj-tab-panel">
+          <div class="proj-search-bar">
+            <input
+              v-model="searchQuery"
+              class="proj-search-input"
+              type="text"
+              :placeholder="t('projects.search_placeholder')"
+              @keyup.enter="onSearch"
+            />
+            <button class="btn btn-secondary btn-sm" @click="onSearch" :disabled="!searchQuery.trim()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
           </div>
-          <div class="pmc-meta">
-            <DurationDial v-if="m.audio_duration" :seconds="m.audio_duration" />
-            <span v-if="m.speaker_count">{{ m.speaker_count }} {{ t('projects.meeting_speakers_unit') }}</span>
-            <span v-if="m.status !== 'completed'" class="pmc-status" :class="'status-' + m.status">{{ formatStatus(m.status) }}</span>
+          <div v-if="searchLoading" class="proj-loading"><div class="proj-spinner"></div></div>
+          <div v-else-if="searchResults.length > 0" class="proj-search-results">
+            <div class="proj-search-summary">{{ t('projects.search_results', { count: searchResults.length }) }}</div>
+            <div v-for="f in searchResults" :key="f.path" class="proj-search-item">
+              <span class="search-item-title">{{ f.title || f.name }}</span>
+              <span class="search-item-path">{{ f.relative_path }}</span>
+            </div>
           </div>
+          <div v-else-if="searchDone" class="proj-empty">{{ t('projects.search_empty') }}</div>
         </div>
       </div>
-
-      <!-- 索引文件 / Files tab -->
-      <div v-show="activeTab === 'files'" class="proj-tab-panel">
-        <div v-if="filesLoading" class="proj-loading"><div class="proj-spinner"></div></div>
-        <div v-else-if="indexedFiles.length === 0" class="proj-empty">{{ t('projects.files_empty') }}</div>
-        <table v-else class="proj-files-table">
-          <thead>
-            <tr>
-              <th>{{ t('projects.file_name') }}</th>
-              <th style="width:60px">{{ t('projects.file_type') }}</th>
-              <th style="width:80px">{{ t('projects.file_size') }}</th>
-              <th style="width:140px">{{ t('projects.file_modified') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="f in indexedFiles" :key="f.path">
-              <td class="file-name-cell">
-                <span class="file-title">{{ f.title || f.name }}</span>
-                <span v-if="f.relative_path" class="file-rel-path">{{ f.relative_path }}</span>
-              </td>
-              <td><span class="file-type-badge">{{ f.type }}</span></td>
-              <td class="file-size">{{ formatSize(f.size) }}</td>
-              <td class="file-date">{{ formatDate(f.modified_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 搜索 / Search tab -->
-      <div v-show="activeTab === 'search'" class="proj-tab-panel">
-        <div class="proj-search-bar">
-          <input
-            v-model="searchQuery"
-            class="proj-search-input"
-            type="text"
-            :placeholder="t('projects.search_placeholder')"
-            @keyup.enter="onSearch"
-          />
-          <button class="btn btn-secondary btn-sm" @click="onSearch" :disabled="!searchQuery.trim()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </button>
-        </div>
-        <div v-if="searchLoading" class="proj-loading"><div class="proj-spinner"></div></div>
-        <div v-else-if="searchResults.length > 0" class="proj-search-results">
-          <div class="proj-search-summary">{{ t('projects.search_results', { count: searchResults.length }) }}</div>
-          <div v-for="f in searchResults" :key="f.path" class="proj-search-item">
-            <span class="search-item-title">{{ f.title || f.name }}</span>
-            <span class="search-item-path">{{ f.relative_path }}</span>
-          </div>
-        </div>
-        <div v-else-if="searchDone" class="proj-empty">{{ t('projects.search_empty') }}</div>
-      </div>
-    </div>
     </Transition>
 
     <!-- 确认对话框 / Confirmation dialog -->
     <Teleport to="body">
-    <div v-if="showConfirmDialog" class="proj-dialog-overlay" @click.self="showConfirmDialog = false">
-      <div class="proj-dialog">
-        <h3>{{ confirmDialogTitle }}</h3>
-        <p>{{ confirmDialogMsg }}</p>
-        <div class="proj-dialog-actions">
-          <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('common.action.cancel') }} <kbd>ESC</kbd></button>
-          <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
+      <div v-if="showConfirmDialog" class="proj-dialog-overlay" @click.self="showConfirmDialog = false">
+        <div class="proj-dialog">
+          <h3>{{ confirmDialogTitle }}</h3>
+          <p>{{ confirmDialogMsg }}</p>
+          <div class="proj-dialog-actions">
+            <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('common.action.cancel') }} <kbd>ESC</kbd></button>
+            <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
 
     <!-- 文件夹选择器 / Folder browser -->

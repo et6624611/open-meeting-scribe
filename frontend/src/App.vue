@@ -97,48 +97,48 @@
     <div class="chrome-btm" :class="{ 'is-pinned': statusPinned }">
       <div class="bb-hotzone" aria-hidden="true"></div>
       <div class="bb-clip">
-    <footer class="status" ref="statusBarEl" :class="statusCapsMode === 'full' ? '' : 'is-' + statusCapsMode">
-      <div class="left">
-        <div class="caps" ref="statusCapsEl" data-od-id="statusbar-caps" aria-live="polite">
-          <button
-            type="button"
-            class="cap"
-            data-od-id="status-cap-llm"
-            :aria-label="llmCapAria"
-            :title="llmCapAria"
-            @click="goToAccessSettings('llm')"
-          >
-            <span class="cap-dot" :class="llmDotClass"></span>
-            <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_ai') }}</span><span class="cap-name-short">{{ t('common.usage.cap_ai_short') }}</span></span>
-            <span class="cap-src">{{ llmSourceLabel }}</span>
-            <span class="cap-st" :class="llmStatusClass">{{ llmStatusLabel }}</span>
-            <span v-if="quotaShortLabel" class="cap-quota">{{ quotaShortLabel }}</span>
-          </button>
-          <span class="cap-sep" aria-hidden="true"></span>
-          <button
-            type="button"
-            class="cap"
-            data-od-id="status-cap-asr"
-            :aria-label="asrCapAria"
-            :title="asrCapAria"
-            @click="goToAccessSettings('asr')"
-          >
-            <span class="cap-dot" :class="asrDotClass"></span>
-            <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_asr') }}</span><span class="cap-name-short">{{ t('common.usage.cap_asr_short') }}</span></span>
-            <span class="cap-src">{{ asrSourceLabel }}</span>
-            <span class="cap-st" :class="asrStatusClass">{{ asrStatusLabel }}</span>
-          </button>
-        </div>
-        <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
-          <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
-          <span class="usage-text" id="usageText"></span>
-        </div>
-      </div>
-      <span class="philosophy-text" id="philosophyText"><template v-for="(word, wIdx) in philosophyChars" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="philosophy-char" :style="{ animationDelay: `${((wIdx > 0 ? philosophyChars.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.08}s` }">{{ ch }}</span>{{ wIdx < philosophyChars.length - 1 ? ' ' : '' }}</template></span>
-      <div class="right">
-        <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
-      </div>
-    </footer>
+        <footer class="status" ref="statusBarEl" :class="statusCapsMode === 'full' ? '' : 'is-' + statusCapsMode">
+          <div class="left">
+            <div class="caps" ref="statusCapsEl" data-od-id="statusbar-caps" aria-live="polite">
+              <button
+                type="button"
+                class="cap"
+                data-od-id="status-cap-llm"
+                :aria-label="llmCapAria"
+                :title="llmCapAria"
+                @click="goToAccessSettings('llm')"
+              >
+                <span class="cap-dot" :class="llmDotClass"></span>
+                <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_ai') }}</span><span class="cap-name-short">{{ t('common.usage.cap_ai_short') }}</span></span>
+                <span class="cap-src">{{ llmSourceLabel }}</span>
+                <span class="cap-st" :class="llmStatusClass">{{ llmStatusLabel }}</span>
+                <span v-if="quotaShortLabel" class="cap-quota">{{ quotaShortLabel }}</span>
+              </button>
+              <span class="cap-sep" aria-hidden="true"></span>
+              <button
+                type="button"
+                class="cap"
+                data-od-id="status-cap-asr"
+                :aria-label="asrCapAria"
+                :title="asrCapAria"
+                @click="goToAccessSettings('asr')"
+              >
+                <span class="cap-dot" :class="asrDotClass"></span>
+                <span class="cap-name"><span class="cap-name-full">{{ t('common.usage.status_asr') }}</span><span class="cap-name-short">{{ t('common.usage.cap_asr_short') }}</span></span>
+                <span class="cap-src">{{ asrSourceLabel }}</span>
+                <span class="cap-st" :class="asrStatusClass">{{ asrStatusLabel }}</span>
+              </button>
+            </div>
+            <div class="usage-indicator" id="usageIndicator" style="display:none" :title="t('common.usage.title')">
+              <div class="usage-bar"><div class="usage-bar-fill level-ok" id="usageBarFill" style="width:100%"></div></div>
+              <span class="usage-text" id="usageText"></span>
+            </div>
+          </div>
+          <span class="philosophy-text" id="philosophyText"><template v-for="(word, wIdx) in philosophyChars" :key="'w'+wIdx"><span v-for="(ch, cIdx) in word" :key="cIdx" class="philosophy-char" :style="{ animationDelay: `${((wIdx > 0 ? philosophyChars.slice(0, wIdx).reduce((s, w) => s + w.length + 1, 0) : 0) + cIdx) * 0.08}s` }">{{ ch }}</span>{{ wIdx < philosophyChars.length - 1 ? ' ' : '' }}</template></span>
+          <div class="right">
+            <div class="item" id="statusInfo">{{ t('common.status.ready') }}</div>
+          </div>
+        </footer>
       </div>
     </div>
   </div>

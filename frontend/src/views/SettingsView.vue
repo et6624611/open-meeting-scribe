@@ -49,431 +49,431 @@
     <!-- 右栏：内容区 / Right: content area -->
     <div class="settings-content">
 
-    <!-- ═══ 账户登录 / Account ═══ -->
-    <div v-show="activeCategory === 'account'">
-      <AccountPanel :initial-prefer="!!settings.prefer_subscription" />
-    </div>
-
-    <!-- ═══ API 配置 / AI compute source ═══ -->
-    <div v-show="activeCategory === 'ai'">
-      <AiSourcePanel :settings="settings" @refresh="reloadSettings" />
-    </div>
-
-    <!-- ═══ ASR 配置 / ASR compute source ═══ -->
-    <div v-show="activeCategory === 'asr'">
-      <AsrSourcePanel :settings="settings" @goto="onPanelGoto" @refresh="reloadSettings" />
-    </div>
-
-    <!-- ═══ 本地引擎 / Local engine ═══ -->
-    <div v-show="activeCategory === 'engine'">
-      <LocalEnginePanel />
-    </div>
-
-    <!-- ═══ 转写 / Transcription ═══ -->
-    <div v-show="activeCategory === 'transcription'">
-    <!-- 说话人分离 / Speaker diarization -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.diarization') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.diarization_desc') }}</p>
-      <div class="wm-setting-row">
-        <label>
-          {{ t('settings.diarization_effective') }}
-          <span class="toggle-desc">
-            {{ diarizationInfo.effective === 'local' ? t('settings.diarization_effective_local') : t('settings.diarization_effective_cloud') }}
-          </span>
-        </label>
+      <!-- ═══ 账户登录 / Account ═══ -->
+      <div v-show="activeCategory === 'account'">
+        <AccountPanel :initial-prefer="!!settings.prefer_subscription" />
       </div>
-      <div class="wm-setting-row">
-        <label>
-          {{ t('settings.diarization_local_toggle') }}
-          <span class="toggle-desc">{{ t('settings.diarization_local_toggle_desc') }}</span>
-        </label>
-        <div class="wm-toggle-wrap">
-          <div
-            class="wm-toggle"
-            :class="{ 'is-on': diarizationInfo.local_diarization, 'is-disabled': !diarizationInfo.can_toggle }"
-            role="switch"
-            :aria-checked="diarizationInfo.local_diarization"
-            :tabindex="diarizationInfo.can_toggle ? 0 : -1"
-            @click="onToggleDiarization"
-            @keydown.enter.prevent="onToggleDiarization"
-            @keydown.space.prevent="onToggleDiarization"
-          ></div>
-          <span class="wm-setting-val">{{ diarizationInfo.local_diarization ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-        </div>
-        <span v-if="!diarizationInfo.can_toggle" class="toggle-experimental">{{ t('settings.diarization_requires_subscription') }}</span>
+
+      <!-- ═══ API 配置 / AI compute source ═══ -->
+      <div v-show="activeCategory === 'ai'">
+        <AiSourcePanel :settings="settings" @refresh="reloadSettings" />
       </div>
-    </div>
 
-    <!-- 输出目录 / Output directory -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.output_dir') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.output_dir_desc') }}</p>
-      <div class="settings-field">
-        <input v-model="settings.output_dir" class="settings-input" :placeholder="t('settings.output_dir_placeholder')" />
+      <!-- ═══ ASR 配置 / ASR compute source ═══ -->
+      <div v-show="activeCategory === 'asr'">
+        <AsrSourcePanel :settings="settings" @goto="onPanelGoto" @refresh="reloadSettings" />
       </div>
-    </div>
 
-    <!-- 录音设备 / Recording device -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.recording_device') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.recording_device_desc') }}</p>
-      <div class="settings-field">
-        <select v-model="selectedDevice" class="settings-input" :disabled="devicesLoading">
-          <option value="">{{ t('settings.recording_device_auto') }}</option>
-          <option v-for="d in audioDevices" :key="d.index" :value="d.name">{{ d.name }}</option>
-        </select>
+      <!-- ═══ 本地引擎 / Local engine ═══ -->
+      <div v-show="activeCategory === 'engine'">
+        <LocalEnginePanel />
       </div>
-      <div class="version-actions">
-        <button class="btn btn-secondary btn-sm" @click="loadDevices" :disabled="devicesLoading">
-          <svg v-if="devicesLoading" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-          {{ devicesLoading ? t('settings.recording_device_loading') : t('settings.recording_device_refresh') }}
-        </button>
-        <span v-if="!devicesLoading && audioDevices.length === 0 && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_none') }}</span>
-        <span v-if="!devicesLoading && !ffmpegAvailable && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_ffmpeg_missing') }}</span>
-      </div>
-    </div>
-    </div>
 
-    <!-- ═══ 外观 / Appearance ═══ -->
-    <div v-show="activeCategory === 'appearance'">
-    <!-- 主题 / Theme -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.appearance') }}</h2>
-      <div class="theme-grid" @mouseleave="themeStore.restoreTheme()">
-        <button
-          v-for="theme in THEMES"
-          :key="theme.id"
-          class="theme-chip"
-          :class="{ 'is-active': themeStore.current === theme.id }"
-          @mouseenter="themeStore.previewTheme(theme.id)"
-          @focus="themeStore.previewTheme(theme.id)"
-          @click="themeStore.setTheme(theme.id)"
-        >{{ t(`common.theme.${theme.id.replace(/-/g, '_')}`) }}</button>
-      </div>
-    </div>
-
-    <!-- 水印氛围 / Watermark ambiance -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.watermark') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.watermark_desc') }}</p>
-      <div class="wm-setting-row">
-        <label>{{ t('settings.watermark_enabled') }}</label>
-        <div class="wm-toggle-wrap">
-          <div
-            class="wm-toggle"
-            :class="{ 'is-on': wmEnabled }"
-            role="switch"
-            :aria-checked="wmEnabled"
-            tabindex="0"
-            @click="wmToggle"
-            @keydown.enter.prevent="wmToggle"
-            @keydown.space.prevent="wmToggle"
-          ></div>
-          <span class="wm-setting-val">{{ wmEnabled ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-        </div>
-      </div>
-      <div class="wm-setting-row">
-        <label>{{ t('settings.watermark_opacity') }}</label>
-        <input type="range" min="10" max="100" step="5" :value="Math.round(wmOpacity * 100)" @input="onWmOpacityInput" />
-        <span class="wm-setting-val">{{ Math.round(wmOpacity * 100) }}%</span>
-      </div>
-    </div>
-
-    <!-- 语言 / Language -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.language') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.language_subtitle') }}</p>
-      <div class="theme-grid">
-        <button
-          v-for="lang in LANG_OPTIONS"
-          :key="lang.id"
-          class="theme-chip"
-          :class="{ 'is-active': currentLocale === lang.id }"
-          @click="onSwitchLang(lang.id)"
-        >{{ lang.label }}</button>
-      </div>
-    </div>
-    </div>
-
-    <!-- ═══ 功能 / Features ═══ -->
-    <div v-show="activeCategory === 'features'">
-    <!-- 功能开关 / Feature toggles -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.features') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.features_desc') }}</p>
-
-      <div class="feature-toggles">
-        <div class="wm-setting-row">
-          <label>
-            {{ t('settings.realtime_chapters') }}
-            <span class="toggle-desc">{{ t('settings.realtime_chapters_desc') }}</span>
-          </label>
-          <div class="wm-toggle-wrap">
-            <div
-              class="wm-toggle"
-              :class="{ 'is-on': featureFlags.realtime_chapters }"
-              role="switch"
-              :aria-checked="featureFlags.realtime_chapters"
-              tabindex="0"
-              @click="toggleFlag('realtime_chapters')"
-              @keydown.enter.prevent="toggleFlag('realtime_chapters')"
-              @keydown.space.prevent="toggleFlag('realtime_chapters')"
-            ></div>
-            <span class="wm-setting-val">{{ featureFlags.realtime_chapters ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-          </div>
-        </div>
-
-        <div class="wm-setting-row">
-          <label>
-            {{ t('settings.realtime_summary') }}
-            <span class="toggle-desc">{{ t('settings.realtime_summary_desc') }}</span>
-          </label>
-          <div class="wm-toggle-wrap">
-            <div
-              class="wm-toggle"
-              :class="{ 'is-on': featureFlags.realtime_summary }"
-              role="switch"
-              :aria-checked="featureFlags.realtime_summary"
-              tabindex="0"
-              @click="toggleFlag('realtime_summary')"
-              @keydown.enter.prevent="toggleFlag('realtime_summary')"
-              @keydown.space.prevent="toggleFlag('realtime_summary')"
-            ></div>
-            <span class="wm-setting-val">{{ featureFlags.realtime_summary ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-          </div>
-        </div>
-
-        <div class="wm-setting-row">
-          <label>
-            {{ t('settings.update_check') }}
-            <span class="toggle-desc">{{ t('settings.update_check_desc') }}</span>
-          </label>
-          <div class="wm-toggle-wrap">
-            <div
-              class="wm-toggle"
-              :class="{ 'is-on': featureFlags.update_check }"
-              role="switch"
-              :aria-checked="featureFlags.update_check"
-              tabindex="0"
-              @click="toggleFlag('update_check')"
-              @keydown.enter.prevent="toggleFlag('update_check')"
-              @keydown.space.prevent="toggleFlag('update_check')"
-            ></div>
-            <span class="wm-setting-val">{{ featureFlags.update_check ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-          </div>
-        </div>
-
-        <div class="wm-setting-row">
-          <label>
-            {{ t('settings.voiceprint_auto_match') }}
-            <span class="toggle-desc">{{ t('settings.voiceprint_auto_match_desc') }}</span>
-            <span class="toggle-experimental">{{ t('settings.experimental') }}</span>
-          </label>
-          <div class="wm-toggle-wrap">
-            <div
-              class="wm-toggle"
-              :class="{ 'is-on': featureFlags.voiceprint_auto_match }"
-              role="switch"
-              :aria-checked="featureFlags.voiceprint_auto_match"
-              tabindex="0"
-              @click="toggleFlag('voiceprint_auto_match')"
-              @keydown.enter.prevent="toggleFlag('voiceprint_auto_match')"
-              @keydown.space.prevent="toggleFlag('voiceprint_auto_match')"
-            ></div>
-            <span class="wm-setting-val">{{ featureFlags.voiceprint_auto_match ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div>
-
-    <!-- ═══ 系统 / System ═══ -->
-    <div v-show="activeCategory === 'system'">
-    <!-- 版本信息 / Version info -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.version_info') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.version_info_desc') }}</p>
-      <div class="version-panel">
-        <div class="version-row">
-          <span class="version-label">{{ t('settings.current_version') }}</span>
-          <span class="version-value">{{ settingsCurrentVersion || '—' }}</span>
-        </div>
-        <div v-if="settingsLatestVersion" class="version-row">
-          <span class="version-label">{{ t('settings.latest_version') }}</span>
-          <span class="version-value" :class="{ 'is-newer': settingsHasUpdate }">{{ settingsLatestVersion }}</span>
-        </div>
-        <div class="version-actions">
-          <button class="btn btn-secondary btn-sm" @click="onManualCheck" :disabled="settingsChecking">
-            <svg v-if="settingsChecking" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            {{ settingsChecking ? t('settings.checking_update') : t('settings.check_update_btn') }}
-          </button>
-          <a v-if="settingsHasUpdate && settingsReleaseUrl" class="btn btn-primary btn-sm" :href="settingsReleaseUrl" target="_blank" rel="noopener" style="margin-left:8px">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            {{ settingsDownloadLabel ? t('settings.download_for_platform', { platform: settingsDownloadLabel }) : t('settings.go_to_download') }}
-          </a>
-          <span v-if="settingsCheckMessage" class="version-msg" :class="{ 'is-error': settingsCheckError }">{{ settingsCheckMessage }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- CLI 命令参考 / CLI command reference -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.cli_reference') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.cli_reference_desc') }}</p>
-      <div class="cli-ref-list">
-        <template v-for="(val, key) in cliReference" :key="key">
-          <div v-if="typeof val === 'string'" class="cli-ref-item">
-            <span class="cli-ref-cmd">{{ key }}</span>
-            <code>{{ val }}</code>
-          </div>
-          <div v-else-if="typeof val === 'object'" class="cli-ref-group">
-            <div class="cli-ref-group-title">{{ key }}</div>
-            <div v-for="(subVal, subKey) in (val as Record<string, string>)" :key="subKey" class="cli-ref-item">
-              <span class="cli-ref-cmd">{{ subKey }}</span>
-              <code>{{ subVal }}</code>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <!-- 键盘快捷键参考 / Keyboard shortcut reference -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.keyboard_shortcuts') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.keyboard_shortcuts_desc') }}</p>
-      <div class="kbd-shortcut-list">
-        <div v-for="s in shortcutList" :key="s.key" class="kbd-shortcut-item">
-          <span class="kbd-shortcut-label">{{ s.label }}</span>
-          <kbd class="kbd-shortcut-key">{{ s.key }}</kbd>
-        </div>
-      </div>
-    </div>
-
-    <!-- 重新加载页面 / Reload page -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.reload_page') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.reload_page_desc') }}</p>
-      <button class="btn btn-secondary" @click="onReloadPage">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        {{ t('settings.reload_page_btn') }}
-      </button>
-    </div>
-
-    <!-- 禁用快捷指令 / Disabled commands -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.disabled_commands') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.disabled_commands_desc') }}</p>
-      <div v-if="!settings.disabled_commands?.length" class="settings-empty">{{ t('settings.no_disabled_commands') }}</div>
-      <div v-else class="disabled-cmd-list">
-        <div v-for="cmd in settings.disabled_commands" :key="cmd" class="disabled-cmd-item">
-          <code>{{ cmd }}</code>
-          <button class="btn btn-sm btn-secondary" @click="onEnableCommand(cmd)">{{ t('settings.command_enable') }}</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 存储空间 / Storage -->
-    <div class="settings-section">
-      <h2 class="settings-title">{{ t('settings.storage') }}</h2>
-      <p class="settings-section-desc">{{ t('settings.storage_desc') }}</p>
-
-      <div v-if="storageLoading" class="settings-empty">{{ t('common.loading') }}</div>
-      <div v-else-if="storageUsage" class="storage-panel">
-        <div class="storage-overview">
-          <div class="storage-stat">
-            <div class="storage-stat-value">{{ formatBytes(storageUsage.total_bytes) }}</div>
-            <div class="storage-stat-label">{{ t('settings.storage_total') }}</div>
-          </div>
-          <div class="storage-stat">
-            <div class="storage-stat-value" style="color:var(--accent)">{{ formatBytes(storageUsage.reclaimable_bytes) }}</div>
-            <div class="storage-stat-label">{{ t('settings.storage_reclaimable') }}</div>
-          </div>
-        </div>
-
-        <div class="storage-breakdown">
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_recordings') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.recordings.size_bytes) }} <small>({{ storageUsage.recordings.file_count }})</small></span>
-          </div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_uploads') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.uploads.size_bytes) }} <small>({{ storageUsage.uploads.file_count }})</small></span>
-          </div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_tasks') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.tasks.size_bytes) }} <small>({{ storageUsage.tasks.file_count }})</small></span>
-          </div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_output') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.output.size_bytes) }} <small>({{ storageUsage.output.file_count }})</small></span>
-          </div>
-        </div>
-
-        <div v-if="storageUsage.intermediate" class="storage-intermediate">
-          <div class="storage-intermediate-title">{{ t('settings.storage_intermediate') }}</div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_normalized') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.normalized_files.size_bytes) }} <small>({{ storageUsage.intermediate.normalized_files.file_count }})</small></span>
-          </div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_raw_files') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.raw_files.size_bytes) }} <small>({{ storageUsage.intermediate.raw_files.file_count }})</small></span>
-          </div>
-          <div class="storage-breakdown-item">
-            <span class="storage-breakdown-label">{{ t('settings.storage_duplicate') }}</span>
-            <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.duplicate_normalized.size_bytes) }} <small>({{ storageUsage.intermediate.duplicate_normalized.file_count }})</small></span>
-          </div>
-        </div>
-
-        <div class="storage-actions">
-          <button class="btn btn-secondary" @click="onCleanIntermediate" :disabled="cleaning">
-            {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_btn') }}
-          </button>
-          <button class="btn btn-secondary" @click="onCleanOrphaned" :disabled="cleaning">
-            {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_orphaned_btn') }}
-          </button>
-          <button class="btn btn-sm btn-secondary" @click="onRefreshStorage" :disabled="storageLoading" style="margin-left:auto">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            {{ t('common.action.refresh') }}
-          </button>
-        </div>
-        <p v-if="cleanResult" class="storage-clean-result">{{ cleanResult }}</p>
-
-        <div class="storage-auto-archive">
+      <!-- ═══ 转写 / Transcription ═══ -->
+      <div v-show="activeCategory === 'transcription'">
+        <!-- 说话人分离 / Speaker diarization -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.diarization') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.diarization_desc') }}</p>
           <div class="wm-setting-row">
-            <label>{{ t('settings.storage_auto_clean') }}</label>
+            <label>
+              {{ t('settings.diarization_effective') }}
+              <span class="toggle-desc">
+                {{ diarizationInfo.effective === 'local' ? t('settings.diarization_effective_local') : t('settings.diarization_effective_cloud') }}
+              </span>
+            </label>
+          </div>
+          <div class="wm-setting-row">
+            <label>
+              {{ t('settings.diarization_local_toggle') }}
+              <span class="toggle-desc">{{ t('settings.diarization_local_toggle_desc') }}</span>
+            </label>
             <div class="wm-toggle-wrap">
               <div
                 class="wm-toggle"
-                :class="{ 'is-on': storageConfig.auto_clean_intermediate }"
+                :class="{ 'is-on': diarizationInfo.local_diarization, 'is-disabled': !diarizationInfo.can_toggle }"
                 role="switch"
-                :aria-checked="storageConfig.auto_clean_intermediate"
-                tabindex="0"
-                @click="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
-                @keydown.enter.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
-                @keydown.space.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                :aria-checked="diarizationInfo.local_diarization"
+                :tabindex="diarizationInfo.can_toggle ? 0 : -1"
+                @click="onToggleDiarization"
+                @keydown.enter.prevent="onToggleDiarization"
+                @keydown.space.prevent="onToggleDiarization"
               ></div>
-              <span class="wm-setting-val">{{ storageConfig.auto_clean_intermediate ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+              <span class="wm-setting-val">{{ diarizationInfo.local_diarization ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
             </div>
+            <span v-if="!diarizationInfo.can_toggle" class="toggle-experimental">{{ t('settings.diarization_requires_subscription') }}</span>
           </div>
-          <div class="wm-setting-row" style="margin-top:var(--s-3)">
-            <label>
-              {{ t('settings.storage_auto_archive') }}
-              <span class="toggle-desc">{{ t('settings.storage_auto_archive_desc') }}</span>
-            </label>
-            <select v-model="storageConfig.auto_archive_days" class="settings-input" style="max-width:160px;padding:4px 8px;font-size:12px">
-              <option :value="0">{{ t('settings.storage_auto_archive_off') }}</option>
-              <option :value="7">7 {{ t('settings.storage_days') }}</option>
-              <option :value="30">30 {{ t('settings.storage_days') }}</option>
-              <option :value="90">90 {{ t('settings.storage_days') }}</option>
-              <option :value="180">180 {{ t('settings.storage_days') }}</option>
+        </div>
+
+        <!-- 输出目录 / Output directory -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.output_dir') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.output_dir_desc') }}</p>
+          <div class="settings-field">
+            <input v-model="settings.output_dir" class="settings-input" :placeholder="t('settings.output_dir_placeholder')" />
+          </div>
+        </div>
+
+        <!-- 录音设备 / Recording device -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.recording_device') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.recording_device_desc') }}</p>
+          <div class="settings-field">
+            <select v-model="selectedDevice" class="settings-input" :disabled="devicesLoading">
+              <option value="">{{ t('settings.recording_device_auto') }}</option>
+              <option v-for="d in audioDevices" :key="d.index" :value="d.name">{{ d.name }}</option>
             </select>
+          </div>
+          <div class="version-actions">
+            <button class="btn btn-secondary btn-sm" @click="loadDevices" :disabled="devicesLoading">
+              <svg v-if="devicesLoading" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              {{ devicesLoading ? t('settings.recording_device_loading') : t('settings.recording_device_refresh') }}
+            </button>
+            <span v-if="!devicesLoading && audioDevices.length === 0 && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_none') }}</span>
+            <span v-if="!devicesLoading && !ffmpegAvailable && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_ffmpeg_missing') }}</span>
           </div>
         </div>
       </div>
-    </div>
-    </div>
+
+      <!-- ═══ 外观 / Appearance ═══ -->
+      <div v-show="activeCategory === 'appearance'">
+        <!-- 主题 / Theme -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.appearance') }}</h2>
+          <div class="theme-grid" @mouseleave="themeStore.restoreTheme()">
+            <button
+              v-for="theme in THEMES"
+              :key="theme.id"
+              class="theme-chip"
+              :class="{ 'is-active': themeStore.current === theme.id }"
+              @mouseenter="themeStore.previewTheme(theme.id)"
+              @focus="themeStore.previewTheme(theme.id)"
+              @click="themeStore.setTheme(theme.id)"
+            >{{ t(`common.theme.${theme.id.replace(/-/g, '_')}`) }}</button>
+          </div>
+        </div>
+
+        <!-- 水印氛围 / Watermark ambiance -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.watermark') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.watermark_desc') }}</p>
+          <div class="wm-setting-row">
+            <label>{{ t('settings.watermark_enabled') }}</label>
+            <div class="wm-toggle-wrap">
+              <div
+                class="wm-toggle"
+                :class="{ 'is-on': wmEnabled }"
+                role="switch"
+                :aria-checked="wmEnabled"
+                tabindex="0"
+                @click="wmToggle"
+                @keydown.enter.prevent="wmToggle"
+                @keydown.space.prevent="wmToggle"
+              ></div>
+              <span class="wm-setting-val">{{ wmEnabled ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+            </div>
+          </div>
+          <div class="wm-setting-row">
+            <label>{{ t('settings.watermark_opacity') }}</label>
+            <input type="range" min="10" max="100" step="5" :value="Math.round(wmOpacity * 100)" @input="onWmOpacityInput" />
+            <span class="wm-setting-val">{{ Math.round(wmOpacity * 100) }}%</span>
+          </div>
+        </div>
+
+        <!-- 语言 / Language -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.language') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.language_subtitle') }}</p>
+          <div class="theme-grid">
+            <button
+              v-for="lang in LANG_OPTIONS"
+              :key="lang.id"
+              class="theme-chip"
+              :class="{ 'is-active': currentLocale === lang.id }"
+              @click="onSwitchLang(lang.id)"
+            >{{ lang.label }}</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 功能 / Features ═══ -->
+      <div v-show="activeCategory === 'features'">
+        <!-- 功能开关 / Feature toggles -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.features') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.features_desc') }}</p>
+
+          <div class="feature-toggles">
+            <div class="wm-setting-row">
+              <label>
+                {{ t('settings.realtime_chapters') }}
+                <span class="toggle-desc">{{ t('settings.realtime_chapters_desc') }}</span>
+              </label>
+              <div class="wm-toggle-wrap">
+                <div
+                  class="wm-toggle"
+                  :class="{ 'is-on': featureFlags.realtime_chapters }"
+                  role="switch"
+                  :aria-checked="featureFlags.realtime_chapters"
+                  tabindex="0"
+                  @click="toggleFlag('realtime_chapters')"
+                  @keydown.enter.prevent="toggleFlag('realtime_chapters')"
+                  @keydown.space.prevent="toggleFlag('realtime_chapters')"
+                ></div>
+                <span class="wm-setting-val">{{ featureFlags.realtime_chapters ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+              </div>
+            </div>
+
+            <div class="wm-setting-row">
+              <label>
+                {{ t('settings.realtime_summary') }}
+                <span class="toggle-desc">{{ t('settings.realtime_summary_desc') }}</span>
+              </label>
+              <div class="wm-toggle-wrap">
+                <div
+                  class="wm-toggle"
+                  :class="{ 'is-on': featureFlags.realtime_summary }"
+                  role="switch"
+                  :aria-checked="featureFlags.realtime_summary"
+                  tabindex="0"
+                  @click="toggleFlag('realtime_summary')"
+                  @keydown.enter.prevent="toggleFlag('realtime_summary')"
+                  @keydown.space.prevent="toggleFlag('realtime_summary')"
+                ></div>
+                <span class="wm-setting-val">{{ featureFlags.realtime_summary ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+              </div>
+            </div>
+
+            <div class="wm-setting-row">
+              <label>
+                {{ t('settings.update_check') }}
+                <span class="toggle-desc">{{ t('settings.update_check_desc') }}</span>
+              </label>
+              <div class="wm-toggle-wrap">
+                <div
+                  class="wm-toggle"
+                  :class="{ 'is-on': featureFlags.update_check }"
+                  role="switch"
+                  :aria-checked="featureFlags.update_check"
+                  tabindex="0"
+                  @click="toggleFlag('update_check')"
+                  @keydown.enter.prevent="toggleFlag('update_check')"
+                  @keydown.space.prevent="toggleFlag('update_check')"
+                ></div>
+                <span class="wm-setting-val">{{ featureFlags.update_check ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+              </div>
+            </div>
+
+            <div class="wm-setting-row">
+              <label>
+                {{ t('settings.voiceprint_auto_match') }}
+                <span class="toggle-desc">{{ t('settings.voiceprint_auto_match_desc') }}</span>
+                <span class="toggle-experimental">{{ t('settings.experimental') }}</span>
+              </label>
+              <div class="wm-toggle-wrap">
+                <div
+                  class="wm-toggle"
+                  :class="{ 'is-on': featureFlags.voiceprint_auto_match }"
+                  role="switch"
+                  :aria-checked="featureFlags.voiceprint_auto_match"
+                  tabindex="0"
+                  @click="toggleFlag('voiceprint_auto_match')"
+                  @keydown.enter.prevent="toggleFlag('voiceprint_auto_match')"
+                  @keydown.space.prevent="toggleFlag('voiceprint_auto_match')"
+                ></div>
+                <span class="wm-setting-val">{{ featureFlags.voiceprint_auto_match ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 系统 / System ═══ -->
+      <div v-show="activeCategory === 'system'">
+        <!-- 版本信息 / Version info -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.version_info') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.version_info_desc') }}</p>
+          <div class="version-panel">
+            <div class="version-row">
+              <span class="version-label">{{ t('settings.current_version') }}</span>
+              <span class="version-value">{{ settingsCurrentVersion || '—' }}</span>
+            </div>
+            <div v-if="settingsLatestVersion" class="version-row">
+              <span class="version-label">{{ t('settings.latest_version') }}</span>
+              <span class="version-value" :class="{ 'is-newer': settingsHasUpdate }">{{ settingsLatestVersion }}</span>
+            </div>
+            <div class="version-actions">
+              <button class="btn btn-secondary btn-sm" @click="onManualCheck" :disabled="settingsChecking">
+                <svg v-if="settingsChecking" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                {{ settingsChecking ? t('settings.checking_update') : t('settings.check_update_btn') }}
+              </button>
+              <a v-if="settingsHasUpdate && settingsReleaseUrl" class="btn btn-primary btn-sm" :href="settingsReleaseUrl" target="_blank" rel="noopener" style="margin-left:8px">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {{ settingsDownloadLabel ? t('settings.download_for_platform', { platform: settingsDownloadLabel }) : t('settings.go_to_download') }}
+              </a>
+              <span v-if="settingsCheckMessage" class="version-msg" :class="{ 'is-error': settingsCheckError }">{{ settingsCheckMessage }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CLI 命令参考 / CLI command reference -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.cli_reference') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.cli_reference_desc') }}</p>
+          <div class="cli-ref-list">
+            <template v-for="(val, key) in cliReference" :key="key">
+              <div v-if="typeof val === 'string'" class="cli-ref-item">
+                <span class="cli-ref-cmd">{{ key }}</span>
+                <code>{{ val }}</code>
+              </div>
+              <div v-else-if="typeof val === 'object'" class="cli-ref-group">
+                <div class="cli-ref-group-title">{{ key }}</div>
+                <div v-for="(subVal, subKey) in (val as Record<string, string>)" :key="subKey" class="cli-ref-item">
+                  <span class="cli-ref-cmd">{{ subKey }}</span>
+                  <code>{{ subVal }}</code>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- 键盘快捷键参考 / Keyboard shortcut reference -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.keyboard_shortcuts') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.keyboard_shortcuts_desc') }}</p>
+          <div class="kbd-shortcut-list">
+            <div v-for="s in shortcutList" :key="s.key" class="kbd-shortcut-item">
+              <span class="kbd-shortcut-label">{{ s.label }}</span>
+              <kbd class="kbd-shortcut-key">{{ s.key }}</kbd>
+            </div>
+          </div>
+        </div>
+
+        <!-- 重新加载页面 / Reload page -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.reload_page') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.reload_page_desc') }}</p>
+          <button class="btn btn-secondary" @click="onReloadPage">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            {{ t('settings.reload_page_btn') }}
+          </button>
+        </div>
+
+        <!-- 禁用快捷指令 / Disabled commands -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.disabled_commands') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.disabled_commands_desc') }}</p>
+          <div v-if="!settings.disabled_commands?.length" class="settings-empty">{{ t('settings.no_disabled_commands') }}</div>
+          <div v-else class="disabled-cmd-list">
+            <div v-for="cmd in settings.disabled_commands" :key="cmd" class="disabled-cmd-item">
+              <code>{{ cmd }}</code>
+              <button class="btn btn-sm btn-secondary" @click="onEnableCommand(cmd)">{{ t('settings.command_enable') }}</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 存储空间 / Storage -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.storage') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.storage_desc') }}</p>
+
+          <div v-if="storageLoading" class="settings-empty">{{ t('common.loading') }}</div>
+          <div v-else-if="storageUsage" class="storage-panel">
+            <div class="storage-overview">
+              <div class="storage-stat">
+                <div class="storage-stat-value">{{ formatBytes(storageUsage.total_bytes) }}</div>
+                <div class="storage-stat-label">{{ t('settings.storage_total') }}</div>
+              </div>
+              <div class="storage-stat">
+                <div class="storage-stat-value" style="color:var(--accent)">{{ formatBytes(storageUsage.reclaimable_bytes) }}</div>
+                <div class="storage-stat-label">{{ t('settings.storage_reclaimable') }}</div>
+              </div>
+            </div>
+
+            <div class="storage-breakdown">
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_recordings') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.recordings.size_bytes) }} <small>({{ storageUsage.recordings.file_count }})</small></span>
+              </div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_uploads') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.uploads.size_bytes) }} <small>({{ storageUsage.uploads.file_count }})</small></span>
+              </div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_tasks') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.tasks.size_bytes) }} <small>({{ storageUsage.tasks.file_count }})</small></span>
+              </div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_output') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.output.size_bytes) }} <small>({{ storageUsage.output.file_count }})</small></span>
+              </div>
+            </div>
+
+            <div v-if="storageUsage.intermediate" class="storage-intermediate">
+              <div class="storage-intermediate-title">{{ t('settings.storage_intermediate') }}</div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_normalized') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.normalized_files.size_bytes) }} <small>({{ storageUsage.intermediate.normalized_files.file_count }})</small></span>
+              </div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_raw_files') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.raw_files.size_bytes) }} <small>({{ storageUsage.intermediate.raw_files.file_count }})</small></span>
+              </div>
+              <div class="storage-breakdown-item">
+                <span class="storage-breakdown-label">{{ t('settings.storage_duplicate') }}</span>
+                <span class="storage-breakdown-value">{{ formatBytes(storageUsage.intermediate.duplicate_normalized.size_bytes) }} <small>({{ storageUsage.intermediate.duplicate_normalized.file_count }})</small></span>
+              </div>
+            </div>
+
+            <div class="storage-actions">
+              <button class="btn btn-secondary" @click="onCleanIntermediate" :disabled="cleaning">
+                {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_btn') }}
+              </button>
+              <button class="btn btn-secondary" @click="onCleanOrphaned" :disabled="cleaning">
+                {{ cleaning ? t('settings.storage_cleaning') : t('settings.storage_clean_orphaned_btn') }}
+              </button>
+              <button class="btn btn-sm btn-secondary" @click="onRefreshStorage" :disabled="storageLoading" style="margin-left:auto">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {{ t('common.action.refresh') }}
+              </button>
+            </div>
+            <p v-if="cleanResult" class="storage-clean-result">{{ cleanResult }}</p>
+
+            <div class="storage-auto-archive">
+              <div class="wm-setting-row">
+                <label>{{ t('settings.storage_auto_clean') }}</label>
+                <div class="wm-toggle-wrap">
+                  <div
+                    class="wm-toggle"
+                    :class="{ 'is-on': storageConfig.auto_clean_intermediate }"
+                    role="switch"
+                    :aria-checked="storageConfig.auto_clean_intermediate"
+                    tabindex="0"
+                    @click="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                    @keydown.enter.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                    @keydown.space.prevent="storageConfig.auto_clean_intermediate = !storageConfig.auto_clean_intermediate"
+                  ></div>
+                  <span class="wm-setting-val">{{ storageConfig.auto_clean_intermediate ? t('settings.toggle_on') : t('settings.toggle_off') }}</span>
+                </div>
+              </div>
+              <div class="wm-setting-row" style="margin-top:var(--s-3)">
+                <label>
+                  {{ t('settings.storage_auto_archive') }}
+                  <span class="toggle-desc">{{ t('settings.storage_auto_archive_desc') }}</span>
+                </label>
+                <select v-model="storageConfig.auto_archive_days" class="settings-input" style="max-width:160px;padding:4px 8px;font-size:12px">
+                  <option :value="0">{{ t('settings.storage_auto_archive_off') }}</option>
+                  <option :value="7">7 {{ t('settings.storage_days') }}</option>
+                  <option :value="30">30 {{ t('settings.storage_days') }}</option>
+                  <option :value="90">90 {{ t('settings.storage_days') }}</option>
+                  <option :value="180">180 {{ t('settings.storage_days') }}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div><!-- .settings-content -->
   </div><!-- .settings-layout -->

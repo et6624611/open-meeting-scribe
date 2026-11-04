@@ -105,17 +105,17 @@ category: "technical"
 **验收标准**：`npx eslint src/` 中该规则 error 数为 0；相关页面手动验证渲染正常
 **完成记录**：2026-11-04 完成。三处同属 `AiContextPanel.vue` 的 section 标题逐字显现模板，均为 `<template v-if="panelMounted" v-for="...">`。修复方式：守卫条件上移到 `sectionTitleChars` computed——未 mounted 时返回空数组，已 mounted 时返回真实词列表，模板三处仅保留 v-for 指令。实测 `npx eslint src/` 的 error 总数从 35 降至 32（其余为 32 个 `require-button-label`，属 T-06 范围），该规则命中为 0。`npm run test:unit` 60 用例全绿；`npx vue-tsc --noEmit` 无报错。
 
-### ☐ T-05 自动修复前端 1743 个缩进 warning
+### ☑ T-05 自动修复前端 1743 个缩进 warning
 
-- [ ] 在干净工作区执行 `cd frontend && npx eslint src/ --fix`
-- [ ] 运行 `npm run test:unit` 与 `npm run build` 确认无破坏
-- [ ] 单独提交（commit message 注明「纯格式修复，无逻辑变更」），避免与功能改动混合
+- [x] 在干净工作区执行 `cd frontend && npx eslint src/ --fix`
+- [x] 运行 `npm run test:unit` 与 `npm run build` 确认无破坏
+- [x] 单独提交（commit message 注明「纯格式修复，无逻辑变更」），避免与功能改动混合
 
 **位置**：`frontend/src/`（主要是 `vue/html-indent`）
 **影响**：diff 噪音大，代码风格不统一
 **工作量**：0.5h
 **验收标准**：`npx eslint src/` warning 数显著下降（目标 <100）；构建与测试全绿
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。先将遗留改动单独提交（依赖文档清理、T-04 修复各一笔）腾出干净工作区，再执行 `npx eslint src/ --fix`，1743 个 warning 全部清零（剩 32 个 `require-button-label` error 属 T-06 范围）；diff 仅格式变化（+1642/-1640，增删行数对称，无逻辑改动）。`npm run test:unit` 10 文件 60 用例全绿（2.17s）；`npm run build` 成功（11.03s，仅既有 chunk 体积提示）。格式修复单独提交。
 
 ---
 

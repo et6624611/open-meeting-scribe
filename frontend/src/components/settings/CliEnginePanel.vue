@@ -65,9 +65,11 @@
       <p class="cc-note cli-note-block">{{ t('settings.web_search_desc') }}</p>
       <div class="cc-field">
         <label class="cc-field-label" for="ws-api-key">{{ t('settings.web_search_api_key') }}</label>
-        <input id="ws-api-key" v-model="webSearchForm.api_key" class="cc-input cc-input-mono" type="password"
-               :placeholder="existingWebSearchKey ? maskKey(existingWebSearchKey) : t('settings.web_search_api_key_placeholder')"
-               autocomplete="off" />
+        <input
+          id="ws-api-key" v-model="webSearchForm.api_key" class="cc-input cc-input-mono" type="password"
+          :placeholder="existingWebSearchKey ? maskKey(existingWebSearchKey) : t('settings.web_search_api_key_placeholder')"
+          autocomplete="off"
+        />
       </div>
       <div class="ws-actions">
         <span class="cc-note cli-note-block ws-free-hint">{{ t('settings.web_search_brave_free') }}</span>

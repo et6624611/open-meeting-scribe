@@ -55,479 +55,479 @@
 
     <!-- 正常态：原有工具栏 + 元信息 + 说话人区 + Tab + 内容区 / Normal state: original toolbar + meta + speaker zone + tabs + content -->
     <template v-else>
-    <!-- 紧凑图标工具栏 / Compact icon toolbar -->
-    <div class="gen-toolbar">
-      <div class="gen-toolbar-left">
-        <nav class="gen-breadcrumb" id="genBreadcrumb" :aria-label="t('generating.breadcrumb.nav')">
-          <template v-for="(crumb, i) in breadcrumbs" :key="i">
-            <button class="gen-breadcrumb-item" :title="crumb.label" @click="router.push(crumb.to)">
-              <svg v-if="crumb.icon === 'folder'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-              <span class="gen-breadcrumb-label">{{ crumb.label }}</span>
-            </button>
-            <span class="gen-breadcrumb-sep">/</span>
-          </template>
-          <!-- 页面级标题：点击即原位重命名（编辑器落在顶栏标题，E2E T-021） / Page title: click to rename in place -->
-          <span
-            class="gen-breadcrumb-current"
-            role="button"
-            tabindex="0"
-            :class="{ 'is-renaming': isTitleRenaming }"
-            :title="t('task.rename')"
-            @click="onRenameTask"
-            @keydown.enter.prevent="onRenameTask"
-          >{{ breadcrumbDisplayTitle }}</span>
-        </nav>
-      </div>
-      <div class="gen-toolbar-right">
-        <!-- 在 IDE 中继续：上下文联动入口 / Continue in IDE -->
-        <div v-if="ws.ides.value.length" class="gen-ide-wrap">
-          <button ref="genIdeBtn" class="gen-toolbar-icon gen-toolbar-ide" :title="t('ai-panel.context.workspace_ide_continue')" @click="toggleIdeMenu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-            <span class="tb-tip">{{ t('ai-panel.context.workspace_ide_continue') }}</span>
-          </button>
-          <div v-if="ideMenuOpen" ref="genIdeMenu" class="gen-ide-menu" role="dialog">
-            <div class="gen-ide-head">
-              <span>{{ t('ai-panel.context.workspace_ide_open_in') }}</span>
-              <button class="gen-ide-close" :title="t('ai-panel.context.workspace_ide_close')" @click="ideMenuOpen = false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      <!-- 紧凑图标工具栏 / Compact icon toolbar -->
+      <div class="gen-toolbar">
+        <div class="gen-toolbar-left">
+          <nav class="gen-breadcrumb" id="genBreadcrumb" :aria-label="t('generating.breadcrumb.nav')">
+            <template v-for="(crumb, i) in breadcrumbs" :key="i">
+              <button class="gen-breadcrumb-item" :title="crumb.label" @click="router.push(crumb.to)">
+                <svg v-if="crumb.icon === 'folder'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                <span class="gen-breadcrumb-label">{{ crumb.label }}</span>
               </button>
-            </div>
-            <div class="gen-ide-scope">
-              <span class="gen-ide-scope-label">{{ t('ai-panel.context.workspace_ide_scope_label') }}</span>
-              <div class="gen-ide-scope-opts">
-                <button
-                  v-for="s in ideScopes"
-                  :key="s.id"
-                  class="gen-ide-scope-btn"
-                  :class="{ 'is-active': ideScope === s.id }"
-                  :disabled="s.id === 'project' && !task?.project_id"
-                  :title="s.id === 'project' && !task?.project_id
-                    ? t('ai-panel.context.workspace_ide_scope_project_hint')
-                    : t('ai-panel.context.workspace_ide_scope_hint')"
-                  @click="ideScope = s.id"
-                >{{ t(s.label) }}</button>
-              </div>
-            </div>
-            <ul class="gen-ide-list">
-              <li v-for="ide in ws.ides.value" :key="ide.ide_id">
-                <button
-                  class="gen-ide-item"
-                  :disabled="!ide.available || ws.openingIdeId.value === ide.ide_id"
-                  :title="ide.available ? ide.display_name : t('ai-panel.context.workspace_ide_not_found', { name: ide.display_name })"
-                  @click="onContinueInIde(ide.ide_id)"
-                >
-                  <span>{{ ide.display_name }}</span>
-                  <span v-if="!ide.available" class="gen-ide-na">{{ t('ai-panel.context.workspace_ide_unavailable') }}</span>
-                  <svg v-else-if="ws.openingIdeId.value === ide.ide_id" class="gen-ide-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <button class="gen-toolbar-icon" @click="onCopy" :title="t('generating.toolbar.copy')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <span class="tb-tip">{{ t('generating.toolbar.copy') }}</span>
-        </button>
-        <button class="gen-toolbar-icon" @click="onExport" :title="t('generating.toolbar.export_title')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-          <span class="tb-tip">{{ t('generating.toolbar.export') }}</span>
-        </button>
-        <button class="gen-toolbar-icon" @click="onFullscreen" :title="t('generating.toolbar.fullscreen')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-          <span class="tb-tip">{{ t('generating.toolbar.fullscreen') }}</span>
-        </button>
-        <!-- 知识库同步状态指示器 / Knowledge base sync status indicator -->
-        <button
-          v-if="syncStatus.can_sync"
-          class="gen-toolbar-icon gen-toolbar-sync"
-          :class="{ 'is-dirty': syncStatus.is_dirty, 'is-syncing': isSyncing, 'is-synced': !syncStatus.is_dirty }"
-          :title="isSyncing ? t('generating.toolbar.syncing') : (syncStatus.is_dirty ? t('generating.toolbar.sync_dirty') : t('generating.toolbar.synced'))"
-          :disabled="isSyncing"
-          @click="onSyncToKb"
-        >
-          <!-- 同步中：旋转图标 / Syncing: spinning icon -->
-          <svg v-if="isSyncing" class="sync-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-          <!-- 已同步：check-circle / Synced: check-circle -->
-          <svg v-else-if="!syncStatus.is_dirty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <!-- 有更新：upload-cloud / Dirty: upload-cloud -->
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-          <span class="tb-tip">{{ t('generating.toolbar.sync_kb') }}</span>
-        </button>
-        <div class="gen-toolbar-divider"></div>
-        <div class="gen-toolbar-more-wrap" @mouseenter="onGenMoreEnter" @mouseleave="onGenMoreLeave">
-          <button ref="genMoreBtn" class="gen-toolbar-icon" v-bind="genMoreTriggerAttrs" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')">
-            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
-          </button>
-          <div ref="genMoreDropdown" class="gen-toolbar-more-menu" v-bind="genMoreMenuAttrs" :class="{ 'is-open': showMoreMenu }">
-            <!-- 复制组 -->
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onCopyTitle">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              {{ t('task.copy_title') }}
-            </button>
-            <button v-if="task?.summary" class="gen-toolbar-more-item" role="menuitem" @click="onCopySummary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-              {{ t('task.copy_summary') }}
-            </button>
-            <!-- 管理组 -->
-            <div class="gen-toolbar-more-divider"></div>
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onRenameTask">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              {{ t('task.rename') }}
-            </button>
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onRetrySummary">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              {{ t('generating.toolbar.regenerate') }}
-            </button>
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onRetranscribe">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              {{ t('generating.toolbar.retranscribe') }}
-            </button>
-            <!-- 危险组 -->
-            <div class="gen-toolbar-more-divider"></div>
-            <button class="gen-toolbar-more-item" role="menuitem" @click="onArchiveConfirm">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
-              {{ data.isArchived.value ? t('generating.toolbar.unarchive') : t('generating.toolbar.archive') }}
-            </button>
-            <button class="gen-toolbar-more-item is-danger" role="menuitem" @click="onDelete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-              {{ t('generating.toolbar.delete') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 元信息行 + 说话人区 / Meta info + speaker zone -->
-    <div class="gen-meta" id="genMeta">
-      <div class="gen-meta-row">
-        <div class="gen-meta-group">
-          <span class="gen-meta-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            <span class="gen-meta-val">{{ metaDuration }}</span>
-          </span>
-          <span class="gen-meta-sep"></span>
-          <span class="gen-meta-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-            <span class="gen-meta-val">{{ speakerCount }}</span> {{ t('generating.meta.person') }}
-          </span>
-          <span class="gen-meta-sep"></span>
-          <span class="gen-meta-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            <span class="gen-meta-val gen-meta-date-btn" :title="t('generating.meta.edit_date')" @click.stop="openDatePicker">{{ metaDateShort }}</span>
-          </span>
-        </div>
-        <span class="gen-meta-project">
-          <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :aria-expanded="showProjectDropdown" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown" @keydown.enter.prevent="showProjectDropdown = !showProjectDropdown" @keydown.space.prevent="showProjectDropdown = !showProjectDropdown">
-            <!-- book-open 图标：知识库语义 / book-open icon: knowledge base semantics -->
-            <svg v-if="task?.project_id" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-            <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-            <span>{{ currentProjectName }}</span>
-            <!-- 尾部状态图标：未关联 +，已关联 hover ✕ / Tail status icon: unlinked +, linked hover ✕ -->
-            <svg v-if="!task?.project_id" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </span>
-          <div ref="kbDropdownRef" class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-            <!-- 检索输入框（焦点保持在输入框；Esc 由 useDropdownPopup 统一处理） / Search input (keeps focus; Esc handled by useDropdownPopup) -->
-            <div class="gen-meta-proj-search">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input
-                ref="kbSearchInputRef"
-                v-model="kbSearchQuery"
-                class="gen-meta-proj-search-input"
-                :placeholder="t('generating.meta.kb_search_placeholder')"
-              />
-            </div>
-            <!-- 过滤后的知识库列表 / Filtered project list -->
-            <template v-if="filteredProjects.length > 0">
-              <button v-for="p in filteredProjects" :key="p.id" data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
-                {{ p.name }}
-              </button>
+              <span class="gen-breadcrumb-sep">/</span>
             </template>
-            <!-- 不关联知识库 / No knowledge base linked -->
-            <div class="gen-meta-proj-divider"></div>
-            <button data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
-              {{ t('generating.meta.no_project') }}
+            <!-- 页面级标题：点击即原位重命名（编辑器落在顶栏标题，E2E T-021） / Page title: click to rename in place -->
+            <span
+              class="gen-breadcrumb-current"
+              role="button"
+              tabindex="0"
+              :class="{ 'is-renaming': isTitleRenaming }"
+              :title="t('task.rename')"
+              @click="onRenameTask"
+              @keydown.enter.prevent="onRenameTask"
+            >{{ breadcrumbDisplayTitle }}</span>
+          </nav>
+        </div>
+        <div class="gen-toolbar-right">
+          <!-- 在 IDE 中继续：上下文联动入口 / Continue in IDE -->
+          <div v-if="ws.ides.value.length" class="gen-ide-wrap">
+            <button ref="genIdeBtn" class="gen-toolbar-icon gen-toolbar-ide" :title="t('ai-panel.context.workspace_ide_continue')" @click="toggleIdeMenu">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span class="tb-tip">{{ t('ai-panel.context.workspace_ide_continue') }}</span>
             </button>
-            <!-- 新建知识库区域 / Create KB area -->
-            <template v-if="showKbCreateInput">
-              <div class="gen-meta-proj-divider"></div>
-              <div class="gen-meta-proj-create-inline">
+            <div v-if="ideMenuOpen" ref="genIdeMenu" class="gen-ide-menu" role="dialog">
+              <div class="gen-ide-head">
+                <span>{{ t('ai-panel.context.workspace_ide_open_in') }}</span>
+                <button class="gen-ide-close" :title="t('ai-panel.context.workspace_ide_close')" @click="ideMenuOpen = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+              <div class="gen-ide-scope">
+                <span class="gen-ide-scope-label">{{ t('ai-panel.context.workspace_ide_scope_label') }}</span>
+                <div class="gen-ide-scope-opts">
+                  <button
+                    v-for="s in ideScopes"
+                    :key="s.id"
+                    class="gen-ide-scope-btn"
+                    :class="{ 'is-active': ideScope === s.id }"
+                    :disabled="s.id === 'project' && !task?.project_id"
+                    :title="s.id === 'project' && !task?.project_id
+                      ? t('ai-panel.context.workspace_ide_scope_project_hint')
+                      : t('ai-panel.context.workspace_ide_scope_hint')"
+                    @click="ideScope = s.id"
+                  >{{ t(s.label) }}</button>
+                </div>
+              </div>
+              <ul class="gen-ide-list">
+                <li v-for="ide in ws.ides.value" :key="ide.ide_id">
+                  <button
+                    class="gen-ide-item"
+                    :disabled="!ide.available || ws.openingIdeId.value === ide.ide_id"
+                    :title="ide.available ? ide.display_name : t('ai-panel.context.workspace_ide_not_found', { name: ide.display_name })"
+                    @click="onContinueInIde(ide.ide_id)"
+                  >
+                    <span>{{ ide.display_name }}</span>
+                    <span v-if="!ide.available" class="gen-ide-na">{{ t('ai-panel.context.workspace_ide_unavailable') }}</span>
+                    <svg v-else-if="ws.openingIdeId.value === ide.ide_id" class="gen-ide-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <button class="gen-toolbar-icon" @click="onCopy" :title="t('generating.toolbar.copy')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span class="tb-tip">{{ t('generating.toolbar.copy') }}</span>
+          </button>
+          <button class="gen-toolbar-icon" @click="onExport" :title="t('generating.toolbar.export_title')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span class="tb-tip">{{ t('generating.toolbar.export') }}</span>
+          </button>
+          <button class="gen-toolbar-icon" @click="onFullscreen" :title="t('generating.toolbar.fullscreen')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            <span class="tb-tip">{{ t('generating.toolbar.fullscreen') }}</span>
+          </button>
+          <!-- 知识库同步状态指示器 / Knowledge base sync status indicator -->
+          <button
+            v-if="syncStatus.can_sync"
+            class="gen-toolbar-icon gen-toolbar-sync"
+            :class="{ 'is-dirty': syncStatus.is_dirty, 'is-syncing': isSyncing, 'is-synced': !syncStatus.is_dirty }"
+            :title="isSyncing ? t('generating.toolbar.syncing') : (syncStatus.is_dirty ? t('generating.toolbar.sync_dirty') : t('generating.toolbar.synced'))"
+            :disabled="isSyncing"
+            @click="onSyncToKb"
+          >
+            <!-- 同步中：旋转图标 / Syncing: spinning icon -->
+            <svg v-if="isSyncing" class="sync-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            <!-- 已同步：check-circle / Synced: check-circle -->
+            <svg v-else-if="!syncStatus.is_dirty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <!-- 有更新：upload-cloud / Dirty: upload-cloud -->
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            <span class="tb-tip">{{ t('generating.toolbar.sync_kb') }}</span>
+          </button>
+          <div class="gen-toolbar-divider"></div>
+          <div class="gen-toolbar-more-wrap" @mouseenter="onGenMoreEnter" @mouseleave="onGenMoreLeave">
+            <button ref="genMoreBtn" class="gen-toolbar-icon" v-bind="genMoreTriggerAttrs" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            </button>
+            <div ref="genMoreDropdown" class="gen-toolbar-more-menu" v-bind="genMoreMenuAttrs" :class="{ 'is-open': showMoreMenu }">
+              <!-- 复制组 -->
+              <button class="gen-toolbar-more-item" role="menuitem" @click="onCopyTitle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                {{ t('task.copy_title') }}
+              </button>
+              <button v-if="task?.summary" class="gen-toolbar-more-item" role="menuitem" @click="onCopySummary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                {{ t('task.copy_summary') }}
+              </button>
+              <!-- 管理组 -->
+              <div class="gen-toolbar-more-divider"></div>
+              <button class="gen-toolbar-more-item" role="menuitem" @click="onRenameTask">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                {{ t('task.rename') }}
+              </button>
+              <button class="gen-toolbar-more-item" role="menuitem" @click="onRetrySummary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {{ t('generating.toolbar.regenerate') }}
+              </button>
+              <button class="gen-toolbar-more-item" role="menuitem" @click="onRetranscribe">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {{ t('generating.toolbar.retranscribe') }}
+              </button>
+              <!-- 危险组 -->
+              <div class="gen-toolbar-more-divider"></div>
+              <button class="gen-toolbar-more-item" role="menuitem" @click="onArchiveConfirm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
+                {{ data.isArchived.value ? t('generating.toolbar.unarchive') : t('generating.toolbar.archive') }}
+              </button>
+              <button class="gen-toolbar-more-item is-danger" role="menuitem" @click="onDelete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                {{ t('generating.toolbar.delete') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 元信息行 + 说话人区 / Meta info + speaker zone -->
+      <div class="gen-meta" id="genMeta">
+        <div class="gen-meta-row">
+          <div class="gen-meta-group">
+            <span class="gen-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <span class="gen-meta-val">{{ metaDuration }}</span>
+            </span>
+            <span class="gen-meta-sep"></span>
+            <span class="gen-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <span class="gen-meta-val">{{ speakerCount }}</span> {{ t('generating.meta.person') }}
+            </span>
+            <span class="gen-meta-sep"></span>
+            <span class="gen-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              <span class="gen-meta-val gen-meta-date-btn" :title="t('generating.meta.edit_date')" @click.stop="openDatePicker">{{ metaDateShort }}</span>
+            </span>
+          </div>
+          <span class="gen-meta-project">
+            <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :aria-expanded="showProjectDropdown" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown" @keydown.enter.prevent="showProjectDropdown = !showProjectDropdown" @keydown.space.prevent="showProjectDropdown = !showProjectDropdown">
+              <!-- book-open 图标：知识库语义 / book-open icon: knowledge base semantics -->
+              <svg v-if="task?.project_id" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              <span>{{ currentProjectName }}</span>
+              <!-- 尾部状态图标：未关联 +，已关联 hover ✕ / Tail status icon: unlinked +, linked hover ✕ -->
+              <svg v-if="!task?.project_id" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </span>
+            <div ref="kbDropdownRef" class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
+              <!-- 检索输入框（焦点保持在输入框；Esc 由 useDropdownPopup 统一处理） / Search input (keeps focus; Esc handled by useDropdownPopup) -->
+              <div class="gen-meta-proj-search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input
-                  ref="kbCreateInputRef"
-                  v-model="kbCreateName"
-                  class="gen-meta-proj-create-input"
-                  :placeholder="t('generating.meta.create_kb')"
-                  data-dd-enter="native"
-                  @keydown.enter="createAndLinkKb"
-                  @keydown.escape.stop="showKbCreateInput = false; kbCreateName = ''"
+                  ref="kbSearchInputRef"
+                  v-model="kbSearchQuery"
+                  class="gen-meta-proj-search-input"
+                  :placeholder="t('generating.meta.kb_search_placeholder')"
                 />
               </div>
-            </template>
-            <template v-else-if="filteredProjects.length === 0 && projects.length > 0">
-              <!-- 检索无匹配但总列表非空 / Search no match but total list non-empty -->
+              <!-- 过滤后的知识库列表 / Filtered project list -->
+              <template v-if="filteredProjects.length > 0">
+                <button v-for="p in filteredProjects" :key="p.id" data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
+                  {{ p.name }}
+                </button>
+              </template>
+              <!-- 不关联知识库 / No knowledge base linked -->
               <div class="gen-meta-proj-divider"></div>
-              <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
-                <span v-else>{{ t('generating.meta.create_kb') }}</span>
+              <button data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
+                {{ t('generating.meta.no_project') }}
               </button>
-            </template>
-            <template v-else-if="projects.length === 0">
-              <!-- 知识库总数为 0 / Total projects is 0 -->
-              <div class="gen-meta-proj-divider"></div>
-              <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
-                <span v-else>{{ t('generating.meta.create_kb') }}</span>
-              </button>
-            </template>
+              <!-- 新建知识库区域 / Create KB area -->
+              <template v-if="showKbCreateInput">
+                <div class="gen-meta-proj-divider"></div>
+                <div class="gen-meta-proj-create-inline">
+                  <input
+                    ref="kbCreateInputRef"
+                    v-model="kbCreateName"
+                    class="gen-meta-proj-create-input"
+                    :placeholder="t('generating.meta.create_kb')"
+                    data-dd-enter="native"
+                    @keydown.enter="createAndLinkKb"
+                    @keydown.escape.stop="showKbCreateInput = false; kbCreateName = ''"
+                  />
+                </div>
+              </template>
+              <template v-else-if="filteredProjects.length === 0 && projects.length > 0">
+                <!-- 检索无匹配但总列表非空 / Search no match but total list non-empty -->
+                <div class="gen-meta-proj-divider"></div>
+                <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
+                  <span v-else>{{ t('generating.meta.create_kb') }}</span>
+                </button>
+              </template>
+              <template v-else-if="projects.length === 0">
+                <!-- 知识库总数为 0 / Total projects is 0 -->
+                <div class="gen-meta-proj-divider"></div>
+                <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
+                  <span v-else>{{ t('generating.meta.create_kb') }}</span>
+                </button>
+              </template>
+            </div>
+          </span>
+        </div>
+      </div>
+
+      <!-- 人员栏（渐进式压缩：说话人 + 参会人合并） / Personnel bar (progressive compression: speakers + roster merged) -->
+      <GeneratingSpeakerZone
+        :mode="speakerZoneMode"
+        :visible="bindingLegend.length > 0"
+        :speakers="bindingLegend"
+        :unbound-count="unboundCount"
+        :can-edit-bindings="canBind"
+        :current-mapping="currentBindingMapping"
+        :dropdown="bindingDropdown"
+        :filtered-speakers="dropdownSpeakers"
+        :roster="rosterComposable.roster.value"
+        :bound-names="boundNames"
+        :all-speakers="speakers"
+        @open-dropdown="openBindingDropdown"
+        @locate-speaker="onLocateSpeaker"
+        @skip="skipMapping"
+        @confirm="confirmMapping"
+        @close="bindingBarHidden = true"
+        @reenter-binding="reenterBinding"
+        @select="selectBinding"
+        @create-and-bind="createAndBind"
+        @dropdown-keydown="onDropdownKeydown"
+        @update:dropdown-search="bindingDropdown.search = $event"
+        @roster-add="rosterComposable.addMember($event)"
+        @roster-remove="rosterComposable.removeMember($event)"
+        :voiceprint-items="visibleVoiceprintItems"
+        :voiceprint-running="voiceprintRunning"
+        @run-voiceprint="runVoiceprint"
+        @apply-voiceprint="onVoiceprintApply"
+        @dismiss-voiceprint="onVoiceprintDismiss"
+      />
+
+      <!-- 控制区：Tab / Control zone: Tabs -->
+      <div class="gen-control-zone">
+        <div class="gen-tabs-group">
+          <div class="gen-tabs" id="genTabsContainer">
+            <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)" @mouseenter="onTabHover(tab.id)">
+              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
+              <span class="tab-label">{{ tab.label }}</span>
+              <span class="tab-dot" :class="tabDotClass(tab.id)"></span>
+            </button>
           </div>
-        </span>
-      </div>
-    </div>
-
-    <!-- 人员栏（渐进式压缩：说话人 + 参会人合并） / Personnel bar (progressive compression: speakers + roster merged) -->
-    <GeneratingSpeakerZone
-      :mode="speakerZoneMode"
-      :visible="bindingLegend.length > 0"
-      :speakers="bindingLegend"
-      :unbound-count="unboundCount"
-      :can-edit-bindings="canBind"
-      :current-mapping="currentBindingMapping"
-      :dropdown="bindingDropdown"
-      :filtered-speakers="dropdownSpeakers"
-      :roster="rosterComposable.roster.value"
-      :bound-names="boundNames"
-      :all-speakers="speakers"
-      @open-dropdown="openBindingDropdown"
-      @locate-speaker="onLocateSpeaker"
-      @skip="skipMapping"
-      @confirm="confirmMapping"
-      @close="bindingBarHidden = true"
-      @reenter-binding="reenterBinding"
-      @select="selectBinding"
-      @create-and-bind="createAndBind"
-      @dropdown-keydown="onDropdownKeydown"
-      @update:dropdown-search="bindingDropdown.search = $event"
-      @roster-add="rosterComposable.addMember($event)"
-      @roster-remove="rosterComposable.removeMember($event)"
-      :voiceprint-items="visibleVoiceprintItems"
-      :voiceprint-running="voiceprintRunning"
-      @run-voiceprint="runVoiceprint"
-      @apply-voiceprint="onVoiceprintApply"
-      @dismiss-voiceprint="onVoiceprintDismiss"
-    />
-
-    <!-- 控制区：Tab / Control zone: Tabs -->
-    <div class="gen-control-zone">
-      <div class="gen-tabs-group">
-        <div class="gen-tabs" id="genTabsContainer">
-          <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)" @mouseenter="onTabHover(tab.id)">
-            <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
-            <span class="tab-label">{{ tab.label }}</span>
-            <span class="tab-dot" :class="tabDotClass(tab.id)"></span>
+        </div>
+        <!-- 原文三层视图下拉（仅原文 tab 显示；替代原面板内固定分段控件）/ Transcript layer dropdown (transcript tab only; replaces the in-panel segmented control) -->
+        <div class="gen-layer-picker" v-if="activeTab === 'transcript'">
+          <button
+            ref="layerPickerBtn" class="gen-layer-trigger" v-bind="layerPickerTriggerAttrs"
+            :aria-label="t('generating.layer.picker_label')" :title="t('generating.layer.picker_label')"
+            @click="toggleLayerPicker"
+          >
+            <span>{{ t(`generating.layer.${layerView}`) }}</span>
+            <span v-if="layerView === 'formal'" class="rec-layer-ai">AI</span>
+            <svg class="gen-layer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
+          <div ref="layerPickerMenu" class="gen-toolbar-more-menu gen-layer-menu" v-bind="layerPickerMenuAttrs" :class="{ 'is-open': showLayerPicker }" :aria-label="t('generating.layer.picker_label')">
+            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'formal' }" role="menuitem" @click="selectLayer('formal')">
+              {{ t('generating.layer.formal') }}
+              <span class="rec-layer-ai">AI</span>
+            </button>
+            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'clean' }" role="menuitem" :disabled="!cleanupAvailable" @click="selectLayer('clean')">
+              {{ t('generating.layer.clean') }}
+            </button>
+            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'raw' }" role="menuitem" @click="selectLayer('raw')">
+              {{ t('generating.layer.raw') }}
+            </button>
+          </div>
         </div>
       </div>
-      <!-- 原文三层视图下拉（仅原文 tab 显示；替代原面板内固定分段控件）/ Transcript layer dropdown (transcript tab only; replaces the in-panel segmented control) -->
-      <div class="gen-layer-picker" v-if="activeTab === 'transcript'">
-        <button
-          ref="layerPickerBtn" class="gen-layer-trigger" v-bind="layerPickerTriggerAttrs"
-          :aria-label="t('generating.layer.picker_label')" :title="t('generating.layer.picker_label')"
-          @click="toggleLayerPicker"
-        >
-          <span>{{ t(`generating.layer.${layerView}`) }}</span>
-          <span v-if="layerView === 'formal'" class="rec-layer-ai">AI</span>
-          <svg class="gen-layer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <div ref="layerPickerMenu" class="gen-toolbar-more-menu gen-layer-menu" v-bind="layerPickerMenuAttrs" :class="{ 'is-open': showLayerPicker }" :aria-label="t('generating.layer.picker_label')">
-          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'formal' }" role="menuitem" @click="selectLayer('formal')">
-            {{ t('generating.layer.formal') }}
-            <span class="rec-layer-ai">AI</span>
-          </button>
-          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'clean' }" role="menuitem" :disabled="!cleanupAvailable" @click="selectLayer('clean')">
-            {{ t('generating.layer.clean') }}
-          </button>
-          <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'raw' }" role="menuitem" @click="selectLayer('raw')">
-            {{ t('generating.layer.raw') }}
-          </button>
-        </div>
-      </div>
-    </div>
 
-    <!-- 内容区（子组件） / Content area (sub-components) -->
-    <div class="gen-content">
-      <TranscriptPanel
-        ref="transcriptPanelRef"
-        v-model:layer-view="layerView"
-        :visible="activeTab === 'transcript'"
-        :transcript-items="transcriptItems"
-        :chapters="chapters"
-        :expanded-chapters="expandedChapters"
-        :visible-chapter-indices="visibleChapterIndices"
-        :active-chapter-idx="activeChapterIdx"
-        :flat-transcript="flatTranscript"
-        :task-status="task?.status"
-        :task="task"
-        :can-bind="canBind"
-        :speaker-filter-set="speakerFilterSet"
-        :focus-speaker="focusSpeaker"
-        :focus-line-idx="focusLineIdx"
-        :locate-speaker-id="locateSpeakerId"
-        :playing-line-idx="playingLineIdx"
-        :playing-speaker-id="playingSpeakerId"
-        :player-playing="player.playing"
-        :follow-playback="followPlayback"
-        :speaker-panel-visible="speakerPanelVisible"
-        v-model:speaker-panel-search="speakerPanelSearch"
-        :search-expanded="searchExpanded"
-        :panel-speaker-list="panelSpeakerList"
-        :panel-total-duration="panelTotalDuration"
-        :panel-total-turns="panelTotalTurns"
-        :current-binding-mapping="currentBindingMapping"
-        :speakers="speakers"
-        :audio-url="audioUrl"
-        :audio-playing="player.playing"
-        :audio-progress="player.progress"
-        :audio-time-str="player.timeStr"
-        :audio-current-time-str="player.currentTimeStr"
-        :audio-remaining-time-str="player.remainingTimeStr"
-        :audio-speed="player.speed"
-        :audio-current-time="player.currentTime"
-        :chapter-overview-visible="chapters.length > 0 && activeTab === 'transcript'"
-        :all-chapters-visible="allChaptersVisible"
-        @toggle-audio="toggleAudio"
-        @seek-audio="seekAudio"
-        @skip-audio="(s) => player.skip(s)"
-        @cycle-speed="player.cycleSpeed()"
-        @toggle-chapter="toggleChapterExpand"
-        @toggle-chapter-transcript="toggleChapterTranscript"
-        @seek="seekFromTranscriptClick"
-        @speaker-label-click="onSpeakerLabelClick"
-        @toggle-locate="onLocateSpeaker"
-        @toggle-speaker="toggleSpeakerFilter"
-        @clear-filter="clearSpeakerFilter"
-        @nav-focus="navFocusLine"
-        @toggle-panel="speakerPanelVisible = !speakerPanelVisible"
-        @toggle-search="toggleSearch"
-        @search-blur="onSearchBlur"
-        @resume-follow="resumeFollowPlayback"
-        @show-all-chapters="showAllChapters"
-        @scroll-to-chapter="scrollToChapter"
-        @toggle-all-transcript="toggleAllTranscript"
-      />
-
-      <SummaryPanel
-        ref="summaryPanelRef"
-        :visible="activeTab === 'summary'"
-        :summary-md="summaryMd"
-        :chapters="chapters"
-        :expanded-chapters="summaryExpandedChapters"
-        :task="task"
-        :processing="!!task?.status && ['recording', 'processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(task.status)"
-        :pending="task?.status === 'pending'"
-        :has-summary="!!task?.summary"
-        :decisions-count="decisions.length"
-        :decisions-done-count="decisions.filter(x => x.done).length"
-        :proposal="sp.summaryProposal.value"
-        :preview-mode="sp.summaryPreviewMode.value"
-        @change="onSummaryChange"
-        @toggle-chapter="toggleSummaryChapter"
-        @switch-tab="switchTab"
-        @open-preview="sp.openSummaryPreview()"
-        @accept="sp.acceptSummaryProposal()"
-        @reject="sp.rejectSummaryProposal()"
-        @toggle-gap="sp.toggleGapExpanded"
-      />
-
-      <NotesPanel
-        ref="notesPanelRef"
-        :visible="activeTab === 'notes'"
-        :markdown="notesContent"
-        :notes-saved="notesSaved"
-        :proposal="np.notesProposal.value"
-        :preview-mode="np.notesPreviewMode.value"
-        :segments="np.notesProposalSegments.value"
-        :stats="np.notesProposalStats.value"
-        @change="onNotesChange"
-        @open-preview="np.openNotesPreview()"
-        @accept="np.acceptNotesProposal()"
-        @reject="np.rejectNotesProposal()"
-        @toggle-gap="np.toggleNotesGapExpanded"
-      />
-
-      <DecisionFlowPanel
-        :visible="activeTab === 'decisions'"
-        :task-id="data.taskId"
-        :decisions="decisions"
-        :anchor-decision-id="anchorDecisionId"
-        :from-evolution="route.query.from === 'evolution'"
-        @delete="onDeleteDecision"
-        @update="onEditDecision"
-        @status-change="onStatusChange"
-        @add="showAddDecisionDialog = true"
-      />
-
-      <!-- 洞察台（会后） / Insight Deck：不再区分板/卡视图，统一为 AI 共创的 HTML 产物呈现 -->
-      <div v-show="activeTab === 'insights'" class="gen-insights-wrap">
-        <InsightBoard
-          :artifact="board"
-          :loading="boardLoading"
-          :boards="boards"
-          :active-board-id="activeBoardId"
-          @seek="onInsightSeek"
-          @refresh="loadBoardData"
-          @co-create="onBoardCoCreate"
-          @co-create-section="onBoardCoCreateSection"
-          @switch-board="onBoardSwitch"
-          @create-board="onBoardCreate"
-          @open-in-browser="onBoardOpenInBrowser"
+      <!-- 内容区（子组件） / Content area (sub-components) -->
+      <div class="gen-content">
+        <TranscriptPanel
+          ref="transcriptPanelRef"
+          v-model:layer-view="layerView"
+          :visible="activeTab === 'transcript'"
+          :transcript-items="transcriptItems"
+          :chapters="chapters"
+          :expanded-chapters="expandedChapters"
+          :visible-chapter-indices="visibleChapterIndices"
+          :active-chapter-idx="activeChapterIdx"
+          :flat-transcript="flatTranscript"
+          :task-status="task?.status"
+          :task="task"
+          :can-bind="canBind"
+          :speaker-filter-set="speakerFilterSet"
+          :focus-speaker="focusSpeaker"
+          :focus-line-idx="focusLineIdx"
+          :locate-speaker-id="locateSpeakerId"
+          :playing-line-idx="playingLineIdx"
+          :playing-speaker-id="playingSpeakerId"
+          :player-playing="player.playing"
+          :follow-playback="followPlayback"
+          :speaker-panel-visible="speakerPanelVisible"
+          v-model:speaker-panel-search="speakerPanelSearch"
+          :search-expanded="searchExpanded"
+          :panel-speaker-list="panelSpeakerList"
+          :panel-total-duration="panelTotalDuration"
+          :panel-total-turns="panelTotalTurns"
+          :current-binding-mapping="currentBindingMapping"
+          :speakers="speakers"
+          :audio-url="audioUrl"
+          :audio-playing="player.playing"
+          :audio-progress="player.progress"
+          :audio-time-str="player.timeStr"
+          :audio-current-time-str="player.currentTimeStr"
+          :audio-remaining-time-str="player.remainingTimeStr"
+          :audio-speed="player.speed"
+          :audio-current-time="player.currentTime"
+          :chapter-overview-visible="chapters.length > 0 && activeTab === 'transcript'"
+          :all-chapters-visible="allChaptersVisible"
+          @toggle-audio="toggleAudio"
+          @seek-audio="seekAudio"
+          @skip-audio="(s) => player.skip(s)"
+          @cycle-speed="player.cycleSpeed()"
+          @toggle-chapter="toggleChapterExpand"
+          @toggle-chapter-transcript="toggleChapterTranscript"
+          @seek="seekFromTranscriptClick"
+          @speaker-label-click="onSpeakerLabelClick"
+          @toggle-locate="onLocateSpeaker"
+          @toggle-speaker="toggleSpeakerFilter"
+          @clear-filter="clearSpeakerFilter"
+          @nav-focus="navFocusLine"
+          @toggle-panel="speakerPanelVisible = !speakerPanelVisible"
+          @toggle-search="toggleSearch"
+          @search-blur="onSearchBlur"
+          @resume-follow="resumeFollowPlayback"
+          @show-all-chapters="showAllChapters"
+          @scroll-to-chapter="scrollToChapter"
+          @toggle-all-transcript="toggleAllTranscript"
         />
+
+        <SummaryPanel
+          ref="summaryPanelRef"
+          :visible="activeTab === 'summary'"
+          :summary-md="summaryMd"
+          :chapters="chapters"
+          :expanded-chapters="summaryExpandedChapters"
+          :task="task"
+          :processing="!!task?.status && ['recording', 'processing', 'transcribing', 'summarizing', 'awaiting_mapping'].includes(task.status)"
+          :pending="task?.status === 'pending'"
+          :has-summary="!!task?.summary"
+          :decisions-count="decisions.length"
+          :decisions-done-count="decisions.filter(x => x.done).length"
+          :proposal="sp.summaryProposal.value"
+          :preview-mode="sp.summaryPreviewMode.value"
+          @change="onSummaryChange"
+          @toggle-chapter="toggleSummaryChapter"
+          @switch-tab="switchTab"
+          @open-preview="sp.openSummaryPreview()"
+          @accept="sp.acceptSummaryProposal()"
+          @reject="sp.rejectSummaryProposal()"
+          @toggle-gap="sp.toggleGapExpanded"
+        />
+
+        <NotesPanel
+          ref="notesPanelRef"
+          :visible="activeTab === 'notes'"
+          :markdown="notesContent"
+          :notes-saved="notesSaved"
+          :proposal="np.notesProposal.value"
+          :preview-mode="np.notesPreviewMode.value"
+          :segments="np.notesProposalSegments.value"
+          :stats="np.notesProposalStats.value"
+          @change="onNotesChange"
+          @open-preview="np.openNotesPreview()"
+          @accept="np.acceptNotesProposal()"
+          @reject="np.rejectNotesProposal()"
+          @toggle-gap="np.toggleNotesGapExpanded"
+        />
+
+        <DecisionFlowPanel
+          :visible="activeTab === 'decisions'"
+          :task-id="data.taskId"
+          :decisions="decisions"
+          :anchor-decision-id="anchorDecisionId"
+          :from-evolution="route.query.from === 'evolution'"
+          @delete="onDeleteDecision"
+          @update="onEditDecision"
+          @status-change="onStatusChange"
+          @add="showAddDecisionDialog = true"
+        />
+
+        <!-- 洞察台（会后） / Insight Deck：不再区分板/卡视图，统一为 AI 共创的 HTML 产物呈现 -->
+        <div v-show="activeTab === 'insights'" class="gen-insights-wrap">
+          <InsightBoard
+            :artifact="board"
+            :loading="boardLoading"
+            :boards="boards"
+            :active-board-id="activeBoardId"
+            @seek="onInsightSeek"
+            @refresh="loadBoardData"
+            @co-create="onBoardCoCreate"
+            @co-create-section="onBoardCoCreateSection"
+            @switch-board="onBoardSwitch"
+            @create-board="onBoardCreate"
+            @open-in-browser="onBoardOpenInBrowser"
+          />
+        </div>
       </div>
-    </div>
-    <!-- 浮动选中工具栏 / Floating selection toolbar -->
-    <SelectionToolbar
-      container-selector=".gen-content"
-      :textarea-selectors="['textarea.gen-textarea-editor', 'textarea.db-card-textarea', 'textarea.db-edit-area']"
-      :formalize-enabled="task?.status === 'completed'"
-      @action="onSelectionAction"
-      @formalize-selection="(ids) => transcriptPanelRef?.formalizeSelection(ids)"
-    />
-    <!-- 行间编辑浮动输入框（input 态 + result 确认态共用，确认卡带执行方回显） -->
-    <InlineEditInput
-      :visible="inlineEdit.showInput.value || inlineEdit.showDiff.value"
-      :loading="inlineEdit.isLoading.value"
-      :anchor-rect="inlineEdit.anchorRect.value"
-      :diff-visible="inlineEdit.showDiff.value"
-      :edited-text="inlineEdit.editedText.value"
-      :model-usage="inlineEdit.lastModelUsage.value"
-      @submit="onInlineEditSubmit"
-      @cancel="inlineEdit.cancelEdit"
-      @accept="inlineEdit.acceptEdit"
-      @reject="inlineEdit.rejectEdit"
-      @goto-settings="onInlineEditGotoSettings"
-    />
+      <!-- 浮动选中工具栏 / Floating selection toolbar -->
+      <SelectionToolbar
+        container-selector=".gen-content"
+        :textarea-selectors="['textarea.gen-textarea-editor', 'textarea.db-card-textarea', 'textarea.db-edit-area']"
+        :formalize-enabled="task?.status === 'completed'"
+        @action="onSelectionAction"
+        @formalize-selection="(ids) => transcriptPanelRef?.formalizeSelection(ids)"
+      />
+      <!-- 行间编辑浮动输入框（input 态 + result 确认态共用，确认卡带执行方回显） -->
+      <InlineEditInput
+        :visible="inlineEdit.showInput.value || inlineEdit.showDiff.value"
+        :loading="inlineEdit.isLoading.value"
+        :anchor-rect="inlineEdit.anchorRect.value"
+        :diff-visible="inlineEdit.showDiff.value"
+        :edited-text="inlineEdit.editedText.value"
+        :model-usage="inlineEdit.lastModelUsage.value"
+        @submit="onInlineEditSubmit"
+        @cancel="inlineEdit.cancelEdit"
+        @accept="inlineEdit.acceptEdit"
+        @reject="inlineEdit.rejectEdit"
+        @goto-settings="onInlineEditGotoSettings"
+      />
 
-    <ArchiveDialog
-      v-model="showArchiveDialog"
-      :is-unarchive="data.isArchived.value"
-      @confirm="onArchiveDone"
-    />
+      <ArchiveDialog
+        v-model="showArchiveDialog"
+        :is-unarchive="data.isArchived.value"
+        @confirm="onArchiveDone"
+      />
 
-    <!-- 删除确认对话框（子组件） / Delete confirmation dialog (sub-component) -->
-    <DeleteDialog
-      v-model="showDeleteDialog"
-      @confirm="onDeleteConfirm"
-    />
+      <!-- 删除确认对话框（子组件） / Delete confirmation dialog (sub-component) -->
+      <DeleteDialog
+        v-model="showDeleteDialog"
+        @confirm="onDeleteConfirm"
+      />
 
-    <!-- 添加决策：与决策中心「手动补录决策」共用同一弹层（样式与数据口径统一） / Add decision dialog (shared with Decision Center) -->
-    <AddDecisionDialog
-      ref="addDecisionDialogRef"
-      v-model="showAddDecisionDialog"
-      :default-task-id="data.taskId"
-      @submit="onAddDecisionSubmit"
-    />
+      <!-- 添加决策：与决策中心「手动补录决策」共用同一弹层（样式与数据口径统一） / Add decision dialog (shared with Decision Center) -->
+      <AddDecisionDialog
+        ref="addDecisionDialogRef"
+        v-model="showAddDecisionDialog"
+        :default-task-id="data.taskId"
+        @submit="onAddDecisionSubmit"
+      />
     </template>
 
     <!-- AC-4 显式确认（QA-R1 DEF-04）：切云端重试前告知数据上云，绝不静默上云（PRD R7）。

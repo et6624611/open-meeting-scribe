@@ -2,236 +2,236 @@
   <div class="spk-page">
     <!-- 列表视图 / List view -->
     <Transition name="fade" mode="out-in">
-    <div v-if="!selectedSpeaker" key="list">
-      <div class="main-head">
-        <div class="title-row">
-          <h1>{{ t('speakers.title') }}</h1>
-          <span class="page-count">{{ t('speakers.count', { count: speakers.length }) }}</span>
+      <div v-if="!selectedSpeaker" key="list">
+        <div class="main-head">
+          <div class="title-row">
+            <h1>{{ t('speakers.title') }}</h1>
+            <span class="page-count">{{ t('speakers.count', { count: speakers.length }) }}</span>
+          </div>
         </div>
-      </div>
-      <!-- 统一输入框：搜索 + 新建 / Unified input: search + create -->
-      <div class="spk-unified">
-        <div class="spk-unified-field">
-          <svg class="spk-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <template v-if="showCreateHint">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </template>
-            <template v-else>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </template>
-          </svg>
-          <input
-            ref="unifiedInputRef"
-            v-model="inputText"
-            class="spk-unified-input"
-            type="text"
-            :placeholder="t('speakers.unified_placeholder')"
-            @keyup.enter="onUnifiedEnter"
-          />
+        <!-- 统一输入框：搜索 + 新建 / Unified input: search + create -->
+        <div class="spk-unified">
+          <div class="spk-unified-field">
+            <svg class="spk-unified-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <template v-if="showCreateHint">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </template>
+              <template v-else>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </template>
+            </svg>
+            <input
+              ref="unifiedInputRef"
+              v-model="inputText"
+              class="spk-unified-input"
+              type="text"
+              :placeholder="t('speakers.unified_placeholder')"
+              @keyup.enter="onUnifiedEnter"
+            />
+          </div>
         </div>
-      </div>
-      <!-- 加载态 / Loading state -->
-      <div v-if="loading" class="spk-loading">
-        <div class="spk-spinner"></div>
-        <span>{{ t('speakers.voiceprint_loading') }}</span>
-      </div>
-      <!-- 说话人列表 / Speaker list -->
-      <div v-else-if="filteredSpeakers.length > 0 || showCreateHint" class="spk-list">
-        <div v-for="spk in filteredSpeakers" :key="spk.id" :class="['spk-item', { 'is-new': createdSpeakerId === spk.id }]" @click="openDetail(spk)">
-          <div class="spk-info">
-            <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
-            <div class="spk-text">
-              <div class="spk-name-row">
-                <span class="spk-name" :class="{ 'is-unid': isPlaceholderName(spk.name) }" :style="{ color: getTextColor(spk.id) }">{{ spkDisplayName(spk.name) }}</span>
-                <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
+        <!-- 加载态 / Loading state -->
+        <div v-if="loading" class="spk-loading">
+          <div class="spk-spinner"></div>
+          <span>{{ t('speakers.voiceprint_loading') }}</span>
+        </div>
+        <!-- 说话人列表 / Speaker list -->
+        <div v-else-if="filteredSpeakers.length > 0 || showCreateHint" class="spk-list">
+          <div v-for="spk in filteredSpeakers" :key="spk.id" :class="['spk-item', { 'is-new': createdSpeakerId === spk.id }]" @click="openDetail(spk)">
+            <div class="spk-info">
+              <span :class="['spk-vp-dot', voiceprintIds.has(spk.id) ? 'vp-yes' : 'vp-no']" :title="voiceprintIds.has(spk.id) ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered')"></span>
+              <div class="spk-text">
+                <div class="spk-name-row">
+                  <span class="spk-name" :class="{ 'is-unid': isPlaceholderName(spk.name) }" :style="{ color: getTextColor(spk.id) }">{{ spkDisplayName(spk.name) }}</span>
+                  <span v-if="isMe(spk)" class="spk-badge-me">{{ t('speakers.badge_me') }}</span>
+                </div>
+                <span v-if="spk.note" class="spk-list-note">{{ spk.note }}</span>
               </div>
-              <span v-if="spk.note" class="spk-list-note">{{ spk.note }}</span>
+            </div>
+            <div class="spk-meta-row">
+              <span v-if="spk.meeting_count" class="spk-meta">{{ t('speakers.meetings_count', { count: spk.meeting_count }) }}</span>
+              <div class="spk-actions" @click.stop>
+                <button class="spk-action-btn" @click="onSetMe(spk.id)">{{ isMe(spk) ? t('speakers.unset_me') : t('speakers.set_me') }}</button>
+                <button class="spk-action-btn danger" @click="confirmDelete(spk)">{{ t('common.action.delete') }}</button>
+              </div>
             </div>
           </div>
-          <div class="spk-meta-row">
-            <span v-if="spk.meeting_count" class="spk-meta">{{ t('speakers.meetings_count', { count: spk.meeting_count }) }}</span>
-            <div class="spk-actions" @click.stop>
-              <button class="spk-action-btn" @click="onSetMe(spk.id)">{{ isMe(spk) ? t('speakers.unset_me') : t('speakers.set_me') }}</button>
-              <button class="spk-action-btn danger" @click="confirmDelete(spk)">{{ t('common.action.delete') }}</button>
+          <!-- 新建提示 / Create new hint -->
+          <div v-if="showCreateHint" class="spk-create-hint" @click="onCreate">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>{{ t('speakers.create_hint', { name: inputText.trim() }) }}</span>
+          </div>
+        </div>
+        <!-- 空状态 / Empty state -->
+        <div v-else class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <p>{{ speakers.length === 0 ? t('speakers.empty') : t('speakers.search_placeholder') }}</p>
+          <p v-if="speakers.length === 0" class="empty-hint">{{ t('speakers.empty_hint') }}</p>
+        </div>
+        <!-- 设为我功能提示 / Set-as-me hint -->
+        <p v-if="speakers.length > 0" class="spk-set-me-hint">{{ t('speakers.set_me_hint') }}</p>
+      </div>
+
+      <!-- 详情视图 / Detail view -->
+      <div v-else key="detail" class="spk-detail">
+        <button class="spk-back-btn" @click="backToList">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
+          {{ t('speakers.back_list') }}
+        </button>
+
+        <div class="spk-detail-head">
+          <div class="spk-detail-left">
+            <div class="spk-detail-info">
+              <div class="spk-detail-name" @click="startRename">
+                <span v-if="!isRenaming" class="spk-name-clickable" :class="{ 'is-unid': isPlaceholderName(selectedSpeaker.name) }" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ spkDisplayName(selectedSpeaker.name) }}</span>
+                <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
+                <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
+              </div>
+              <div v-if="selectedSpeaker.alias" class="spk-detail-role">{{ selectedSpeaker.alias }}</div>
+              <!-- 备注：同名消歧后缀来源，点击行内编辑 / Note: source of disambiguation suffix, click to edit -->
+              <div class="spk-detail-note">
+                <span class="spk-note-label">{{ t('speakers.note_label') }}</span>
+                <input v-if="isEditingNote" ref="noteInputRef" v-model="noteValue" class="spk-inline-edit spk-note-edit" :maxlength="500" :placeholder="t('speakers.note_placeholder')" @keyup.enter="saveNote" @keydown.escape.prevent="cancelNote" @blur="saveNote" />
+                <span v-else class="spk-note-text" :class="{ 'is-empty': !selectedSpeaker.note }" :title="t('speakers.note_hint')" @click="startNote">{{ selectedSpeaker.note || t('speakers.note_empty') }}</span>
+              </div>
             </div>
           </div>
+          <div class="spk-detail-actions">
+            <button v-if="!isMe(selectedSpeaker)" class="btn btn-secondary btn-sm" @click="onToggleMe">{{ t('speakers.set_me') }}</button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedSpeaker)">{{ t('common.action.delete') }}</button>
+          </div>
         </div>
-        <!-- 新建提示 / Create new hint -->
-        <div v-if="showCreateHint" class="spk-create-hint" @click="onCreate">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>{{ t('speakers.create_hint', { name: inputText.trim() }) }}</span>
+
+        <!-- 统计卡片 / Stat cards -->
+        <div class="spk-stat-cards">
+          <div class="spk-stat-card">
+            <div class="label">{{ t('speakers.stat_meetings') }}</div>
+            <div class="value">{{ stat.meetings.length }}</div>
+            <div class="sub">{{ t('speakers.stat_meetings_unit') }}</div>
+          </div>
+          <div class="spk-stat-card">
+            <div class="label">{{ t('speakers.stat_duration') }}</div>
+            <div class="value">{{ Math.round(stat.totalDuration / 60) }}</div>
+            <div class="sub">{{ t('speakers.stat_duration_unit') }}</div>
+          </div>
+          <div class="spk-stat-card">
+            <div class="label">{{ t('speakers.stat_decisions') }}</div>
+            <div class="value">{{ stat.decisions.length }}</div>
+            <div class="sub">{{ t('speakers.stat_decisions_unit') }}</div>
+          </div>
         </div>
-      </div>
-      <!-- 空状态 / Empty state -->
-      <div v-else class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <p>{{ speakers.length === 0 ? t('speakers.empty') : t('speakers.search_placeholder') }}</p>
-        <p v-if="speakers.length === 0" class="empty-hint">{{ t('speakers.empty_hint') }}</p>
-      </div>
-      <!-- 设为我功能提示 / Set-as-me hint -->
-      <p v-if="speakers.length > 0" class="spk-set-me-hint">{{ t('speakers.set_me_hint') }}</p>
-    </div>
 
-    <!-- 详情视图 / Detail view -->
-    <div v-else key="detail" class="spk-detail">
-      <button class="spk-back-btn" @click="backToList">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
-        {{ t('speakers.back_list') }}
-      </button>
-
-      <div class="spk-detail-head">
-        <div class="spk-detail-left">
-          <div class="spk-detail-info">
-            <div class="spk-detail-name" @click="startRename">
-              <span v-if="!isRenaming" class="spk-name-clickable" :class="{ 'is-unid': isPlaceholderName(selectedSpeaker.name) }" :style="{ color: getTextColor(selectedSpeaker.id) }">{{ spkDisplayName(selectedSpeaker.name) }}</span>
-              <input v-else ref="renameInputRef" v-model="renameValue" class="spk-inline-edit" @keyup.enter="saveRename" @keydown.escape.prevent="cancelRename" @blur="saveRename" />
-              <span v-if="isMe(selectedSpeaker)" class="spk-me-badge">{{ t('speakers.current_user') }}</span>
+        <!-- 声纹管理 / Voiceprint management -->
+        <div class="spk-voiceprint-section">
+          <div v-if="voiceprintLoading && !voiceprintStatus" class="vp-skeleton">
+            <div class="vp-skeleton-line"></div>
+            <div class="vp-skeleton-line short"></div>
+          </div>
+          <template v-else-if="voiceprintStatus">
+            <div class="vp-header">
+              <h3 class="vp-title">{{ t('speakers.voiceprint_title') }}</h3>
+              <span :class="['vp-badge', voiceprintStatus.has_voiceprint ? 'vp-registered' : 'vp-not-registered']">
+                {{ voiceprintStatus.has_voiceprint ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered') }}
+              </span>
             </div>
-            <div v-if="selectedSpeaker.alias" class="spk-detail-role">{{ selectedSpeaker.alias }}</div>
-            <!-- 备注：同名消歧后缀来源，点击行内编辑 / Note: source of disambiguation suffix, click to edit -->
-            <div class="spk-detail-note">
-              <span class="spk-note-label">{{ t('speakers.note_label') }}</span>
-              <input v-if="isEditingNote" ref="noteInputRef" v-model="noteValue" class="spk-inline-edit spk-note-edit" :maxlength="500" :placeholder="t('speakers.note_placeholder')" @keyup.enter="saveNote" @keydown.escape.prevent="cancelNote" @blur="saveNote" />
-              <span v-else class="spk-note-text" :class="{ 'is-empty': !selectedSpeaker.note }" :title="t('speakers.note_hint')" @click="startNote">{{ selectedSpeaker.note || t('speakers.note_empty') }}</span>
+            <div class="vp-stats">
+              <div class="vp-stat-item">
+                <span class="vp-stat-label">{{ t('speakers.voiceprint_samples') }}</span>
+                <span class="vp-stat-value">{{ voiceprintStatus.sample_count }}</span>
+              </div>
+              <div class="vp-stat-item">
+                <span class="vp-stat-label">{{ t('speakers.voiceprint_total_duration') }}</span>
+                <span class="vp-stat-value">{{ formatTime(voiceprintStatus.total_sample_duration) }}</span>
+              </div>
+              <div v-if="voiceprintStatus.updated_at" class="vp-stat-item">
+                <span class="vp-stat-label">{{ t('speakers.voiceprint_updated') }}</span>
+                <span class="vp-stat-value">{{ formatDate(voiceprintStatus.updated_at) }}</span>
+              </div>
             </div>
-          </div>
+            <div class="vp-actions">
+              <button class="btn btn-secondary btn-sm" @click="onRebuildVoiceprint" :disabled="voiceprintLoading">
+                {{ voiceprintLoading ? t('speakers.voiceprint_rebuilding') : t('speakers.voiceprint_rebuild') }}
+              </button>
+              <button 
+                v-if="voiceprintStatus.has_voiceprint" 
+                class="btn btn-secondary btn-sm" 
+                style="color:var(--rec)" 
+                @click="onDeleteVoiceprint"
+                :disabled="voiceprintLoading"
+              >
+                {{ t('speakers.voiceprint_delete') }}
+              </button>
+            </div>
+          </template>
         </div>
-        <div class="spk-detail-actions">
-          <button v-if="!isMe(selectedSpeaker)" class="btn btn-secondary btn-sm" @click="onToggleMe">{{ t('speakers.set_me') }}</button>
-          <button class="btn btn-secondary btn-sm" style="color:var(--error)" @click="confirmDelete(selectedSpeaker)">{{ t('common.action.delete') }}</button>
-        </div>
-      </div>
 
-      <!-- 统计卡片 / Stat cards -->
-      <div class="spk-stat-cards">
-        <div class="spk-stat-card">
-          <div class="label">{{ t('speakers.stat_meetings') }}</div>
-          <div class="value">{{ stat.meetings.length }}</div>
-          <div class="sub">{{ t('speakers.stat_meetings_unit') }}</div>
-        </div>
-        <div class="spk-stat-card">
-          <div class="label">{{ t('speakers.stat_duration') }}</div>
-          <div class="value">{{ Math.round(stat.totalDuration / 60) }}</div>
-          <div class="sub">{{ t('speakers.stat_duration_unit') }}</div>
-        </div>
-        <div class="spk-stat-card">
-          <div class="label">{{ t('speakers.stat_decisions') }}</div>
-          <div class="value">{{ stat.decisions.length }}</div>
-          <div class="sub">{{ t('speakers.stat_decisions_unit') }}</div>
-        </div>
-      </div>
-
-      <!-- 声纹管理 / Voiceprint management -->
-      <div class="spk-voiceprint-section">
-        <div v-if="voiceprintLoading && !voiceprintStatus" class="vp-skeleton">
-          <div class="vp-skeleton-line"></div>
-          <div class="vp-skeleton-line short"></div>
-        </div>
-        <template v-else-if="voiceprintStatus">
-        <div class="vp-header">
-          <h3 class="vp-title">{{ t('speakers.voiceprint_title') }}</h3>
-          <span :class="['vp-badge', voiceprintStatus.has_voiceprint ? 'vp-registered' : 'vp-not-registered']">
-            {{ voiceprintStatus.has_voiceprint ? t('speakers.voiceprint_registered') : t('speakers.voiceprint_not_registered') }}
-          </span>
-        </div>
-        <div class="vp-stats">
-          <div class="vp-stat-item">
-            <span class="vp-stat-label">{{ t('speakers.voiceprint_samples') }}</span>
-            <span class="vp-stat-value">{{ voiceprintStatus.sample_count }}</span>
-          </div>
-          <div class="vp-stat-item">
-            <span class="vp-stat-label">{{ t('speakers.voiceprint_total_duration') }}</span>
-            <span class="vp-stat-value">{{ formatTime(voiceprintStatus.total_sample_duration) }}</span>
-          </div>
-          <div v-if="voiceprintStatus.updated_at" class="vp-stat-item">
-            <span class="vp-stat-label">{{ t('speakers.voiceprint_updated') }}</span>
-            <span class="vp-stat-value">{{ formatDate(voiceprintStatus.updated_at) }}</span>
-          </div>
-        </div>
-        <div class="vp-actions">
-          <button class="btn btn-secondary btn-sm" @click="onRebuildVoiceprint" :disabled="voiceprintLoading">
-            {{ voiceprintLoading ? t('speakers.voiceprint_rebuilding') : t('speakers.voiceprint_rebuild') }}
+        <!-- Tab 切换 / Tab switcher -->
+        <div class="spk-tabs">
+          <button class="spk-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">
+            {{ t('speakers.tab_meetings') }} <span class="spk-tab-count">{{ stat.meetings.length }}</span>
           </button>
-          <button 
-            v-if="voiceprintStatus.has_voiceprint" 
-            class="btn btn-secondary btn-sm" 
-            style="color:var(--rec)" 
-            @click="onDeleteVoiceprint"
-            :disabled="voiceprintLoading"
-          >
-            {{ t('speakers.voiceprint_delete') }}
+          <button class="spk-tab" :class="{ 'is-active': activeTab === 'utterances' }" @click="activeTab = 'utterances'">
+            {{ t('speakers.tab_utterances') }} <span class="spk-tab-count">{{ allUtterances.length }}</span>
+          </button>
+          <button class="spk-tab" :class="{ 'is-active': activeTab === 'decisions' }" @click="activeTab = 'decisions'">
+            {{ t('speakers.tab_decisions') }} <span class="spk-tab-count">{{ stat.decisions.length }}</span>
           </button>
         </div>
-        </template>
-      </div>
 
-      <!-- Tab 切换 / Tab switcher -->
-      <div class="spk-tabs">
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'meetings' }" @click="activeTab = 'meetings'">
-          {{ t('speakers.tab_meetings') }} <span class="spk-tab-count">{{ stat.meetings.length }}</span>
-        </button>
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'utterances' }" @click="activeTab = 'utterances'">
-          {{ t('speakers.tab_utterances') }} <span class="spk-tab-count">{{ allUtterances.length }}</span>
-        </button>
-        <button class="spk-tab" :class="{ 'is-active': activeTab === 'decisions' }" @click="activeTab = 'decisions'">
-          {{ t('speakers.tab_decisions') }} <span class="spk-tab-count">{{ stat.decisions.length }}</span>
-        </button>
-      </div>
-
-      <!-- 会议列表 / Meeting list -->
-      <div v-show="activeTab === 'meetings'" class="spk-tab-panel is-active">
-        <div v-if="stat.meetings.length === 0" class="spk-empty">{{ t('speakers.empty_meetings') }}</div>
-        <div v-for="m in sortedMeetings" :key="m.task_id" class="spk-meeting-card" @click="openTask(m.task_id)">
-          <div class="mc-head">
-            <span class="mc-title">{{ m.title }}</span>
-            <span class="mc-date">{{ formatDate(m.date) }}</span>
+        <!-- 会议列表 / Meeting list -->
+        <div v-show="activeTab === 'meetings'" class="spk-tab-panel is-active">
+          <div v-if="stat.meetings.length === 0" class="spk-empty">{{ t('speakers.empty_meetings') }}</div>
+          <div v-for="m in sortedMeetings" :key="m.task_id" class="spk-meeting-card" @click="openTask(m.task_id)">
+            <div class="mc-head">
+              <span class="mc-title">{{ m.title }}</span>
+              <span class="mc-date">{{ formatDate(m.date) }}</span>
+            </div>
+            <div class="mc-excerpt">{{ m.excerpt }}</div>
+            <div class="mc-stats">
+              <span>{{ t('speakers.minutes', { count: Math.round(m.duration / 60) }) }}</span>
+              <span>{{ t('speakers.utterances_count', { count: m.utteranceCount }) }}</span>
+            </div>
           </div>
-          <div class="mc-excerpt">{{ m.excerpt }}</div>
-          <div class="mc-stats">
-            <span>{{ t('speakers.minutes', { count: Math.round(m.duration / 60) }) }}</span>
-            <span>{{ t('speakers.utterances_count', { count: m.utteranceCount }) }}</span>
+        </div>
+
+        <!-- 发言摘要 / Utterance summary -->
+        <div v-show="activeTab === 'utterances'" class="spk-tab-panel is-active">
+          <div v-if="allUtterances.length === 0" class="spk-empty">{{ t('speakers.empty_utterances') }}</div>
+          <div v-for="(u, i) in allUtterances.slice(0, 20)" :key="i" class="spk-utterance" :style="{ borderLeftColor: getColor(selectedSpeaker.id) }">
+            <div class="ut-meta">
+              <span class="ut-meeting" @click="openTask(u.meetingTaskId)">{{ u.meetingTitle }}</span>
+              <span class="ut-time">{{ formatTime(u.start) }}</span>
+            </div>
+            <div class="ut-text">{{ u.text }}</div>
+          </div>
+          <div v-if="allUtterances.length > 20" class="spk-empty">{{ t('speakers.utterances_limit') }}</div>
+        </div>
+
+        <!-- 决策事项 / Decision items -->
+        <div v-show="activeTab === 'decisions'" class="spk-tab-panel is-active">
+          <div v-if="stat.decisions.length === 0" class="spk-empty">{{ t('speakers.empty_decisions') }}</div>
+          <div v-for="decision in stat.decisions" :key="decision.id" class="spk-decision-item">
+            <div class="decision-body">
+              <div class="decision-text" :class="{ 'is-done': decision.done }">{{ decision.text }}</div>
+              <div class="decision-from">{{ t('speakers.decision_from', { title: decision.fromTaskTitle }) }}</div>
+            </div>
           </div>
         </div>
       </div>
-
-      <!-- 发言摘要 / Utterance summary -->
-      <div v-show="activeTab === 'utterances'" class="spk-tab-panel is-active">
-        <div v-if="allUtterances.length === 0" class="spk-empty">{{ t('speakers.empty_utterances') }}</div>
-        <div v-for="(u, i) in allUtterances.slice(0, 20)" :key="i" class="spk-utterance" :style="{ borderLeftColor: getColor(selectedSpeaker.id) }">
-          <div class="ut-meta">
-            <span class="ut-meeting" @click="openTask(u.meetingTaskId)">{{ u.meetingTitle }}</span>
-            <span class="ut-time">{{ formatTime(u.start) }}</span>
-          </div>
-          <div class="ut-text">{{ u.text }}</div>
-        </div>
-        <div v-if="allUtterances.length > 20" class="spk-empty">{{ t('speakers.utterances_limit') }}</div>
-      </div>
-
-      <!-- 决策事项 / Decision items -->
-      <div v-show="activeTab === 'decisions'" class="spk-tab-panel is-active">
-        <div v-if="stat.decisions.length === 0" class="spk-empty">{{ t('speakers.empty_decisions') }}</div>
-        <div v-for="decision in stat.decisions" :key="decision.id" class="spk-decision-item">
-          <div class="decision-body">
-            <div class="decision-text" :class="{ 'is-done': decision.done }">{{ decision.text }}</div>
-            <div class="decision-from">{{ t('speakers.decision_from', { title: decision.fromTaskTitle }) }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
     </Transition>
 
     <!-- 确认对话框 / Confirmation dialog -->
     <Teleport to="body">
-    <div v-if="showConfirmDialog" class="spk-dialog-overlay" @click.self="showConfirmDialog = false">
-      <div class="spk-dialog">
-        <h3>{{ confirmDialogTitle }}</h3>
-        <p>{{ confirmDialogMsg }}</p>
-        <div class="spk-dialog-actions">
-          <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('speakers.cancel') }} <kbd>ESC</kbd></button>
-          <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
+      <div v-if="showConfirmDialog" class="spk-dialog-overlay" @click.self="showConfirmDialog = false">
+        <div class="spk-dialog">
+          <h3>{{ confirmDialogTitle }}</h3>
+          <p>{{ confirmDialogMsg }}</p>
+          <div class="spk-dialog-actions">
+            <button class="btn btn-secondary btn-sm" @click="showConfirmDialog = false">{{ t('speakers.cancel') }} <kbd>ESC</kbd></button>
+            <button class="btn btn-secondary btn-sm danger-confirm" @click="onConfirmDelete">{{ t('common.action.delete') }}</button>
+          </div>
         </div>
       </div>
-    </div>
     </Teleport>
   </div>
 </template>
