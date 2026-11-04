@@ -123,7 +123,7 @@
         <div class="ws-browser-head">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/></svg>
           <span>{{ t('ai-panel.context.workspace_browser_title') }}</span>
-          <button v-if="browsingProjectId" class="ws-browser-back" @click="ws.resetBrowser()">
+          <button v-if="browsingProjectId" class="ws-browser-back" :title="t('common.action.back')" :aria-label="t('common.action.back')" @click="ws.resetBrowser()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
         </div>

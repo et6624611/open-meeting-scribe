@@ -106,7 +106,8 @@
     "inline_edit_polish": "Polish",
     "inline_edit_simplify": "Simplify",
     "inline_edit_expand": "Expand",
-    "inline_edit_translate": "Translate to English"
+    "inline_edit_translate": "Translate to English",
+    "inline_edit_send": "Send"
   },
   "inline_edit_diff_title": "AI Rewrite Comparison",
   "inline_edit_goto_settings": "Change model… (shared default for out-of-panel actions)",

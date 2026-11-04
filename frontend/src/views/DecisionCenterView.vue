@@ -145,7 +145,7 @@
     <section v-else-if="viewMode === 'meeting'" class="dc-groups">
       <div v-for="g in visibleGroups" :key="g.taskId" class="dc-group">
         <div class="dc-group-head">
-          <button class="dc-group-toggle" :aria-expanded="!collapsed.has(g.taskId)" @click="toggleGroup(g.taskId)">
+          <button class="dc-group-toggle" :aria-expanded="!collapsed.has(g.taskId)" :aria-label="t('decisions.toggle_meeting_group')" @click="toggleGroup(g.taskId)">
             <svg class="dc-chev" :class="{ open: !collapsed.has(g.taskId) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
           <RouterLink class="dc-group-title" :title="g.title" :to="{ name: 'generating', params: { taskId: g.taskId }, query: { tab: 'decisions' } }">{{ g.title }}</RouterLink>
@@ -191,7 +191,7 @@
       <p class="dc-topic-hint">{{ t('decisions.topic_view_hint') }}</p>
       <div v-for="g in visibleTopics" :key="g.topic_key" class="dc-topic" :data-topic-key="g.topic_key">
         <div class="dc-topic-head">
-          <button class="dc-group-toggle" :aria-expanded="!collapsedTopics.has(g.topic_key)" @click="toggleTopic(g.topic_key)">
+          <button class="dc-group-toggle" :aria-expanded="!collapsedTopics.has(g.topic_key)" :aria-label="t('decisions.toggle_topic_group')" @click="toggleTopic(g.topic_key)">
             <svg class="dc-chev" :class="{ open: !collapsedTopics.has(g.topic_key) }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
           <span class="dc-topic-title">{{ g.title }}</span>

@@ -32,6 +32,8 @@
       <button
         class="inline-edit-send"
         :class="{ 'is-loading': loading }"
+        :title="t('common.selection_toolbar.inline_edit_send')"
+        :aria-label="t('common.selection_toolbar.inline_edit_send')"
         :disabled="!inputText.trim() || loading"
         @click="onSubmit"
       >

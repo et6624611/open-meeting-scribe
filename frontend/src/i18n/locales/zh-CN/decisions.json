@@ -21,6 +21,8 @@
   "add_manual": "手动补录",
   "collapsed_title": "已存档/已替代（{count}）",
   "group_meeting_count": "{count} 条",
+  "toggle_meeting_group": "折叠/展开会议组",
+  "toggle_topic_group": "折叠/展开议题",
   "empty_title": "还没有沉淀的决策",
   "empty_all": "会议中明确拍板的事项会自动汇聚到这里；也可以在 AI 对话中让它提取某场会议的决策。",
   "empty_filtered": "没有符合当前筛选条件的决策",

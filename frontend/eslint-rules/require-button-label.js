@@ -3,7 +3,12 @@
  *
  * 禁止无文本定义的图标按钮——所有 <button> 必须具备以下至少一项：
  *   1. title / aria-label / data-tip 属性（含动态绑定 :title 等）
- *   2. 标签内有可见文本内容（非纯空白）
+ *   2. 标签内有可见文本内容（非纯空白，含嵌套子元素内的文本）
+ *
+ * 已知盲点（静态分析局限）：文本若仅来自单向 v-if 且条件为假的后代元素，
+ * 规则仍会放行（无法在 lint 阶段求值运行时条件）。现状排查：全库仅
+ * GeneratingView.vue 两处此类按钮，均为 v-if/v-else 互补对（必有一支渲染），
+ * 无实害。新增按钮时请勿依赖「仅 v-if 后代文本」的写法。
  *
  * 违反此规则的按钮 = 用户无法理解其功能 = 不可变更原则违规。
  */
@@ -56,6 +61,9 @@ function hasLabelAttribute(node) {
 
 /**
  * 检查元素内部是否有可见文本内容
+ *
+ * 递归检查后代节点：按钮内常见 <span>{{ label }}</span> 等嵌套结构，
+ * 屏幕阅读器同样会朗读这些内容，与直接文本等价。
  */
 function hasVisibleTextContent(node) {
   if (!node.children || node.children.length === 0) return false
@@ -67,6 +75,10 @@ function hasVisibleTextContent(node) {
     }
     // VExpressionContainer（如 {{ label }}）视为有文本
     if (child.type === 'VExpressionContainer') {
+      return true
+    }
+    // VElement：递归检查子元素（如 <span>{{ t('xxx') }}</span>）
+    if (child.type === 'VElement' && hasVisibleTextContent(child)) {
       return true
     }
   }

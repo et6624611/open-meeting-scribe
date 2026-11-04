@@ -182,6 +182,7 @@
     }
   },
   "block_menu": {
+    "title": "Block actions",
     "edit": "Edit",
     "to_heading": "Turn into heading",
     "to_list": "Turn into list",

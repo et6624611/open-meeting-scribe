@@ -106,7 +106,8 @@
     "inline_edit_polish": "润色",
     "inline_edit_simplify": "精简",
     "inline_edit_expand": "扩写",
-    "inline_edit_translate": "翻译英文"
+    "inline_edit_translate": "翻译英文",
+    "inline_edit_send": "发送"
   },
   "inline_edit_diff_title": "AI 改写对比",
   "inline_edit_goto_settings": "更换模型…（面板外操作共用默认模型）",

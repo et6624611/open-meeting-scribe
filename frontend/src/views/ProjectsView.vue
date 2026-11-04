@@ -212,7 +212,7 @@
               :placeholder="t('projects.search_placeholder')"
               @keyup.enter="onSearch"
             />
-            <button class="btn btn-secondary btn-sm" @click="onSearch" :disabled="!searchQuery.trim()">
+            <button class="btn btn-secondary btn-sm" :title="t('common.action.search')" :aria-label="t('common.action.search')" @click="onSearch" :disabled="!searchQuery.trim()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </button>
           </div>

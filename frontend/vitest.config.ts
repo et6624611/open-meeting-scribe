@@ -13,6 +13,6 @@ export default defineConfig({
     environment: 'jsdom',
     // 组件单测聚焦增量逻辑；DOM 操作（scrollIntoView 等）在测试内按需打桩
     globals: false,
-    include: ['src/**/__tests__/**/*.test.ts'],
+    include: ['src/**/__tests__/**/*.test.ts', 'eslint-rules/__tests__/**/*.test.ts'],
   },
 })

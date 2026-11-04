@@ -64,7 +64,7 @@
           </div>
         </div>
         <!-- hover 操作按钮 / Hover action buttons -->
-        <button class="md-block-action-btn" @click.stop="toggleBlockMenu(idx)">
+        <button class="md-block-action-btn" :title="t('generating.block_menu.title')" :aria-label="t('generating.block_menu.title')" @click.stop="toggleBlockMenu(idx)">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
         </button>
         <!-- 块操作菜单 / Block action menu -->

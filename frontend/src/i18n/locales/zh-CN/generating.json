@@ -183,6 +183,7 @@
     }
   },
   "block_menu": {
+    "title": "块操作",
     "edit": "编辑",
     "to_heading": "转为标题",
     "to_list": "转为列表",

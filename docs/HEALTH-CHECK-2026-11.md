@@ -4,7 +4,7 @@ description: "面向未来功能开发与迭代的只读健康检查结论，含
 tags: ["health-check", "tech-debt", "checklist", "ci", "testing", "architecture"]
 created_at: "2026-11-04"
 updated_at: "2026-11-04"
-version: "1.1.1"
+version: "1.1.2"
 author: "Yongliang Wang"
 status: "published"
 category: "technical"
@@ -121,17 +121,17 @@ category: "technical"
 
 ## 三、P1 近期改进（1-4 周，与功能开发并行）
 
-### ☐ T-06 修复 32 个 require-button-label 无障碍错误
+### ☑ T-06 修复 32 个 require-button-label 无障碍错误
 
-- [ ] 运行 `cd frontend && npx eslint src/ 2>&1 | grep "require-button-label"` 获取完整清单
-- [ ] 逐个为图标按钮补充 `title` / `aria-label` / `data-tip` 之一，或迁移到 `IconButton` 组件（label 为必填 prop）
-- [ ] 文案走 i18n（遵循翻译 key 模块前缀命名规范）
+- [x] 运行 `cd frontend && npx eslint src/ 2>&1 | grep "require-button-label"` 获取完整清单（14 文件 32 处）
+- [x] 逐个排查：6 处真·图标按钮补充 `title` / `aria-label`；26 处按钮内已有嵌套 `<span>` 文本，属规则误报，修正规则实现
+- [x] 文案走 i18n（遵循翻译 key 模块前缀命名规范）
 
 **位置**：`frontend/src/` 多个组件
 **影响**：屏幕阅读器用户无法使用；自定义 ESLint 规则形同虚设
-**工作量**：2-3h
+**工作量**：2-3h（实际约 1h）
 **验收标准**：`npx eslint src/` error 数为 0
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。全量排查后发现 32 处分两类：① 26 处误报——按钮内已有 `<span>{{ t(...) }}</span>` 嵌套可见文本，屏幕阅读器可正常朗读，但 [require-button-label.js](frontend/eslint-rules/require-button-label.js) 的 `hasVisibleTextContent` 只检查直接子节点，已修正为递归检查后代文本节点（已知盲点：文本仅来自单向 v-if 后代时规则放行，已注写进规则头注释；现状仅 GeneratingView 两处 v-if/v-else 互补对，无实害）；② 6 处真·图标按钮，补齐 label：`InlineEditInput.vue` 发送按钮（新 key `common.selection_toolbar.inline_edit_send`）、`MdBlockEditor.vue` 块菜单触发钮（新 key `generating.block_menu.title`）、`WorkspaceSection.vue` 浏览器返回钮（复用 `common.action.back`）、`ProjectsView.vue` 搜索钮（复用 `common.action.search`）、`DecisionCenterView.vue` 会议组/议题组折叠钮 ×2（新 key `decisions.toggle_meeting_group` / `decisions.toggle_topic_group`，均中英双语补齐）。另为规则新增最小 fixture 单测（`eslint-rules/__tests__/require-button-label.test.ts`，覆盖 label 属性 / 嵌套文本递归 / 纯图标违规 / v-if 盲点四类）。实测 `npx eslint src/` error 数 0（exit 0）；`npm run test:unit` 11 文件 68 用例全绿；`npx vue-tsc --noEmit` 无报错；`npm run build` 成功；改动 JSON 文件均通过解析校验。
 
 ### ☐ T-07 在 CI 中启用 ESLint 门禁
 
@@ -395,7 +395,7 @@ category: "technical"
 
 - 代码规模：Python 212 文件 / 65,075 行（排除 venv）；前端 TS+Vue 194 文件 / 40,787 行
 - Ruff 全项目（配置 E/F/I/N/W，忽略 E501/E402/N806/N801/N812/N999）：**60 errors**（I001×30、F401×18、F841×6、E402×4、E741×3、F541×2、N818×1）；CI 限定 `--select F821,F811,F402` 为 **0 报错**
-- 前端 ESLint：**32 errors**（`require-button-label`×32 — T-04 的 3 个 `no-use-v-if-with-v-for` 已于 2026-11-04 修复）+ **1743 warnings**，1743 条可 `--fix`
+- 前端 ESLint：复核实测 **32 errors**（`require-button-label`×32 — T-04 的 3 个 `no-use-v-if-with-v-for` 已于 2026-11-04 修复）+ **1743 warnings**；T-05/T-06 已于 2026-11-04 落地，当前实测 **0 errors / 0 warnings**（T-07 门禁前置已满足）
 - 前端 vitest：10 文件 / 60 用例，全部通过（2.39s）
 - 后端 pytest：`tests/ --ignore=tests/eval_local_engine` 约 **1065 用例 / 5 分 31 秒**；两次运行一绿一 flaky（`test_misc.py::test_me_unauthorized`）
 - CI 现状：Ruff 仅 F821/F811/F402；pytest 仅 test_smoke.py；前端仅 vue-tsc + build，**无 vitest、无 eslint**

@@ -21,6 +21,8 @@
   "add_manual": "Add decision",
   "collapsed_title": "Archived / superseded ({count})",
   "group_meeting_count": "{count}",
+  "toggle_meeting_group": "Collapse/expand meeting group",
+  "toggle_topic_group": "Collapse/expand topic",
   "empty_title": "No decisions captured yet",
   "empty_all": "Items explicitly decided in meetings are gathered here automatically; you can also ask the AI chat to extract decisions from any meeting.",
   "empty_filtered": "No decisions match the current filters",
