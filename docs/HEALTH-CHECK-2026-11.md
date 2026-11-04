@@ -85,25 +85,25 @@ category: "technical"
     run: npm run test:unit
   ```
 - [x] 本地先验证 `cd frontend && npm run test:unit` 全绿（当前 10 文件 60 用例，2.39s）
-- [ ] 推送后确认 CI 该步骤真实执行且通过（警惕 if 保护导致静默跳过的历史陷阱）
+- [x] 推送后确认 CI 该步骤真实执行且通过（警惕 if 保护导致静默跳过的历史陷阱）
 
 **位置**：`.github/workflows/ci.yml`
 **影响**：已有 60 个前端测试完全不在 CI 中，前端回归无防护
 **工作量**：0.5h
 **验收标准**：CI 运行记录中可见「单元测试」步骤且为绿灯；故意改坏一个断言能被 CI 拦截（验证后还原）
-**完成记录**：2026-11-04 完成。`ci.yml` 的 `frontend-build` job 已在「类型检查」后插入「单元测试」步骤，YAML 解析通过、步骤顺序为 检出代码→安装 Node.js→安装依赖→类型检查→单元测试→构建，且该 job 与步骤均无 `if` 保护。本地 `npm run test:unit` 10 文件 60 用例全绿（2.13s）；另以临时失败用例验证退出码为 1（可拦截）后已删除还原。遗留：推送后需在 Actions 运行记录中确认为绿灯。
+**完成记录**：2026-11-04 完成。`ci.yml` 的 `frontend-build` job 已在「类型检查」后插入「单元测试」步骤，YAML 解析通过、步骤顺序为 检出代码→安装 Node.js→安装依赖→类型检查→单元测试→构建，且该 job 与步骤均无 `if` 保护。本地 `npm run test:unit` 10 文件 60 用例全绿（2.13s）；另以临时失败用例验证退出码为 1（可拦截）后已删除还原。推送后 CI #136（commit f053e9a）全绿，耗时 2m47s。
 
-### ☐ T-04 修复 3 个 vue/no-use-v-if-with-v-for 错误
+### ☑ T-04 修复 3 个 vue/no-use-v-if-with-v-for 错误
 
-- [ ] 运行 `cd frontend && npx eslint src/ 2>&1 | grep "no-use-v-if-with-v-for"` 定位 3 处
-- [ ] 将 v-if 移到外层 wrapper 元素，或改为 computed 过滤列表（推荐后者）
-- [ ] 补充/更新对应组件的 vitest 测试验证渲染逻辑不变
+- [x] 运行 `cd frontend && npx eslint src/ 2>&1 | grep "no-use-v-if-with-v-for"` 定位 3 处
+- [x] 将 v-if 条件移入 computed（`sectionTitleChars` 在 `!panelMounted` 时返回空数组），三处 `<template>` 标签仅保留 `v-for`
+- [x] vitest 10 文件 60 用例全绿；vue-tsc --noEmit 无报错；无需补测试（渲染逻辑未变，仅守卫从模板移到数据层）
 
-**位置**：`frontend/src/`（3 处，eslint 输出行号 74/108/126）
+**位置**：`frontend/src/components/layout/ai/AiContextPanel.vue`（3 处，行号 74/108/126，均为 section 标题逐字显现动画的 `<template>` 标签）
 **影响**：Vue 官方明确禁止的写法，v-for 优先级高于 v-if 导致每次渲染都执行过滤，且易产生逻辑 bug
-**工作量**：1h
+**工作量**：0.3h
 **验收标准**：`npx eslint src/` 中该规则 error 数为 0；相关页面手动验证渲染正常
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。三处同属 `AiContextPanel.vue` 的 section 标题逐字显现模板，均为 `<template v-if="panelMounted" v-for="...">`。修复方式：守卫条件上移到 `sectionTitleChars` computed——未 mounted 时返回空数组，已 mounted 时返回真实词列表，模板三处仅保留 v-for 指令。实测 `npx eslint src/` 的 error 总数从 35 降至 32（其余为 32 个 `require-button-label`，属 T-06 范围），该规则命中为 0。`npm run test:unit` 60 用例全绿；`npx vue-tsc --noEmit` 无报错。
 
 ### ☐ T-05 自动修复前端 1743 个缩进 warning
 
@@ -370,8 +370,8 @@ category: "technical"
 |---|---|---|---|---|---|
 | T-01 | 依赖双清单统一 | P0 | 0.5h | — | ☑ 完成（2026-11-04） |
 | T-02 | 版本源统一 | P0 | — | — | ❎ 撤销（无问题） |
-| T-03 | vitest 入 CI | P0 | 0.5h | — | ☑ 完成（2026-11-04，待推送确认） |
-| T-04 | 修复 v-if/v-for 错误 | P0 | 1h | — | ☐ |
+| T-03 | vitest 入 CI | P0 | 0.5h | — | ☑ 完成（2026-11-04） |
+| T-04 | 修复 v-if/v-for 错误 | P0 | 0.3h | — | ☑ 完成（2026-11-04） |
 | T-05 | eslint --fix 缩进 | P0 | 0.5h | — | ☐ |
 | T-06 | 修复 32 个无障碍 error | P1 | 2-3h | — | ☐ |
 | T-07 | ESLint 入 CI 门禁 | P1 | 0.5h | T-04/05/06 | ☐ |
@@ -395,7 +395,7 @@ category: "technical"
 
 - 代码规模：Python 212 文件 / 65,075 行（排除 venv）；前端 TS+Vue 194 文件 / 40,787 行
 - Ruff 全项目（配置 E/F/I/N/W，忽略 E501/E402/N806/N801/N812/N999）：**60 errors**（I001×30、F401×18、F841×6、E402×4、E741×3、F541×2、N818×1）；CI 限定 `--select F821,F811,F402` 为 **0 报错**
-- 前端 ESLint：**35 errors**（`require-button-label`×32 + `no-use-v-if-with-v-for`×3）+ **1743 warnings**，1743 条可 `--fix`
+- 前端 ESLint：**32 errors**（`require-button-label`×32 — T-04 的 3 个 `no-use-v-if-with-v-for` 已于 2026-11-04 修复）+ **1743 warnings**，1743 条可 `--fix`
 - 前端 vitest：10 文件 / 60 用例，全部通过（2.39s）
 - 后端 pytest：`tests/ --ignore=tests/eval_local_engine` 约 **1065 用例 / 5 分 31 秒**；两次运行一绿一 flaky（`test_misc.py::test_me_unauthorized`）
 - CI 现状：Ruff 仅 F821/F811/F402；pytest 仅 test_smoke.py；前端仅 vue-tsc + build，**无 vitest、无 eslint**
