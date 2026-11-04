@@ -117,7 +117,8 @@ flowchart TD
 - **一个厂商一套 key**：ASR 与纪要都用 DashScope，简化凭据管理。
 
 ## 五、依赖
-- 运行依赖：`requests`、`httpx`、`fastapi`、`uvicorn`、`python-dotenv`、`dashscope`、`websockets`、`python-multipart`、`numpy`、`scipy`
+- 运行依赖：`requests`、`httpx`、`fastapi`、`uvicorn`、`python-dotenv`、`dashscope`、`websockets`、`python-multipart`、`numpy`、`Babel`（后端 i18n）、`pywebview`（桌面窗口）
+- 主链路不依赖 `scipy`：WAV 读取用标准库 `wave`、特征值用 `numpy.linalg.eigvalsh`、一对一分配用贪心算法；仅 `scripts/` 下离线评测脚本仍直接 `import scipy`（靠本地引擎环境提供）
 - 认证依赖：`PyJWT`（JWT 签发/验证）
 - 项目关联：`python-docx`、`PyPDF2`（文档文本提取）
 - 外部：ffmpeg（已装 8.1）、BlackHole 2ch（已装）、DashScope 服务（已验证可达）

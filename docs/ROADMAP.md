@@ -82,7 +82,7 @@ status: published
 - **Provider 抽象层**：`core/embedding_provider.py` 统一接口，云端优先 → MFCC 降级
 - **主项目清理**：删除 `LocalCamPlusProvider`、`extract_embedding_local()` 等本地 CAM++ 代码
 - **依赖瘦身**：`requirements.txt` 移除 `torch` + `torchaudio`（~2GB → 0）
-- **实时侧**：`core/diarization.py` 纯 MFCC 聚类（numpy + scipy），无 torch
+- **实时侧**：`core/diarization.py` 纯 MFCC 聚类（numpy + scipy），无 torch（注：2026-11 起已移除 scipy 依赖，现仅 numpy）
 - **配置**：`data/settings.json` 新增 `voiceprint` 配置节（provider / base_url / api_key）
 - **兼容性**：云端 `cam++-v1-cloud` 与本地 `cam++-v1` 声纹注册表互相兼容
 - 依据：[ADR-0009](adr/0009-声纹识别服务云端拆分.md)
