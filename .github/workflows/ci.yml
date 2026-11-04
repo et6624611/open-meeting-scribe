@@ -101,6 +101,10 @@ jobs:
     - name: 类型检查
       working-directory: frontend
       run: npx vue-tsc --noEmit
+
+    - name: 单元测试
+      working-directory: frontend
+      run: npm run test:unit
     
     - name: 构建
       working-directory: frontend
