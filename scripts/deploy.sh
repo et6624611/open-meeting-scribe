@@ -44,8 +44,8 @@ echo "✓ 虚拟环境就绪"
 
 # ── 4. 安装 Python 依赖 ──
 echo ""
-echo "[4/7] 安装 Python 依赖（首次较慢，约 2-3 分钟）..."
-pip install -r requirements.txt
+echo "[4/7] 安装 Python 依赖（按 requirements.lock 锁定版本，首次较慢，约 2-3 分钟）..."
+pip install -r requirements.lock
 echo "✓ Python 依赖安装完成"
 
 # ── 5. 构建前端 ──

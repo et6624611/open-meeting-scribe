@@ -48,10 +48,10 @@ jobs:
     - name: 安装 ffmpeg
       run: sudo apt-get update && sudo apt-get install -y ffmpeg
     
-    - name: 安装依赖
+    - name: 安装依赖（按 requirements.lock 锁定版本）
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements.lock
         pip install pytest
 
     - name: 安装 Node.js（冒烟测试依赖 frontend/dist 静态页）

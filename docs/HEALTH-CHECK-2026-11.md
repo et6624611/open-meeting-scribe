@@ -4,7 +4,7 @@ description: "面向未来功能开发与迭代的只读健康检查结论，含
 tags: ["health-check", "tech-debt", "checklist", "ci", "testing", "architecture"]
 created_at: "2026-11-04"
 updated_at: "2026-11-05"
-version: "1.1.3"
+version: "1.1.4"
 author: "Yongliang Wang"
 status: "published"
 category: "technical"
@@ -36,7 +36,7 @@ category: "technical"
 **三大主要风险**：
 1. **架构层级破坏**：6 个 `core/` 模块直接 `import app.*`，core 无法独立测试与复用
 2. **CI 防护盲区**：CI 仅跑 `tests/test_smoke.py`；前端 60 个 vitest 测试不在 CI；ESLint 35 个 error 无门禁
-3. **依赖管理分歧**：`pyproject.toml` 与 `requirements.txt` 实质性不一致（pyproject 多 scipy、缺 Babel/pywebview）——已由 T-01 修复；无 Python lockfile，依赖仅 `>=` 下限（仍待 T-14）
+3. **依赖管理分歧**：`pyproject.toml` 与 `requirements.txt` 实质性不一致（pyproject 多 scipy、缺 Babel/pywebview）——已由 T-01 修复；无 Python lockfile，依赖仅 `>=` 下限——已由 T-14 补 `requirements.lock`（2026-11-05）
 
 ---
 
@@ -235,18 +235,18 @@ category: "technical"
 **验收标准**：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试绿灯；守护测试进入 CI
 **完成记录**：2026-11-04 完成（commit `0da5cf8`）。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。
 
-### ☐ T-14 引入 Python lockfile
+### ☑ T-14 引入 Python lockfile
 
-- [ ] 选型：`uv`（推荐，速度快、与 pip 兼容）或 `pip-tools`
-- [ ] 生成 `requirements.lock`（或 `uv.lock`），提交入库
-- [ ] `ci.yml` 与 `scripts/deploy.sh` 改为按 lockfile 安装（`uv pip install -r requirements.lock` / `pip install -r requirements.lock`）
-- [ ] 在 `CONTRIBUTING.md` 注明依赖变更流程：改 requirements.txt → 重新生成 lock → 一并提交
+- [x] 选型：`uv`（速度快、与 pip 兼容；实测 uv 0.11.6）
+- [x] 生成 `requirements.lock`（universal 解析，87 个固定版本），提交入库
+- [x] `ci.yml` 与 `scripts/deploy.sh` 改为按 lockfile 安装（`pip install -r requirements.lock`）
+- [x] 在 `CONTRIBUTING.md` 注明依赖变更流程：改 requirements.txt → 重新生成 lock → 一并提交
 
-**位置**：`requirements.txt`、`.github/workflows/ci.yml`、`scripts/deploy.sh`
+**位置**：`requirements.lock`（新增）、`.github/workflows/ci.yml`、`scripts/deploy.sh`、`CONTRIBUTING.md`
 **影响**：当前所有依赖仅 `>=` 下限约束，不同时间/环境安装版本可能不同，生产故障难复现，且有供应链漂移风险
-**工作量**：1 天
+**工作量**：1 天（实际约 0.5h）
 **验收标准**：CI 与部署脚本均从 lockfile 安装；两次独立安装产生完全相同的依赖版本集
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-05 完成。① 选型 uv，命令 `uv pip compile --universal --python-version 3.11 requirements.txt -o requirements.lock`，产出 87 个固定版本；universal 模式下对 Python 版本敏感的包按 marker 分叉（如 numpy 2.4.6 `<3.12` / 2.5.4 `>=3.12`），平台相关包按 `sys_platform` 排除（uvloop、pythonnet）。② CI `backend-test` 与 `scripts/deploy.sh` 均改为 `pip install -r requirements.lock`；锁文件不含 torch / torchaudio / funasr / modelscope，AC-7 云包约束不受影响。③ `CONTRIBUTING.md` 新增「依赖变更流程」，明确 requirements.txt / pyproject.toml / requirements.lock 三文件同提交。验证：新建 Python 3.12 干净 venv 按 lockfile 全量安装成功（`pip install --dry-run -r requirements.lock` 亦可完整解析）；16 个运行依赖逐一 import 成功；`pytest tests/test_smoke.py -q` 30 passed；**全量 `pytest tests/ --ignore=tests/eval_local_engine -q` → 1134 passed / 0 failed / 5 分 23 秒**（锁定版本在 Python 3.12 上复跑通过）。注意：解析得到的 dashscope 为 2.0.3（本地 venv 为 1.27.3），已实测其 `legacy_1x` 兼容层保留 `from dashscope.audio.asr import ...` 路径。遗留：`Dockerfile`、`build-macos.yml` / `build-windows.yml` / `ci-local-engine-v2.yml`、`docs/DEPLOYMENT.md` 仍按 requirements.txt 安装，未纳入本项范围。
 
 ### ☐ T-15 拆分 app/routers/chat.py（1722 行）
 
@@ -352,7 +352,7 @@ category: "technical"
 
 ### 依赖与配置
 
-- [ ] 改动 `requirements.txt` 时同步更新 `pyproject.toml`（T-14 完成后改为重新生成 lockfile）
+- [ ] 改动 `requirements.txt` 时同步更新 `pyproject.toml` 并重新生成 `requirements.lock`（三文件同提交，命令见 CONTRIBUTING.md「依赖变更流程」）
 - [ ] 新增依赖确认不含 `torch/torchaudio/funasr/modelscope`（AC-7 云精简包约束，`ci-local-engine-v2.yml` 强制）
 - [ ] 改动 API 时同步更新 `docs/API_CONTRACTS.md`
 
@@ -382,7 +382,7 @@ category: "technical"
 | T-11 | CI 全量 pytest | P1 | 1d | T-09 | ☑ 完成（2026-11-04） |
 | T-12 | 清理 SSH expect 残留 | P1 | 0.5h | — | ☑ 完成（2026-11-04） |
 | T-13 | core→app 依赖全面解除 | P2 | 3-5d | T-10 | ☑ 完成（2026-11-04） |
-| T-14 | Python lockfile | P2 | 1d | T-01 | ☐ |
+| T-14 | Python lockfile | P2 | 1d | T-01 | ☑ 完成（2026-11-05） |
 | T-15 | 拆分 chat.py | P2 | 2d | T-09/T-11 | ☐ |
 | T-16 | 拆分前端超大组件 | P2 | 2-3d | T-03 | ☐ |
 | T-17 | mypy 类型检查 | P2 | 1w | — | ☐ |
@@ -404,7 +404,7 @@ category: "technical"
 - router 无专属测试：28 个 router 中约 25 个无（chat/settings/record/cloud_api 等）
 - core→app 反向依赖：6 个模块（pipeline_runner / agent_tools.impl / silence_detection / chat_actions / chat_context / chat_edits）
 - 依赖分歧：pyproject 多 scipy；缺 Babel、pywebview；`VERSION` 与 pyproject 均为 1.0.0（一致）→ **T-01 已修复（2026-11-04），双清单 16 项一致**
-- 无 Python lockfile（无 uv.lock / requirements.lock / poetry.lock）
+- 无 Python lockfile（无 uv.lock / requirements.lock / poetry.lock）—— 2026-11-05 T-14 已补 `requirements.lock`（87 个固定版本）
 - 无 mypy 配置
 - BACKLOG 未解决项：31 条（38 个标题 - 7 个 ✅）
 - >1000 行大文件：后端业务代码 6 个（chat.py 1722、context_export.py 1716、settings.py 1349、insight_board.py 1127、record.py 1091、audio_recording.py 1039），前端 4 个（LibraryView 1609、GeneratingView 1426、AiChatPanel 1246、useAiChat 1001）

@@ -3,8 +3,8 @@ title: 贡献指南
 description: 如何为 Open Meeting Scribe 贡献代码、报告问题或提出建议
 tags: ["contributing", "open-source", "guidelines"]
 created_at: "2026-09-10"
-updated_at: "2026-09-13"
-version: "1.1.0"
+updated_at: "2026-11-05"
+version: "1.1.1"
 ---
 
 # 贡献指南
@@ -88,6 +88,26 @@ DCO 是一份轻量声明，代表你确认：该贡献由你本人创建且有�
 ## 开发环境搭建
 
 详见 [README.md](README.md) 的「快速开始」部分。
+
+### 依赖变更流程
+
+依赖清单以 `requirements.txt` 为准，`requirements.lock` 是 uv 生成的确定性锁文件，两者必须随同一次提交：
+
+1. 修改 `requirements.txt`（新增 / 升级 / 移除依赖）
+2. 同步更新 `pyproject.toml` 的 `[project].dependencies`，保持两份清单一致
+3. 在仓库根目录重新生成锁文件：
+
+   ```bash
+   uv pip compile --universal --python-version 3.11 requirements.txt -o requirements.lock
+   ```
+
+4. 将 `requirements.txt`、`pyproject.toml`、`requirements.lock` 放在同一个 commit 中提交
+
+说明：
+
+- CI 与 `scripts/deploy.sh` 均按 `requirements.lock` 安装；只改清单不更新锁文件，安装版本不会随之变化。
+- `--universal` 生成 macOS / Linux / Windows 与 Python 3.11+ 通用的版本集，请勿按本机平台单独生成。
+- 未安装 uv 时：`pip install uv`。
 
 ## 隐私与合规要求
 
