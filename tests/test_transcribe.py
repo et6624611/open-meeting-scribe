@@ -334,7 +334,8 @@ class TestTranscribeAudioEntry:
         fake_result.st_mtime = real_stat_result.st_mtime
         fake_result.st_ctime = real_stat_result.st_ctime
 
-        monkeypatch.setattr(Path, "stat", lambda self: fake_result)
+        # 3.12 的 Path.stat 会带 follow_symlinks 关键字，桩需透传任意参数
+        monkeypatch.setattr(Path, "stat", lambda self, *args, **kwargs: fake_result)
         try:
             with pytest.raises(RuntimeError, match="文件过大"):
                 t.transcribe_audio(str(fake))

@@ -426,7 +426,17 @@ class TestPhilosophyRandom:
         assert "variants" in data
         assert isinstance(data["variants"], dict)
 
-    def test_variants_contain_zh_and_en(self, client):
+    def test_variants_contain_zh_and_en(self, client, tmp_path, monkeypatch):
+        """data/ 为本地运行目录、不入库（CI 无此文件），此处注入临时数据源。"""
+        import json
+        from app.routers import philosophy
+
+        data_file = tmp_path / "philosophies.json"
+        data_file.write_text(
+            json.dumps([{"zh": "静水流深", "en": "Still waters run deep"}], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(philosophy, "PHILOSOPHIES_FILE", data_file)
         resp = client.get("/api/philosophy/random")
         data = resp.json()
         variants = data["variants"]

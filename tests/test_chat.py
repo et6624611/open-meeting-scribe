@@ -16,6 +16,19 @@ import core.settings_store as _core_ss
 from app.server import app
 
 
+def _llm_result(content: str):
+    """构造 LlmResult 桩：使端点用例不触网、不依赖本机 Key。"""
+    from core.llm import LlmResult
+
+    return LlmResult(
+        content=content,
+        model="test-model",
+        usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        finish_reason="stop",
+        id="test-id",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_settings_file(tmp_path, monkeypatch):
     """DEF-RETEST-01/02 加固：chat 端点下沉调用 core.llm，其 provider/base_url/key
@@ -241,15 +254,17 @@ class TestChatEditVerification:
         """端到端：编辑意图 → 执行校验 → 回复带系统校验结论与 verified_changes"""
         chat_mod, _ = self._patch_storage(monkeypatch, tmp_path, "unit-edit-0004")
         monkeypatch.setattr(chat_mod.joblog, "append_event", lambda *a, **k: None)
-        calls = {"n": 0}
 
-        async def fake_llm(messages, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 1:  # 第一次调用为意图解析
-                return '{"ops": [{"op": "decision_assignee", "decision_id": "t1", "value": "钱乙"}]}'
-            return "相关决策责任人改为钱乙。"
+        async def fake_intent(messages, **kwargs):
+            return '{"ops": [{"op": "decision_assignee", "decision_id": "t1", "value": "钱乙"}]}'
 
-        monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
+        async def fake_full(messages, **kwargs):
+            return _llm_result("相关决策责任人改为钱乙。")
+
+        # 意图解析在 core.chat_edits 内调用，需 patch 其模块级引用
+        from core import chat_edits as chat_edits_mod
+        monkeypatch.setattr(chat_edits_mod, "async_chat_completion", fake_intent)
+        monkeypatch.setattr(chat_mod, "async_chat_completion_full", fake_full)
         resp = client.post("/api/chat", json={"message": "决策中赵甲应该是钱乙", "task_id": "unit-edit-0004"})
         assert resp.status_code == 200
         data = resp.json()
@@ -485,14 +500,11 @@ class TestChatWithCurrentPage:
 
     def test_chat_with_page_field_accepted(self, client, monkeypatch):
         """current_page 字段被接受，端点不 500"""
-        calls = {"n": 0}
-
-        async def fake_llm(messages, **kwargs):
-            calls["n"] += 1
-            return "你好，我在首页可以帮你开始录音或上传音频。"
+        async def fake_full(messages, **kwargs):
+            return _llm_result("你好，我在首页可以帮你开始录音或上传音频。")
 
         from app.routers import chat as chat_mod
-        monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
+        monkeypatch.setattr(chat_mod, "async_chat_completion_full", fake_full)
 
         resp = client.post("/api/chat", json={
             "message": "我能做什么",
