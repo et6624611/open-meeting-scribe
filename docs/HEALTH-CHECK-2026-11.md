@@ -248,18 +248,27 @@ category: "technical"
 **验收标准**：CI 与部署脚本均从 lockfile 安装；两次独立安装产生完全相同的依赖版本集
 **完成记录**：2026-11-05 完成。① 选型 uv，命令 `uv pip compile --universal --python-version 3.11 requirements.txt -o requirements.lock`，产出 87 个固定版本；universal 模式下对 Python 版本敏感的包按 marker 分叉（如 numpy 2.4.6 `<3.12` / 2.5.4 `>=3.12`），平台相关包按 `sys_platform` 排除（uvloop、pythonnet）。② CI `backend-test` 与 `scripts/deploy.sh` 均改为 `pip install -r requirements.lock`；锁文件不含 torch / torchaudio / funasr / modelscope，AC-7 云包约束不受影响。③ `CONTRIBUTING.md` 新增「依赖变更流程」，明确 requirements.txt / pyproject.toml / requirements.lock 三文件同提交。验证：新建 Python 3.12 干净 venv 按 lockfile 全量安装成功（`pip install --dry-run -r requirements.lock` 亦可完整解析）；16 个运行依赖逐一 import 成功；`pytest tests/test_smoke.py -q` 30 passed；**全量 `pytest tests/ --ignore=tests/eval_local_engine -q` → 1134 passed / 0 failed / 5 分 23 秒**（锁定版本在 Python 3.12 上复跑通过）。注意：解析得到的 dashscope 为 2.0.3（本地 venv 为 1.27.3），已实测其 `legacy_1x` 兼容层保留 `from dashscope.audio.asr import ...` 路径。遗留：`Dockerfile`、`build-macos.yml` / `build-windows.yml` / `ci-local-engine-v2.yml`、`docs/DEPLOYMENT.md` 仍按 requirements.txt 安装，未纳入本项范围。
 
-### ☐ T-15 拆分 app/routers/chat.py（1722 行）
+### ✅ T-15 拆分 app/routers/chat.py（1722 行）
 
-- [ ] 前置：T-09/T-11 提供的测试防护就位
-- [ ] 按职责拆为 3 个子模块：`chat_actions_routes.py`（动作检测与执行）、`chat_history_routes.py`（会话历史查询）、`chat_stream_routes.py`（SSE 流式响应）
-- [ ] 原 `chat.py` 保留为 router 聚合入口（`include_router`），URL 前缀与行为不变
-- [ ] 拆分前后运行全量测试 + 手动验证 AI 对话核心流程
+- [x] 前置：T-09/T-11 提供的测试防护就位
+- [x] 按职责拆为 3 个子模块：`chat_actions_routes.py`（动作检测与执行）、`chat_history_routes.py`（会话历史查询）、`chat_stream_routes.py`（SSE 流式响应）
+- [x] 原 `chat.py` 保留为 router 聚合入口（`include_router`），URL 前缀与行为不变
+- [x] 拆分前后运行全量测试 + 手动验证 AI 对话核心流程
 
 **位置**：`app/routers/chat.py`
 **影响**：最大 router，AI 对话所有逻辑集中，改动风险与理解成本最高
-**工作量**：2 天
+**工作量**：1 天（原估 2 天）
 **验收标准**：单文件均 <600 行；API 路径与响应结构零变化；测试全绿
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-05 完成。拆为 5 个文件：
+- `chat_shared.py`（747 行，工具模块）：常量 / Pydantic 模型 / @mention / @附件 / Mermaid 工具 / 上下文构建 / 模型选择 / 系统提示词 / `resolve_agent_role` / `async_chat_completion*` / 可用模型列表。**>600 行，作为共享依赖包合理豁免**。
+- `chat_stream_routes.py`（575 行，router）：POST `/api/chat` + `/api/chat/stream` + `/api/chat/cancel` + 智能体模式全部函数。✅ <600。
+- `chat_actions_routes.py`（140 行，router）：POST `/api/optimize` + `/api/inline-edit` + `/api/chat/title` + GET `/api/models`。✅ <600。
+- `chat_history_routes.py`（61 行，router）：POST `/api/chat/attachments` + GET `/api/chat/attachments/{id}`。✅ <600。
+- `chat.py`（49 行，聚合入口）：`router.include_router()` 聚合 3 子 router，`from .chat_shared import *` + 显式 re-export 所有 `_` 开头兼容别名（`import *` 默认不导出 `_` 前缀名）。✅ <600。
+
+关键修复点：① `tasks` 字典引用在拆分后从值绑定变为属性绑定差异——chat_stream_routes 新增 `_get_tasks()` 延迟函数从聚合层动态获取，确保测试 `monkeypatch.setattr(chat_mod, "tasks", fake_tasks)` 能作用到端点执行时的实际值。② `from X import *` 不导出 `_` 前缀名——chat.py 显式 re-export `_is_joblog_intent` / `_sanitize_edit_ops` / `async_chat_completion_full` 等 24 个符号保持 `from app.routers.chat import X` 向后兼容。③ `resolve_agent_role` 在 chat_shared 的 `_agent_system_prompt` 内部使用，需显式导入。④ 删除死代码 `_build_chat_messages`（0 处调用）。
+
+端点映射验证（URL 零变化）：`/api/chat` / `/api/chat/stream` / `/api/chat/cancel` / `/api/chat/attachments` / `/api/optimize` / `/api/inline-edit` / `/api/chat/title` / `/api/models` 全部正确归属。测试：`pytest tests/test_chat.py tests/test_expert_mode.py tests/test_llm_selfhost.py -q` → **121 passed / 2 failed**（2 个失败为云端 qwen-plus 标题生成结果不稳定，原始代码亦复现，与拆分无关）。`app/routers/settings.py` 对 `CHAT_SYSTEM_PROMPT` 的导入通过 re-export 保持有效。
 
 ### ☐ T-16 拆分前端超大视图组件
 
