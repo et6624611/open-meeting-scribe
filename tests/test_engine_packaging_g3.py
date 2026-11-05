@@ -81,7 +81,9 @@ def _make_engine_package(root: Path, protocol: int = PROTOCOL_VERSION, with_mani
 def no_settings(monkeypatch):
     """隔离 settings.json（引擎配置全部走默认值）。"""
     import app.settings_store as settings_store
+    import core.settings_store as _core_ss
     monkeypatch.setattr(settings_store, "load_settings", lambda: {})
+    monkeypatch.setattr(_core_ss, "load_settings", lambda: {})
 
 
 # ─────────────────────────────────────────────────────────────

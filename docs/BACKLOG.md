@@ -22,8 +22,9 @@ status: published
 - `app/routers/record.py`：`handle_bind_speaker` 事件处理收到前端绑定消息后，需立即更新内存中活跃录音会话的说话人映射（`session.speaker_mapping`），确保后续 WebSocket 推送使用最新映射 ✅
 - `core/diarization.py`：`update_speaker_mapping` 方法需同时更新内存映射和持久化到 `data/meeting_mappings.json`，保证映射在会话重启后仍可恢复 ✅
 
-### 纪要页「全屏」按钮无退出入口，且放大后笔记内容丢失
-**目标**：修复用户测试反馈——「会议纪要中的窗口放大按钮，点击后全屏展示转写栏，无返回按钮，且用户输入的笔记会丢失」。
+### ✅ 纪要页「全屏」按钮无退出入口，且放大后笔记内容丢失
+**修复版本**：v1.0.1（2026-11-04）
+**修复人**：Yongliang Wang
 
 #### 现状与根因（两处独立缺陷）
 - **无退出入口**：`app/static/index.html` 中 `#genBtnFullscreen` 的点击处理直接调用 `document.documentElement.requestFullscreen()`，进入全屏后按钮图标与 title 仍为「全屏」，不切换为「退出全屏」，界面上无任何可见退出控件，用户只能靠未知的 Esc 键退出。全屏期间当前 Tab 保持为进入前的 Tab（默认态 / 绑定态为转写），用户因此感知为「全屏只剩转写栏」。
@@ -34,6 +35,12 @@ status: published
   - **应用内聚焦模式**：放大当前 Tab 面板铺满工作区、隐藏侧栏与 AI 栏，右上角常驻「退出放大」按钮 + Esc 快捷键；放大的是当前所在 Tab，不跳回转写
   - **保留原生全屏 + 补齐退出入口**：图标与 title 随 `fullscreenchange` 切换、悬浮退出按钮、首次进入时的 Esc 提示气泡
 - 笔记保存：切 Tab / 重建编辑器 / 页面隐藏前强制 flush 未落盘内容；`loadTaskNotes()` 增加「本地有未保存修改则不覆盖」保护；异步回填前校验 `currentTaskId` 与编辑器实例是否已失效
+
+#### 实际修复（2026-11-04，Vue 前端已上线）
+> 注：旧根因描述针对 `app/static/index.html` 旧前端（`switchGenTab` / `loadTaskNotes` / `_notesSaveTimer`），当前 Vue 前端已重构，根因转化为新形态。
+
+- **笔记丢失**：防抖 1s 窗口期内切 Tab，`artifactsStale` 路径的 `loadNotes()` 与 pending 的 `saveNotes` 存在 race——若前者先返回会覆盖 `notesContent`，后续定时器触发保存旧值。修复：① `useNotesAndDecisions.watch(activeTab)` 从 notes 页切走时先 `flushPendingNotesSave()`（clearTimeout + immediate save）；② `useGeneratingData.loadNotes()` 加 `notesSaved` guard，有未保存修改时直接放弃覆盖。
+- **全屏退出态不可见**：新增 `isFullscreen` ref + `fullscreenchange` 全局监听（onMounted 注册、onUnmounted 清理），按钮 title/icon 动态切换 fullscreen ↔ exit_fullscreen，复用 InsightFlow.vue 已有的双 icon pair。i18n `generating.toolbar.exit_fullscreen` 中英双语补齐。
 
 ### AI 对话框快捷指令点击后不生成内容，且指令按钮永久消失
 **目标**：修复用户测试反馈——「在 AI 对话框中点击生成会议纪要功能后，未生成内容，其他功能按钮也消失」。

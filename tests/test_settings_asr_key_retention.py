@@ -16,6 +16,7 @@ import json
 import pytest
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 
 
 @pytest.fixture
@@ -32,6 +33,7 @@ class TestAsrKeyRetention:
     def _isolated_settings(self, tmp_path, monkeypatch):
         self.path = tmp_path / "settings.json"
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", self.path)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", self.path)
         monkeypatch.delenv("ASR_MODE", raising=False)
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
 

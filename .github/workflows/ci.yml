@@ -66,9 +66,10 @@ jobs:
         npm ci
         npm run build
 
-    - name: 运行冒烟测试
+    - name: 运行全量测试（排除 eval）
       run: |
-        pytest tests/test_smoke.py -v
+        pytest tests/ --ignore=tests/eval_local_engine -q
+      timeout-minutes: 15
       env:
         DASHSCOPE_API_KEY: test-key
         JWT_SECRET: test-secret
@@ -98,6 +99,10 @@ jobs:
       working-directory: frontend
       run: npm ci
     
+    - name: ESLint 检查
+      working-directory: frontend
+      run: npx eslint src/ --max-warnings=0
+
     - name: 类型检查
       working-directory: frontend
       run: npx vue-tsc --noEmit

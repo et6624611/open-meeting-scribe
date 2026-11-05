@@ -88,15 +88,30 @@ export function useNotesAndDecisions(
 
   function locateDecisionSource(_decision: DecisionItem) { /* 由父组件 switchTab('transcript') 处理 / Handled by parent via switchTab('transcript') */ }
 
+  /** 强制 flush 挂起的防抖保存：清定时器 + 立即保存。
+   *  在切 Tab / 编辑器重建 / 页面隐藏前调用，防止未落盘编辑被异步 loadNotes 覆盖。
+   *  Force-flush pending debounced save: clear timer + save immediately.
+   *  Call before tab switch, editor rebuild, or pagehide to prevent in-flight edits
+   *  from being overwritten by an async loadNotes that returns first. */
+  function flushPendingNotesSave() {
+    if (notesTimer) {
+      clearTimeout(notesTimer)
+      notesTimer = null
+      void onSaveNotes()
+    }
+  }
+
   // 自动加载（用 flag 区分「未加载」与「用户清空」） / Auto-load (flag distinguishes "not loaded" from "user cleared")
   let notesLoaded = false
-  watch(activeTab, (tab) => {
+  watch(activeTab, (tab, prev) => {
+    // 从随记页切走时先 flush，防止 loadNotes 覆盖未落盘的编辑
+    if (prev === 'notes' && tab !== 'notes') flushPendingNotesSave()
     if (tab === 'notes' && !notesLoaded) { notesLoaded = true; loadNotes() }
     if (tab === 'decisions' && decisions.value.length === 0) loadDecisions()
   })
 
   return {
-    loadNotes, loadDecisions, onNotesChange, onSummaryChange,
+    loadNotes, loadDecisions, onNotesChange, onSummaryChange, flushPendingNotesSave,
     onToggleDecision, onAddDecision, onDeleteDecision, onEditDecision, onStatusChange, locateDecisionSource,
   }
 }

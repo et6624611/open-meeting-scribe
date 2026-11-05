@@ -133,9 +133,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             <span class="tb-tip">{{ t('generating.toolbar.export') }}</span>
           </button>
-          <button class="gen-toolbar-icon" @click="onFullscreen" :title="t('generating.toolbar.fullscreen')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            <span class="tb-tip">{{ t('generating.toolbar.fullscreen') }}</span>
+          <button class="gen-toolbar-icon" @click="onFullscreen" :title="isFullscreen ? t('generating.toolbar.exit_fullscreen') : t('generating.toolbar.fullscreen')">
+            <svg v-if="!isFullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            <span class="tb-tip">{{ isFullscreen ? t('generating.toolbar.exit_fullscreen') : t('generating.toolbar.fullscreen') }}</span>
           </button>
           <!-- 知识库同步状态指示器 / Knowledge base sync status indicator -->
           <button
@@ -700,7 +701,7 @@ const {
   showArchiveDialog, showDeleteDialog, metaDuration, metaDateShort,
   projects, showProjectDropdown, onSelectProject, openDatePicker, breadcrumbTitle,
   kbSearchQuery, filteredProjects, showKbCreateInput, kbCreateName, createAndLinkKb,
-  player, seekAudio, onCopy, onExport, onFullscreen, speakers, audioUrl,
+  player, seekAudio, onCopy, onExport, onFullscreen, isFullscreen, speakers, audioUrl,
   toggleChapterExpand, toggleSummaryChapter, toggleChapterTranscript, showAllChapters,
   isFailed, failureInfo,
   canFallbackCloud, cloudFallbackBlocked,

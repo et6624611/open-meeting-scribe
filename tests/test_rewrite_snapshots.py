@@ -20,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 import core.rewrite_snapshots as rsv
 from app.server import app
 from core.agent_tools import tokens as tk
@@ -29,6 +30,7 @@ from core.agent_tools.catalog import TOOLS_BY_NAME
 @pytest.fixture(autouse=True)
 def _isolate_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "iso-settings.json")
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", tmp_path / "iso-settings.json")
 
 
 @pytest.fixture(autouse=True)

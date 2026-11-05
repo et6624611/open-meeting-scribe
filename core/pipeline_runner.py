@@ -19,9 +19,61 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app.settings_store import get_feature_flags
-from app.task_store import save_task_to_disk, tasks
 from core import joblog, speakers, text_bridge, voiceprint
+
+# ── 延迟加载 app 层依赖（打破模块级循环依赖） ──
+# 以下 getter 函数首次调用时才 import 对应 app 模块，之后缓存到模块全局。
+# 这样 `import core.pipeline_runner` 本身不会触发 app 层加载（验收标准）。
+# 公开兼容别名通过 __getattr__ 暴露，不影响既有 import 路径（app.store re-export、测试等）。
+_tasks = None
+_save_task_to_disk = None
+_get_feature_flags_fn = None
+
+def _import_app_deps():
+    global _tasks, _save_task_to_disk, _get_feature_flags_fn
+    if _tasks is None:
+        from app.task_store import tasks, save_task_to_disk
+        from app.settings_store import get_feature_flags
+        _tasks = tasks
+        _save_task_to_disk = save_task_to_disk
+        _get_feature_flags_fn = get_feature_flags
+
+def _t():
+    # 优先尊重模块级被 monkeypatch 的 tasks（pytest setattr(pr, 'tasks', fake)
+    # 会把 fake 写入模块 __dict__，此时 __getattr__ 不再被触发。但内部 _t()
+    # 若仍返回缓存的 _tasks（真实 dict），测试就拿到了被污染的全局 → flaky。
+    import sys as _sys
+    if 'tasks' in _sys.modules[__name__].__dict__:
+        return _sys.modules[__name__].__dict__['tasks']
+    _import_app_deps()
+    return _tasks
+
+def _sd(task_id):
+    import sys as _sys
+    d = _sys.modules[__name__].__dict__
+    if 'save_task_to_disk' in d:
+        return d['save_task_to_disk'](task_id)
+    _import_app_deps()
+    return _save_task_to_disk(task_id)
+
+def _gff():
+    import sys as _sys
+    d = _sys.modules[__name__].__dict__
+    if 'get_feature_flags' in d:
+        return d['get_feature_flags']()
+    _import_app_deps()
+    return _get_feature_flags_fn()
+
+def __getattr__(name: str):
+    # 公开兼容别名：允许外部继续写 `core.pipeline_runner.tasks`
+    if name == "tasks":
+        return _t()
+    if name == "save_task_to_disk":
+        _import_app_deps()
+        return _save_task_to_disk
+    if name == "get_feature_flags":
+        return _get_feature_flags_fn  # 注意：getter 本身，尚未调用
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 from core.errors import classify_error, is_transient_error
 from core.i18n import _
 from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
@@ -71,7 +123,7 @@ def _cleanup_normalized_intermediate(task_id: str) -> None:
         if not get_storage_config().get("auto_clean_intermediate", True):
             return
 
-        task = tasks.get(task_id, {})
+        task = _t().get(task_id, {})
         normalized_path = task.get("normalized_path")
         if not normalized_path:
             return
@@ -137,14 +189,14 @@ def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
     Returns:
         True: 定稿成功并已触发 stage2；False: 增量内容为空（应回退 stage1 兜底）。
     """
-    full_transcript = tasks[task_id].get("realtime_full_transcript")
+    full_transcript = _t()[task_id].get("realtime_full_transcript")
     dialogue = _build_dialogue_from_realtime(full_transcript) if full_transcript else []
     if not dialogue:
         return False
 
-    tasks[task_id]["dialogue"] = dialogue
-    tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
-    tasks[task_id]["transcript_source"] = "local_incremental"
+    _t()[task_id]["dialogue"] = dialogue
+    _t()[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+    _t()[task_id]["transcript_source"] = "local_incremental"
     logger.info(
         f"[{task_id[:8]}] 本地增量转写定稿（D-I2，跳过 stage1 全量重跑）: "
         f"{len(full_transcript)} 句 → {len(dialogue)} 条对话"
@@ -156,7 +208,7 @@ def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
 
     # 复用实时阶段的说话人绑定作为姓名映射（键转 int，UUID 翻译成真名） / Reuse realtime speaker binding (keys to int, UUID translated to real name)
     speaker_mapping = None
-    binding = tasks[task_id].get("realtime_speaker_binding")
+    binding = _t()[task_id].get("realtime_speaker_binding")
     if binding:
         try:
             uuid_by_sid = {int(k): u for k, u in binding.items()}
@@ -167,7 +219,7 @@ def _finalize_incremental_transcript(task_id: str, audio_path: Path) -> bool:
         except (ValueError, TypeError):
             speaker_mapping = None
 
-    save_task_to_disk(task_id)
+    _sd(task_id)
     _cleanup_normalized_intermediate(task_id)
     _run_stage2_for_task(task_id, audio_path, speaker_mapping)
     return True
@@ -181,7 +233,7 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
         True: 已成功降级并触发 stage2；False: 无可用实时数据，需走原失败流程。
         True: fallback succeeded and stage2 triggered; False: no realtime data, proceed with original failure path.
     """
-    full_transcript = tasks[task_id].get("realtime_full_transcript")
+    full_transcript = _t()[task_id].get("realtime_full_transcript")
     if not full_transcript:
         return False
 
@@ -189,9 +241,9 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
     if not dialogue:
         return False
 
-    tasks[task_id]["dialogue"] = dialogue
-    tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
-    tasks[task_id]["transcript_source"] = "realtime_fallback"
+    _t()[task_id]["dialogue"] = dialogue
+    _t()[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+    _t()[task_id]["transcript_source"] = "realtime_fallback"
     logger.warning(
         f"[{task_id[:8]}] 批转写无有效语音，降级使用实时转写结果（{len(full_transcript)} 句 → {len(dialogue)} 条对话）"
     )
@@ -202,7 +254,7 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
 
     # 复用实时阶段的说话人绑定作为姓名映射（键转 int，UUID 翻译成真名） / Reuse realtime speaker binding as name mapping (keys to int, UUID translated to real name)
     speaker_mapping = None
-    binding = tasks[task_id].get("realtime_speaker_binding")
+    binding = _t()[task_id].get("realtime_speaker_binding")
     if binding:
         try:
             uuid_by_sid = {int(k): u for k, u in binding.items()}
@@ -213,7 +265,7 @@ def _try_realtime_fallback(task_id: str, audio_path: Path) -> bool:
         except (ValueError, TypeError):
             speaker_mapping = None
 
-    save_task_to_disk(task_id)
+    _sd(task_id)
     # 降级不依赖归一化音频，按设置清理中间产物 / Fallback doesn't need normalized audio; clean intermediate per settings
     _cleanup_normalized_intermediate(task_id)
     _run_stage2_for_task(task_id, audio_path, speaker_mapping)
@@ -240,42 +292,42 @@ def run_pipeline_task(
     任务音频与笔记状态由既有任务存储独立持久化，回退重跑不丢失（AC-4）。
     """
     def on_progress(p: PipelineProgress):
-        tasks[task_id]["progress"] = p.percent
-        tasks[task_id]["message"] = p.message
-        tasks[task_id]["status"] = "processing" if p.percent >= 0 else "failed"
+        _t()[task_id]["progress"] = p.percent
+        _t()[task_id]["message"] = p.message
+        _t()[task_id]["status"] = "processing" if p.percent >= 0 else "failed"
         logger.info(f"[{task_id[:8]}] {p}")
 
     def on_failure(e: Exception):
         """统一处理失败：分类错误、记录字段、落盘"""
         logger.exception(f"[{task_id[:8]}] 管线执行失败")
         err_info = classify_error(e)
-        tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(e)
-        tasks[task_id]["failed_stage"] = "transcribe"
-        tasks[task_id]["error_category"] = err_info["category"]
-        tasks[task_id]["error_suggestion"] = err_info["suggestion"]
+        _t()[task_id]["status"] = "failed"
+        _t()[task_id]["error"] = str(e)
+        _t()[task_id]["failed_stage"] = "transcribe"
+        _t()[task_id]["error_category"] = err_info["category"]
+        _t()[task_id]["error_suggestion"] = err_info["suggestion"]
         # AC-4：本地引擎失败时携带回退标志与错误码，供 UI 在用户显式确认后
         # 以 transcribe_audio(engine_override="cloud") 重跑（绝不静默上云，PRD R7）。
-        tasks[task_id]["error_code"] = err_info.get("error_code", "")
-        tasks[task_id]["can_fallback_cloud"] = err_info.get("can_fallback_cloud", False)
+        _t()[task_id]["error_code"] = err_info.get("error_code", "")
+        _t()[task_id]["can_fallback_cloud"] = err_info.get("can_fallback_cloud", False)
         joblog.append_event(
             task_id, joblog.STAGE_ERROR, f"转写阶段失败: {e}", level="error",
             detail={"category": err_info["category"], "suggestion": err_info["suggestion"]},
         )
-        save_task_to_disk(task_id)
+        _sd(task_id)
 
-    tasks[task_id]["status"] = "processing"
-    tasks[task_id]["progress"] = 0
-    tasks[task_id]["retry_count"] = 0
+    _t()[task_id]["status"] = "processing"
+    _t()[task_id]["progress"] = 0
+    _t()[task_id]["retry_count"] = 0
     task_start = time.perf_counter()
 
     # D-I2（R9）：本地分段增量转写已在会中逐段定稿 → 跳过 stage1 全量重跑，
     # 直接拼接定稿并进 stage2；增量内容为空时撤销标记，回退下方 stage1 兜底。
-    if tasks[task_id].get("transcript_finalized_incremental"):
+    if _t()[task_id].get("transcript_finalized_incremental"):
         joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "本地增量定稿路径（D-I2，跳过全量转写）")
         if _finalize_incremental_transcript(task_id, audio_path):
             return
-        tasks[task_id]["transcript_finalized_incremental"] = False
+        _t()[task_id]["transcript_finalized_incremental"] = False
         logger.warning(f"[{task_id[:8]}] 增量定稿内容为空，回退 stage1 全量转写兜底")
         joblog.append_event(
             task_id, joblog.STAGE_TRANSCRIBE,
@@ -306,14 +358,14 @@ def run_pipeline_task(
             )
 
             # 存储转写结果
-            tasks[task_id]["audio_duration"] = result.get("audio_duration")
-            tasks[task_id]["dialogue"] = result.get("dialogue")
-            tasks[task_id]["transcription"] = result.get("transcription")
+            _t()[task_id]["audio_duration"] = result.get("audio_duration")
+            _t()[task_id]["dialogue"] = result.get("dialogue")
+            _t()[task_id]["transcription"] = result.get("transcription")
             dialogue = result.get("dialogue", [])
-            tasks[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
+            _t()[task_id]["speaker_count"] = len({d.get("speaker_id") for d in dialogue})
             joblog.append_event(
                 task_id, joblog.STAGE_TRANSCRIBE,
-                f"转写完成，识别 {tasks[task_id]['speaker_count']} 位说话人",
+                f"转写完成，识别 {_t()[task_id]['speaker_count']} 位说话人",
             )
 
             # 用量计量：转写成功后记录音频时长
@@ -340,14 +392,14 @@ def run_pipeline_task(
             # (e.g. VAD judged silence), fall back to realtime transcript if available.
             if not dialogue:
                 # 先持久化归一化路径，供降级兜底内部清理中间文件 / Persist normalized path so fallback can clean the intermediate file
-                tasks[task_id]["normalized_path"] = result.get("normalized_path")
+                _t()[task_id]["normalized_path"] = result.get("normalized_path")
                 if _try_realtime_fallback(task_id, audio_path):
                     return
 
             # 检查是否有预设的说话人映射（向后兼容）
             if speaker_mapping:
                 # 有预设映射，直接运行第二阶段
-                save_task_to_disk(task_id)
+                _sd(task_id)
                 _cleanup_normalized_intermediate(task_id)
                 _run_stage2_for_task(task_id, audio_path, speaker_mapping)
             else:
@@ -356,14 +408,14 @@ def run_pipeline_task(
                 if not normalized_path and pre_normalized:
                     normalized_path = str(pre_normalized)
                 # 持久化归一化音频路径：供绑定后声纹补录与回溯采集脚本使用
-                tasks[task_id]["normalized_path"] = normalized_path
+                _t()[task_id]["normalized_path"] = normalized_path
                 dialogue = result.get("dialogue", [])
                 auto_mapping = {}
                 match_sources = []  # 记录匹配来源（用于日志和提示）
 
                 # ── P0：文本桥接匹配（确定性证据） ──
-                realtime_full_transcript = tasks[task_id].get("realtime_full_transcript")
-                realtime_speaker_binding = tasks[task_id].get("realtime_speaker_binding")
+                realtime_full_transcript = _t()[task_id].get("realtime_full_transcript")
+                realtime_speaker_binding = _t()[task_id].get("realtime_speaker_binding")
                 text_bridge_matched = 0
                 if realtime_full_transcript and realtime_speaker_binding and dialogue:
                     try:
@@ -386,7 +438,7 @@ def run_pipeline_task(
                         if tb_mapping:
                             auto_mapping.update(tb_mapping)
                             match_sources.append(f"文本桥接({text_bridge_matched}位)")
-                            tasks[task_id]["text_bridge_match"] = [r.to_dict() for r in tb_results]
+                            _t()[task_id]["text_bridge_match"] = [r.to_dict() for r in tb_results]
                             logger.info(
                                 f"[{task_id[:8]}] P0 文本桥接匹配: "
                                 f"{text_bridge_matched} 位说话人识别成功"
@@ -405,7 +457,7 @@ def run_pipeline_task(
                 # ── P1：声纹向量匹配（概率性证据） ──
                 # 仅对文本桥接未覆盖的说话人执行声纹匹配
                 # 受 feature_flags.voiceprint_auto_match 开关控制（默认关闭）
-                vp_enabled = get_feature_flags().get("voiceprint_auto_match", False)
+                vp_enabled = _gff().get("voiceprint_auto_match", False)
                 if vp_enabled and normalized_path and dialogue:
                     try:
                         vp_start = time.perf_counter()
@@ -413,7 +465,7 @@ def run_pipeline_task(
                         locked = {
                             str(u) for u in auto_mapping.values() if u
                         } | {
-                            str(u) for u in (tasks[task_id].get("speaker_uuid_mapping") or {}).values() if u
+                            str(u) for u in (_t()[task_id].get("speaker_uuid_mapping") or {}).values() if u
                         }
                         vp_results = voiceprint.auto_identify_speakers(
                             audio_path=normalized_path,
@@ -436,8 +488,8 @@ def run_pipeline_task(
                                 f"{len(new_vp_matches)} 位说话人"
                             )
                         # 始终记录声纹匹配结果（供前端展示）
-                        tasks[task_id]["voiceprint_match"] = [r.to_dict() for r in vp_results]
-                        tasks[task_id]["voiceprint_auto_mapping"] = {str(k): v for k, v in vp_mapping.items()}
+                        _t()[task_id]["voiceprint_match"] = [r.to_dict() for r in vp_results]
+                        _t()[task_id]["voiceprint_auto_mapping"] = {str(k): v for k, v in vp_mapping.items()}
                         if not new_vp_matches and not text_bridge_matched:
                             joblog.append_event(
                                 task_id, joblog.STAGE_VOICEPRINT,
@@ -468,7 +520,7 @@ def run_pipeline_task(
                     )
 
                 # 直接运行第二阶段（不再等待用户确认绑定）
-                save_task_to_disk(task_id)
+                _sd(task_id)
 
                 # 清理中间产物：归一化文件在 Stage 1 完成后不再需要
                 # （声纹注册已在 Stage 1 内完成，Stage 2 不依赖归一化音频）
@@ -482,10 +534,10 @@ def run_pipeline_task(
             if is_transient_error(e) and attempt < PIPELINE_MAX_RETRIES:
                 # 瞬时错误且还有重试机会
                 delay = PIPELINE_RETRY_DELAYS[attempt]
-                tasks[task_id]["retry_count"] = attempt + 1
-                tasks[task_id]["message"] = _("Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=attempt + 1, max_retries=PIPELINE_MAX_RETRIES)
-                tasks[task_id]["progress"] = max(0, tasks[task_id].get("progress", 0) - 10)
-                save_task_to_disk(task_id)
+                _t()[task_id]["retry_count"] = attempt + 1
+                _t()[task_id]["message"] = _("Encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=attempt + 1, max_retries=PIPELINE_MAX_RETRIES)
+                _t()[task_id]["progress"] = max(0, _t()[task_id].get("progress", 0) - 10)
+                _sd(task_id)
                 logger.warning(f"[{task_id[:8]}] 瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
                 joblog.append_event(
                     task_id, joblog.STAGE_TRANSCRIBE,
@@ -514,62 +566,62 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
     stage2_start = time.perf_counter()
 
     def on_progress(p: PipelineProgress):
-        tasks[task_id]["progress"] = p.percent
-        tasks[task_id]["message"] = p.message
+        _t()[task_id]["progress"] = p.percent
+        _t()[task_id]["message"] = p.message
         logger.info(f"[{task_id[:8]}] {p}")
 
     def on_failure(e: Exception):
         """统一处理纪要阶段失败"""
         logger.exception(f"[{task_id[:8]}] 纪要生成失败")
         err_info = classify_error(e)
-        tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(e)
-        tasks[task_id]["failed_stage"] = "summarize"
-        tasks[task_id]["error_category"] = err_info["category"]
-        tasks[task_id]["error_suggestion"] = err_info["suggestion"]
+        _t()[task_id]["status"] = "failed"
+        _t()[task_id]["error"] = str(e)
+        _t()[task_id]["failed_stage"] = "summarize"
+        _t()[task_id]["error_category"] = err_info["category"]
+        _t()[task_id]["error_suggestion"] = err_info["suggestion"]
         joblog.append_event(
             task_id, joblog.STAGE_ERROR, f"纪要生成失败: {e}", level="error",
             detail={"category": err_info["category"], "suggestion": err_info["suggestion"]},
         )
-        save_task_to_disk(task_id)
+        _sd(task_id)
 
     # 自动重试循环（仅针对瞬时错误）
     for attempt in range(PIPELINE_MAX_RETRIES + 1):
         try:
-            dialogue = tasks[task_id].get("dialogue", [])
+            dialogue = _t()[task_id].get("dialogue", [])
 
             # 空转写检测：ASR 未识别到有效内容时，不应继续生成纪要并标记 completed，
             # 否则前端会因 chapters 为空而陷入"章节划分中..."无限加载态。
             # Empty transcription guard: when ASR yields no content, mark failed instead of completed.
             if not dialogue:
-                tasks[task_id]["status"] = "failed"
-                tasks[task_id]["progress"] = 100
-                tasks[task_id]["error"] = "empty_transcription"
-                tasks[task_id]["failed_stage"] = "transcribe"
-                tasks[task_id]["error_category"] = "audio"
-                tasks[task_id]["error_suggestion"] = _("No valid speech detected in the audio. Please check the recording quality and try again.")
-                tasks[task_id]["message"] = _("No valid speech detected")
+                _t()[task_id]["status"] = "failed"
+                _t()[task_id]["progress"] = 100
+                _t()[task_id]["error"] = "empty_transcription"
+                _t()[task_id]["failed_stage"] = "transcribe"
+                _t()[task_id]["error_category"] = "audio"
+                _t()[task_id]["error_suggestion"] = _("No valid speech detected in the audio. Please check the recording quality and try again.")
+                _t()[task_id]["message"] = _("No valid speech detected")
                 joblog.append_event(
                     task_id, joblog.STAGE_ERROR,
                     "转写结果为空，未识别到有效语音内容，标记为 failed", level="error",
                     detail={"category": "audio", "reason": "empty_dialogue"},
                 )
-                save_task_to_disk(task_id)
+                _sd(task_id)
                 logger.warning(f"[{task_id[:8]}] 转写结果为空（dialogue=0），标记为 failed")
                 return
 
             # 优先使用用户指定的 meeting_date，否则从 created_at 提取
             meeting_time = None
-            if tasks[task_id].get("meeting_date"):
+            if _t()[task_id].get("meeting_date"):
                 try:
-                    md = tasks[task_id]["meeting_date"]
-                    created_dt = datetime.fromisoformat(tasks[task_id].get("created_at", ""))
+                    md = _t()[task_id]["meeting_date"]
+                    created_dt = datetime.fromisoformat(_t()[task_id].get("created_at", ""))
                     time_str = created_dt.strftime("%H:%M")
                     meeting_time = f"{md} {time_str}"
                 except (ValueError, TypeError):
-                    meeting_time = tasks[task_id]["meeting_date"]
+                    meeting_time = _t()[task_id]["meeting_date"]
             if not meeting_time:
-                created_at_str = tasks[task_id].get("created_at", "")
+                created_at_str = _t()[task_id].get("created_at", "")
                 if created_at_str:
                     try:
                         created_dt = datetime.fromisoformat(created_at_str)
@@ -590,7 +642,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "开始生成纪要（stage2）")
             # 一页纸系数：从属单个会议，旧任务缺字段按 1 兜底（契约见 docs/API_CONTRACTS.md）
-            one_page_factor = float((tasks[task_id].get("one_page") or {}).get("summary", 1) or 1)
+            one_page_factor = float((_t()[task_id].get("one_page") or {}).get("summary", 1) or 1)
             summary_mode = "full"
             try:
                 result = run_pipeline_stage2(
@@ -599,7 +651,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     audio_path=audio_path,
                     on_progress=on_progress,
                     meeting_time=meeting_time,
-                    user_notes=tasks[task_id].get("user_notes"),
+                    user_notes=_t()[task_id].get("user_notes"),
                     one_page_factor=one_page_factor,
                 )
             except Exception as e:
@@ -621,26 +673,26 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     audio_path=audio_path,
                     on_progress=on_progress,
                     meeting_time=meeting_time,
-                    user_notes=tasks[task_id].get("user_notes"),
+                    user_notes=_t()[task_id].get("user_notes"),
                     one_page_factor=one_page_factor,
                     summary_mode="body_only",
                     summary_timeout=summary_retry_timeout_seconds(),
                 )
 
-            tasks[task_id]["status"] = "completed"
-            tasks[task_id]["progress"] = 100
-            tasks[task_id]["message"] = _("Completed")
+            _t()[task_id]["status"] = "completed"
+            _t()[task_id]["progress"] = 100
+            _t()[task_id]["message"] = _("Completed")
             if summary_mode == "body_only":
                 # D018a 降级完成语义：纪要已出、决策待补——不连坐已成功环节，用户可见提示
-                tasks[task_id]["decisions_pending"] = True
-                tasks[task_id]["message"] = _("Completed with decisions pending")
-            tasks[task_id]["summary"] = result.get("summary")
-            tasks[task_id]["title"] = result.get("title")
-            tasks[task_id]["output_path"] = result.get("output_path")
-            tasks[task_id]["dialogue"] = result.get("dialogue")
-            tasks[task_id]["speaker_mapping"] = result.get("speaker_mapping", {})
-            tasks[task_id]["speaker_uuid_mapping"] = result.get("speaker_uuid_mapping", {})
-            tasks[task_id]["chapters"] = result.get("chapters", [])
+                _t()[task_id]["decisions_pending"] = True
+                _t()[task_id]["message"] = _("Completed with decisions pending")
+            _t()[task_id]["summary"] = result.get("summary")
+            _t()[task_id]["title"] = result.get("title")
+            _t()[task_id]["output_path"] = result.get("output_path")
+            _t()[task_id]["dialogue"] = result.get("dialogue")
+            _t()[task_id]["speaker_mapping"] = result.get("speaker_mapping", {})
+            _t()[task_id]["speaker_uuid_mapping"] = result.get("speaker_uuid_mapping", {})
+            _t()[task_id]["chapters"] = result.get("chapters", [])
 
             summary_text = result.get("summary", "")
             if summary_text:
@@ -649,10 +701,10 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                 try:
                     checklist_nodes = parse_decision_checklist(summary_text)
                     parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
-                    tasks[task_id]["decisions"] = merge_flow_after_regen(
-                        tasks[task_id].get("decisions") or [],
+                    _t()[task_id]["decisions"] = merge_flow_after_regen(
+                        _t()[task_id].get("decisions") or [],
                         checklist_nodes + parsed_decisions,
-                        tasks[task_id].get("decision_deletions"),
+                        _t()[task_id].get("decision_deletions"),
                     )
                     if checklist_nodes or parsed_decisions:
                         logger.info(
@@ -666,8 +718,8 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                             f"决策解析降级（{parse_status}）：本轮 auto 结论置空，不影响任务状态", level="warn",
                         )
                 except Exception as e:
-                    kept = [t for t in (tasks[task_id].get("decisions") or []) if t.get("source") != "auto"]
-                    tasks[task_id]["decisions"] = kept
+                    kept = [t for t in (_t()[task_id].get("decisions") or []) if t.get("source") != "auto"]
+                    _t()[task_id]["decisions"] = kept
                     logger.warning(f"[{task_id[:8]}] 决策流提取异常（不阻断流水线）: {e}")
                     joblog.append_event(
                         task_id, joblog.STAGE_SUMMARY,
@@ -675,7 +727,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     )
 
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "纪要生成完成")
-            save_task_to_disk(task_id)
+            _sd(task_id)
 
             # 转写分层 WP-2：设置开启且 llm 路由可用时，会后自动生成书面版。
             # 守护线程执行；跳过/失败均仅日志，sidecar error 自描述，不影响会议产物。
@@ -689,7 +741,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
             # Auto-sync to knowledge base folder on first completion (only when project linked and sync enabled)
             try:
                 from core.projects import sync_meeting_to_folders
-                synced_files = sync_meeting_to_folders(tasks[task_id])
+                synced_files = sync_meeting_to_folders(_t()[task_id])
                 if synced_files:
                     logger.info(f"[{task_id[:8]}] 首次完成自动同步到知识库，写入 {len(synced_files)} 个文件")
                     joblog.append_event(
@@ -707,9 +759,9 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
         except Exception as e:
             if is_transient_error(e) and attempt < PIPELINE_MAX_RETRIES:
                 delay = PIPELINE_RETRY_DELAYS[attempt]
-                tasks[task_id]["retry_count"] = tasks[task_id].get("retry_count", 0) + 1
-                tasks[task_id]["message"] = _("Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=tasks[task_id].get("retry_count", 0) + 1, max_retries=PIPELINE_MAX_RETRIES)
-                save_task_to_disk(task_id)
+                _t()[task_id]["retry_count"] = _t()[task_id].get("retry_count", 0) + 1
+                _t()[task_id]["message"] = _("Minute generation encountered transient error, retrying in {delay}s ({attempt}/{max_retries})...").format(delay=delay, attempt=_t()[task_id].get("retry_count", 0) + 1, max_retries=PIPELINE_MAX_RETRIES)
+                _sd(task_id)
                 logger.warning(f"[{task_id[:8]}] 纪要阶段瞬时错误，{delay}秒后重试 ({attempt + 1}/{PIPELINE_MAX_RETRIES}): {e}")
                 joblog.append_event(
                     task_id, joblog.STAGE_SUMMARY,

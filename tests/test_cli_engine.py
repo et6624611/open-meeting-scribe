@@ -604,9 +604,11 @@ class TestEngineRegistry:
 
     def test_save_rejects_unknown_engine_id(self, monkeypatch):
         import app.routers.settings as st
+        import core.settings_store as _core_ss
         saved: dict = {}
-        monkeypatch.setattr(st, "load_settings",
-                            lambda: {"chat_engine": self._base_cfg("qoder-cli")})
+        fake_settings = {"chat_engine": self._base_cfg("qoder-cli")}
+        monkeypatch.setattr(st, "load_settings", lambda: fake_settings)
+        monkeypatch.setattr(_core_ss, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
         st.save_settings({"chat_engine": {"enabled": True, "engine_id": "evil-engine"}})
         # 非法 id 被丢弃，保留既有合法值（绝不写入未注册引擎）
@@ -614,8 +616,11 @@ class TestEngineRegistry:
 
     def test_save_accepts_registered_engine_id(self, monkeypatch):
         import app.routers.settings as st
+        import core.settings_store as _core_ss
         saved: dict = {}
-        monkeypatch.setattr(st, "load_settings", lambda: {"chat_engine": self._base_cfg("qoder-cli")})
+        fake_settings = {"chat_engine": self._base_cfg("qoder-cli")}
+        monkeypatch.setattr(st, "load_settings", lambda: fake_settings)
+        monkeypatch.setattr(_core_ss, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
         st.save_settings({"chat_engine": {"enabled": True, "engine_id": "claude-code"}})
         assert saved["chat_engine"]["engine_id"] == "claude-code"

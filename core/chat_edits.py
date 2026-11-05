@@ -16,7 +16,7 @@ import json
 import logging
 import re
 
-from app.task_store import TASKS_DIR, save_task_to_disk, tasks
+from core.task_store import TASKS_DIR, save_task_to_disk, tasks
 from core.llm import async_chat_completion
 
 logger = logging.getLogger(__name__)

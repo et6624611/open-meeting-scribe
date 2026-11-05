@@ -21,8 +21,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app.store import (
-    get_silence_detection_config,
+from core.pipeline_runner import run_pipeline_task
+from core.realtime_store import (
     push_realtime_msg,
     realtime_chapter_generators,
     realtime_diarizers,
@@ -36,10 +36,9 @@ from app.store import (
     realtime_speaker_maps,
     realtime_summarizers,
     realtime_transcribers,
-    run_pipeline_task,
-    save_task_to_disk,
-    tasks,
 )
+from core.settings_store import get_silence_detection_config
+from core.task_store import save_task_to_disk, tasks
 from core.audio import is_stream_recording, stop_recording_with_stream
 from core.i18n import _
 

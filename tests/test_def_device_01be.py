@@ -13,9 +13,11 @@ import pytest
 def isolated_settings(tmp_path, monkeypatch):
     """把 SETTINGS_FILE 指到临时路径并清除 RECORD_DEVICE 环境变量。"""
     import app.settings_store as ss
+    import core.settings_store as _core_ss
 
     sf = tmp_path / "settings.json"
     monkeypatch.setattr(ss, "SETTINGS_FILE", sf)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", sf)
     monkeypatch.delenv("RECORD_DEVICE", raising=False)
     return ss, sf
 
@@ -63,8 +65,10 @@ def test_store_set_record_device_persists(isolated_settings, tmp_path, monkeypat
     """POST 语义：store.set_record_device 同时更新运行时值并落盘。"""
     ss, sf = isolated_settings
     import app.store as store
+    import core.settings_store as _core_ss
 
-    monkeypatch.setattr(store, "RECORD_DEVICE", "orig")  # 测后自动恢复全局值
+    # 仅 patch core 层：app.store 通过 __getattr__ 动态代理，会自动同步
+    monkeypatch.setattr(_core_ss, "RECORD_DEVICE", "orig")
     store.set_record_device("MicX")
     assert store.RECORD_DEVICE == "MicX"
     data = json.loads(sf.read_text(encoding="utf-8"))
@@ -74,20 +78,27 @@ def test_store_set_record_device_persists(isolated_settings, tmp_path, monkeypat
 def test_persist_failure_does_not_break_runtime(monkeypatch, tmp_path):
     """持久化异常降级：运行时值仍生效（不阻断录音链路）。"""
     import app.settings_store as ss
+    import core.settings_store as _core_ss
     import app.store as store
 
     broken = tmp_path / "broken" / "settings.json"  # 父目录不存在 → 写盘失败
     monkeypatch.setattr(ss, "SETTINGS_FILE", broken)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", broken)
     store.set_record_device("MicY")
+    # set_record_device 更新 core.settings_store.RECORD_DEVICE
+    # store.RECORD_DEVICE 通过 __getattr__ 动态查 core 层
     assert store.RECORD_DEVICE == "MicY"
+    assert _core_ss.RECORD_DEVICE == "MicY"
 
 
 def test_api_post_then_get_reflects_persisted_device(isolated_settings, monkeypatch):
     """验收③ API 面：POST /api/record/device → GET /api/record/devices 回显（同进程内）。"""
     ss, sf = isolated_settings
     import app.store as store
+    import core.settings_store as _core_ss
 
-    monkeypatch.setattr(store, "RECORD_DEVICE", "MicZ")
+    # 仅 patch core 层：app.store 通过 __getattr__ 动态代理
+    monkeypatch.setattr(_core_ss, "RECORD_DEVICE", "MicZ")
     # 直接驱动 setter（路由函数为薄封装，TestClient 起全应用需 JWT/环境，此处按函数级断言等价契约）
     from app.routers.record import RecordDeviceRequest, set_record_device
 

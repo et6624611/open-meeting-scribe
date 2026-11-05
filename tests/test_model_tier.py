@@ -10,6 +10,7 @@ import json
 import pytest
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 from core import model_tier
 
 
@@ -18,6 +19,7 @@ def settings_file(tmp_path, monkeypatch):
     """将 settings.json 重定向到临时目录 / Redirect settings.json to tmp dir."""
     path = tmp_path / "settings.json"
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", path)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", path)
     return path
 
 

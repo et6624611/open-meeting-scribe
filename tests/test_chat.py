@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 from app.server import app
 
 
@@ -25,6 +26,7 @@ def _isolate_settings_file(tmp_path, monkeypatch):
     的 app 启动），使本域用例与本机配置彻底解耦；走默认云端代理（离线桩链路）。
     """
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     # 逐能力真相源：预置 LLM/ASR 来源=trial，使 chat 走默认云端代理桩链路（否则未设置会拦截）。
     settings_store.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "trial"}})
@@ -180,11 +182,14 @@ class TestChatEditVerification:
         from app import task_store
         from app.routers import chat as chat_mod
         from core import chat_edits
+        import core.task_store as _core_ts
         fake_tasks = {task_id: self._make_task(task_id)}
         monkeypatch.setattr(task_store, "tasks", fake_tasks)
+        monkeypatch.setattr(_core_ts, "tasks", fake_tasks)
         monkeypatch.setattr(chat_mod, "tasks", fake_tasks)
         monkeypatch.setattr(chat_edits, "tasks", fake_tasks)
         monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(_core_ts, "TASKS_DIR", tmp_path)
         monkeypatch.setattr(chat_mod, "TASKS_DIR", tmp_path)
         monkeypatch.setattr(chat_edits, "TASKS_DIR", tmp_path)
         return chat_mod, json

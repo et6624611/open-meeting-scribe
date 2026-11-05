@@ -291,6 +291,10 @@ export function useGeneratingData(
     if (!document.fullscreenElement) document.documentElement.requestFullscreen()
     else document.exitFullscreen()
   }
+  const isFullscreen = ref(false)
+  function onFullscreenChange() {
+    isFullscreen.value = !!document.fullscreenElement
+  }
 
   // ─── 随记 & 决策 / Notes & Decisions ───
   const notesContent = ref('')
@@ -305,7 +309,12 @@ export function useGeneratingData(
     }
   }, { immediate: true })
 
-  async function loadNotes() { notesContent.value = await fetchNotes(taskId) }
+  async function loadNotes() {
+    // 有未保存修改时不覆盖本地编辑，交给 useNotesAndDecisions 的 watch 先 flush 再拉取
+    // Skip overwriting when there are unsaved local edits; let useNotesAndDecisions flush first
+    if (!notesSaved.value) return
+    notesContent.value = await fetchNotes(taskId)
+  }
   async function loadDecisions() { decisions.value = await fetchDecisions(taskId) }
 
   // ─── 音频 / Audio ───
@@ -493,9 +502,15 @@ export function useGeneratingData(
       if (source === '随记' && notesPanelRef.value) notesPanelRef.value.updateBlock(blockIndex, newSource)
       else if (summaryPanelRef.value) summaryPanelRef.value.updateBlock(blockIndex, newSource)
     })
+
+    // 全屏状态监听 / Fullscreen state listener
+    document.addEventListener('fullscreenchange', onFullscreenChange)
   })
 
-  onUnmounted(() => { stopPolling(); stopChapterPolling() })
+  onUnmounted(() => {
+    stopPolling(); stopChapterPolling()
+    document.removeEventListener('fullscreenchange', onFullscreenChange)
+  })
 
   return {
     // 任务核心 / Task core
@@ -514,7 +529,7 @@ export function useGeneratingData(
     // 元信息 / Metadata
     metaDateShort, metaDuration, breadcrumbTitle, computeBreadcrumbs, computeCurrentProjectName,
     // 工具栏 / Toolbar
-    onCopy, onExport, onFullscreen,
+    onCopy, onExport, onFullscreen, isFullscreen,
     // 随记 & 决策 / Notes & Decisions
     notesContent, notesSaved, summaryMd, decisions, loadNotes, loadDecisions,
     // 音频 / Audio

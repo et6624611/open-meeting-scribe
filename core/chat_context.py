@@ -22,7 +22,7 @@ import logging
 import re
 from pathlib import Path
 
-from app.store import tasks
+from core.task_store import tasks
 from core import hotwords, projects, speakers
 from core.audio import is_stream_recording
 

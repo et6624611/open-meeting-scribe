@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 import core.model_downloader as downloader
 from core.model_registry import MODEL_BY_KEY, get_model_root
 
@@ -111,6 +112,7 @@ def model_env(tmp_path, monkeypatch, stub_server):
         "engine": {"mode": "cloud", "local": {"model_dir": str(model_dir), "model_tier": "auto"}},
     }), encoding="utf-8")
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
     monkeypatch.setattr(downloader, "MODELSCOPE_API_BASE", f"http://127.0.0.1:{stub_server.server_address[1]}")
     # 清空进程内任务表，避免跨测试串扰 / Reset in-process job table
     with downloader._jobs_lock:

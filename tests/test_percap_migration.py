@@ -18,12 +18,14 @@ import pytest
 import app.routers.settings as settings_router  # noqa: F401
 import app.server  # noqa: F401
 import app.settings_store as ss
+import core.settings_store as _core_ss
 
 
 @pytest.fixture()
 def settings_file(tmp_path, monkeypatch):
     path = tmp_path / "settings.json"
     monkeypatch.setattr(ss, "SETTINGS_FILE", path)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", path)
     return path
 
 

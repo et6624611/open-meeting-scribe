@@ -470,33 +470,37 @@ class TestConfigAndWiring:
     def test_segments_enabled_by_default(self, monkeypatch):
         """AC-I7/D-I3：WP-I 验收后默认 enabled=True；段参数默认 5/0.8/30（可经配置覆盖）。"""
         import app.settings_store as ss
+        import core.settings_store as _core_ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
         monkeypatch.setattr(ss, "load_settings", lambda: {})
+        monkeypatch.setattr(_core_ss, "load_settings", lambda: {})
         cfg = ss.get_engine_config()["local"]["realtime_segments"]
         assert cfg == {"enabled": True, "min_segment_s": 5.0, "min_silence_s": 0.8, "max_segment_s": 30.0}
 
     def test_segments_explicit_opt_out_preserved(self, monkeypatch):
         """逃生通道：settings.json 显式 enabled=false 时回到 WP-H 批转写口径。"""
         import app.settings_store as ss
+        import core.settings_store as _core_ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
-        monkeypatch.setattr(ss, "load_settings", lambda: {
-            "engine": {"mode": "local", "local": {"realtime_segments": {"enabled": False}}},
-        })
+        fake = {"engine": {"mode": "local", "local": {"realtime_segments": {"enabled": False}}}}
+        monkeypatch.setattr(ss, "load_settings", lambda: fake)
+        monkeypatch.setattr(_core_ss, "load_settings", lambda: fake)
         cfg = ss.get_engine_config()["local"]["realtime_segments"]
         assert cfg["enabled"] is False
 
     def test_segments_override_from_settings(self, monkeypatch):
         """AC-I7/D-I3：段参数可经 settings.json 覆盖（段长不拍死）。"""
         import app.settings_store as ss
+        import core.settings_store as _core_ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
-        monkeypatch.setattr(ss, "load_settings", lambda: {
-            "engine": {"mode": "local", "local": {"realtime_segments": {
-                "enabled": True, "max_segment_s": 60,
-            }}},
-        })
+        fake = {"engine": {"mode": "local", "local": {"realtime_segments": {
+            "enabled": True, "max_segment_s": 60,
+        }}}}
+        monkeypatch.setattr(ss, "load_settings", lambda: fake)
+        monkeypatch.setattr(_core_ss, "load_settings", lambda: fake)
         cfg = ss.get_engine_config()["local"]["realtime_segments"]
         assert cfg["enabled"] is True
         assert cfg["max_segment_s"] == 60.0

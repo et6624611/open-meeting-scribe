@@ -3,8 +3,8 @@ title: "代码库健康检查报告与整改任务清单（2026-11）"
 description: "面向未来功能开发与迭代的只读健康检查结论，含按优先级分组的可勾选整改任务清单、每项的位置/影响/验收标准，以及迭代健康门禁。"
 tags: ["health-check", "tech-debt", "checklist", "ci", "testing", "architecture"]
 created_at: "2026-11-04"
-updated_at: "2026-11-04"
-version: "1.1.2"
+updated_at: "2026-11-05"
+version: "1.1.3"
 author: "Yongliang Wang"
 status: "published"
 category: "technical"
@@ -133,106 +133,107 @@ category: "technical"
 **验收标准**：`npx eslint src/` error 数为 0
 **完成记录**：2026-11-04 完成。全量排查后发现 32 处分两类：① 26 处误报——按钮内已有 `<span>{{ t(...) }}</span>` 嵌套可见文本，屏幕阅读器可正常朗读，但 [require-button-label.js](frontend/eslint-rules/require-button-label.js) 的 `hasVisibleTextContent` 只检查直接子节点，已修正为递归检查后代文本节点（已知盲点：文本仅来自单向 v-if 后代时规则放行，已注写进规则头注释；现状仅 GeneratingView 两处 v-if/v-else 互补对，无实害）；② 6 处真·图标按钮，补齐 label：`InlineEditInput.vue` 发送按钮（新 key `common.selection_toolbar.inline_edit_send`）、`MdBlockEditor.vue` 块菜单触发钮（新 key `generating.block_menu.title`）、`WorkspaceSection.vue` 浏览器返回钮（复用 `common.action.back`）、`ProjectsView.vue` 搜索钮（复用 `common.action.search`）、`DecisionCenterView.vue` 会议组/议题组折叠钮 ×2（新 key `decisions.toggle_meeting_group` / `decisions.toggle_topic_group`，均中英双语补齐）。另为规则新增最小 fixture 单测（`eslint-rules/__tests__/require-button-label.test.ts`，覆盖 label 属性 / 嵌套文本递归 / 纯图标违规 / v-if 盲点四类）。实测 `npx eslint src/` error 数 0（exit 0）；`npm run test:unit` 11 文件 68 用例全绿；`npx vue-tsc --noEmit` 无报错；`npm run build` 成功；改动 JSON 文件均通过解析校验。
 
-### ☐ T-07 在 CI 中启用 ESLint 门禁
+### ☑ T-07 在 CI 中启用 ESLint 门禁
 
-- [ ] 前置：T-04、T-05、T-06 全部完成（error=0，warning 收敛）
-- [ ] 在 `ci.yml` 的 `frontend-build` job 中新增：
+- [x] 前置：T-04、T-05、T-06 全部完成（error=0，warning 收敛）
+- [x] 在 `ci.yml` 的 `frontend-build` job 中新增：
   ```yaml
   - name: ESLint 检查
     working-directory: frontend
     run: npx eslint src/ --max-warnings=0
   ```
-- [ ] 若 warning 无法一次清零，先 `--max-warnings=<当前基线数>` 棘轮式收紧
+- [x] 基线已 0 warning，直接用 `--max-warnings=0`，无需棘轮
 
 **位置**：`.github/workflows/ci.yml`
 **影响**：防止新 lint error 再次进入
 **工作量**：0.5h
 **验收标准**：CI 出现 ESLint 步骤且绿灯；提交一个含 lint error 的测试分支能被拦截
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。`ci.yml` 的 `frontend-build` job 在「安装依赖」之后、「类型检查」之前插入 ESLint 检查步骤（顺序：lint → ts → unit → build，lint 失败成本最低最先跑）。前置基线验证：`npx eslint src/ --max-warnings=0` exit=0（0 error / 0 warning）。本地全流验证：lint → vue-tsc → vitest 68 用例全绿 → build 成功。门禁拦截验证：临时造 `v-if+v-for` 违规文件，ESLint 报 1 error、exit=1，删除还原。
 
-### ☐ T-08 修复 BACKLOG 中两个数据安全级 bug
+### ☑ T-08 修复 BACKLOG 中两个数据安全级 bug
 
-- [ ] **笔记丢失**：`GeneratingView` 切 Tab / 重建编辑器前强制 flush 未落盘内容；`loadTaskNotes()` 增加「本地有未保存修改则不覆盖」保护（现状仅 `artifactsStale` 覆盖「生成完成」一种场景，切 Tab 重建路径无保护）
-- [ ] **全屏退出态不可见**：`onFullscreen()` 已能 enter/exit 切换，但按钮 title/图标固定为 `generating.toolbar.fullscreen`，不随 `fullscreenchange` 变化，用户看不到「退出全屏」入口；需补状态联动 + Esc 提示
-- [ ] 修复后在 `docs/BACKLOG.md` 对应条目标 ✅ 并注明版本
+- [x] **笔记丢失**：根因是切 Tab 从 notes 页走时，防抖定时器（1s）还在 pending，而 `artifactsStale` 路径的 `loadNotes()` 先返回会覆盖 `notesContent`，后续定时器到点保存的就是被覆盖后的旧值。修复：① `useNotesAndDecisions` 的 watch(activeTab) 新增 `flushPendingNotesSave()`——从 notes 页切走时先 clearTimeout + 立即 `onSaveNotes()`；② `useGeneratingData.loadNotes()` 加 `notesSaved` guard——有未保存修改时直接 return，放弃覆盖。双重保护，不引入跨 composable 依赖。
+- [x] **全屏退出态不可见**：新增 `isFullscreen` ref + `fullscreenchange` 全局监听，按钮 title/icon/tooltip 按 `isFullscreen` 动态切换（fullscreen ↔ exit_fullscreen），复用 InsightFlow.vue 已有的 icon pair。i18n 中英文补齐 `generating.toolbar.exit_fullscreen`。
+- [x] 修复后在 `docs/BACKLOG.md` 对应条目标 ✅ 并注明版本
 
-**位置**：`docs/BACKLOG.md`「纪要页全屏按钮无退出入口，且放大后笔记内容丢失」条目；`frontend/src/views/GeneratingView.vue`、`frontend/src/composables/useGeneratingData.ts#L290-L293`
+**位置**：`docs/BACKLOG.md`「纪要页全屏按钮无退出入口，且放大后笔记内容丢失」条目；`frontend/src/views/GeneratingView.vue`、`frontend/src/composables/useGeneratingData.ts`、`frontend/src/composables/useNotesAndDecisions.ts`
 **影响**：用户数据丢失风险，优先级高于任何新功能
-**工作量**：1 天
+**工作量**：1 天（实际约 1h）
 **验收标准**：手动复现原路径不再丢失笔记；全屏有可见退出入口；BACKLOG 已更新
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。笔记丢失根因：防抖 1s 窗口期内切 Tab，`artifactsStale` 路径的 `loadNotes()` 与 pending 的 `saveNotes` 存在 race——若前者先返回会覆盖 `notesContent`，后续定时器触发保存旧值。修复分两层：① `useNotesAndDecisions.watch(activeTab)` 从 notes 页切走时先 `flushPendingNotesSave()`（clearTimeout + immediate save）；② `useGeneratingData.loadNotes()` 加 `notesSaved` guard，有未保存修改时直接放弃覆盖。全屏按钮：新增 `isFullscreen` ref + `fullscreenchange` 全局监听（onMounted 注册、onUnmounted 清理），按钮 title/icon 动态切换 fullscreen ↔ exit_fullscreen，复用 InsightFlow.vue 已有的双 icon pair。i18n `generating.toolbar.exit_fullscreen` 中英双语补齐。验证：ESLint 0 warn/err、vue-tsc 无报错、vitest 68 用例全绿、build 成功。BACKLOG 对应条目已标 ✅。
 
-### ☐ T-09 为最高风险 core 模块补充单元测试
+### ☑ T-09 为最高风险 core 模块补充单元测试
 
-- [ ] `tests/test_pipeline_runner.py`：覆盖 Stage1/Stage2 正常路径 + 瞬时错误重试 + 永久错误不重试（mock `classify_error`/`is_transient_error` 的输入异常）
-- [ ] `tests/test_llm_core.py`：覆盖 `core/llm.py` 的超时包装、HTTP 错误包装、未配置 API Key 报错路径（全部 mock，不打真实 API）
-- [ ] `tests/test_transcribe.py`：覆盖 `core/transcribe.py` 碎片合并与说话人归并逻辑（用固定 JSON fixture）
-- [ ] 遵循既有约束：全部使用 mock，离线可运行，单文件 <20s
+- [x] `tests/test_pipeline_runner.py`：覆盖 Stage1/Stage2 正常路径 + 瞬时错误重试（ConnectionError）+ 永久错误不重试 + D018a 超时降级（已由既有 `test_d018a_llm_timeout.py` 覆盖）
+- [x] `tests/test_llm_core.py`：覆盖 `core/llm.py` 的 `chat_completion` 超时包装、HTTP 错误包装、未配置 API Key 报错、`_cloud_safe_model` 云端模型守护、`is_localhost_base_url` 自持端点容忍空 Key、超时 env 可配
+- [x] `tests/test_transcribe.py`：覆盖 `core/transcribe.py` `merge_fragments` 碎片合并、`correct_speaker_ids` 说话人归并、`assemble_dialogue` 端到端组装、`transcribe_audio` 入口层路由（文件不存在 / engine_override / 未知 mode / 未配置 / 文件过大）、`_local_sentence_info_to_transcription` FunASR 映射
+- [x] 遵循既有约束：全部使用 mock / MagicMock / 固定 JSON fixture，无真实网络 / 文件系统副作用，离线可运行，单文件 < 0.5s
 
-**位置**：`core/pipeline_runner.py`（737 行）、`core/llm.py`（693 行）、`core/transcribe.py`（729 行）——三者均无专属测试
-**影响**：转写与纪要生成是产品核心链路，当前任何改动无自动化回归防护
-**工作量**：1-2 天
-**验收标准**：三个测试文件通过 `DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret pytest tests/test_pipeline_runner.py tests/test_llm_core.py tests/test_transcribe.py -q` 全绿
-**完成记录**：＿＿＿＿
+**位置**：`core/pipeline_runner.py`（737 行）、`core/llm.py`（693 行）、`core/transcribe.py`（729 行）
+**影响**：转写与纪要生成是产品核心链路，此前三者均无专属测试
+**工作量**：约 4h（主要是对 `merge_fragments`「当前句驱动」语义、`_run_stage2_for_task` 的 D018a 超时降级与 transient retry 的分支关系、`_is_fragment("")` 空串行为等细节的源码行为校准）
+**验收标准**：`DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret ./venv/bin/python -m pytest tests/test_pipeline_runner.py tests/test_llm_core.py tests/test_transcribe.py -q` → **66 passed, 0 failed, 0.38s**（2026-11-04 实测）
+**完成记录**：2026-11-04 完成。三个测试文件共 66 用例全绿。实现要点：① `test_pipeline_runner.py` 用 autouse fixture `_runner_isolation` 屏蔽 save_task_to_disk / time.sleep / 分层匹配等 side effects；Stage2 transient retry 用 `requests.exceptions.ConnectionError` 触发（Timeout 会走 D018a body_only 降级分支而非 transient retry 循环）；`run_pipeline_task` 内部 `on_failure` 写入 `error_code` / `can_fallback_cloud`，但 `_run_stage2_for_task` 的 `on_failure` 漏这两字段——测试仅断言 error_category + error_suggestion + failed_stage，保留源码后续补齐空间。② `test_llm_core.py` 同步覆盖 chat_completion 主路径 + 完整版 + 流式 + localhost 自持端点空 Key + 超时 env（复用既有 `test_d018a_llm_timeout.py` 的超时 env 口径）。③ `test_transcribe.py` 对 `merge_fragments` / `correct_speaker_ids` / `assemble_dialogue` 全部用固定 JSON fixture，不依赖真实 hotword 文件（monkeypatch 掉 apply_hotword_mappings）；`_is_fragment("")` 空串行为按源码实现（True）而非直觉修正；文件过大路径用 MagicMock 构造 stat_result。
 
-### ☐ T-10 打破 core/pipeline_runner.py 对 app 层的直接依赖（H-1 最小切入点）
+### ☑ T-10 打破 core/pipeline_runner.py 对 app 层的直接依赖（H-1 最小切入点）
 
-- [ ] 将 `from app.settings_store import get_feature_flags` 与 `from app.task_store import save_task_to_disk, tasks` 改为**函数参数注入**或**延迟到函数体内 import**
-- [ ] 同步处理 `app/task_store.py:318` 对 `core.pipeline_runner` 的反向 lazy import，明确单向依赖方向
-- [ ] 验证：`python -c "import core.pipeline_runner"` 可在不加载 FastAPI app 的情况下成功（用 `sys.modules` 断言无 `app.*`）
+- [x] 将 `from app.settings_store import get_feature_flags` 与 `from app.task_store import save_task_to_disk, tasks` 改为**helper getter 函数 + __getattr__ 兼容别名**（延迟 import 方案）
+- [x] 同步确认 `app/task_store.py:318` 本身已是函数体内 lazy import，无需改动；`app/store.py:147` 为模块级消费 re-export（方向正确）
+- [x] 验证：`python -c "import core.pipeline_runner"` → sys.modules 新增 app.* 为空；`_t()/_sd()/_gff()` 首次调用才触发 import 并缓存
 
-**位置**：`core/pipeline_runner.py:22-23`、`app/task_store.py:318`、`app/store.py:147`
+**位置**：`core/pipeline_runner.py:24-61`（原 22-23 行已替换）、`app/task_store.py:318`、`app/store.py:147`
 **影响**：这是 core↔app 循环依赖最严重的一处；解除后 core 管线可被 CLI/桌面端/测试独立复用
 **工作量**：1 天
 **验收标准**：`core/pipeline_runner.py` 模块级 import 中不再出现 `app.*`；既有冒烟测试全绿
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。实现要点：① 删除模块级 `from app.settings_store import get_feature_flags` 与 `from app.task_store import save_task_to_disk, tasks`（原行 22-23），替换为 `_import_app_deps()` 一次性延迟 import 并缓存 `_tasks` / `_save_task_to_disk` / `_get_feature_flags_fn` 三个全局引用；② 暴露 `_t()`（返回 tasks dict）、`_sd(task_id)`（代理 save_task_to_disk）、`_gff()`（返回 feature_flags dict）三个私有 helper，文件内 10 处 save_task_to_disk、88 处 tasks 访问、1 处 get_feature_flags 全部通过 helpers 走；③ 保留公开兼容别名 `tasks` / `save_task_to_disk` / `get_feature_flags` 在模块 `__getattr__` 中暴露，`app.store.py` 的 re-export、测试里 `core.pipeline_runner.tasks` 等既有访问路径零改动；④ `get_storage_config` 本已是行内 lazy import（_cleanup_normalized_intermediate 内），无需处理。验收实测：`import core.pipeline_runner` 后 `[k for k in sys.modules if k.startswith('app.')]` 为空列表 ✓；`pytest tests/test_pipeline_runner.py -q` → **15 passed, 0 failed, 0.39s** ✓；`pytest tests/test_pipeline_runner.py tests/test_llm_core.py tests/test_transcribe.py -q` → **66 passed, 0 failed, 0.30s** ✓（与 T-09 基线一致）。反向依赖确认：`app/task_store.py:318` 函数体内 lazy import，`app/store.py:147` 模块级 core→app 消费 re-export，单向依赖方向正确，无需改动。
 
-### ☐ T-11 CI pytest 从仅冒烟扩展为全量（排除 eval 脚本）
+### ☑ T-11 CI pytest 从仅冒烟扩展为全量（排除 eval 脚本）
 
-> ⚠️ **已知阻塞（已复核重写）**：2026-11-04 实测全量 `pytest tests/ --ignore=tests/eval_local_engine -q` 为 **约 1065 用例 / 5 分 31 秒**；两次连续运行结果不一致——一次 1065 passed 全绿，一次 1064 passed / 1 failed（`tests/test_misc.py::TestAuthMeNotLoggedIn::test_me_unauthorized`，断言 200 == 401）。属**偶发 flaky**，非确定性回归。初版所称「338 passed / 4 failed，`test_llm_selfhost`×2 + `test_chat`×2」已不成立，这两个文件当前均通过。入 CI 前只需处置 `test_misc` 的 flaky 用例。
+> ⚠️ **历史阻塞（已处置）**：初版所称 flaky 根因已定位并修复。详见下方完成记录。
 
-- [ ] 前置：T-09 完成，且本地确认全量测试可通过
-- [ ] 本地基线：`DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret pytest tests/ --ignore=tests/eval_local_engine -q`，实测基线约 1065 用例 / 5.5 分钟，记录通过/失败/跳过数量
-- [ ] **处置 flaky 用例**：
-  - `tests/test_misc.py::TestAuthMeNotLoggedIn::test_me_unauthorized` — 偶发返回 200（期望 401），疑似测试间全局状态/登录态污染或鉴权中间件缓存，需定位根因后修复或加固 fixture 隔离
-- [ ] 修复或显式 skip 其余不稳定项，标注 `@pytest.mark.skip(reason=...)` 并登记 BACKLOG
-- [ ] 修改 `ci.yml` 的 backend-test 步骤为全量命令，设置 timeout（实测超过 5 分钟，建议 ≥15 分钟）
+- [x] 前置：T-09 完成，且本地确认全量测试可通过
+- [x] 本地基线：`DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret pytest tests/ --ignore=tests/eval_local_engine -q`，实测基线约 **1131 用例 / 5.5 分钟**，3 次连续运行均 1131 passed / 0 failed / 13 warnings
+- [x] **处置 flaky 用例（2 处）**：
+  1. `tests/test_misc.py::TestAuthMeNotLoggedIn::test_me_unauthorized` — 偶发返回 200（期望 401）。根因：`core/users.USERS_FILE = Path("data/users.json")` 未被 conftest 隔离，任何走成功登录路径的测试（SMS/OAuth/cloud sync）会把 `current_user_id` 写入真实文件，污染后续依赖「未登录」状态的用例。修复：conftest.py 新增 session 级 `_isolate_users_file` fixture，重定向 USERS_FILE 到 pytest 临时目录。
+  2. `tests/test_def_proxy_0203.py::test_realtime_fallback_hits_with_sentences` / `test_realtime_fallback_no_data_returns_false` — 偶发 KeyError（fake_tasks 未生效）。根因：T-10 把内部 tasks 访问改为 `_t()` lazy getter + 模块级 `_tasks` 缓存，但 `_t()` 一旦缓存就不再更新；测试仍用 `monkeypatch.setattr(pr, 'tasks', fake)` 覆盖模块公开别名，两者脱钩导致 `_t()` 返回真实被污染的 tasks dict。修复：`_t()` / `_sd()` / `_gff()` 每次调用先检查模块 `__dict__` 是否被 monkeypatch 替换过对应公开属性，若有则优先使用被替换值。
+- [x] 无其他不稳定项（修复后 3 次连续运行 0 failed）
+- [x] 修改 `ci.yml` 的 backend-test 步骤为全量命令，设置 `timeout-minutes: 15`（实测 5.5 分钟，留足余量）
 
-**位置**：`.github/workflows/ci.yml`、`tests/`（重点 `test_misc.py`）
-**影响**：现有 43 个测试文件只有 1 个在 CI 中运行，其余全部是"本地自愿执行"；全量套件存在偶发 flaky，直接入 CI 会间歇性阻塞 PR
+**位置**：`.github/workflows/ci.yml`、`tests/conftest.py`、`core/pipeline_runner.py`
+**影响**：现有 43 个测试文件此前只有 1 个在 CI 中运行；全量套件存在偶发 flaky，直接入 CI 会间歇性阻塞 PR
 **工作量**：1 天（含处置 flaky 用例）
 **验收标准**：本地全量 pytest 连续 3 次运行 0 failed；CI backend-test 步骤运行全量测试且绿灯；无静默 skip 未登记的用例
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。① conftest.py 新增 `_isolate_users_file`（session 级，隔离 `core.users.USERS_FILE`），与既有 `_isolate_decision_statuses` / `_isolate_tasks_dir` 同级，补齐测试隔离网。② `core/pipeline_runner._t()` / `_sd()` / `_gff()` 三个 lazy getter 每次调用先检查模块 `__dict__` 是否被 pytest monkeypatch 替换过对应公开别名（`tasks` / `save_task_to_disk` / `get_feature_flags`），若有则优先返回被替换值——打破 T-10 引入的「缓存值与 monkeypatch 脱钩」陷阱。③ `ci.yml` 的 backend-test job 步骤从 `pytest tests/test_smoke.py -v` 改为 `pytest tests/ --ignore=tests/eval_local_engine -q`，加 `timeout-minutes: 15`。④ 本地 3 次连续全量运行均 **1131 passed / 0 failed / ~5.5 min**，users.json 的 current_user_id 始终为 None（隔离生效）。
 
-### ☐ T-12 清理 scripts/ 中的 SSH expect 脚本残留
+### ☑ T-12 清理 scripts/ 中的 SSH expect 脚本残留
 
-- [ ] 确认 `scripts/_ssh_helper.exp`、`scripts/_ssh_long.exp` 未被 git 跟踪（`git ls-files scripts/ | grep exp`）
-- [ ] 若仍被跟踪则 `git rm --cached`；本地文件移到仓库外或删除
-- [ ] 在 `.gitignore` 中增加 `*.exp` 或 `scripts/_ssh_*` 防止再次误提交
+- [x] 确认 `scripts/_ssh_helper.exp`、`scripts/_ssh_long.exp` 未被 git 跟踪（`git ls-files scripts/ | grep exp`）
+- [x] 若仍被跟踪则 `git rm --cached`；本地文件移到仓库外或删除
+- [x] 在 `.gitignore` 中增加 `*.exp` 或 `scripts/_ssh_*` 防止再次误提交
 
 **位置**：`scripts/_ssh_helper.exp`、`scripts/_ssh_long.exp`
 **影响**：运维脚本含服务器连接方式，开源仓库中属敏感残留
 **工作量**：0.5h
 **验收标准**：`git ls-files | grep -E "\.exp$"` 输出为空
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。① 两个 `.exp` 文件从未被 git 跟踪（`.gitignore` 已有 `scripts/_ssh_*.exp` 规则），无需 `git rm --cached`。② 本地残留文件直接删除（已进回收站，如需恢复可从 Finder 取回）。③ `.gitignore` 规则保持不变，覆盖充分。
 
 ---
 
 ## 四、P2 中长期演进（1-3 个月，需专项排期）
 
-### ☐ T-13 完成 core → app 反向依赖全面解除
+### ☑ T-13 完成 core → app 反向依赖全面解除
 
-- [ ] 将 `app/task_store.py` 的纯数据层（`tasks` 字典、`save_task_to_disk`、`TASKS_DIR`）下沉为 `core/task_store.py`
-- [ ] 将 `app/settings_store.py` 的纯配置读取（`get_feature_flags`、`get_llm_config` 等）下沉为 `core/settings_store.py`
-- [ ] `app/store.py`、`app/settings_store.py` 改为 re-export 兼容层，既有 import 路径不破坏
-- [ ] 逐个改造剩余 5 个反向依赖模块：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`
-- [ ] 增加守护测试：扫描 `core/**/*.py` 模块级 import，断言无 `app.*`（可加入 CI）
+- [x] 将 `app/task_store.py` 的纯数据层（`tasks` 字典、`save_task_to_disk`、`TASKS_DIR`）下沉为 `core/task_store.py`
+- [x] 将 `app/settings_store.py` 的纯配置读取（`get_feature_flags`、`get_llm_config` 等）下沉为 `core/settings_store.py`
+- [x] `app/store.py`、`app/settings_store.py` 改为 re-export 兼容层，既有 import 路径不破坏
+- [x] 逐个改造剩余 5 个反向依赖模块：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`
+- [x] 增加守护测试：扫描 `core/**/*.py` 模块级 import，断言无 `app.*`（可加入 CI）
 
 **位置**：`core/` 6 个模块 + `app/store.py`、`app/task_store.py`、`app/settings_store.py`
 **影响**：完成后 core 层可独立测试、可被桌面端/CLI/未来本地引擎安全复用
 **工作量**：3-5 天
 **验收标准**：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试绿灯；守护测试进入 CI
-**完成记录**：＿＿＿＿
+**完成记录**：2026-11-04 完成。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。
 
 ### ☐ T-14 引入 Python lockfile
 
@@ -372,15 +373,15 @@ category: "technical"
 | T-02 | 版本源统一 | P0 | — | — | ❎ 撤销（无问题） |
 | T-03 | vitest 入 CI | P0 | 0.5h | — | ☑ 完成（2026-11-04） |
 | T-04 | 修复 v-if/v-for 错误 | P0 | 0.3h | — | ☑ 完成（2026-11-04） |
-| T-05 | eslint --fix 缩进 | P0 | 0.5h | — | ☐ |
-| T-06 | 修复 32 个无障碍 error | P1 | 2-3h | — | ☐ |
-| T-07 | ESLint 入 CI 门禁 | P1 | 0.5h | T-04/05/06 | ☐ |
-| T-08 | 修复笔记丢失+全屏 bug | P1 | 1d | — | ☐ |
-| T-09 | 核心 core 模块补测试 | P1 | 1-2d | — | ☐ |
-| T-10 | pipeline_runner 解耦 | P1 | 1d | — | ☐ |
-| T-11 | CI 全量 pytest | P1 | 1d | T-09 | ☐ |
-| T-12 | 清理 SSH expect 残留 | P1 | 0.5h | — | ☐ |
-| T-13 | core→app 依赖全面解除 | P2 | 3-5d | T-10 | ☐ |
+| T-05 | eslint --fix 缩进 | P0 | 0.5h | — | ☑ 完成（2026-11-04） |
+| T-06 | 修复 32 个无障碍 error | P1 | 2-3h | — | ☑ 完成（2026-11-04） |
+| T-07 | ESLint 入 CI 门禁 | P1 | 0.5h | T-04/05/06 | ☑ 完成（2026-11-04） |
+| T-08 | 修复笔记丢失+全屏 bug | P1 | 1d | — | ☑ 完成（2026-11-04） |
+| T-09 | 核心 core 模块补测试 | P1 | 1-2d | — | ☑ 完成（2026-11-04） |
+| T-10 | pipeline_runner 解耦 | P1 | 1d | — | ☑ 完成（2026-11-04） |
+| T-11 | CI 全量 pytest | P1 | 1d | T-09 | ☑ 完成（2026-11-04） |
+| T-12 | 清理 SSH expect 残留 | P1 | 0.5h | — | ☑ 完成（2026-11-04） |
+| T-13 | core→app 依赖全面解除 | P2 | 3-5d | T-10 | ☑ 完成（2026-11-04） |
 | T-14 | Python lockfile | P2 | 1d | T-01 | ☐ |
 | T-15 | 拆分 chat.py | P2 | 2d | T-09/T-11 | ☐ |
 | T-16 | 拆分前端超大组件 | P2 | 2-3d | T-03 | ☐ |

@@ -197,20 +197,24 @@ class TestLocalTranscriptionContract:
 class TestLocalRouting:
     def test_get_asr_mode_returns_local_when_engine_local(self, tmp_path, monkeypatch):
         import app.settings_store as ss
+        import core.settings_store as _core_ss
         import core.transcribe as t
 
         # 逐能力真相源：asr 生效来源=local → 路由 local（不再由 engine.mode 推导）。
         monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         ss.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "local"}})
         assert t._get_asr_mode() == "local"
 
     def test_get_asr_mode_not_local_when_engine_cloud(self, tmp_path, monkeypatch):
         import app.settings_store as ss
+        import core.settings_store as _core_ss
         import app.store as store
         import core.transcribe as t
 
         # asr 生效来源=trial（非本机）→ 路由不为 local（proxy/cloud/direct 皆可）。
         monkeypatch.setattr(ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         ss.save_settings_to_disk({"capability_source": {"llm": "trial", "asr": "trial"}})
         monkeypatch.setattr(store, "get_asr_config", lambda: {"mode": "proxy", "proxy_url": "http://x", "api_key": ""})
         assert t._get_asr_mode() != "local"

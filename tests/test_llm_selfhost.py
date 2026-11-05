@@ -14,6 +14,7 @@ import pytest
 import requests
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 from core.llm import is_localhost_base_url
 
 # ============================================================
@@ -61,6 +62,7 @@ class TestLlmLocalhostTolerance:
     def settings_file(self, tmp_path, monkeypatch):
         path = tmp_path / "settings.json"
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", path)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", path)
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         return path
 
@@ -138,6 +140,7 @@ class TestTestLlmEndpoint:
         client fixture 的 app 启动），使本类用例与本机配置彻底解耦。
         """
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", tmp_path / "isolated-settings.json")
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
 
     def test_success_localhost_empty_key(self, client, monkeypatch):
@@ -260,6 +263,7 @@ class TestSaveSettingsLocalhost:
     def test_save_localhost_without_key(self, client, tmp_path, monkeypatch):
         settings_file = tmp_path / "settings.json"
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
         monkeypatch.setenv("DASHSCOPE_API_KEY", "sk-cloud-env-key-should-not-leak")
 
         resp = client.post("/api/settings", json={
@@ -282,6 +286,7 @@ class TestSaveSettingsLocalhost:
     def test_save_engine_block(self, client, tmp_path, monkeypatch):
         settings_file = tmp_path / "settings.json"
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
 
         resp = client.post("/api/settings", json={
             "engine": {"mode": "local", "local": {"model_dir": "/tmp/m", "model_tier": "conservative"}},
@@ -302,6 +307,7 @@ class TestSaveSettingsLocalhost:
     def test_get_settings_exposes_engine_and_presets(self, client, tmp_path, monkeypatch):
         settings_file = tmp_path / "settings.json"
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
         settings_file.write_text("{}", encoding="utf-8")
 
         resp = client.get("/api/settings")
@@ -403,6 +409,7 @@ class TestLocalhostNoCloudFallback:
             "capability_source": {"llm": "local_endpoint", "asr": "trial"},
         }), encoding="utf-8")
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
         monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
         # 云端可用 + 用户偏好订阅，均不得触发回退 / Cloud available + subscription pref must not trigger fallback
         monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: True, raising=False)
@@ -434,6 +441,7 @@ class TestLocalhostNoCloudFallback:
             "capability_source": {"llm": "local_endpoint", "asr": "trial"},
         }), encoding="utf-8")
         monkeypatch.setattr(settings_store, "SETTINGS_FILE", settings_file)
+        monkeypatch.setattr(_core_ss, "SETTINGS_FILE", settings_file)
         monkeypatch.setattr("core.cloud_client.is_cloud_enabled", lambda: True, raising=False)
         monkeypatch.setattr(
             "core.users.get_current_user",

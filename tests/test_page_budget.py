@@ -9,6 +9,7 @@ tests/test_page_budget.py — 一页纸系数：纪要篇幅预算块与生成�
 import pytest
 
 import app.settings_store as settings_store
+import core.settings_store as _core_ss
 from core.summarize import build_page_budget_block
 
 
@@ -17,6 +18,7 @@ def settings_file(tmp_path, monkeypatch):
     """将 settings.json 重定向到临时目录 / Redirect settings.json to tmp dir."""
     path = tmp_path / "settings.json"
     monkeypatch.setattr(settings_store, "SETTINGS_FILE", path)
+    monkeypatch.setattr(_core_ss, "SETTINGS_FILE", path)
     return path
 
 
