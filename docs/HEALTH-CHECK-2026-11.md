@@ -215,7 +215,7 @@ category: "technical"
 **影响**：运维脚本含服务器连接方式，开源仓库中属敏感残留
 **工作量**：0.5h
 **验收标准**：`git ls-files | grep -E "\.exp$"` 输出为空
-**完成记录**：2026-11-04 完成。① 两个 `.exp` 文件从未被 git 跟踪（`.gitignore` 已有 `scripts/_ssh_*.exp` 规则），无需 `git rm --cached`。② 本地残留文件直接删除（已进回收站，如需恢复可从 Finder 取回）。③ `.gitignore` 规则保持不变，覆盖充分。
+**完成记录**：2026-11-04 完成（commit `0da5cf8`）。① 两个 `.exp` 文件从未被 git 跟踪（`.gitignore` 已有 `scripts/_ssh_*.exp` 规则），无需 `git rm --cached`。② 本地残留文件直接删除（已进回收站，如需恢复可从 Finder 取回）。③ `.gitignore` 规则保持不变，覆盖充分。
 
 ---
 
@@ -233,7 +233,7 @@ category: "technical"
 **影响**：完成后 core 层可独立测试、可被桌面端/CLI/未来本地引擎安全复用
 **工作量**：3-5 天
 **验收标准**：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试绿灯；守护测试进入 CI
-**完成记录**：2026-11-04 完成。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。
+**完成记录**：2026-11-04 完成（commit `0da5cf8`）。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。
 
 ### ☐ T-14 引入 Python lockfile
 
