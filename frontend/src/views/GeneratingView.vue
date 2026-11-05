@@ -1,292 +1,78 @@
 <template>
   <div class="gen-view">
-    <!-- 失败态：整页替换为居中大卡片 / Failed state: full-page replacement with centered card -->
-    <!-- 背景：录音管线失败后 output_path/audio_path 均为空，若仍渲染工具栏，用户点击导出会触发 /api/download 404，
-         新标签页展示原始 JSON {"detail":"Not Found"}。此处统一拦截，按 error_category 展示友好失败页。
-         Context: after pipeline failure output_path/audio_path are null; rendering the toolbar would let users
-         hit /api/download 404 and see raw JSON in a new tab. Intercept here with a category-aware failure page. -->
-    <div v-if="isFailed" class="gen-failure-page">
-      <div class="gen-failure-card">
-        <div class="gen-failure-icon" :class="failureInfo.iconClass">
-          <svg v-if="failureInfo.icon === 'refresh'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          <svg v-else-if="failureInfo.icon === 'settings'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H22a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-          <svg v-else-if="failureInfo.icon === 'audio'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <h2 class="gen-failure-title">{{ t('generating.failure.title') }}</h2>
-        <p class="gen-failure-message">{{ failureInfo.message }}</p>
-        <p v-if="failureInfo.suggestion" class="gen-failure-suggestion">{{ failureInfo.suggestion }}</p>
-        <!-- R4-简（REQ-TRANSCRIBE-PROGRESS）：失败阶段标红 + 已处理百分比；重试入口沿用卡片按钮 -->
-        <!-- Failed stage highlighted red with processed percent; retry actions stay on the card buttons -->
-        <ProgressDialog :task="task" compact hide-retry class="gen-failure-progress" />
-        <details v-if="failureInfo.rawError" class="gen-failure-raw">
-          <summary>{{ t('generating.failure.show_raw') }}</summary>
-          <code>{{ failureInfo.rawError }}</code>
-        </details>
-        <div class="gen-failure-actions">
-          <button class="btn btn-primary" @click="onRetryFromFailure">{{ t('task.failure.transient_action') }}</button>
-          <!-- AC-4（QA-R1 DEF-04）：本地引擎失败时按 can_fallback_cloud 渲染云端回退。
-               True ⇒ 「切云端重试」+ 显式确认（数据上云告知）；False ⇒ 置灰 + 纯内网原因。
-               AC-4: cloud fallback gated on can_fallback_cloud; explicit confirm dialog before uploading data. -->
-          <button
-            v-if="canFallbackCloud"
-            class="btn btn-secondary gen-fallback-cloud-btn"
-            @click="showCloudFallbackConfirm = true"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-            {{ t('generating.failure.cloud_retry') }}
-          </button>
-          <template v-else-if="cloudFallbackBlocked">
-            <button
-              class="btn btn-secondary gen-fallback-cloud-btn"
-              disabled
-              :aria-disabled="true"
-              :title="t('generating.failure.cloud_retry_blocked_reason')"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
-              {{ t('generating.failure.cloud_retry') }}
-            </button>
-            <p class="gen-fallback-blocked-reason">{{ t('generating.failure.cloud_retry_blocked_reason') }}</p>
-          </template>
-          <button class="btn btn-secondary" @click="router.push('/library')">{{ t('generating.failure.back_to_library') }}</button>
-        </div>
-      </div>
-    </div>
+    <FailurePage
+      v-if="isFailed"
+      :failure-info="failureInfo"
+      :task="task"
+      :can-fallback-cloud="canFallbackCloud"
+      :cloud-fallback-blocked="cloudFallbackBlocked"
+      v-model:show-cloud-fallback-confirm="showCloudFallbackConfirm"
+      @retry="onRetryFromFailure"
+      @back-to-library="router.push('/library')"
+    />
 
     <!-- 正常态：原有工具栏 + 元信息 + 说话人区 + Tab + 内容区 / Normal state: original toolbar + meta + speaker zone + tabs + content -->
     <template v-else>
-      <!-- 紧凑图标工具栏 / Compact icon toolbar -->
-      <div class="gen-toolbar">
-        <div class="gen-toolbar-left">
-          <nav class="gen-breadcrumb" id="genBreadcrumb" :aria-label="t('generating.breadcrumb.nav')">
-            <template v-for="(crumb, i) in breadcrumbs" :key="i">
-              <button class="gen-breadcrumb-item" :title="crumb.label" @click="router.push(crumb.to)">
-                <svg v-if="crumb.icon === 'folder'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                <span class="gen-breadcrumb-label">{{ crumb.label }}</span>
-              </button>
-              <span class="gen-breadcrumb-sep">/</span>
-            </template>
-            <!-- 页面级标题：点击即原位重命名（编辑器落在顶栏标题，E2E T-021） / Page title: click to rename in place -->
-            <span
-              class="gen-breadcrumb-current"
-              role="button"
-              tabindex="0"
-              :class="{ 'is-renaming': isTitleRenaming }"
-              :title="t('task.rename')"
-              @click="onRenameTask"
-              @keydown.enter.prevent="onRenameTask"
-            >{{ breadcrumbDisplayTitle }}</span>
-          </nav>
-        </div>
-        <div class="gen-toolbar-right">
-          <!-- 在 IDE 中继续：上下文联动入口 / Continue in IDE -->
-          <div v-if="ws.ides.value.length" class="gen-ide-wrap">
-            <button ref="genIdeBtn" class="gen-toolbar-icon gen-toolbar-ide" :title="t('ai-panel.context.workspace_ide_continue')" @click="toggleIdeMenu">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-              <span class="tb-tip">{{ t('ai-panel.context.workspace_ide_continue') }}</span>
-            </button>
-            <div v-if="ideMenuOpen" ref="genIdeMenu" class="gen-ide-menu" role="dialog">
-              <div class="gen-ide-head">
-                <span>{{ t('ai-panel.context.workspace_ide_open_in') }}</span>
-                <button class="gen-ide-close" :title="t('ai-panel.context.workspace_ide_close')" @click="ideMenuOpen = false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-              </div>
-              <div class="gen-ide-scope">
-                <span class="gen-ide-scope-label">{{ t('ai-panel.context.workspace_ide_scope_label') }}</span>
-                <div class="gen-ide-scope-opts">
-                  <button
-                    v-for="s in ideScopes"
-                    :key="s.id"
-                    class="gen-ide-scope-btn"
-                    :class="{ 'is-active': ideScope === s.id }"
-                    :disabled="s.id === 'project' && !task?.project_id"
-                    :title="s.id === 'project' && !task?.project_id
-                      ? t('ai-panel.context.workspace_ide_scope_project_hint')
-                      : t('ai-panel.context.workspace_ide_scope_hint')"
-                    @click="ideScope = s.id"
-                  >{{ t(s.label) }}</button>
-                </div>
-              </div>
-              <ul class="gen-ide-list">
-                <li v-for="ide in ws.ides.value" :key="ide.ide_id">
-                  <button
-                    class="gen-ide-item"
-                    :disabled="!ide.available || ws.openingIdeId.value === ide.ide_id"
-                    :title="ide.available ? ide.display_name : t('ai-panel.context.workspace_ide_not_found', { name: ide.display_name })"
-                    @click="onContinueInIde(ide.ide_id)"
-                  >
-                    <span>{{ ide.display_name }}</span>
-                    <span v-if="!ide.available" class="gen-ide-na">{{ t('ai-panel.context.workspace_ide_unavailable') }}</span>
-                    <svg v-else-if="ws.openingIdeId.value === ide.ide_id" class="gen-ide-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <button class="gen-toolbar-icon" @click="onCopy" :title="t('generating.toolbar.copy')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            <span class="tb-tip">{{ t('generating.toolbar.copy') }}</span>
-          </button>
-          <button class="gen-toolbar-icon" @click="onExport" :title="t('generating.toolbar.export_title')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span class="tb-tip">{{ t('generating.toolbar.export') }}</span>
-          </button>
-          <button class="gen-toolbar-icon" @click="onFullscreen" :title="isFullscreen ? t('generating.toolbar.exit_fullscreen') : t('generating.toolbar.fullscreen')">
-            <svg v-if="!isFullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            <span class="tb-tip">{{ isFullscreen ? t('generating.toolbar.exit_fullscreen') : t('generating.toolbar.fullscreen') }}</span>
-          </button>
-          <!-- 知识库同步状态指示器 / Knowledge base sync status indicator -->
-          <button
-            v-if="syncStatus.can_sync"
-            class="gen-toolbar-icon gen-toolbar-sync"
-            :class="{ 'is-dirty': syncStatus.is_dirty, 'is-syncing': isSyncing, 'is-synced': !syncStatus.is_dirty }"
-            :title="isSyncing ? t('generating.toolbar.syncing') : (syncStatus.is_dirty ? t('generating.toolbar.sync_dirty') : t('generating.toolbar.synced'))"
-            :disabled="isSyncing"
-            @click="onSyncToKb"
-          >
-            <!-- 同步中：旋转图标 / Syncing: spinning icon -->
-            <svg v-if="isSyncing" class="sync-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-            <!-- 已同步：check-circle / Synced: check-circle -->
-            <svg v-else-if="!syncStatus.is_dirty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <!-- 有更新：upload-cloud / Dirty: upload-cloud -->
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-            <span class="tb-tip">{{ t('generating.toolbar.sync_kb') }}</span>
-          </button>
-          <div class="gen-toolbar-divider"></div>
-          <div class="gen-toolbar-more-wrap" @mouseenter="onGenMoreEnter" @mouseleave="onGenMoreLeave">
-            <button ref="genMoreBtn" class="gen-toolbar-icon" v-bind="genMoreTriggerAttrs" @click="toggleGenMore" :aria-label="t('generating.toolbar.more')">
-              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
-            </button>
-            <div ref="genMoreDropdown" class="gen-toolbar-more-menu" v-bind="genMoreMenuAttrs" :class="{ 'is-open': showMoreMenu }">
-              <!-- 复制组 -->
-              <button class="gen-toolbar-more-item" role="menuitem" @click="onCopyTitle">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                {{ t('task.copy_title') }}
-              </button>
-              <button v-if="task?.summary" class="gen-toolbar-more-item" role="menuitem" @click="onCopySummary">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                {{ t('task.copy_summary') }}
-              </button>
-              <!-- 管理组 -->
-              <div class="gen-toolbar-more-divider"></div>
-              <button class="gen-toolbar-more-item" role="menuitem" @click="onRenameTask">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                {{ t('task.rename') }}
-              </button>
-              <button class="gen-toolbar-more-item" role="menuitem" @click="onRetrySummary">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                {{ t('generating.toolbar.regenerate') }}
-              </button>
-              <button class="gen-toolbar-more-item" role="menuitem" @click="onRetranscribe">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                {{ t('generating.toolbar.retranscribe') }}
-              </button>
-              <!-- 危险组 -->
-              <div class="gen-toolbar-more-divider"></div>
-              <button class="gen-toolbar-more-item" role="menuitem" @click="onArchiveConfirm">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><template v-if="!data.isArchived.value"><line x1="10" y1="12" x2="14" y2="12"/></template><template v-else><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></template></svg>
-                {{ data.isArchived.value ? t('generating.toolbar.unarchive') : t('generating.toolbar.archive') }}
-              </button>
-              <button class="gen-toolbar-more-item is-danger" role="menuitem" @click="onDelete">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                {{ t('generating.toolbar.delete') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <GenToolbar
+        ref="genToolbarRef"
+        :breadcrumbs="breadcrumbs"
+        :breadcrumb-display-title="breadcrumbDisplayTitle"
+        :is-title-renaming="isTitleRenaming"
+        :ides="ws.ides.value"
+        v-model:ide-menu-open="ideMenuOpen"
+        v-model:ide-scope="ideScope"
+        :ide-scopes="ideScopes"
+        :opening-ide-id="ws.openingIdeId.value"
+        :has-project="!!task?.project_id"
+        :is-fullscreen="isFullscreen"
+        :sync-status="syncStatus"
+        :is-syncing="isSyncing"
+        :show-more-menu="showMoreMenu"
+        :more-trigger-attrs="genMoreTriggerAttrs"
+        :more-menu-attrs="genMoreMenuAttrs"
+        :has-summary="!!task?.summary"
+        :is-archived="data.isArchived.value"
+        @navigate="router.push($event)"
+        @rename-task="onRenameTask"
+        @toggle-ide="toggleIdeMenu"
+        @continue-in-ide="onContinueInIde"
+        @copy="onCopy"
+        @export="onExport"
+        @fullscreen="onFullscreen"
+        @sync-kb="onSyncToKb"
+        @toggle-more="toggleGenMore"
+        @more-enter="onGenMoreEnter"
+        @more-leave="onGenMoreLeave"
+        @copy-title="onCopyTitle"
+        @copy-summary="onCopySummary"
+        @retry-summary="onRetrySummary"
+        @retranscribe="onRetranscribe"
+        @archive="onArchiveConfirm"
+        @delete="onDelete"
+      />
 
-      <!-- 元信息行 + 说话人区 / Meta info + speaker zone -->
-      <div class="gen-meta" id="genMeta">
-        <div class="gen-meta-row">
-          <div class="gen-meta-group">
-            <span class="gen-meta-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-              <span class="gen-meta-val">{{ metaDuration }}</span>
-            </span>
-            <span class="gen-meta-sep"></span>
-            <span class="gen-meta-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              <span class="gen-meta-val">{{ speakerCount }}</span> {{ t('generating.meta.person') }}
-            </span>
-            <span class="gen-meta-sep"></span>
-            <span class="gen-meta-item">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-              <span class="gen-meta-val gen-meta-date-btn" :title="t('generating.meta.edit_date')" @click.stop="openDatePicker">{{ metaDateShort }}</span>
-            </span>
-          </div>
-          <span class="gen-meta-project">
-            <span class="gen-meta-project-chip" :class="{ 'is-bound': !!task?.project_id, 'is-unbound': !task?.project_id }" role="button" tabindex="0" :aria-expanded="showProjectDropdown" :title="task?.project_id ? t('generating.meta.linked_kb_tip') : t('generating.meta.link_kb_tip')" @click.stop="showProjectDropdown = !showProjectDropdown" @keydown.enter.prevent="showProjectDropdown = !showProjectDropdown" @keydown.space.prevent="showProjectDropdown = !showProjectDropdown">
-              <!-- book-open 图标：知识库语义 / book-open icon: knowledge base semantics -->
-              <svg v-if="task?.project_id" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              <span>{{ currentProjectName }}</span>
-              <!-- 尾部状态图标：未关联 +，已关联 hover ✕ / Tail status icon: unlinked +, linked hover ✕ -->
-              <svg v-if="!task?.project_id" class="chip-tail-icon chip-tail-add" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <svg v-else class="chip-tail-icon chip-tail-remove" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </span>
-            <div ref="kbDropdownRef" class="gen-meta-proj-dropdown" :class="{ hidden: !showProjectDropdown }">
-              <!-- 检索输入框（焦点保持在输入框；Esc 由 useDropdownPopup 统一处理） / Search input (keeps focus; Esc handled by useDropdownPopup) -->
-              <div class="gen-meta-proj-search">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input
-                  ref="kbSearchInputRef"
-                  v-model="kbSearchQuery"
-                  class="gen-meta-proj-search-input"
-                  :placeholder="t('generating.meta.kb_search_placeholder')"
-                />
-              </div>
-              <!-- 过滤后的知识库列表 / Filtered project list -->
-              <template v-if="filteredProjects.length > 0">
-                <button v-for="p in filteredProjects" :key="p.id" data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': task?.project_id === p.id }" @click="onSelectProject(p.id)">
-                  {{ p.name }}
-                </button>
-              </template>
-              <!-- 不关联知识库 / No knowledge base linked -->
-              <div class="gen-meta-proj-divider"></div>
-              <button data-dd-item class="gen-meta-proj-item" :class="{ 'is-selected': !task?.project_id }" @click="onSelectProject('')">
-                {{ t('generating.meta.no_project') }}
-              </button>
-              <!-- 新建知识库区域 / Create KB area -->
-              <template v-if="showKbCreateInput">
-                <div class="gen-meta-proj-divider"></div>
-                <div class="gen-meta-proj-create-inline">
-                  <input
-                    ref="kbCreateInputRef"
-                    v-model="kbCreateName"
-                    class="gen-meta-proj-create-input"
-                    :placeholder="t('generating.meta.create_kb')"
-                    data-dd-enter="native"
-                    @keydown.enter="createAndLinkKb"
-                    @keydown.escape.stop="showKbCreateInput = false; kbCreateName = ''"
-                  />
-                </div>
-              </template>
-              <template v-else-if="filteredProjects.length === 0 && projects.length > 0">
-                <!-- 检索无匹配但总列表非空 / Search no match but total list non-empty -->
-                <div class="gen-meta-proj-divider"></div>
-                <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
-                  <span v-else>{{ t('generating.meta.create_kb') }}</span>
-                </button>
-              </template>
-              <template v-else-if="projects.length === 0">
-                <!-- 知识库总数为 0 / Total projects is 0 -->
-                <div class="gen-meta-proj-divider"></div>
-                <button data-dd-item class="gen-meta-proj-item gen-meta-proj-cta" @click="showKbCreateInput = true; $nextTick(() => kbCreateInputRef?.focus())">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span v-if="kbSearchQuery.trim()">{{ t('generating.meta.create_named', { name: kbSearchQuery.trim() }) }}</span>
-                  <span v-else>{{ t('generating.meta.create_kb') }}</span>
-                </button>
-              </template>
-            </div>
-          </span>
-        </div>
-      </div>
+      <GenMetaBar
+        ref="genMetaBarRef"
+        :meta-duration="metaDuration"
+        :speaker-count="speakerCount"
+        :meta-date-short="metaDateShort"
+        :has-project="!!task?.project_id"
+        :current-project-name="currentProjectName"
+        :show-project-dropdown="showProjectDropdown"
+        :projects="projects"
+        :filtered-projects="filteredProjects"
+        :selected-project-id="task?.project_id || ''"
+        v-model:kb-search-query="kbSearchQuery"
+        :show-kb-create-input="showKbCreateInput"
+        v-model:kb-create-name="kbCreateName"
+        @open-date-picker="openDatePicker"
+        @toggle-project-dropdown="showProjectDropdown = !showProjectDropdown"
+        @select-project="onSelectProject"
+        @create-and-link-kb="createAndLinkKb"
+        @cancel-kb-create="showKbCreateInput = false; kbCreateName = ''"
+        @open-kb-create="showKbCreateInput = true; $nextTick(() => genMetaBarRef?.kbCreateInputRef?.focus())"
+        @open-kb-create-from-search="kbCreateName = kbSearchQuery.trim(); showKbCreateInput = true; $nextTick(() => genMetaBarRef?.kbCreateInputRef?.focus())"
+      />
 
       <!-- 人员栏（渐进式压缩：说话人 + 参会人合并） / Personnel bar (progressive compression: speakers + roster merged) -->
       <GeneratingSpeakerZone
@@ -315,47 +101,26 @@
         @roster-remove="rosterComposable.removeMember($event)"
         :voiceprint-items="visibleVoiceprintItems"
         :voiceprint-running="voiceprintRunning"
-        @run-voiceprint="runVoiceprint"
+        @run-voiceprint="handleRunVoiceprint"
         @apply-voiceprint="onVoiceprintApply"
-        @dismiss-voiceprint="onVoiceprintDismiss"
+        @dismiss-voiceprint="handleVoiceprintDismiss"
       />
 
-      <!-- 控制区：Tab / Control zone: Tabs -->
-      <div class="gen-control-zone">
-        <div class="gen-tabs-group">
-          <div class="gen-tabs" id="genTabsContainer">
-            <button v-for="tab in TABS" :key="tab.id" class="gen-tab" :class="{ 'is-active': activeTab === tab.id }" :title="tab.label" @click="switchTab(tab.id)" @mouseenter="onTabHover(tab.id)">
-              <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" v-html="tab.icon"></svg>
-              <span class="tab-label">{{ tab.label }}</span>
-              <span class="tab-dot" :class="tabDotClass(tab.id)"></span>
-            </button>
-          </div>
-        </div>
-        <!-- 原文三层视图下拉（仅原文 tab 显示；替代原面板内固定分段控件）/ Transcript layer dropdown (transcript tab only; replaces the in-panel segmented control) -->
-        <div class="gen-layer-picker" v-if="activeTab === 'transcript'">
-          <button
-            ref="layerPickerBtn" class="gen-layer-trigger" v-bind="layerPickerTriggerAttrs"
-            :aria-label="t('generating.layer.picker_label')" :title="t('generating.layer.picker_label')"
-            @click="toggleLayerPicker"
-          >
-            <span>{{ t(`generating.layer.${layerView}`) }}</span>
-            <span v-if="layerView === 'formal'" class="rec-layer-ai">AI</span>
-            <svg class="gen-layer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div ref="layerPickerMenu" class="gen-toolbar-more-menu gen-layer-menu" v-bind="layerPickerMenuAttrs" :class="{ 'is-open': showLayerPicker }" :aria-label="t('generating.layer.picker_label')">
-            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'formal' }" role="menuitem" @click="selectLayer('formal')">
-              {{ t('generating.layer.formal') }}
-              <span class="rec-layer-ai">AI</span>
-            </button>
-            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'clean' }" role="menuitem" :disabled="!cleanupAvailable" @click="selectLayer('clean')">
-              {{ t('generating.layer.clean') }}
-            </button>
-            <button class="gen-toolbar-more-item" :class="{ 'is-selected': layerView === 'raw' }" role="menuitem" @click="selectLayer('raw')">
-              {{ t('generating.layer.raw') }}
-            </button>
-          </div>
-        </div>
-      </div>
+      <GenTabs
+        ref="genTabsRef"
+        :tabs="TABS"
+        :active-tab="activeTab"
+        :tab-dot-class="tabDotClass"
+        :layer-view="layerView"
+        :cleanup-available="cleanupAvailable"
+        :show-layer-picker="showLayerPicker"
+        :layer-picker-trigger-attrs="layerPickerTriggerAttrs"
+        :layer-picker-menu-attrs="layerPickerMenuAttrs"
+        @switch-tab="switchTab"
+        @tab-hover="onTabHover"
+        @toggle-layer-picker="toggleLayerPicker"
+        @select-layer="selectLayer"
+      />
 
       <!-- 内容区（子组件） / Content area (sub-components) -->
       <div class="gen-content">
@@ -552,9 +317,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
 import { isPlaceholderName } from '@/utils/speakerDisplay'
-import { deleteTask, retranscribe, retrySummary, fetchSyncStatus, syncTaskToProject, fetchTask, correctTaskText } from '@/api/tasks'
+import { fetchSyncStatus, syncTaskToProject, fetchTask } from '@/api/tasks'
 import type { SyncStatus } from '@/api/tasks'
-import type { VoiceprintMatchItem } from '@/api/types'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useDropdownPopup } from '@/composables/useDropdownPopup'
 import type { LayerView } from '@/utils/transcriptLayers'
@@ -562,16 +326,16 @@ import SelectionToolbar from '@/components/SelectionToolbar.vue'
 import InlineEditInput from '@/components/InlineEditInput.vue'
 import TranscriptPanel from './generating/TranscriptPanel.vue'
 import SummaryPanel from './generating/SummaryPanel.vue'
-import ProgressDialog from './generating/ProgressDialog.vue'
 import NotesPanel from './generating/NotesPanel.vue'
 import DecisionFlowPanel from './generating/DecisionFlowPanel.vue'
+import FailurePage from './generating/FailurePage.vue'
+import GenToolbar from './generating/GenToolbar.vue'
+import GenMetaBar from './generating/GenMetaBar.vue'
+import GenTabs from './generating/GenTabs.vue'
 import { parseAnchorDecisionId } from './decisionEvolutionNav'
 import InsightBoard from './generating/InsightBoard.vue'
-import { createBoard, listBoards, loadBoard, loadBoardMeta, openBoardInBrowser, type BoardArtifact, type BoardSummary } from '@/api/board'
-import { notifyBoardsChanged, onBoardWritten, onBoardsChanged } from '@/composables/useBoardSync'
 import { onTaskWritten } from '@/composables/useTaskWrites'
 import GeneratingSpeakerZone from './generating/GeneratingSpeakerZone.vue'
-import { dismissVoiceprintSuggestion, runVoiceprintMatch } from '@/api/voiceprint'
 import ArchiveDialog from './generating/ArchiveDialog.vue'
 import DeleteDialog from './generating/DeleteDialog.vue'
 import AddDecisionDialog from './decisions/AddDecisionDialog.vue'
@@ -590,71 +354,26 @@ import { useNotesProposal } from '@/composables/useNotesProposal'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { useMeetingRoster } from '@/composables/useMeetingRoster'
 import { useTitleRename } from '@/composables/useTitleRename'
-import { useWorkspace } from '@/composables/useWorkspace'
-import type { WorkspaceScope } from '@/api/workspace'
-import { getDockBounds, positionDropdown } from '@/utils/popoverPosition'
+import { useInsightBoardPolling } from '@/composables/useInsightBoardPolling'
+import { useIdeLauncher } from '@/composables/useIdeLauncher'
+import { useVoiceprintMatch } from '@/composables/useVoiceprintMatch'
+import { useTextCorrection } from '@/composables/useTextCorrection'
+import { useGenActions } from '@/composables/useGenActions'
 
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const taskStore = useTaskStore()
 
-// ─── IDE 联动入口 / IDE launch entry ───
-const ws = useWorkspace()
-const genIdeBtn = ref<HTMLElement | null>(null)
-const genIdeMenu = ref<HTMLElement | null>(null)
-const ideMenuOpen = ref(false)
-const ideScope = ref<WorkspaceScope>('meeting')
-const ideScopes: Array<{ id: WorkspaceScope; label: string }> = [
-  { id: 'meeting', label: 'ai-panel.context.workspace_ide_scope_meeting' },
-  { id: 'project', label: 'ai-panel.context.workspace_ide_scope_project' },
-  { id: 'all', label: 'ai-panel.context.workspace_ide_scope_all' },
-]
-
-async function repositionIdeMenu() {
-  await nextTick()
-  if (!genIdeMenu.value || !genIdeBtn.value) return
-  const tr = genIdeBtn.value.getBoundingClientRect()
-  const { x, y } = positionDropdown(
-    { top: tr.top, left: tr.left, width: tr.width, height: tr.height },
-    genIdeMenu.value.offsetWidth, genIdeMenu.value.offsetHeight, getDockBounds(),
-    { align: 'end' },
-  )
-  genIdeMenu.value.style.left = `${x}px`
-  genIdeMenu.value.style.top = `${y}px`
-}
-
-async function toggleIdeMenu() {
-  ideMenuOpen.value = !ideMenuOpen.value
-  if (ideMenuOpen.value) {
-    await ws.loadIdes()
-    await repositionIdeMenu()
-  }
-}
-
-async function onContinueInIde(ideId: string) {
-  const ok = await ws.openIde(data.taskId, ideId, ideScope.value)
-  if (ok) ideMenuOpen.value = false
-}
-
-function onIdeDocMouseDown(e: MouseEvent) {
-  if (!ideMenuOpen.value) return
-  const target = e.target as Node
-  if (genIdeMenu.value?.contains(target) || genIdeBtn.value?.contains(target)) return
-  ideMenuOpen.value = false
-}
-
-function onIdeResize() {
-  if (ideMenuOpen.value) void repositionIdeMenu()
-}
-
 // ─── 模板 refs / Template refs ───
 const transcriptPanelRef = ref<InstanceType<typeof TranscriptPanel> | null>(null)
 const summaryPanelRef = ref<InstanceType<typeof SummaryPanel> | null>(null)
 const notesPanelRef = ref<InstanceType<typeof NotesPanel> | null>(null)
-const kbSearchInputRef = ref<HTMLInputElement | null>(null)
-const kbCreateInputRef = ref<HTMLInputElement | null>(null)
-const kbDropdownRef = ref<HTMLElement | null>(null)
+const genToolbarRef = ref<InstanceType<typeof GenToolbar> | null>(null)
+const genMetaBarRef = ref<InstanceType<typeof GenMetaBar> | null>(null)
+const genTabsRef = ref<InstanceType<typeof GenTabs> | null>(null)
+const kbDropdownRef = computed(() => genMetaBarRef.value?.kbDropdownRef ?? null)
+const kbSearchInputRef = computed(() => genMetaBarRef.value?.kbSearchInputRef ?? null)
 
 // ─── Composable 编排 / Composable orchestration ───
 const data = useGeneratingData(transcriptPanelRef, summaryPanelRef, notesPanelRef)
@@ -688,9 +407,68 @@ const sp = useSummaryProposal()
 const np = useNotesProposal()
 /** 洞察消息的跨组件共享状态（仅用于修正后强制重拉，不让陈内存写回覆盖新落盘的文本） */
 const insights = useAiInsights()
-/** 回溯修正进行中：一次请求会同时改写任务/洞察/洞察板/导出件四份产物，不允并发提交 */
-const correcting = ref(false)
 const rosterComposable = useMeetingRoster(data.taskId, data.task)
+
+// ─── 新提取的 Composables ───
+const ide = useIdeLauncher(
+  data.taskId,
+  () => genToolbarRef.value?.genIdeBtn ?? null,
+  () => genToolbarRef.value?.genIdeMenu ?? null,
+)
+const { ws, ideMenuOpen, ideScope, ideScopes, toggleIdeMenu, onContinueInIde, onIdeDocMouseDown, onIdeResize } = ide
+
+const boardPolling = useInsightBoardPolling({
+  taskId: data.taskId,
+  activeTab: data.activeTab,
+  dotClass: (tab) => data.dotClass(tab),
+})
+const {
+  board, boards, activeBoardId, boardLoading, loadBoardData,
+  onTabHover, tabDotClass, onBoardSwitch, onBoardCreate, onBoardOpenInBrowser,
+} = boardPolling
+
+const voiceprint = useVoiceprintMatch(
+  data.taskId,
+  data.task,
+  () => canBind.value && flatTranscript.value.length > 0,
+  async (speakerId: number, uuid: string) => { await selectBinding(speakerId, uuid) },
+)
+const { voiceprintRunning, visibleVoiceprintItems, onVoiceprintApply } = voiceprint
+
+async function handleRunVoiceprint() {
+  const res = await voiceprint.runVoiceprint()
+  if (res) {
+    taskStore.patchTaskLocal(data.taskId, {
+      voiceprint_match: res.results,
+      voiceprint_auto_mapping: res.auto_mapping,
+      voiceprint_dismissed: [],
+    })
+  }
+}
+
+async function handleVoiceprintDismiss(speakerId: number) {
+  const { dismissedIds, undoBind } = await voiceprint.onVoiceprintDismiss(speakerId)
+  if (undoBind) await selectBinding(speakerId, '')
+  taskStore.patchTaskLocal(data.taskId, { voiceprint_dismissed: dismissedIds })
+}
+
+const textCorrection = useTextCorrection(data.taskId)
+const { onSelectionAction } = textCorrection
+
+const genActions = useGenActions({
+  taskId: data.taskId,
+  showDeleteDialog: data.showDeleteDialog,
+  showArchiveDialog: data.showArchiveDialog,
+  onArchive: data.onArchive,
+  isArchived: data.isArchived,
+  startPolling: data.startPolling,
+  summaryMd: data.summaryMd,
+})
+const {
+  showCloudFallbackConfirm,
+  onRetrySummary, onRetryFromFailure, onCloudFallbackConfirm,
+  onDelete, onDeleteConfirm, onArchiveConfirm, onArchiveDone, onRetranscribe,
+} = genActions
 
 // ─── 解构到模板作用域 / Destructure to template scope ───
 const {
@@ -722,6 +500,14 @@ const {
   onNotesChange, onSummaryChange, onAddDecision, onDeleteDecision, onEditDecision, onStatusChange, loadDecisions, loadNotes,
 } = notes
 
+// ─── textCorrection 重载器（依赖 notes 的 loadDecisions/loadNotes，故延迟到解构后接线） ───
+textCorrection.configure({
+  reloadDecision: loadDecisions,
+  reloadNotes: loadNotes,
+  reloadInsights: insights.reloadTaskMessages,
+  reloadBoard: () => { boardPolling.boardDirty.value = false; if (boardPolling.boardFetched.value) boardPolling.loadBoardData() },
+})
+
 // ─── 添加决策：复用决策中心「手动补录决策」弹层（DC-UNIFY-01 样式/数据统一） ───
 const showAddDecisionDialog = ref(false)
 const addDecisionDialogRef = ref<InstanceType<typeof AddDecisionDialog> | null>(null)
@@ -752,190 +538,8 @@ function onInsightSeek(ms: number) {
 
 // 【已退役】会后补分析触发入口：随「洞察共创 · 会话驱动」下线，历史洞察消息仍只读呈现
 
-// ─── 洞察板（原始 HTML 产物 · 多板） / Insight Board (raw HTML artifact, multi-board) ───
-// 单一写入源在后端：AI 经会话工具 revise_insight_board 整份落盘，前端只读重拉；
-// 旧 Board Spec 的失败归因横幅/生成端点已随共创模式退役。
-//
-// 自动同步双通道（不再依赖人工刷新）：
-//   ① 信号通道——对话流里识别到一次成功落板（useBoardSync 广播 board-written）→ 即时重拉；
-//   ② 版本通道——洞察 Tab 可见时每 10s 探测 ?meta=1（一次拿全部板的 revision），
-//      盖住「写板发生在另一个窗口/设备、本标签页收不到对话流信号」的缝隙。
-// 换新呈现：静默替换 + rev 徽标脉冲（共创场景用户本已预期内容会变，不打断阅读）。
-// 多板：manifest 是板集合的权威，tab 轨只读它；**建板只能由用户发起**（这里调 POST）。
-const board = ref<BoardArtifact>({ html: null, revision: 0, updated_at: null })
-const boards = ref<BoardSummary[]>([])
-const activeBoardId = ref('')
-const boardFetched = ref(false)
-const boardLoading = ref(false)
-/** 离开洞察 Tab 期间收到过落板信号 / Board written while the tab was hidden */
-const boardDirty = ref(false)
-
-const BOARD_POLL_MS = 10_000
-let boardPollTimer: ReturnType<typeof setInterval> | null = null
-/** 上一轮看到的版本指纹："board_id:rev" 拼接，任一板变化即重拉 */
-function boardSignature(bs: BoardSummary[]): string {
-  return bs.map(b => `${b.board_id}:${b.revision}`).join('|')
-}
-let boardSig = ''
-
-// 圆点跟随实际内容源：洞察 Tab 是否有点取决于洞察板产物是否存在，
-// 而板是懒加载的——悬停时补一次首拉，保证圆点在切 Tab 前就能正确点亮
-function onTabHover(tabId: string) {
-  if (tabId === 'insights' && !boardFetched.value && !boardLoading.value) loadBoardData()
-}
-
-function tabDotClass(tabId: string): string {
-  const base = data.dotClass(tabId)
-  if (tabId === 'insights') return board.value.html ? 'is-done' : base
-  return base
-}
-
-async function loadBoardData() {
-  boardFetched.value = true
-  boardLoading.value = true
-  try {
-    const manifest = await listBoards(data.taskId)
-    boards.value = manifest.boards
-    boardSig = boardSignature(manifest.boards)
-    // 当前选中板丢失（被新建/首次进入）时落到默认板
-    if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
-      activeBoardId.value = manifest.default_board_id || 'main'
-    }
-    board.value = await loadBoard(data.taskId, activeBoardId.value)
-  } catch {
-    // 读板失败不阻断卡片视图 / Load failure never blocks the cards view
-  } finally {
-    boardLoading.value = false
-  }
-}
-
-/** 轻量版本探测：只在版本指纹前进（或无板→有板）时才拉整份正文 */
-async function probeBoardRevision() {
-  if (boardLoading.value || document.hidden) return
-  try {
-    const meta = await loadBoardMeta(data.taskId)
-    const list = meta.boards || []
-    const sig = boardSignature(list)
-    const current = list.find(b => b.board_id === activeBoardId.value)
-    const changed = sig !== boardSig
-    boardSig = sig
-    if (list.length) boards.value = list
-    if (changed && (!current || current.board_id !== activeBoardId.value)) {
-      activeBoardId.value = meta.default_board_id || list[0]?.board_id || 'main'
-    }
-    if (changed || (meta.exists && !board.value.html)) await loadBoardData()
-  } catch {
-    // 探测失败静默跳过，下一轮再试 / Probe failure is silent; next tick retries
-  }
-}
-
-function startBoardPolling() {
-  stopBoardPolling()
-  boardPollTimer = setInterval(probeBoardRevision, BOARD_POLL_MS)
-}
-
-function stopBoardPolling() {
-  if (boardPollTimer) { clearInterval(boardPollTimer); boardPollTimer = null }
-}
-
-// Tab 切换：进入→首拉（脏则重拉）+ 开轮询；离开→停轮询（不可见不产生流量）
-watch(activeTab, (tab) => {
-  if (tab === 'insights') {
-    if (!boardFetched.value || boardDirty.value) loadBoardData()
-    boardDirty.value = false
-    startBoardPolling()
-  } else {
-    stopBoardPolling()
-  }
-}, { immediate: true })
-
-/** 切板：只换可见板（不拉清单，tab 轨已有全部元信息） */
-function onBoardSwitch(bid: string) {
-  if (!bid || bid === activeBoardId.value) return
-  activeBoardId.value = bid
-  board.value = { html: null, revision: 0, updated_at: null, board_id: bid }
-  void loadBoardData()
-}
-
-/**
- * 建板（用户意志的唯一出口之一）：写 manifest 条目后广播集合变化。
- * 另一出口是会话侧「建板提案卡」被用户点「接受」，两者走同一个 POST 实现。
- */
-async function onBoardCreate(title: string) {
-  try {
-    const created = await createBoard(data.taskId, title, undefined, 'ui')
-    activeBoardId.value = created.board_id
-    await loadBoardData()
-    notifyBoardsChanged({ board_id: created.board_id })
-    showToast(t('generating.insights.board.toast_created', { title: created.title }), 'success')
-  } catch (e: unknown) {
-    const msg = (e as { response?: { data?: { detail?: { message?: string } } } })?.response?.data?.detail?.message
-    showToast(msg || t('generating.insights.board.toast_create_failed'), 'error')
-  }
-}
-
-/** 原始出口：后端用系统浏览器打开（pywebview 里 window.open 不可靠） */
-async function onBoardOpenInBrowser() {
-  try {
-    const ok = await openBoardInBrowser(data.taskId, activeBoardId.value, board.value.revision)
-    if (!ok) showToast(t('generating.insights.board.toast_open_failed'), 'warn')
-  } catch {
-    showToast(t('generating.insights.board.toast_open_failed'), 'error')
-  }
-}
-
-// 落板信号：正在看洞察 Tab 就即时换新；在其它 Tab 则记脏，回去时补拉
-let offBoardWritten: (() => void) | null = null
-let offBoardsChanged: (() => void) | null = null
+// ─── 落板信号 + 生命周期监听（复用 composable 之外的 offTaskWritten） ───
 let offTaskWritten: (() => void) | null = null
-/** 窗口回到前台立即对齐：隐藏时轮询主动跳过且后台定时器会被浏览器节流，回到前台不等 10s 就补一次探测 */
-function onVisibilityChange() {
-  if (!document.hidden && activeTab.value === 'insights') probeBoardRevision()
-}
-onMounted(() => {
-  offBoardWritten = onBoardWritten((detail) => {
-    // 多板下带 board_id：写的不是当前可见板，不必重拉正文（轮询会覆盖集合变化）
-    if (detail.board_id && activeBoardId.value && detail.board_id !== activeBoardId.value) {
-      boardSig = ''
-      if (activeTab.value === 'insights') void loadBoardData()
-      else boardDirty.value = true
-      return
-    }
-    if (activeTab.value === 'insights') loadBoardData()
-    else boardDirty.value = true
-  })
-  offBoardsChanged = onBoardsChanged(() => { boardSig = ''; if (activeTab.value === 'insights') void loadBoardData() })
-  // AI 会话写回任务数据（决策节点/纪要/注入）→ 呈现侧即时对齐（§5.4）：
-  // 写点在后端工具落盘，本页不在实时通道上，不重拉就是"AI 说改了、页面还是旧的"
-  offTaskWritten = onTaskWritten(async ({ domains }) => {
-    const all = !domains || domains.length === 0
-    try {
-      const updated = await fetchTask(data.taskId)
-      taskStore.patchTaskLocal(data.taskId, updated)
-    } catch { /* 保留旧视图，切 Tab 时 loadDecisions 仍会重拉 */ }
-    if (all || domains?.includes('decisions')) void data.loadDecisions()
-    // 随记：接受 AI 提案或 AI 写回后以服务端为准刷新（用 notes 版 loadNotes，它会取消挂起的自动保存）
-    if (all || domains?.includes('notes')) void loadNotes()
-    void loadSyncStatus()
-  })
-  document.addEventListener('visibilitychange', onVisibilityChange)
-  // IDE 联动：探测已安装 IDE，并接管下拉的外部点击/缩放重定位
-  void ws.loadIdes()
-  document.addEventListener('mousedown', onIdeDocMouseDown, true)
-  window.addEventListener('resize', onIdeResize)
-})
-onUnmounted(() => {
-  stopBoardPolling()
-  document.removeEventListener('visibilitychange', onVisibilityChange)
-  document.removeEventListener('mousedown', onIdeDocMouseDown, true)
-  window.removeEventListener('resize', onIdeResize)
-  offBoardWritten?.()
-  offBoardWritten = null
-  offBoardsChanged?.()
-  offBoardsChanged = null
-  offTaskWritten?.()
-  offTaskWritten = null
-})
 
 /** 共创起跳：展开 AI 面板并预填修订请求到输入框（不自动发送）；coCreate 标记使智能体轮自动升可写档以落盘 */
 function onBoardCoCreate() {
@@ -1040,8 +644,8 @@ watch(() => data.showProjectDropdown.value, (open) => {
 watch([data.kbSearchQuery, data.showKbCreateInput], () => resetKbNav())
 
 // ─── 更多菜单 / More menu ──
-const genMoreBtn = ref<HTMLElement | null>(null)
-const genMoreDropdown = ref<HTMLElement | null>(null)
+const genMoreBtn = computed(() => genToolbarRef.value?.genMoreBtn ?? null)
+const genMoreDropdown = computed(() => genToolbarRef.value?.genMoreDropdown ?? null)
 const { visible: showMoreMenu, toggle: toggleGenMore, close: closeGenMore, triggerAttrs: genMoreTriggerAttrs, menuAttrs: genMoreMenuAttrs } = usePopMenu(genMoreDropdown, genMoreBtn)
 let genMoreHoverTimer: ReturnType<typeof setTimeout> | null = null
 function onGenMoreEnter() { if (genMoreHoverTimer) { clearTimeout(genMoreHoverTimer); genMoreHoverTimer = null } }
@@ -1050,8 +654,8 @@ function onGenMoreLeave() { genMoreHoverTimer = setTimeout(() => closeGenMore(),
 // ─── 原文三层视图下拉（tab 栏右侧；真源在此，TranscriptPanel prop 消费）/ Transcript layer dropdown (tab-bar right; source of truth here) ──
 const layerView = ref<LayerView>('clean')
 const cleanupAvailable = computed(() => task.value?.transcript_layers?.cleanup === true)
-const layerPickerBtn = ref<HTMLElement | null>(null)
-const layerPickerMenu = ref<HTMLElement | null>(null)
+const layerPickerBtn = computed(() => genTabsRef.value?.layerPickerBtn ?? null)
+const layerPickerMenu = computed(() => genTabsRef.value?.layerPickerMenu ?? null)
 const { visible: showLayerPicker, toggle: toggleLayerPicker, close: closeLayerPicker, triggerAttrs: layerPickerTriggerAttrs, menuAttrs: layerPickerMenuAttrs } = usePopMenu(layerPickerMenu, layerPickerBtn)
 function selectLayer(v: LayerView) {
   layerView.value = v
@@ -1125,133 +729,6 @@ function anchorFromDecisionCenter() {
   }
   window.setTimeout(tick, 100)
 }
-async function onRetrySummary() {
-  closeGenMore()
-  // 乐观切进行态：点击即有反馈，不等待慢列表（全量列表 35MB，曾稳定 2.8s 白屏）。
-  // 详情轮询立即启动接管真实状态；列表刷新只服务会议库，后台进行不阻塞 UI。
-  taskStore.patchTaskLocal(data.taskId, {
-    status: 'processing',
-    progress: 75,
-    error: undefined,
-    error_category: undefined,
-    error_suggestion: undefined,
-    failed_stage: undefined,
-  })
-  data.startPolling()
-  try {
-    await retrySummary(data.taskId)
-    void taskStore.loadTasks()
-  } catch (e) {
-    // 提交失败：回拉详情恢复真实状态，防乐观态卡死在处理中
-    console.error('retry summary failed:', e)
-    try {
-      taskStore.patchTaskLocal(data.taskId, await fetchTask(data.taskId))
-    } catch { /* 保留乐观态，等下次轮询纠偏 */ }
-  }
-}
-async function onRetranscribe() { closeGenMore(); await retranscribe(data.taskId); router.push({ name: 'generating', params: { taskId: data.taskId } }) }
-
-/** 失败态卡片「重试转写」：复用 retranscribe API，乐观更新状态并恢复轮询，与 TaskList.vue 重试行为一致
- * Failure card "retry transcription": reuse retranscribe API, optimistically update status and resume polling,
- * consistent with TaskList.vue retry behavior. */
-async function onRetryFromFailure() {
-  try {
-    await retranscribe(data.taskId)
-    taskStore.patchTaskLocal(data.taskId, { status: 'transcribing', error: undefined, error_category: undefined, error_suggestion: undefined })
-    data.startPolling()
-  } catch (e) {
-    console.error('retry from failure page failed:', e)
-  }
-}
-
-// ─── AC-4 切云端重试（QA-R1 DEF-04）：仅在用户显式确认「数据上云」后调用 engine_override=cloud
-//     AC-4 cloud fallback: only invoked with engine_override=cloud after explicit user confirmation ───
-const showCloudFallbackConfirm = ref(false)
-
-async function onCloudFallbackConfirm() {
-  try {
-    await retranscribe(data.taskId, { engineOverride: 'cloud' })
-    taskStore.patchTaskLocal(data.taskId, {
-      status: 'transcribing',
-      error: undefined, error_category: undefined, error_suggestion: undefined,
-      error_code: undefined, can_fallback_cloud: undefined,
-    })
-    showToast(t('generating.failure.cloud_retry_started'), 'success')
-    data.startPolling()
-  } catch (e) {
-    console.error('cloud fallback retry failed:', e)
-    showToast(t('generating.failure.cloud_retry_failed'), 'error')
-  }
-}
-async function onDelete() {
-  closeGenMore()
-  data.showDeleteDialog.value = true
-}
-async function onDeleteConfirm() {
-  data.showDeleteDialog.value = false
-  await deleteTask(data.taskId); await taskStore.loadTasks(); router.push('/')
-}
-function onArchiveConfirm() { closeGenMore(); data.showArchiveDialog.value = true }
-async function onArchiveDone() {
-  await data.onArchive()
-  if (data.isArchived.value) {
-    // 归档后跳转至会议库 / Redirect to library after archiving
-    router.push('/library')
-  }
-}
-
-// ─── 声纹识别：人员栏内触发，结果落本地 / Voiceprint match triggered within personnel bar ───
-const voiceprintRunning = ref(false)
-
-/** 过滤已忽略建议后的可见项 / Visible items after dismissed filtering */
-const visibleVoiceprintItems = computed<VoiceprintMatchItem[] | null>(() => {
-  const items = task.value?.voiceprint_match ?? null
-  if (!items) return null
-  const dismissed = new Set(task.value?.voiceprint_dismissed ?? [])
-  return dismissed.size ? items.filter(it => !dismissed.has(it.speaker_id)) : items
-})
-
-async function runVoiceprint() {
-  if (voiceprintRunning.value || !canBind.value || flatTranscript.value.length === 0) return
-  voiceprintRunning.value = true
-  try {
-    const res = await runVoiceprintMatch(data.taskId)
-    taskStore.patchTaskLocal(data.taskId, {
-      voiceprint_match: res.results,
-      voiceprint_auto_mapping: res.auto_mapping,
-      voiceprint_dismissed: [],
-    })
-  } catch {
-    showToast(t('generating.voiceprint.failed'), 'error')
-  } finally {
-    voiceprintRunning.value = false
-  }
-}
-
-async function onVoiceprintApply(speakerId: number, uuid: string) {
-  await selectBinding(speakerId, uuid)
-}
-
-async function onVoiceprintDismiss(speakerId: number) {
-  // 若当前绑定正来自这条声纹建议，忽略即一并撤销；手工改绑他人则保留
-  const item = (task.value?.voiceprint_match ?? []).find(it => it.speaker_id === speakerId)
-  if (
-    item?.status === 'matched' && item.matched_uuid
-    && binding.currentBindingMapping[speakerId] === item.matched_uuid
-  ) {
-    await selectBinding(speakerId, '')
-  }
-  const dismissed = new Set(task.value?.voiceprint_dismissed ?? [])
-  dismissed.add(speakerId)
-  taskStore.patchTaskLocal(data.taskId, {
-    voiceprint_dismissed: [...dismissed].sort((a, b) => a - b),
-  })
-  try {
-    await dismissVoiceprintSuggestion(data.taskId, speakerId)
-  } catch {
-    showToast(t('generating.voiceprint.failed'), 'error')
-  }
-}
 
 function onSpeakerLabelClick(e: MouseEvent, speakerId: number) {
   if (binding.canBind.value) binding.openBindingDropdown(e, speakerId)
@@ -1275,75 +752,14 @@ function onLocateSpeaker(speakerId: number) {
   })
 }
 
-/** 文本回溯修正：把一条误识别→正确文本映射落到本场会议的全部产物
- *  Retroactive correction: apply one wrong→correct mapping to every artifact of this meeting.
- *
- * 取代旧 replaceInTranscriptDom：那个实现只在「原文 Tab 的 .txt DOM」里改第一处命中就 return，
- * 不回写数据也不落盘，因此纪要 Tab 完全无效、一次重渲染就复原，却仍无条件报「已修正」。
- * 现在写入权威在后端（core.text_correction），前端拿到真实命中数后从数据源重拉呈现。
- */
-async function applyTextCorrection(oldText: string, newText: string, createdMapping = false) {
-  if (correcting.value) return
-  correcting.value = true
-  try {
-    const result = await correctTaskText(data.taskId, oldText, newText)
-    await refreshAfterCorrection()
-    const scope = createdMapping ? t('generating.correction.mapping_saved') : ''
-    if (result.replaced > 0) {
-      showToast(t('generating.correction.applied', { scope, text: newText, n: result.replaced }), 'success')
-    } else {
-      // 映射存住了，但本场会议确实没这个词：说清事实，不给假反馈
-      showToast(t('generating.correction.no_match', { scope, text: oldText }), 'warn')
-    }
-  } catch (e) {
-    showToast(t('generating.correction.failed', { reason: extractErrorMessage(e) }), 'error')
-  } finally {
-    correcting.value = false
-  }
-}
-
-/** 修正后从数据源重拉各面板 / Re-pull every panel from its source of truth after a correction. */
-async function refreshAfterCorrection() {
-  // 1. 任务主体（原文/纪要/标题/章节）走 store，计算属性链自动重渲染
-  try {
-    const updated = await fetchTask(data.taskId)
-    taskStore.patchTaskLocal(data.taskId, updated)
-  } catch { /* 保留旧视图；下一轮轮询仍会拉到新值 */ }
-  // 2. 决策项独立端点，不在 task 快照里
-  data.loadDecisions().catch(() => { /* */ })
-  // 3. 随记：用户正在随记 Tab 时不覆盖其编辑中的内容（与管线完成时的既有规则一致）
-  if (data.activeTab.value !== 'notes') data.loadNotes().catch(() => { /* */ })
-  // 4. 洞察卡片：内存缓存不重拉会与新落盘的 insights.json 不一致，且切会议时会被写回覆盖
-  insights.reloadTaskMessages(data.taskId).catch(() => { /* */ })
-  // 5. 洞察板：仅在已拉取过时重拉，避免为未打开过的 Tab 白跑一次请求（脏标记属于上一个会议，先清）
-  boardDirty.value = false
-  if (boardFetched.value) loadBoardData()
-}
-
-function onSelectionAction(action: string, text: string, _source: string, _blockIndex: number, replacement?: string, createdMapping?: boolean) {
-  // 划词工具栏已下架改写/总结/提取决策，仅保留热词修正；
-  // 其余 AI 意图由用户通过「引用到 AI」自行表达
-  // Toolbar rewrite/summarize/extract retired; only hotword correction remains.
-  if (action === 'correct' && replacement) {
-    // 全量回溯修正本场会议（后端写盘 + 前端从数据源重拉） / Retroactive, persisted, then re-pulled
-    void applyTextCorrection(text, replacement, createdMapping)
-  }
-}
-
 // ─── 行间编辑 / Inline edit ───
-// 工具栏「改写」入口已下架：划词不再 emit inline-edit，onInlineEditRequest 随之移除；
-// InlineEditInput 基础设施暂保留（可见性恒为 false），待其它入口评估后统一清理
-// The toolbar rewrite entry is retired; inline-edit requests no longer fire.
-// The InlineEditInput scaffolding stays dormant (visible is always false).
 async function onInlineEditSubmit(instruction: string) {
   await inlineEdit.submitInstruction(instruction)
 }
-
 /** 回显标签起跳：更换面板外操作的默认模型（AI 算力入口治理 §5） */
 function onInlineEditGotoSettings() {
   void router.push({ name: 'settings', query: { cat: 'ai' } })
 }
-
 
 /** 切换所有章节原文显隐（导航栏眼睛按钮） / Toggle all chapters transcript visibility (navbar eye button) */
 function toggleAllTranscript() {
@@ -1386,6 +802,27 @@ onMounted(async () => {
     }
   })
 
+  // 洞察板轮询：绑定信号 + 可见性事件（dispose 时自动清理）
+  boardPolling.bindSignals()
+  boardPolling.bindVisibilityChange()
+
+  // IDE 联动：探测已安装 IDE，并接管下拉的外部点击/缩放重定位
+  void ide.loadIdes()
+  document.addEventListener('mousedown', onIdeDocMouseDown, true)
+  window.addEventListener('resize', onIdeResize)
+
+  // AI 会话写回任务数据（决策节点/纪要/注入）→ 呈现侧即时对齐（§5.4）
+  offTaskWritten = onTaskWritten(async ({ domains }) => {
+    const all = !domains || domains.length === 0
+    try {
+      const updated = await fetchTask(data.taskId)
+      taskStore.patchTaskLocal(data.taskId, updated)
+    } catch { /* 保留旧视图，下次轮询仍会重拉 */ }
+    if (all || domains?.includes('decisions')) void data.loadDecisions()
+    if (all || domains?.includes('notes')) void loadNotes()
+    void loadSyncStatus()
+  })
+
   // 任务数据可能尚未加载（刷新页面时 store 为空），用 watch 等待任务就绪后初始化绑定映射 / Task data may not be loaded yet (store empty on page refresh), use watch to init binding mapping when ready
   // 原写法是 const stopWatch = watch(..., { immediate: true })，而 immediate 回调在
   // const 完成赋值之前就会同步执行 → stopWatch() 触发 TDZ ReferenceError，
@@ -1417,6 +854,11 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  boardPolling.dispose()
+  document.removeEventListener('mousedown', onIdeDocMouseDown, true)
+  window.removeEventListener('resize', onIdeResize)
+  offTaskWritten?.()
+  offTaskWritten = null
   document.removeEventListener('click', panel.onDocClickCloseSearch)
   document.removeEventListener('click', binding.onDocClickForDropdown)
 })
