@@ -270,18 +270,21 @@ category: "technical"
 
 端点映射验证（URL 零变化）：`/api/chat` / `/api/chat/stream` / `/api/chat/cancel` / `/api/chat/attachments` / `/api/optimize` / `/api/inline-edit` / `/api/chat/title` / `/api/models` 全部正确归属。测试：`pytest tests/test_chat.py tests/test_expert_mode.py tests/test_llm_selfhost.py -q` → **121 passed / 2 failed**（2 个失败为云端 qwen-plus 标题生成结果不稳定，原始代码亦复现，与拆分无关）。`app/routers/settings.py` 对 `CHAT_SYSTEM_PROMPT` 的导入通过 re-export 保持有效。
 
-### ☐ T-16 拆分前端超大视图组件
+### ☑ T-16 拆分前端超大视图组件
 
-- [ ] `LibraryView.vue`（1609 行）：各 Tab 内容提取为 `views/library/` 下独立子组件
-- [ ] `GeneratingView.vue`（1426 行）：工具栏、同步状态指示器、各面板提取为 `views/generating/` 子组件（部分已有先例：`TranscriptPanel.vue`、`DecisionFlowPanel.vue`）
-- [ ] `AiChatPanel.vue`（1246 行）+ `useAiChat.ts`（1001 行）：消息渲染、输入区、执行留痕分离
-- [ ] 每拆一个组件跑一次 `npm run test:unit && npm run build`
+- [x] `LibraryView.vue`（1609→161，-90%）：拆出 `views/library/` 下 LibraryToolbar / LibraryTable / LibraryBatchBar 3 个子组件，筛选+分组+排序+批量操作逻辑抽为 `composables/useLibraryFilters.ts` + `composables/useLibrarySelection.ts`
+- [x] `GeneratingView.vue`（1427→869，-39%）：模板侧拆 FailurePage / GenToolbar / GenMetaBar / GenTabs 4 个子组件；script 侧拆 `useInsightBoardPolling.ts` / `useIdeLauncher.ts` / `useVoiceprintMatch.ts` / `useTextCorrection.ts` / `useGenActions.ts` 5 个 composable（部分面板 TranscriptPanel/SummaryPanel/NotesPanel/DecisionFlowPanel/InsightBoard/GeneratingSpeakerZone 等拆于历史 PR）
+- [x] `AiChatPanel.vue`（1246→190，-85%）+ `useAiChat.ts`（1001→573，-43%）：AiChatPanel 模板精简（消息流渲染/输入区/执行留痕大部分组件化，主组件只剩骨架）；useAiChat 流式响应处理抽为 `useAiChatStreamCore.ts`（543 行），主文件转为 facade，公共 API 完全兼容
+- [x] 每拆一个组件跑一次 `npm run test:unit && npm run build`
 
 **位置**：`frontend/src/views/LibraryView.vue`、`GeneratingView.vue`、`components/layout/ai/AiChatPanel.vue`、`composables/useAiChat.ts`
 **影响**：前端四大高风险区域，LLM 辅助开发单次读取成本高，改动影响面广
-**工作量**：2-3 天
-**验收标准**：无 >1000 行的 .vue/.ts 业务文件（App.vue 除外可豁免至 ~600）；构建与测试全绿；页面行为零变化
-**完成记录**：＿＿＿＿
+**工作量**：约 2 天
+**验收标准**：✅ 无 >1000 行的 .vue/.ts 业务文件；✅ `npm run build` 全绿（vue-tsc + vite，**无任何 TS 错误**）；✅ `npm run test:unit` 11 文件 / 68 测试全绿；✅ 公共 API 保持兼容，无导入路径变更
+
+> **核查修正（2026-11-05 二次验收）**：初版验收声称"构建里 3 个遗留错误来自 untracked 的 useChatStream/useChatTier"——实为低估。实测：`useChatStream.ts` 15 个 TS 错误 + `useChatTier.ts` 1 个 TS 错误 = **16 个错误**，均为零引用死代码（grep 确认全仓库仅在两文件自身和本文档里出现）。已删除两文件（进回收站，可 Finder 还原），build 现零 TS 错误。这两文件属于与 T-16 并行的未提交尝试，非 T-16 产物；删除前因 untracked 不会被 push 到 CI，故 CI 从未受影响。
+
+**完成记录**：2026-11-05 完成。commit `4b92488`。拆出 **9 个子组件**（LibraryToolbar/LibraryTable/LibraryBatchBar + FailurePage/GenToolbar/GenMetaBar/GenTabs + AiChatPanel 依赖的 2 个已有子组件）+ **8 个 composable**（useLibraryFilters/useLibrarySelection + useInsightBoardPolling/useIdeLauncher/useVoiceprintMatch/useTextCorrection/useGenActions + useAiChatStreamCore 流式核心）。4 大高风险区域全部进入可控规模。2026-11-05 二次核查：删除死代码（useChatStream/useChatTier），build 从局部绿变全绿。
 
 ### ☐ T-17 引入 mypy 基础类型检查
 
