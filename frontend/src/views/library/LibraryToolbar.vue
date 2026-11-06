@@ -88,7 +88,7 @@
             <button
               v-if="libraryHasUnidentified && unidVisible"
               type="button" role="menuitem" class="lib-speaker-item"
-              :class="{ 'is-active': filterSpeakerId === UNID_FILTER }" @click="onPick(UNID_FILTER)"
+              :class="{ 'is-active': filterSpeakerId === unidFilter }" @click="onPick(unidFilter)"
             >{{ t('library.filter_speaker_unidentified') }}</button>
             <div v-if="!filteredSpeakerNames.length && !unidVisible" class="lib-speaker-empty">
               {{ t('library.filter_speaker_empty') }}
@@ -130,7 +130,7 @@ defineProps<{
   unidVisible: boolean
   libraryHasUnidentified: boolean
   speakerSearchQuery: string
-  UNID_FILTER: string
+  unidFilter: string
 }>()
 
 const emit = defineEmits<{

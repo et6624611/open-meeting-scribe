@@ -17,7 +17,7 @@
       :unid-visible="unidVisible"
       :library-has-unidentified="libraryHasUnidentified"
       :speaker-search-query="speakerSearchQuery"
-      :UNID_FILTER="UNID_FILTER"
+      :unid-filter="UNID_FILTER"
       @update:search-query="taskStore.searchQuery = $event"
       @switch-tab="switchTab"
       @update:date-from="dateFrom = $event"

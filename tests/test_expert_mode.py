@@ -99,8 +99,9 @@ class TestChatModelResolution:
 
 ANNOTATION_BLOCKS = [
     # (文件, CSS 选择器, 声明块必须含 font-size ≥12px)
-    (FE / "components/layout/ai/AiChatPanel.vue", ".ai-usage-echo"),
-    (FE / "components/layout/ai/AiChatPanel.vue", ".ai-cli-probe-warn"),
+    # 组件已按 T-16 拆分为 AiMessageList（消息层）/ AiChatComposer（输入层）
+    (FE / "components/layout/ai/AiMessageList.vue", ".ai-usage-echo"),
+    (FE / "components/layout/ai/AiChatComposer.vue", ".ai-cli-probe-warn"),
     (FE / "components/settings/CliEnginePanel.vue", ".cp-stage"),
 ]
 
@@ -140,13 +141,17 @@ def test_tier_name_not_hardcoded():
 
 def test_chat_panel_model_picker_wired():
     # 模型选择器已抽入 ComposerBar（ai-model-select 契约锚点在该组件）；
-    # AiChatPanel 负责把 update:session-model 事件中转给外层。
+    # 链路：AiChatPanel → AiChatComposer → ComposerBar，逐层透传 update:session-model。
     picker = (FE / "components/layout/ai/ComposerBar.vue").read_text(encoding="utf-8")
     assert "ai-model-select" in picker
     panel = (FE / "components/layout/ai/AiChatPanel.vue").read_text(encoding="utf-8")
     assert "update:sessionModel" in panel
-    assert "<ComposerBar" in panel
-    chat = (FE / "composables/useAiChat.ts").read_text(encoding="utf-8")
+    assert "<AiChatComposer" in panel
+    composer = (FE / "components/layout/ai/AiChatComposer.vue").read_text(encoding="utf-8")
+    assert "<ComposerBar" in composer
+    assert "@update:session-model" in composer
+    # 流式核心已抽入 useAiChatStreamCore（T-16），轮级口径与回显在此落地
+    chat = (FE / "composables/useAiChatStreamCore.ts").read_text(encoding="utf-8")
     # 轮级 override 优先，缺省回落 sessionModel；空串一律转 undefined（不发空 model）
     assert "override?.model ?? sessionModel.value" in chat
     assert "effectiveQaModel || undefined" in chat
