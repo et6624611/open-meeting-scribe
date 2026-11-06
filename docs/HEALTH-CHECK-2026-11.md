@@ -4,7 +4,7 @@ description: "面向未来功能开发与迭代的只读健康检查结论，含
 tags: ["health-check", "tech-debt", "checklist", "ci", "testing", "architecture"]
 created_at: "2026-11-04"
 updated_at: "2026-11-06"
-version: "1.1.6"
+version: "1.2.0"
 author: "Yongliang Wang"
 status: "published"
 category: "technical"
@@ -33,10 +33,12 @@ category: "technical"
 | 文档与知识沉淀 | ✅ 8/10 | ROADMAP/ARCHITECTURE/BACKLOG 体系完整 |
 | 技术债与高风险区域 | ⚠️ 5/10 | 后端 6 + 前端 4 个 >1000 行大文件，31 个 BACKLOG 未解决项 |
 
-**三大主要风险**：
-1. **架构层级破坏**：6 个 `core/` 模块直接 `import app.*`，core 无法独立测试与复用
-2. **CI 防护盲区**：CI 仅跑 `tests/test_smoke.py`；前端 60 个 vitest 测试不在 CI；ESLint 35 个 error 无门禁
-3. **依赖管理分歧**：`pyproject.toml` 与 `requirements.txt` 实质性不一致（pyproject 多 scipy、缺 Babel/pywebview）——已由 T-01 修复；无 Python lockfile，依赖仅 `>=` 下限——已由 T-14 补 `requirements.lock`（2026-11-05）
+> 上表为 2026-11-04 检查时点评分。T-01~T-20 完成后，「质量守护能力」与「依赖与构建健康度」两项已实质改善（见第六节任务总览）。
+
+**三大主要风险（均已于 T-01~T-20 处置，2026-11-06 全部关闭）**：
+1. **架构层级破坏**：6 个 `core/` 模块直接 `import app.*`，core 无法独立测试与复用 —— 已由 T-10/T-13 解除；现由 `tests/test_core_layer_purity.py` 全深度守护（模块级 + 函数级均禁 `app.*`）
+2. **CI 防护盲区**：CI 仅跑 `tests/test_smoke.py`；前端 60 个 vitest 测试不在 CI；ESLint 35 个 error 无门禁 —— 已由 T-03/T-07/T-11/T-20 收口：全量 pytest、vitest、ESLint（`--max-warnings=0`）、全项目 `ruff check .`、mypy 阻断
+3. **依赖管理分歧**：`pyproject.toml` 与 `requirements.txt` 实质性不一致（pyproject 多 scipy、缺 Babel/pywebview）——已由 T-01 修复；无 Python lockfile，依赖仅 `>=` 下限——已由 T-14 补 `requirements.lock`（2026-11-05），安装链路（CI / Docker / 打包 / 部署文档）全部改为按锁文件
 
 ---
 
@@ -68,7 +70,7 @@ category: "technical"
 **影响**：`pip install -e .` 与 `pip install -r requirements.txt` 当前会安装不同依赖集；scipy 被错误引入增加包体积
 **工作量**：0.5h
 **验收标准**：两清单依赖集合一致（除注释项）；`pip install -e .` 后 `python -c "import babel, webview"` 成功
-**完成记录**：2026-11-04 完成。双清单经 `tomllib` 逐项 diff，各 16 项、差集为空；`pip install -e .` 元数据构建通过，`import babel, webview` 成功。遗留：`scripts/eval_voiceprint*.py`、`scripts/sweep_threshold.py` 三个离线评测脚本仍 `import scipy`，现改为靠传递依赖（librosa / scikit-learn）间接提供，未按本项范围声明为独立 extra，待单独分诊。
+**完成记录**：2026-11-04 完成。双清单经 `tomllib` 逐项 diff，各 16 项、差集为空；`pip install -e .` 元数据构建通过，`import babel, webview` 成功。~~遗留：`scripts/eval_voiceprint*.py`、`scripts/sweep_threshold.py` 三个离线评测脚本仍 `import scipy`~~ **遗留已分诊（2026-11-06）**：三个脚本不再依赖 scipy——`wavfile.read` 全部改用 `core.audio.read_wav_float32`（ffmpeg 已统一输出 16kHz 单声道 16-bit PCM，读取行为等价），`linear_sum_assignment` 改用 `core.voiceprint_identify._greedy_assignment`（与生产实现一致；实测对角占优相似度矩阵 2000 次随机试验 0 次偏离最优解，均匀随机矩阵约 46% 非最优，但声纹场景恒属前者）。顺带修复 `eval_voiceprint_comparison.py` 预存 bug：`_cap_segments`/`_collect_speaker_segments` 自 voiceprint v2.0 拆分后已迁至 `core/voiceprint_identify`，脚本从错误的 `core.voiceprint` 导入导致直接 ImportError。验证：ruff 全过；scipy 被 sys.modules 屏蔽环境下三脚本导入均成功。
 
 ### ❎ T-02 ~~统一版本源（VERSION vs pyproject.toml）~~ — 已撤销
 
@@ -233,7 +235,7 @@ category: "technical"
 **影响**：完成后 core 层可独立测试、可被桌面端/CLI/未来本地引擎安全复用
 **工作量**：3-5 天
 **验收标准**：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试绿灯；守护测试进入 CI
-**完成记录**：2026-11-04 完成（commit `0da5cf8`）。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。
+**完成记录**：2026-11-04 完成（commit `0da5cf8`）。① 新建真相源 `core/task_store.py`（`tasks`/`TASKS_DIR`/`save_task_to_disk` 及磁盘恢复）、`core/settings_store.py`（配置读写与能力来源，含 `RECORD_DEVICE`）、`core/realtime_store.py`（实时队列与静默检测状态）。② `app/store.py`、`app/task_store.py`、`app/settings_store.py`、`app/realtime_store.py` 改为 re-export 兼容层，用模块级 `__getattr__` 动态代理转发到 core，既有 import 路径全部可用且运行时常量（如 `RECORD_DEVICE`）可同步。③ 5 个反向依赖模块改为直接依赖 core 层：`core/agent_tools/impl.py`、`core/silence_detection.py`、`core/chat_actions.py`、`core/chat_context.py`、`core/chat_edits.py`。④ 新增 `tests/test_core_layer_purity.py` 守护测试：AST 扫描 core 模块级 import + 复刻 grep 验收语义，CI 已跑 `pytest tests/` 自动纳入。⑤ 配套测试改造：`tests/conftest.py` 增加 session 级磁盘常量隔离（`SETTINGS_FILE`/`TASKS_DIR` 等），14 个测试文件改为双层 monkeypatch（同时 patch core 层，避免静态绑定失效）。验收结果：`grep -rn "^from app\|^import app" core/ --include="*.py"` 输出为空；全量测试 `1134 passed, 0 failed`（331s）。注：`core/` 内仍有函数级懒加载 `from app.* import ...`（AST 实测 49 处 / 23 文件，集中在 `core/cli_engine/context_export.py` 12 处、`core/routing.py` 4 处、`core/agent_tools/impl.py` 3 处等），仅在调用时执行，不构成模块级反向依赖；这是下一轮本地引擎解耦的工作量基数。**遗留已清零（2026-11-06）**：49 处函数级 `from app.*` 全部改指 core 真相层（`core.settings_store` / `core.task_store` / `core.realtime_store`），配套动作：① 新建 `core/paths.py` 承载 `BASE_DIR`（PyInstaller 感知逻辑原样保留），`app/store.py` 改为 re-export，`context_paths.py` 去掉 try/except 直读；② `app/chat_attachment_store.py` 下沉为 `core/chat_attachment_store.py`，app 层补 `__getattr__` 代理（第五个 re-export 兼容层）；③ `app/server.py` 的 `event_loop` 写入点改指 `core.realtime_store`（代理层 setattr 只遮蔽、不传导，写入必须落真相层）；④ `tests/test_core_layer_purity.py` 新增 `test_no_app_imports_anywhere`——`ast.walk` 全深度禁止 core 内任何 `app.*` import，函数级懒加载不再留口子；⑤ 测试 patch 落点同步迁移：`test_routing_decision`（settings 桩）、`test_workspace_ide_scope`（`core.task_store.tasks` ×6）、`test_transcript_formal`（`get_transcript_config` ×2）、`test_llm_core`（`get_active_api_key`）、`test_chat`（附件目录隔离 fixture）均改指 core 层。经验：经 `__getattr__` 代理的模块，`setattr` 只在本层形成遮蔽、不影响真相层——凡「写入/替换」型操作（patch、常量更新）必须直落 core 层，「按值读取」经代理仍然等价。
 
 ### ☑ T-14 引入 Python lockfile
 
@@ -246,9 +248,9 @@ category: "technical"
 **影响**：当前所有依赖仅 `>=` 下限约束，不同时间/环境安装版本可能不同，生产故障难复现，且有供应链漂移风险
 **工作量**：1 天（实际约 0.5h）
 **验收标准**：CI 与部署脚本均从 lockfile 安装；两次独立安装产生完全相同的依赖版本集
-**完成记录**：2026-11-05 完成。① 选型 uv，命令 `uv pip compile --universal --python-version 3.11 requirements.txt -o requirements.lock`，产出 87 个固定版本；universal 模式下对 Python 版本敏感的包按 marker 分叉（如 numpy 2.4.6 `<3.12` / 2.5.4 `>=3.12`），平台相关包按 `sys_platform` 排除（uvloop、pythonnet）。② CI `backend-test` 与 `scripts/deploy.sh` 均改为 `pip install -r requirements.lock`；锁文件不含 torch / torchaudio / funasr / modelscope，AC-7 云包约束不受影响。③ `CONTRIBUTING.md` 新增「依赖变更流程」，明确 requirements.txt / pyproject.toml / requirements.lock 三文件同提交。验证：新建 Python 3.12 干净 venv 按 lockfile 全量安装成功（`pip install --dry-run -r requirements.lock` 亦可完整解析）；16 个运行依赖逐一 import 成功；`pytest tests/test_smoke.py -q` 30 passed；**全量 `pytest tests/ --ignore=tests/eval_local_engine -q` → 1134 passed / 0 failed / 5 分 23 秒**（锁定版本在 Python 3.12 上复跑通过）。注意：解析得到的 dashscope 为 2.0.3（本地 venv 为 1.27.3），已实测其 `legacy_1x` 兼容层保留 `from dashscope.audio.asr import ...` 路径。遗留：`Dockerfile`、`build-macos.yml` / `build-windows.yml` / `ci-local-engine-v2.yml`、`docs/DEPLOYMENT.md` 仍按 requirements.txt 安装，未纳入本项范围。
+**完成记录**：2026-11-05 完成。① 选型 uv，命令 `uv pip compile --universal --python-version 3.11 requirements.txt -o requirements.lock`，产出 87 个固定版本；universal 模式下对 Python 版本敏感的包按 marker 分叉（如 numpy 2.4.6 `<3.12` / 2.5.4 `>=3.12`），平台相关包按 `sys_platform` 排除（uvloop、pythonnet）。② CI `backend-test` 与 `scripts/deploy.sh` 均改为 `pip install -r requirements.lock`；锁文件不含 torch / torchaudio / funasr / modelscope，AC-7 云包约束不受影响。③ `CONTRIBUTING.md` 新增「依赖变更流程」，明确 requirements.txt / pyproject.toml / requirements.lock 三文件同提交。验证：新建 Python 3.12 干净 venv 按 lockfile 全量安装成功（`pip install --dry-run -r requirements.lock` 亦可完整解析）；16 个运行依赖逐一 import 成功；`pytest tests/test_smoke.py -q` 30 passed；**全量 `pytest tests/ --ignore=tests/eval_local_engine -q` → 1134 passed / 0 failed / 5 分 23 秒**（锁定版本在 Python 3.12 上复跑通过）。注意：解析得到的 dashscope 为 2.0.3（本地 venv 为 1.27.3），已实测其 `legacy_1x` 兼容层保留 `from dashscope.audio.asr import ...` 路径。**遗留已清零（2026-11-06）**：① `Dockerfile`、`build-macos.yml`、`build-windows.yml`、`ci-local-engine-v2.yml`（`offline-load-guard` 与 `cloud-package-size-guard`）、`docs/DEPLOYMENT.md`（首次安装 + 代码更新两处）全部改为 `pip install -r requirements.lock`；② `ci-local-engine-v2.yml` 的 push/PR path 过滤补 `requirements.lock`——锁文件变更必须重新触发 AC-7 守护；③ 该 workflow 的 AC-7 静态守护从只扫 `requirements.txt` 扩为清单 + 锁文件双扫（安装已走锁文件，只查清单会漏掉锁文件被注入 torch/funasr 的情形）。`pyinstaller` / `pytest` 不在锁内，仍由各 workflow 自行安装。验证：四个 workflow YAML 解析通过（jobs 结构完整）；`pip install --dry-run -r requirements.lock` 完整解析 exit 0。
 
-### ✅ T-15 拆分 app/routers/chat.py（1722 行）
+### ☑ T-15 拆分 app/routers/chat.py（1722 行）
 
 - [x] 前置：T-09/T-11 提供的测试防护就位
 - [x] 按职责拆为 3 个子模块：`chat_actions_routes.py`（动作检测与执行）、`chat_history_routes.py`（会话历史查询）、`chat_stream_routes.py`（SSE 流式响应）
@@ -286,20 +288,20 @@ category: "technical"
 
 > **核查修正（2026-11-05 二次验收）**：初版验收声称"构建里 3 个遗留错误来自 untracked 的 useChatStream/useChatTier"——实为低估。实测：`useChatStream.ts` 15 个 TS 错误 + `useChatTier.ts` 1 个 TS 错误 = **16 个错误**，均为零引用死代码（grep 确认全仓库仅在两文件自身和本文档里出现）。已删除两文件（进回收站，可 Finder 还原），build 现零 TS 错误。这两文件属于与 T-16 并行的未提交尝试，非 T-16 产物；删除前因 untracked 不会被 push 到 CI，故 CI 从未受影响。
 
-**完成记录**：2026-11-05 完成。commit `4b92488`。拆出 **9 个子组件**（LibraryToolbar/LibraryTable/LibraryBatchBar + FailurePage/GenToolbar/GenMetaBar/GenTabs + AiChatPanel 依赖的 2 个已有子组件）+ **8 个 composable**（useLibraryFilters/useLibrarySelection + useInsightBoardPolling/useIdeLauncher/useVoiceprintMatch/useTextCorrection/useGenActions + useAiChatStreamCore 流式核心）。4 大高风险区域全部进入可控规模。2026-11-05 二次核查：删除死代码（useChatStream/useChatTier），build 从局部绿变全绿。
+**完成记录**：2026-11-05 完成。commit `4b92488`。拆出 **9 个子组件**（LibraryToolbar/LibraryTable/LibraryBatchBar + FailurePage/GenToolbar/GenMetaBar/GenTabs + AiChatPanel 依赖的 2 个已有子组件）+ **8 个 composable**（useLibraryFilters/useLibrarySelection + useInsightBoardPolling/useIdeLauncher/useVoiceprintMatch/useTextCorrection/useGenActions + useAiChatStreamCore 流式核心）。4 大高风险区域全部进入可控规模。2026-11-05 二次核查：删除死代码（useChatStream/useChatTier），build 从局部绿变全绿。**2026-11-06 收尾**：拆分遗留两处门禁红——① `LibraryToolbar` 的 `UNID_FILTER` 常量名被直接当 prop 名，触发 `vue/prop-name-casing` + `vue/attribute-hyphenation` 两条 warning，使 ESLint `--max-warnings=0` 门禁失败；已改为 `unidFilter` / `:unid-filter`；② `tests/test_expert_mode.py` 三条断言仍指向拆分前的 `AiChatPanel.vue`、`useAiChat.ts`，全量 pytest 3 failed；已改指 `AiMessageList.vue`、`AiChatComposer.vue`、`useAiChatStreamCore.ts`。
 
 ### ☑ T-17 引入 mypy 基础类型检查
 
 - [x] `pyproject.toml` 增加 `[tool.optional-dependencies].dev` 中的 `mypy`，配置宽松基线（`ignore_missing_imports = true`，先不启用 strict）
 - [x] 第一阶段仅覆盖 `core/errors.py`、`core/fs_atomic.py`、`core/remote_config.py` 等纯逻辑模块
-- [x] CI 增加非阻断 step（`continue-on-error: true`）观察一周，再转为阻断
+- [x] CI 增加非阻断 step（`continue-on-error: true`）观察一周，再转为阻断（2026-11-06 已转阻断）
 - [x] 新代码要求带类型注解（写入 CONTRIBUTING.md）
 
 **位置**：`pyproject.toml`、`.github/workflows/ci.yml`、`core/`
 **影响**：类型错误当前只能运行时发现，大重构缺乏静态防护
 **工作量**：1 周（渐进）
 **验收标准**：mypy 在 CI 中运行；已覆盖模块 0 error
-**完成记录**：2026-11-05 完成。`pyproject.toml` 加 `mypy>=1.10.0` 到 dev 依赖，配 `[tool.mypy]` 宽松基线（`ignore_missing_imports=true`、`disallow_untyped_defs=true`，`core.i18n.*` 临时 `ignore_errors`）。基线 22 error（i18n 6 + remote_config 14 + fs_atomic 2），修正 i18n override 范围后剩 16。`errors.py` 基线已 0 error；`fs_atomic.py` 补 `path: str|Path`、`data: object`；`remote_config.py` 全面改用 `dict[str, Any]` / `list[dict[str, Any]]` + `cast` 收窄 `.get()` 返回值 + `**kwargs: Any`。最终 3 文件 mypy 零 error。CI `backend-lint` job 新增 `continue-on-error: true` 的 mypy step。`CONTRIBUTING.md` 代码规范加类型注解要求。
+**完成记录**：2026-11-05 完成。`pyproject.toml` 加 `mypy>=1.10.0` 到 dev 依赖，配 `[tool.mypy]` 宽松基线（`ignore_missing_imports=true`、`disallow_untyped_defs=true`，`core.i18n.*` 临时 `ignore_errors`）。基线 22 error（i18n 6 + remote_config 14 + fs_atomic 2），修正 i18n override 范围后剩 16。`errors.py` 基线已 0 error；`fs_atomic.py` 补 `path: str|Path`、`data: object`；`remote_config.py` 全面改用 `dict[str, Any]` / `list[dict[str, Any]]` + `cast` 收窄 `.get()` 返回值 + `**kwargs: Any`。最终 3 文件 mypy 零 error。CI `backend-lint` job 新增 `continue-on-error: true` 的 mypy step。`CONTRIBUTING.md` 代码规范加类型注解要求。**遗留已清零（2026-11-06）**：CI mypy step 去掉 `continue-on-error: true`，转为阻断门禁（三文件均为纯逻辑模块、无强第三方依赖，`ignore_missing_imports` 兜底，无需再观察一周）；「迭代健康门禁」补 mypy 检查项。验证：本地 `.venv`（mypy 2.4.1）执行 `mypy core/errors.py core/fs_atomic.py core/remote_config.py` → Success: no issues found in 3 source files。覆盖面未扩展——全 `core/` 当前 309 errors / 66 files，留待后续按模块渐进纳入。
 
 ### ☑ T-18 BACKLOG 31 个未解决项分诊 ✅
 
@@ -346,7 +348,7 @@ category: "technical"
 
 **注意**：FastAPI 0.141 `include_router` 为惰性挂载（`app.routes` 里呈 `_IncludedRouter` 占位），静态数路由看不到端点，TestClient 请求时展开——路由验证须用 TestClient 实测，不能看 `app.routes`。
 
-验收（2026-11-06 终态）：后端业务代码无 >1000 行文件（最大 `record_lifecycle.py` 666 行）；`ruff check .` All checks passed；全量 pytest **1131 passed / 3 failed**（3 个失败均为 `tests/test_expert_mode.py` 预存前端 Vue 样式检查，与本项无关，基线即失败）。
+验收（2026-11-06 终态）：后端业务代码无 >1000 行文件（最大 `record_lifecycle.py` 666 行）；`ruff check .` All checks passed；全量 pytest **1135 passed / 0 failed**（2026-11-06 复跑）。注：此前 3 个 `tests/test_expert_mode.py` 失败并非基线问题，而是本项组件拆分导致的测试契约漂移——断言仍指向拆分前的 `AiChatPanel.vue` / `useAiChat.ts`，实际代码已迁至 `AiMessageList.vue`、`AiChatComposer.vue`、`useAiChatStreamCore.ts`，测试已同步修正。
 
 ### ☑ T-20 清理 Ruff 全项目 errors 并恢复全项目 lint 门禁
 
@@ -370,11 +372,12 @@ category: "technical"
 
 ### 后端
 
-- [ ] `ruff check . --select F821,F811,F402` — 逻辑错误检查（CI 已有；T-20 完成后改为全项目 `ruff check .`）
+- [ ] `ruff check .` — 全项目 lint 检查（CI 已阻断；T-20 完成后不再使用 `--select` 子集）
 - [ ] `pytest tests/test_smoke.py -q`（环境变量：`DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret`）— 冒烟测试（CI 已有）
 - [ ] `pytest tests/test_<改动模块>.py -q` — 改动模块专项测试（本地执行）
 - [ ] `python -c "import core.<改动模块>"` — 确认无 import 崩溃
-- [ ] 新增 core 模块时确认模块级 import 无 `app.*`（T-13 完成前的人工检查，之后由守护测试接管）
+- [ ] `mypy core/errors.py core/fs_atomic.py core/remote_config.py` — 类型检查（CI 已阻断；新增纯逻辑模块时加入检查清单并同步 CI 命令）
+- [ ] 新增 core 模块时确认任意深度 import 无 `app.*`（由 `tests/test_core_layer_purity.py` 守护，CI 已跑）
 
 ### 前端
 
@@ -425,7 +428,19 @@ category: "technical"
 
 ---
 
-## 七、证据附录（2026-11-04 复核实测数据）
+## 七、证据附录（2026-11-04 基线 + 2026-11-06 现状）
+
+**2026-11-06 实测现状（整改后）**
+
+- `ruff check .` → All checks passed（全项目 0 error）
+- 后端 pytest `tests/ --ignore=tests/eval_local_engine` → **1135 passed / 0 failed / 5 分 30 秒**
+- `mypy core/errors.py core/fs_atomic.py core/remote_config.py` → Success: no issues found in 3 source files（CI 已阻断）
+- 前端 `npx eslint src/ --max-warnings=0` → 0 errors / 0 warnings；`npx vue-tsc --noEmit` → 无报错
+- 前端 vitest → **11 文件 / 68 用例全绿**（2.5s）；`npm run build` 成功
+- >1000 行文件：后端 `core/`、`app/`、`scripts/` **0 个**（最大 `record_lifecycle.py` 666 行）
+- 依赖：`requirements.lock`（87 个固定版本）为唯一安装源；CI / Dockerfile / 打包 workflow / DEPLOYMENT 全部按锁文件
+
+**2026-11-04 检查基线（整改前）**
 
 - 代码规模：Python 212 文件 / 65,075 行（排除 venv）；前端 TS+Vue 194 文件 / 40,787 行
 - Ruff 全项目（配置 E/F/I/N/W，忽略 E501/E402/N806/N801/N812/N999）：**60 errors**（I001×30、F401×18、F841×6、E402×4、E741×3、F541×2、N818×1）；CI 限定 `--select F821,F811,F402` 为 **0 报错**
@@ -436,9 +451,9 @@ category: "technical"
 - core 模块无专属测试：76 个模块中仅 11 个有同名测试，即 **65 个无**（含 llm/transcribe/summarize/pipeline_runner/audio_recording 等核心链路）
 - router 无专属测试：28 个 router 中约 25 个无（chat/settings/record/cloud_api 等）
 - core→app 反向依赖：6 个模块（pipeline_runner / agent_tools.impl / silence_detection / chat_actions / chat_context / chat_edits）
-- 依赖分歧：pyproject 多 scipy；缺 Babel、pywebview；`VERSION` 与 pyproject 均为 1.0.0（一致）→ **T-01 已修复（2026-11-04），双清单 16 项一致**
+- 依赖分歧：pyproject 多 scipy；缺 Babel、pywebview；`VERSION` 与 pyproject 均为 1.0.0（一致）→ **T-01 已修复（2026-11-04），双清单 16 项一致**；scripts/ 三个离线评测脚本的 scipy 隐性依赖亦已移除（2026-11-06，改用 `core.audio.read_wav_float32` / `core.voiceprint_identify._greedy_assignment`，全仓库 Python 代码已无 `import scipy`）
 - 无 Python lockfile（无 uv.lock / requirements.lock / poetry.lock）—— 2026-11-05 T-14 已补 `requirements.lock`（87 个固定版本）
-- 无 mypy 配置
+- 无 mypy 配置 → **T-17 已补（2026-11-05）**：`pyproject.toml` 增 `[tool.mypy]` 宽松基线（`ignore_missing_imports=true`、`disallow_untyped_defs=true`），先覆盖 errors/fs_atomic/remote_config 三个纯逻辑模块；2026-11-06 CI step 转阻断
 - BACKLOG 未解决项：31 条（38 个标题 - 7 个 ✅）
 - >1000 行大文件：后端业务代码 6 个（chat.py 1722、context_export.py 1716、settings.py 1349、insight_board.py 1127、record.py 1091、audio_recording.py 1039），前端 4 个（LibraryView 1609、GeneratingView 1426、AiChatPanel 1246、useAiChat 1001）
 - SSH 残留：`git ls-files` 无 `.exp` 文件
