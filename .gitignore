@@ -50,6 +50,10 @@ env/
 .mypy_cache/
 .ruff_cache/
 
+# uv 本地锁文件（唯一锁源是 requirements.lock，避免双锁分歧）
+# uv lock is a local artifact; requirements.lock is the single source of truth
+uv.lock
+
 # 本地模型缓存（v1 纯云，理论上不产生）
 *.onnx
 models/
