@@ -14,9 +14,7 @@ tests/test_engine_packaging_g3.py — WP-G G-1/G-3 冻结态打包缺陷回归�
 """
 
 import json
-import os
 import stat
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -31,7 +29,6 @@ import core.engine_paths as engine_paths  # noqa: E402
 from core import engine_host  # noqa: E402
 from core.engine_worker import PROTOCOL_VERSION  # noqa: E402
 from core.model_registry import get_model_dir  # noqa: E402
-
 
 # ─────────────────────────────────────────────────────────────
 # 工具：模拟冻结态

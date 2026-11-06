@@ -60,8 +60,8 @@ def _setup_desktop_env():
     if not getattr(sys, "frozen", False):
         return
 
-    from pathlib import Path
     import shutil
+    from pathlib import Path
 
     exe_dir = Path(sys.executable).parent
     env_file = exe_dir / ".env"

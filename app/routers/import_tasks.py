@@ -12,7 +12,6 @@ app/routers/import_tasks.py — 统一导入端点 / Unified import endpoint
 版本 / Version: 1.0.0
 """
 
-import json
 import logging
 import threading
 import uuid
@@ -24,14 +23,12 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from pydantic import BaseModel
 
 from app.store import (
-    TASKS_DIR,
     save_task_to_disk,
     tasks,
 )
 from core.fs_atomic import stream_save_upload
 from core.i18n import _
 from core.import_parser import (
-    AUDIO_EXTENSIONS,
     CONTENT_TYPE_SUMMARY,
     CONTENT_TYPE_TRANSCRIPT,
     classify_file_type,
@@ -348,7 +345,7 @@ def _create_import_task(
         # DC-UNIFY-01：行动项与结论合流为唯一一条决策流（结论以「待确认」态入盘）
         try:
             from core import joblog
-            from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_decision_checklist
+            from core.summarize import merge_flow_after_regen, parse_decision_checklist, parse_decisions_with_status
             checklist_nodes = parse_decision_checklist(summary_text)
             parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
             tasks[task_id]["decisions"] = merge_flow_after_regen(

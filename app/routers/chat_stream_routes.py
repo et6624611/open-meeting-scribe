@@ -1,42 +1,61 @@
 """app/routers/chat_stream_routes.py — /api/chat, /api/chat/stream, /api/chat/cancel + 智能体模式。"""
 
-import asyncio, json, logging, time
+import asyncio
+import json
+import logging
+import time
 from contextlib import aclosing
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+
 from app import chat_attachment_store
-from app.store import get_chat_engine_config
 from core import joblog
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import (
-    build_page_context, build_speaker_name_map, extract_injectable_items, is_joblog_intent,
+    build_page_context,
+    extract_injectable_items,
 )
 from core.chat_edits import (
-    audit_reply_claims, describe_change, execute_and_verify_edits, has_edit_intent, parse_edit_intent,
+    audit_reply_claims,
+    describe_change,
+    execute_and_verify_edits,
+    has_edit_intent,
+    parse_edit_intent,
 )
-from core.agent_workspace import resolve_agent_role
+
+
+def _chat_mod():
+    """延迟获取 chat 模块（避免循环依赖 + 让测试 monkeypatch chat.xxx 生效）。"""
+    import app.routers.chat as _chat  # noqa: E402
+    return _chat
+
 
 def _get_tasks():
     """延迟获取 tasks 字典（兼容测试 patch chat_mod.tasks）"""
-    from app.routers.chat import tasks as _t
-    return _t
+    return _chat_mod().tasks
 
 from core.cli_engine import (
-    CliAgentError, cancel_stream, export_context, load_manifest, probe_engine, run_cli_agent,
+    CliAgentError,
 )
-from core.cli_engine.mcp_bridge import build_bridge_config, manifest_has_mcp, teardown_bridge
 from core.cli_engine.runner import stream_scope
-from core.llm import async_chat_completion_stream, async_chat_completion_full
 from core.i18n import _
+from core.llm import async_chat_completion_full, async_chat_completion_stream
 
 from .chat_shared import (
-    CHAT_QA_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT, MAX_CHAT_MESSAGE_LEN,
-    _agent_system_prompt, _build_attachment_parts, _build_chat_context_blocks,
-    _chat_model_default, _detect_diagram_intent, _detect_diagram_modify_intent,
-    _execute_and_verify_edits, _format_time_ms, _generate_mermaid_diagram,
-    _modify_mermaid_diagram, _model_usage_meta, ChatRequest,
+    CHAT_QA_SYSTEM_PROMPT,
+    MAX_CHAT_MESSAGE_LEN,
+    ChatRequest,
+    _agent_system_prompt,
+    _build_attachment_parts,
+    _build_chat_context_blocks,
+    _chat_model_default,
+    _detect_diagram_intent,
+    _detect_diagram_modify_intent,
+    _generate_mermaid_diagram,
+    _model_usage_meta,
+    _modify_mermaid_diagram,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,7 +119,7 @@ async def _board_retry(*, original_brief: str, prior_output: str, run_options: d
     terminal = None
     first_token = True
     try:
-        async with aclosing(run_cli_agent(**{**run_options, "brief": brief,
+        async with aclosing(_chat_mod().run_cli_agent(**{**run_options, "brief": brief,
                                              "on_write_success": on_write})) as events:
             async for evt in events:
                 if evt.get("type") in ("done", "error"):
@@ -141,15 +160,15 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     智能体模式事件生成器：探针 → 上下文导出 → CLI 流式事件。
     引擎不可用/启动失败时 yield ``{"type":"__fallback__"}`` 哨兵，由外层回退内置链路。
     """
-    cfg = get_chat_engine_config()
+    cfg = _chat_mod().get_chat_engine_config()
     loop = asyncio.get_running_loop()
 
     # ① 可用性探针（同步 subprocess → 线程池，避免阻塞事件循环）
     probe_result: dict
     try:
-        manifest = load_manifest(cfg["engine_id"])
+        manifest = _chat_mod().load_manifest(cfg["engine_id"])
         probe_result = await loop.run_in_executor(
-            None, lambda: probe_engine(manifest, cfg.get("cli_path_override")))
+            None, lambda: _chat_mod().probe_engine(manifest, cfg.get("cli_path_override")))
     except FileNotFoundError:
         probe_result = {"available": False, "reason": "not_installed",
                         "display_name": cfg["engine_id"], "hint": "chatEngine.notInstalled"}
@@ -169,8 +188,8 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         ppath = _resolve_project_path(resolved_project_id)
         if ppath:
             task["project_path"] = ppath
-    speaker_map = build_speaker_name_map(data.task_id) if data.task_id else {}
-    role = resolve_agent_role(data.role)
+    speaker_map = _chat_mod().build_speaker_name_map(data.task_id) if data.task_id else {}
+    role = _chat_mod().resolve_agent_role(data.role)
     role_prompt = role["agent_md"] if role else ""
     # 洞察板职责补充一并写入工作区 AGENTS.md，与内置智能体会话口径一致（无该文件时自然跳过）
     role_insight_prompt = (role or {}).get("extra_files", {}).get("insights.md", "")
@@ -181,12 +200,12 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档优先级链落档
     resolved_tier = _resolve_agent_auth_tier(data.auth_tier, cfg)
 
-    export = await loop.run_in_executor(None, lambda: export_context(
+    export = await loop.run_in_executor(None, lambda: _chat_mod().export_context(
         engine_id=cfg["engine_id"], task=task, task_id=data.task_id, user_message=user_message,
         page_context=page_ctx, role_prompt=role_prompt, speaker_map=speaker_map,
         workspace_key=data.chat_session_id or data.task_id,
         history=data.history,
-        # 会中透传实时句（前端快照）：dialogue 落盘前由 export_context 用它渲染 transcript.md
+        # 会中透传实时句（前端快照）：dialogue 落盘前由 _chat_mod().export_context 用它渲染 transcript.md
         realtime_entries=data.realtime_transcripts,
         # @附件：原文件复制进工作区，由 CLI 自行解析
         attachments=data.attachments,
@@ -206,9 +225,9 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     mcp_config_path: str | None = None
     bridge_token: str | None = None
     allowed_tools: list[str] = []
-    if manifest_has_mcp(cfg["engine_id"]):
+    if _chat_mod().manifest_has_mcp(cfg["engine_id"]):
         try:
-            mcp_config_path, tok_ctx, allowed_tools = build_bridge_config(
+            mcp_config_path, tok_ctx, allowed_tools = _chat_mod().build_bridge_config(
                 task_id=data.task_id, project_id=resolved_project_id,
                 auth_tier=resolved_tier, base_url=base_url, turn_id=stream_id)
             bridge_token = tok_ctx.token
@@ -235,7 +254,7 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     )
     try:
         with stream_scope(stream_id):
-            async with aclosing(run_cli_agent(
+            async with aclosing(_chat_mod().run_cli_agent(
                 **run_options, brief=export["brief"], session_id=session_id,
                 resume=bool(data.resume_session and session_id),
             )) as events:
@@ -287,13 +306,13 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
                "hint_params": {"engine": probe_result.get("display_name", "CLI"), "detail": getattr(e, "detail", "")}}
     finally:
         if mcp_config_path and bridge_token:
-            teardown_bridge(mcp_config_path, bridge_token)
+            _chat_mod().teardown_bridge(mcp_config_path, bridge_token)
 
 @router.post("/api/chat/cancel")
 async def chat_cancel(data: dict):
     """真取消端点（方案 §3.9-5）：kill CLI 进程组，前端 fetch abort 不足以终止任务。"""
     stream_id = (data or {}).get("stream_id") or ""
-    hit = cancel_stream(stream_id) if stream_id else False
+    hit = _chat_mod().cancel_stream(stream_id) if stream_id else False
     return {"ok": True, "cancelled": hit, "stream_id": stream_id}
 @router.post("/api/chat")
 async def chat(data: ChatRequest):
@@ -496,7 +515,7 @@ async def chat_stream(data: ChatRequest, request: Request):
 
     async def event_generator():
         # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
-        if get_chat_engine_config()["enabled"] and data.engine == "agent":
+        if _chat_mod().get_chat_engine_config()["enabled"] and data.engine == "agent":
             need_fallback = False
             async with aclosing(_agent_engine_events(data, user_message, resolved_project_id,
                                                        base_url=str(request.base_url).rstrip("/"))) as events:

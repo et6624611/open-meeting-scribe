@@ -35,7 +35,6 @@ def test_empty_string_is_valid_persisted_value(isolated_settings):
     """裁决口径：空串「自动检测」为合法持久值（键存在即生效，不被 env/默认覆盖）。"""
     ss, sf = isolated_settings
     ss.save_record_device("")
-    monkey_env = True
     import os
     os.environ["RECORD_DEVICE"] = "SomeMic"
     try:
@@ -78,8 +77,8 @@ def test_store_set_record_device_persists(isolated_settings, tmp_path, monkeypat
 def test_persist_failure_does_not_break_runtime(monkeypatch, tmp_path):
     """持久化异常降级：运行时值仍生效（不阻断录音链路）。"""
     import app.settings_store as ss
-    import core.settings_store as _core_ss
     import app.store as store
+    import core.settings_store as _core_ss
 
     broken = tmp_path / "broken" / "settings.json"  # 父目录不存在 → 写盘失败
     monkeypatch.setattr(ss, "SETTINGS_FILE", broken)
@@ -94,7 +93,6 @@ def test_persist_failure_does_not_break_runtime(monkeypatch, tmp_path):
 def test_api_post_then_get_reflects_persisted_device(isolated_settings, monkeypatch):
     """验收③ API 面：POST /api/record/device → GET /api/record/devices 回显（同进程内）。"""
     ss, sf = isolated_settings
-    import app.store as store
     import core.settings_store as _core_ss
 
     # 仅 patch core 层：app.store 通过 __getattr__ 动态代理

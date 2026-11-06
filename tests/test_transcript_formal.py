@@ -12,7 +12,6 @@ import pytest
 
 from core import transcript_formal as tf
 
-
 # ============================================================
 # 工厂 / 假 LLM
 # ============================================================
@@ -363,7 +362,6 @@ class TestStalenessAndSelection:
         assert tf.load_formal("t1")["status"] == "done"
 
     def test_selection_upsert_merges_items(self, _guards, monkeypatch):
-        import app.store
         # 整场
         monkeypatch.setattr("core.llm.chat_completion_full", _make_fake_llm())
         tf.generate_formal_version("t1")
@@ -398,6 +396,7 @@ class TestEndpoints:
     @pytest.fixture
     def client(self):
         from fastapi.testclient import TestClient
+
         from app.server import app
         with TestClient(app) as c:
             yield c

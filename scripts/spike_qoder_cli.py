@@ -23,13 +23,13 @@ scripts/spike_qoder_cli.py — Phase 0 Spike：Qoder CLI 作为 AI 面板工程�
   7 CLI 读边界可信性（-w/--add-dir 之外路径尝试）
 """
 
+import argparse
 import json
+import shutil
+import subprocess
 import sys
 import time
 import uuid
-import shutil
-import argparse
-import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -230,7 +230,7 @@ for line in sys.stdin:
 def step4():
     ws = make_ws("s4")
     target = (ws / "output" / "perm.txt")
-    prompt = f"使用 Write 工具（或创建文件的方式）在 output/perm.txt 写入内容 ALPHA。写完后回复 DONE。"
+    prompt = "使用 Write 工具（或创建文件的方式）在 output/perm.txt 写入内容 ALPHA。写完后回复 DONE。"
     # 4a: permission-mode default —— 观察是否静默失败/挂起
     la, rca, ta, toa = run_cli([
         "-p", "--output-format", "stream-json",

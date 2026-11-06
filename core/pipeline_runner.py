@@ -32,8 +32,8 @@ _get_feature_flags_fn = None
 def _import_app_deps():
     global _tasks, _save_task_to_disk, _get_feature_flags_fn
     if _tasks is None:
-        from app.task_store import tasks, save_task_to_disk
         from app.settings_store import get_feature_flags
+        from app.task_store import save_task_to_disk, tasks
         _tasks = tasks
         _save_task_to_disk = save_task_to_disk
         _get_feature_flags_fn = get_feature_flags
@@ -78,7 +78,7 @@ from core.errors import classify_error, is_transient_error
 from core.i18n import _
 from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
 from core.speaker_count import estimate_speaker_count
-from core.summarize import merge_flow_after_regen, parse_decisions_with_status, parse_decision_checklist
+from core.summarize import merge_flow_after_regen, parse_decision_checklist, parse_decisions_with_status
 
 logger = logging.getLogger(__name__)
 

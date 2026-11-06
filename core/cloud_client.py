@@ -407,8 +407,8 @@ def _cloud_upload_file(path: str, file_path: str, params: dict | None = None) ->
     if not is_cloud_enabled():
         return None
 
-    from pathlib import Path
     import urllib.parse
+    from pathlib import Path
 
     # 拼接查询参数 / Build query string
     if params:

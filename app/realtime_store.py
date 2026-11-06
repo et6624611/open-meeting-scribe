@@ -20,6 +20,7 @@ def __getattr__(name):
         raise AttributeError(f"module 'app.realtime_store' has no attribute {name!r}")
 
 
+# ruff: noqa: F822 — re-export 层，__all__ 列出的名字通过 __getattr__ 动态转发到 core.*，静态分析无法识别
 __all__ = [
     "REALTIME_BUFFER_MAX",
     "event_loop",

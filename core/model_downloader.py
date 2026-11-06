@@ -14,7 +14,6 @@ core/model_downloader.py — 本地引擎模型引导下载器（R5 / WP-B）
 """
 
 import hashlib
-import json
 import logging
 import threading
 import time
@@ -167,7 +166,7 @@ def _download_one_file(
     """下载单个文件（断点续传 + 增量 SHA256），返回实际 sha256。
     Download one file with resume + incremental sha256; returns computed digest.
 
-    取消时抛出 _Cancelled。校验失败由调用方处理重试。
+    取消时抛出 _CancelledError。校验失败由调用方处理重试。
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
@@ -198,7 +197,7 @@ def _download_one_file(
     with open(part, mode) as f:
         for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
             if job.cancel_event.is_set():
-                raise _Cancelled()
+                raise _CancelledError()
             if not chunk:
                 continue
             f.write(chunk)
@@ -212,7 +211,7 @@ def _download_one_file(
     return hasher.hexdigest()
 
 
-class _Cancelled(Exception):
+class _CancelledError(Exception):
     """内部：任务被取消 / Internal: job cancelled."""
 
 
@@ -264,7 +263,7 @@ def _run_model_download(job: DownloadJob):
 
         for remote in files:
             if job.cancel_event.is_set():
-                raise _Cancelled()
+                raise _CancelledError()
             rel = remote["path"]
             dest = model_root / rel
 
@@ -303,7 +302,7 @@ def _run_model_download(job: DownloadJob):
         job.touch()
         logger.info(f"[模型下载] 完成: {job.model_key} ({job.total_bytes / 1024 / 1024:.1f}MB)")
 
-    except _Cancelled:
+    except _CancelledError:
         job.state = STATE_CANCELLED
         job.touch()
         logger.info(f"[模型下载] 已取消: {job.model_key}（.part 分片保留，可续传）")
@@ -414,7 +413,6 @@ def verify_model(model_key: str) -> dict:
 
 def model_status(model_key: str) -> dict:
     """聚合模型当前状态（供路由/引擎预检使用）。"""
-    meta = MODEL_BY_KEY[model_key]
     with _jobs_lock:
         active = next(
             (j for j in _jobs.values()

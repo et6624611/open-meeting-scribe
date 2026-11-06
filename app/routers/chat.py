@@ -12,9 +12,24 @@ include_router 保持 URL 前缀与响应结构零变化；from app.routers.chat
 
 from fastapi import APIRouter
 
+from core.chat_context import build_speaker_name_map  # noqa: F401 向后兼容 re-export
+from core.cli_engine import (  # noqa: F401 向后兼容 re-export（测试 patch chat.xxx 依赖）
+    cancel_stream,
+    export_context,
+    load_manifest,
+    probe_engine,
+    run_cli_agent,
+)
+from core.cli_engine.mcp_bridge import (  # noqa: F401 向后兼容 re-export
+    build_bridge_config,
+    manifest_has_mcp,
+    teardown_bridge,
+)
+
 from .chat_actions_routes import router as _actions_router
 from .chat_history_routes import router as _history_router
 from .chat_shared import *  # noqa: F401,F403
+
 # ⚠️ from X import * 默认不导出 _ 开头的名字，显式 re-export 保持向后兼容
 from .chat_shared import (  # noqa: F401
     ATTACHMENT_TEXT_CAP,
@@ -41,7 +56,14 @@ from .chat_shared import (  # noqa: F401
     async_chat_completion_full,
     async_chat_completion_stream,
 )
-from .chat_stream_routes import router as _stream_router
+from .chat_stream_routes import (  # noqa: F401
+    _agent_engine_events,
+    _deterministic_session_id,
+    _resolve_agent_auth_tier,
+)
+from .chat_stream_routes import (
+    router as _stream_router,
+)
 
 router = APIRouter(tags=["chat"])
 router.include_router(_stream_router)

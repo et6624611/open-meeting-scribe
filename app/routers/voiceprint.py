@@ -14,7 +14,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 

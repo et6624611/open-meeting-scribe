@@ -22,6 +22,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.settings_store import load_settings, save_settings_to_disk
 from core.agent_workspace import (
     delete_role,
     fork_role,
@@ -31,7 +32,6 @@ from core.agent_workspace import (
     save_role_file,
 )
 from core.i18n import _
-from app.settings_store import load_settings, save_settings_to_disk
 
 logger = logging.getLogger(__name__)
 

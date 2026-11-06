@@ -53,7 +53,6 @@ async def fetch_chat_attachment(attach_id: str, download: int = 0):
     except chat_attachment_store.AttachmentError:
         raise HTTPException(404, _("Attachment not found"))
     disposition = "attachment" if download else "inline"
-    from urllib.parse import quote
     return StreamingResponse(
         iter([data]),
         media_type=meta["content_type"],

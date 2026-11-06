@@ -583,7 +583,6 @@ class TestWebToolsCatalog:
 
     def test_tools_list_safe_at_readonly(self, client):
         # readonly 档也能调联网工具——它们不写本地磁盘
-        from core.agent_tools.tokens import issue_token, verify_token
         from core.agent_tools.catalog import TOOL_CATALOG as _CAT
         readonly_tools = [t["name"] for t in _CAT if t["kind"] == "read"]
         assert "web_search" in readonly_tools
@@ -759,6 +758,7 @@ class TestWebFetchTool:
     def test_mock_redirect_to_internal_blocked(self, monkeypatch):
         """重定向到内网地址 → 拦截。"""
         import socket as sock_mod
+
         import requests as http
 
         # mock DNS：让 redirector.example.com 解析到一个公网 IP

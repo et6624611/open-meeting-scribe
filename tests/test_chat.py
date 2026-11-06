@@ -192,10 +192,10 @@ class TestChatEditVerification:
         """隔离存储：tasks 字典与 TASKS_DIR 均指向测试沙箱"""
         import json
 
+        import core.task_store as _core_ts
         from app import task_store
         from app.routers import chat as chat_mod
         from core import chat_edits
-        import core.task_store as _core_ts
         fake_tasks = {task_id: self._make_task(task_id)}
         monkeypatch.setattr(task_store, "tasks", fake_tasks)
         monkeypatch.setattr(_core_ts, "tasks", fake_tasks)

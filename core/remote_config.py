@@ -30,18 +30,19 @@ import logging
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
 CONFIG_FILE = Path("data/remote_config.json")
 
 
-def _load_config() -> dict:
+def _load_config() -> dict[str, Any]:
     """读取远程配置文件，不存在则返回空结构 / Read remote config file; return empty structure if not found."""
     if not CONFIG_FILE.exists():
         return {"messages": [], "feature_flags": [], "version": 0}
     try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         # 兼容旧结构（无 feature_flags 字段） / Backward compat (no feature_flags field)
         data.setdefault("feature_flags", [])
         return data
@@ -50,7 +51,7 @@ def _load_config() -> dict:
         return {"messages": [], "feature_flags": [], "version": 0}
 
 
-def _save_config(data: dict) -> None:
+def _save_config(data: dict[str, Any]) -> None:
     """写入远程配置文件 / Write remote config file."""
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
@@ -79,18 +80,18 @@ def _now_iso() -> str:
 # ============================================================
 
 
-def list_messages() -> list[dict]:
+def list_messages() -> list[dict[str, Any]]:
     """返回所有消息（含已禁用的），按 priority 降序 / Return all messages (including disabled), sorted by priority descending."""
     data = _load_config()
-    messages = data.get("messages", [])
+    messages: list[dict[str, Any]] = cast(list[dict[str, Any]], data.get("messages", []))
     messages.sort(key=lambda m: m.get("priority", 0), reverse=True)
     return messages
 
 
-def get_message(message_id: str) -> dict | None:
+def get_message(message_id: str) -> dict[str, Any] | None:
     """按 ID 获取单条消息 / Get single message by ID."""
     data = _load_config()
-    for msg in data.get("messages", []):
+    for msg in cast(list[dict[str, Any]], data.get("messages", [])):
         if msg["id"] == message_id:
             return msg
     return None
@@ -109,7 +110,7 @@ def create_message(
     dismiss_delay_days: int = 7,
     schedule_start: str | None = None,
     schedule_end: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """创建新消息 / Create new message."""
     data = _load_config()
 
@@ -144,7 +145,7 @@ def create_message(
     return msg
 
 
-def update_message(message_id: str, **kwargs) -> dict | None:
+def update_message(message_id: str, **kwargs: Any) -> dict[str, Any] | None:
     """
     更新消息字段 / Update message fields.
 
@@ -154,7 +155,7 @@ def update_message(message_id: str, **kwargs) -> dict | None:
     """
     data = _load_config()
 
-    for msg in data.get("messages", []):
+    for msg in cast(list[dict[str, Any]], data.get("messages", [])):
         if msg["id"] == message_id:
             # 简单字段 / Simple fields
             for key in ("type", "title", "content", "cta_text", "cta_url", "target", "priority", "enabled"):
@@ -186,10 +187,11 @@ def update_message(message_id: str, **kwargs) -> dict | None:
 def delete_message(message_id: str) -> bool:
     """删除消息 / Delete message."""
     data = _load_config()
-    original_len = len(data.get("messages", []))
+    all_msgs: list[dict[str, Any]] = cast(list[dict[str, Any]], data.get("messages", []))
+    original_len = len(all_msgs)
 
     data["messages"] = [
-        m for m in data.get("messages", [])
+        m for m in all_msgs
         if m["id"] != message_id
     ]
 
@@ -202,11 +204,11 @@ def delete_message(message_id: str) -> bool:
     return False
 
 
-def toggle_message(message_id: str) -> dict | None:
+def toggle_message(message_id: str) -> dict[str, Any] | None:
     """切换消息启用/禁用状态 / Toggle message enabled/disabled state."""
     data = _load_config()
 
-    for msg in data.get("messages", []):
+    for msg in cast(list[dict[str, Any]], data.get("messages", [])):
         if msg["id"] == message_id:
             msg["enabled"] = not msg.get("enabled", True)
             msg["updated_at"] = _now_iso()
@@ -224,7 +226,7 @@ def toggle_message(message_id: str) -> dict | None:
 # ============================================================
 
 
-def get_active_messages(user_logged_in: bool = False, user_tier: str = "free") -> list[dict]:
+def get_active_messages(user_logged_in: bool = False, user_tier: str = "free") -> list[dict[str, Any]]:
     """
     返回当前有效的消息列表（客户端调用） / Return currently active message list (client calls).
 
@@ -236,7 +238,7 @@ def get_active_messages(user_logged_in: bool = False, user_tier: str = "free") -
     按 priority 降序排列 / Sorted by priority descending.
     """
     data = _load_config()
-    messages = data.get("messages", [])
+    messages: list[dict[str, Any]] = cast(list[dict[str, Any]], data.get("messages", []))
     now = datetime.now(timezone.utc)
 
     result = []
@@ -289,7 +291,7 @@ def get_active_messages(user_logged_in: bool = False, user_tier: str = "free") -
 def get_config_version() -> int:
     """返回当前配置版本号（客户端用于判断是否需要刷新） / Return current config version number (client uses to check if refresh needed)."""
     data = _load_config()
-    return data.get("version", 0)
+    return int(data.get("version", 0))
 
 
 # ============================================================
@@ -297,25 +299,25 @@ def get_config_version() -> int:
 # ============================================================
 
 
-def list_feature_flags() -> list[dict]:
+def list_feature_flags() -> list[dict[str, Any]]:
     """返回所有功能开关 / Return all feature flags."""
     data = _load_config()
-    return data.get("feature_flags", [])
+    return cast(list[dict[str, Any]], data.get("feature_flags", []))
 
 
-def get_feature_flag(flag_id: str) -> dict | None:
+def get_feature_flag(flag_id: str) -> dict[str, Any] | None:
     """按 ID 获取单个功能开关 / Get single feature flag by ID."""
     data = _load_config()
-    for ff in data.get("feature_flags", []):
+    for ff in cast(list[dict[str, Any]], data.get("feature_flags", [])):
         if ff["id"] == flag_id:
             return ff
     return None
 
 
-def get_feature_flag_by_name(name: str) -> dict | None:
+def get_feature_flag_by_name(name: str) -> dict[str, Any] | None:
     """按标识名获取功能开关（用于业务代码查询） / Get feature flag by name (for business code queries)."""
     data = _load_config()
-    for ff in data.get("feature_flags", []):
+    for ff in cast(list[dict[str, Any]], data.get("feature_flags", [])):
         if ff["name"] == name:
             return ff
     return None
@@ -327,7 +329,7 @@ def create_feature_flag(
     enabled: bool = True,
     target: str = "all",
     target_users: list[str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """创建新功能开关 / Create new feature flag."""
     data = _load_config()
 
@@ -356,7 +358,7 @@ def create_feature_flag(
     return flag
 
 
-def update_feature_flag(flag_id: str, **kwargs) -> dict | None:
+def update_feature_flag(flag_id: str, **kwargs: Any) -> dict[str, Any] | None:
     """
     更新功能开关字段 / Update feature flag fields.
 
@@ -364,11 +366,11 @@ def update_feature_flag(flag_id: str, **kwargs) -> dict | None:
     """
     data = _load_config()
 
-    for ff in data.get("feature_flags", []):
+    for ff in cast(list[dict[str, Any]], data.get("feature_flags", [])):
         if ff["id"] == flag_id:
             # name 唯一性检查 / name uniqueness check
             if "name" in kwargs and kwargs["name"] != ff["name"]:
-                for other in data.get("feature_flags", []):
+                for other in cast(list[dict[str, Any]], data.get("feature_flags", [])):
                     if other["id"] != flag_id and other["name"] == kwargs["name"]:
                         raise ValueError(f"标识名 '{kwargs['name']}' 已被使用")
 
@@ -389,10 +391,11 @@ def update_feature_flag(flag_id: str, **kwargs) -> dict | None:
 def delete_feature_flag(flag_id: str) -> bool:
     """删除功能开关 / Delete feature flag."""
     data = _load_config()
-    original_len = len(data.get("feature_flags", []))
+    all_flags: list[dict[str, Any]] = cast(list[dict[str, Any]], data.get("feature_flags", []))
+    original_len = len(all_flags)
 
     data["feature_flags"] = [
-        ff for ff in data.get("feature_flags", [])
+        ff for ff in all_flags
         if ff["id"] != flag_id
     ]
 
@@ -405,11 +408,11 @@ def delete_feature_flag(flag_id: str) -> bool:
     return False
 
 
-def toggle_feature_flag(flag_id: str) -> dict | None:
+def toggle_feature_flag(flag_id: str) -> dict[str, Any] | None:
     """切换功能开关启用/禁用状态 / Toggle feature flag enabled/disabled state."""
     data = _load_config()
 
-    for ff in data.get("feature_flags", []):
+    for ff in cast(list[dict[str, Any]], data.get("feature_flags", [])):
         if ff["id"] == flag_id:
             ff["enabled"] = not ff.get("enabled", True)
             ff["updated_at"] = _now_iso()
@@ -437,13 +440,13 @@ def is_feature_enabled(name: str, user_id: str = "", user_tier: str = "free") ->
     if not flag or not flag.get("enabled", False):
         return False
 
-    target = flag.get("target", "all")
+    target = cast(str, flag.get("target", "all"))
     if target == "all":
         return True
     if target.startswith("tier:"):
         required_tier = target[5:]
         return user_tier == required_tier
     if target == "users":
-        return user_id in flag.get("target_users", [])
+        return user_id in cast(list[str], flag.get("target_users", []))
 
     return False

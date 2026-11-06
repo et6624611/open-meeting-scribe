@@ -14,8 +14,8 @@ from core.chat_context import build_insights_context_block
 from core.summarize import (
     build_page_budget_block,
     extract_conclusions_section,
-    parse_decisions_with_status,
     parse_decision_checklist,
+    parse_decisions_with_status,
     split_decision_title,
 )
 

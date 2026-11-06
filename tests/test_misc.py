@@ -215,6 +215,7 @@ class TestSmsCheckVerifyCode:
         import io
         import json
         import urllib.error
+
         from core import sms
 
         monkeypatch.setattr(sms, "SMS_PROXY_URL", "https://sms.test")
@@ -429,6 +430,7 @@ class TestPhilosophyRandom:
     def test_variants_contain_zh_and_en(self, client, tmp_path, monkeypatch):
         """data/ 为本地运行目录、不入库（CI 无此文件），此处注入临时数据源。"""
         import json
+
         from app.routers import philosophy
 
         data_file = tmp_path / "philosophies.json"
@@ -664,13 +666,6 @@ class TestRecordUsageLocalFallback:
         monkeypatch.setattr(metering, "USAGE_DIR", tmp_path)
 
         # 确保用户存在
-        test_user = {
-            "id": "test-user-id",
-            "provider": "sms",
-            "provider_id": "13312345678",
-            "name": "133****5678",
-            "subscription": {"tier": "free"},
-        }
         monkeypatch.setattr(metering, "_get_user_quota", lambda uid: 300)
 
         result = metering.record_usage(

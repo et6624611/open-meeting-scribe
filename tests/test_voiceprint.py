@@ -341,6 +341,7 @@ class TestPersonalThreshold:
     @staticmethod
     def _vec(angle_deg: float) -> "np.ndarray":
         import math
+
         import numpy as np
         rad = math.radians(angle_deg)
         v = np.zeros(192, dtype=np.float32)
@@ -445,6 +446,7 @@ class TestAutoIdentifyV2:
 
     def _setup(self, tmp_path, monkeypatch, extract_sequence):
         import wave
+
         import numpy as np
 
         from core import voiceprint_identify as vi
@@ -474,6 +476,7 @@ class TestAutoIdentifyV2:
     @staticmethod
     def _vec(angle_deg: float) -> "np.ndarray":
         import math
+
         import numpy as np
         rad = math.radians(angle_deg)
         v = np.zeros(192, dtype=np.float32)
@@ -495,7 +498,6 @@ class TestAutoIdentifyV2:
     def test_group_majority_personal_gate(self, tmp_path, monkeypatch):
         """3 chunk 中 2 个支持 a（个人阈值已标定），多数通过 → 命中 a，gate=personal"""
         from core import voiceprint
-        from core import voiceprint_registry as vp_reg
 
         vec_a, vec_b = self._vec(0), self._vec(90)
         wav_path = self._setup(tmp_path, monkeypatch, [vec_a, vec_a, vec_b])

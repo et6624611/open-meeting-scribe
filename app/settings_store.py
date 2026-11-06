@@ -10,7 +10,6 @@ app/settings_store.py — 兼容 re-export 层 / Compatibility re-export layer
 are visible through dynamic access (e.g. import app.store; store.RECORD_DEVICE).
 """
 
-import sys
 import core.settings_store as _core
 
 
@@ -24,6 +23,7 @@ def __getattr__(name):
         raise AttributeError(f"module 'app.settings_store' has no attribute {name!r}")
 
 
+# ruff: noqa: F822 — re-export 层，__all__ 列出的名字通过 __getattr__ 动态转发到 core.*，静态分析无法识别
 __all__ = [
     "ASR_CAP_SOURCES",
     "DEFAULT_MODEL_DIR",

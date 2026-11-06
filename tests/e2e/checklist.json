@@ -1,0 +1,672 @@
+{
+  "version": "1.2.0",
+  "generated_at": "2026-11-03",
+  "base_url": "http://localhost:5173",
+  "description": "Open Meeting Scribe 前端全量功能测试清单。用于浏览器人工/半自动验证，同时为后续自动化测试（Playwright）提供用例基线。\n权重模型：初始 weight=1.0；每次运行后 pass→weight=max(0.5, weight×0.9)，fail→weight=min(3.0, weight×1.5)。权重越高，自动化回归中采样优先级越高。failure_count 累计历史失败次数。",
+  "weight_model": {
+    "base": 1.0,
+    "pass_factor": 0.9,
+    "fail_factor": 1.5,
+    "min": 0.5,
+    "max": 3.0
+  },
+  "items": [
+    {
+      "id": "T-001",
+      "module": "首页",
+      "route": "/",
+      "scenario": "页面加载与核心元素渲染",
+      "expected": "无未捕获控制台错误；#app 渲染；出现「新建会议」等核心文案",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "smoke"
+      ],
+      "auto_hint": "navigate / ; assert #app innerText contains '新建会议'; console errors filtered"
+    },
+    {
+      "id": "T-002",
+      "module": "首页",
+      "route": "/",
+      "scenario": "侧边栏导航项存在且可点击",
+      "expected": "侧边栏至少包含 全部会议/知识库/人员/热词/决策中心/AI助手/设置",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "navigation"
+      ],
+      "auto_hint": "activity-rail buttons count >= 6"
+    },
+    {
+      "id": "T-003",
+      "module": "会议库",
+      "route": "/library",
+      "scenario": "会议列表加载",
+      "expected": "无控制台错误；列表渲染或空态；不崩溃",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /library; wait for .sb-tl-item or empty-state"
+    },
+    {
+      "id": "T-004",
+      "module": "项目管理",
+      "route": "/projects",
+      "scenario": "项目列表加载",
+      "expected": "无控制台错误；项目列表渲染或空态",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /projects; assert no crash"
+    },
+    {
+      "id": "T-005",
+      "module": "说话人管理",
+      "route": "/speakers",
+      "scenario": "说话人列表加载",
+      "expected": "无控制台错误；列表或空态正常",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /speakers"
+    },
+    {
+      "id": "T-006",
+      "module": "热词管理",
+      "route": "/hotwords",
+      "scenario": "热词列表加载",
+      "expected": "无控制台错误；列表或空态正常",
+      "priority": "P1",
+      "weight": 0.567,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /hotwords"
+    },
+    {
+      "id": "T-007",
+      "module": "智能体管理",
+      "route": "/agents",
+      "scenario": "智能体列表加载",
+      "expected": "无控制台错误；列表或空态正常",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /agents"
+    },
+    {
+      "id": "T-008",
+      "module": "设置",
+      "route": "/settings",
+      "scenario": "设置页加载与各分组渲染",
+      "expected": "无控制台错误；至少出现 ASR/模型/通用 等设置分组",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load"
+      ],
+      "auto_hint": "navigate /settings; assert section headings present"
+    },
+    {
+      "id": "T-009",
+      "module": "决策中心",
+      "route": "/decisions",
+      "scenario": "决策中心加载",
+      "expected": "无控制台错误；决策列表或空态正常；不崩溃",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "navigate /decisions"
+    },
+    {
+      "id": "T-010",
+      "module": "录制页",
+      "route": "/recording",
+      "scenario": "录制页空态加载（无 taskId）",
+      "expected": "无控制台错误；录制控件或引导正常渲染",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load"
+      ],
+      "auto_hint": "navigate /recording; assert no crash"
+    },
+    {
+      "id": "T-011",
+      "module": "路由兼容",
+      "route": "/meetings/__nonexistent__",
+      "scenario": "复数路径重定向到单数",
+      "expected": "URL 从 /meetings/:id 重定向到 /meeting/:id；且不存在的 taskId 不产生 unhandled promise rejection",
+      "priority": "P1",
+      "weight": 1.5,
+      "failure_count": 1,
+      "last_status": "fail",
+      "tags": [
+        "routing",
+        "error-handling"
+      ],
+      "auto_hint": "navigate /meetings/x; assert pathname startsWith /meeting/; assert no unhandledrejection for 404"
+    },
+    {
+      "id": "T-012",
+      "module": "会后纪要",
+      "route": "/meeting/{taskId}",
+      "scenario": "打开一场已有会议纪要页",
+      "expected": "无控制台错误；纪要/转写/人员/决策等区域渲染；不崩溃",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data",
+        "core"
+      ],
+      "auto_hint": "pick a real taskId from /api/tasks; navigate /meeting/<id>"
+    },
+    {
+      "id": "T-013",
+      "module": "会后纪要",
+      "route": "/meeting/{taskId}",
+      "scenario": "Tab 切换（原文/随记/纪要/决策/洞察）",
+      "expected": "切换各 Tab 无控制台错误、内容正常切换",
+      "priority": "P0",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction",
+        "core"
+      ],
+      "auto_hint": "click each tab; assert content length changes; console errors filtered"
+    },
+    {
+      "id": "T-014",
+      "module": "洞察板浏览",
+      "route": "/board/{taskId}",
+      "scenario": "打开一场有洞察板的会议独立浏览页",
+      "expected": "无控制台错误；洞察板内容渲染；mermaid 图渲染为 svg",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "page-load",
+        "data"
+      ],
+      "auto_hint": "find task with board; navigate /board/<id>; assert svg count > 0"
+    },
+    {
+      "id": "T-015",
+      "module": "决策中心",
+      "route": "/decisions",
+      "scenario": "筛选区交互（时间分段/搜索）",
+      "expected": "时间分段切换、搜索框输入不崩溃，列表响应",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction"
+      ],
+      "auto_hint": "click time-segment chips; type in search input; assert list changes"
+    },
+    {
+      "id": "T-016",
+      "module": "设置",
+      "route": "/",
+      "scenario": "切换主题（明/暗）不崩溃",
+      "expected": "主题切换后 data-theme 变化、无控制台错误",
+      "priority": "P2",
+      "weight": 0.5,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction"
+      ],
+      "auto_hint": "open theme menu; click 深色; assert data-theme=standard-dark"
+    },
+    {
+      "id": "T-017",
+      "module": "首页",
+      "route": "/",
+      "scenario": "AI 问答输入框存在且可输入",
+      "expected": "textarea[aria-label=输入问题] 可聚焦并输入文字（受控组件需逐字输入）",
+      "priority": "P1",
+      "weight": 0.567,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction"
+      ],
+      "auto_hint": "fill textarea[aria-label='输入问题']; assert value"
+    },
+    {
+      "id": "T-018",
+      "module": "会后纪要",
+      "route": "/meeting/{taskId}",
+      "scenario": "人员栏渲染（绑定/未绑定）",
+      "expected": "人员 chip 与 关联说话人/添加参会人/声纹 按钮正常显示",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "data"
+      ],
+      "auto_hint": "assert speaker-related buttons present"
+    },
+    {
+      "id": "T-019",
+      "module": "路由",
+      "route": "/__invalid_route__",
+      "scenario": "无效路由的兜底（不白屏崩溃）",
+      "expected": "无效路由不导致白屏或未捕获异常",
+      "priority": "P2",
+      "weight": 0.5,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "routing",
+        "boundary"
+      ],
+      "auto_hint": "navigate /nope; assert #app has content and no js error"
+    },
+    {
+      "id": "T-020",
+      "module": "会议库",
+      "route": "/library",
+      "scenario": "会议卡片可点击进入纪要页",
+      "expected": "点击 .sb-tl-item 跳转到 /meeting/:taskId",
+      "priority": "P1",
+      "weight": 0.648,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction",
+        "navigation"
+      ],
+      "auto_hint": "click first .sb-tl-item; assert pathname startsWith /meeting/"
+    },
+    {
+      "id": "T-021",
+      "module": "会后纪要",
+      "route": "/meeting/{taskId}",
+      "scenario": "会议标题重命名进入内联编辑态",
+      "expected": "点击标题旁「重命名」图标或「更多→重命名」后，标题变为可编辑 input/textarea（内联编辑），而非依赖浏览器原生 prompt 弹窗",
+      "priority": "P1",
+      "weight": 1.0,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "interaction",
+        "core",
+        "inline-edit"
+      ],
+      "auto_hint": "click button[aria-label in ('重命名','Rename')]; assert .topbar-title contains input (Enter/blur saves, Esc cancels); T-021b covers the card path: .sb-tl-item .sb-more -> 重命名 -> assert .sb-tl-title input",
+      "defect_fixed": "2026-11-03: useTitleRename.ts + TopBar.vue 实现内联编辑，prompt() 已移除"
+    },
+    {
+      "id": "T-022",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "复制标题",
+      "expected": "点击「更多→复制标题」后，无 JS 错误；标题被写入剪贴板或有成功反馈",
+      "priority": "P2",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "copy"
+      ],
+      "auto_hint": "open 更多 menu; click 复制标题; assert no js error",
+      "handler": "onCopyTitle"
+    },
+    {
+      "id": "T-023",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "复制摘要",
+      "expected": "点击「更多→复制摘要」后无 JS 错误；无摘要时该菜单项应不可用",
+      "priority": "P2",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "copy"
+      ],
+      "auto_hint": "open 更多 menu; click 复制摘要; assert no js error",
+      "handler": "onCopySummary"
+    },
+    {
+      "id": "T-024",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "重生成摘要",
+      "expected": "点击「更多→重生成摘要」后无 JS 错误；触发摘要重生成流程或确认弹窗",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "ai"
+      ],
+      "auto_hint": "open 更多 menu; click 重生成摘要; assert no js error",
+      "handler": "onRetrySummary"
+    },
+    {
+      "id": "T-025",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "重新转写",
+      "expected": "点击「更多→重新转写」后无 JS 错误；触发转写流程或确认弹窗",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "asr"
+      ],
+      "auto_hint": "open 更多 menu; click 重新转写; assert no js error",
+      "handler": "onRetranscribe"
+    },
+    {
+      "id": "T-026",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "归档/取消归档",
+      "expected": "点击「更多→归档」后无 JS 错误；归档状态切换并有反馈",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "archive"
+      ],
+      "auto_hint": "open 更多 menu; click 归档; assert no js error",
+      "handler": "onArchiveConfirm"
+    },
+    {
+      "id": "T-027",
+      "module": "纪要页-更多菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "删除会议",
+      "expected": "点击「更多→删除」后无 JS 错误；弹出确认弹窗（不实际删除）",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "delete"
+      ],
+      "auto_hint": "open 更多 menu; click 删除; assert confirm dialog appears",
+      "handler": "onDelete"
+    },
+    {
+      "id": "T-028",
+      "module": "纪要页-图层菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "切换书面版图层",
+      "expected": "点击图层「书面版」后无 JS 错误；内容切换为书面版",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "layer"
+      ],
+      "auto_hint": "open layer menu; click 书面版; assert content changes",
+      "handler": "selectLayer('formal')"
+    },
+    {
+      "id": "T-029",
+      "module": "纪要页-图层菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "切换清理版图层",
+      "expected": "点击图层「清理版」后无 JS 错误；内容切换为清理版",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "layer"
+      ],
+      "auto_hint": "open layer menu; click 清理版; assert content changes",
+      "handler": "selectLayer('clean')"
+    },
+    {
+      "id": "T-030",
+      "module": "纪要页-图层菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "切换原文图层",
+      "expected": "点击图层「原文」后无 JS 错误；内容切换为原文",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "layer"
+      ],
+      "auto_hint": "open layer menu; click 原文; assert content changes",
+      "handler": "selectLayer('raw')"
+    },
+    {
+      "id": "T-031",
+      "module": "顶栏-录制菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "返回录制页",
+      "expected": "点击录制控制菜单「返回」后无 JS 错误；跳转或面板关闭",
+      "priority": "P2",
+      "weight": 0.8,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "recording"
+      ],
+      "auto_hint": "open rec menu; click 返回; assert no js error",
+      "handler": "jumpBackToRecording"
+    },
+    {
+      "id": "T-032",
+      "module": "顶栏-录制菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "暂停/继续录制",
+      "expected": "点击录制控制菜单「暂停/继续」后无 JS 错误；录制状态切换",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "recording"
+      ],
+      "auto_hint": "open rec menu; click 暂停; assert no js error",
+      "handler": "onToggleRecPause"
+    },
+    {
+      "id": "T-033",
+      "module": "顶栏-录制菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "结束录制",
+      "expected": "点击录制控制菜单「结束」后无 JS 错误；触发结束流程",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "recording"
+      ],
+      "auto_hint": "open rec menu; click 结束; assert no js error",
+      "handler": "onStopRecording"
+    },
+    {
+      "id": "T-034",
+      "module": "顶栏-录制菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "放弃录制",
+      "expected": "点击录制控制菜单「放弃」后无 JS 错误；弹出确认弹窗",
+      "priority": "P1",
+      "weight": 0.9,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "recording"
+      ],
+      "auto_hint": "open rec menu; click 放弃; assert confirm dialog",
+      "handler": "showAbandon"
+    },
+    {
+      "id": "T-035",
+      "module": "会议库-说话人筛选",
+      "route": "/library",
+      "scenario": "说话人筛选切换",
+      "expected": "点击说话人筛选项后无 JS 错误；列表按说话人过滤",
+      "priority": "P2",
+      "weight": 0.63,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "filter"
+      ],
+      "auto_hint": "click speaker filter item; assert list changes",
+      "handler": "selectSpeaker"
+    },
+    {
+      "id": "T-036",
+      "module": "决策节点-责任人菜单",
+      "route": "/meeting/{taskId}",
+      "scenario": "责任人选择",
+      "expected": "点击决策节点责任人菜单项后无 JS 错误；责任人切换",
+      "priority": "P2",
+      "weight": 0.7,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "decision"
+      ],
+      "auto_hint": "open owner menu; click an option; assert no js error",
+      "handler": "onPickOwner"
+    },
+    {
+      "id": "T-037",
+      "module": "决策节点-编辑",
+      "route": "/meeting/{taskId}",
+      "scenario": "编辑决策文本",
+      "expected": "点击决策节点「编辑」后无 JS 错误；进入内联编辑态",
+      "priority": "P1",
+      "weight": 0.81,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "decision",
+        "inline-edit"
+      ],
+      "auto_hint": "click 编辑; assert inline editor appears",
+      "handler": "startEdit"
+    },
+    {
+      "id": "T-038",
+      "module": "AI面板-模型菜单",
+      "route": "/",
+      "scenario": "模型选择与切换",
+      "expected": "点击 AI 面板模型菜单项后无 JS 错误；模型切换或跳转设置",
+      "priority": "P2",
+      "weight": 0.63,
+      "failure_count": 0,
+      "last_status": "pass",
+      "tags": [
+        "menu",
+        "ai"
+      ],
+      "auto_hint": "open model menu; click an option; assert no js error",
+      "handler": "onPickModel/onPickAgentModel/onGotoCliSettings"
+    },
+    {
+      "id": "T-039",
+      "module": "录制页-更多菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "放弃录制（录制页）",
+      "expected": "点击录制页「更多→放弃」后无 JS 错误；弹出确认弹窗",
+      "priority": "P2",
+      "weight": 0.7,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "recording"
+      ],
+      "auto_hint": "open 更多 menu; click 放弃; assert confirm dialog",
+      "handler": "showAbandon"
+    },
+    {
+      "id": "T-040",
+      "module": "转写面板-语言菜单",
+      "route": "/recording/{taskId}",
+      "scenario": "翻译语言切换",
+      "expected": "点击转写面板语言菜单项后无 JS 错误；翻译语言切换",
+      "priority": "P2",
+      "weight": 0.6,
+      "failure_count": 0,
+      "last_status": "pending",
+      "tags": [
+        "menu",
+        "translate"
+      ],
+      "auto_hint": "open lang menu; click a language; assert no js error",
+      "handler": "setTranslateLang"
+    }
+  ],
+  "updated_at": "2026-11-03"
+}

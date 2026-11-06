@@ -83,13 +83,13 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
     import copy
 
     from app.routers.notes import (
+        DecisionUpdateRequest,
         InjectRequest,
         NotesUpdate,
-        DecisionUpdateRequest,
         delete_decision,
         inject_content,
-        update_task_summary,
         update_decision,
+        update_task_summary,
     )
     from app.store import tasks
     from core import rewrite_snapshots as rsv

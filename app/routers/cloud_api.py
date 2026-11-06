@@ -31,18 +31,15 @@ import logging
 import os
 import time
 
-import httpx
 import requests
 import websockets
-
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, WebSocket
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.i18n import _
 from core.metering import DEFAULT_QUOTA, get_daily_history, get_monthly_usage, record_usage
 from core.users import get_user_by_id
-
 
 # ============================================================
 # 辅助函数 / Helper Functions
@@ -62,8 +59,9 @@ def _find_or_create_sms_user_with_id(
       2. 按手机号查找已有用户，更新 ID 为桌面 user_id / Find by phone, update ID to desktop user_id
       3. 创建新用户，使用桌面 user_id / Create new user with desktop user_id
     """
-    from core.users import _load_user_data, _save_user_data, _mask_phone
     from datetime import datetime, timezone
+
+    from core.users import _load_user_data, _mask_phone, _save_user_data
 
     data = _load_user_data()
     now = datetime.now(timezone.utc).isoformat()
@@ -421,7 +419,7 @@ def cloud_llm_proxy(req: CloudLLMRequest, request: Request):
         raise HTTPException(500, "LLM proxy not configured (DASHSCOPE_API_KEY missing)")
 
     # 配额检查 / Quota check
-    quota_info = _check_user_quota(req.user_id, estimated_minutes=0.1)
+    _check_user_quota(req.user_id, estimated_minutes=0.1)
 
     # 构建 DashScope 请求 / Build DashScope request
     dashscope_url = f"{DASHSCOPE_BASE_URL}/chat/completions"
@@ -651,7 +649,7 @@ def cloud_asr_proxy(
         raise HTTPException(500, "ASR proxy not configured (ASR_PROXY_LOCAL_TOKEN missing)")
 
     # 配额检查 / Quota check
-    quota_info = _check_user_quota(user_id, estimated_minutes=1.0)
+    _check_user_quota(user_id, estimated_minutes=1.0)
 
     # 读取上传的音频文件 / Read uploaded audio file
     audio_data = file.file.read()

@@ -27,9 +27,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install "ruff>=0.1.0"
 
-    - name: 运行 Ruff Bug 检查（仅拦截逻辑错误）
+    - name: 运行 Ruff 全项目检查
       run: |
-        ruff check . --select F821,F811,F402
+        ruff check .
+
+    - name: 运行 mypy 类型检查（非阻断，观察一周后转阻断）
+      continue-on-error: true
+      run: |
+        pip install "mypy>=1.10.0"
+        mypy core/errors.py core/fs_atomic.py core/remote_config.py
 
   backend-test:
     name: 后端测试

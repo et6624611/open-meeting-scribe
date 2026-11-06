@@ -38,7 +38,7 @@ def _get_lock(path: Path) -> threading.Lock:
         return lock
 
 
-def atomic_write_text(path, content: str, encoding: str = "utf-8") -> None:
+def atomic_write_text(path: str | Path, content: str, encoding: str = "utf-8") -> None:
     """
     原子写入文本文件 / Atomically write text file.
 
@@ -67,7 +67,7 @@ def atomic_write_text(path, content: str, encoding: str = "utf-8") -> None:
             raise
 
 
-def atomic_write_json(path, data, encoding: str = "utf-8", indent: int = 2) -> None:
+def atomic_write_json(path: str | Path, data: object, encoding: str = "utf-8", indent: int = 2) -> None:
     """原子写入 JSON 文件（ensure_ascii=False，保留中文可读性） / Atomically write JSON file (ensure_ascii=False, preserve CJK readability)"""
     content = json.dumps(data, ensure_ascii=False, indent=indent)
     atomic_write_text(path, content, encoding=encoding)

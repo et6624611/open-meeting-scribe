@@ -389,8 +389,8 @@ class InlineMarkdownParser(BaseParser):
         total = len(lines)
         if total == 0:
             return 0.0
-        bold_hits = sum(1 for l in lines if self._BOLD_RE.match(l.strip()))
-        bracket_hits = sum(1 for l in lines if self._BRACKET_RE.match(l.strip()))
+        bold_hits = sum(1 for line in lines if self._BOLD_RE.match(line.strip()))
+        bracket_hits = sum(1 for line in lines if self._BRACKET_RE.match(line.strip()))
         hits = bold_hits + bracket_hits
         ratio = hits / total
         if hits >= 3:
@@ -449,7 +449,7 @@ class SpeakerNumberParser(BaseParser):
         total = len(lines)
         if total == 0:
             return 0.0
-        hits = sum(1 for l in lines if self._RE.match(l.strip()))
+        hits = sum(1 for line in lines if self._RE.match(line.strip()))
         ratio = hits / total
         if hits >= 2 and ratio >= 0.10:
             return min(0.80, 0.4 + ratio)

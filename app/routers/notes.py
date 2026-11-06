@@ -22,8 +22,8 @@ from app.store import save_task_to_disk, tasks
 from core import users as user_module
 from core.decision_flow import enrich_decision, first_open_status, make_decision_node, resolve_owner, status_of
 from core.decision_status import (
-    StatusError,
     SUPERSEDED_STATUS_ID,
+    StatusError,
     is_closing,
     known_ids,
     load_statuses,

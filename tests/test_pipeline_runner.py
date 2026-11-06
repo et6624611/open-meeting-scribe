@@ -4,16 +4,10 @@
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock
-
 import pytest
 import requests
 
 import core.pipeline_runner as pr
-from core.errors import LocalEngineError
-
 
 # ── 通用 fixture：隔离 side effects ─────────────────────────────
 

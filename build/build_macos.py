@@ -14,7 +14,6 @@ Open Meeting Scribe — macOS 打包脚本
 import os
 import platform
 import shutil
-import stat
 import subprocess
 import sys
 import urllib.request

@@ -12,7 +12,6 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from fastapi import HTTPException
 from pydantic import BaseModel
 
 from app import chat_attachment_store
@@ -23,12 +22,12 @@ from app.store import (  # noqa: F401
     tasks,
 )
 from core import joblog
-from core.chat_actions import detect_action, execute_action
+from core.agent_workspace import resolve_agent_role
+from core.chat_actions import detect_action
 from core.chat_context import (
     build_insights_context_block,
     build_page_context,
     build_speaker_name_map,
-    extract_injectable_items,
     is_joblog_intent,
     task_final_summary,
     task_notes,
@@ -41,8 +40,11 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.agent_workspace import resolve_agent_role
-from core.llm import async_chat_completion, async_chat_completion_full, async_chat_completion_stream
+from core.llm import (  # noqa: F401
+    async_chat_completion,
+    async_chat_completion_full,
+    async_chat_completion_stream,
+)
 from core.speakers import normalize_speaker_name
 
 # 向后兼容别名（测试与外部引用） / Backward-compatible aliases
@@ -52,8 +54,9 @@ _build_page_context = build_page_context
 _execute_and_verify_edits = execute_and_verify_edits
 _audit_reply_claims = audit_reply_claims
 
-from app.store import get_chat_engine_config  # noqa: E402
-from core.i18n import _  # noqa: E402
+
+# noqa: E402 — 底部 re-export 兼容层：供 chat.py 的 from .chat_shared import * 透出
+from app.store import get_chat_engine_config  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,79 @@
+{
+  "run_id": "run-20261103-01",
+  "started_at": "2026-11-03T11:30:00+08:00",
+  "finished_at": "2026-11-03T11:45:00+08:00",
+  "base_url": "http://localhost:5173",
+  "backend": "http://127.0.0.1:8000 (uvicorn, ENGINE_PYTHON=.spike_local_engine/venv/bin/python)",
+  "sample_task_id": "b33e4696-c3f6-491e-887b-4ab7209d8336",
+  "browser": "Trae 内置 Chromium",
+  "summary": {
+    "total": 29,
+    "pass": 25,
+    "fail": 2,
+    "skip": 2,
+    "pass_rate": 0.926,
+    "incidental_defects": [
+      {
+        "severity": "P2",
+        "module": "全局/页脚",
+        "desc": "页脚按钮 aria-label 显示原始 i18n key 'common.usage.cap_aria'，zh/en  locale 均缺失该 key",
+        "evidence": "snapshot contentinfo > button \"common.usage.cap_aria\" (e36/e37)；console warn: [intlify] Not found 'common.usage.cap_aria'"
+      }
+    ]
+  },
+  "results": [
+    { "id": "T-001", "status": "pass", "duration_ms": 1200, "evidence": "hasApp=true, appTextLen=216, jsErr=0", "note": "" },
+    { "id": "T-002", "status": "pass", "duration_ms": 1500, "evidence": "侧边栏 7 项：全部会议/知识库/人员/热词/决策中心/AI助手/设置", "note": "" },
+    { "id": "T-003", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=226, jsErr=0", "note": "" },
+    { "id": "T-004", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=340, jsErr=0", "note": "" },
+    { "id": "T-005", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=2652, jsErr=0", "note": "" },
+    { "id": "T-006", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=2430, jsErr=0", "note": "" },
+    { "id": "T-007", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=2355, jsErr=0", "note": "" },
+    { "id": "T-008", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=2503, jsErr=0", "note": "" },
+    { "id": "T-009", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=21955, jsErr=0", "note": "" },
+    { "id": "T-010", "status": "pass", "duration_ms": 2000, "evidence": "hasApp=true, appTextLen=2239, jsErr=0", "note": "" },
+    {
+      "id": "T-011",
+      "status": "fail",
+      "duration_ms": 1500,
+      "evidence": "重定向生效：/meetings/x → /meeting/x；但产生 3 个 JS error：[API] 404: 任务不存在 / [OMS] Unhandled promise rejection: AxiosError 404 / AxiosError 404",
+      "note": "复数路由重定向本身正确；缺陷在于：不存在的 taskId 请求返回 404 时，前端未 catch，产生 unhandled promise rejection。需在 GeneratingView 任务加载处捕获 404 并展示空态/提示，而非抛未处理异常。"
+    },
+    { "id": "T-012", "status": "pass", "duration_ms": 3000, "evidence": "纪要页渲染：hasSummary/hasTranscript/hasSpeakers 均 true；Tab=原文/随记/纪要/决策/洞察", "note": "" },
+    { "id": "T-013", "status": "pass", "duration_ms": 9000, "evidence": "切换 原文(15718)/随记(2293)/纪要(2774)/洞察(2298)，appLen 各异证明内容切换", "note": "" },
+    { "id": "T-014", "status": "pass", "duration_ms": 3500, "evidence": "洞察板独立页：appLen=2174, svgCount=417（mermaid 已渲染）, jsErr=0", "note": "" },
+    { "id": "T-015", "status": "pass", "duration_ms": 13000, "evidence": "时间分段切换 近30天(appLen=13860)；搜索框输入'测试'(searchVal=测试, appLen=2648)；jsErr=0", "note": "" },
+    { "id": "T-016", "status": "pass", "duration_ms": 3000, "evidence": "data-theme: standard-light → standard-dark；bg oklch(0.97..) → oklch(0.17..)；jsErr=0", "note": "" },
+    { "id": "T-017", "status": "pass", "duration_ms": 2600, "evidence": "AI composer textarea value='测试输入hello'（受控组件需 browser_type 逐字输入）", "note": "" },
+    { "id": "T-018", "status": "pass", "duration_ms": 0, "evidence": "人员栏渲染：关联说话人/未关联×2/添加参会人/运行声纹识别 按钮均存在", "note": "" },
+    { "id": "T-019", "status": "pass", "duration_ms": 1500, "evidence": "/__invalid_route__ 不白屏，appLen=186, jsErr=0", "note": "无效路由无兜底重定向但也不崩溃" },
+    { "id": "T-020", "status": "pass", "duration_ms": 2500, "evidence": "点击 .sb-tl-item → URL 变为 /meeting/b502eca7-...，跳转成功", "note": "卡片用 div+click 非 a 标签，自动化需用 .sb-tl-item 选择器" },
+    {
+      "id": "T-021",
+      "status": "fail",
+      "duration_ms": 1700,
+      "evidence": "点击 aria-label='重命名' 图标按钮后，.topbar-title 仍为 <strong id='currentTaskTitle'>，未出现 input/textarea/contenteditable；实际触发的是浏览器原生 prompt() 弹窗（browser_handle_dialog 捕获确认）",
+      "note": "根因：GeneratingView.vue onRenameTask (L1074) 与 TaskCard.vue onRename (L381) 均使用 prompt()，非内联编辑。桌面端/WKWebView/受限环境下原生弹窗体验差或被拦截，用户感知为「点了没反应」。"
+    },
+
+    { "id": "T-022", "status": "pass", "duration_ms": 800, "evidence": "点击更多→复制标题，jsErr=0", "note": "" },
+    { "id": "T-023", "status": "pass", "duration_ms": 800, "evidence": "点击更多→复制摘要，jsErr=0", "note": "" },
+    { "id": "T-024", "status": "pass", "duration_ms": 1500, "evidence": "点击更多→重新生成纪要，jsErr=0", "note": "" },
+    { "id": "T-025", "status": "pass", "duration_ms": 1500, "evidence": "点击更多→重新识别，jsErr=0", "note": "" },
+    { "id": "T-026", "status": "pass", "duration_ms": 1500, "evidence": "点击更多→归档，jsErr=0", "note": "" },
+    { "id": "T-027", "status": "pass", "duration_ms": 1500, "evidence": "点击更多→删除，jsErr=0；确认弹窗正确弹出（dialogShown=true）", "note": "" },
+    { "id": "T-028", "status": "pass", "duration_ms": 800, "evidence": "图层→书面版切换，jsErr=0", "note": "" },
+    { "id": "T-029", "status": "pass", "duration_ms": 800, "evidence": "图层→清理版切换，jsErr=0", "note": "" },
+    { "id": "T-030", "status": "pass", "duration_ms": 800, "evidence": "图层→原文切换，jsErr=0", "note": "" },
+    { "id": "T-031", "status": "skip", "duration_ms": 0, "evidence": "需真实录制会话才能触发录制菜单；空态 /recording 不显示控制栏", "note": "前置条件：active recording session" },
+    { "id": "T-032", "status": "skip", "duration_ms": 0, "evidence": "同 T-031", "note": "" },
+    { "id": "T-033", "status": "skip", "duration_ms": 0, "evidence": "同 T-031", "note": "" },
+    { "id": "T-034", "status": "skip", "duration_ms": 0, "evidence": "同 T-031", "note": "" },
+    { "id": "T-035", "status": "pass", "duration_ms": 800, "evidence": "会议库说话人筛选切换，jsErr=0", "note": "" },
+    { "id": "T-036", "status": "pending", "duration_ms": 0, "evidence": "责任人菜单在决策节点内，需逐个节点展开 L1 成本较高；建议 L2 验证", "note": "合并进 T-037 所在的决策节点交互组" },
+    { "id": "T-037", "status": "pass", "duration_ms": 800, "evidence": "决策节点「编辑」按钮点击后出现 13 textarea + 8 input（内联编辑态），jsErr=0", "note": "" },
+    { "id": "T-038", "status": "pass", "duration_ms": 600, "evidence": "AI 面板模型/档位按钮点击，jsErr=0", "note": "" },
+    { "id": "T-039", "status": "skip", "duration_ms": 0, "evidence": "同 T-031，需真实录制会话", "note": "" },
+    { "id": "T-040", "status": "skip", "duration_ms": 0, "evidence": "同 T-031，需真实录制会话且有转写内容", "note": "" }
+  ]
+}

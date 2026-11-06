@@ -13,17 +13,14 @@ tests/test_engine_installer_g4.py — WP-G G-4/G-4b 引擎组件安装通道单�
 """
 
 import hashlib
-import io
 import json
 import os
-import sys
 import zipfile
 from pathlib import Path
 
 import pytest
 
 import core.engine_installer as ei
-
 
 # ─────────────────────────── fixtures ───────────────────────────
 

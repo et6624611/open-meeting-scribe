@@ -274,7 +274,7 @@ def get_audio_duration(input_path: str | Path) -> float:
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         logger.warning(f"ffmpeg -i 探测失败: {e}")
 
-    raise RuntimeError(f"无法获取音频时长: ffprobe 不可用且降级方案均失败")
+    raise RuntimeError("无法获取音频时长: ffprobe 不可用且降级方案均失败")
 
 
 def _wav_duration_from_header(wav_path: Path) -> float:

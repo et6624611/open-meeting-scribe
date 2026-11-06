@@ -41,7 +41,7 @@ def extract_pngs_from_ico(ico_path: Path) -> dict[int, bytes]:
         )
         # ICO 中 0 表示 256
         actual_w = w if w != 0 else 256
-        actual_h = h if h != 0 else 256
+        _ = h if h != 0 else 256  # 仅宽用于结果键，占位避免 unused 警告
 
         # 检查是否为 PNG（以 PNG 签名开头）
         png_sig = b"\x89PNG\r\n\x1a\n"

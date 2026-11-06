@@ -208,8 +208,8 @@ class TestLocalRouting:
 
     def test_get_asr_mode_not_local_when_engine_cloud(self, tmp_path, monkeypatch):
         import app.settings_store as ss
-        import core.settings_store as _core_ss
         import app.store as store
+        import core.settings_store as _core_ss
         import core.transcribe as t
 
         # asr 生效来源=trial（非本机）→ 路由不为 local（proxy/cloud/direct 皆可）。

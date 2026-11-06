@@ -53,6 +53,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
+    "mypy>=1.10.0",
 ]
 
 [project.urls]
@@ -88,3 +89,16 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+show_error_codes = true
+color_output = true
+
+[[tool.mypy.overrides]]
+module = "core.i18n.*"
+ignore_errors = true

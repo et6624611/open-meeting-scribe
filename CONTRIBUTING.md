@@ -63,6 +63,7 @@ DCO 是一份轻量声明，代表你确认：该贡献由你本人创建且有�
 - 遵循现有代码风格（函数命名用 snake_case，类名用 PascalCase）
 - 注释和文档字符串使用中文
 - 含阻塞操作的函数用同步定义，纯异步 I/O 用 `async def`
+- **新代码必须带类型注解**：函数参数、返回值均需注解（`disallow_untyped_defs`）；宽松基线已在 `pyproject.toml` 的 `[tool.mypy]` 配置，`ignore_missing_imports = true`，第一阶段覆盖 `core/errors.py`、`core/fs_atomic.py`、`core/remote_config.py`，逐步扩展
 
 **前端（Vue 3 + TypeScript）**：
 - 使用 Composition API + `<script setup>` 语法

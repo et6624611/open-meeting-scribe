@@ -12,8 +12,8 @@ v3.1 重构：使用 __getattr__ 动态代理到 core.* 层，解决静态 impor
 BASE_DIR/STATIC_DIR 留在本模块（PyInstaller 打包相关）。
 """
 
-import sys
 import logging
+import sys
 
 from dotenv import load_dotenv
 
@@ -49,7 +49,6 @@ import core.realtime_store as _realtime_store
 import core.settings_store as _settings_store
 import core.task_store as _task_store
 
-
 _CORE_MODULES = {
     "_task_store": _task_store,
     "_settings_store": _settings_store,
@@ -70,6 +69,7 @@ def __getattr__(name):
     raise AttributeError(f"module 'app.store' has no attribute {name!r}")
 
 
+# ruff: noqa: F822 — re-export 层，__all__ 列出的名字通过 __getattr__ 动态转发到 core.*，静态分析无法识别
 __all__ = [
     "BASE_DIR",
     "STATIC_DIR",

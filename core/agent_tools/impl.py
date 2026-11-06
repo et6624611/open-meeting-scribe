@@ -22,12 +22,12 @@ from urllib.parse import urlparse
 
 import requests as http_requests  # 统一重命名，避免 _tool_web_fetch 内 import 重名冲突
 
-from core.task_store import tasks
 from core import hotwords as hw_module
 from core.chat_context import task_final_summary, task_notes
 from core.decision_flow import status_of
 from core.decision_status import load_statuses
 from core.project_index import get_project_context_for_chat
+from core.task_store import tasks
 
 logger = logging.getLogger(__name__)
 

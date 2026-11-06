@@ -23,8 +23,8 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 import app.settings_store as settings_store
-import core.settings_store as _core_ss
 import core.model_downloader as downloader
+import core.settings_store as _core_ss
 from core.model_registry import MODEL_BY_KEY, get_model_root
 
 TEST_MODEL_KEY = "fsmn-vad"  # 清单中最小的必需模型，用作下载测试载体

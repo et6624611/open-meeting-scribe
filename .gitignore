@@ -67,6 +67,9 @@ qa-evidence/
 .cu_shots/
 browser/
 
+# E2E smoke 自动运行产物（每次运行生成，只留 checklist/smoke 基线）
+tests/e2e/auto-run-*.json
+
 # 前端构建产物（npm run build 生成，由 FastAPI 托管）
 frontend/node_modules/
 frontend/dist/

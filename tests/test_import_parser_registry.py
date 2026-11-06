@@ -19,8 +19,8 @@ from core.import_parser import (
     CONTENT_TYPE_UNKNOWN,
     InlineMarkdownParser,
     SpeakerNumberParser,
-    StandaloneSpeakerParser,
     SrtParser,
+    StandaloneSpeakerParser,
     VttParser,
     _registry,
     detect_content_type,
@@ -29,7 +29,6 @@ from core.import_parser import (
     parse_srt,
     parse_vtt,
 )
-
 
 # ============================================================
 # SrtParser
