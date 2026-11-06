@@ -76,9 +76,9 @@ def extract_segments(wav_path: Path, dialogue: list, mapping: dict):
     Returns:
         {speaker_uuid: [(audio_segment, sentence_info), ...]}
     """
-    from scipy.io import wavfile
+    from core.audio import read_wav_float32
 
-    sr, audio = wavfile.read(str(wav_path))
+    sr, audio = read_wav_float32(wav_path)
     segments_by_speaker = defaultdict(list)
 
     for d in dialogue:

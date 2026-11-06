@@ -12,10 +12,10 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from scipy.io import wavfile
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.audio import read_wav_float32
 from core.voiceprint import (
     VOICEPRINT_MODEL_VERSION,
     _l2,
@@ -55,7 +55,7 @@ def convert_to_wav(mp3_path):
 
 def extract_all_embeddings(wav_path, dialogue, mapping, registry):
     """提取所有片段的 embedding，返回 (probes, labels)"""
-    sr, audio = wavfile.read(str(wav_path))
+    sr, audio = read_wav_float32(wav_path)
     registered_uuids = {
         uid for uid, rec in registry.items()
         if rec.model_version == VOICEPRINT_MODEL_VERSION

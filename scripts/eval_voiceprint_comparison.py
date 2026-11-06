@@ -3,7 +3,7 @@
 
 对比两种匹配策略在真实会议数据上的准确率：
   - 旧方法（v3）：逐人独立匹配，每人独立取最高相似度
-  - 新方法（v4）：per-meeting 中心化 + 匈牙利算法一对一分配
+  - 新方法（v4）：per-meeting 中心化 + 贪心一对一分配（与生产实现一致）
 """
 
 import json
@@ -13,24 +13,23 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from scipy.io import wavfile
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.audio import read_wav_float32
 from core.voiceprint import (
     MATCH_THRESHOLD,
     MAX_SEC_PER_SPEAKER,
     MIN_MATCH_MARGIN,
     MIN_REGISTER_SEC,
     VOICEPRINT_MODEL_VERSION,
-    _cap_segments,
-    _collect_speaker_segments,
     _l2,
     cosine_similarity,
     extract_embedding,
     load_registry,
     match_voiceprint_detail,
 )
+from core.voiceprint_identify import _cap_segments, _collect_speaker_segments
 
 # ── 配置 ──────────────────────────────────────────────
 MEETING_ID = "e6cda37b-4879-416d-ad81-c3035ec7eb43"
@@ -64,7 +63,7 @@ def extract_per_speaker_embeddings(wav_path: Path, gt_mapping: dict):
     按 ground truth 的 speaker_id 提取每人的嵌入（与 auto_identify_speakers 同逻辑）
     Returns: {speaker_id: embedding}
     """
-    sr, audio = wavfile.read(str(wav_path))
+    sr, audio = read_wav_float32(wav_path)
     with open(TASK_FILE) as f:
         task = json.load(f)
     dialogue = task.get("dialogue", [])
@@ -106,8 +105,8 @@ def eval_old_method(embeddings: dict, gt_mapping: dict, registry: dict):
 
 
 def eval_new_method(embeddings: dict, gt_mapping: dict, registry: dict):
-    """新方法：per-meeting 中心化 + 匈牙利算法"""
-    from scipy.optimize import linear_sum_assignment
+    """新方法：per-meeting 中心化 + 贪心一对一分配"""
+    from core.voiceprint_identify import _greedy_assignment
 
     valid = {
         u: r for u, r in registry.items()
@@ -144,8 +143,8 @@ def eval_new_method(embeddings: dict, gt_mapping: dict, registry: dict):
         for j in range(n_refs):
             sim_matrix[i, j] = cosine_similarity(probe, ref_embs[j])
 
-    # 匈牙利算法
-    row_ind, col_ind = linear_sum_assignment(-sim_matrix)
+    # 一对一统筹分配（贪心，与 core/voiceprint_identify 生产实现一致）
+    row_ind, col_ind = _greedy_assignment(-sim_matrix)
     assigned = {}
     for r, c in zip(row_ind, col_ind):
         if r < n_speakers and c < n_refs:
