@@ -466,8 +466,8 @@ class TestAc4Fallback:
 
 class TestRealtimeDegradation:
     def test_realtime_mode_local(self, monkeypatch):
-        import app.settings_store as ss
         import core.realtime_asr as ra
+        import core.settings_store as ss
 
         monkeypatch.setattr(ss, "get_engine_config", lambda: {"mode": "local", "local": {}})
         assert ra._get_asr_mode() == "local"

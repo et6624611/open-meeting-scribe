@@ -601,7 +601,7 @@ def _run_auto_archive():
 @app.on_event("startup")
 async def startup():
     """捕获主事件循环引用；从磁盘恢复任务；自动恢复中断的任务；同步 API Key / Capture main event loop ref; restore tasks from disk; auto-recover interrupted tasks; sync API Key."""
-    import app.realtime_store as rt_store
+    import core.realtime_store as rt_store
     rt_store.event_loop = asyncio.get_running_loop()
 
     # 从 settings.json 同步 API Key 到环境变量（确保重启后仍有效） / Sync API Key from settings.json to env var (ensure validity after restart)

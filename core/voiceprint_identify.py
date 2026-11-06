@@ -111,7 +111,7 @@ FRAGMENTED_FLOOR = 0.35
 def _v2_enabled() -> bool:
     """v2.1 群嵌入+个人阈值链路开关（feature_flags.voiceprint_v2，默认开，逃生通道）。"""
     try:
-        from app.settings_store import get_feature_flags
+        from core.settings_store import get_feature_flags
         return bool(get_feature_flags().get("voiceprint_v2", True))
     except Exception:
         return True

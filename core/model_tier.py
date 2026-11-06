@@ -51,7 +51,7 @@ def get_configured_model_tier() -> str:
     Read engine.local.model_tier from settings (default auto).
     """
     try:
-        from app.settings_store import load_settings
+        from core.settings_store import load_settings
         engine = load_settings().get("engine", {}) or {}
         local = engine.get("local", {}) or {}
         tier = str(local.get("model_tier", "auto") or "auto").lower()
@@ -77,7 +77,7 @@ def resolve_model_tier(model: str | None = None) -> str:
 
     if model is None:
         try:
-            from app.settings_store import get_llm_config
+            from core.settings_store import get_llm_config
             model = get_llm_config().get("model", "")
         except Exception:
             model = ""

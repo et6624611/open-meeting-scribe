@@ -90,7 +90,7 @@ def get_engine_dir_candidates() -> list[Path]:
         candidates.append(Path(env_dir).expanduser())
 
     try:
-        from app.settings_store import get_engine_config
+        from core.settings_store import get_engine_config
         cfg_dir = (get_engine_config()["local"].get("engine_dir") or "").strip()
         if cfg_dir:
             candidates.append(Path(cfg_dir).expanduser())

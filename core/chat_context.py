@@ -174,7 +174,7 @@ def build_page_context(page: str) -> str | None:
         return text
 
     if page == "settings":
-        from app.store import load_settings
+        from core.settings_store import load_settings
         settings = load_settings()
         if not settings:
             return "## 当前页面\n用户在系统设置页面，当前使用默认配置。"

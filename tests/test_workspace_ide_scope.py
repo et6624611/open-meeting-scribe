@@ -138,7 +138,7 @@ def test_stale_orphan_archive_merged_when_real_workspace_exists(preview_root, mo
     时，归档是脏副本——缺失子项并入真实工作区后清掉，不丢数据、不覆盖已有文件。"""
     task_id = "1e578590-1111-4000-8000-000000000001"
     task = _task(task_id, "财务梳理会", date="2026-10-13T10:00:00")
-    monkeypatch.setattr("app.store.tasks", {task_id: task})
+    monkeypatch.setattr("core.task_store.tasks", {task_id: task})
     real = preview_root / "_standalone" / "2026-10-13_财务梳理会__1e578590"
     (real / "context").mkdir(parents=True)
     (real / "context" / "summary.md").write_text("---\ntask_id: x\n---\n\n正文", encoding="utf-8")
@@ -155,7 +155,7 @@ def test_stale_orphan_archive_merged_when_real_workspace_exists(preview_root, mo
 
 def test_true_orphan_archive_kept(preview_root, monkeypatch):
     # 真无主（key 不命中任务库）的归档保留，等人工辨认
-    monkeypatch.setattr("app.store.tasks", {})
+    monkeypatch.setattr("core.task_store.tasks", {})
     monkeypatch.setattr(ce, "_ensure_tasks_loaded", lambda: None)
     orphan = preview_root / "_standalone" / "未识别会议__0123abcd"
     (orphan / "context").mkdir(parents=True)
@@ -203,7 +203,7 @@ def test_global_context_indexes_and_migrates_legacy(preview_root, monkeypatch):
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈", date="2026-10-12T10:00:00")
     # 整库替换而非 setitem：独立会议范围按"无 project_id"过滤，前序测试
     # 留在真实任务库里的条目会污染计数（全量回归时已复现）
-    monkeypatch.setattr("app.store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
+    monkeypatch.setattr("core.task_store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
     ce.export_preview_context(task_id=t1["task_id"], task=t1, project_id=project_id)
 
     # 制造旧版痕迹：独立会议 UUID 目录 + 旧 _meetings.json + 孤儿目录（不在任务库）
@@ -253,7 +253,7 @@ def test_global_export_never_poisons_indexless_project_dir(preview_root, monkeyp
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
     t1 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会", project_id=project_id)
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈")
-    monkeypatch.setattr("app.store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
+    monkeypatch.setattr("core.task_store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
     ce.export_preview_context(task_id=t1["task_id"], task=t1, project_id=project_id)
     ce.export_preview_context(task_id=t2["task_id"], task=t2, project_id=None)
 
@@ -285,7 +285,7 @@ def test_global_export_writes_standalone_and_root_decisions(preview_root, monkey
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
     t1 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会", project_id=project_id)
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈", date="2026-10-12T10:00:00")
-    monkeypatch.setattr("app.store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
+    monkeypatch.setattr("core.task_store.tasks", {t1["task_id"]: t1, t2["task_id"]: t2})
     ce.export_preview_context(task_id=t1["task_id"], task=t1, project_id=project_id)
 
     ce.export_global_context()
@@ -310,7 +310,7 @@ def test_global_export_writes_standalone_and_root_decisions(preview_root, monkey
 
 
 def test_ds_store_swept_on_global_export(preview_root, monkeypatch):
-    monkeypatch.setattr("app.store.tasks", {})
+    monkeypatch.setattr("core.task_store.tasks", {})
     monkeypatch.setattr(ce, "_ensure_tasks_loaded", lambda: None)
     junk = preview_root / "_standalone" / "somemeeting" / ".DS_Store"
     junk.parent.mkdir(parents=True)

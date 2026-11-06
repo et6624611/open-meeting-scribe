@@ -212,7 +212,7 @@ def export_context(
     # （智能体具备文件读取/解析能力，不在后端预抽取，避免与内置链路重复实现解析）
     attachment_lines: list[str] = []
     if attachments:
-        from app.chat_attachment_store import load_bytes  # 局部 import：避免 core→app 模块级依赖
+        from core.chat_attachment_store import load_bytes  # 局部 import：附件存储已下沉 core 层
 
         attach_dir = ctx / "attachments"
         attach_dir.mkdir(parents=True, exist_ok=True)
@@ -523,7 +523,7 @@ def export_global_context(ide_id: str | None = None) -> dict:
 
 def refresh_workspace(task_id: str) -> dict:
     """刷新指定工作区（复用 export_preview_context），返回 {workspace, file_count}。"""
-    from app.store import tasks
+    from core.task_store import tasks
     task = tasks.get(task_id)
     if not task:
         return {"error": "task_not_found"}
@@ -537,8 +537,8 @@ def import_from_workspace(task_id: str) -> dict:
     返回 {has_changes, summary: {baseline, proposed}|null, notes: {baseline, proposed}|null, source_mtime, task_id}。
     baseline = 当前定稿口径（user_summary/user_notes 优先），proposed = 工作区 .md body；
     两者不同才标记为变更，走 propose 通道（不直接覆盖，用户在前端接受才落盘）。"""
-    from app.store import tasks
     from core.chat_context import task_final_summary, task_notes
+    from core.task_store import tasks
     task = tasks.get(task_id)
     if not task:
         return {"error": "task_not_found"}

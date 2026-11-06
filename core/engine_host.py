@@ -652,7 +652,7 @@ class EngineHost:
             raise
 
     def status(self) -> dict:
-        from app.settings_store import get_engine_config
+        from core.settings_store import get_engine_config
         cfg = get_engine_config()
         # 观测面走缓存校验（~毫秒级），使前端可对进程存活态做常规刷新；
         # 门禁侧（start）仍为实时校验，见 check_required_models_cached 注释。

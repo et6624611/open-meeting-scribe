@@ -253,8 +253,8 @@ class TestGenerate:
             tf._inflight.discard("t1")
 
     def test_auto_disabled_skips_without_llm(self, _guards, monkeypatch):
-        import app.store
-        monkeypatch.setattr(app.store, "get_transcript_config",
+        import core.settings_store
+        monkeypatch.setattr(core.settings_store, "get_transcript_config",
                             lambda: {"formal": {"auto_generate": False}})
         called = {"n": 0}
         monkeypatch.setattr("core.llm.chat_completion_full",
@@ -263,8 +263,8 @@ class TestGenerate:
         assert called["n"] == 0
 
     def test_auto_enabled_runs(self, _guards, monkeypatch):
-        import app.store
-        monkeypatch.setattr(app.store, "get_transcript_config",
+        import core.settings_store
+        monkeypatch.setattr(core.settings_store, "get_transcript_config",
                             lambda: {"formal": {"auto_generate": True}})
         monkeypatch.setattr("core.llm.chat_completion_full", _make_fake_llm())
         doc = tf.generate_formal_version("t1", auto=True)

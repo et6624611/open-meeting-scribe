@@ -373,7 +373,7 @@ def sync_meeting_to_folders(task: dict) -> list[str]:
     if written:
         task["last_synced_at"] = datetime.now().isoformat()
         try:
-            from app.task_store import save_task_to_disk
+            from core.task_store import save_task_to_disk
             save_task_to_disk(task.get("task_id", ""))
         except Exception as e:
             logger.warning("保存 last_synced_at 失败: %s", e)

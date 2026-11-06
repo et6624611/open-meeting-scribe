@@ -32,8 +32,8 @@ _get_feature_flags_fn = None
 def _import_app_deps():
     global _tasks, _save_task_to_disk, _get_feature_flags_fn
     if _tasks is None:
-        from app.settings_store import get_feature_flags
-        from app.task_store import save_task_to_disk, tasks
+        from core.settings_store import get_feature_flags
+        from core.task_store import save_task_to_disk, tasks
         _tasks = tasks
         _save_task_to_disk = save_task_to_disk
         _get_feature_flags_fn = get_feature_flags
@@ -119,7 +119,7 @@ def _cleanup_normalized_intermediate(task_id: str) -> None:
     仅当 auto_clean_intermediate 设置开启时执行。
     """
     try:
-        from app.settings_store import get_storage_config
+        from core.settings_store import get_storage_config
         if not get_storage_config().get("auto_clean_intermediate", True):
             return
 

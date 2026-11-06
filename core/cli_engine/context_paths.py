@@ -45,13 +45,10 @@ def _ce():
 
 
 def _compute_workspace_root() -> Path:
-    """计算工作区根目录，优先用 app.store.BASE_DIR（打包后落 exe 同级，持久），
-    回退仓库根（开发模式等价）。PyInstaller _MEIPASS 临时目录重启丢失，必须避开。"""
-    try:
-        from app.store import BASE_DIR
-        return BASE_DIR / "agent-workspace"
-    except Exception:
-        return Path(__file__).resolve().parents[2] / "agent-workspace"
+    """计算工作区根目录：core.paths.BASE_DIR（打包后落 exe 同级，持久；
+    开发模式为仓库根）。PyInstaller _MEIPASS 临时目录重启丢失，必须避开。"""
+    from core.paths import BASE_DIR
+    return BASE_DIR / "agent-workspace"
 
 
 WORKSPACE_ROOT = _compute_workspace_root()

@@ -102,7 +102,7 @@ def is_localhost_base_url(base_url: str) -> bool:
 
 def _get_config() -> dict:
     """获取当前 LLM 配置（base_url + api_key + model），优先从 settings 读取"""
-    from app.store import get_llm_config
+    from core.settings_store import get_llm_config
     return get_llm_config()
 
 
@@ -110,7 +110,7 @@ def _get_api_key() -> str:
     """获取当前生效的 API Key（排除占位符）。
     Get currently active API Key (excluding placeholders).
     """
-    from app.store import get_active_api_key
+    from core.settings_store import get_active_api_key
     key = get_active_api_key()
     if not key or _is_placeholder_key(key):
         raise RuntimeError("未设置 API Key，请在设置页面配置或通过 .env 配置 DASHSCOPE_API_KEY")
@@ -234,7 +234,7 @@ def _get_headers() -> dict:
     headers = {"Content-Type": "application/json"}
     if is_localhost_base_url(_get_base_url()):
         try:
-            from app.store import get_active_api_key
+            from core.settings_store import get_active_api_key
             key = get_active_api_key()
         except Exception:
             key = ""

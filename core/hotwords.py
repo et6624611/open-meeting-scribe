@@ -26,7 +26,7 @@ DASHSCOPE_BASE = "https://dashscope.aliyuncs.com"
 
 
 def _get_api_key() -> str:
-    from app.store import get_active_api_key
+    from core.settings_store import get_active_api_key
     key = get_active_api_key()
     if not key:
         raise RuntimeError("未设置 API Key，请在设置页面配置或通过 .env 配置 DASHSCOPE_API_KEY")

@@ -198,7 +198,7 @@ def test_headers_localhost_omits_authorization(monkeypatch):
     """localhost 端点且无有效 Key 时，请求头省略 Authorization。"""
     monkeypatch.setattr(llm, "_should_use_cloud", lambda: False)
     monkeypatch.setattr(llm, "_get_base_url", lambda: "http://localhost:11434")
-    monkeypatch.setattr("app.store.get_active_api_key", lambda: "")
+    monkeypatch.setattr("core.settings_store.get_active_api_key", lambda: "")
 
     headers = llm._get_headers()
     assert "Authorization" not in headers

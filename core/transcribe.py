@@ -403,7 +403,7 @@ def _transcribe_direct(
     speaker_count: int | None,
 ) -> tuple[list[dict], dict]:
     """直连模式：用户自持 API Key，主服务直连 DashScope API"""
-    from app.store import get_asr_config
+    from core.settings_store import get_asr_config
     cfg = get_asr_config()
     api_key = cfg.get("api_key", "")
     base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com").rstrip("/")

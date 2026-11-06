@@ -217,7 +217,7 @@ def restore_task(task_id: str, *, snapshot_id: str | None = None,
     走 tasks 内存对象 + save_task_to_disk + 脏标记，与 notes 路由同一落盘口径。
     恢复本身**不再产生快照**（回滚是纠错动作，不是 AI 改写；再快照会让撤销无限套娃）。
     """
-    from app.store import save_task_to_disk, tasks
+    from core.task_store import save_task_to_disk, tasks
 
     if not task_id or task_id not in tasks:
         return {"ok": False, "error": "task_not_found", "message": "会议任务不存在"}

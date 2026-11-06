@@ -226,7 +226,7 @@ def run_pipeline_stage2(
     # 从 settings 读取 LLM 模型（若 config 未显式覆盖） / Load LLM model from settings (if not overridden by config)
     if not config or "llm_model" not in config:
         try:
-            from app.store import get_llm_config
+            from core.settings_store import get_llm_config
             cfg["llm_model"] = get_llm_config().get("model", cfg["llm_model"])
         except Exception:
             pass  # 保持默认值 / Keep default
@@ -260,7 +260,7 @@ def run_pipeline_stage2(
     # 转写分层（PLAN-TRANSCRIPT-LAYERING）：纪要/标题/章节吃「清理版」深拷贝，
     # result["dialogue"] 与 save_summary 导出仍是逐字稿原文。
     try:
-        from app.store import get_transcript_config
+        from core.settings_store import get_transcript_config
         _cleanup_enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
     except Exception:
         _cleanup_enabled = True

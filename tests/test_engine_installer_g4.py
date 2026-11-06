@@ -242,17 +242,17 @@ class TestVerifyManifestFiles:
 
 class TestResolveDownloadUrl:
     def test_explicit_wins(self, monkeypatch):
-        monkeypatch.setattr("app.settings_store.get_engine_config",
+        monkeypatch.setattr("core.settings_store.get_engine_config",
                             lambda: {"local": {"component_url": "http://cfg/x.zip"}})
         assert ei.resolve_download_url("http://explicit/y.zip") == "http://explicit/y.zip"
 
     def test_settings_component_url(self, monkeypatch):
-        monkeypatch.setattr("app.settings_store.get_engine_config",
+        monkeypatch.setattr("core.settings_store.get_engine_config",
                             lambda: {"local": {"component_url": "http://cfg/x.zip"}})
         assert ei.resolve_download_url(None) == "http://cfg/x.zip"
 
     def test_default_release_convention(self, monkeypatch):
-        monkeypatch.setattr("app.settings_store.get_engine_config",
+        monkeypatch.setattr("core.settings_store.get_engine_config",
                             lambda: {"local": {}})
         url = ei.resolve_download_url(None)
         assert url.startswith(ei.DEFAULT_RELEASE_BASE)

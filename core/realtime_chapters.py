@@ -223,7 +223,7 @@ class RealtimeChapterGenerator:
             ]
 
             # 通过事件循环线程池执行 LLM 调用（不阻塞事件循环）
-            from app.store import event_loop
+            from core.realtime_store import event_loop
             if event_loop and not event_loop.is_closed():
                 future = asyncio.run_coroutine_threadsafe(
                     async_chat_completion_safe(

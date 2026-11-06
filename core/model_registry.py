@@ -96,7 +96,7 @@ def get_model_dir() -> Path:
     if env_dir:
         return Path(env_dir).expanduser()
     try:
-        from app.settings_store import get_engine_config
+        from core.settings_store import get_engine_config
         model_dir = get_engine_config()["local"]["model_dir"]
     except Exception:
         model_dir = ""

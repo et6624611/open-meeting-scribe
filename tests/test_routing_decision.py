@@ -13,8 +13,8 @@ import pytest
 # 预导入（收集期、桩未激活时）：防桩被永久绑定进路由模块（跨文件顺序依赖）。
 import app.routers.settings  # noqa: F401
 import app.server  # noqa: F401
-import app.settings_store as ss
 import core.routing as rt
+import core.settings_store as ss
 
 
 @pytest.fixture(autouse=True)
@@ -106,7 +106,7 @@ def cloud(monkeypatch):
 def keys(monkeypatch):
     def _set(llm_key=VALID_KEY, llm_base_url="https://api.openai.com/v1",
              asr_mode="proxy", asr_key="", proxy_url="http://proxy.local"):
-        import app.store as store
+        import core.settings_store as store
         monkeypatch.setattr(store, "get_active_api_key", lambda: llm_key or "", raising=True)
         monkeypatch.setattr(store, "get_llm_config",
                             lambda: {"base_url": llm_base_url, "api_key": llm_key or "",

@@ -27,7 +27,7 @@ DASHSCOPE_BASE = "https://dashscope.aliyuncs.com"
 
 def _get_api_key() -> str:
     """从设置或环境变量读取 ASR API Key / Read ASR API Key from settings or environment."""
-    from app.store import get_asr_config
+    from core.settings_store import get_asr_config
     key = get_asr_config()["api_key"]
     if not key:
         raise RuntimeError("未设置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")

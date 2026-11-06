@@ -131,7 +131,7 @@ def source_signature(dialogue: list[dict] | None) -> dict:
 
 def _tasks_dir() -> Path:
     try:
-        from app.store import TASKS_DIR
+        from core.task_store import TASKS_DIR
         return Path(TASKS_DIR)
     except Exception:
         return Path("data/tasks")
@@ -354,7 +354,8 @@ def _prepare_generation(
     reserve: bool,
 ) -> dict:
     """全部前置校验 + running sidecar。reserve=True 时占用 in-flight 锁（由生成方释放）。"""
-    from app.store import get_llm_config, tasks
+    from core.settings_store import get_llm_config
+    from core.task_store import tasks
 
     task = tasks.get(task_id)
     if task is None:
@@ -431,7 +432,7 @@ def generate_formal_version(
     """
     if auto:
         try:
-            from app.store import get_transcript_config
+            from core.settings_store import get_transcript_config
             auto_on = bool(
                 get_transcript_config().get("formal", {}).get("auto_generate", False)
             )

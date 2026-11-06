@@ -77,7 +77,7 @@ def resolve_download_url(explicit_url: str | None = None) -> str:
     if explicit_url:
         return explicit_url.strip()
     try:
-        from app.settings_store import get_engine_config
+        from core.settings_store import get_engine_config
         cfg_url = (get_engine_config()["local"].get("component_url") or "").strip()
         if cfg_url:
             return cfg_url

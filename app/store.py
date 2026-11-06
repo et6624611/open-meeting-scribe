@@ -20,20 +20,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# 仅本模块保留：PyInstaller 打包相关常量 /
-# Only this module keeps PyInstaller packaging constants
+# BASE_DIR 真相源在 core.paths（2026-11-06 下沉）；STATIC_DIR 为本模块保留 /
+# BASE_DIR truth lives in core.paths; STATIC_DIR stays here (app-layer resource)
 # ============================================================
 
 from pathlib import Path
 
-# PyInstaller 打包后，可执行文件所在目录为 exe 位置；资源文件在 _MEIPASS 临时目录 /
-# After packaging, exe dir is the executable location; resource files are in _MEIPASS temp dir
+from core.paths import BASE_DIR  # noqa: F401 — re-export，既有 app.store.BASE_DIR 路径不变
+
+# PyInstaller 打包后，资源文件在 _MEIPASS 临时目录 /
+# After packaging, resource files are in _MEIPASS temp dir
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    # PyInstaller 模式：BASE_DIR = exe 所在目录（数据持久化），STATIC_DIR = _MEIPASS/app/static（资源读取）
-    BASE_DIR = Path(sys.executable).parent
     STATIC_DIR = Path(sys._MEIPASS) / "app" / "static"
 else:
-    BASE_DIR = Path(__file__).resolve().parent.parent
     STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 

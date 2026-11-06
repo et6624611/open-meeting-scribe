@@ -48,13 +48,13 @@ def _get_asr_mode() -> str:
     且绝不触达任何云端转写端点（R1 边界：防误配 / 保证零出网）。
     """
     try:
-        from app.settings_store import get_engine_config
+        from core.settings_store import get_engine_config
         if get_engine_config().get("mode") == "local":
             return "local"
     except Exception:
         pass
     try:
-        from app.store import get_asr_config
+        from core.settings_store import get_asr_config
         return get_asr_config().get("mode", "proxy")
     except Exception:
         return "proxy"
@@ -245,7 +245,7 @@ class RealtimeTranscriber:
 
     def _start_direct(self) -> None:
         """直连模式：使用 DashScope SDK 直连"""
-        from app.store import get_asr_config
+        from core.settings_store import get_asr_config
         cfg = get_asr_config()
         api_key = cfg.get("api_key", "")
         base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com")

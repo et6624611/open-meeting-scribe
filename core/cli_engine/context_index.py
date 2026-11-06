@@ -170,7 +170,7 @@ def update_workspace_index(task_id: str, project_id: str | None, task: dict,
 def _project_members(project_id: str) -> list[dict]:
     """按日期倒序取项目内会议（任务库为空时先从磁盘加载）。"""
     _ce()._ensure_tasks_loaded()
-    from app.store import tasks
+    from core.task_store import tasks
     members = [t for t in tasks.values()
                if t.get("project_id") == project_id and t.get("task_id")]
     members.sort(key=lambda t: (t.get("meeting_date") or t.get("created_at") or ""), reverse=True)
@@ -244,11 +244,11 @@ def _write_global_decisions(projects_idx: list[dict], standalone_members: list[d
 def _ensure_tasks_loaded() -> None:
     """任务库为空时从磁盘加载一次。索引/迁移以任务库为全量基准，
     服务进程启动时已加载，CLI/测试进程按需补载。"""
-    from app.store import tasks as task_store
+    from core.task_store import tasks as task_store
     if task_store:
         return
     try:
-        from app.task_store import load_tasks_from_disk
+        from core.task_store import load_tasks_from_disk
         load_tasks_from_disk()
     except Exception as e:  # noqa: BLE001 - 加载失败按空库处理，不阻断导出
         logger.warning("[CLI引擎] 任务库加载失败: %s", e)
@@ -256,7 +256,7 @@ def _ensure_tasks_loaded() -> None:
 
 def _store_members(project_id: str | None) -> dict[str, dict]:
     """某范围（项目/独立会议）的全量任务，task_id → task。"""
-    from app.store import tasks as task_store
+    from core.task_store import tasks as task_store
     _ce()._ensure_tasks_loaded()
     if project_id:
         items = [t for t in task_store.values()
@@ -286,7 +286,7 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
             else:
                 # 与本范围对不上：旧版可能把项目会议错放进独立区，搬回所属项目；
                 # 彻底无主才归档为 未识别会议__<短ID>
-                from app.store import tasks as task_store
+                from core.task_store import tasks as task_store
                 owner = task_store.get(entry.name)
                 if owner and owner.get("project_id"):
                     target = (project_preview_dir(owner["project_id"])
@@ -304,7 +304,7 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
 
         # 1.5) 撞车归档清理：未识别会议__<key> 的 key 已命中任务库且真实工作区存在
         # → 当年是误归档的脏副本，缺失子项并入真实工作区后收掉（评估 2026-10-26 P0-4）
-        from app.store import tasks as task_store
+        from core.task_store import tasks as task_store
         by_key: dict[str, dict] = {}
         for tid, t in task_store.items():
             by_key.setdefault(_short_key(tid), t)
@@ -356,7 +356,7 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
 
 def _infer_project_id_from_dir(proj_dir: Path) -> str | None:
     """按目录内会议反查归属项目（索引 project_id 被污染时的自愈路径）。"""
-    from app.store import tasks as task_store
+    from core.task_store import tasks as task_store
     owners: set[str] = set()
     for m in read_meetings_index(proj_dir).get("meetings", []):
         t = task_store.get(m.get("task_id") or "")

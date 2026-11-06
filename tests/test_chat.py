@@ -774,7 +774,7 @@ class TestAttachment:
 
     @pytest.fixture(autouse=True)
     def _isolate_attachments_dir(self, tmp_path, monkeypatch):
-        import app.chat_attachment_store as store_mod
+        import core.chat_attachment_store as store_mod
         monkeypatch.setattr(store_mod, "ATTACHMENTS_DIR", tmp_path / "attachments")
         store_mod.ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 

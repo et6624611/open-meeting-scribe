@@ -2,9 +2,11 @@
 tests/test_core_layer_purity.py — 分层守护：core/ 不得反向依赖 app/
 
 T-13 验收：`grep -rn "^from app\\|^import app" core/ --include="*.py"` 输出为空。
+2026-11-06 遗留清零：函数级懒加载亦已全部改指 core.*，守护升级为全深度禁止。
 
-以 AST 精确判定「模块级 import」：含顶层 if/try/with 块内的 import，
-排除函数/类体内的懒加载（后者是调用时才执行，不构成加载期反向依赖）。
+两条 AST 规则：
+1. 模块级 import 不得出现 app.*（含顶层 if/try/with 块内）；
+2. 任意深度（含函数/类体懒加载）不得出现 app.*。
 """
 
 import ast
@@ -58,6 +60,24 @@ def test_no_module_level_app_imports():
         if hits:
             violations.append(f"{path.relative_to(CORE_DIR.parent)} -> {hits}")
     assert not violations, "core/ 存在模块级反向依赖 app：\n" + "\n".join(violations)
+
+
+def test_no_app_imports_anywhere():
+    """全深度扫描：函数/类体内的懒加载同样禁止引用 app.*。"""
+    violations = []
+    for path in _core_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                hits = [a.name for a in node.names if _is_app_module(a.name)]
+            elif isinstance(node, ast.ImportFrom):
+                hits = [node.module or ""] if node.level == 0 and _is_app_module(node.module) else []
+            else:
+                continue
+            if hits:
+                rel = path.relative_to(CORE_DIR.parent)
+                violations.append(f"{rel}:{node.lineno} -> {hits}")
+    assert not violations, "core/ 存在反向依赖 app（含函数级懒加载）：\n" + "\n".join(violations)
 
 
 def test_grep_acceptance_is_empty():

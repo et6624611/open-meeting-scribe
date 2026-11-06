@@ -63,7 +63,7 @@ def _cloud_available() -> bool:
 
 def _llm_key_available() -> bool:
     try:
-        from app.store import get_active_api_key
+        from core.settings_store import get_active_api_key
         key = get_active_api_key()
         return bool(key) and not is_placeholder_key(key)
     except Exception:
@@ -71,7 +71,7 @@ def _llm_key_available() -> bool:
 
 
 def _asr_config() -> dict:
-    from app.store import get_asr_config
+    from core.settings_store import get_asr_config
     return get_asr_config()
 
 
@@ -214,7 +214,7 @@ def get_routing_decision(context: str = "asr") -> dict:
         "unconfigured": bool,   # True = 该能力未设置来源，触发逐能力引导
       }
     """
-    from app.settings_store import get_auto_fallback, get_capability_status, get_expert_mode
+    from core.settings_store import get_auto_fallback, get_capability_status, get_expert_mode
 
     expert = get_expert_mode()
     try:
@@ -286,7 +286,7 @@ def _env_dashscope_key() -> str:
 
 def _llm_base_url() -> str:
     try:
-        from app.store import get_llm_config
+        from core.settings_store import get_llm_config
         return get_llm_config().get("base_url", "")
     except Exception:
         return ""

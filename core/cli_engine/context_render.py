@@ -100,7 +100,7 @@ def _realtime_pairs(entries: list[dict] | None, task: dict,
     来源优先级：前端快照 > 后端全量缓冲 > 最近缓冲；说话人名用内存映射按 id 解析。"""
     entries = entries or []
     if not entries and task_id:
-        from app import realtime_store  # 同进程内存只读，与 chat 内置链路同一事实源
+        from core import realtime_store  # 同进程内存只读，与 chat 内置链路同一事实源
         entries = (realtime_store.realtime_full_transcripts.get(task_id)
                    or realtime_store.realtime_transcript_buffers.get(task_id) or [])
     if not entries:

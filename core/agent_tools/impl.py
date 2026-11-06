@@ -142,7 +142,7 @@ def _realtime_sentences(task_id: str) -> list[dict]:
     """读取录音进行中的实时转写句子（全量优先，回退最近缓冲）。
     Realtime transcript sentences while recording is in progress (full list first,
     fallback to the capped ring buffer)."""
-    from app import realtime_store
+    from core import realtime_store
     full = realtime_store.realtime_full_transcripts.get(task_id)
     if full:
         return full
@@ -321,7 +321,7 @@ def _tool_get_hotwords() -> str:
 
 
 def _tool_get_system_settings() -> str:
-    from app.store import load_settings
+    from core.settings_store import load_settings
     settings = load_settings()
     safe_keys = ["language", "default_model", "theme", "hotwords_enabled"]
     info = {k: settings.get(k) for k in safe_keys if settings.get(k) is not None}
@@ -403,7 +403,7 @@ def _url_safety_check(url: str) -> str | None:
 
 def _get_web_search_config() -> dict | None:
     """取联网搜索配置；未配置返回 None。"""
-    from app.store import load_settings
+    from core.settings_store import load_settings
     settings = load_settings()
     ns = settings.get("web_search") or {}
     api_key = str(ns.get("api_key") or "").strip()
