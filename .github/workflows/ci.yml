@@ -31,8 +31,7 @@ jobs:
       run: |
         ruff check .
 
-    - name: 运行 mypy 类型检查（非阻断，观察一周后转阻断）
-      continue-on-error: true
+    - name: 运行 mypy 类型检查
       run: |
         pip install "mypy>=1.10.0"
         mypy core/errors.py core/fs_atomic.py core/remote_config.py
