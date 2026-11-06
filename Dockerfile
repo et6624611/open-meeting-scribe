@@ -25,8 +25,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
+COPY requirements.lock ./
+RUN pip install -r requirements.lock
 
 COPY . .
 # Replace any local build output with the freshly built one

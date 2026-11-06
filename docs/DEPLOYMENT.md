@@ -3,8 +3,8 @@ title: 部署指南
 description: Open Meeting Scribe 云服务器部署参考，适用于自建实例或订阅服务运维。
 tags: ["deployment", "server", "systemd", "运维"]
 created_at: "2026-09-06"
-updated_at: "2026-09-10"
-version: "2.0.0"
+updated_at: "2026-11-06"
+version: "2.1.0"
 ---
 
 # DEPLOYMENT — 云服务器部署指南
@@ -56,7 +56,8 @@ cd open-meeting-scribe
 # 创建虚拟环境
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+# 按锁文件安装固定版本依赖（与 CI / 打包产出一致）
+pip install -r requirements.lock
 
 # 配置环境变量
 cp .env.example .env
@@ -171,7 +172,7 @@ git pull origin main
 
 # 2. 更新依赖
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock
 
 # 3. 重建前端（如有变更）
 cd frontend && npm install && npm run build && cd ..
