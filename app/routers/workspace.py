@@ -14,7 +14,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.settings_store import get_feature_flags
-from app.store import tasks
 from core.cli_engine.context_export import (
     attach_ide_rule,
     export_global_context,
@@ -28,6 +27,7 @@ from core.cli_engine.context_export import (
 )
 from core.cli_engine.ide_probe import detect_ides, launch_ide
 from core.i18n import _
+from core.task_store import tasks
 
 logger = logging.getLogger(__name__)
 

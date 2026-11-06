@@ -16,8 +16,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.store import realtime_summarizers
 from core.i18n import _
+from core.realtime_store import realtime_summarizers
 
 logger = logging.getLogger(__name__)
 

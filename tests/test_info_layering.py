@@ -134,7 +134,8 @@ class TestContextInjectionNote:
 
     def test_cli_export_carries_note(self, tmp_path, monkeypatch):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tmp_path)
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "INSIGHTS_TASKS_DIR", tmp_path)
         msgs = [{"title": "口径盲区", "body": "是否缺了审批链？", "note": "说话人2 07:34"}]
         (tmp_path / "task-2.insights.json").write_text(
             json.dumps({"messages": msgs}, ensure_ascii=False), encoding="utf-8")

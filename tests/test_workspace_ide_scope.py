@@ -4,14 +4,16 @@ import json
 import pytest
 
 import core.cli_engine.context_export as ce
-from app.store import tasks as task_store
+import core.cli_engine.context_index as ci
+import core.cli_engine.context_paths as cp
+from core.task_store import tasks as task_store
 
 
 @pytest.fixture
 def preview_root(tmp_path, monkeypatch):
     root = tmp_path / "_preview"
     root.mkdir()
-    monkeypatch.setattr(ce, "PREVIEW_ROOT", root)
+    monkeypatch.setattr(cp, "PREVIEW_ROOT", root)
     return root
 
 
@@ -156,7 +158,7 @@ def test_stale_orphan_archive_merged_when_real_workspace_exists(preview_root, mo
 def test_true_orphan_archive_kept(preview_root, monkeypatch):
     # 真无主（key 不命中任务库）的归档保留，等人工辨认
     monkeypatch.setattr("core.task_store.tasks", {})
-    monkeypatch.setattr(ce, "_ensure_tasks_loaded", lambda: None)
+    monkeypatch.setattr(ci, "_ensure_tasks_loaded", lambda: None)
     orphan = preview_root / "_standalone" / "未识别会议__0123abcd"
     (orphan / "context").mkdir(parents=True)
     ce._migrate_meeting_dirs(preview_root / "_standalone", None)
@@ -165,7 +167,7 @@ def test_true_orphan_archive_kept(preview_root, monkeypatch):
 
 def test_project_context_writes_cross_meeting_root(preview_root, monkeypatch):
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
-    monkeypatch.setattr(ce, "_project_display_name", lambda pid: "产品研发")
+    monkeypatch.setattr(cp, "_project_display_name", lambda pid: "产品研发")
     t1 = _task("a91b3e77-1111-4000-8000-000000000001", "需求评审",
                project_id=project_id, date="2026-10-08T09:00:00")
     t2 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会",
@@ -197,7 +199,7 @@ def test_project_context_writes_cross_meeting_root(preview_root, monkeypatch):
 
 
 def test_global_context_indexes_and_migrates_legacy(preview_root, monkeypatch):
-    monkeypatch.setattr(ce, "_project_display_name", lambda pid: "产品研发")
+    monkeypatch.setattr(cp, "_project_display_name", lambda pid: "产品研发")
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
     t1 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会", project_id=project_id)
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈", date="2026-10-12T10:00:00")
@@ -249,7 +251,7 @@ def test_global_context_indexes_and_migrates_legacy(preview_root, monkeypatch):
 def test_global_export_never_poisons_indexless_project_dir(preview_root, monkeypatch):
     """回归：项目目录缺索引/索引被污染时，scope=all 曾把它误标为 standalone，
     把独立会议灌进项目索引并连锁清空独立区（电子档案系统事故）。"""
-    monkeypatch.setattr(ce, "_project_display_name", lambda pid: "产品研发")
+    monkeypatch.setattr(cp, "_project_display_name", lambda pid: "产品研发")
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
     t1 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会", project_id=project_id)
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈")
@@ -281,7 +283,7 @@ def test_global_export_never_poisons_indexless_project_dir(preview_root, monkeyp
 def test_global_export_writes_standalone_and_root_decisions(preview_root, monkeypatch):
     """评估 2026-10-26 P0-1/P0-2/P0-5 回归：standalone 索引/台账不能空转，
     根级 _DECISIONS.md 必须真实存在，机器索引必须含会议级条目。"""
-    monkeypatch.setattr(ce, "_project_display_name", lambda pid: "产品研发")
+    monkeypatch.setattr(cp, "_project_display_name", lambda pid: "产品研发")
     project_id = "7f3a2c1b-0000-4000-8000-000000000001"
     t1 = _task("5cdf8150-2222-4000-8000-000000000002", "产品周会", project_id=project_id)
     t2 = _task("deadbeef-1111-4000-8000-000000000003", "客户访谈", date="2026-10-12T10:00:00")
@@ -311,7 +313,7 @@ def test_global_export_writes_standalone_and_root_decisions(preview_root, monkey
 
 def test_ds_store_swept_on_global_export(preview_root, monkeypatch):
     monkeypatch.setattr("core.task_store.tasks", {})
-    monkeypatch.setattr(ce, "_ensure_tasks_loaded", lambda: None)
+    monkeypatch.setattr(ci, "_ensure_tasks_loaded", lambda: None)
     junk = preview_root / "_standalone" / "somemeeting" / ".DS_Store"
     junk.parent.mkdir(parents=True)
     junk.write_bytes(b"junk")

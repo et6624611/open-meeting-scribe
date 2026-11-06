@@ -19,9 +19,9 @@ import logging
 from fastapi import APIRouter, Depends
 
 try:  # 合并容错：WIP（require_admin_or_local）先行合入则自动采用
-    from app.routers.admin import require_admin_or_local as require_manage
+    from app.auth_deps import require_admin_or_local as require_manage
 except ImportError:
-    from app.routers.admin import require_admin as require_manage
+    from app.auth_deps import require_admin as require_manage
 
 from core.engine_host import get_component_status, get_engine_host
 from core.engine_installer import (

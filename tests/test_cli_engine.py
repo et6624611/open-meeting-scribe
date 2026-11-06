@@ -344,7 +344,8 @@ class TestListModels:
 class TestContextExport:
     def test_export_writes_files_outside_data(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         task = {
             "dialogue": [{"speaker_name": "张三", "sentences": [{"text": "建议 Q3 上线", "begin_time": 0}]}],
             "summary": "决定 Q3 上线。",
@@ -364,7 +365,8 @@ class TestContextExport:
 
     def test_export_no_task_still_writes_agents(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         meta = ce.export_context(engine_id="qoder-cli", task=None, task_id=None,
                                  user_message="你是谁")
         assert (tmp_path / "agent-workspace" / "qoder-cli" / "general" / "AGENTS.md").is_file()
@@ -373,7 +375,8 @@ class TestContextExport:
     def test_export_includes_notes_and_final_summary(self, monkeypatch, tmp_path):
         """随记（user_notes）必须入工作区；纪要取定稿口径（user_summary 优先）。"""
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         task = {
             "dialogue": [{"speaker_name": "张三", "sentences": [{"text": "预算口径待定", "begin_time": 0}]}],
             "summary": "AI 初稿纪要",
@@ -396,7 +399,8 @@ class TestContextExport:
 
     def test_export_skips_notes_when_absent(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         meta = ce.export_context(engine_id="qoder-cli", task={"dialogue": [], "summary": ""},
                                  task_id="t-nonotes", user_message="你好")
         assert "context/notes.md" not in meta["brief"]
@@ -406,13 +410,14 @@ class TestContextExport:
     def test_export_writes_insights_md(self, monkeypatch, tmp_path):
         """REQ-INSIGHT-DECK-POSTMEETING R3：有洞察时导出 context/insights.md，无则不生成"""
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         tasks_dir = tmp_path / "tasks"
         tasks_dir.mkdir()
         (tasks_dir / "t1.insights.json").write_text(json.dumps({"messages": [
             {"title": "资源冲突", "body": "测试与上线窗口重叠", "solution": "错峰", "diagram": "flowchart LR", "phase": "post_meeting"},
         ]}, ensure_ascii=False), encoding="utf-8")
-        monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tasks_dir)
+        monkeypatch.setattr(context_paths, "INSIGHTS_TASKS_DIR", tasks_dir)
         task = {"dialogue": [], "summary": "", "decisions": []}
         ce.export_context(engine_id="qoder-cli", task=task, task_id="t1", user_message="写跟进邮件")
         f = tmp_path / "agent-workspace" / "qoder-cli" / "t1" / "context" / "insights.md"
@@ -426,7 +431,8 @@ class TestContextExport:
         """回归原始 HTML R2：板逐字节拷进 context/boards/ + index.md 基线索引。"""
         import core.insight_board as ib
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         board_dir = tmp_path / "tasks"
         board_dir.mkdir()
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", board_dir)
@@ -446,8 +452,9 @@ class TestContextExport:
 
     def test_export_skips_insights_when_absent(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
-        monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tmp_path / "no-here")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        monkeypatch.setattr(context_paths, "INSIGHTS_TASKS_DIR", tmp_path / "no-here")
         task = {"dialogue": [], "summary": "", "decisions": []}
         ce.export_context(engine_id="qoder-cli", task=task, task_id="t9", user_message="你好")
         assert not (tmp_path / "agent-workspace" / "qoder-cli" / "t9" / "context" / "insights.md").exists()
@@ -458,7 +465,8 @@ class TestPermissionSection:
 
     def _agents_md(self, monkeypatch, tmp_path, **kw):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         ce.export_context(engine_id="qoder-cli", task=None, task_id="perm-1",
                           user_message="重新生成板", **kw)
         return (tmp_path / "agent-workspace" / "qoder-cli" / "perm-1" / "AGENTS.md").read_text(encoding="utf-8")
@@ -547,11 +555,12 @@ class TestChatFallback:
         import asyncio
 
         import app.routers.chat as chat
-        monkeypatch.setattr(chat, "get_chat_engine_config", lambda: {
+        from core import settings_store
+        from core.cli_engine import probe as cli_probe
+        monkeypatch.setattr(settings_store, "get_chat_engine_config", lambda: {
             "enabled": True, "engine_id": "qoder-cli", "model": None,
             "auth_tier": "readonly", "session_persistence": True, "cli_path_override": None})
-        monkeypatch.setattr(chat, "load_manifest", lambda eid: mf.load_manifest("qoder-cli"))
-        monkeypatch.setattr(chat, "probe_engine", lambda m, cli_path_override=None: {
+        monkeypatch.setattr(cli_probe, "probe_engine", lambda m, cli_path_override=None: {
             "available": False, "reason": "not_installed", "display_name": "Qoder CLI",
             "hint": "chatEngine.notInstalled"})
         data = chat.ChatRequest(message="hi", engine="agent", stream_id="s1")
@@ -590,10 +599,11 @@ class TestEngineRegistry:
     def test_chat_engine_endpoint_lists_engines(self, monkeypatch):
         import shutil as _shutil
 
-        import app.routers.settings as st
+        import core.settings_store as st
+        from app.routers.settings_engines import get_chat_engine_status
         monkeypatch.setattr(st, "get_chat_engine_config", self._base_cfg)
         monkeypatch.setattr(_shutil, "which", lambda x: None)  # 全部未安装：探针落 path 失败段，不触 subprocess
-        resp = st.get_chat_engine_status()
+        resp = get_chat_engine_status()
         ids = {e["engine_id"] for e in resp["engines"]}
         assert {"qoder-cli", "qoder-cli-cn", "claude-code",
                 "codebuddy", "trae-cli", "kimi-code", "codex"} <= ids
@@ -603,26 +613,28 @@ class TestEngineRegistry:
         assert resp["probe"]["available"] is False and resp["probe"]["failed_stage"] == "path"
 
     def test_save_rejects_unknown_engine_id(self, monkeypatch):
-        import app.routers.settings as st
         import core.settings_store as _core_ss
+        import core.settings_store as st
+        from app.routers.settings_core import save_settings
         saved: dict = {}
         fake_settings = {"chat_engine": self._base_cfg("qoder-cli")}
         monkeypatch.setattr(st, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(_core_ss, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
-        st.save_settings({"chat_engine": {"enabled": True, "engine_id": "evil-engine"}})
+        save_settings({"chat_engine": {"enabled": True, "engine_id": "evil-engine"}})
         # 非法 id 被丢弃，保留既有合法值（绝不写入未注册引擎）
         assert saved["chat_engine"]["engine_id"] == "qoder-cli"
 
     def test_save_accepts_registered_engine_id(self, monkeypatch):
-        import app.routers.settings as st
         import core.settings_store as _core_ss
+        import core.settings_store as st
+        from app.routers.settings_core import save_settings
         saved: dict = {}
         fake_settings = {"chat_engine": self._base_cfg("qoder-cli")}
         monkeypatch.setattr(st, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(_core_ss, "load_settings", lambda: fake_settings)
         monkeypatch.setattr(st, "save_settings_to_disk", lambda m: saved.update(m))
-        st.save_settings({"chat_engine": {"enabled": True, "engine_id": "claude-code"}})
+        save_settings({"chat_engine": {"enabled": True, "engine_id": "claude-code"}})
         assert saved["chat_engine"]["engine_id"] == "claude-code"
 
 
@@ -642,8 +654,9 @@ class TestWorkspaceRetention:
         import os
 
         from core.cli_engine import context_export as ce
+        from core.cli_engine import context_paths
         root = tmp_path / "agent-workspace"
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", root)
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", root)
         old = root / "qoder-cli" / "oldtask"
         fresh = root / "qoder-cli" / "newtask"
         old.mkdir(parents=True)
@@ -657,8 +670,9 @@ class TestWorkspaceRetention:
 
     def test_sweep_disabled_when_zero(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
+        from core.cli_engine import context_paths
         root = tmp_path / "agent-workspace"
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", root)
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", root)
         (root / "qoder-cli" / "t").mkdir(parents=True)
         assert ce.sweep_expired_workspaces(0) == 0
         assert (root / "qoder-cli" / "t").exists()
@@ -874,14 +888,19 @@ def agent_route(monkeypatch):
     from types import SimpleNamespace
 
     import app.routers.chat as chat
+    from core import agent_workspace, chat_context, settings_store
+    from core.cli_engine import context_export as cli_context_export
+    from core.cli_engine import mcp_bridge as cli_mcp_bridge
+    from core.cli_engine import probe as cli_probe
+    from core.cli_engine import runner as cli_runner
     cfg = {"enabled": True, "engine_id": "qoder-cli", "model": None,
            "session_persistence": False, "auth_tier": "workspace_write"}
-    monkeypatch.setattr(chat, "get_chat_engine_config", lambda: cfg)
-    monkeypatch.setattr(chat, "probe_engine", lambda *a: {"available": True, "path": "fake-cli"})
-    monkeypatch.setattr(chat, "build_speaker_name_map", lambda *a: {})
-    monkeypatch.setattr(chat, "resolve_agent_role", lambda *a: None)
-    monkeypatch.setattr(chat, "export_context", lambda **kw: {"workspace": ".", "add_dirs": ["."], "brief": "用户任务：生成洞察板"})
-    monkeypatch.setattr(chat, "manifest_has_mcp", lambda *a: True)
+    monkeypatch.setattr(settings_store, "get_chat_engine_config", lambda: cfg)
+    monkeypatch.setattr(cli_probe, "probe_engine", lambda *a: {"available": True, "path": "fake-cli"})
+    monkeypatch.setattr(chat_context, "build_speaker_name_map", lambda *a: {})
+    monkeypatch.setattr(agent_workspace, "resolve_agent_role", lambda *a: None)
+    monkeypatch.setattr(cli_context_export, "export_context", lambda **kw: {"workspace": ".", "add_dirs": ["."], "brief": "用户任务：生成洞察板"})
+    monkeypatch.setattr(cli_mcp_bridge, "manifest_has_mcp", lambda *a: True)
     configs = []
     teardown = []
 
@@ -889,8 +908,8 @@ def agent_route(monkeypatch):
         configs.append(kwargs)
         return "fake-config", SimpleNamespace(token="test-token"), ["revise_insight_board"]
 
-    monkeypatch.setattr(chat, "build_bridge_config", build)
-    monkeypatch.setattr(chat, "teardown_bridge", lambda *a: teardown.append(a))
+    monkeypatch.setattr(cli_mcp_bridge, "build_bridge_config", build)
+    monkeypatch.setattr(cli_mcp_bridge, "teardown_bridge", lambda *a: teardown.append(a))
     data = chat.ChatRequest(message="生成洞察板", task_id="fake-task", engine="agent", stream_id="route-test")
     calls = []
     closed = []
@@ -909,7 +928,7 @@ def agent_route(monkeypatch):
                     yield event
             finally:
                 closed.append(index)
-        monkeypatch.setattr(chat, "run_cli_agent", fake_run)
+        monkeypatch.setattr(cli_runner, "run_cli_agent", fake_run)
 
     async def collect():
         return [e async for e in chat._agent_engine_events(data, data.message, "project", "http://localhost:9999")]

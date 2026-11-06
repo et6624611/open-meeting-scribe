@@ -23,20 +23,20 @@ app/routers/insights.py — AI 洞察路由端点 / AI insights route endpoints
 import json
 import logging
 import webbrowser
-from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from app.store import tasks
+from core import task_store
 from core.insight_board import (
     board_html_load,
     board_html_meta,
     boards_manifest,
     invoke_create_board,
 )
-from core.insight_budget import apply_budget, normalize_factor
+from core.insight_budget import apply_budget, insights_file, normalize_factor
+from core.task_store import tasks
 
 logger = logging.getLogger(__name__)
 # 语义审计专用（与 server.py 的 audit 同名 logger 共享 logs/audit.log handler）
@@ -44,36 +44,17 @@ audit_logger = logging.getLogger("audit")
 
 router = APIRouter(tags=["insights"])
 
-# 洞察消息存储目录（与 task 数据同目录） / Insight message storage dir (same as task data)
-TASKS_DIR = Path("data/tasks")
-
 # ============================================================
 # 洞察消息持久化（按会议隔离） / Insight message persistence (per-meeting isolation)
 # ============================================================
-
-def _insights_file(task_id: str) -> Path:
-    """获取指定会议的洞察消息存储路径 / Get insight message storage path for a meeting."""
-    return TASKS_DIR / f"{task_id}.insights.json"
-
-
-def _load_insight_messages(task_id: str) -> list[dict]:
-    """读取洞察消息列表（文件缺失/损坏返回空） / Load insight messages (empty on missing/corrupt)."""
-    f = _insights_file(task_id)
-    if not f.exists():
-        return []
-    try:
-        data = json.loads(f.read_text(encoding="utf-8"))
-        return list(data.get("messages", []))
-    except Exception:
-        return []
-
+# T-24：路径与读取口径统一由 core.insight_budget 提供，tasks 路由不再跨 router 反查。
 
 @router.get("/api/insights/messages/{task_id}")
 async def get_insight_messages(task_id: str):
     """
     加载指定会议的洞察消息列表 / Load insight messages for a meeting.
     """
-    f = _insights_file(task_id)
+    f = insights_file(task_id)
     if not f.exists():
         return {"messages": []}
     try:
@@ -92,13 +73,13 @@ async def save_insight_messages(task_id: str, data: dict):
     写盘前按 task.one_page.insights 系数执行预算重排；
     任务不存在时按系数 1 处理（旧任务兼容口径）。
     """
-    TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    task_store.TASKS_DIR.mkdir(parents=True, exist_ok=True)
     messages = data.get("messages", [])
     try:
         task = tasks.get(task_id)
         factor = normalize_factor((task.get("one_page") or {}).get("insights", 1)) if task else 1.0
         messages = apply_budget(messages, factor)
-        f = _insights_file(task_id)
+        f = insights_file(task_id)
         f.write_text(
             json.dumps({"messages": messages}, ensure_ascii=False, indent=2),
             encoding="utf-8"

@@ -46,9 +46,9 @@ router = APIRouter(prefix="/api/admin", tags=["管理后台"])
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 # 复用 core.auth 中已校验的 JWT_SECRET（永不为空，未配置时为进程级随机密钥）， / Reuse verified JWT_SECRET from core.auth (never empty; process-level random key if unconfigured);
 # 不再使用硬编码兆底密钥，避免密钥可预测导致管理员 JWT 被伪造。 / no longer use hardcoded fallback key to avoid predictable key allowing admin JWT forgery.
+from app.auth_deps import ADMIN_COOKIE, require_admin
 from core.auth import JWT_SECRET as ADMIN_JWT_SECRET
 
-ADMIN_COOKIE = "oms_admin_session"
 ADMIN_JWT_EXPIRE_SECONDS = 12 * 3600  # 12 小时 / 12 hours
 
 # Cookie Secure 标志：HTTPS 部署时设为 true，本地开发保持 false / Cookie Secure flag: true for HTTPS deployment; false for local dev
@@ -95,53 +95,6 @@ def _create_admin_token() -> str:
         "exp": now + ADMIN_JWT_EXPIRE_SECONDS,
     }
     return jwt.encode(payload, ADMIN_JWT_SECRET, algorithm="HS256")
-
-
-def _verify_admin_token(token: str) -> dict | None:
-    """验证管理员 JWT / Verify admin JWT"""
-    try:
-        payload = jwt.decode(token, ADMIN_JWT_SECRET, algorithms=["HS256"])
-        if payload.get("role") != "admin":
-            return None
-        return payload
-    except jwt.InvalidTokenError:
-        return None
-
-
-def require_admin(request: Request):
-    """依赖注入：验证管理员身份 / Dependency injection: verify admin identity"""
-    token = request.cookies.get(ADMIN_COOKIE)
-    if not token:
-        raise HTTPException(401, _("Please log in to the admin console first"))
-    payload = _verify_admin_token(token)
-    if not payload:
-        raise HTTPException(401, _("Admin login expired"))
-    return payload
-
-
-# 认证网关开关：与 app/server.py 的 enforce_auth_middleware 读取同一环境变量。 / Auth gateway flag: same env var as enforce_auth_middleware.
-_REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
-
-
-def is_local_single_user() -> bool:
-    """是否本地单机部署（REQUIRE_AUTH 非 true）/ Whether this is a local single-user deployment.
-
-    动态读取环境变量（而非缓存的模块常量），以便测试用 monkeypatch.setenv 切换。
-    """
-    return os.getenv("REQUIRE_AUTH", "false").lower() != "true"
-
-
-def require_admin_or_local(request: Request):
-    """依赖注入：管理员或本地单机模式放行 / Dependency: admin session OR local single-user mode.
-
-    单机桌面部署（REQUIRE_AUTH=false，默认）下操作者即机器所有者，直接视为管理员；
-    多用户服务器部署仍要求管理后台签发的 oms_admin_session cookie（D-R2 不变）。
-    仅用于 /api/engine/* 等客户端可触发的变更面；/api/admin/*（用户/配额治理）
-    维持 require_admin 严格校验，不受本地模式影响。
-    """
-    if is_local_single_user():
-        return {"sub": "local", "role": "admin", "source": "local_mode"}
-    return require_admin(request)
 
 
 # ============================================================

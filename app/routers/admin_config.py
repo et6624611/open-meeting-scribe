@@ -13,7 +13,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.routers.admin import require_admin
+from app.auth_deps import require_admin
 from core import remote_config
 from core.i18n import _
 

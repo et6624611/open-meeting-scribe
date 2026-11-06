@@ -98,7 +98,7 @@ class TestRetrySummaryNoDialogue:
     def test_retry_summary_no_dialogue(self, client):
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         # 创建一个无 dialogue 的任务
         task_id = str(uuid.uuid4())
@@ -130,7 +130,7 @@ class TestRetrySummaryOk:
     def test_retry_summary_with_dialogue(self, client, tmp_path):
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         # 创建一个有 dialogue 的临时音频文件
         audio_file = tmp_path / "test_audio.wav"
@@ -180,7 +180,7 @@ class TestArchiveTask:
     def test_archive_ok(self, client):
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         task_id = str(uuid.uuid4())
         tasks[task_id] = {
@@ -211,7 +211,7 @@ class TestUnarchiveTask:
     def test_unarchive_ok(self, client):
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         task_id = str(uuid.uuid4())
         tasks[task_id] = {
@@ -238,7 +238,7 @@ class TestBatchArchive:
     def test_batch_archive_ok(self, client):
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         ids = []
         for _ in range(3):
@@ -268,7 +268,7 @@ class TestBatchArchive:
         """部分 ID 不存在时，仅归档存在的任务"""
         import uuid
 
-        from app.store import tasks
+        from core.task_store import tasks
 
         tid = str(uuid.uuid4())
         tasks[tid] = {
@@ -458,8 +458,8 @@ class TestInsightMessagesPersistence:
 
     def test_save_and_load_messages(self, client, tmp_path, monkeypatch):
         """保存后加载应返回相同消息"""
-        import app.routers.insights as insights_router
-        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        import core.task_store as task_store
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
         task_id = "test-task-123"
         messages = [
             {"id": "msg-1", "title": "测试洞察", "body": "内容", "timestamp": 1234567890},

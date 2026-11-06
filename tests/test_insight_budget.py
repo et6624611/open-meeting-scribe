@@ -13,6 +13,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+import core.task_store as task_store
 from app.server import app
 from core.insight_budget import (
     apply_budget,
@@ -115,7 +116,7 @@ class TestApplyBudget:
 class TestSaveEndpointRebalance:
     def test_save_applies_budget_and_returns_messages(self, client, tmp_path, monkeypatch):
         import app.routers.insights as insights_router
-        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
         monkeypatch.setattr(insights_router, "tasks", {"t-b1": {"task_id": "t-b1", "one_page": {"insights": 0.5}}})
         msgs = [_msg(i) for i in range(1, 4)]
         resp = client.post("/api/insights/messages/t-b1", json={"messages": msgs})
@@ -129,7 +130,7 @@ class TestSaveEndpointRebalance:
 
     def test_save_unknown_task_defaults_to_one_page(self, client, tmp_path, monkeypatch):
         import app.routers.insights as insights_router
-        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
         monkeypatch.setattr(insights_router, "tasks", {})
         msgs = [_msg(i) for i in range(1, 5)]
         resp = client.post("/api/insights/messages/t-ghost", json={"messages": msgs})
@@ -146,7 +147,7 @@ class TestPatchOnePage:
         store = {"t-op": task}
         monkeypatch.setattr(tasks_router, "tasks", store)
         monkeypatch.setattr(tasks_router, "save_task_to_disk", lambda tid: None)
-        monkeypatch.setattr(insights_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
         messages = [_msg(i) for i in range(1, 5)]
         (tmp_path / "t-op.insights.json").write_text(
             json.dumps({"messages": messages}, ensure_ascii=False), encoding="utf-8")
@@ -200,7 +201,8 @@ class TestContextInjectionFiltersDeferred:
 
     def test_cli_context_export(self, tmp_path, monkeypatch):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "INSIGHTS_TASKS_DIR", tmp_path)
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "INSIGHTS_TASKS_DIR", tmp_path)
         self._write(tmp_path, [_msg(1), {**_msg(2), "deferred": True}])
         rendered = ce._render_insights("t1")
         assert "洞察1" in rendered and "洞察2" not in rendered

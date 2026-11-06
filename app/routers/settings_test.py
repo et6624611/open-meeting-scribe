@@ -15,18 +15,13 @@ import time
 import requests
 from fastapi import APIRouter
 
+from core import settings_store
 from core.i18n import _
 from core.llm import is_localhost_base_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _sm():
-    """延迟获取 settings 聚合模块（让测试 monkeypatch settings.get_llm_config 等生效）。"""
-    import app.routers.settings as _settings  # noqa: E402
-    return _settings
 
 
 @router.post("/api/settings/test")
@@ -51,7 +46,7 @@ def test_api_connection(data: dict = None):
 
 def _test_asr_connection(asr_data: dict | None) -> dict:
     """测试 ASR 服务连接（支持代理模式和直连模式） / Test ASR service connection (proxy and direct modes)."""
-    cfg = _sm().get_asr_config()
+    cfg = settings_store.get_asr_config()
     mode = cfg.get("mode", "proxy")
 
     # 若前端传入了新配置，使用传入值覆盖 / Override with incoming config if provided
@@ -66,7 +61,7 @@ def _test_asr_connection(asr_data: dict | None) -> dict:
 
 def _test_asr_proxy() -> dict:
     """测试 ASR 代理服务连接 / Test ASR proxy service connection."""
-    cfg = _sm().get_asr_config()
+    cfg = settings_store.get_asr_config()
     proxy_url = cfg.get("proxy_url", "")
 
     if not proxy_url:
@@ -101,7 +96,7 @@ def _test_asr_direct(asr_data: dict | None) -> dict:
         base_url = asr_data.get("base_url", "")
         api_key = asr_data.get("api_key", "")
     else:
-        cfg = _sm().get_asr_config()
+        cfg = settings_store.get_asr_config()
         base_url = cfg.get("base_url", "")
         api_key = cfg.get("api_key", "")
 
@@ -143,13 +138,13 @@ def _test_ll_connection(llm_data: dict | None) -> dict:
         api_key = llm_data.get("api_key", "")
         model = llm_data.get("model", "qwen-plus")
     else:
-        cfg = _sm().get_llm_config()
+        cfg = settings_store.get_llm_config()
         base_url = cfg["base_url"]
         api_key = cfg["api_key"]
         model = cfg["model"]
 
     if not api_key or "****" in api_key:
-        api_key = _sm().get_active_api_key()
+        api_key = settings_store.get_active_api_key()
 
     if not api_key:
         return {"ok": False, "error": _("LLM API Key not configured")}
@@ -209,7 +204,7 @@ def test_llm_connection(data: dict = None):
     localhost 端点允许空 Key；非 localhost 的 http:// 端点返回显式安全警告。
     """
     incoming = (data or {}).get("llm") or data or {}
-    cfg = _sm().get_llm_config()
+    cfg = settings_store.get_llm_config()
 
     base_url = (incoming.get("base_url") or cfg.get("base_url") or "").strip()
     model = (incoming.get("model") or cfg.get("model") or "").strip()
@@ -233,7 +228,7 @@ def test_llm_connection(data: dict = None):
     localhost = is_localhost_base_url(base_url)
     if not localhost and not api_key and raw_key is None:
         # 未显式传 Key 时才兜底旧版全局 Key；显式空串按「无 Key」处理返回 missing_key
-        api_key = _sm().get_active_api_key()
+        api_key = settings_store.get_active_api_key()
     if not api_key and not localhost:
         return {
             "ok": False,

@@ -8,6 +8,7 @@ import pytest
 import requests
 
 import core.pipeline_runner as pr
+from core import settings_store, task_store
 
 # ── 通用 fixture：隔离 side effects ─────────────────────────────
 
@@ -15,8 +16,8 @@ import core.pipeline_runner as pr
 @pytest.fixture(autouse=True)
 def _runner_isolation(monkeypatch):
     """每个用例前清理 tasks dict，并屏蔽磁盘写入与 sleep。"""
-    pr.tasks.clear()
-    monkeypatch.setattr(pr, "save_task_to_disk", lambda tid: None)
+    task_store.tasks.clear()
+    monkeypatch.setattr(task_store, "save_task_to_disk", lambda tid: None)
     monkeypatch.setattr(pr.joblog, "append_event", lambda *a, **k: None)
     monkeypatch.setattr(pr.time, "sleep", lambda s: None)
     # _cleanup_normalized_intermediate 里读 storage config + 删文件，屏蔽
@@ -28,7 +29,7 @@ def _runner_isolation(monkeypatch):
     monkeypatch.setattr(pr.voiceprint, "build_auto_mapping", lambda r: {})
     monkeypatch.setattr(pr.speakers, "get_speaker_by_id", lambda uid: None)
     # get_feature_flags 是模块级导入的函数，用 setattr(module, name, value) 形式
-    monkeypatch.setattr(pr, "get_feature_flags", lambda: {"voiceprint_auto_match": False})
+    monkeypatch.setattr(settings_store, "get_feature_flags", lambda: {"voiceprint_auto_match": False})
     # 用量计量 —— 吞掉
     try:
         import core.metering
@@ -95,13 +96,13 @@ class TestRunPipelineTaskStage1:
         monkeypatch.setattr(pr, "estimate_speaker_count", lambda p: 2)
 
         tid = "tsk-s1-ok"
-        pr.tasks[tid] = {"task_id": tid, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing"}
         fake_audio = tmp_path / "meeting.wav"
         fake_audio.write_bytes(b"\x00" * 1024)
 
         pr.run_pipeline_task(tid, fake_audio, "meeting.wav")
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 1
         assert task["status"] == "completed"
         assert task.get("retry_count", 0) == 0
@@ -134,13 +135,13 @@ class TestRunPipelineTaskStage1:
         monkeypatch.setattr(pr, "estimate_speaker_count", lambda p: 1)
 
         tid = "tsk-s1-retry"
-        pr.tasks[tid] = {"task_id": tid, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing"}
         fake_audio = tmp_path / "m.wav"
         fake_audio.write_bytes(b"\x00" * 1024)
 
         pr.run_pipeline_task(tid, fake_audio, "m.wav")
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 2
         assert task["status"] == "completed"
         assert task["retry_count"] == 1
@@ -158,13 +159,13 @@ class TestRunPipelineTaskStage1:
         monkeypatch.setattr(pr, "_try_realtime_fallback", lambda *a, **k: False)
 
         tid = "tsk-s1-perm"
-        pr.tasks[tid] = {"task_id": tid, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing"}
         fake_audio = tmp_path / "m.wav"
         fake_audio.write_bytes(b"\x00" * 1024)
 
         pr.run_pipeline_task(tid, fake_audio, "m.wav")
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 1
         assert task["status"] == "failed"
         assert task["failed_stage"] == "transcribe"
@@ -182,13 +183,13 @@ class TestRunPipelineTaskStage1:
         monkeypatch.setattr(pr, "_try_realtime_fallback", lambda *a, **k: False)
 
         tid = "tsk-s1-exhaust"
-        pr.tasks[tid] = {"task_id": tid, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing"}
         fake_audio = tmp_path / "m.wav"
         fake_audio.write_bytes(b"\x00" * 1024)
 
         pr.run_pipeline_task(tid, fake_audio, "m.wav")
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 3  # 0,1,2 三次
         assert task["status"] == "failed"
         assert task["retry_count"] == 2
@@ -203,7 +204,7 @@ class TestRunStage2ForTask:
     def test_normal_success(self, monkeypatch, tmp_path):
         dialogue = _mk_dialogue(speakers=2)
         tid = "tsk-s2-ok"
-        pr.tasks[tid] = {
+        task_store.tasks[tid] = {
             "task_id": tid,
             "dialogue": dialogue,
             "status": "processing",
@@ -228,7 +229,7 @@ class TestRunStage2ForTask:
 
         pr._run_stage2_for_task(tid, tmp_path / "a.wav", None)
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 1
         assert task["status"] == "completed"
         assert task["progress"] == 100
@@ -240,7 +241,7 @@ class TestRunStage2ForTask:
         # 不走 transient retry 循环；用 ConnectionError 才能测真正的 retry_count
         dialogue = _mk_dialogue()
         tid = "tsk-s2-retry"
-        pr.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing", "progress": 50}
+        task_store.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing", "progress": 50}
 
         calls = []
 
@@ -258,7 +259,7 @@ class TestRunStage2ForTask:
 
         pr._run_stage2_for_task(tid, tmp_path / "a.wav", None)
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 2
         assert task["status"] == "completed"
         assert task.get("retry_count", 0) == 1
@@ -266,7 +267,7 @@ class TestRunStage2ForTask:
     def test_permanent_error_no_retry(self, monkeypatch, tmp_path):
         dialogue = _mk_dialogue()
         tid = "tsk-s2-perm"
-        pr.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing"}
 
         calls = []
 
@@ -278,7 +279,7 @@ class TestRunStage2ForTask:
 
         pr._run_stage2_for_task(tid, tmp_path / "a.wav", None)
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 1
         assert task["status"] == "failed"
         assert task["failed_stage"] == "summarize"
@@ -286,7 +287,7 @@ class TestRunStage2ForTask:
     def test_empty_dialogue_marks_failed_directly(self, monkeypatch, tmp_path):
         """空 dialogue 不应进 stage2 重试循环，直接 failed。"""
         tid = "tsk-s2-empty"
-        pr.tasks[tid] = {"task_id": tid, "dialogue": [], "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "dialogue": [], "status": "processing"}
 
         calls = []
 
@@ -298,7 +299,7 @@ class TestRunStage2ForTask:
 
         pr._run_stage2_for_task(tid, tmp_path / "a.wav", None)
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert len(calls) == 0  # 根本没调用 stage2
         assert task["status"] == "failed"
         assert task["failed_stage"] == "transcribe"
@@ -313,7 +314,7 @@ class TestErrorClassificationInPipeline:
     def test_classify_error_applied_on_failure(self, monkeypatch, tmp_path):
         dialogue = _mk_dialogue()
         tid = "tsk-classify"
-        pr.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing"}
 
         # 故意让 classify_error 返回一个带错误码的结构，验证任务状态字段被正确写入
         monkeypatch.setattr(pr, "classify_error", lambda e: {
@@ -331,7 +332,7 @@ class TestErrorClassificationInPipeline:
 
         pr._run_stage2_for_task(tid, tmp_path / "a.wav", None)
 
-        task = pr.tasks[tid]
+        task = task_store.tasks[tid]
         assert task["status"] == "failed"
         assert task["error_category"] == "local_engine"
         assert task["error_suggestion"] == "请重试"
@@ -350,7 +351,7 @@ class TestErrorClassificationInPipeline:
         monkeypatch.setattr(pr, "_try_realtime_fallback", lambda *a, **k: False)
 
         tid = "tsk-keyword"
-        pr.tasks[tid] = {"task_id": tid, "status": "processing"}
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing"}
         fake_audio = tmp_path / "m.wav"
         fake_audio.write_bytes(b"\x00" * 1024)
 

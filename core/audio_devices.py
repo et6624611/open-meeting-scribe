@@ -29,11 +29,6 @@ _MACOS_DEVICE_NAMES = {"BlackHole 2ch", "MacBook Pro麦克风", "MacBook Pro Mic
 _WINDOWS_DEVICE_CACHE: str | None = None
 
 
-def _ce():
-    import core.audio_recording as ar
-    return ar
-
-
 def _is_windows() -> bool:
     """是否运行在 Windows 平台 / Whether running on Windows"""
     return platform.system() == "Windows"
@@ -193,9 +188,10 @@ def _detect_windows_audio_device() -> str:
       4. ffmpeg 失败时回退到 PowerShell 结果（最佳努力）
       5. 两者都失败则不缓存（允许用户插拔设备后重试）
     """
-    if _ce()._WINDOWS_DEVICE_CACHE is not None:
-        logger.debug(f"使用缓存的 Windows 音频设备: {_ce()._WINDOWS_DEVICE_CACHE}")
-        return _ce()._WINDOWS_DEVICE_CACHE
+    global _WINDOWS_DEVICE_CACHE
+    if _WINDOWS_DEVICE_CACHE is not None:
+        logger.debug(f"使用缓存的 Windows 音频设备: {_WINDOWS_DEVICE_CACHE}")
+        return _WINDOWS_DEVICE_CACHE
 
     # 双路并行检测：同时运行 PowerShell 和 ffmpeg，不互相阻塞
     # Dual-path detection: run both PowerShell and ffmpeg, neither blocks the other
@@ -215,14 +211,14 @@ def _detect_windows_audio_device() -> str:
     # 优先使用 ffmpeg dshow 结果（设备名与录音命令 100% 兼容）
     # Prefer ffmpeg dshow result (device name 100% compatible with recording command)
     if ff_device:
-        _ce()._WINDOWS_DEVICE_CACHE = ff_device
+        _WINDOWS_DEVICE_CACHE = ff_device
         return ff_device
 
     # ffmpeg 失败时回退到 PowerShell（最佳努力，设备名可能略有差异）
     # Fall back to PowerShell when ffmpeg fails (best effort, name may differ slightly)
     if ps_device:
         logger.warning(f"[设备检测] ffmpeg dshow 失败，使用 PowerShell 结果（设备名可能略有差异）: {ps_device}")
-        _ce()._WINDOWS_DEVICE_CACHE = ps_device
+        _WINDOWS_DEVICE_CACHE = ps_device
         return ps_device
 
     logger.error("[设备检测] 所有策略均失败（PowerShell + ffmpeg dshow），无法自动检测音频设备")

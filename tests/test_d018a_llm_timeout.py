@@ -11,6 +11,7 @@ import pytest
 import requests
 
 import core.llm as llm
+from core import task_store
 
 # ---------------- 要素一：超时可配（默认=旧值） ----------------
 
@@ -68,7 +69,7 @@ def runner_env(monkeypatch, tmp_path):
     events: list = []
     monkeypatch.setattr(pr.joblog, "append_event",
                         lambda *a, **k: events.append((a[1] if len(a) > 1 else "", a[2] if len(a) > 2 else k)))
-    monkeypatch.setattr(pr, "save_task_to_disk", lambda tid: None)
+    monkeypatch.setattr(task_store, "save_task_to_disk", lambda tid: None)
     return pr, events
 
 
@@ -76,7 +77,7 @@ def test_stage2_timeout_degrades_to_body_only(monkeypatch, runner_env):
     pr, events = runner_env
     tid = "tsk_d018a"
     dialogue = [{"speaker_id": 0, "text": "内容", "sentences": ["内容"]}]
-    pr.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing", "progress": 0}
+    task_store.tasks[tid] = {"task_id": tid, "dialogue": dialogue, "status": "processing", "progress": 0}
 
     calls: list[dict] = []
 
@@ -97,7 +98,7 @@ def test_stage2_timeout_degrades_to_body_only(monkeypatch, runner_env):
     monkeypatch.setattr(pr, "run_pipeline_stage2", fake_stage2)
     pr._run_stage2_for_task(tid, {}, None)
 
-    task = pr.tasks[tid]
+    task = task_store.tasks[tid]
     assert task["status"] == "completed", task  # 不再整单 failed——转写+降级纪要保住
     assert task["decisions_pending"] is True
     assert "决策待补" in task["message"] or "decisions pending" in task["message"]
@@ -112,7 +113,7 @@ def test_stage2_timeout_degrades_to_body_only(monkeypatch, runner_env):
 def test_stage2_non_timeout_no_degradation(monkeypatch, runner_env):
     pr, events = runner_env
     tid = "tsk_d018a2"
-    pr.tasks[tid] = {"task_id": tid, "dialogue": [{"speaker_id": 0, "text": "x", "sentences": ["x"]}],
+    task_store.tasks[tid] = {"task_id": tid, "dialogue": [{"speaker_id": 0, "text": "x", "sentences": ["x"]}],
                      "status": "processing", "progress": 0}
 
     calls: list[int] = []
@@ -125,7 +126,7 @@ def test_stage2_non_timeout_no_degradation(monkeypatch, runner_env):
     monkeypatch.setattr(pr, "_try_realtime_fallback", lambda *a, **k: False)
     pr._run_stage2_for_task(tid, {}, None)
 
-    task = pr.tasks[tid]
+    task = task_store.tasks[tid]
     assert task["status"] == "failed"
     assert "decisions_pending" not in task
     # 非超时=原语义零变化（重试轮数由既有 transient 逻辑决定，降级分支未进）

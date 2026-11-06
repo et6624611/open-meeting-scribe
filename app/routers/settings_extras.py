@@ -16,7 +16,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
-from app.routers.chat import CHAT_SYSTEM_PROMPT
+from core.prompts import CHAT_SYSTEM_PROMPT
 from core.realtime_summary import SUMMARY_SYSTEM_PROMPT
 from core.summarize import SYSTEM_PROMPT, TITLE_SYSTEM_PROMPT
 
@@ -154,7 +154,7 @@ def get_storage_usage():
 @router.post("/api/storage/clean")
 def clean_intermediate_files():
     """清理所有中间产物 / Cleanup all intermediate artifacts."""
-    from app.store import cleanup_orphaned_intermediate_files
+    from core.task_store import cleanup_orphaned_intermediate_files
 
     # 先执行启动清理 / First run startup cleanup
     result = cleanup_orphaned_intermediate_files()
@@ -202,7 +202,7 @@ def clean_intermediate_files():
 @router.post("/api/storage/clean-orphaned")
 def clean_orphaned_files():
     """仅清理冗余文件 / Cleanup redundant files only."""
-    from app.store import cleanup_orphaned_intermediate_files
+    from core.task_store import cleanup_orphaned_intermediate_files
 
     result = cleanup_orphaned_intermediate_files()
 

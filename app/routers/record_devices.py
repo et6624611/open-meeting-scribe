@@ -14,7 +14,7 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-import app.store as store
+import core.settings_store as settings_store
 from core.audio import list_audio_devices
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ def get_audio_devices():
 
     return {
         "devices": devices,
-        "current_device": store.RECORD_DEVICE,
+        "current_device": settings_store.RECORD_DEVICE,
         "platform": _platform.system(),
-        "auto_detect": not store.RECORD_DEVICE if is_win else False,
+        "auto_detect": not settings_store.RECORD_DEVICE if is_win else False,
         "ffmpeg_available": check_ffmpeg(),
     }
 
@@ -66,7 +66,7 @@ def get_recording_diagnostics():
         "platform": _platform.system(),
         "ffmpeg_available": check_ffmpeg(),
         "ffmpeg_path": ffmpeg_path or "",
-        "current_device": store.RECORD_DEVICE,
+        "current_device": settings_store.RECORD_DEVICE,
         "device_count": len(devices),
         "devices": devices,
     }
@@ -93,7 +93,7 @@ def set_record_device(req: RecordDeviceRequest):
     # 清除 Windows 设备缓存，使下次录音使用新设备
     # Clear Windows device cache so next recording uses the new device
     import core.audio_recording as _ar
-    from app.store import set_record_device as _set_device
+    from core.settings_store import set_record_device as _set_device
     _ar._WINDOWS_DEVICE_CACHE = None
 
     _set_device(req.device)

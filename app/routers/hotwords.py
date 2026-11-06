@@ -5,9 +5,9 @@ app/routers/hotwords.py — 热词 + 映射管理 / Hotwords + mapping managemen
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.store import HOTWORD_MAPPINGS_FILE, HOTWORDS_FILE
 from core import hotwords
 from core.i18n import _
+from core.settings_store import HOTWORD_MAPPINGS_FILE, HOTWORDS_FILE
 
 router = APIRouter(tags=["hotwords"])
 

@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from core import task_store
 from core.errors import LocalEngineError
 from core.realtime_local_asr import LocalSegmentTranscriber
 
@@ -392,10 +393,10 @@ class TestIncrementalFinalization:
 
         tid = "task-wpi-test"
         task = {"task_id": tid, "audio_duration": 10.0, **task_extra}
-        monkeypatch.setitem(pr.tasks, tid, task)
+        monkeypatch.setitem(task_store.tasks, tid, task)
         stage2 = []
         monkeypatch.setattr(pr, "_run_stage2_for_task", lambda *a, **k: stage2.append(a))
-        monkeypatch.setattr(pr, "save_task_to_disk", lambda *a, **k: None)
+        monkeypatch.setattr(task_store, "save_task_to_disk", lambda *a, **k: None)
         monkeypatch.setattr(pr, "_cleanup_normalized_intermediate", lambda *a, **k: None)
 
         class _Joblog:
@@ -469,8 +470,8 @@ class TestIncrementalFinalization:
 class TestConfigAndWiring:
     def test_segments_enabled_by_default(self, monkeypatch):
         """AC-I7/D-I3：WP-I 验收后默认 enabled=True；段参数默认 5/0.8/30（可经配置覆盖）。"""
-        import app.settings_store as ss
         import core.settings_store as _core_ss
+        import core.settings_store as ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
         monkeypatch.setattr(ss, "load_settings", lambda: {})
@@ -480,8 +481,8 @@ class TestConfigAndWiring:
 
     def test_segments_explicit_opt_out_preserved(self, monkeypatch):
         """逃生通道：settings.json 显式 enabled=false 时回到 WP-H 批转写口径。"""
-        import app.settings_store as ss
         import core.settings_store as _core_ss
+        import core.settings_store as ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
         fake = {"engine": {"mode": "local", "local": {"realtime_segments": {"enabled": False}}}}
@@ -492,8 +493,8 @@ class TestConfigAndWiring:
 
     def test_segments_override_from_settings(self, monkeypatch):
         """AC-I7/D-I3：段参数可经 settings.json 覆盖（段长不拍死）。"""
-        import app.settings_store as ss
         import core.settings_store as _core_ss
+        import core.settings_store as ss
 
         monkeypatch.delenv("ENGINE_MODE", raising=False)
         fake = {"engine": {"mode": "local", "local": {"realtime_segments": {
@@ -510,9 +511,12 @@ class TestConfigAndWiring:
 
     def _run_start_record(self, monkeypatch, tmp_path, segments_enabled):
         import app.routers.record as rec
-        import app.settings_store as ss
+        import core.audio_stream as audio_stream
+        import core.diarization_cluster as dc
         import core.realtime_asr as ra
         import core.realtime_local_asr as rla
+        import core.realtime_store as rts
+        import core.settings_store as ss
         import core.users
         from tests.test_local_engine_wph import (
             _cleanup_record_state,
@@ -556,14 +560,14 @@ class TestConfigAndWiring:
             pushed.append(msg)
             done.set()
 
-        monkeypatch.setattr(rec, "is_stream_recording", lambda: False)
+        monkeypatch.setattr(audio_stream, "is_stream_recording", lambda: False)
         monkeypatch.setattr(core.users, "get_current_user", lambda: None)
-        monkeypatch.setattr(rec, "create_realtime_diarizer", lambda: _FakeDiarizer())
-        monkeypatch.setattr(rec, "get_feature_flags", lambda: _Flags())
-        monkeypatch.setattr(rec, "start_recording_with_stream",
+        monkeypatch.setattr(dc, "create_realtime_diarizer", lambda: _FakeDiarizer())
+        monkeypatch.setattr(ss, "get_feature_flags", lambda: _Flags())
+        monkeypatch.setattr(audio_stream, "start_recording_with_stream",
                             lambda **kw: {"output_path": str(tmp_path / "rec.wav")})
-        monkeypatch.setattr(rec, "RealtimeTranscriber", _FakeRealtime)
-        monkeypatch.setattr(rec, "push_realtime_msg", _capture)
+        monkeypatch.setattr(ra, "RealtimeTranscriber", _FakeRealtime)
+        monkeypatch.setattr(rts, "push_realtime_msg", _capture)
         monkeypatch.setattr(ra, "_get_asr_mode", lambda: "local")
         monkeypatch.setattr(rla, "LocalSegmentTranscriber", _FakeLocal)
         monkeypatch.setattr(ss, "get_engine_config", lambda: {

@@ -13,7 +13,7 @@ include_router 保持 URL 前缀与响应结构零变化；from app.routers.chat
 from fastapi import APIRouter
 
 from core.chat_context import build_speaker_name_map  # noqa: F401 向后兼容 re-export
-from core.cli_engine import (  # noqa: F401 向后兼容 re-export（测试 patch chat.xxx 依赖）
+from core.cli_engine import (  # noqa: F401 向后兼容 re-export（仅供外部按符号 import；测试打桩须落 core 模块）
     cancel_stream,
     export_context,
     load_manifest,

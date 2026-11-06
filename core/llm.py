@@ -10,7 +10,7 @@ core/llm.py — LLM provider（OpenAI 兼容端点）
   2. 支持流式/非流式输出
   3. 用于纪要生成、AI 对话等
 
-Provider 配置从 settings.json 动态读取（app.store.get_llm_config），
+Provider 配置从 settings.json 动态读取（core.settings_store.get_llm_config），
 支持 DashScope / OpenAI / DeepSeek / Moonshot 等任意兼容端点。
 回退到环境变量 DASHSCOPE_API_KEY。
 

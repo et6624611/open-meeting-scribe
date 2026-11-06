@@ -120,13 +120,23 @@ from app.routers import (
     workspace,
     ws_transcript,
 )
-from app.store import STATIC_DIR, cleanup_orphaned_intermediate_files, load_tasks_from_disk, recover_interrupted_tasks
+from app.store import STATIC_DIR
+from core import pipeline_hooks
 from core.auth import verify_jwt
 from core.i18n import I18nMiddleware
 from core.llm import close_async_client
+from core.pipeline_runner import run_pipeline_task, run_stage2_task
+from core.task_store import (
+    cleanup_orphaned_intermediate_files,
+    load_tasks_from_disk,
+    recover_interrupted_tasks,
+)
 from core.users import set_request_user_id
 
 logger = logging.getLogger(__name__)
+
+# T-25：向 core 注入管线执行钩子（core 存储/检测层不再反向 import pipeline_runner）
+pipeline_hooks.register(run_pipeline_task=run_pipeline_task, run_stage2_task=run_stage2_task)
 
 # ============================================================
 # 应用实例 / Application Instance

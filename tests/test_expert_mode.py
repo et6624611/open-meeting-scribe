@@ -53,7 +53,7 @@ class TestProbeFailedStage:
 class TestChatModelResolution:
     def test_default_follows_llm_settings(self, monkeypatch):
         import app.routers.chat as chat_mod
-        import app.store as store
+        import core.settings_store as store
 
         monkeypatch.setattr(store, "get_llm_config",
                             lambda: {"model": "qwen-max", "base_url": "", "api_key": "", "provider": ""},
@@ -62,7 +62,7 @@ class TestChatModelResolution:
 
     def test_default_falls_back_when_unconfigured(self, monkeypatch):
         import app.routers.chat as chat_mod
-        import app.store as store
+        import core.settings_store as store
 
         monkeypatch.setattr(store, "get_llm_config",
                             lambda: {"model": "", "base_url": "", "api_key": "", "provider": ""},

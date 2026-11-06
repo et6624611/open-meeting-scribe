@@ -461,7 +461,7 @@ class TestSilenceDetectionConfig:
 
     def test_get_silence_detection_config_returns_defaults(self):
         """get_silence_detection_config() 应返回完整默认配置"""
-        from app.store import get_silence_detection_config
+        from core.settings_store import get_silence_detection_config
         config = get_silence_detection_config()
         assert config["enabled"] is True
         assert "presence" in config
@@ -480,7 +480,7 @@ class TestSilenceDetectionConfig:
 
     def test_silence_detection_state_dicts_exist(self):
         """静默检测状态字典应已初始化"""
-        from app.store import (
+        from core.realtime_store import (
             realtime_last_heartbeat,
             realtime_last_sentence,
             realtime_presence_scores,

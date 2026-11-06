@@ -14,14 +14,14 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
-from app.store import (
-    run_stage2_task,
-    save_task_to_disk,
-    tasks,
-)
 from core import joblog, speakers, voiceprint
 from core import users as user_module
 from core.i18n import _
+from core.pipeline_runner import run_stage2_task
+from core.task_store import (
+    save_task_to_disk,
+    tasks,
+)
 
 logger = logging.getLogger(__name__)
 

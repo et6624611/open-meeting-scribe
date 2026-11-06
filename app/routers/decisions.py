@@ -25,12 +25,12 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.store import tasks
 from core.decision_flow import enrich_decision, status_of
 from core.decision_status import known_ids, load_statuses
 from core.decision_topic import cluster_topics
 from core.i18n import _
 from core.speakers import get_speaker_name_map
+from core.task_store import tasks
 
 router = APIRouter(tags=["decisions"])
 

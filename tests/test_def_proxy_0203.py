@@ -10,7 +10,7 @@ import pytest
 
 # ── 02-a：stop 竞态——封存后迟到定稿落入交棒列表（task 引用），不丢失 ──
 def test_late_sentence_lands_in_sealed_reference():
-    import app.realtime_store as rs
+    import core.realtime_store as rs
 
     tid = "proxy02-race-task"
     try:
@@ -35,7 +35,7 @@ def test_late_sentence_lands_in_sealed_reference():
 
 def test_unsealed_unknown_task_does_not_resurrect_list():
     """未封存且不在录音中的 task：push 不复活列表（防内存泄漏语义不变）。"""
-    import app.realtime_store as rs
+    import core.realtime_store as rs
 
     tid = "proxy02-ghost-task"
     rs.realtime_full_sealed.pop(tid, None)
@@ -48,6 +48,7 @@ def test_unsealed_unknown_task_does_not_resurrect_list():
 # ── 02-b：兜底命中——批转写失败 + 有实时句 → 降级出纪要 ──
 def test_realtime_fallback_hits_with_sentences(monkeypatch, tmp_path):
     import core.pipeline_runner as pr
+    import core.task_store as task_store
 
     tid = "proxy02-fallback-task"
     fake_tasks = {tid: {
@@ -59,8 +60,8 @@ def test_realtime_fallback_hits_with_sentences(monkeypatch, tmp_path):
         ],
         "realtime_speaker_binding": {"0": "uuid-a"},
     }}
-    monkeypatch.setattr(pr, "tasks", fake_tasks)
-    monkeypatch.setattr(pr, "save_task_to_disk", lambda t: None)
+    monkeypatch.setattr(task_store, "tasks", fake_tasks)
+    monkeypatch.setattr(task_store, "save_task_to_disk", lambda t: None)
     monkeypatch.setattr(pr, "_cleanup_normalized_intermediate", lambda t: None)
     # 绑定存 UUID，stage2 前经 resolve_display_names 翻译为显示名（2026-10-01 修复：UUID 直接落 speaker_mapping 导致显示异常）
     monkeypatch.setattr(pr.speakers, "resolve_display_names",
@@ -82,9 +83,10 @@ def test_realtime_fallback_hits_with_sentences(monkeypatch, tmp_path):
 def test_realtime_fallback_no_data_returns_false(monkeypatch, tmp_path):
     """无实时数据（纯静音零定稿）：兜底 False，走原失败流程（既有行为保持）。"""
     import core.pipeline_runner as pr
+    import core.task_store as task_store
 
     tid = "proxy02-empty-task"
-    monkeypatch.setattr(pr, "tasks", {tid: {"task_id": tid, "realtime_full_transcript": []}})
+    monkeypatch.setattr(task_store, "tasks", {tid: {"task_id": tid, "realtime_full_transcript": []}})
     assert pr._try_realtime_fallback(tid, tmp_path / "rec.wav") is False
 
 

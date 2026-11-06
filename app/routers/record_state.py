@@ -15,8 +15,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from app.store import (
-    TASKS_DIR,
+from core.audio import (
+    get_stream_recording_info,
+    is_stream_recording,
+    pause_recording_with_stream,
+    resume_recording_with_stream,
+    stop_recording_with_stream,
+)
+from core.i18n import _
+from core.realtime_store import (
     realtime_chapter_generators,
     realtime_diarizers,
     realtime_full_sealed,
@@ -26,62 +33,15 @@ from app.store import (
     realtime_summarizers,
     realtime_transcribers,
     realtime_translators,
-    save_task_to_disk,
-    tasks,
 )
-from core.audio import (
-    get_stream_recording_info,
-    is_stream_recording,
-    pause_recording_with_stream,
-    resume_recording_with_stream,
-    stop_recording_with_stream,
-)
-from core.i18n import _
+from core.recording_recovery import cleanup_zombie_recording
 from core.silence_detection import cleanup_silence_detection
+from core.task_store import TASKS_DIR, save_task_to_disk, tasks
+from core.tasks_repo import remove_task
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _cleanup_zombie_recording() -> None:
-    """清理僵尸录音：ffmpeg 进程已崩溃但任务状态仍为 recording。
-    Clean up zombie recording: ffmpeg process crashed but task status is still 'recording'.
-
-    将任务状态更新为 failed，清理所有实时资源。
-    Updates task status to 'failed', cleans up all realtime resources.
-    """
-    # 查找处于 recording 状态但 ffmpeg 已死的任务 / Find tasks in 'recording' state but ffmpeg is dead
-    zombie_task_id = None
-    for tid, task in tasks.items():
-        if task.get("status") == "recording":
-            zombie_task_id = tid
-            break
-
-    if not zombie_task_id:
-        return
-
-    logger.warning(f"[录制] 检测到僵尸录音，正在清理: task={zombie_task_id[:8]}")
-
-    # 更新任务状态 / Update task status
-    if zombie_task_id in tasks:
-        tasks[zombie_task_id]["status"] = "failed"
-        tasks[zombie_task_id]["error"] = "Recording process crashed (ffmpeg unavailable or device not found)"
-        save_task_to_disk(zombie_task_id)
-
-    # 清理实时资源 / Clean up realtime resources
-    realtime_transcribers.pop(zombie_task_id, None)
-    realtime_diarizers.pop(zombie_task_id, None)
-    realtime_summarizers.pop(zombie_task_id, None)
-    realtime_chapter_generators.pop(zombie_task_id, None)
-    realtime_translators.pop(zombie_task_id, None)
-    realtime_speaker_maps.pop(zombie_task_id, None)
-    realtime_full_transcripts.pop(zombie_task_id, None)
-    realtime_full_sealed.pop(zombie_task_id, None)
-    realtime_queues.pop(zombie_task_id, None)
-    cleanup_silence_detection(zombie_task_id)
-
-    logger.info(f"[录制] 僵尸录音清理完成: task={zombie_task_id[:8]}")
 
 
 @router.get("/api/record/status")
@@ -102,7 +62,7 @@ async def record_status():
 async def pause_record():
     """暂停录制（音频数据丢弃，实时转写停止接收） / Pause recording (audio discarded; realtime transcription stops receiving)"""
     if not is_stream_recording():
-        _cleanup_zombie_recording()
+        cleanup_zombie_recording()
         raise HTTPException(400, _("Not recording (recording process may have crashed)"))
     try:
         # 通过访问器实时获取当前录制的 task_id（不可用按值导入的 _stream_task_id，其恒为 None） / Get current recording task_id via accessor (can't use _stream_task_id imported by value; always None)
@@ -130,7 +90,7 @@ async def pause_record():
 async def resume_record():
     """恢复录制 / Resume recording"""
     if not is_stream_recording():
-        _cleanup_zombie_recording()
+        cleanup_zombie_recording()
         raise HTTPException(400, _("Not recording (recording process may have crashed)"))
     try:
         # 通过访问器实时获取当前录制的 task_id（不可用按值导入的 _stream_task_id，其恒为 None） / Get current recording task_id via accessor (can't use _stream_task_id imported by value; always None)
@@ -157,7 +117,7 @@ async def resume_record():
 def abandon_record():
     """放弃录音：停止录制并删除所有相关数据和文件 / Abandon recording: stop and delete all related data and files"""
     if not is_stream_recording():
-        _cleanup_zombie_recording()
+        cleanup_zombie_recording()
         return {"abandoned": True, "task_id": None, "message": "zombie recording cleaned up"}
 
     task_id = None
@@ -207,9 +167,8 @@ def abandon_record():
             Path(audio_path).unlink()
 
         # 4. 删除任务记录 / 4. Delete task record
-        if task_id and task_id in tasks:
-            tasks.pop(task_id)
         if task_id:
+            remove_task(task_id)
             task_file = TASKS_DIR / f"{task_id}.json"
             if task_file.exists():
                 task_file.unlink()

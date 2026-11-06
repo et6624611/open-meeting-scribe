@@ -18,18 +18,18 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, field_validator
 
-from app.store import (
-    TASKS_DIR,
-    UPLOAD_DIR,
-    get_transcript_config,
-    run_pipeline_task,
-    run_stage2_task,
-    save_task_to_disk,
-    tasks,
-)
 from core.audio import get_stream_recording_info, is_stream_recording
 from core.fs_atomic import stream_save_upload
 from core.i18n import _
+from core.pipeline_runner import run_pipeline_task, run_stage2_task
+from core.settings_store import get_transcript_config
+from core.task_store import (
+    TASKS_DIR,
+    UPLOAD_DIR,
+    save_task_to_disk,
+    tasks,
+)
+from core.tasks_repo import remove_task, set_task
 from core.transcript_cleanup import enrich_sentence
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def create_manual_task(data: Optional[ManualTaskCreate] = None):
     task_id = str(uuid.uuid4())
     title = ((data.title if data else None) or "").strip() or None
 
-    tasks[task_id] = {
+    set_task(task_id, {
         "task_id": task_id,
         "status": "completed",  # 手动创建即视为"会后"状态（无 pipeline 可跑）
         "source": "manual",
@@ -89,7 +89,7 @@ def create_manual_task(data: Optional[ManualTaskCreate] = None):
         "retry_count": 0,
         "speaker_mapping": {},
         "dialogue": [],
-    }
+    })
 
     save_task_to_disk(task_id)
     logger.info(f"[手动会话] 已创建 task={task_id[:8]}, title={title!r}, date={date_str}")
@@ -207,7 +207,7 @@ async def create_transcribe_task(
 
     # 创建任务记录 / Create task record
     now = datetime.now()
-    tasks[task_id] = {
+    set_task(task_id, {
         "task_id": task_id,
         "status": "pending",
         "source": "upload",
@@ -227,7 +227,7 @@ async def create_transcribe_task(
         "failed_stage": None,
         "retry_count": 0,
         "speaker_mapping": {},
-    }
+    })
 
     # 后台执行（speaker_count 为 None 时 run_pipeline_task 内部自动估算） / Run in background (speaker_count auto-estimated internally when None)
     background_tasks.add_task(run_pipeline_task, task_id, audio_path, file.filename, mapping, speaker_count)
@@ -328,7 +328,7 @@ def get_task(task_id: str):
 
             def _backfill_chapters():
                 try:
-                    from app.store import get_llm_config, get_transcript_config
+                    from core.settings_store import get_llm_config, get_transcript_config
                     from core.transcript_cleanup import clean_dialogue_for_consumers
                     model = get_llm_config().get("model", "qwen-plus")
                     # PLAN-TRANSCRIPT-LAYERING：章节吃清理版（深拷贝），task.dialogue 原文不动
@@ -482,10 +482,9 @@ def serve_audio(task_id: str):
 @router.delete("/api/tasks/{task_id}")
 def delete_task(task_id: str):
     """删除任务（含文件删除 I/O） / Delete task (incl. file deletion I/O)"""
-    if task_id not in tasks:
+    task = remove_task(task_id)
+    if task is None:
         raise HTTPException(404, _("Task not found"))
-
-    task = tasks.pop(task_id)
 
     # 清理原始音频文件 / Clean up original audio file
     audio_path = task.get("audio_path")
@@ -649,16 +648,8 @@ def _rebalance_insight_budget(task_id: str, factor) -> None:
 
     失败不阻断 PATCH 主流程（系数已落盘，下次保存/分析路径会重新收口）。"""
     try:
-        from app.routers.insights import _insights_file, _load_insight_messages
-        from core.fs_atomic import atomic_write_json
-        from core.insight_budget import apply_budget
-        messages = _load_insight_messages(task_id)
-        if not messages:
-            return
-        rebalanced = apply_budget(messages, factor)
-        if rebalanced != messages:
-            TASKS_DIR.mkdir(parents=True, exist_ok=True)
-            atomic_write_json(_insights_file(task_id), {"messages": rebalanced})
+        from core.insight_budget import rebalance_for_task
+        if rebalance_for_task(task_id, factor):
             logger.info("[一页纸系数] task=%s 洞察卡集已按系数 %s 重排", task_id[:8], factor)
     except Exception as e:
         logger.warning("[一页纸系数] task=%s 洞察卡集重排失败（不影响系数保存）: %s", task_id[:8], e)

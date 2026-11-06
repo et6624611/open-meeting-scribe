@@ -22,6 +22,7 @@ import logging
 import re
 from pathlib import Path
 
+from . import context_paths
 from .context_index import (
     _migrate_all_dirs,
     _migrate_meeting_dirs,
@@ -62,10 +63,6 @@ from .context_render import (
 logger = logging.getLogger(__name__)
 
 _SUBMODULES_NAMES = ("context_paths", "context_render", "context_index")
-
-
-def _ce():
-    return __import__("core.cli_engine.context_export", fromlist=["context_export"])
 
 
 def __getattr__(name: str):
@@ -376,7 +373,7 @@ def export_project_context(project_id: str, ide_id: str | None = None) -> dict:
         raise ValueError(f"invalid project_id: {project_id!r}")
     proj_dir = project_preview_dir(project_id)
     _migrate_meeting_dirs(proj_dir, project_id)
-    name = _ce()._project_display_name(project_id)
+    name = context_paths._project_display_name(project_id)
     members = _project_members(project_id)
 
     for task in members:
@@ -417,7 +414,7 @@ def export_project_context(project_id: str, ide_id: str | None = None) -> dict:
 
 def export_global_context(ide_id: str | None = None) -> dict:
     """导出全局上下文根：所有项目与独立会议的索引。"""
-    _ce().PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    context_paths.PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     _migrate_all_dirs()
 
     # 独立会议逐场补齐工作区（只生成缺失的）——否则索引列了全量，
@@ -434,13 +431,13 @@ def export_global_context(ide_id: str | None = None) -> dict:
     projects_idx: list[dict] = []
     standalone_meetings: list[dict] = []
     try:
-        for entry in sorted(_ce().PREVIEW_ROOT.iterdir()):
+        for entry in sorted(context_paths.PREVIEW_ROOT.iterdir()):
             if not entry.is_dir() or entry.name.startswith(".") or entry.name.startswith("_"):
                 continue
             mi = read_meetings_index(entry)
             if mi:
                 projects_idx.append({"dir": entry, "index": mi})
-        si = read_meetings_index(_ce().PREVIEW_ROOT / "_standalone")
+        si = read_meetings_index(context_paths.PREVIEW_ROOT / "_standalone")
         standalone_meetings = si.get("meetings", [])
     except Exception:  # noqa: BLE001
         pass
@@ -462,7 +459,7 @@ def export_global_context(ide_id: str | None = None) -> dict:
     standalone_members = sorted(
         _store_members(None).values(),
         key=lambda t: (t.get("meeting_date") or t.get("created_at") or ""), reverse=True)
-    _write_scope_indexes(_ce().PREVIEW_ROOT / "_standalone", "_standalone", "独立会议",
+    _write_scope_indexes(context_paths.PREVIEW_ROOT / "_standalone", "_standalone", "独立会议",
                          standalone_members, written, archive_note=True)
     _write_global_decisions(projects_idx, standalone_members, written)
 
@@ -472,7 +469,7 @@ def export_global_context(ide_id: str | None = None) -> dict:
         if not pid or not _UUID_RE.match(pid):
             continue
         mi = read_meetings_index(item["dir"]) or item["index"]
-        proj_rows.append(f"| {mi.get('project_name') or _ce()._project_display_name(pid)} "
+        proj_rows.append(f"| {mi.get('project_name') or context_paths._project_display_name(pid)} "
                          f"| {len(mi.get('meetings', []))} | `{item['dir'].name}/` |")
     if standalone_meetings:
         proj_rows.append(f"| 独立会议 | {len(standalone_meetings)} | `_standalone/` |")
@@ -489,7 +486,7 @@ def export_global_context(ide_id: str | None = None) -> dict:
     else:
         index_body = ("# 全部会议索引\n\n> 全部知识库项目与独立会议。先选项目，再进项目内 `_INDEX.md`。\n\n"
                       + "\n".join(proj_rows) + "\n")
-    _write_md_with_meta(_ce().PREVIEW_ROOT, "_INDEX.md",
+    _write_md_with_meta(context_paths.PREVIEW_ROOT, "_INDEX.md",
                         {"generated_at": _now_iso(), "source": "global_index",
                          "project_count": len(projects_idx),
                          "standalone_count": len(standalone_meetings)}, index_body)
@@ -512,12 +509,12 @@ def export_global_context(ide_id: str | None = None) -> dict:
         "- 正式改任务数据必须回到软件内 AI 面板或集成工具。\n"
         "- 跨项目引用时标注项目、会议与文件。\n\n"
         + _start_here("全部会议"))
-    written.extend(_write_agent_rules(_ce().PREVIEW_ROOT, agents_body,
+    written.extend(_write_agent_rules(context_paths.PREVIEW_ROOT, agents_body,
                                       "本目录为全部会议知识库，含多个项目。",
                                       ide_id=ide_id))
 
-    logger.info("[CLI引擎] 全局上下文导出 ws=%s projects=%d", _ce().PREVIEW_ROOT, len(projects_idx))
-    return {"workspace": str(_ce().PREVIEW_ROOT), "file_count": len(written),
+    logger.info("[CLI引擎] 全局上下文导出 ws=%s projects=%d", context_paths.PREVIEW_ROOT, len(projects_idx))
+    return {"workspace": str(context_paths.PREVIEW_ROOT), "file_count": len(written),
             "project_count": len(projects_idx), "scope": "all"}
 
 

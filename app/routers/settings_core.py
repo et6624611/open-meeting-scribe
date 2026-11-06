@@ -23,7 +23,9 @@ from app.settings_store import (
     get_capability_status,
     get_expert_mode,
 )
-from app.store import (
+from core import settings_store
+from core.llm import is_localhost_base_url
+from core.settings_store import (
     get_active_api_key,
     get_asr_config,
     get_chat_engine_config,
@@ -35,18 +37,11 @@ from app.store import (
     get_web_search_config,
     mask_api_key,
 )
-from core.llm import is_localhost_base_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-def _sm():
-    """延迟获取 settings 聚合模块（测试 monkeypatch settings.load_settings /
-    save_settings_to_disk / get_chat_engine_config 的穿透点）。"""
-    import app.routers.settings as _settings  # noqa: E402
-    return _settings
 
 # 常用 Provider 预设（前端下拉用） / Common provider presets (for frontend dropdown)
 PROVIDER_PRESETS = [
@@ -117,7 +112,7 @@ def get_settings():
     返回 ASR（语音转写）和 LLM（纪要生成）两套独立配置 / Return separate ASR (transcription) and LLM (summary) configs.
     API Key 脱敏返回：仅显示前 3 位和后 4 位 / API Key masked: show only first 3 and last 4 chars.
     """
-    settings = _sm().load_settings()
+    settings = settings_store.load_settings()
     llm = get_llm_config()
     asr = get_asr_config()
     feature_flags = get_feature_flags()
@@ -276,7 +271,7 @@ def save_settings(data: dict):
     同时处理 ASR（语音转写）和 LLM（纪要生成）两套配置 / Handle both ASR and LLM configs.
     前端传入的 api_key 若是脱敏值（含 ****）或空值，则保留原 key 不变 / If incoming api_key is masked (contains ****) or empty, keep original key.
     """
-    existing = _sm().load_settings()
+    existing = settings_store.load_settings()
 
     # ── 向后兼容：迁移旧版 flat 格式 / Backward compat: migrate legacy flat format ──
     if "api_key" in existing and "llm" not in existing:
@@ -436,7 +431,7 @@ def save_settings(data: dict):
                                                   existing_ce.get("cli_path_override")) or None,
         }
 
-    _sm().save_settings_to_disk(merged)
+    settings_store.save_settings_to_disk(merged)
 
     # 同步到环境变量（供未改造的旧模块使用） / Sync to env vars (for legacy modules)
     if final_llm_key:
@@ -492,7 +487,7 @@ def switch_capability_source(data: dict):
             return {"ok": False, "failed_stage": "validate",
                     "error": f"非法 capability_source.{cap}: {sources[cap]!r}"}
 
-    existing = _sm().load_settings()
+    existing = settings_store.load_settings()
     merged = deepcopy(existing)
     try:
         apply_capability_source(merged, sources)
@@ -525,7 +520,7 @@ def switch_capability_source(data: dict):
         return {"ok": False, "failed_stage": "engine", "error": str(e)[:200]}
 
     # ── 全部成功：一次性落盘 ──
-    _sm().save_settings_to_disk(merged)
+    settings_store.save_settings_to_disk(merged)
     logger.info(f"[来源切换] 成功: capability_source {existing.get('capability_source')!r} → {merged.get('capability_source')!r}")
     return {
         "ok": True,

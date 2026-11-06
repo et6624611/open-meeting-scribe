@@ -220,7 +220,11 @@ def _run_start_record(monkeypatch, tmp_path, start_exc):
     只打桩到能安全走到 _start_transcriber_bg 的程度；不触发真实录音/ffmpeg。
     """
     import app.routers.record as rec
+    import core.audio_stream as audio_stream
+    import core.diarization_cluster as dc
     import core.realtime_asr as ra
+    import core.realtime_store as rts
+    import core.settings_store as ss
     import core.users
 
     _RaisingTranscriber.exc = start_exc
@@ -233,20 +237,19 @@ def _run_start_record(monkeypatch, tmp_path, start_exc):
         pushed.append((task_id, msg))
         done.set()
 
-    monkeypatch.setattr(rec, "is_stream_recording", lambda: False)
+    monkeypatch.setattr(audio_stream, "is_stream_recording", lambda: False)
     monkeypatch.setattr(core.users, "get_current_user", lambda: None)
-    monkeypatch.setattr(rec, "create_realtime_diarizer", lambda: _FakeDiarizer())
-    monkeypatch.setattr(rec, "get_feature_flags", lambda: _Flags())
+    monkeypatch.setattr(dc, "create_realtime_diarizer", lambda: _FakeDiarizer())
+    monkeypatch.setattr(ss, "get_feature_flags", lambda: _Flags())
     monkeypatch.setattr(
-        rec, "start_recording_with_stream",
+        audio_stream, "start_recording_with_stream",
         lambda **kw: {"output_path": str(tmp_path / "rec.wav")},
     )
-    monkeypatch.setattr(rec, "RealtimeTranscriber", _RaisingTranscriber)
-    monkeypatch.setattr(rec, "push_realtime_msg", _capture)
+    monkeypatch.setattr(ra, "RealtimeTranscriber", _RaisingTranscriber)
+    monkeypatch.setattr(rts, "push_realtime_msg", _capture)
     monkeypatch.setattr(ra, "_get_asr_mode", lambda: "local")
     # WP-I 分段增量默认开后，本用例要覆盖的是逃生通道（segments 关闭）下
     # RealtimeTranscriber 启动抛错的降级口径——显式关闭分段，否则会走 LocalSegmentTranscriber。
-    import app.settings_store as ss
     monkeypatch.setattr(ss, "get_engine_config", lambda: {
         "mode": "local",
         "local": {"realtime_segments": {"enabled": False}},

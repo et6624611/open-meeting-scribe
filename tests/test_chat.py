@@ -358,12 +358,12 @@ class TestChatTitle:
         assert _sanitize_chat_title("这是一个非常非常非常非常长的会话标题超出限制") == "这是一个非常非常非常非常长的会话标题超出"
 
     def test_title_ok(self, client, monkeypatch):
-        import app.routers.chat as chat_mod
+        import core.llm as llm
 
         async def fake_llm(messages, **kwargs):
             return '"决策核对与责任人确认"'
 
-        monkeypatch.setattr(chat_mod, "async_chat_completion", fake_llm)
+        monkeypatch.setattr(llm, "async_chat_completion", fake_llm)
         resp = client.post("/api/chat/title", json={
             "first_message": "帮我把决策里的责任人核对一下",
             "reply": "已核对，共 3 处不一致……",
@@ -374,12 +374,12 @@ class TestChatTitle:
         assert data["title"] == "决策核对与责任人确认"
 
     def test_title_llm_failure_degrades_silently(self, client, monkeypatch):
-        import app.routers.chat as chat_mod
+        import core.llm as llm
 
         async def boom(messages, **kwargs):
             raise RuntimeError("llm down")
 
-        monkeypatch.setattr(chat_mod, "async_chat_completion", boom)
+        monkeypatch.setattr(llm, "async_chat_completion", boom)
         resp = client.post("/api/chat/title", json={"first_message": "总结一下会议"})
         assert resp.status_code == 200
         data = resp.json()
@@ -564,9 +564,10 @@ class TestDecisionFlowDecisions:
     def task_id(self, monkeypatch):
         import uuid
 
+        import core.task_store as task_store
         from app.routers import notes as notes_mod
-        # 避免测试写入磁盘 / Prevent disk writes during tests
-        monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda *_a, **_k: None)
+        # 避免测试写入磁盘 / Prevent disk writes during tests（落盘已下沉 core，patch 须落 core 模块）
+        monkeypatch.setattr(task_store, "save_task_to_disk", lambda *_a, **_k: None)
         tid = str(uuid.uuid4())
         notes_mod.tasks[tid] = {"task_id": tid, "status": "completed", "decisions": []}
         yield tid

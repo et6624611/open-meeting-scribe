@@ -164,7 +164,7 @@ def apply_restore(task: dict, rec: dict) -> tuple[bool, str]:
     """
     把一条快照的旧值写回内存 task 对象（**不落盘**，由调用方 save_task_to_disk）。
 
-    返回 (是否变更, 说明)。task 需为可原地修改的 dict（与 app.store.tasks 同一对象）。
+    返回 (是否变更, 说明)。task 需为可原地修改的 dict（与 core.task_store.tasks 同一对象）。
     """
     target = str(rec.get("target") or "")
     old = rec.get("old")

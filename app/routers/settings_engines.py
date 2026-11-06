@@ -18,17 +18,12 @@ import requests
 from fastapi import APIRouter
 
 from app.settings_store import get_capability_status
+from core import settings_store
 from core.llm import is_localhost_base_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _sm():
-    """延迟获取 settings 聚合模块（测试 monkeypatch settings.get_chat_engine_config 的穿透点）。"""
-    import app.routers.settings as _settings  # noqa: E402
-    return _settings
 
 
 @router.get("/api/settings/chat-engine")
@@ -47,7 +42,7 @@ def get_chat_engine_status(engine: str | None = None):
     from core.cli_engine import load_manifest, probe_engine
     from core.cli_engine.manifest import MANIFEST_DIR, available_engines
 
-    cfg = _sm().get_chat_engine_config()
+    cfg = settings_store.get_chat_engine_config()
     probe_engine_id = cfg["engine_id"]
     if engine and engine in available_engines():
         probe_engine_id = engine
@@ -98,7 +93,7 @@ def get_chat_engine_models(engine: str | None = None):
     from core.cli_engine import list_models, load_manifest
     from core.cli_engine.manifest import available_engines
 
-    cfg = _sm().get_chat_engine_config()
+    cfg = settings_store.get_chat_engine_config()
     engine_id = engine if (engine and engine in available_engines()) else cfg["engine_id"]
     try:
         manifest = load_manifest(engine_id)

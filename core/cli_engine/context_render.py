@@ -13,6 +13,7 @@ from core.speakers import normalize_speaker_name
 
 logger = logging.getLogger(__name__)
 
+from . import context_paths
 from .context_paths import (
     _IDE_RULE_FILES,
     _MAX_HISTORY_CHARS,
@@ -21,11 +22,6 @@ from .context_paths import (
     _MAX_SUMMARY_CHARS,
     _MAX_TRANSCRIPT_CHARS,
 )
-
-
-def _ce():
-    import core.cli_engine.context_export as ce
-    return ce
 
 
 def _now_iso() -> str:
@@ -138,7 +134,7 @@ def _render_insights(task_id: str | None) -> str:
     Render persisted insight messages; empty string when absent or none."""
     if not task_id:
         return ""
-    f = _ce().INSIGHTS_TASKS_DIR / f"{task_id}.insights.json"
+    f = context_paths.INSIGHTS_TASKS_DIR / f"{task_id}.insights.json"
     if not f.exists():
         return ""
     try:

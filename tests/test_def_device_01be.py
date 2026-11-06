@@ -63,11 +63,10 @@ def test_priority_settings_over_env_over_default(isolated_settings, monkeypatch)
 def test_store_set_record_device_persists(isolated_settings, tmp_path, monkeypatch):
     """POST 语义：store.set_record_device 同时更新运行时值并落盘。"""
     ss, sf = isolated_settings
-    import app.store as store
-    import core.settings_store as _core_ss
+    import core.settings_store as store
 
-    # 仅 patch core 层：app.store 通过 __getattr__ 动态代理，会自动同步
-    monkeypatch.setattr(_core_ss, "RECORD_DEVICE", "orig")
+    # 仅 patch core 层：set_record_device 直接改同一模块的 RECORD_DEVICE
+    monkeypatch.setattr(store, "RECORD_DEVICE", "orig")
     store.set_record_device("MicX")
     assert store.RECORD_DEVICE == "MicX"
     data = json.loads(sf.read_text(encoding="utf-8"))
@@ -77,15 +76,15 @@ def test_store_set_record_device_persists(isolated_settings, tmp_path, monkeypat
 def test_persist_failure_does_not_break_runtime(monkeypatch, tmp_path):
     """持久化异常降级：运行时值仍生效（不阻断录音链路）。"""
     import app.settings_store as ss
-    import app.store as store
     import core.settings_store as _core_ss
+    import core.settings_store as store
 
     broken = tmp_path / "broken" / "settings.json"  # 父目录不存在 → 写盘失败
     monkeypatch.setattr(ss, "SETTINGS_FILE", broken)
     monkeypatch.setattr(_core_ss, "SETTINGS_FILE", broken)
     store.set_record_device("MicY")
     # set_record_device 更新 core.settings_store.RECORD_DEVICE
-    # store.RECORD_DEVICE 通过 __getattr__ 动态查 core 层
+    # store.RECORD_DEVICE 即同一模块属性
     assert store.RECORD_DEVICE == "MicY"
     assert _core_ss.RECORD_DEVICE == "MicY"
 
@@ -95,7 +94,7 @@ def test_api_post_then_get_reflects_persisted_device(isolated_settings, monkeypa
     ss, sf = isolated_settings
     import core.settings_store as _core_ss
 
-    # 仅 patch core 层：app.store 通过 __getattr__ 动态代理
+    # 仅 patch core 层：settings_store 为唯一真相源
     monkeypatch.setattr(_core_ss, "RECORD_DEVICE", "MicZ")
     # 直接驱动 setter（路由函数为薄封装，TestClient 起全应用需 JWT/环境，此处按函数级断言等价契约）
     from app.routers.record import RecordDeviceRequest, set_record_device

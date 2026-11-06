@@ -20,13 +20,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.server import app
-from app.store import tasks
 from core.summarize import (
     decision_text_key,
     merge_flow_after_regen,
     parse_decisions_with_status,
     split_decision_title,
 )
+from core.task_store import tasks
 
 SUMMARY = """# 会议纪要
 

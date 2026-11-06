@@ -4,7 +4,7 @@ description: "面向未来功能开发与迭代的只读健康检查结论，含
 tags: ["health-check", "tech-debt", "checklist", "ci", "testing", "architecture"]
 created_at: "2026-11-04"
 updated_at: "2026-11-06"
-version: "1.2.0"
+version: "1.3.1"
 author: "Yongliang Wang"
 status: "published"
 category: "technical"
@@ -32,13 +32,16 @@ category: "technical"
 | 安全与合规风险 | ✅ 8/10 | 凭据已清理，.env.example 规范，AGPL 合规 |
 | 文档与知识沉淀 | ✅ 8/10 | ROADMAP/ARCHITECTURE/BACKLOG 体系完整 |
 | 技术债与高风险区域 | ⚠️ 5/10 | 后端 6 + 前端 4 个 >1000 行大文件，31 个 BACKLOG 未解决项 |
+| 功能间耦合度 | ⚠️ 6/10 | 分层已干净，功能层仍有 5 处可量化耦合（见第五节） |
 
-> 上表为 2026-11-04 检查时点评分。T-01~T-20 完成后，「质量守护能力」与「依赖与构建健康度」两项已实质改善（见第六节任务总览）。
+> 上表为 2026-11-04 检查时点评分。T-01~T-20 完成后，「质量守护能力」与「依赖与构建健康度」两项已实质改善（见第七节任务总览）。
 
 **三大主要风险（均已于 T-01~T-20 处置，2026-11-06 全部关闭）**：
 1. **架构层级破坏**：6 个 `core/` 模块直接 `import app.*`，core 无法独立测试与复用 —— 已由 T-10/T-13 解除；现由 `tests/test_core_layer_purity.py` 全深度守护（模块级 + 函数级均禁 `app.*`）
 2. **CI 防护盲区**：CI 仅跑 `tests/test_smoke.py`；前端 60 个 vitest 测试不在 CI；ESLint 35 个 error 无门禁 —— 已由 T-03/T-07/T-11/T-20 收口：全量 pytest、vitest、ESLint（`--max-warnings=0`）、全项目 `ruff check .`、mypy 阻断
 3. **依赖管理分歧**：`pyproject.toml` 与 `requirements.txt` 实质性不一致（pyproject 多 scipy、缺 Babel/pywebview）——已由 T-01 修复；无 Python lockfile，依赖仅 `>=` 下限——已由 T-14 补 `requirements.lock`（2026-11-05），安装链路（CI / Docker / 打包 / 部署文档）全部改为按锁文件
+
+**新增识别风险（2026-11-06，待处置）**：架构分层已干净（`core → app` 反向依赖 0 条、模块级 import 环 0 个），但功能之间仍有 5 处可量化耦合，详见第五节与 T-21~T-25。性质是「演进弹性」问题，不是「即将故障」问题，可独立排期。
 
 ---
 
@@ -368,16 +371,134 @@ category: "technical"
 
 ---
 
-## 五、迭代健康门禁（每次 PR 合入 main 前执行）
+## 五、耦合度专项检查与解耦任务（2026-11-06）
+
+> 检查方式：AST 提取 `core/`、`app/`、`frontend/src/` 的 import 图，运行时 `sys.modules` 探针测导入面，grep 计写入点。只读分析，未改代码。
+> 结论：**分层已收敛，功能层仍有 5 处可量化耦合**。均为演进弹性问题，不构成即时故障风险。
+
+### 5.1 已达标项（不需处理）
+
+| 指标 | 实测 | 结论 |
+|---|---|---|
+| `core → app` 反向依赖 | 0 条（模块级 + 函数级） | T-13 收口有效，`test_core_layer_purity.py` 守护中 |
+| 模块级 import 强连通分量（SCC） | 0 个 | 无静态循环依赖 |
+| 前端 store → store | 0 条 | store 之间无横向依赖 |
+| 前端 composable → composable | 3 条 | `useHotwords→useToast`、`useNotesAndDecisions→useDecisionStatuses`、`useTranslation→useWebSocket`，均为工具级复用，无需处理 |
+
+### 5.2 残余耦合度量
+
+| 指标 | 实测值 | 含义 |
+|---|---|---|
+| `tasks` 字典直接访问点 | 135 处 / 13 文件 | 无仓储层，字段契约靠约定 |
+| `app.store` 消费者 | 34 处 import / 26 个模块 | `__all__` 71 符号，合并 4 类关注点 |
+| 聚合层回指 getter | 211 处 | `_t()` / `_chat_mod()` / `_rec()` / `_sm()` / `_ce()` / `_ib()` |
+| 测试 monkeypatch 打在聚合模块命名空间 | 85 处 | 上述 getter 的根因 |
+| router 互调业务函数 | 4 组 | agent_tools→notes、tasks→insights、settings_extras→chat、import_tasks→tasks |
+| core 存储/检测层 → `pipeline_runner` | 3 处 | task_store、silence_detection、chat_actions |
+| `import app.store` 拉起 core/app 模块 | 37 个 / 0.17s | 对照 `import core.task_store` 为 5 个 / 0.08s |
+
+> T-22 完成后已消解：`app.store` 导出 71 符号 → 2，消费者 26 模块 → 仅 `server.py`；`app/realtime_store.py` 已删除；`import app.store` 降至 4 模块 / 0.03s。
+> T-21 完成后已消解：映射级写入 17 处 → 全部收敛至 `core/tasks_repo.py`（3 个函数），`tests/test_tasks_repo.py` AST 守护；字段级读写保持原样。
+> T-23 ~ T-25 完成后已消解：回指 getter 211 → 0；router 互调 4 组 → 0；core 存储/检测层 → `pipeline_runner` 3 处 → 0（改经 `core/pipeline_hooks` 注入）。
+
+### 5.3 解耦任务（T-21 ~ T-25）
+
+### ☑ T-21 收敛 `tasks` 全局字典写入口（新增 `core/tasks_repo.py`，已完成 2026-11-06）
+
+- [x] 新建 `core/tasks_repo.py`：`set_task` / `remove_task` / `get_task`，运行时解析 `core.task_store.tasks`（兼容测试替换字典）
+- [x] 只收敛**写入口**，只读访问继续直读 dict
+- [x] 迁移 17 处映射级写入：`app/routers/tasks.py`（3）→ `import_tasks.py`（4）→ `record_lifecycle.py`（1）→ `record_state.py`（1 pop）→ `core/chat_actions.py`（1）→ `core/task_store.py`（3）
+- [x] 新增 `tests/test_tasks_repo.py`：AST 守护（映射写入仅允许在 repo）+ 同源性测试 + 4 线程并发增删测试
+
+**位置**：`core/task_store.py:50`（`tasks: dict[str, dict] = {}`）及 13 个读写文件
+**影响**：录音线程、后台管线、请求线程三方直接改同一字典，无锁、无 schema；任一功能改字段会横向波及
+**工作量**：3-5 天
+**风险**：中（读写点分散，需逐文件回归）
+**验收标准**：`core/` 与 `app/` 中 `tasks[...] = ` 形式的赋值仅存在于 `core/tasks_repo.py`；全量 pytest 1135 passed 不退化；新增并发写测试
+
+### ☑ T-22 拆分 `app/store.py` 四合一门面，删除 `app/realtime_store.py`（已完成 2026-11-06）
+
+- [x] `app.store` 仅保留 `BASE_DIR` / `STATIC_DIR`（PyInstaller 相关），`__all__` 由 71 降至 2
+- [x] 任务状态改由各模块直接 `from core.task_store import ...`（18 个模块）
+- [x] 实时状态统一 `from core.realtime_store import ...`，删除 `app/realtime_store.py`
+- [x] 执行入口 `run_pipeline_task` / `run_stage2_task` 改为直接 `from core.pipeline_runner import ...`
+- [x] 迁移后导入面对比：`import app.store` 37 模块 / 0.17s → **4 模块 / 0.03s**；`import app.routers.notes` 13 模块
+- [x] 测试落点同步改为 `core.task_store` / `core.settings_store` / `core.realtime_store`
+- [x] ruff 全绿；全量 pytest **1135 passed**，不退化
+
+**位置**：`app/store.py:51-105`（`_CORE_MODULES` + `__all__` 71 符号）、`app/realtime_store.py`
+**影响**：名为 store 的模块导出 `run_pipeline_task`，语义误导；只读一个配置也会拉起整条执行链（实测 37 模块 / 0.17s）
+**工作量**：1-2 天
+**风险**：低（纯 import 路径调整，无行为变更）
+**验收标准**：`import app.routers.notes` 拉起的 core/app 模块数下降 ≥30%；`app.store` 不再导出 `core.pipeline_runner` / `core.realtime_store` 符号；全量 pytest 不退化
+
+### ☑ T-23 清理聚合层回指 getter（`_t` / `_chat_mod` / `_rec` / `_sm` / `_ce` / `_ib`）
+
+- [x] 测试打桩落点从聚合模块改为源模块：`monkeypatch.setattr("core.llm.async_chat_completion", ...)` 等
+- [x] 子模块改为持**模块引用**而非符号：`from core import llm` → `llm.async_chat_completion(...)`
+- [x] 按投入产出排序清理：`core/pipeline_runner.py`（88）→ `chat_stream_routes.py`（24）→ `record_lifecycle.py`（23）→ `context_index.py`（21）
+- [x] 聚合层保留 `__getattr__` 兼容别名，不再保留子模块→聚合层的运行时回指
+
+**位置**：`core/pipeline_runner.py`、`app/routers/chat_stream_routes.py`、`app/routers/record_lifecycle.py`、`app/routers/settings_test.py`、`core/cli_engine/context_index.py`
+**影响**：静态依赖图与实际运行依赖不一致（图上 A→B，实际 A→聚合→B），运行时形成隐式环；模块真实依赖不可被 AST 读出
+**工作量**：2-3 天
+**风险**：中（测试契约大面积改动）
+**验收标准**：getter 调用点从 211 降至 ≤20；新增 AST 断言——子模块不得 import 其聚合父模块；全量 pytest 不退化
+**结果（2026-11-06）**：调用点 211 → 0；`tests/test_core_layer_purity.py` 新增 `test_no_backpointer_getters`（禁止 `_ce/_sm/_rec/_t/_ib/_chat_mod/_get_tasks` 复活）与 `test_submodules_do_not_import_aggregator_parent`（子模块不得 import 聚合父模块）；全量 1140 passed，ruff 全绿
+
+### ☑ T-24 路由业务逻辑下沉，断开 router 互调
+
+- [x] notes 的受控写函数下沉为 `core/notes_service.py`，`agent_tools` 与 `notes` 路由共同调用
+- [x] `_rebalance_insight_budget` 下沉为 `core/insight_budget.rebalance_for_task`，`tasks` 路由不再 import `app.routers.insights` 的 `_insights_file` / `_load_insight_messages`
+- [x] `CHAT_SYSTEM_PROMPT` 移至 `core/prompts.py`，`settings_extras` 不再 import `app.routers.chat`
+- [x] 明确 `import_tasks → tasks` 的复用边界：改指 `core.pipeline_runner` / `core.task_store`
+
+**位置**：`app/routers/agent_tools.py:85`、`app/routers/tasks.py:652`、`app/routers/settings_extras.py:19`、`app/routers/import_tasks.py`
+**影响**：业务逻辑写在 router 层，跨功能复用只能互相 import；路由层无法独立演进
+**工作量**：2-3 天
+**风险**：中
+**验收标准**：新增守护测试——`app/routers/*` 之间除「聚合父 → 子路由」外无 import；全量 pytest 不退化
+**结果（2026-11-06）**：新增 `core/notes_service.py`、`core/prompts.py`、`core/recording_recovery.py`、`app/auth_deps.py`；`tests/test_core_layer_purity.py::test_routers_do_not_cross_import` 强制「仅聚合父 → 子路由」；router 互调从 4 组降至 0；全量 1141 passed，ruff 全绿
+
+### ☑ T-25 反转 core 存储/检测层对 `pipeline_runner` 的依赖
+
+- [x] `core/task_store.py` 的恢复逻辑改为依赖 `core/pipeline_hooks`，由启动入口注入真实 `run_pipeline_task`
+- [x] `core/silence_detection.py`、`core/chat_actions.py` 同样改走钩子
+- [x] 钩子未注册时给出明确降级行为与日志，不静默失败（恢复跳过、静默派发跳过、重新识别返回失败）
+
+**位置**：`core/task_store.py:327`、`core/silence_detection.py:26`、`core/chat_actions.py:36`
+**影响**：数据层/检测层知道「怎么跑管线」，依赖方向反了；虽为延迟导入不触发环，但语义上仍是反向依赖
+**工作量**：0.5-1 天
+**风险**：低
+**验收标准**：三处不再出现 `pipeline_runner` import；钩子注入路径有单测覆盖；全量 pytest 不退化
+**结果（2026-11-06）**：新增 `core/pipeline_hooks.py`，`app/server.py` 启动时注册；三处反向依赖归零；`tests/test_core_layer_purity.py` 新增 `test_core_does_not_import_pipeline_runner` 与 `TestPipelineHooks`（注册转调 + 未注册报错）；全量 1144 passed，ruff 全绿
+
+### 5.4 前端观察项（暂不立任务）
+
+- `frontend/src/stores/task.ts`（305 行，31 个消费者）职责混杂：集合 + 搜索过滤 + 归档 + 录音 `pause/resume/stop/abandon`。录音控制属 `useRecorder` 域，建议后续迁出。
+- `frontend/src/composables/useGeneratingData.ts`（551 行）同时依赖 3 个 store、4 个 api、insights、播放器，是纪要页的页面级编排器；改任一面板都可能触碰它。可考虑按 Tab 拆切片。
+- 视图/组件直接调 `@/api/*` 共 51 个文件，属正常单向调用，不计为耦合。
+
+### 5.5 执行顺序建议
+
+`T-22`（低风险、快速见效）→ `T-21`（收益最大）→ `T-25` → `T-23` → `T-24`。不建议合并为一次大重构；每项独立收口，复用现有 `tests/test_core_layer_purity.py` 的守护模式。
+
+---
+
+## 六、迭代健康门禁（每次 PR 合入 main 前执行）
 
 ### 后端
 
 - [ ] `ruff check .` — 全项目 lint 检查（CI 已阻断；T-20 完成后不再使用 `--select` 子集）
-- [ ] `pytest tests/test_smoke.py -q`（环境变量：`DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret`）— 冒烟测试（CI 已有）
-- [ ] `pytest tests/test_<改动模块>.py -q` — 改动模块专项测试（本地执行）
+- [ ] `DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret pytest tests/ --ignore=tests/eval_local_engine -q` — 全量测试（CI 已阻断，约 5.5 分钟，CI 超时上限 15 分钟）
+- [ ] `DASHSCOPE_API_KEY=test-key JWT_SECRET=test-secret pytest tests/test_<改动模块>.py -q` — 改动模块专项测试（本地执行，先跑这个缩短反馈回路）
 - [ ] `python -c "import core.<改动模块>"` — 确认无 import 崩溃
+- [ ] `python -m py_compile cli.py app/server.py core/pipeline.py` — 入口文件语法检查（CI 已有）
 - [ ] `mypy core/errors.py core/fs_atomic.py core/remote_config.py` — 类型检查（CI 已阻断；新增纯逻辑模块时加入检查清单并同步 CI 命令）
 - [ ] 新增 core 模块时确认任意深度 import 无 `app.*`（由 `tests/test_core_layer_purity.py` 守护，CI 已跑）
+- [ ] 新增 router 时确认不 import 其他 router（聚合父 → 子路由除外；由 `tests/test_core_layer_purity.py::test_routers_do_not_cross_import` 强制）
+- [ ] 新增 `tasks` 写操作时走 `core/tasks_repo.py`，不直接 `tasks[...] = `（由 `tests/test_tasks_repo.py` AST 守护强制）
+- [ ] core 存储/检测/动作层不得 import `core.pipeline_runner`，执行编排经 `core/pipeline_hooks` 注入（由 `tests/test_core_layer_purity.py::test_core_does_not_import_pipeline_runner` 强制）
 
 ### 前端
 
@@ -401,7 +522,7 @@ category: "technical"
 
 ---
 
-## 六、任务总览表
+## 七、任务总览表
 
 | ID | 任务 | 优先级 | 工作量 | 前置依赖 | 状态 |
 |---|---|---|---|---|---|
@@ -425,10 +546,15 @@ category: "technical"
 | T-18 | BACKLOG 分诊 | P2 | 0.5d | T-08 | ☑ 完成（2026-11-05） |
 | T-19 | 拆分其余后端超大文件 | P2 | 2d | T-09 | ☑ 完成（2026-11-05） |
 | T-20 | 清理 Ruff 60 errors | P2 | 1d | — | ☑ 完成（2026-11-05） |
+| T-21 | 收敛 `tasks` 写入口（tasks_repo） | P1 | 3-5d | — | ☑ 完成（2026-11-06） |
+| T-22 | 拆分 app.store 四合一门面 | P1 | 1-2d | — | ☑ 完成（2026-11-06） |
+| T-23 | 清理聚合层回指 getter | P2 | 2-3d | T-21/T-22 | ☑ 已完成 |
+| T-24 | 路由业务下沉，断开 router 互调 | P2 | 2-3d | T-21 | ☑ 完成（2026-11-06） |
+| T-25 | 反转 core 存储/检测层依赖 | P3 | 0.5-1d | — | ☑ 完成（2026-11-06） |
 
 ---
 
-## 七、证据附录（2026-11-04 基线 + 2026-11-06 现状）
+## 八、证据附录（2026-11-04 基线 + 2026-11-06 现状）
 
 **2026-11-06 实测现状（整改后）**
 
@@ -439,6 +565,16 @@ category: "technical"
 - 前端 vitest → **11 文件 / 68 用例全绿**（2.5s）；`npm run build` 成功
 - >1000 行文件：后端 `core/`、`app/`、`scripts/` **0 个**（最大 `record_lifecycle.py` 666 行）
 - 依赖：`requirements.lock`（87 个固定版本）为唯一安装源；CI / Dockerfile / 打包 workflow / DEPLOYMENT 全部按锁文件
+
+**2026-11-06 耦合度量（专项检查基线）**
+
+- 分层：`core → app` 反向依赖 0 条；模块级 import SCC 0 个
+- `tasks` 字典直接访问点：135 处 / 13 文件（最多 `app/routers/tasks.py` 53、`speakers.py` 26、`record_lifecycle.py` 16）
+- `app.store`：`__all__` 71 符号，34 处 import / 26 个模块；`import app.store` 拉起 37 个 core/app 模块、0.17s（对照 `import core.task_store` 为 5 个、0.08s）
+- 聚合层回指 getter：211 处（`pipeline_runner` 88、`chat_stream_routes` 24、`record_lifecycle` 23、`context_index` 21）；测试 monkeypatch 打在聚合模块命名空间 85 处
+- router 互调 4 组：agent_tools→notes、tasks→insights、settings_extras→chat、import_tasks→tasks
+- core 存储/检测层 → `pipeline_runner`：3 处（`task_store.py:327`、`silence_detection.py:26`、`chat_actions.py:36`）
+- 前端：store→store 0 条；composable→composable 3 条；`stores/task.ts` 31 个消费者；`useGeneratingData.ts` 551 行
 
 **2026-11-04 检查基线（整改前）**
 

@@ -245,7 +245,7 @@ class TestTestLlmEndpoint:
         assert data["error_code"] == "auth_failed"
 
     def test_missing_base_url(self, client, monkeypatch):
-        import app.routers.settings as settings_router
+        import core.settings_store as settings_router
         monkeypatch.setattr(settings_router, "get_llm_config", lambda: {
             "provider": "DashScope", "base_url": "", "api_key": "", "model": "",
         })

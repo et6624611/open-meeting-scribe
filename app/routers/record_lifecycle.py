@@ -21,15 +21,24 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-# 以模块方式引用 realtime_store：event_loop 全局在 startup 时才赋值，必须运行时通过 / Reference realtime_store as module: event_loop global is only assigned at startup, must read at runtime via
+# 以模块方式引用 core.realtime_store：event_loop 全局在 startup 时才赋值，必须运行时通过 / Reference realtime_store as module: event_loop global is only assigned at startup, must read at runtime via
 # rt_store.event_loop 读取（若按值 import 会像 _stream_task_id 一样恒为初始值 None） / rt_store.event_loop (import by value would always be initial None like _stream_task_id)
-import app.realtime_store as rt_store
-import app.store as store
-from app.store import (
-    RECORDINGS_DIR,
+import core.realtime_store as rt_store
+import core.settings_store as settings_store
+from core import audio_stream, diarization_cluster, realtime_asr
+from core.audio import (
+    stop_recording_with_stream,
+)
+from core.errors import LocalEngineError
+from core.i18n import _
+from core.pipeline_runner import (
     SPEAKER_COUNT_MAX,
     SPEAKER_COUNT_MIN,
-    get_silence_detection_config,
+    run_pipeline_task,
+)
+from core.realtime_asr import RealtimeTranscriber
+from core.realtime_chapters import RealtimeChapterGenerator
+from core.realtime_store import (
     realtime_chapter_generators,
     realtime_diarizers,
     realtime_full_sealed,
@@ -45,41 +54,24 @@ from app.store import (
     realtime_transcribers,
     realtime_translators,
     resolve_realtime_speaker_name,
-    run_pipeline_task,
-    save_task_to_disk,
-    tasks,
 )
-from core import realtime_asr
-from core.audio import (
-    stop_recording_with_stream,
-)
-from core.errors import LocalEngineError
-from core.i18n import _
-from core.realtime_asr import RealtimeTranscriber
-from core.realtime_chapters import RealtimeChapterGenerator
 from core.realtime_summary import RealtimeSummarizer
+from core.recording_recovery import cleanup_zombie_recording
+from core.settings_store import get_silence_detection_config
 from core.silence_detection import cleanup_silence_detection, silence_monitor_loop
+from core.task_store import RECORDINGS_DIR, save_task_to_disk, tasks
+from core.tasks_repo import set_task
 from core.transcript_cleanup import derive_layers
-
-from .record_state import _cleanup_zombie_recording
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-def _rec():
-    """延迟获取 record 聚合模块（测试 monkeypatch record.X 的穿透点，
-    覆盖 is_stream_recording / start_recording_with_stream / RealtimeTranscriber /
-    create_realtime_diarizer / get_feature_flags / push_realtime_msg）。"""
-    import app.routers.record as _r  # noqa: E402
-    return _r
-
-
 @router.post("/api/record/start")
 def start_record(background_tasks: BackgroundTasks):
     """开始流式录音，同时启动实时转写 / Start streaming recording and launch realtime transcription"""
-    if _rec().is_stream_recording():
+    if audio_stream.is_stream_recording():
         raise HTTPException(400, _("Already recording"))
 
     # 配额预检：订阅用户额度用尽时阻止录制（自带 Key 用户不受限） / Quota pre-check: block recording when subscribed user quota exhausted (BYOK users unaffected)
@@ -110,7 +102,7 @@ def start_record(background_tasks: BackgroundTasks):
     realtime_queues[task_id] = queue
 
     # 创建声纹聚类器（实时说话人分离，根据用户订阅状态选择 provider） / Create diarizer (realtime speaker separation; provider chosen by subscription)
-    diarizer = _rec().create_realtime_diarizer()
+    diarizer = diarization_cluster.create_realtime_diarizer()
     realtime_diarizers[task_id] = diarizer
 
     # 初始化实时说话人绑定映射 / Initialize realtime speaker binding map
@@ -120,7 +112,7 @@ def start_record(background_tasks: BackgroundTasks):
     realtime_full_transcripts[task_id] = []
 
     # 读取功能开关（仅用于后台延迟初始化，不阻塞关键路径） / Read feature flags (for deferred init, not blocking critical path)
-    feature_flags = _rec().get_feature_flags()
+    feature_flags = settings_store.get_feature_flags()
 
     # ── 延迟初始化：实时总结器 + 章节生成器 ── / ── Deferred init: realtime summarizer + chapter generator ──
     # 这些组件在 ASR 首句到达前初始化完成即可（通常需数秒），放到后台线程避免阻塞 HTTP 响应 / These components only need to be ready before the first ASR sentence arrives (typically seconds); defer to background to avoid blocking HTTP response
@@ -135,13 +127,13 @@ def start_record(background_tasks: BackgroundTasks):
             if feature_flags["realtime_summary"]:
                 summary_interval = feature_flags.get("realtime_summary_interval", 60)
                 _summarizer = RealtimeSummarizer(
-                    on_summary=lambda content: _rec().push_realtime_msg(task_id, {
+                    on_summary=lambda content: rt_store.push_realtime_msg(task_id, {
                         "type": "summary_update", "content": content
                     }),
-                    on_status=lambda status: _rec().push_realtime_msg(task_id, {
+                    on_status=lambda status: rt_store.push_realtime_msg(task_id, {
                         "type": "summary_status", "status": status
                     }),
-                    on_countdown=lambda remaining: _rec().push_realtime_msg(task_id, {
+                    on_countdown=lambda remaining: rt_store.push_realtime_msg(task_id, {
                         "type": "summary_countdown", "remaining": remaining
                     }),
                     interval=summary_interval,
@@ -154,7 +146,7 @@ def start_record(background_tasks: BackgroundTasks):
             _chapter_gen = None
             if feature_flags["realtime_chapters"]:
                 _chapter_gen = RealtimeChapterGenerator(
-                    on_chapters=lambda chapters: _rec().push_realtime_msg(task_id, {
+                    on_chapters=lambda chapters: rt_store.push_realtime_msg(task_id, {
                         "type": "chapters_update", "chapters": chapters
                     }),
                 )
@@ -225,7 +217,7 @@ def start_record(background_tasks: BackgroundTasks):
                         f"[录制] 前 60 秒音量极低 (mean={avg_db:.1f} dB)，"
                         f"请检查麦克风或音频输入设备"
                     )
-                    _rec().push_realtime_msg(task_id, {
+                    rt_store.push_realtime_msg(task_id, {
                         "type": "volume_warning",
                         "level": "low",
                         "avg_db": round(avg_db, 1),
@@ -236,7 +228,7 @@ def start_record(background_tasks: BackgroundTasks):
             active_count = diarizer.get_active_speaker_count()
             if active_count != _last_speaker_count:
                 _last_speaker_count = active_count
-                _rec().push_realtime_msg(task_id, {
+                rt_store.push_realtime_msg(task_id, {
                     "type": "speaker_count_update",
                     "count": active_count,
                     "speakers": [
@@ -249,8 +241,8 @@ def start_record(background_tasks: BackgroundTasks):
 
     try:
         # 启动流式录音（ffmpeg 采集 → PCM pipe → 写文件 + pcm_callback） / Start streaming recording (ffmpeg capture -> PCM pipe -> write file + pcm_callback)
-        result = _rec().start_recording_with_stream(
-            device=store.RECORD_DEVICE,
+        result = audio_stream.start_recording_with_stream(
+            device=settings_store.RECORD_DEVICE,
             output_dir=RECORDINGS_DIR,
             task_id=task_id,
             pcm_callback=pcm_callback,
@@ -299,7 +291,7 @@ def start_record(background_tasks: BackgroundTasks):
                 ws_msg["clean_text"] = layers["clean_text"]
                 ws_msg["clean_ops"] = layers["clean_ops"]
             feed_text = layers["feed_text"]
-            _rec().push_realtime_msg(task_id, ws_msg)
+            rt_store.push_realtime_msg(task_id, ws_msg)
             # 更新最后定稿句子时间戳（供静默检测使用） / Update last finalized sentence timestamp (for silence detection)
             realtime_last_sentence[task_id] = time.time()
             # 清理后无事实内容（纯语气词句）：只上屏留痕，不喂下游
@@ -347,17 +339,17 @@ def start_record(background_tasks: BackgroundTasks):
                 logger.warning(f"[录制] 读取分段增量配置失败（按未开启处理）: {e}")
 
         _transcriber_callbacks = dict(
-            on_partial=lambda text: _rec().push_realtime_msg(task_id, {
+            on_partial=lambda text: rt_store.push_realtime_msg(task_id, {
                 "type": "partial",
                 "text": text,
                 "speaker_id": diarizer.get_speaker(),
                 "speaker_name": resolve_realtime_speaker_name(task_id, diarizer.get_speaker()),
             }),
             on_sentence_end=_on_sentence_end,
-            on_error=lambda msg: _rec().push_realtime_msg(task_id, {
+            on_error=lambda msg: rt_store.push_realtime_msg(task_id, {
                 "type": "error", "message": msg
             }),
-            on_complete=lambda: _rec().push_realtime_msg(task_id, {
+            on_complete=lambda: rt_store.push_realtime_msg(task_id, {
                 "type": "ended"
             }),
         )
@@ -365,11 +357,11 @@ def start_record(background_tasks: BackgroundTasks):
             from core.realtime_local_asr import LocalSegmentTranscriber
             transcriber = LocalSegmentTranscriber(
                 segment_config=_segments_cfg,
-                on_status=lambda info: _rec().push_realtime_msg(task_id, {"type": "status", **info}),
+                on_status=lambda info: rt_store.push_realtime_msg(task_id, {"type": "status", **info}),
                 **_transcriber_callbacks,
             )
         else:
-            transcriber = _rec().RealtimeTranscriber(**_transcriber_callbacks)
+            transcriber = realtime_asr.RealtimeTranscriber(**_transcriber_callbacks)
 
         def _start_transcriber_bg():
             """后台启动实时转写（含重试逻辑） / Background start realtime transcription (with retry logic)"""
@@ -379,7 +371,7 @@ def start_record(background_tasks: BackgroundTasks):
                 _asr_mode = realtime_asr._get_asr_mode()
                 if _asr_mode == "proxy" and not realtime_asr.ASR_PROXY_TOKEN:
                     logger.warning(f"[录制] ASR_PROXY_TOKEN 未配置，跳过实时转写（仅录音模式）: task={task_id[:8]}")
-                    _rec().push_realtime_msg(task_id, {
+                    rt_store.push_realtime_msg(task_id, {
                         "type": "warning",
                         "message": _("ASR proxy token not configured. Realtime transcription disabled. Recording will continue normally.")
                     })
@@ -399,7 +391,7 @@ def start_record(background_tasks: BackgroundTasks):
                     # 不得再推 type:"error" 红色报错（REQ-LOCAL-REALTIME-INCR AC 第 6 条）。
                     logger.info(f"[录制] 本地模式按设计降级为批处理（状态声明，非错误）: task={task_id[:8]}")
                     transcriber_ref["ref"] = None
-                    _rec().push_realtime_msg(task_id, {
+                    rt_store.push_realtime_msg(task_id, {
                         "type": "status",
                         "status": "local_batch_mode",
                         "message": str(e),
@@ -408,14 +400,14 @@ def start_record(background_tasks: BackgroundTasks):
                 # 其余本地引擎错误（模型未就绪等）仍按失败处理
                 logger.warning(f"[录制] 本地引擎实时转写启动失败（仅录音模式）: {e}")
                 transcriber_ref["ref"] = None
-                _rec().push_realtime_msg(task_id, {
+                rt_store.push_realtime_msg(task_id, {
                     "type": "error",
                     "message": _("Realtime transcription unavailable: {err}, recording will continue normally").format(err=e)
                 })
             except Exception as e:
                 logger.warning(f"[录制] 实时转写启动失败（仅录音模式）: {e}")
                 transcriber_ref["ref"] = None
-                _rec().push_realtime_msg(task_id, {
+                rt_store.push_realtime_msg(task_id, {
                     "type": "error",
                     "message": _("Realtime transcription unavailable: {err}, recording will continue normally").format(err=e)
                 })
@@ -426,7 +418,7 @@ def start_record(background_tasks: BackgroundTasks):
 
         # 创建任务记录 / Create task record
         now = datetime.now()
-        tasks[task_id] = {
+        set_task(task_id, {
             "task_id": task_id,
             "status": "recording",
             "source": "record",
@@ -441,10 +433,10 @@ def start_record(background_tasks: BackgroundTasks):
             "created_at": now.isoformat(),
             "meeting_date": now.strftime("%Y-%m-%d"),
             "error": None,
-        }
+        })
         # 磁盘持久化已委托给后台任务 _init_auxiliary_components() / Disk persistence deferred to background task
 
-        logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={store.RECORD_DEVICE}")
+        logger.info(f"[录制] 开始: task={task_id[:8]}, 设备={settings_store.RECORD_DEVICE}")
         return {"task_id": task_id, "status": "recording"}
 
     except RuntimeError as e:
@@ -457,7 +449,7 @@ def start_record(background_tasks: BackgroundTasks):
         diag_hint = ""
         if not check_ffmpeg():
             diag_hint = " | ffmpeg not found in PATH"
-        elif _platform.system() == "Windows" and not store.RECORD_DEVICE:
+        elif _platform.system() == "Windows" and not settings_store.RECORD_DEVICE:
             diag_hint = " | auto-detection failed; set RECORD_DEVICE env var"
         raise HTTPException(500, _("Failed to start recording: {err}").format(err=str(e) + diag_hint))
 
@@ -477,7 +469,7 @@ def stop_record(
     包含 subprocess.wait / thread.join 等阻塞操作。 / contains blocking operations like subprocess.wait / thread.join.
     FastAPI 会自动在线程池中运行同步端点，避免阻塞事件循环。 / FastAPI auto-runs sync endpoints in thread pool to avoid blocking event loop.
     """
-    if not _rec().is_stream_recording():
+    if not audio_stream.is_stream_recording():
         # ── 兜底：静默检测自动关停 / Fallback: silence detection auto-stopped ──
         # 自动关停已 stop_recording + 派发纪要管线，realtime_transcribers 已被 pop，
         # tasks[tid] 状态推进到 processing 或终态。此时前端再点「结束录音」不应误判为 crashed。
@@ -511,7 +503,7 @@ def stop_record(
         # ── 僵尸录音清理 / Zombie recording cleanup ──
         # ffmpeg 进程已崩溃但任务状态仍为 recording，需要清理
         # ffmpeg process crashed but task status is still "recording"; needs cleanup
-        _cleanup_zombie_recording()
+        cleanup_zombie_recording()
         raise HTTPException(400, _("Not recording (recording process may have crashed)"))
 
     # 提取笔记 / Extract notes
@@ -612,7 +604,7 @@ def stop_record(
             raise HTTPException(404, _("Task not found"))
 
         # 3. 发送结束消息 / 3. Send end message
-        _rec().push_realtime_msg(task_id, {"type": "ended"})
+        rt_store.push_realtime_msg(task_id, {"type": "ended"})
 
         # 4. 更新任务信息 / 4. Update task info
         tasks[task_id]["audio_name"] = f"录音 {datetime.now().strftime('%Y-%m-%d %H:%M')}"

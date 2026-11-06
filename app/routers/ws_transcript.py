@@ -20,7 +20,8 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.store import (
+from core.i18n import _, set_current_locale
+from core.realtime_store import (
     push_realtime_msg,
     realtime_chapter_generators,
     realtime_full_transcripts,
@@ -33,7 +34,6 @@ from app.store import (
     realtime_translators,
     resolve_realtime_speaker_name,
 )
-from core.i18n import _, set_current_locale
 from core.transcript_cleanup import enrich_sentence
 from core.translate import RealtimeTranslator
 

@@ -11,7 +11,7 @@ import random
 
 from fastapi import APIRouter
 
-from app.store import PHILOSOPHIES_FILE
+from core.settings_store import PHILOSOPHIES_FILE
 
 router = APIRouter(tags=["philosophy"])
 

@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.server import app
-from app.store import tasks as task_store
+from core.task_store import tasks as task_store
 
 
 @pytest.fixture

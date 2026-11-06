@@ -116,9 +116,9 @@ class TestInvokeEndpoint:
     def test_write_tool_via_notes_reuse(self, client, monkeypatch):
         # 注入一个内存任务，走真实 inject_content 落库路径（TestClient 与服务同进程）
         # 打桩 save_task_to_disk 避免向 data/tasks/ 写残留文件
-        import app.routers.notes as notes_mod
-        from app.store import tasks
-        monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda tid: None)
+        import core.task_store as task_store
+        from core.task_store import tasks
+        monkeypatch.setattr(task_store, "save_task_to_disk", lambda tid: None)
         tid = "tooltest-0001"
         tasks[tid] = {"task_id": tid, "status": "completed", "decisions": [], "title": "T"}
         try:
@@ -142,7 +142,7 @@ class TestInvokeEndpoint:
 
     def test_propose_summary_does_not_persist(self, client):
         # 注入一个带 user_summary 的任务，invoke propose_summary 后应返回 ok/proposed，但 user_summary 不变
-        from app.store import tasks
+        from core.task_store import tasks
         tid = "propstest-0001"
         tasks[tid] = {"task_id": tid, "status": "completed", "summary": "旧纪要", "user_summary": "旧纪要", "decisions": []}
         try:
@@ -178,7 +178,7 @@ class TestInvokeEndpoint:
         assert any(s["name"] == "propose_notes" for s in mcp_tool_specs())
 
     def test_propose_notes_does_not_persist(self, client):
-        from app.store import tasks
+        from core.task_store import tasks
         tid = "propntest-0001"
         tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "旧随记", "decisions": []}
         try:
@@ -399,9 +399,9 @@ class TestInProgressRealtimeFallback:
     ]
 
     def test_transcript_tool_falls_back_to_realtime_buffer(self, monkeypatch):
-        import app.realtime_store as rs
-        from app.store import tasks
+        import core.realtime_store as rs
         from core.agent_tools import impl
+        from core.task_store import tasks
         task_id = "rt-fallback-1"
         tasks[task_id] = {"task_id": task_id, "status": "recording", "dialogue": None}
         monkeypatch.setitem(rs.realtime_full_transcripts, task_id, list(self._SENTENCES))
@@ -418,9 +418,9 @@ class TestInProgressRealtimeFallback:
             rs.realtime_full_transcripts.pop(task_id, None)
 
     def test_transcript_tool_no_data_still_reports_empty(self, monkeypatch):
-        import app.realtime_store as rs
-        from app.store import tasks
+        import core.realtime_store as rs
         from core.agent_tools import impl
+        from core.task_store import tasks
         task_id = "rt-fallback-empty"
         tasks[task_id] = {"task_id": task_id, "status": "recording", "dialogue": None}
         monkeypatch.setattr(rs, "realtime_full_transcripts", {})
@@ -433,7 +433,8 @@ class TestInProgressRealtimeFallback:
 
     def test_export_context_writes_transcript_from_realtime(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         task = {"task_id": "rt-2", "status": "recording", "dialogue": None,
                 "speaker_mapping": {"0": "李工"}}
         meta = ce.export_context(engine_id="qoder-cli", task=task, task_id="rt-2",
@@ -457,8 +458,8 @@ class TestMeetingNotesTool:
         assert any(s["name"] == "get_meeting_notes" for s in mcp_tool_specs())
 
     def test_read_tool_returns_user_notes(self):
-        from app.store import tasks
         from core.agent_tools import impl
+        from core.task_store import tasks
         tid = "notestool-1"
         tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "共识：预算主控放在星瀚"}
         try:
@@ -470,8 +471,8 @@ class TestMeetingNotesTool:
             tasks.pop(tid, None)
 
     def test_empty_notes_reports_absent_not_error(self):
-        from app.store import tasks
         from core.agent_tools import impl
+        from core.task_store import tasks
         tid = "notestool-2"
         tasks[tid] = {"task_id": tid, "status": "completed"}
         try:
@@ -482,8 +483,8 @@ class TestMeetingNotesTool:
 
     def test_meeting_info_admits_notes_exist(self):
         """get_meeting_info 必须报出随记存在性与预览，否则模型不会知道去读。"""
-        from app.store import tasks
         from core.agent_tools import impl
+        from core.task_store import tasks
         tid = "notestool-3"
         tasks[tid] = {"task_id": tid, "status": "completed", "summary": "AI 初稿",
                       "user_summary": "用户定稿纪要", "user_notes": "最终结论：手工补入抵消灭失"}
@@ -498,7 +499,7 @@ class TestMeetingNotesTool:
             tasks.pop(tid, None)
 
     def test_notes_tool_allowed_in_readonly_via_invoke(self, client):
-        from app.store import tasks
+        from core.task_store import tasks
         tid = "notestool-4"
         tasks[tid] = {"task_id": tid, "status": "completed", "user_notes": "只读档也要能读随记"}
         try:
@@ -513,8 +514,8 @@ class TestMeetingNotesTool:
 
     def test_decisions_tool_exposes_node_ids(self):
         """决策节点稳定 id 必须回给工具面（改写/删除按 id 寻址的前置项）。"""
-        from app.store import tasks
         from core.agent_tools import impl
+        from core.task_store import tasks
         tid = "notestool-5"
         tasks[tid] = {"task_id": tid, "status": "completed",
                       "decisions": [{"id": "node-1", "text": "预算版本双轨", "title": "版本双轨",
@@ -536,15 +537,16 @@ class TestWorkspaceCleanup:
     def test_export_honors_workspace_key(self, monkeypatch, tmp_path):
         """workspace_key 优先于 task_id 作为工作区目录名（会话对齐）。"""
         from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         meta = ce.export_context(engine_id="qoder-cli", task=None, task_id="task-9",
                                  user_message="hi", workspace_key="sess-abc")
         assert (tmp_path / "agent-workspace" / "qoder-cli" / "sess-abc" / "AGENTS.md").is_file()
         assert "sess-abc" in meta["workspace"]
 
     def test_cleanup_endpoint_deletes_workspace(self, client, monkeypatch, tmp_path):
-        from core.cli_engine import context_export as ce
-        monkeypatch.setattr(ce, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
+        from core.cli_engine import context_paths
+        monkeypatch.setattr(context_paths, "WORKSPACE_ROOT", tmp_path / "agent-workspace")
         sess_dir = tmp_path / "agent-workspace" / "qoder-cli" / "sess-del"
         sess_dir.mkdir(parents=True)
         r = client.post("/api/agent-tools/cleanup", json={"chat_session_id": "sess-del"})

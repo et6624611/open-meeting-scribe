@@ -10,12 +10,19 @@ core/insight_budget.py — 洞察台一页纸系数预算（卡位口径）
 2. 对洞察消息列表执行预算重排：超预算旧卡打 deferred=true 降级，不删除
 3. 已确认（acknowledged）的卡永不降级——人是最终作者；确认卡本身超容时有效层超容也不强降，仅记 warning
 
-纯函数、无 IO；写盘由调用方（app/routers/insights.py、tasks.py PATCH）完成。
+`apply_budget` 为纯函数；`rebalance_for_task` 负责读改写盘。
 契约登记见 docs/API_CONTRACTS.md one_page / deferred 条目。
+
+T-24：`rebalance_for_task` 收口「读 → 重排 → 写回」的完整口径，
+供 insights 路由与 tasks 路由共用，断开 router → router 反向 import。
 """
 
+import json
 import logging
 import math
+from pathlib import Path
+
+from core import fs_atomic, task_store
 
 logger = logging.getLogger(__name__)
 
@@ -114,3 +121,37 @@ def budget_block(slots: int, active: int) -> str:
         "本轮至多新增 1 张卡片；若与既有卡片同主题，优先避免同义新开卡（输出 has_finding=false）。\n"
         + full_line
     )
+
+
+# ============================================================
+# 存储口径（insights 路由与 tasks 路由共用，避免 router → router 反查）
+# ============================================================
+
+def insights_file(task_id: str) -> Path:
+    """洞察消息存储路径（与任务数据同目录）。"""
+    return task_store.TASKS_DIR / f"{task_id}.insights.json"
+
+
+def load_insight_messages(task_id: str) -> list[dict]:
+    """读取洞察消息列表；文件缺失/损坏返回空。"""
+    path = insights_file(task_id)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return list(data.get("messages", []))
+    except Exception:
+        return []
+
+
+def rebalance_for_task(task_id: str, factor) -> bool:
+    """按系数重排该会议洞察卡可见层并写回；返回是否发生变更。"""
+    messages = load_insight_messages(task_id)
+    if not messages:
+        return False
+    rebalanced = apply_budget(messages, factor)
+    if rebalanced == messages:
+        return False
+    task_store.TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    fs_atomic.atomic_write_json(insights_file(task_id), {"messages": rebalanced})
+    return True

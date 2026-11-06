@@ -212,7 +212,7 @@ def rebuild_voiceprint_from_meetings(speaker_uuid: str):
     发言片段声纹，均值融合后整体覆盖注册表 / each meeting's normalized audio; mean-fusion then overwrite registry.
     相比单场会议注册，多场样本融合可抑制单场录音的信道偏置，提升跨会议判别力 / Multi-meeting fusion suppresses single-session channel bias; improves cross-meeting discrimination.
     """
-    from app.store import tasks
+    from core.task_store import tasks
 
     speaker = speakers.get_speaker_by_id(speaker_uuid)
     if not speaker:
@@ -292,7 +292,7 @@ def auto_match_task_voiceprint(task_id: str, req: Optional[VoiceprintMatchTask] 
     从归一化音频中提取每位说话人的声纹，与注册表比对 / Extract each speaker's voiceprint from normalized audio; compare with registry.
     返回匹配结果 / Return match results. 匹配成功时自动构建 speaker_id → speaker_uuid 映射 / On success, auto-build speaker_id → speaker_uuid mapping.
     """
-    from app.store import save_task_to_disk, tasks
+    from core.task_store import save_task_to_disk, tasks
 
     if task_id not in tasks:
         raise HTTPException(404, _("Task not found"))
@@ -360,7 +360,7 @@ def dismiss_voiceprint_suggestion(task_id: str, req: VoiceprintDismissRequest):
     仅影响建议展示，不改动任何绑定 / Only affects suggestion display, never touches bindings.
     重跑识别时自动清空 / Reset automatically on rerun.
     """
-    from app.store import save_task_to_disk, tasks
+    from core.task_store import save_task_to_disk, tasks
 
     if task_id not in tasks:
         raise HTTPException(404, _("Task not found"))

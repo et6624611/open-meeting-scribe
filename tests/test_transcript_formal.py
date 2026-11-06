@@ -84,15 +84,15 @@ def _make_fake_llm(*, fail_times=0, hard=False, call_log=None):
 @pytest.fixture
 def _guards(monkeypatch):
     """统一的存储/路由/LLM 闸门：默认路由可用，无网络调用。"""
-    import app.store
+    import core.task_store
     # 清理同会话其它用例可能残留的 sidecar / in-flight
     p = tf.formal_sidecar_path("t1")
     if p.exists():
         p.unlink()
     tf._inflight.discard("t1")
-    monkeypatch.setitem(app.store.tasks, "t1", _task(_dialogue()))
+    monkeypatch.setitem(core.task_store.tasks, "t1", _task(_dialogue()))
     monkeypatch.setattr(tf, "llm_route_guard", lambda: {"route": "direct", "source": "byok", "reason": ""})
-    return app.store
+    return core.task_store
 
 
 # ============================================================
@@ -184,8 +184,8 @@ class TestGenerate:
         assert loaded["status"] == "done"
 
     def test_chunking_25_boundary(self, _guards, monkeypatch):
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(30))
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(30))
         calls = []
         fake = _make_fake_llm(call_log=calls)
         monkeypatch.setattr("core.llm.chat_completion_full", fake)
@@ -212,8 +212,8 @@ class TestGenerate:
         assert doc["error"].startswith("chunk_failed")
 
     def test_requires_postmeeting(self, _guards, monkeypatch):
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(), status="recording")
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(), status="recording")
         with pytest.raises(tf.FormalizeError) as ei:
             tf.generate_formal_version("t1")
         assert ei.value.code == "formalize_requires_postmeeting"
@@ -272,8 +272,8 @@ class TestGenerate:
 
     def test_count_mismatch_triggers_split_then_success(self, _guards, monkeypatch):
         # 第 1 块（25句）首次返回少 1 条 → count_mismatch → 拆两半 → 两半各自成功
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5 两块
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5 两块
         state = {"calls": 0}
 
         def _mismatch_then_ok(messages, model=None, temperature=0.2):
@@ -300,8 +300,8 @@ class TestGenerate:
 
     def test_count_mismatch_minchunk_fallback_per_sentence(self, _guards, monkeypatch):
         # 块小到不再拆（≤ _MIN_CHUNK_FOR_SPLIT=12）时 count_mismatch → 逐句兜底
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(6))  # 1 块 ≤ 12
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(6))  # 1 块 ≤ 12
         state = {"calls": 0}
 
         def _mismatch_small_chunk(messages, model=None, temperature=0.2):
@@ -326,8 +326,8 @@ class TestGenerate:
 
     def test_hard_error_keeps_completed_chunks(self, _guards, monkeypatch):
         # 第 1 块成功，第 2 块硬错误 → error 态，但 items 保留第 1 块成果
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(30))  # 25 + 5
         state = {"calls": 0}
 
         def _block2_hard_fail(messages, model=None, temperature=0.2):
@@ -378,12 +378,12 @@ class TestStalenessAndSelection:
         assert next(i for i in doc["items"] if i["sentence_id"] == 2)["text"] == "选区书面句"
 
     def test_full_generation_replaces_items(self, _guards, monkeypatch):
-        import app.store
+        import core.task_store
         monkeypatch.setattr("core.llm.chat_completion_full", _make_fake_llm())
         tf.generate_formal_version("t1")
         # 原文变化后整场重生成（签名以当前 dialogue 为准，不判 stale）
         d = _dialogue(4)
-        app.store.tasks["t1"] = _task(d)
+        core.task_store.tasks["t1"] = _task(d)
         doc = tf.generate_formal_version("t1")
         assert doc["status"] == "done" and len(doc["items"]) == 4
 
@@ -402,8 +402,8 @@ class TestEndpoints:
             yield c
 
     def test_post_requires_postmeeting_409(self, client, _guards, monkeypatch):
-        import app.store
-        app.store.tasks["t1"] = _task(_dialogue(), status="processing")
+        import core.task_store
+        core.task_store.tasks["t1"] = _task(_dialogue(), status="processing")
         r = client.post("/api/tasks/t1/formalize", json={})
         assert r.status_code == 409
         assert r.json()["detail"]["code"] == "formalize_requires_postmeeting"

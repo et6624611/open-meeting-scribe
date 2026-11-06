@@ -22,6 +22,7 @@ from pathlib import Path
 
 from core import joblog
 from core.i18n import _
+from core.tasks_repo import set_task
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
         task["message"] = _("Server restart, resuming transcription...")
         task["audio_duration"] = round(duration, 1)
         task["_recovered_from_orphan"] = True
-        tasks[task_id] = task
+        set_task(task_id, task)
         save_task_to_disk(task_id)
 
         logger.info(
@@ -196,7 +197,7 @@ def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
             task["message"] = _("Server restart, resuming transcription...")
             task["audio_duration"] = round(duration, 1)
             task["_recovered_from_orphan"] = True
-            tasks[task_id] = task
+            set_task(task_id, task)
             save_task_to_disk(task_id)
 
             logger.info(
@@ -294,7 +295,7 @@ def load_tasks_from_disk() -> None:
                     _purge_board_files(task_id)
                     orphan_recording += 1
                     continue
-                tasks[task_id] = task
+                set_task(task_id, task)
         if tasks:
             logger.info(f"从磁盘恢复了 {len(tasks)} 个任务")
         if migrated:
@@ -324,8 +325,11 @@ def recover_interrupted_tasks() -> None:
     """
     import threading
 
-    # 延迟导入，避免与 pipeline_runner 的循环依赖 / Deferred import to avoid circular dependency with pipeline_runner
-    from core.pipeline_runner import _run_stage2_for_task, run_pipeline_task
+    from core import pipeline_hooks
+
+    if not pipeline_hooks.is_registered():
+        logger.error("[恢复] 管线钩子未注册，跳过中断任务恢复（进程须从 app.server 启动）")
+        return
 
     recovered = 0
     failed = 0
@@ -366,7 +370,7 @@ def recover_interrupted_tasks() -> None:
             joblog.append_event(task_id, joblog.STAGE_SUMMARY, "服务重启后自动恢复纪要生成")
 
             t = threading.Thread(
-                target=_run_stage2_for_task,
+                target=pipeline_hooks.run_stage2_task,
                 args=(task_id, audio_path, mapping),
                 daemon=True,
             )
@@ -391,7 +395,7 @@ def recover_interrupted_tasks() -> None:
             joblog.append_event(task_id, joblog.STAGE_TRANSCRIBE, "服务重启后自动恢复转写")
 
             t = threading.Thread(
-                target=run_pipeline_task,
+                target=pipeline_hooks.run_pipeline_task,
                 args=(task_id, audio_path, audio_name, None, None),
                 daemon=True,
             )

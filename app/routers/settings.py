@@ -22,9 +22,9 @@ API Key 在 GET 响应中脱敏返回（sk-****xxxx），仅在 POST 保存时�
 
 from fastapi import APIRouter
 
-# store 配置读取函数 re-export：settings_test 子模块通过 _sm().get_llm_config 穿透访问，
-# 测试 monkeypatch.setattr(settings_router, "get_llm_config", ...) 依赖本模块命名空间。
-from app.store import (  # noqa: F401
+# core.settings_store 配置读取函数 re-export：子模块直接 import core 层，不再经聚合模块穿透。
+# 注意：运行时读取已直连 core.settings_store，测试须 patch core.settings_store。
+from core.settings_store import (  # noqa: F401
     get_active_api_key,
     get_asr_config,
     get_chat_engine_config,

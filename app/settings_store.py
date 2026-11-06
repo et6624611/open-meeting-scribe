@@ -5,9 +5,9 @@ app/settings_store.py — 兼容 re-export 层 / Compatibility re-export layer
 / Implementation sunk to core/settings_store.py; this file remains for backward-compat import paths.
 
 使用模块 __getattr__ 动态代理，保证 set_record_device 等更新 core 层常量后，
-动态访问（如 import app.store as store; store.RECORD_DEVICE）能看到最新值。
+动态访问（如 import app.settings_store as ss; ss.RECORD_DEVICE）能看到最新值。
 / Uses module __getattr__ dynamic proxy so set_record_device updates to core-layer constants
-are visible through dynamic access (e.g. import app.store; store.RECORD_DEVICE).
+are visible through dynamic access (e.g. import app.settings_store as ss; ss.RECORD_DEVICE).
 """
 
 import core.settings_store as _core

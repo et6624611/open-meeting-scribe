@@ -47,11 +47,6 @@ def _isolate_settings_file(tmp_path_factory):
         targets.append((ss, "SETTINGS_FILE"))
     except Exception:
         pass
-    try:
-        import app.store as store
-        targets.append((store, "SETTINGS_FILE"))
-    except Exception:
-        pass
 
     originals = []
     for mod, attr in targets:
@@ -89,11 +84,6 @@ def _isolate_tasks_dir(tmp_path_factory):
     except Exception:
         pass
     try:
-        import app.store as store
-        targets.append((store, "TASKS_DIR"))
-    except Exception:
-        pass
-    try:
         import app.routers.insights as insights
         targets.append((insights, "TASKS_DIR"))
     except Exception:
@@ -123,6 +113,9 @@ def _isolate_tasks_dir(tmp_path_factory):
     except Exception:
         pass
 
+    # T-24 后 app.routers.insights 不再持有 TASKS_DIR（改读 core.insight_budget），
+    # 统一跳过已不存在的属性，避免隔离夹具反向锁死实现形态
+    targets = [(mod, attr) for mod, attr in targets if hasattr(mod, attr)]
     originals = [(mod, attr, getattr(mod, attr)) for mod, attr in targets]
     for mod, attr in targets:
         setattr(mod, attr, tmp_dir)

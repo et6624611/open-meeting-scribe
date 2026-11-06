@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-# 预导入：防 app.store 桩在首次导入时被永久绑定进路由模块
+# 预导入：防 core.task_store 桩在首次导入时被永久绑定进路由模块
 import app.routers.settings as settings_router  # noqa: F401
 import app.server  # noqa: F401
 import app.settings_store as ss

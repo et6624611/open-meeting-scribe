@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from core import hotwords
+from core import hotwords, pipeline_hooks
 from core.audio import (
     get_stream_recording_info,
     is_stream_recording,
@@ -33,7 +33,6 @@ from core.audio import (
 )
 from core.diarization import create_realtime_diarizer
 from core.i18n import _
-from core.pipeline_runner import run_pipeline_task, run_stage2_task
 from core.realtime_asr import RealtimeTranscriber
 from core.realtime_store import (
     push_realtime_msg,
@@ -53,6 +52,7 @@ from core.settings_store import (
     get_feature_flags,
 )
 from core.task_store import RECORDINGS_DIR, save_task_to_disk, tasks
+from core.tasks_repo import set_task
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ def _exec_record_start() -> dict:
     threading.Thread(target=_start_transcriber_bg, daemon=True).start()
 
     result = start_recording_with_stream(device=RECORD_DEVICE, output_dir=RECORDINGS_DIR, task_id=task_id, pcm_callback=pcm_callback)
-    tasks[task_id] = {"task_id": task_id, "status": "recording", "source": "record", "progress": 0, "message": _("Recording..."), "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}}
+    set_task(task_id, {"task_id": task_id, "status": "recording", "source": "record", "progress": 0, "message": _("Recording..."), "audio_name": "", "audio_path": str(result["output_path"]), "audio_duration": None, "speaker_count": None, "summary": None, "output_path": None, "created_at": datetime.now().isoformat(), "error": None, "speaker_mapping": {}})
     save_task_to_disk(task_id)
     return {"success": True, "message": _("Recording started, meeting ID: {id}").format(id=task_id[:8]), "data": {"task_id": task_id}}
 
@@ -369,7 +369,10 @@ def _exec_retranscribe(task_id: str | None) -> dict:
     tasks[task_id].update({"status": "processing", "progress": 0, "message": _("Re-transcribing..."), "error": None, "summary": None, "output_path": None, "dialogue": None, "transcription": None, "speaker_mapping": {}, "speaker_uuid_mapping": {}, "title": None})
     save_task_to_disk(task_id)
     audio_name = task.get("audio_name", Path(audio_path).name)
-    threading.Thread(target=run_pipeline_task, args=(task_id, Path(audio_path), audio_name, None, None), daemon=True).start()
+    if not pipeline_hooks.is_registered():
+        logger.error(f"[AI动作-重新识别] 管线钩子未注册，无法提交: task={task_id[:8]}")
+        return {"success": False, "message": _("Pipeline service not ready, please restart the app and retry"), "data": None}
+    threading.Thread(target=pipeline_hooks.run_pipeline_task, args=(task_id, Path(audio_path), audio_name, None, None), daemon=True).start()
     logger.info(f"[AI动作-重新识别] task={task_id[:8]}, audio={audio_name}")
     return {"success": True, "message": _("Re-transcription task submitted for '{name}', processing in background...").format(name=task.get('audio_name', _('Untitled'))), "data": {"task_id": task_id}}
 
@@ -386,7 +389,7 @@ def _exec_retry_summary(task_id: str | None) -> dict:
     tasks[task_id].update({"status": "processing", "progress": 75, "message": _("Regenerating minutes..."), "error": None, "summary": None, "output_path": None, "title": None})
     save_task_to_disk(task_id)
     mapping = {int(k): v for k, v in task.get("speaker_uuid_mapping", {}).items()}
-    threading.Thread(target=run_stage2_task, args=(task_id, Path(audio_path), mapping), daemon=True).start()
+    threading.Thread(target=pipeline_hooks.run_stage2_task, args=(task_id, Path(audio_path), mapping), daemon=True).start()
     logger.info(f"[AI动作-重新生成纪要] task={task_id[:8]}")
     return {"success": True, "message": _("Minute regeneration task submitted for '{name}', processing in background...").format(name=task.get('audio_name', _('Untitled'))), "data": {"task_id": task_id}}
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from core.agent_tools.catalog import TOOLS_BY_NAME
 from core.agent_tools.tokens import verify_token
@@ -82,17 +82,9 @@ def invoke_tool(payload: ToolInvoke, request: Request,
 def _dispatch_write(name: str, args: dict, ctx) -> dict:
     import copy
 
-    from app.routers.notes import (
-        DecisionUpdateRequest,
-        InjectRequest,
-        NotesUpdate,
-        delete_decision,
-        inject_content,
-        update_decision,
-        update_task_summary,
-    )
-    from app.store import tasks
+    from core import notes_service
     from core import rewrite_snapshots as rsv
+    from core.task_store import tasks
 
     if not ctx.task_id:
         raise HTTPException(400, {"error": "no_task", "message": "写操作需要关联具体会议任务"})
@@ -140,12 +132,13 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
         restorable = _snapshot(rsv.TARGET_SUMMARY,
                                old_us if old_us is not None else (task.get("summary") or ""),
                                absent=old_us is None)
-        res = update_task_summary(ctx.task_id, NotesUpdate(notes=summary))
+        res = notes_service.update_summary(ctx.task_id, summary)
         logger.info("[agent-tools] update_summary task=%s len=%d", ctx.task_id, len(summary))
         audit_logger.info("[agent-engine] update_summary task=%s tier=%s chars=%d restorable=%s",
                           ctx.task_id, ctx.auth_tier, len(summary), restorable)
         return {"ok": True, "tool": name, "result": {"updated": True, "chars": len(summary),
-                                                     "restorable": restorable}, "echo": res}
+                                                     "restorable": restorable},
+                "echo": {"notes": res}}
 
     if name == "inject_items":
         items = args.get("items") or []
@@ -157,9 +150,8 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
             content = str(it.get("content", "")).strip()
             if itype not in ("decision", "conclusion", "decision") or not content:
                 continue
-            r = inject_content(ctx.task_id, InjectRequest(type=itype, content=content,
-                                                            source_message="agent-engine"))
-            item_id = r.get("item", {}).get("id")
+            item = notes_service.inject_item(ctx.task_id, itype, content, "agent-engine")
+            item_id = item.get("id")
             injected.append(item_id)
             # decision/decision 会同时开一个决策流节点（id 与注入条目一致）：快照“此前不存在”，
             # 撤销本轮即等价于删掉新建节点；conclusion 不开节点，无需快照
@@ -193,15 +185,16 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
             except StatusError as exc:
                 raise HTTPException(422, {"error": "bad_status",
                                           "message": f"{exc}（status 只能取 get_meeting_decisions 返回的 available_statuses 中的 id）"})
-        # 先过 Pydantic 校验（字段超长/枚举非法回 400），再落快照：被拒的写不留空快照
+        # 先过字段校验（超长/条目超限回 400），再落快照：被拒的写不留空快照
         try:
-            req_model = DecisionUpdateRequest(**patch)
-        except ValidationError as exc:
-            raise HTTPException(400, {"error": "bad_patch",
-                                      "message": f"字段不合法：{exc.errors()[0].get('msg', exc)}"})
+            notes_service.validate_patch(patch)
+        except notes_service.NotesServiceError as exc:
+            raise HTTPException(400, {"error": "bad_patch", "message": f"字段不合法：{exc.message}"})
         restorable = _snapshot(rsv.decision_node_target(node_id), copy.deepcopy(node))
-        res = update_decision(ctx.task_id, node_id, req_model)
-        decision = res.get("decision") or {}
+        try:
+            decision = notes_service.update_decision(ctx.task_id, node_id, patch)
+        except notes_service.NotesServiceError as exc:
+            raise HTTPException(422, {"error": "bad_patch", "message": exc.message})
         logger.info("[agent-tools] update_decision_node task=%s node=%s fields=%s",
                     ctx.task_id, node_id, ",".join(patch))
         audit_logger.info("[agent-engine] update_decision_node task=%s tier=%s node=%s fields=%s status=%s",
@@ -210,7 +203,7 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                 "result": {"updated": True, "node_id": node_id,
                            "status": decision.get("status"), "title": decision.get("title"),
                            "restorable": restorable},
-                "echo": res}
+                "echo": {"decision": decision}}
 
     if name == "delete_decision_node":
         node_id = str(args.get("node_id", "")).strip()
@@ -222,13 +215,13 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
             raise HTTPException(404, {"error": "node_not_found",
                                       "message": f"决策节点不存在：{node_id}"})
         restorable = _snapshot(rsv.decision_node_target(node_id), copy.deepcopy(node))
-        res = delete_decision(ctx.task_id, node_id)  # auto 节点同步落防复活墓碑
+        notes_service.delete_decision(ctx.task_id, node_id)  # auto 节点同步落防复活墓碑
         logger.info("[agent-tools] delete_decision_node task=%s node=%s", ctx.task_id, node_id)
         audit_logger.info("[agent-engine] delete_decision_node task=%s tier=%s node=%s restorable=%s",
                           ctx.task_id, ctx.auth_tier, node_id, restorable)
         return {"ok": True, "tool": name,
                 "result": {"deleted": True, "node_id": node_id, "restorable": restorable},
-                "echo": res}
+                "echo": {"ok": True}}
 
     if name == "create_insight_board":
         # 建板提案（与 propose_summary/propose_notes 同构）：后端不碰磁盘。
@@ -283,8 +276,8 @@ def cleanup_agent_workspace(data: dict):
     仅删 agent-workspace/<engine_id>/<key>/（resolve 后必须位于 WORKSPACE_ROOT 下，防穿越）。
     CLI 自身会话存于 ~/.qoder，属外部二进制私有域，软件不触碰（§3.10-②）。
     """
-    from app.store import get_chat_engine_config
     from core.cli_engine import cleanup_workspace
+    from core.settings_store import get_chat_engine_config
 
     key = str((data or {}).get("chat_session_id") or (data or {}).get("task_id") or "").strip()
     if not key:

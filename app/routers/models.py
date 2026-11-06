@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 
-from app.routers.admin import is_local_single_user, require_admin_or_local
+from app.auth_deps import is_local_single_user, require_admin_or_local
 from app.settings_store import load_settings, save_settings_to_disk
 from core.engine_host import get_engine_host, invalidate_models_check
 from core.model_downloader import (
@@ -67,7 +67,7 @@ def get_engine_status(request: Request):
 
 def _admin_cookie_valid(request: Request) -> bool:
     """不抛异常地判断请求是否携带有效管理员 cookie / Non-raising check for a valid admin cookie."""
-    from app.routers.admin import ADMIN_COOKIE, _verify_admin_token
+    from app.auth_deps import ADMIN_COOKIE, _verify_admin_token
     token = request.cookies.get(ADMIN_COOKIE)
     return bool(token and _verify_admin_token(token))
 

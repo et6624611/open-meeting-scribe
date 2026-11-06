@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 import core.engine_worker as w
+from core import task_store
 from core.model_registry import MODEL_BY_KEY
 
 # ============================================================
@@ -262,10 +263,9 @@ class TestEngineOverride:
         """端点测试不触碰真实 data/tasks（save_task_to_disk / joblog 打桩）。"""
         import app.routers.tasks as tr
         import core.joblog
-        import core.pipeline_runner as pr
 
         monkeypatch.setattr(tr, "save_task_to_disk", lambda tid: None)
-        monkeypatch.setattr(pr, "save_task_to_disk", lambda tid: None)
+        monkeypatch.setattr(core.task_store, "save_task_to_disk", lambda tid: None)
         monkeypatch.setattr(core.joblog, "append_event", lambda *a, **k: None)
 
     def _make_task(self, tmp_path, tasks_dict, status="failed"):
@@ -280,7 +280,7 @@ class TestEngineOverride:
     def test_pipeline_passes_override_to_transcribe(self, tmp_path, monkeypatch):
         import core.pipeline_runner as pr
 
-        tid = self._make_task(tmp_path, pr.tasks)
+        tid = self._make_task(tmp_path, task_store.tasks)
         captured = {}
 
         def fake_stage1(audio_path, config=None, on_progress=None, speaker_count=None, engine_override=None):

@@ -14,6 +14,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
+from core import llm
 from core.i18n import _
 
 from .chat_shared import (
@@ -31,12 +32,6 @@ from .chat_shared import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def _chat_mod():
-    """延迟获取 chat 模块（让测试 monkeypatch chat.async_chat_completion 生效）。"""
-    import app.routers.chat as _chat  # noqa: E402
-    return _chat
 
 
 DASHSCOPE_MODELS = [
@@ -67,7 +62,7 @@ async def optimize_text(data: OptimizeRequest):
         {"role": "user", "content": f"请优化以下文本：\n\n{text}"},
     ]
     try:
-        optimized = await _chat_mod().async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
+        optimized = await llm.async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
         # 执行回显（AI 算力入口治理 §3）：成功响应携带实际消费方/计费口径
         return {"ok": True, "original": text, "optimized": optimized.strip(),
                 "model_usage": _model_usage_meta(model)}
@@ -97,7 +92,7 @@ async def inline_edit(data: InlineEditRequest):
         {"role": "user", "content": f"改写指令：{instruction}\n\n原文：\n{text}"},
     ]
     try:
-        edited = await _chat_mod().async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
+        edited = await llm.async_chat_completion(messages, model=model, max_tokens=4096, temperature=0.3)
         # 执行回显（AI 算力入口治理 §3）：成功响应携带实际消费方/计费口径
         return {"ok": True, "original": text, "edited": edited.strip(),
                 "model_usage": _model_usage_meta(model)}
@@ -132,7 +127,7 @@ async def chat_title(data: ChatTitleRequest):
         {"role": "user", "content": user_content},
     ]
     try:
-        raw = await _chat_mod().async_chat_completion(messages, model=model, max_tokens=40, temperature=0.3)
+        raw = await llm.async_chat_completion(messages, model=model, max_tokens=40, temperature=0.3)
         return {"ok": True, "title": _sanitize_chat_title(raw)}
     except Exception as e:  # noqa: BLE001 - 命名失败静默降级，见端点 docstring
         logger.warning("[会话命名] 生成失败: %s", e)

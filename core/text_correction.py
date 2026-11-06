@@ -126,7 +126,7 @@ def rewrite_task_payload(task: dict, old: str, new: str) -> dict[str, int]:
     """就地改写任务对象中的全部文本字段，返回按键名分布的命中数。
 
     Rewrite every text field of the task object in place; return per-key hit counts.
-    调用方负责在成功后持久化（app.store.save_task_to_disk），内存 tasks 是唯一写入源。
+    调用方负责在成功后持久化（core.task_store.save_task_to_disk），内存 tasks 是唯一写入源。
     """
     tally: dict[str, int] = {}
     _rewrite_node(task, old, new, tally)

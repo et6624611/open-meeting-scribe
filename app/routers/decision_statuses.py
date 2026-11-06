@@ -13,7 +13,6 @@ DC-UNIFY-01：字典默认集 = 决策流五态；删除自定义状态时，引
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.store import save_task_to_disk, tasks
 from core.decision_flow import status_of
 from core.decision_status import (
     StatusError,
@@ -24,6 +23,7 @@ from core.decision_status import (
     reorder,
     update_status,
 )
+from core.task_store import save_task_to_disk, tasks
 
 router = APIRouter(tags=["decision-statuses"])
 

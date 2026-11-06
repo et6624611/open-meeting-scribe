@@ -11,9 +11,9 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from app.store import tasks
 from core import projects
 from core.i18n import _
+from core.task_store import tasks
 
 logger = logging.getLogger(__name__)
 

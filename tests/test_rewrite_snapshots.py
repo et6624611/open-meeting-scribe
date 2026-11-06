@@ -48,7 +48,7 @@ def client():
 @pytest.fixture
 def flow_task(monkeypatch):
     """注入一场含两条待决策节点的会议（走真实 tasks 内存对象）。"""
-    from app.store import tasks
+    from core.task_store import tasks
     tid = "rewtest-flow"
     tasks[tid] = {
         "task_id": tid, "status": "completed", "title": "差旅预算机制讨论",
@@ -140,7 +140,7 @@ class TestDecisionNodeRewrite:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["result"]["updated"] is True and body["result"]["restorable"] is True
-        from app.store import tasks
+        from core.task_store import tasks
         node = next(t for t in tasks[flow_task]["decisions"] if t["id"] == "node-a")
         assert node["status"] == "done" and node["done"] is True and node["title"] == "版本双轨已确认"
         # 快照存的是改写前的整节点
@@ -167,7 +167,7 @@ class TestDecisionNodeRewrite:
     def test_delete_removes_and_restore_reinserts(self, client, flow_task):
         r = _invoke(client, "delete_decision_node", {"node_id": "node-b"}, task_id=flow_task)
         assert r.status_code == 200 and r.json()["result"]["deleted"] is True
-        from app.store import tasks
+        from core.task_store import tasks
         assert all(t["id"] != "node-b" for t in tasks[flow_task]["decisions"])
         # 删除的 auto 节点应落防复活墓碑（复用 notes.delete_decision 口径）
         assert tasks[flow_task].get("decision_deletions")
@@ -178,7 +178,7 @@ class TestDecisionNodeRewrite:
         assert back["text"].startswith("商旅平台")
 
     def test_inject_then_restore_removes_created_node(self, client, flow_task):
-        from app.store import tasks
+        from core.task_store import tasks
         before = len(tasks[flow_task]["decisions"])
         r = _invoke(client, "inject_items",
                     {"items": [{"type": "decision", "content": "补录：手工导入值口径"}]},
@@ -207,7 +207,7 @@ class TestTurnRestore:
                 task_id=flow_task, turn_id="turn-x")
         _invoke(client, "update_decision_node", {"node_id": "node-b", "status": "in_progress"},
                 task_id=flow_task, turn_id="turn-x")
-        from app.store import tasks
+        from core.task_store import tasks
         assert [t["status"] for t in tasks[flow_task]["decisions"]] == ["done", "in_progress"]
         res = rsv.restore_task(flow_task, turn_id="turn-x")
         assert res["ok"] is True and res["restored"] == 2
@@ -239,7 +239,7 @@ class TestTurnRestore:
         back = client.post(f"/api/tasks/{flow_task}/rewrites/restore",
                            json={"turn_id": "turn-e2e"})
         assert back.status_code == 200 and back.json()["restored"] == 1
-        from app.store import tasks
+        from core.task_store import tasks
         assert tasks[flow_task]["decisions"][0]["status"] == "to_decide"
         assert tasks[flow_task].get("last_modified_at")
 
@@ -267,7 +267,7 @@ class TestTurnRestore:
         r = _invoke(client, "update_summary", {"summary": "AI 覆盖的新纪要"},
                     task_id=flow_task, turn_id="turn-sum")
         assert r.status_code == 200 and r.json()["result"]["restorable"] is True
-        from app.store import tasks
+        from core.task_store import tasks
         assert tasks[flow_task]["user_summary"] == "AI 覆盖的新纪要"
         # 此前无 user_summary → 撤销后回到"未编辑态"（回退到生成稿口径）
         res = rsv.restore_task(flow_task, turn_id="turn-sum")
@@ -291,8 +291,8 @@ class TestDecisionsToolFeedsRewrite:
 
     def test_legacy_node_without_status_reports_derived(self, monkeypatch):
         """历史 task JSON 无 status 字段时，读侧按 done 推导（不空报）。"""
-        from app.store import tasks
         from core.agent_tools.impl import _tool_get_meeting_decisions
+        from core.task_store import tasks
         tid = "rewtest-legacy"
         tasks[tid] = {"task_id": tid, "decisions": [{"id": "n1", "text": "旧节点", "done": True}]}
         try:

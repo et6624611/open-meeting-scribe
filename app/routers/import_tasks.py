@@ -22,10 +22,6 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.store import (
-    save_task_to_disk,
-    tasks,
-)
 from core.fs_atomic import stream_save_upload
 from core.i18n import _
 from core.import_parser import (
@@ -36,6 +32,11 @@ from core.import_parser import (
     infer_title_from_content,
     parse_document_content,
 )
+from core.task_store import (
+    save_task_to_disk,
+    tasks,
+)
+from core.tasks_repo import set_task
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +141,9 @@ async def _import_as_audio(
     project_id: Optional[str],
 ) -> dict:
     """音频文件导入：复用现有转写管线 / Audio import: reuse existing transcription pipeline."""
-    from app.routers.tasks import UPLOAD_DIR, run_pipeline_task
+    # 复用 core 层：转写管线与上传目录（不再跨 router 反查 tasks 模块）
+    from core.pipeline_runner import run_pipeline_task
+    from core.task_store import UPLOAD_DIR
 
     # 保存上传文件（流式分块读取，避免大文件 OOM） / Save uploaded file (stream chunked read, avoid OOM on large files)
     task_id = str(uuid.uuid4())
@@ -155,7 +158,7 @@ async def _import_as_audio(
 
     # 创建任务记录 / Create task record
     now = datetime.now()
-    tasks[task_id] = {
+    set_task(task_id, {
         "task_id": task_id,
         "status": "pending",
         "source": "upload",
@@ -176,7 +179,7 @@ async def _import_as_audio(
         "failed_stage": None,
         "retry_count": 0,
         "speaker_mapping": {},
-    }
+    })
 
     if title:
         tasks[task_id]["title"] = title
@@ -259,7 +262,7 @@ def _create_import_task(
 
     if content_type == CONTENT_TYPE_TRANSCRIPT and dialogue:
         # ── 原文类型：创建任务，后台跑 Stage 2（纪要生成） / Transcript: create task, run Stage 2 in background ──
-        tasks[task_id] = {
+        set_task(task_id, {
             "task_id": task_id,
             "status": "processing",
             "source": "import_transcript",
@@ -282,7 +285,7 @@ def _create_import_task(
             "speaker_mapping": {},
             "dialogue": dialogue,
             "title": inferred_title,
-        }
+        })
 
         if project_id:
             tasks[task_id]["project_id"] = project_id
@@ -311,7 +314,7 @@ def _create_import_task(
 
     elif content_type == CONTENT_TYPE_SUMMARY and summary_text:
         # ── 纪要类型：直接存为已完成任务 / Summary: store directly as completed task ──
-        tasks[task_id] = {
+        set_task(task_id, {
             "task_id": task_id,
             "status": "completed",
             "source": "import_summary",
@@ -335,7 +338,7 @@ def _create_import_task(
             "speaker_mapping": {},
             "dialogue": [],
             "title": inferred_title,
-        }
+        })
 
         if project_id:
             tasks[task_id]["project_id"] = project_id
@@ -383,7 +386,7 @@ def _create_import_task(
 
     else:
         # ── 无法识别：存为原始文本，让用户在详情页编辑 / Unknown: store as raw text for user to edit ──
-        tasks[task_id] = {
+        set_task(task_id, {
             "task_id": task_id,
             "status": "completed",
             "source": "import_summary",
@@ -407,7 +410,7 @@ def _create_import_task(
             "speaker_mapping": {},
             "dialogue": [],
             "title": inferred_title,
-        }
+        })
 
         if project_id:
             tasks[task_id]["project_id"] = project_id

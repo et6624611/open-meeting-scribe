@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app import chat_attachment_store
-from core import joblog
+from core import agent_workspace, chat_context, joblog, settings_store, task_store
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import (
     build_page_context,
@@ -24,20 +24,23 @@ from core.chat_edits import (
     has_edit_intent,
     parse_edit_intent,
 )
-
-
-def _chat_mod():
-    """延迟获取 chat 模块（避免循环依赖 + 让测试 monkeypatch chat.xxx 生效）。"""
-    import app.routers.chat as _chat  # noqa: E402
-    return _chat
-
-
-def _get_tasks():
-    """延迟获取 tasks 字典（兼容测试 patch chat_mod.tasks）"""
-    return _chat_mod().tasks
-
 from core.cli_engine import (
     CliAgentError,
+)
+from core.cli_engine import (
+    context_export as cli_context_export,
+)
+from core.cli_engine import (
+    manifest as cli_manifest,
+)
+from core.cli_engine import (
+    mcp_bridge as cli_mcp_bridge,
+)
+from core.cli_engine import (
+    probe as cli_probe,
+)
+from core.cli_engine import (
+    runner as cli_runner,
 )
 from core.cli_engine.runner import stream_scope
 from core.i18n import _
@@ -119,7 +122,7 @@ async def _board_retry(*, original_brief: str, prior_output: str, run_options: d
     terminal = None
     first_token = True
     try:
-        async with aclosing(_chat_mod().run_cli_agent(**{**run_options, "brief": brief,
+        async with aclosing(cli_runner.run_cli_agent(**{**run_options, "brief": brief,
                                              "on_write_success": on_write})) as events:
             async for evt in events:
                 if evt.get("type") in ("done", "error"):
@@ -160,15 +163,15 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     智能体模式事件生成器：探针 → 上下文导出 → CLI 流式事件。
     引擎不可用/启动失败时 yield ``{"type":"__fallback__"}`` 哨兵，由外层回退内置链路。
     """
-    cfg = _chat_mod().get_chat_engine_config()
+    cfg = settings_store.get_chat_engine_config()
     loop = asyncio.get_running_loop()
 
     # ① 可用性探针（同步 subprocess → 线程池，避免阻塞事件循环）
     probe_result: dict
     try:
-        manifest = _chat_mod().load_manifest(cfg["engine_id"])
+        manifest = cli_manifest.load_manifest(cfg["engine_id"])
         probe_result = await loop.run_in_executor(
-            None, lambda: _chat_mod().probe_engine(manifest, cfg.get("cli_path_override")))
+            None, lambda: cli_probe.probe_engine(manifest, cfg.get("cli_path_override")))
     except FileNotFoundError:
         probe_result = {"available": False, "reason": "not_installed",
                         "display_name": cfg["engine_id"], "hint": "chatEngine.notInstalled"}
@@ -183,13 +186,13 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         return
 
     # ② 上下文导出到工作区（物理隔离于 data/，M3）
-    task = dict(_get_tasks()[data.task_id]) if (data.task_id and data.task_id in _get_tasks()) else None
+    task = dict(task_store.tasks[data.task_id]) if (data.task_id and data.task_id in task_store.tasks) else None
     if task is not None and resolved_project_id and not task.get("project_path"):
         ppath = _resolve_project_path(resolved_project_id)
         if ppath:
             task["project_path"] = ppath
-    speaker_map = _chat_mod().build_speaker_name_map(data.task_id) if data.task_id else {}
-    role = _chat_mod().resolve_agent_role(data.role)
+    speaker_map = chat_context.build_speaker_name_map(data.task_id) if data.task_id else {}
+    role = agent_workspace.resolve_agent_role(data.role)
     role_prompt = role["agent_md"] if role else ""
     # 洞察板职责补充一并写入工作区 AGENTS.md，与内置智能体会话口径一致（无该文件时自然跳过）
     role_insight_prompt = (role or {}).get("extra_files", {}).get("insights.md", "")
@@ -200,12 +203,12 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档优先级链落档
     resolved_tier = _resolve_agent_auth_tier(data.auth_tier, cfg)
 
-    export = await loop.run_in_executor(None, lambda: _chat_mod().export_context(
+    export = await loop.run_in_executor(None, lambda: cli_context_export.export_context(
         engine_id=cfg["engine_id"], task=task, task_id=data.task_id, user_message=user_message,
         page_context=page_ctx, role_prompt=role_prompt, speaker_map=speaker_map,
         workspace_key=data.chat_session_id or data.task_id,
         history=data.history,
-        # 会中透传实时句（前端快照）：dialogue 落盘前由 _chat_mod().export_context 用它渲染 transcript.md
+        # 会中透传实时句（前端快照）：dialogue 落盘前由 cli_context_export.export_context 用它渲染 transcript.md
         realtime_entries=data.realtime_transcripts,
         # @附件：原文件复制进工作区，由 CLI 自行解析
         attachments=data.attachments,
@@ -225,9 +228,9 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     mcp_config_path: str | None = None
     bridge_token: str | None = None
     allowed_tools: list[str] = []
-    if _chat_mod().manifest_has_mcp(cfg["engine_id"]):
+    if cli_mcp_bridge.manifest_has_mcp(cfg["engine_id"]):
         try:
-            mcp_config_path, tok_ctx, allowed_tools = _chat_mod().build_bridge_config(
+            mcp_config_path, tok_ctx, allowed_tools = cli_mcp_bridge.build_bridge_config(
                 task_id=data.task_id, project_id=resolved_project_id,
                 auth_tier=resolved_tier, base_url=base_url, turn_id=stream_id)
             bridge_token = tok_ctx.token
@@ -254,7 +257,7 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     )
     try:
         with stream_scope(stream_id):
-            async with aclosing(_chat_mod().run_cli_agent(
+            async with aclosing(cli_runner.run_cli_agent(
                 **run_options, brief=export["brief"], session_id=session_id,
                 resume=bool(data.resume_session and session_id),
             )) as events:
@@ -306,13 +309,13 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
                "hint_params": {"engine": probe_result.get("display_name", "CLI"), "detail": getattr(e, "detail", "")}}
     finally:
         if mcp_config_path and bridge_token:
-            _chat_mod().teardown_bridge(mcp_config_path, bridge_token)
+            cli_mcp_bridge.teardown_bridge(mcp_config_path, bridge_token)
 
 @router.post("/api/chat/cancel")
 async def chat_cancel(data: dict):
     """真取消端点（方案 §3.9-5）：kill CLI 进程组，前端 fetch abort 不足以终止任务。"""
     stream_id = (data or {}).get("stream_id") or ""
-    hit = _chat_mod().cancel_stream(stream_id) if stream_id else False
+    hit = cli_runner.cancel_stream(stream_id) if stream_id else False
     return {"ok": True, "cancelled": hit, "stream_id": stream_id}
 @router.post("/api/chat")
 async def chat(data: ChatRequest):
@@ -339,8 +342,8 @@ async def chat(data: ChatRequest):
     # ── 步骤 0: 数据编辑意图 ── / ── Step 0: Data edit intent ──
     edit_changes: list[dict] = []
     edit_turn = False
-    if not is_qa_mode and data.task_id and data.task_id in _get_tasks() and has_edit_intent(user_message):
-        ops = await parse_edit_intent(user_message, _get_tasks()[data.task_id])
+    if not is_qa_mode and data.task_id and data.task_id in task_store.tasks and has_edit_intent(user_message):
+        ops = await parse_edit_intent(user_message, task_store.tasks[data.task_id])
         if ops:
             edit_turn = True
             edit_changes = await asyncio.to_thread(execute_and_verify_edits, data.task_id, ops)
@@ -410,7 +413,7 @@ async def chat(data: ChatRequest):
         llm_result = await async_chat_completion_full(messages, model=chat_model, max_tokens=2048)
         llm_latency_ms = round((time.perf_counter() - llm_start) * 1000)
         reply = audit_reply_claims(llm_result.content, edit_changes)
-        existing_decisions = _get_tasks().get(data.task_id, {}).get("decisions", []) if data.task_id else []
+        existing_decisions = task_store.tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
         extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_decisions)
 
         # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
@@ -510,12 +513,12 @@ async def chat_stream(data: ChatRequest, request: Request):
 
     # 解析项目 ID / Resolve project ID
     resolved_project_id = data.project_id
-    if not resolved_project_id and data.task_id and data.task_id in _get_tasks():
-        resolved_project_id = _get_tasks()[data.task_id].get("project_id")
+    if not resolved_project_id and data.task_id and data.task_id in task_store.tasks:
+        resolved_project_id = task_store.tasks[data.task_id].get("project_id")
 
     async def event_generator():
         # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
-        if _chat_mod().get_chat_engine_config()["enabled"] and data.engine == "agent":
+        if settings_store.get_chat_engine_config()["enabled"] and data.engine == "agent":
             need_fallback = False
             async with aclosing(_agent_engine_events(data, user_message, resolved_project_id,
                                                        base_url=str(request.base_url).rstrip("/"))) as events:
@@ -559,7 +562,7 @@ async def chat_stream(data: ChatRequest, request: Request):
                 "latency_ms": round((time.perf_counter() - start_time) * 1000),
             }
             # 后处理：提取可注入项 / Post-processing: extract injectable items
-            existing_decisions = _get_tasks().get(data.task_id, {}).get("decisions", []) if data.task_id else []
+            existing_decisions = task_store.tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
             extracted_items = extract_injectable_items(full_content, existing_decisions)
             event["extracted_items"] = extracted_items
             # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）

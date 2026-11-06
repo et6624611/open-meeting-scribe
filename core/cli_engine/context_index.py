@@ -11,6 +11,7 @@ from core.speakers import normalize_speaker_name
 
 logger = logging.getLogger(__name__)
 
+from . import context_paths
 from .context_paths import (
     _OMS_DIR,
     _UUID_RE,
@@ -24,17 +25,12 @@ from .context_paths import (
 from .context_render import _now_iso, _summary_line, _write_md_with_meta
 
 
-def _ce():
-    import core.cli_engine.context_export as ce
-    return ce
-
-
 def _meetings_index_path(proj_dir: Path) -> Path:
     return proj_dir / _OMS_DIR / "meetings.json"
 
 
 def _global_index_path() -> Path:
-    return _ce().PREVIEW_ROOT / _OMS_DIR / "index.json"
+    return context_paths.PREVIEW_ROOT / _OMS_DIR / "index.json"
 
 
 def read_meetings_index(proj_dir: Path) -> dict:
@@ -62,7 +58,7 @@ def write_meetings_index(proj_dir: Path, data: dict) -> None:
 
 def read_global_index() -> dict:
     """读全局索引：优先 .oms/index.json，兼容旧 _index.json。"""
-    for path in (_global_index_path(), _ce().PREVIEW_ROOT / "_index.json"):
+    for path in (_global_index_path(), context_paths.PREVIEW_ROOT / "_index.json"):
         if path.is_file():
             try:
                 return json.loads(path.read_text(encoding="utf-8"))
@@ -75,7 +71,7 @@ def _write_global_index(data: dict) -> None:
     path = _global_index_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    legacy = _ce().PREVIEW_ROOT / "_index.json"
+    legacy = context_paths.PREVIEW_ROOT / "_index.json"
     if legacy.is_file():
         try:
             legacy.unlink()
@@ -94,11 +90,11 @@ def _slim_meetings(meetings: list[dict]) -> list[dict]:
 def _rebuild_global_index() -> None:
     """重建全局索引：从各项目会议索引反查 project_id，不再依赖目录名。
     含会议级条目——单场会议 AGENTS.md 让 agent 查它当全局索引，查不到就是废索引。"""
-    _ce().PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    context_paths.PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     projects: list[dict] = []
     standalone_meetings: list[dict] = []
     try:
-        for entry in sorted(_ce().PREVIEW_ROOT.iterdir()):
+        for entry in sorted(context_paths.PREVIEW_ROOT.iterdir()):
             if not entry.is_dir() or entry.name.startswith("."):
                 continue
             if entry.name == "_standalone":
@@ -116,7 +112,7 @@ def _rebuild_global_index() -> None:
                 continue  # 归属非法（如被误标 _standalone）不入全局列表
             projects.append({
                 "project_id": pid,
-                "project_name": mi.get("project_name") or _ce()._project_display_name(pid),
+                "project_name": mi.get("project_name") or context_paths._project_display_name(pid),
                 "meeting_count": len(mi.get("meetings", [])),
                 "meetings": _slim_meetings(mi.get("meetings", [])),
                 "path": entry.name,
@@ -140,10 +136,10 @@ def update_workspace_index(task_id: str, project_id: str | None, task: dict,
     index: dict = read_meetings_index(proj_dir)
     if not index:
         index = {"project_id": project_id or "_standalone",
-                 "project_name": _ce()._project_display_name(project_id),
+                 "project_name": context_paths._project_display_name(project_id),
                  "version": 1, "generated_at": _now_iso(), "meetings": []}
     index["project_id"] = project_id or "_standalone"
-    index["project_name"] = _ce()._project_display_name(project_id)
+    index["project_name"] = context_paths._project_display_name(project_id)
 
     ws = (proj_dir / workspace_name) if workspace_name else _find_meeting_dir(proj_dir, task_id)
     ctx_dir = (ws / "context") if ws else (proj_dir / task_id / "context")
@@ -169,7 +165,7 @@ def update_workspace_index(task_id: str, project_id: str | None, task: dict,
 
 def _project_members(project_id: str) -> list[dict]:
     """按日期倒序取项目内会议（任务库为空时先从磁盘加载）。"""
-    _ce()._ensure_tasks_loaded()
+    _ensure_tasks_loaded()
     from core.task_store import tasks
     members = [t for t in tasks.values()
                if t.get("project_id") == project_id and t.get("task_id")]
@@ -228,14 +224,14 @@ def _write_global_decisions(projects_idx: list[dict], standalone_members: list[d
         pid = item["index"].get("project_id")
         if not pid or not _UUID_RE.match(pid):
             continue
-        label = item["index"].get("project_name") or _ce()._project_display_name(pid)
+        label = item["index"].get("project_name") or context_paths._project_display_name(pid)
         rows.extend(_decision_rows(_project_members(pid), names, label))
     if standalone_members:
         rows.extend(_decision_rows(standalone_members, names, "独立会议"))
     body = ("# 跨项目决策台账\n\n"
             "> 聚合全部知识库项目与独立会议的决策节点；项目内明细见各项目目录 `_DECISIONS.md`。\n\n"
             + "\n".join(rows) + "\n")
-    _write_md_with_meta(_ce().PREVIEW_ROOT, "_DECISIONS.md",
+    _write_md_with_meta(context_paths.PREVIEW_ROOT, "_DECISIONS.md",
                         {"generated_at": _now_iso(), "source": "decisions"},
                         body)
     written.append("_DECISIONS.md")
@@ -257,7 +253,7 @@ def _ensure_tasks_loaded() -> None:
 def _store_members(project_id: str | None) -> dict[str, dict]:
     """某范围（项目/独立会议）的全量任务，task_id → task。"""
     from core.task_store import tasks as task_store
-    _ce()._ensure_tasks_loaded()
+    _ensure_tasks_loaded()
     if project_id:
         items = [t for t in task_store.values()
                  if t.get("project_id") == project_id and t.get("task_id")]
@@ -315,8 +311,8 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
             if owner is None:
                 continue  # 真无主，保留归档待人工辨认
             pid = owner.get("project_id")
-            pd = (_ce().PREVIEW_ROOT / _project_dir_name(pid) if pid and _UUID_RE.match(str(pid))
-                  else _ce().PREVIEW_ROOT / "_standalone")
+            pd = (context_paths.PREVIEW_ROOT / _project_dir_name(pid) if pid and _UUID_RE.match(str(pid))
+                  else context_paths.PREVIEW_ROOT / "_standalone")
             real = (_find_meeting_dir(pd, owner["task_id"])
                     if pd.is_dir() else None)
             if real is not None:
@@ -347,7 +343,7 @@ def _migrate_meeting_dirs(proj_dir: Path, project_id: str | None = None) -> None
     proj_id = project_id or "_standalone"
     write_meetings_index(proj_dir, {
         "project_id": proj_id,
-        "project_name": "独立会议" if proj_id == "_standalone" else _ce()._project_display_name(proj_id),
+        "project_name": "独立会议" if proj_id == "_standalone" else context_paths._project_display_name(proj_id),
         "version": 1,
         "generated_at": _now_iso(),
         "meetings": meetings,
@@ -376,9 +372,9 @@ def _speaker_count(task: dict | None) -> int:
 
 def _sweep_junk_files() -> None:
     """清扫 Finder/同步工具留下的噪声文件（.DS_Store 等），保持工作区纯净。"""
-    if not _ce().PREVIEW_ROOT.is_dir():
+    if not context_paths.PREVIEW_ROOT.is_dir():
         return
-    for path in _ce().PREVIEW_ROOT.rglob(".DS_Store"):
+    for path in context_paths.PREVIEW_ROOT.rglob(".DS_Store"):
         try:
             path.unlink()
         except OSError:
@@ -389,11 +385,11 @@ def _migrate_all_dirs() -> None:
     """打开全部会议前批量迁移：所有项目与独立会议的旧目录一次性改名。
     目录归属只认任务库与合法 project_id，绝不给非独立目录盖 standalone 章——
     项目目录缺索引时若误标，会把独立会议灌进项目索引并连锁清空独立区。"""
-    _ce()._ensure_tasks_loaded()
+    _ensure_tasks_loaded()
     _sweep_junk_files()
-    if not _ce().PREVIEW_ROOT.is_dir():
+    if not context_paths.PREVIEW_ROOT.is_dir():
         return
-    for entry in sorted(_ce().PREVIEW_ROOT.iterdir()):
+    for entry in sorted(context_paths.PREVIEW_ROOT.iterdir()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
         if entry.name == "_standalone":

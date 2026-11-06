@@ -11,16 +11,14 @@ app/routers/notes.py — 笔记 + AI 注入 + 决策 + 改写撤销 / Notes + AI
 """
 
 import logging
-import uuid
 from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.store import save_task_to_disk, tasks
-from core import users as user_module
-from core.decision_flow import enrich_decision, first_open_status, make_decision_node, resolve_owner, status_of
+from core import notes_service
+from core.decision_flow import enrich_decision, first_open_status, make_decision_node, status_of
 from core.decision_status import (
     SUPERSEDED_STATUS_ID,
     StatusError,
@@ -31,6 +29,7 @@ from core.decision_status import (
 )
 from core.i18n import _
 from core.speakers import get_speaker_name_map
+from core.task_store import save_task_to_disk, tasks
 
 router = APIRouter(tags=["notes"])
 # 语义审计专用（与 server.py 的 audit 同名 logger 共享 logs/audit.log handler）
@@ -85,12 +84,9 @@ def update_task_notes(task_id: str, req: NotesUpdate):
 @router.put("/api/tasks/{task_id}/summary")
 def update_task_summary(task_id: str, req: NotesUpdate):
     """保存用户编辑的纪要 / Save user-edited summary."""
-    task = tasks.get(task_id)
-    if not task:
+    if not tasks.get(task_id):
         raise HTTPException(404, _("Task not found"))
-    task["user_summary"] = req.notes
-    _mark_modified(task_id)
-    save_task_to_disk(task_id)
+    notes_service.update_summary(task_id, req.notes)
     return {"notes": req.notes}
 
 
@@ -120,43 +116,9 @@ def get_task_injections(task_id: str):
 @router.post("/api/tasks/{task_id}/inject")
 def inject_content(task_id: str, req: InjectRequest):
     """注入一条 AI 识别内容 / Inject an AI-identified item."""
-    task = tasks.get(task_id)
-    if not task:
+    if not tasks.get(task_id):
         raise HTTPException(404, _("Task not found"))
-    injections = task.setdefault("injections", [])
-    item = {
-        "id": str(uuid.uuid4()),
-        "type": req.type,
-        "content": req.content,
-        "source_message": req.source_message,
-        "injected_at": datetime.now().isoformat(),
-        "applied": False,
-    }
-    injections.append(item)
-
-    # 决策条目注入即入决策流（conclusion 只进注入区）/ A decision injection also enters the flow
-    if req.type == "decision":
-        decisions = task.setdefault("decisions", [])
-        user = user_module.get_current_user()
-        assignee = user["name"] if user else ""
-        # DC-UNIFY-01：「**标题**：正文」写法时拆出 title，展示侧降级
-        title = ""
-        content = req.content
-        from core.summarize import split_decision_title
-        title, body = split_decision_title(req.content)
-        content = body or req.content
-        decision_item = make_decision_node(
-            content,
-            assignee=assignee,
-            title=title,
-            source="injection",
-            node_id=item["id"],
-            extra={"injection_id": item["id"]},
-        )
-        decisions.append(decision_item)
-
-    _mark_modified(task_id)
-    save_task_to_disk(task_id)
+    item = notes_service.inject_item(task_id, req.type, req.content, req.source_message)
     return {"item": item}
 
 
@@ -287,26 +249,9 @@ def toggle_decision(task_id: str, decision_id: str, req: DecisionToggleRequest):
 @router.delete("/api/tasks/{task_id}/decisions/{decision_id}")
 def delete_decision(task_id: str, decision_id: str):
     """删除一条决策流节点 / Delete a decision-flow node."""
-    task = tasks.get(task_id)
-    if not task:
+    if not tasks.get(task_id):
         raise HTTPException(404, _("Task not found"))
-    decisions = task.get("decisions", [])
-    target = next((t for t in decisions if t.get("id") == decision_id), None)
-    if target is not None:
-        # DC-R2-BE：删掉的 auto 节点落墓碑，重新生成纪要时不复活（手动节点无此风险）
-        from core.summarize import build_decision_tombstone
-        tombstone = build_decision_tombstone(target)
-        if tombstone is not None:
-            deletions = task.get("decision_deletions")
-            if not isinstance(deletions, list):
-                deletions = []
-            existing_keys = {t.get("text_key") for t in deletions if isinstance(t, dict)}
-            if tombstone["text_key"] not in existing_keys:
-                deletions.append(tombstone)
-            task["decision_deletions"] = deletions
-    task["decisions"] = [t for t in decisions if t.get("id") != decision_id]
-    _mark_modified(task_id)
-    save_task_to_disk(task_id)
+    notes_service.delete_decision(task_id, decision_id)
     return {"ok": True}
 
 
@@ -369,45 +314,15 @@ def create_decision(task_id: str, req: DecisionCreateRequest):
 @router.put("/api/tasks/{task_id}/decisions/{decision_id}")
 def update_decision(task_id: str, decision_id: str, req: DecisionUpdateRequest):
     """编辑决策流节点内容/执行人/状态 / Edit a decision-flow node."""
-    task = tasks.get(task_id)
-    if not task:
+    if not tasks.get(task_id):
         raise HTTPException(404, _("Task not found"))
-    for decision in task.get("decisions", []):
-        if decision["id"] == decision_id:
-            if req.text is not None:
-                decision["text"] = req.text
-            if req.title is not None:
-                decision["title"] = req.title.strip()
-            # 执行人：显式携带 owner_id 时按档案权威解析，否则按快照名直写
-            if req.owner_id is not None:
-                oid, name = resolve_owner(req.owner_id, req.assignee or decision.get("assignee"))
-                decision["owner_id"] = oid
-                decision["assignee"] = name
-            elif req.assignee is not None:
-                decision["assignee"] = req.assignee
-            if req.why is not None:
-                decision["why"] = req.why
-            if req.outcome is not None:
-                decision["outcome"] = req.outcome
-            if req.how is not None:
-                steps = [s.strip() for s in req.how if s and s.strip()][:_HOW_MAX_ITEMS]
-                # 空表或 [text] 冗余副本不落盘（缺省视为 [text] 是读侧约定，非存储内容）
-                if not steps or steps == [str(decision.get("text") or "").strip()]:
-                    decision.pop("how", None)
-                else:
-                    decision["how"] = steps
-            if req.owner_type is not None:
-                decision["owner_type"] = req.owner_type
-            if req.status is not None:
-                try:
-                    _apply_status(decision, validate_status_id(req.status))
-                except StatusError as exc:
-                    raise HTTPException(422, str(exc))
-            decision["updated_at"] = datetime.now().isoformat()
-            _mark_modified(task_id)
-            save_task_to_disk(task_id)
-            return {"decision": decision}
-    raise HTTPException(404, _("Decision not found"))
+    try:
+        decision = notes_service.update_decision(task_id, decision_id, req.model_dump())
+    except notes_service.NotesServiceError as exc:
+        if exc.code == "decision_not_found":
+            raise HTTPException(404, _("Decision not found"))
+        raise HTTPException(422, exc.message)
+    return {"decision": decision}
 
 
 # ============================================================

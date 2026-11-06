@@ -13,15 +13,15 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.store import (
+from core import speakers
+from core.i18n import _
+from core.realtime_store import (
     push_realtime_msg,
     realtime_full_transcripts,
     realtime_speaker_maps,
     realtime_summarizers,
     resolve_realtime_speaker_name,
-    speakers,
 )
-from core.i18n import _
 
 logger = logging.getLogger(__name__)
 

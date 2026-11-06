@@ -38,12 +38,6 @@ _IDE_RULE_FILES = {
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
-def _ce():
-    """聚合层自引用，使 monkeypatch.setattr(ce, 'X', ...) 穿透到子模块。"""
-    import core.cli_engine.context_export as ce
-    return ce
-
-
 def _compute_workspace_root() -> Path:
     """计算工作区根目录：core.paths.BASE_DIR（打包后落 exe 同级，持久；
     开发模式为仓库根）。PyInstaller _MEIPASS 临时目录重启丢失，必须避开。"""
@@ -121,21 +115,21 @@ def _find_meeting_dir(proj_dir: Path, task_id: str) -> Path | None:
 
 def _project_dir_name(project_id: str) -> str:
     """项目目录名：<项目名>__<短ID>（project_preview_dir 与孤儿反查共用，避免两处拼名漂移）。"""
-    return (f"{_sanitize_segment(_ce()._project_display_name(project_id), '知识库')}"
+    return (f"{_sanitize_segment(_project_display_name(project_id), '知识库')}"
             f"__{_short_key(project_id)}")
 
 
 def project_preview_dir(project_id: str | None) -> Path:
     """项目级工作区根：<项目名>__<短ID>；独立会议归入 _standalone。
     旧版 <project_id> 目录首次访问时惰性迁移。"""
-    _ce().PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    PREVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     if not project_id or project_id == "_standalone":
-        root = _ce().PREVIEW_ROOT / "_standalone"
+        root = PREVIEW_ROOT / "_standalone"
         root.mkdir(parents=True, exist_ok=True)
         return root.resolve()
 
-    target = _ce().PREVIEW_ROOT / _project_dir_name(project_id)
-    legacy = _ce().PREVIEW_ROOT / project_id
+    target = PREVIEW_ROOT / _project_dir_name(project_id)
+    legacy = PREVIEW_ROOT / project_id
     if legacy.is_dir():
         if not target.exists():
             try:
@@ -175,7 +169,7 @@ def _merge_dir_into(src: Path, dst: Path) -> None:
 def workspace_dir(engine_id: str, task_id: str | None) -> Path:
     """返回并确保工作区目录存在；task_id 缺省用 general 命名空间。"""
     tid = task_id or "general"
-    ws = (_ce().WORKSPACE_ROOT / engine_id / tid).resolve()
+    ws = (WORKSPACE_ROOT / engine_id / tid).resolve()
     (ws / "context").mkdir(parents=True, exist_ok=True)
     (ws / "output").mkdir(parents=True, exist_ok=True)
     return ws
@@ -184,8 +178,8 @@ def workspace_dir(engine_id: str, task_id: str | None) -> Path:
 def cleanup_workspace(engine_id: str, task_id: str | None) -> None:
     """删除指定工作区（面板会话删除时联动清理，方案 D5 修订要求）。"""
     tid = task_id or "general"
-    ws = (_ce().WORKSPACE_ROOT / engine_id / tid).resolve()
-    if ws.is_dir() and _ce().WORKSPACE_ROOT in ws.parents:
+    ws = (WORKSPACE_ROOT / engine_id / tid).resolve()
+    if ws.is_dir() and WORKSPACE_ROOT in ws.parents:
         shutil.rmtree(ws, ignore_errors=True)
         logger.info("[CLI引擎] 工作区已清理 %s", ws)
 
@@ -195,16 +189,16 @@ def sweep_expired_workspaces(retention_days: int) -> int:
     按修改时间清理过期任务工作区（方案 R7/§3.10：workspace 用后可清）。
 
     retention_days <= 0 视为“不自动清理”，返回 0。返回删除的任务工作区目录数。
-    仅删除 _ce().WORKSPACE_ROOT 之下两层（<engine_id>/<task_id>）的目录，避免误删。
+    仅删除 WORKSPACE_ROOT 之下两层（<engine_id>/<task_id>）的目录，避免误删。
     """
     import time
     if retention_days is None or retention_days <= 0:
         return 0
     cutoff = time.time() - retention_days * 86400
     removed = 0
-    if not _ce().WORKSPACE_ROOT.is_dir():
+    if not WORKSPACE_ROOT.is_dir():
         return 0
-    for engine_dir in _ce().WORKSPACE_ROOT.iterdir():
+    for engine_dir in WORKSPACE_ROOT.iterdir():
         if not engine_dir.is_dir():
             continue
         for task_dir in engine_dir.iterdir():

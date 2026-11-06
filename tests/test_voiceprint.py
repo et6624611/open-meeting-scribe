@@ -166,8 +166,7 @@ class TestVoiceprintRebuildAcrossMeetings:
 
         import numpy as np
 
-        from app import task_store
-        from core import speakers
+        from core import speakers, task_store
         from core import voiceprint_registry as vp_reg
 
         monkeypatch.setattr(vp_reg, "REGISTRY_FILE", tmp_path / "registry.json")
@@ -201,9 +200,6 @@ class TestVoiceprintRebuildAcrossMeetings:
                 ],
             }
         monkeypatch.setattr(task_store, "tasks", fake_tasks)
-        # 函数内 import 通过 app.store.tasks 获取引用，需同步 patch re-export 名称
-        from app import store as store_mod
-        monkeypatch.setattr(store_mod, "tasks", fake_tasks)
 
     def test_rebuild_aggregates_all_meetings(self, client, tmp_path, monkeypatch):
         """两场会议的发言片段均参与重建，样本数等于会议数"""

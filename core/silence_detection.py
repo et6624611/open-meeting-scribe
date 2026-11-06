@@ -21,9 +21,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from core import pipeline_hooks
 from core.audio import is_stream_recording, stop_recording_with_stream
 from core.i18n import _
-from core.pipeline_runner import run_pipeline_task
 from core.realtime_store import (
     push_realtime_msg,
     realtime_chapter_generators,
@@ -213,11 +213,14 @@ async def auto_stop_recording(task_id: str, reason: str = "unknown") -> None:
         # Fire the summary pipeline via executor: run_pipeline_task is sync/blocking,
         # so asyncio.ensure_future would raise TypeError (auto_stop callback crash, 09-30).
         audio_name = tasks.get(task_id, {}).get("audio_name", Path(audio_path).name)
-        loop = asyncio.get_running_loop()
-        pipeline_future = loop.run_in_executor(
-            None, run_pipeline_task, task_id, audio_path, audio_name, None, None
-        )
-        pipeline_future.add_done_callback(functools.partial(_log_pipeline_dispatch_result, task_id))
+        if not pipeline_hooks.is_registered():
+            logger.error(f"[静默检测] 管线钩子未注册，跳过自动关停后的纪要派发: task={task_id[:8]}")
+        else:
+            loop = asyncio.get_running_loop()
+            pipeline_future = loop.run_in_executor(
+                None, pipeline_hooks.run_pipeline_task, task_id, audio_path, audio_name, None, None
+            )
+            pipeline_future.add_done_callback(functools.partial(_log_pipeline_dispatch_result, task_id))
 
         realtime_queues.pop(task_id, None)
         cleanup_silence_detection(task_id)
