@@ -67,6 +67,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 音量自检结算器：pcm_callback 里的检测状态是 start_record 的局部闭包，
+# 停止时通过这里取回并兜底结算（窗口未满 60 秒的短录音也要出结论）。
+# Volume-check settlers: the detection state lives in start_record's closure, so
+# stop_record pulls the settler from here to settle short recordings too.
+_volume_settlers: dict[str, object] = {}
+_volume_settlers_lock = threading.Lock()
+
 
 @router.post("/api/record/start")
 def start_record(background_tasks: BackgroundTasks):
@@ -187,12 +194,51 @@ def start_record(background_tasks: BackgroundTasks):
     _pcm_call_count = 0
     _last_speaker_count = 0  # 上次推送的说话人数量（避免重复推送） / Last pushed speaker count (avoid duplicate push)
     _volume_warned = False  # 音量过低警告只发一次 / Low volume warning fires only once
-    _volume_samples: list[float] = []  # 前 N 次回调的 RMS dB 样本 / RMS dB samples from first N callbacks
-    _VOLUME_CHECK_LIMIT = 600  # 前 600 次回调（≈60 秒）用于音量检测，窗口足够长以避免间歇沉默误报 / First 600 callbacks (~60s) for volume detection; long enough to avoid intermittent silence false positives
+    _volume_samples: list[float] = []  # 检测窗口内的 RMS dB 样本（数字静音按下限计入） / RMS dB samples in the window; digital silence counted at floor
+    _volume_checked_sec = 0.0  # 已累计的音频秒数 / Audio seconds accumulated
+    _volume_zero_sec = 0.0  # 尚未出现过有效信号前的全零秒数 / All-zero seconds before any real signal
+    _volume_any_signal = False  # 是否见过非零样本 / Whether a non-zero sample was ever seen
+    # 音量自检按墙钟时长判断，不用回调次数：回调块大小随落盘节奏浮动（实测平均约 948 字节），
+    # 次数与秒数无法换算。
+    # Wall-clock based: callback chunk size varies with flush cadence (measured ~948B avg),
+    # so callback counts cannot be converted into seconds.
+    _VOLUME_WINDOW_SEC = 60.0  # 均值判定窗口 / Averaging window
+    _VOLUME_HARD_SILENT_SEC = 3.0  # 全零达到此值立即告警 / Fire immediately on all-zero this long
     _VOLUME_THRESHOLD_DB = -50.0  # 低于此值视为音量极低 / Below this is considered extremely low volume
+    _VOLUME_FLOOR_DB = -90.3  # rms == 0 时取下限（1 LSB @ 16bit） / Floor used when rms == 0
+
+    def _warn_volume(level: str, avg_db: float, detail: str) -> None:
+        nonlocal _volume_warned
+        _volume_warned = True
+        logger.warning(f"[录制] {detail}")
+        rt_store.push_realtime_msg(task_id, {
+            "type": "volume_warning",
+            "level": level,
+            "avg_db": round(avg_db, 1),
+        })
+
+    def _settle_volume_check() -> None:
+        """停止录音时兜底结算：窗口未满 60 秒也给出结论
+        Settle on stop: still produce a verdict when the window never filled."""
+        nonlocal _volume_warned
+        if _volume_warned or not _volume_samples:
+            return
+        avg_db = sum(_volume_samples) / len(_volume_samples)
+        if avg_db < _VOLUME_THRESHOLD_DB:
+            _warn_volume(
+                "low", avg_db,
+                f"录音音量极低 (mean={avg_db:.1f} dB, 采样 {len(_volume_samples)} 段)，"
+                f"请检查麦克风或音频输入设备",
+            )
+        else:
+            _volume_warned = True
+
+    with _volume_settlers_lock:
+        _volume_settlers[task_id] = _settle_volume_check
 
     def pcm_callback(data: bytes) -> None:
         nonlocal _pcm_call_count, _last_speaker_count, _volume_warned
+        nonlocal _volume_checked_sec, _volume_zero_sec, _volume_any_signal
         _pcm_call_count += 1
         t = transcriber_ref.get("ref")
         if t and t.is_running:
@@ -200,28 +246,39 @@ def start_record(background_tasks: BackgroundTasks):
         # 送入声纹聚类器
         diarizer.feed_audio(data)
 
-        # ── 前 60 秒音量检测：提醒用户麦克风是否异常 ── / ── First 60s volume check: alert user if mic is abnormal ──
-        if not _volume_warned and _pcm_call_count <= _VOLUME_CHECK_LIMIT:
-            if len(data) >= 64:  # 至少 32 个样本才计算 / Need at least 32 samples to compute
-                n_samples = len(data) // 2
-                samples = struct.unpack(f'<{n_samples}h', data[:n_samples * 2])
-                rms = (sum(s * s for s in samples) / n_samples) ** 0.5
-                if rms > 0:
-                    db = 20.0 * math.log10(rms / 32768.0)
-                    _volume_samples.append(db)
-            if _pcm_call_count == _VOLUME_CHECK_LIMIT and _volume_samples:
+        # ── 音量自检：前 60 秒（按墙钟）判断输入是否可用 ──
+        # ── Volume self-check over the first 60s of wall-clock audio ──
+        if not _volume_warned and len(data) >= 64:
+            n_samples = len(data) // 2
+            samples = struct.unpack(f'<{n_samples}h', data[:n_samples * 2])
+            rms = (sum(s * s for s in samples) / n_samples) ** 0.5
+            block_sec = n_samples / 16000.0
+            _volume_checked_sec += block_sec
+            if rms > 0:
+                _volume_any_signal = True
+                _volume_samples.append(20.0 * math.log10(rms / 32768.0))
+            else:
+                # 数字静音（采样值恒为 0）说明设备根本没信号，不能当成"没数据"跳过
+                # Digital silence means the device has no signal at all — never skip it
+                _volume_samples.append(_VOLUME_FLOOR_DB)
+                if not _volume_any_signal:
+                    _volume_zero_sec += block_sec
+                    if _volume_zero_sec >= _VOLUME_HARD_SILENT_SEC:
+                        _warn_volume(
+                            "no_signal", _VOLUME_FLOOR_DB,
+                            f"已采集 {_volume_zero_sec:.1f}s 全零信号，录音设备可能未接入，"
+                            f"或系统输出没有路由到该设备（内录需把输出指向 BlackHole）",
+                        )
+            if not _volume_warned and _volume_checked_sec >= _VOLUME_WINDOW_SEC:
                 avg_db = sum(_volume_samples) / len(_volume_samples)
                 if avg_db < _VOLUME_THRESHOLD_DB:
-                    _volume_warned = True
-                    logger.warning(
-                        f"[录制] 前 60 秒音量极低 (mean={avg_db:.1f} dB)，"
-                        f"请检查麦克风或音频输入设备"
+                    _warn_volume(
+                        "low", avg_db,
+                        f"前 60 秒音量极低 (mean={avg_db:.1f} dB)，"
+                        f"请检查麦克风或音频输入设备",
                     )
-                    rt_store.push_realtime_msg(task_id, {
-                        "type": "volume_warning",
-                        "level": "low",
-                        "avg_db": round(avg_db, 1),
-                    })
+                else:
+                    _volume_warned = True
 
         # 每 20 次回调（约 2 秒）检查一次说话人数量变化，推送更新 / Every 20 callbacks (~2s) check speaker count change and push update
         if _pcm_call_count % 20 == 0:
@@ -597,8 +654,20 @@ def stop_record(
         result = stop_recording_with_stream()
         if not task_id:
             task_id = result["task_id"]
+
+        # 音量自检兜底结算：短录音（窗口未满 60 秒）也要给出结论
+        # Settle the volume check so short recordings still get a verdict
+        with _volume_settlers_lock:
+            _settle = _volume_settlers.pop(task_id, None)
+        if _settle is not None:
+            try:
+                _settle()
+            except Exception as e:
+                logger.warning(f"[录制] 音量自检结算失败: {e}")
         audio_path = result["output_path"]
         duration = result["duration"]
+        # 墙钟时长（不受设备丢帧影响），用于与 WAV 实测时长对账
+        wall_duration = result.get("wall_duration") or duration
 
         if task_id not in tasks:
             raise HTTPException(404, _("Task not found"))
@@ -609,15 +678,13 @@ def stop_record(
         # 4. 更新任务信息 / 4. Update task info
         tasks[task_id]["audio_name"] = f"录音 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         tasks[task_id]["audio_duration"] = duration
-        # DEF-PROXY-03 观测项：WAV 数据时长 vs 墙钟偏差自检（>15% 留痕，最终定性待有声样音复测）
+        # DEF-PROXY-03 观测项：WAV 数据时长 vs 墙钟偏差自检（>15% 留痕）
         try:
-            from core.audio import get_audio_duration
-            _wav_dur = get_audio_duration(audio_path)
-            if duration and duration > 5 and _wav_dur and abs(_wav_dur - duration) / duration > 0.15:
-                tasks[task_id]["wav_wallclock_gap_sec"] = round(duration - _wav_dur, 1)
+            if wall_duration and wall_duration > 5 and abs(duration - wall_duration) / wall_duration > 0.15:
+                tasks[task_id]["wav_wallclock_gap_sec"] = round(wall_duration - duration, 1)
                 logger.warning(
-                    f"[录制] WAV 时长 {_wav_dur:.1f}s 与墙钟 {duration:.1f}s 偏差 >15%"
-                    f"（DEF-PROXY-03 观测留痕，待样音复测定性）: task={task_id[:8]}"
+                    f"[录制] WAV 时长 {duration:.1f}s 与墙钟 {wall_duration:.1f}s 偏差 >15%"
+                    f"（采集端丢帧，转写结果不可信）: task={task_id[:8]}"
                 )
         except Exception as _e:
             logger.debug(f"[录制] WAV 时长自检失败（不阻断）: {_e}")

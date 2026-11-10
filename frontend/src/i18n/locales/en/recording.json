@@ -128,6 +128,7 @@
     "jump_go": "Go"
   },
   "volume_warning": "Very low volume detected. Please check your microphone or audio input device.",
+  "volume_warning_no_signal": "No audio signal at all. Check that the input device is connected; for system audio, route the system output to BlackHole first.",
   "presence_warning": {
     "gentle_text": "No speech detected for {minutes} minutes and the page is inactive. Continue recording?",
     "urgent_title": "Recording Inactivity Alert",

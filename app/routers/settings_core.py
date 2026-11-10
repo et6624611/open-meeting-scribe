@@ -374,6 +374,9 @@ def save_settings(data: dict):
 
     if isinstance(data.get("expert_mode"), bool):
         merged["expert_mode"] = data["expert_mode"]
+        # 显式选择后固化迁移标记，否则 get_expert_mode() 仍按存量配置惰性推导，用户开不了也关不掉
+        # Freeze the migration flag; otherwise lazy derivation keeps overriding the explicit choice
+        merged["_access_mode_migrated"] = True
 
     # ── 转写文本分层配置（清理版默认开 / 书面版默认关，显式 false 为逃生通道） ──
     incoming_tr = data.get("transcript")

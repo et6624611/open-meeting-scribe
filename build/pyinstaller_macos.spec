@@ -60,6 +60,8 @@ a = Analysis(
         # 前端静态文件
         (str(ROOT / "app" / "static"), "app/static"),
         (str(ROOT / "app" / "admin_static"), "app/admin_static"),
+        # gettext 翻译文件（core/i18n/middleware.py 按 __file__ 相对定位）
+        (str(ROOT / "core" / "i18n" / "locales"), "core/i18n/locales"),
     ] + _data_files,
     hiddenimports=[
         # FastAPI / uvicorn 相关

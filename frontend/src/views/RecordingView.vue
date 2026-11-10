@@ -46,7 +46,7 @@
       <!-- 音量警告 / Volume warning -->
       <div class="rec-volume-warning" v-if="ws.volumeWarning.value">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-        <span>{{ t('recording.volume_warning') }}</span>
+        <span>{{ t(ws.volumeWarning.value === 'no_signal' ? 'recording.volume_warning_no_signal' : 'recording.volume_warning') }}</span>
         <button class="rec-volume-dismiss" @click="ws.volumeWarning.value = ''">&times;</button>
       </div>
 

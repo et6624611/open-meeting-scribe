@@ -158,10 +158,10 @@ def assemble_distribution():
         launcher_dst.chmod(0o755)
         print("启动器就位 ✓")
 
-    # 复制 .env 模板
+    # 复制 .env 模板（始终用模板覆盖，避免把本地真实密钥打进分发包）
     env_src = Path(".env.example")
     env_dst = DIST_DIR / ".env"
-    if env_src.exists() and not env_dst.exists():
+    if env_src.exists():
         shutil.copy(str(env_src), str(env_dst))
         print(".env 模板就位 ✓")
 

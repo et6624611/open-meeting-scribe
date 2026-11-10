@@ -16,7 +16,6 @@ core/settings_store.py — 设置管理 / Settings management
 import json
 import logging
 import os
-import platform
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -412,8 +411,11 @@ def get_storage_config() -> dict:
 def get_record_device() -> tuple[str, str]:
     """解析录音设备：优先级 settings.json record.device > 环境变量 RECORD_DEVICE > 平台默认。
 
-    项目方 09-25 裁决口径（缺陷单 §2 根因 B）：用户显式选择（含空串「自动检测」合法持久值）
-    优先于部署级环境变量；返回 (device, source)，source ∈ {settings, env, platform-default}。
+    平台默认统一为空串（= 启动时由启动代码走自动检测分支），不再硬编码设备名——
+    硬编码的 "MacBook Pro麦克风" 在设备被改名或不存在时会静默录到空音频。
+    Priority: settings > env > platform default (empty = auto-detect at startup).
+    Hardcoding a specific device name here would silently record silence if the device
+    gets renamed or removed.
     """
     settings = load_settings()
     rec = settings.get("record")
@@ -422,8 +424,7 @@ def get_record_device() -> tuple[str, str]:
     env_val = os.getenv("RECORD_DEVICE")
     if env_val is not None:
         return env_val, "env"
-    default_device = "" if platform.system() == "Windows" else "MacBook Pro麦克风"
-    return default_device, "platform-default"
+    return "", "platform-default"
 
 
 def save_record_device(device: str) -> None:

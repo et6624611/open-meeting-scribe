@@ -22,13 +22,12 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from core.audio import check_ffmpeg
-
 logger = logging.getLogger(__name__)
 
 
 
 from .audio_devices import (
+    _detect_macos_audio_device,
     _detect_windows_audio_device,
     _is_windows,
     _should_auto_detect_on_windows,
@@ -70,7 +69,7 @@ def _build_ffmpeg_record_cmd(device: str, wav_path: Path) -> list[str]:
 
 
 def start_recording(
-    device: str = "BlackHole 2ch",
+    device: str | None = None,
     output_dir: str | Path = "data/recordings",
     task_id: str | None = None,
 ) -> dict:
@@ -97,8 +96,25 @@ def start_recording(
     if _record_process and _record_process.poll() is None:
         raise RuntimeError("已在录制中")
 
+    # 延迟导入 core.audio：该模块末尾反向 re-export 本模块符号，顶部导入会循环依赖
+    # Import lazily: core.audio re-exports this module's symbols at its tail
+    from core.audio import check_ffmpeg
+
     if not check_ffmpeg():
         raise RuntimeError("ffmpeg 不可用")
+
+    # 未显式指定设备时走统一解析（settings > env > 平台默认）
+    # Resolve via settings > env > platform default when no device is given
+    if device is None:
+        from core.settings_store import get_record_device
+        device = get_record_device()[0]
+
+    # 保留值：__system__ 让系统内录走 BlackHole（仅 macOS）
+    if device == "__system__":
+        import platform as _platform
+        if _platform.system() != "Darwin":
+            raise RuntimeError("系统内录（__system__）仅在 macOS 下可用，依赖 BlackHole 虚拟声卡")
+        device = "BlackHole 2ch"
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -124,10 +140,23 @@ def start_recording(
                 "在 Windows 设置 > 声音 > 输入 中确认默认设备"
             )
 
+    # macOS "自动选择"（空串）：解析成第一个非 BlackHole 物理输入设备。
+    # 硬编码 "MacBook Pro麦克风" 会在设备改名时静默录空音频，动态枚举更稳。
+    if not device and not _is_windows():
+        detected_mac = _detect_macos_audio_device()
+        if detected_mac:
+            device = detected_mac
+            logger.info(f"macOS 自动选择音频输入设备: {device}")
+
     if not device:
+        if _is_windows():
+            raise RuntimeError(
+                "录制设备未配置。请在 Windows 设置中确认有已启用的麦克风，"
+                "或设置环境变量 RECORD_DEVICE=设备名称"
+            )
         raise RuntimeError(
-            "录制设备未配置。请在 Windows 设置中确认有已启用的麦克风，"
-            "或设置环境变量 RECORD_DEVICE=设备名称"
+            "录制设备未配置。请在 macOS 系统设置 > 声音 > 输入中确认有已启用的麦克风，"
+            "或在设置页选择具体录音设备"
         )
 
     # 根据平台构建 ffmpeg 命令 / Build platform-specific ffmpeg command

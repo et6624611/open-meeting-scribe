@@ -98,6 +98,10 @@ scripts/_ssh_*.exp
 
 # AI 协作文档（内部使用，不对外）
 AGENTS.md
+
+# 参赛材料（含个人信息与真实会议截图，不对外）
+docs/TRAE好应用大赏赛-报名素材.md
+contest-assets/
 CODEX.md
 
 # 云盘同步生成的重名副本（"xxx 2" / "xxx 3.ext" 等数字后缀），非人工成果，会随构建反复出现

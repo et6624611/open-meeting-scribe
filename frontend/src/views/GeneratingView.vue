@@ -77,7 +77,6 @@
       <!-- 人员栏（渐进式压缩：说话人 + 参会人合并） / Personnel bar (progressive compression: speakers + roster merged) -->
       <GeneratingSpeakerZone
         :mode="speakerZoneMode"
-        :visible="bindingLegend.length > 0"
         :speakers="bindingLegend"
         :unbound-count="unboundCount"
         :can-edit-bindings="canBind"

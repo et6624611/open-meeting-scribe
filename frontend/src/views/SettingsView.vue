@@ -118,19 +118,52 @@
         <div class="settings-section">
           <h2 class="settings-title">{{ t('settings.recording_device') }}</h2>
           <p class="settings-section-desc">{{ t('settings.recording_device_desc') }}</p>
-          <div class="settings-field">
-            <select v-model="selectedDevice" class="settings-input" :disabled="devicesLoading">
-              <option value="">{{ t('settings.recording_device_auto') }}</option>
-              <option v-for="d in audioDevices" :key="d.index" :value="d.name">{{ d.name }}</option>
-            </select>
-          </div>
+
+          <!-- 一行入口：当前解析结果，点击打开模态框 / One-row entry row; opens modal on click -->
+          <button class="rec-device-row" @click="openRecordingModal" :disabled="devicesLoading">
+            <div class="rec-device-left">
+              <div class="rec-device-title">{{ currentEntryTitle }}</div>
+              <div class="rec-device-subtitle">{{ currentEntrySubtitle }}</div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="rec-device-chevron"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+
           <div class="version-actions">
             <button class="btn btn-secondary btn-sm" @click="loadDevices" :disabled="devicesLoading">
               <svg v-if="devicesLoading" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
               {{ devicesLoading ? t('settings.recording_device_loading') : t('settings.recording_device_refresh') }}
             </button>
-            <span v-if="!devicesLoading && audioDevices.length === 0 && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_none') }}</span>
-            <span v-if="!devicesLoading && !ffmpegAvailable && devicesLoaded" class="version-msg is-error">{{ t('settings.recording_device_ffmpeg_missing') }}</span>
+            <span v-if="devicesLoaded && audioDevices.length === 0" class="version-msg is-error">{{ t('settings.recording_device_none') }}</span>
+            <span v-if="devicesLoaded && !ffmpegAvailable" class="version-msg is-error">{{ t('settings.recording_device_ffmpeg_missing') }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 录音来源选择模态框 / Recording source modal -->
+      <div v-if="recordingModalOpen" class="modal-overlay is-open" @click.self="recordingModalOpen = false">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>{{ t('settings.recording_source_modal_title') }}</h3>
+            <button class="modal-close" @click="recordingModalOpen = false" aria-label="close">×</button>
+          </div>
+          <div class="modal-body">
+            <button
+              v-for="e in entries"
+              :key="e.value"
+              class="entry-card"
+              :class="{ 'is-active': currentEntry === e.value }"
+              :disabled="!!e.platform && e.platform !== currentPlatform"
+              @click="pickEntry(e)"
+            >
+              <div class="entry-radio">
+                <span v-if="currentEntry === e.value" class="entry-radio-dot"></span>
+              </div>
+              <div class="entry-body">
+                <div class="entry-title">{{ e.title }}</div>
+                <div v-if="e.subtitle" class="entry-subtitle">{{ e.subtitle }}</div>
+              </div>
+              <div v-if="currentEntry === e.value" class="entry-check">✓</div>
+            </button>
           </div>
         </div>
       </div>
@@ -551,10 +584,23 @@ async function onManualCheck() {
 
 // ─── 录音设备选择 / Recording device selection ───
 const audioDevices = ref<AudioDevice[]>([])
-const selectedDevice = ref('')
+const entries = ref<EntryItem[]>([])
+const currentEntry = ref<string>('')      // '' = auto, '__system__' = system, 其他=设备名
+const currentEntryTitle = ref<string>('自动选择')
+const currentEntrySubtitle = ref<string>('加载中…')
+const currentPlatform = ref<string>('Darwin')
 const devicesLoading = ref(false)
 const devicesLoaded = ref(false)
 const ffmpegAvailable = ref(true)
+const recordingModalOpen = ref(false)
+
+interface EntryItem {
+  value: string
+  label: 'auto' | 'system' | 'device'
+  title: string
+  subtitle: string
+  platform: string | null
+}
 
 async function loadDevices() {
   devicesLoading.value = true
@@ -562,11 +608,11 @@ async function loadDevices() {
     const result = await fetchAudioDevices()
     audioDevices.value = result.devices
     ffmpegAvailable.value = result.ffmpeg_available
-    if (result.current_device) {
-      echoDeviceValue = result.current_device
-      selectedDevice.value = result.current_device
-    }
+    currentPlatform.value = result.platform
+    entries.value = (result.entries || []) as EntryItem[]
+    currentEntry.value = result.current_entry ?? ''
     devicesLoaded.value = true
+    _refreshCurrentEntryDisplay()
   } catch (e) {
     console.error('load audio devices failed:', e)
     devicesLoaded.value = true
@@ -575,18 +621,35 @@ async function loadDevices() {
   }
 }
 
-let echoDeviceValue: string | null = null
-watch(selectedDevice, async (newVal) => {
-  if (newVal === echoDeviceValue) {
-    echoDeviceValue = null
+function _refreshCurrentEntryDisplay() {
+  const e = entries.value.find(x => x.value === currentEntry.value)
+  if (e) {
+    currentEntryTitle.value = e.title
+    currentEntrySubtitle.value = e.subtitle || e.title
+  } else {
+    // 条目已失效（设备被移除），降级显示
+    currentEntryTitle.value = currentEntry.value || '自动选择'
+    currentEntrySubtitle.value = '设备不存在或未检测到'
+  }
+}
+
+function openRecordingModal() {
+  recordingModalOpen.value = true
+}
+
+async function pickEntry(e: EntryItem) {
+  if (e.platform && e.platform !== currentPlatform.value) {
     return
   }
   try {
-    await setRecordDevice(newVal)
-  } catch (e) {
-    console.error('set record device failed:', e)
+    await setRecordDevice(e.value)
+    currentEntry.value = e.value
+    _refreshCurrentEntryDisplay()
+    recordingModalOpen.value = false
+  } catch (err) {
+    console.error('set record device failed:', err)
   }
-})
+}
 
 /** 分类导航（REQ-COMPUTE-CENTER）：账户/AI/ASR/引擎四段 + 常规四段 */
 const SETTINGS_CATEGORIES = ['account', 'ai', 'asr', 'engine', 'transcription', 'appearance', 'features', 'system']
@@ -862,6 +925,49 @@ onUnmounted(() => {
 .settings-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .settings-input { width: 100%; max-width: 400px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); font-size: 14px; outline: none; }
 .settings-input:focus { border-color: var(--accent); }
+
+/* ─── 录音来源一行入口 + 模态框 / Recording source one-row entry + modal ─── */
+.rec-device-row {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 10px 12px; margin: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.rec-device-row:hover { border-color: var(--border-strong); }
+.rec-device-left { display: flex; flex-direction: column; gap: 2px; }
+.rec-device-title { font-size: 13px; font-weight: 500; }
+.rec-device-subtitle { font-size: 12px; color: var(--muted); }
+.rec-device-chevron { color: var(--muted); flex-shrink: 0; }
+
+/* Modal（抄自 speakers.css，适配 SettingsView 里的内联用法） */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.modal-overlay.is-open { opacity: 1; pointer-events: auto; }
+.modal { background: var(--surface, #1a1a1a); color: var(--fg); border-radius: var(--radius-lg); width: 480px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px oklch(0% 0 0 / 0.2); overflow: hidden; transform: translateY(8px); opacity: 0; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+.modal-overlay.is-open .modal { transform: translateY(0); opacity: 1; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.modal-close { border: none; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 0 2px; }
+.modal-close:hover { color: var(--fg); }
+.modal-body { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+
+.entry-card {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  padding: 12px; background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.entry-card:hover:not(:disabled) { border-color: var(--border-strong); }
+.entry-card.is-active { border-color: var(--accent); background: color-mix(in oklch, var(--accent) 8%, transparent); }
+.entry-card:disabled { opacity: 0.4; cursor: not-allowed; }
+.entry-radio { width: 16px; height: 16px; border: 1.5px solid var(--border-strong); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.entry-card.is-active .entry-radio { border-color: var(--accent); background: var(--accent); }
+.entry-radio-dot { width: 5px; height: 5px; background: #fff; border-radius: 50%; }
+.entry-body { flex: 1; min-width: 0; }
+.entry-title { font-size: 13px; font-weight: 500; line-height: 1.3; }
+.entry-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.entry-card.is-active .entry-title { color: var(--accent); }
+.entry-check { font-size: 13px; color: var(--accent); flex-shrink: 0; font-weight: 600; }
 .theme-grid { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .theme-chip { padding: 6px var(--s-4); border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .theme-chip:hover { border-color: var(--border-strong); }

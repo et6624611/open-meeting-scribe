@@ -4,7 +4,8 @@
     - compact（readonly / complete）：响应式说话人展示 + 参会人 chip + 选择器
     - binding（actionable）：展开绑定交互 + 底部参会人管理
   -->
-  <div class="gs-zone" :class="{ 'is-binding': interactive, 'is-compact': !interactive, hidden: !visible }">
+  <!-- 无条件显示：手工会议无逐字稿时也要能添加参会人；说话人相关控件按 speakers 有无隐藏 / Always visible so manual meetings can add roster -->
+  <div class="gs-zone" :class="{ 'is-binding': interactive, 'is-compact': !interactive }">
 
     <!-- ═══ 紧凑态（readonly / complete） ═══ -->
     <template v-if="!interactive">
@@ -23,7 +24,7 @@
             </span>
             <span class="gs-compact-label-bar"><span class="gs-compact-label-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
           </span>
-          <button v-if="canEditBindings" class="gs-compact-edit" :title="t('generating.binding.edit_bindings')" @click="emit('reenter-binding')">
+          <button v-if="canEditBindings && speakers.length" class="gs-compact-edit" :title="t('generating.binding.edit_bindings')" @click="emit('reenter-binding')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </button>
         </div>
@@ -37,7 +38,7 @@
             :title="sp.displayName"
             @click="emit('locate-speaker', sp.sid)"
           >{{ dotInitial(sp.displayName) }}</span>
-          <button v-if="canEditBindings" class="gs-compact-edit" :title="t('generating.binding.edit_bindings')" @click="emit('reenter-binding')">
+          <button v-if="canEditBindings && speakers.length" class="gs-compact-edit" :title="t('generating.binding.edit_bindings')" @click="emit('reenter-binding')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </button>
         </div>
@@ -133,8 +134,8 @@
               </div>
             </div>
           </span>
-          <!-- 声纹识别触发（紧凑态） / Voiceprint trigger in compact bar -->
-          <button class="gs-roster-vp-btn" :title="t('generating.voiceprint.run')" @click.stop="emit('run-voiceprint')">
+          <!-- 声纹识别触发（紧凑态，无说话人时隐藏） / Voiceprint trigger in compact bar (hidden without speakers) -->
+          <button v-if="speakers.length" class="gs-roster-vp-btn" :title="t('generating.voiceprint.run')" @click.stop="emit('run-voiceprint')">
             <span v-if="voiceprintRunning" class="gs-vp-spin" aria-hidden="true"></span>
             <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 0 0 8 11a4 4 0 1 1 8 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 0 0 0 15.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 0 0 8 4.07M3 15.364c.64-1.319 1 2.8 1-4.364 0-1.457.39-2.823 1.07-4"/></svg>
           </button>
@@ -295,7 +296,6 @@ interface ZoneSpeaker {
 
 const props = defineProps<{
   mode: 'readonly' | 'actionable' | 'complete'
-  visible: boolean
   speakers: ZoneSpeaker[]
   unboundCount: number
   canEditBindings: boolean

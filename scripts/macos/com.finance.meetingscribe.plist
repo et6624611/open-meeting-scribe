@@ -41,6 +41,15 @@
     <key>RunAtLoad</key>
     <true/>
 
+    <!-- 关键：默认后台 LaunchAgent 会被 App Nap / Utility QoS 降级，
+         子进程 ffmpeg 的 avfoundation 音频回调随之被节流，实测丢 75% 音频
+         （20 秒墙钟只落 4.5 秒）。Interactive 把它提升到前台级 QoS，
+         实测恢复到 0.90x（与终端直接跑 ffmpeg 一致）。
+         Critical: without ProcessType, App Nap throttles the child ffmpeg's
+         CoreAudio callbacks and ~75% of audio is dropped. Interactive restores it. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
     <!-- 进程崩溃/被杀后自动拉起；15 秒节流避免启动失败时疯狂重启 -->
     <key>KeepAlive</key>
     <true/>

@@ -81,7 +81,7 @@ export function useWebSocketTranscript() {
   const speakerNames = ref<string[]>([])
   const summaryCountdownSec = ref(-1)
   const summaryPaused = ref(false)  // 由后端 summary_status 消息驱动 / Driven by backend summary_status messages
-  const volumeWarning = ref('')  // '' | 'low'
+  const volumeWarning = ref('')  // '' | 'low' | 'no_signal'
   const presenceWarning = ref<PresenceWarning | null>(null)
   const autoStopped = ref<AutoStopped | null>(null)
 

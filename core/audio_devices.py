@@ -436,3 +436,17 @@ def _list_macos_audio_devices() -> list[dict]:
                 })
 
     return devices
+
+
+def _detect_macos_audio_device() -> str:
+    """macOS "自动选择"解析：返回第一个非 BlackHole 的物理音频输入设备。
+    Resolve macOS auto-select to the first non-BlackHole physical input device.
+
+    BlackHole 是虚拟声卡（系统内录专用），当默认会静默录到空音频；
+    硬编码 "MacBook Pro麦克风" 会在设备改名时静默失败，故动态枚举。
+    """
+    for d in _list_macos_audio_devices():
+        name = d.get("name", "")
+        if name and not name.startswith("BlackHole"):
+            return name
+    return ""

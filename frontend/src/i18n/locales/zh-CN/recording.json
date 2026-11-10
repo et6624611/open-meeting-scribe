@@ -128,6 +128,7 @@
     "jump_go": "前往"
   },
   "volume_warning": "检测到音量极低，请检查麦克风或音频输入设备",
+  "volume_warning_no_signal": "未检测到任何音频信号，请确认录音设备已接入；系统内录需先把系统输出指向 BlackHole",
   "presence_warning": {
     "gentle_text": "已 {minutes} 分钟未检测到语音，且页面暂无操作。是否继续录制？",
     "urgent_title": "录制无活动提示",
