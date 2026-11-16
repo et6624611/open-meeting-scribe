@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-desktop.py — Open Meeting Scribe 桌面应用入口 / Open Meeting Scribe desktop app entry
+desktop.py — Open Meeting Scribe 启动器（浏览器模式）/ Desktop launcher (browser mode)
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-13
-版本 / Version: 1.0.0
+版本 / Version: 1.1.0
 
 说明 / Description:
-    在单进程中同时启动 FastAPI 后台服务与 pywebview 原生窗口，
-    为用户提供独立桌面应用体验（无浏览器地址栏干扰）。
-    Launch FastAPI background server and pywebview native window in a single process,
-    providing a standalone desktop app experience (no browser address bar).
+    本文件不再创建原生窗口。启动流程：
+      1. 扫描端口，若发现本应用已在运行，直接打开浏览器指向它（单实例）；
+      2. 否则选一个可用端口启动 FastAPI 服务；
+      3. 服务就绪后用系统默认浏览器打开 http://127.0.0.1:<port>；
+      4. 用户在页面内点「退出应用」后，停服务、停本地引擎、进程退出。
+
+    No native window any more. The launcher reuses a running instance if found,
+    otherwise starts FastAPI, opens the system default browser, and exits on
+    POST /api/app/quit.
 
 用法 / Usage:
     # 开发时直接运行 / Run directly during development
@@ -121,65 +126,113 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 配置日志 / Configure logging
+# console=False 下 stderr 指向 devnull，另写 logs/desktop.log 便于用户侧排障。
+# With console=False stderr goes to devnull; also write logs/desktop.log for diagnosis.
+_log_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+if getattr(sys, "frozen", False):
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path
+
+    _log_dir = Path(sys.executable).parent / "logs"
+    _log_dir.mkdir(exist_ok=True)
+    _log_handlers.append(
+        RotatingFileHandler(
+            _log_dir / "desktop.log",
+            maxBytes=2 * 1024 * 1024,
+            backupCount=2,
+            encoding="utf-8",
+        )
+    )
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
+    handlers=_log_handlers,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
 # 默认服务配置 / Default server config
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
-
-# 窗口配置 / Window config
-WINDOW_TITLE = "Open Meeting Scribe"
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 800
-MIN_WIDTH = 960
-MIN_HEIGHT = 600
+# 端口顺延上限 / Port scan limit: 8000-8019
+PORT_SCAN_LIMIT = 20
+# 退出请求到达后，留出响应回传时间再停服务 / Grace period before shutdown
+QUIT_GRACE_SECONDS = 0.3
 
 
-def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
-    """等待 FastAPI 服务就绪。 / Wait for FastAPI server to be ready.
+def _probe_running_instance(host: str, port: int, timeout: float = 0.6) -> bool:
+    """探测该端口上是否为本应用实例。 / Check whether the port serves this app.
 
-    通过轮询 HTTP 健康检查端点判断服务是否启动完成。 / Poll HTTP health endpoint to determine if server has started.
-
-    Args:
-        host: 服务地址 / Server address
-        port: 服务端口 / Server port
-        timeout: 最大等待时间（秒） / Max wait time (seconds)
-
-    Returns:
-        True 表示服务已就绪，False 表示超时 / True if server is ready, False if timed out
+    通过 /api/health 的 app 标识判定，避免把同端口的其他服务误认为已启动实例。
     """
     import httpx
 
-    url = f"http://{host}:{port}/api/health"
+    from core.app_control import APP_ID
+
+    try:
+        resp = httpx.get(f"http://{host}:{port}/api/health", timeout=timeout)
+        if resp.status_code >= 500:
+            return False
+        data = resp.json()
+    except Exception:
+        return False
+    return isinstance(data, dict) and data.get("app") == APP_ID
+
+
+def _port_bindable(host: str, port: int) -> bool:
+    """端口是否可绑定（本机回环）。 / Whether the loopback port can be bound."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Windows 的 SO_REUSEADDR 允许抢占已监听端口，必须用 SO_EXCLUSIVEADDRUSE
+    # 才能真实检测占用；POSIX 反之，SO_REUSEADDR 不抢占活动监听。
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def _find_existing_instance(host: str, base_port: int) -> int | None:
+    """扫描端口，返回已运行本应用的端口（单实例复用）。 / Port of a running instance, if any."""
+    for port in range(base_port, base_port + PORT_SCAN_LIMIT):
+        if _probe_running_instance(host, port):
+            return port
+    return None
+
+
+def _pick_port(host: str, start_port: int) -> int | None:
+    """从 start_port 起找第一个可绑定端口。 / First bindable port from start_port."""
+    for port in range(start_port, start_port + PORT_SCAN_LIMIT):
+        if _port_bindable(host, port):
+            return port
+    return None
+
+
+def _wait_for_server(server: "uvicorn.Server", thread: threading.Thread, timeout: float = 15.0) -> bool:
+    """等待 uvicorn 完成启动；线程异常退出即判失败。 / Wait until uvicorn starts."""
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
-        try:
-            resp = httpx.get(url, timeout=1.0)
-            if resp.status_code < 500:
-                return True
-        except Exception:
-            pass
-        time.sleep(0.2)
+        if server.started:
+            return True
+        if not thread.is_alive():
+            return False
+        time.sleep(0.1)
 
     return False
 
 
-def _start_server(host: str, port: int) -> "uvicorn.Server":
-    """在后台线程启动 FastAPI 服务。 / Start FastAPI server in background thread.
-
-    Args:
-        host: 监听地址 / Listen address
-        port: 监听端口 / Listen port
-
-    Returns:
-        uvicorn.Server 实例（可用于后续停止服务） / uvicorn.Server instance (can be used to stop server later)
-    """
+def _start_server(host: str, port: int) -> tuple["uvicorn.Server", threading.Thread]:
+    """在后台线程启动 FastAPI 服务。 / Start FastAPI server in background thread."""
     import uvicorn
 
     config = uvicorn.Config(
@@ -187,131 +240,35 @@ def _start_server(host: str, port: int) -> "uvicorn.Server":
         host=host,
         port=port,
         log_level="warning",
-        # 禁用访问日志，减少桌面模式下的控制台噪音 / Disable access log, reduce console noise in desktop mode
+        # 禁用访问日志，减少控制台噪音 / Disable access log to reduce console noise
         access_log=False,
     )
     server = uvicorn.Server(config)
 
-    # 在后台守护线程中运行服务 / Run server in background daemon thread
     thread = threading.Thread(target=server.run, daemon=True, name="fastapi-server")
     thread.start()
 
-    return server
+    return server, thread
 
 
-def _create_and_run_window(url: str) -> None:
-    """创建 pywebview 原生窗口并进入事件循环。 / Create pywebview native window and enter event loop.
+def _open_browser(url: str) -> bool:
+    """用系统默认浏览器打开地址。 / Open the URL in the system default browser."""
+    import webbrowser
 
-    Args:
-        url: 要加载的页面地址 / Page URL to load
-    """
-    import webview
-
-    logger.info(f"创建桌面窗口: {WINDOW_TITLE}")
-
-    window = webview.create_window(
-        title=WINDOW_TITLE,
-        url=url,
-        width=WINDOW_WIDTH,
-        height=WINDOW_HEIGHT,
-        min_size=(MIN_WIDTH, MIN_HEIGHT),
-        resizable=True,
-        text_select=True,
-    )
-
-    # ─── 桌面端原生对话框 / Native folder dialog for desktop ───
-    # 通过 pywebview expose 机制将 Python 函数暴露给前端 JS，
-    # 前端调用 window.pywebview.api.select_native_folder() 即可弹出 OS 原生文件夹选择器。
-    # macOS → NSOpenPanel（Finder 风格），Windows → IFileOpenDialog（资源管理器风格）。
-    # Expose Python function to frontend JS via pywebview bridge,
-    # frontend calls window.pywebview.api.select_native_folder() to open OS native folder picker.
-    # macOS → NSOpenPanel (Finder-style), Windows → IFileOpenDialog (Explorer-style).
-    def select_native_folder() -> str:
-        """弹出操作系统原生文件夹选择对话框，返回选中路径（空串表示取消）。
-        Pop up OS native folder picker, return selected path (empty string if cancelled).
-        """
-        from pathlib import Path
-        try:
-            result = window.create_file_dialog(
-                dialog_type=webview.FOLDER_DIALOG,
-                directory=str(Path.home()),
-                allow_multiple=False,
-            )
-            if result and len(result) > 0:
-                logger.info(f"原生文件夹选择器返回: {result[0]}")
-                return result[0]
-        except Exception as e:
-            logger.warning(f"原生文件夹选择器调用失败: {e}")
-        return ""
-
-    window.expose(select_native_folder)
-
-    # ─── 桌面端刷新快捷键注入 / Desktop refresh hotkey injection ───
-    # 页面加载完成后注入 JS，监听 F5 键并派发自定义事件，
-    # 由 Vue 应用层判断录音状态后决定是否执行刷新。
-    # Inject JS after page load to listen for F5 key and dispatch custom event,
-    # Vue app layer decides whether to refresh based on recording state.
-    def _on_loaded():
-        window.evaluate_js("""
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'F5') {
-                    e.preventDefault();
-                    window.dispatchEvent(new CustomEvent('oms:reload-requested'));
-                }
-            });
-        """)
-        logger.info("桌面端刷新快捷键已注入 (F5)")
-        logger.info("原生文件夹选择器已暴露给前端 (select_native_folder)")
-
-    window.events.loaded += _on_loaded
-
-    # 进入事件循环（阻塞直到所有窗口关闭） / Enter event loop (blocks until all windows closed)
-    webview.start()
-
-
-def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
-    """桌面应用主入口。 / Desktop app main entry.
-
-    启动流程 / Startup flow:
-        1. 后台线程启动 FastAPI 服务 / Start FastAPI server in background thread
-        2. 等待服务就绪 / Wait for server to be ready
-        3. 创建 pywebview 原生窗口 / Create pywebview native window
-        4. 窗口关闭后优雅停止服务 / Gracefully stop server after window closes
-
-    Args:
-        host: 服务监听地址 / Server listen address
-        port: 服务监听端口 / Server listen port
-
-    Returns:
-        退出码（0 表示正常退出） / Exit code (0 = normal exit)
-    """
-    logger.info(f"启动桌面应用: {WINDOW_TITLE}")
-    logger.info(f"服务地址: http://{host}:{port}")
-
-    # 1. 启动后台服务 / 1. Start background server
-    server = _start_server(host, port)
-
-    # 2. 等待服务就绪 / 2. Wait for server to be ready
-    logger.info("等待服务启动...")
-    if not _wait_for_server(host, port):
-        logger.error("服务启动超时，请检查端口是否被占用")
-        return 1
-
-    logger.info("服务已就绪，正在创建窗口...")
-
-    # 3. 创建并运行窗口（阻塞） / 3. Create and run window (blocking)
-    url = f"http://{host}:{port}"
     try:
-        _create_and_run_window(url)
+        if webbrowser.open(url, new=2):
+            logger.info(f"已在默认浏览器打开: {url}")
+            return True
     except Exception as e:
-        logger.exception(f"窗口创建失败: {e}")
-        return 1
+        logger.warning(f"自动打开浏览器失败: {e}")
+    logger.warning(f"未能自动打开浏览器，请手动访问: {url}")
+    return False
 
-    # 4. 窗口关闭后，优雅停止服务 / 4. After window closes, gracefully stop server
-    logger.info("窗口已关闭，正在停止服务...")
+
+def _shutdown_server(server: "uvicorn.Server") -> None:
+    """停止服务并回收本地引擎子进程。 / Stop server and resident engine subprocess."""
     server.should_exit = True
 
-    # 停止本地引擎常驻子进程（若在运行） / Stop resident engine subprocess if running
     try:
         from core.engine_host import get_engine_host
         engine = get_engine_host()
@@ -323,7 +280,70 @@ def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
     # 给服务一点时间完成清理 / Give server time to clean up
     time.sleep(0.5)
 
-    logger.info("桌面应用已退出")
+
+def main(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
+    """启动器主入口。 / Launcher main entry.
+
+    Args:
+        host: 服务监听地址 / Server listen address
+        port: 首选端口（被占用时顺延） / Preferred port (falls through when taken)
+
+    Returns:
+        退出码（0 表示正常退出） / Exit code (0 = normal exit)
+    """
+    from core import app_control
+
+    # ── 单实例：已有本应用在跑，直接把浏览器指过去 ──
+    # Single instance: reuse the running app and just open the browser.
+    existing_port = _find_existing_instance(host, port)
+    if existing_port is not None:
+        url = f"http://{host}:{existing_port}"
+        logger.info(f"检测到本应用已在运行: {url}")
+        _open_browser(url)
+        return 0
+
+    app_control.enable_desktop_mode()
+
+    # ── 启动服务：端口被其他程序占用时顺延；绑定竞争失败时再试下一个 ──
+    # Start server: fall through on occupied ports, retry on bind races.
+    server = None
+    target_port = port
+    search_from = port
+    for _ in range(3):
+        candidate = _pick_port(host, search_from)
+        if candidate is None:
+            logger.error(
+                f"端口 {port}-{port + PORT_SCAN_LIMIT - 1} 全部被占用，无法启动服务"
+            )
+            return 1
+        srv, thread = _start_server(host, candidate)
+        if _wait_for_server(srv, thread):
+            server, target_port = srv, candidate
+            break
+        srv.should_exit = True
+        search_from = candidate + 1
+
+    if server is None:
+        logger.error("服务启动失败，请查看 logs/server.log")
+        return 1
+
+    url = f"http://{host}:{target_port}"
+    logger.info(f"服务已就绪: {url}")
+    _open_browser(url)
+    logger.info("服务运行中；在页面「设置 → 系统 → 退出应用」可停止服务")
+
+    # ── 等待页面内退出请求（Ctrl+C 亦可） ──
+    # Wait for the in-page quit request (Ctrl+C also works).
+    try:
+        while not app_control.wait_quit(0.5):
+            pass
+        logger.info("收到退出请求")
+    except KeyboardInterrupt:
+        logger.info("收到中断信号")
+
+    time.sleep(QUIT_GRACE_SECONDS)
+    _shutdown_server(server)
+    logger.info("应用已退出")
     return 0
 
 
@@ -341,7 +361,7 @@ if __name__ == "__main__":
     # 支持通过命令行参数覆盖默认配置 / Support overriding default config via CLI args
     import argparse
 
-    parser = argparse.ArgumentParser(description="Open Meeting Scribe 桌面应用")
+    parser = argparse.ArgumentParser(description="Open Meeting Scribe 启动器")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"服务地址（默认 {DEFAULT_HOST}）")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"服务端口（默认 {DEFAULT_PORT}）")
     args = parser.parse_args()

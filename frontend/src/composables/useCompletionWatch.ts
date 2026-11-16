@@ -5,7 +5,7 @@
  * 处理中每 5s 轻量刷新任务列表；检测到「处理中 → 已完成」跃迁时：
  *  - 用户正停留在该会议页 → 不发通知（页面自身已就地切换为完成态，避免重复打扰）；
  *  - 否则 → 会议列表角标 + 站内 toast；系统通知仅在宿主已授予权限时发送
- *    （pywebview 壳内恒不可用，按 Q5 裁决降级为仅站内，不弹索权窗）。
+ *    （浏览器模式下受站点通知权限控制，未授权时静默降级为仅站内，不弹索权窗）。
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -67,7 +67,7 @@ export function useCompletionWatch() {
     taskStore.markCompletedUnseen(task.task_id)
     const title = taskTitle(task)
     showToast(t('processing.completed_toast', { title }), 'success')
-    // 系统通知：仅在权限已被授予时发送；pywebview 壳内为静默 no-op（Q5 降级）
+    // 系统通知：仅在权限已被授予时发送；未授权时静默 no-op
     sendDesktopNotify(title, t('processing.notify_body'), `${window.location.origin}/meeting/${task.task_id}`)
   }
 

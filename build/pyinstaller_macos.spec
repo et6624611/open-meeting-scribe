@@ -80,9 +80,6 @@ a = Analysis(
         # PyInstaller 静态分析无法追踪此动态引用。
         *_app_submodules,
         *_core_submodules,
-        # pywebview 桌面窗口 — macOS 使用 cocoa 后端（WKWebView）
-        "webview",
-        "webview.platforms.cocoa",
         # 其他
         "multipart",
         "jose",
@@ -98,13 +95,6 @@ a = Analysis(
         "IPython",
         "notebook",
         "pytest",
-        # macOS 不需要其他平台后端
-        "webview.platforms.winforms",
-        "webview.platforms.edgechromium",
-        "webview.platforms.cef",
-        "webview.platforms.gtk",
-        "webview.platforms.mshtml",
-        "webview.platforms.win32",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

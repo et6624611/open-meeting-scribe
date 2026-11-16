@@ -393,6 +393,17 @@
           </button>
         </div>
 
+        <!-- 退出应用 / Quit app -->
+        <div class="settings-section">
+          <h2 class="settings-title">{{ t('settings.quit_app') }}</h2>
+          <p class="settings-section-desc">{{ t('settings.quit_app_desc') }}</p>
+          <button class="btn btn-secondary" :disabled="quitting" @click="onQuitApp">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            {{ quitting ? t('settings.quitting') : t('settings.quit_app_btn') }}
+          </button>
+          <p v-if="quitMessage" class="version-msg" :class="{ 'is-error': quitError }">{{ quitMessage }}</p>
+        </div>
+
         <!-- 禁用快捷指令 / Disabled commands -->
         <div class="settings-section">
           <h2 class="settings-title">{{ t('settings.disabled_commands') }}</h2>
@@ -526,7 +537,7 @@ import AiSourcePanel from '@/components/settings/AiSourcePanel.vue'
 import AsrSourcePanel from '@/components/settings/AsrSourcePanel.vue'
 import LocalEnginePanel from '@/components/settings/LocalEnginePanel.vue'
 import { useComputeSource } from '@/composables/useComputeSource'
-import { fetchSettings, saveSettings, fetchCliReference } from '@/api/settings'
+import { fetchSettings, saveSettings, fetchCliReference, quitApp } from '@/api/settings'
 import type { Settings, FeatureFlags } from '@/api/settings'
 import { fetchStorageUsage, cleanIntermediateFiles, cleanOrphanedFiles } from '@/api/storage'
 import type { StorageUsage } from '@/api/storage'
@@ -736,10 +747,11 @@ const shortcutList = computed(() => [
 ])
 
 // ─── 重新加载页面 / Reload page ───
-function onReloadPage() {
+/** 是否有 24 小时内在录/暂停的任务 / Any recording (or paused) task within 24h */
+function hasActiveRecording(): boolean {
   const now = Date.now()
   const oneDayAgo = now - 24 * 60 * 60 * 1000
-  const hasRecording = taskStore.tasks.some(t => {
+  return taskStore.tasks.some(t => {
     if (t.status !== 'recording' && t.status !== 'paused') return false
     if (t.created_at) {
       const created = new Date(t.created_at).getTime()
@@ -747,10 +759,65 @@ function onReloadPage() {
     }
     return true
   })
-  if (hasRecording) {
+}
+
+function onReloadPage() {
+  if (hasActiveRecording()) {
     if (!window.confirm(t('common.reload_recording_confirm'))) return
   }
   window.location.reload()
+}
+
+// ─── 退出应用 / Quit app ───
+const quitting = ref(false)
+const quitMessage = ref('')
+const quitError = ref(false)
+
+async function onQuitApp() {
+  if (quitting.value) return
+  if (hasActiveRecording()) {
+    if (!window.confirm(t('settings.quit_recording_confirm'))) return
+  }
+  quitting.value = true
+  quitMessage.value = ''
+  quitError.value = false
+  try {
+    await quitApp()
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    // 409：非桌面启动器模式，明确不可退出 / 409: not desktop launcher mode
+    if (status === 409) {
+      quitError.value = true
+      quitMessage.value = t('settings.quit_unavailable')
+      quitting.value = false
+      return
+    }
+    // 其他错误多为服务已关闭导致连接中断，交给健康检查确认
+    // Other errors are usually caused by the server shutting down mid-request
+  }
+  const stopped = await waitForServiceStopped()
+  if (stopped) {
+    quitMessage.value = t('settings.quit_done')
+  } else {
+    quitError.value = true
+    quitMessage.value = t('settings.quit_failed')
+  }
+  quitting.value = false
+}
+
+/** 轮询健康检查，直到服务不可达 / Poll health until the service is unreachable */
+async function waitForServiceStopped(timeoutMs = 8000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const resp = await fetch('/api/health', { cache: 'no-store' })
+      if (!resp.ok) return false
+    } catch {
+      return true
+    }
+    await new Promise(resolve => setTimeout(resolve, 300))
+  }
+  return false
 }
 
 // ─── 禁用指令 / Disabled commands ───

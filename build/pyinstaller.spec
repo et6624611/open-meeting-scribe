@@ -94,9 +94,6 @@ a = Analysis(
         # ── collect_submodules 兜底（捕获上述可能遗漏的传递依赖） ──
         *_app_submodules,
         *_core_submodules,
-        # pywebview 桌面窗口
-        'webview',
-        'webview.platforms.winforms',  # Windows 平台后端
         # 其他
         'multipart',
         'jose',

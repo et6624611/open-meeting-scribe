@@ -31,14 +31,11 @@ if exist "%FFMPEG_DIR%\ffmpeg.exe" (
     echo [警告] 未找到 ffmpeg，音频归一化功能不可用
 )
 
-:: 启动服务
+:: 启动服务（程序会自动打开默认浏览器）
 echo.
-echo 启动服务：http://127.0.0.1:8000
-echo 按 Ctrl+C 停止服务
+echo 启动服务（端口占用时自动顺延），浏览器将自动打开
+echo 退出：页面「设置 → 系统 → 退出应用」
 echo.
-
-:: 延迟打开浏览器（等待服务启动）
-start "" cmd /c "timeout /t 3 /nobreak >nul && start http://127.0.0.1:8000"
 
 :: 运行主程序
 OpenMeetingScribe.exe

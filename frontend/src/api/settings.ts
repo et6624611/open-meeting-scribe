@@ -129,6 +129,14 @@ export async function saveSettings(settings: Partial<Settings>): Promise<void> {
   await client.post('/api/settings', settings)
 }
 
+/**
+ * 退出应用（仅桌面启动器模式）。
+ * Quit the app (desktop launcher mode only). Non-desktop returns 409.
+ */
+export async function quitApp(): Promise<void> {
+  await client.post('/api/app/quit')
+}
+
 export async function testApiConnection(params?: { service_type?: string; asr?: Record<string, unknown>; llm?: Record<string, unknown> }): Promise<{ success: boolean; message?: string; ok?: boolean; error?: string }> {
   const { data } = await client.post<{ success: boolean; message?: string; ok?: boolean; error?: string }>('/api/settings/test', params || {})
   return data

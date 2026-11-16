@@ -422,13 +422,13 @@ onMounted(async () => {
   // ─── 页面刷新保护（桌面端数据保护）─── / ─── Page refresh protection (desktop data protection) ───
   // 录音中刷新/关闭页面时弹出浏览器原生确认对话框，防止误操作丢失录音数据 / Show native browser confirm dialog on refresh/close during recording to prevent accidental data loss
   window.addEventListener('beforeunload', onBeforeUnload)
-  // 桌面端 F5 刷新请求（由 pywebview 注入层派发） / Desktop F5 refresh request (dispatched by pywebview injection layer)
-  window.addEventListener('oms:reload-requested', onReloadRequested)
+  // F5 刷新拦截：录音中先确认，避免误刷丢失录音 / Intercept F5; confirm while recording to avoid losing audio
+  window.addEventListener('keydown', onKeydownReload)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
-  window.removeEventListener('oms:reload-requested', onReloadRequested)
+  window.removeEventListener('keydown', onKeydownReload)
 })
 
 /** 检测当前是否有录音中的任务（含暂停） / Check if any recording task is active (incl. paused) */
@@ -452,7 +452,15 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
-/** 桌面端 F5 刷新请求：录音中弹确认，否则直接刷新 / Desktop F5 refresh: confirm during recording, otherwise reload directly */
+/** F5 按键：拦截浏览器默认刷新，交由 onReloadRequested 判断 / Intercept F5 default refresh */
+function onKeydownReload(e: KeyboardEvent) {
+  if (e.key === 'F5') {
+    e.preventDefault()
+    onReloadRequested()
+  }
+}
+
+/** F5 刷新：录音中弹确认，否则直接刷新 / F5 refresh: confirm during recording, otherwise reload directly */
 function onReloadRequested() {
   if (isRecordingActive()) {
     if (!window.confirm(t('common.reload_recording_confirm'))) return

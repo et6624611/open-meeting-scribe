@@ -35,7 +35,7 @@ status: draft
 - [x] AI 助手：对话驱动操作（录音、转写、查询、设置、热词管理）
 - [x] Agent 角色系统（5 个预定义角色 + 用户 fork 自定义 + 全局激活持久化）
 - [x] CLI：`python cli.py transcribe <音频>`
-- [x] 桌面客户端：macOS（pywebview 原生窗口）+ Windows（PyInstaller + Inno Setup 安装器）
+- [x] 桌面客户端：macOS（.app 启动器）+ Windows（PyInstaller + Inno Setup 安装器），点击图标启动本地服务并打开默认浏览器
 - [x] 声纹姓名化（CAM++ 192维嵌入，声纹云端拆分，注册后自动匹配）
 - [x] GitHub OAuth 登录（JWT 会话管理）+ 认证与订阅体系
 - [x] 用量计量与配额管理

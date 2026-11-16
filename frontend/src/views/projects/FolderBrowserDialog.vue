@@ -149,22 +149,6 @@ watch(() => props.modelValue, async (visible) => {
   pathInput.value = props.initialPath || ''
   browsing.value = false
 
-  // ─── 桌面端优先：调用 OS 原生文件夹选择器 / Desktop first: use OS native folder picker ───
-  if (typeof window.pywebview?.api?.select_native_folder === 'function') {
-    try {
-      const folder = await window.pywebview.api.select_native_folder()
-      if (folder) {
-        emit('select', folder)
-        close()
-        return
-      }
-      close()
-      return
-    } catch {
-      // 原生对话框失败 → 回退路径输入 / Native dialog failed → fallback
-    }
-  }
-
   // ─── Web 端回退：聚焦路径输入 / Web fallback: focus path input ───
   await nextTick()
   pathInputRef.value?.focus()

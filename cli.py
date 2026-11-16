@@ -267,14 +267,14 @@ def cmd_admin(args):
 
 
 def cmd_app(args):
-    """启动桌面应用（原生窗口模式） / Start desktop app (native window mode)"""
+    """启动本地服务并打开默认浏览器 / Start local server and open default browser"""
     from desktop import main as desktop_main
 
     host = args.host
     port = args.port
 
-    print(f"启动桌面应用: http://{host}:{port}")
-    print("关闭窗口即可退出")
+    print(f"启动应用: http://{host}:{port}（端口占用时自动顺延）")
+    print("退出：页面「设置 → 系统 → 退出应用」，或 Ctrl+C")
 
     return desktop_main(host=host, port=port)
 

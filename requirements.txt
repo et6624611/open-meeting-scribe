@@ -41,8 +41,5 @@ PyPDF2>=3.0.0
 # 国际化（i18n）
 Babel>=2.14.0
 
-# 桌面应用（原生窗口模式）
-pywebview>=5.0.0
-
 # 可选：OpenAI SDK（纪要生成可用 OpenAI 兼容端点）
 # openai>=1.12.0

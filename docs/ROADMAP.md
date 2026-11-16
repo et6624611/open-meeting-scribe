@@ -93,7 +93,7 @@ status: published
 ### P0（基础打包）✅
 - **PyInstaller 打包**：✅ 主项目 + 前端静态文件打包为单文件 .exe
 - **ffmpeg 内置**：✅ 通过 CI 自动下载 ffmpeg 二进制
-- **启动器**：✅ 双击启动本地 Web 服务 + pywebview 原生窗口（`desktop.py`）
+- **启动器**：✅ 双击启动本地 Web 服务并打开默认浏览器（`desktop.py`，单实例复用 + 端口顺延）
 - **配置文件**：✅ 首次运行生成 `.env`，引导用户填入 DashScope API Key
 
 ### P1（体验优化）

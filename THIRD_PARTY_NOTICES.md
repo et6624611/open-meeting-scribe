@@ -112,10 +112,6 @@ Open Meeting Scribe is licensed under AGPL-3.0-or-later. This project includes t
 - **License**: BSD-3-Clause
 - **Repository**: https://github.com/python-babel/babel
 
-### pywebview
-- **License**: BSD-3-Clause
-- **Repository**: https://github.com/r0x0r/pywebview
-
 ---
 
 ## Local Engine（可选，引导下载）

@@ -230,7 +230,26 @@ async def health_check(request: Request):
     if not logged_in:
         from core.users import _load_user_data
         logged_in = bool(_load_user_data().get("current_user_id"))
-    return {"status": "ok", "auth": {"logged_in": logged_in}}
+    # app 字段用于启动器单实例探测：避免把同端口的其他服务误认成本应用
+    from core.app_control import APP_ID
+    return {"status": "ok", "app": APP_ID, "auth": {"logged_in": logged_in}}
+
+
+@app.post("/api/app/quit")
+async def quit_app():
+    """退出应用（仅桌面启动器模式）。 / Quit the app (desktop launcher mode only).
+
+    浏览器模式没有窗口可关，用户在页面内触发退出；启动器收到信号后停服务。
+    Docker / CLI server 模式下拒绝，避免远程请求停掉常驻服务。
+    """
+    from fastapi import HTTPException
+
+    from core import app_control
+
+    if not app_control.is_desktop_mode():
+        raise HTTPException(status_code=409, detail="not_desktop_mode")
+    app_control.request_quit()
+    return {"status": "quitting"}
 
 
 # ============================================================
@@ -286,6 +305,7 @@ _AUTH_EXEMPT_PREFIXES = (
     "/auth/",
     "/api/admin/",
     "/api/agent-tools/",   # 反向工具面：用进程内短时 bearer 保护（非 JWT），仅本机回环使用
+    "/api/app/",           # 进程控制（仅桌面启动器模式下生效）
     "/api/cloud/",
     "/api/config/",
     "/api/download/",
