@@ -43,6 +43,29 @@ OUTPUT_DIR = Path("data/output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def sweep_expired_docx_cache(retention_days: int) -> int:
+    """清理过期的按需 docx 临时缓存件（ASSET_SYNC P1）。
+
+    与引擎工作区同一 retention 口径；只匹配 *_纪要.docx（含旧版伴生件，
+    均可按需再生），不触碰其他输出文件。retention_days <= 0 视为不自动清理。
+    """
+    import time
+    if retention_days is None or retention_days <= 0:
+        return 0
+    cutoff = time.time() - retention_days * 86400
+    removed = 0
+    for f in OUTPUT_DIR.glob("*_纪要.docx"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        logger.info("[下载产物] 清理过期 docx 缓存 %d 个（保留 %d 天）", removed, retention_days)
+    return removed
+
+
 # ============================================================
 # 共享状态 / Shared state
 # ============================================================
@@ -212,11 +235,14 @@ def _try_recover_orphan_recording(task: dict, task_id: str) -> bool:
     return False
 
 
-def _purge_board_files(task_id: str) -> None:
+def purge_board_files(task_id: str) -> None:
     """删除任务时一并清掉洞察板旁路（manifest + 全部板 HTML + 旧单文件形态）。
 
     不留只进不出：否则删完会议后 data/tasks 里会堆一批无人引用的板文件，
     且同名重建时会被旧板"复活"。清理失败不阻断启动/删除主流程。
+
+    命名不带下划线：删除链路跨 app/core 两层调用（app.routers.tasks 删会议时复用），
+    私有名经 app/task_store 兼容层会被 __getattr__ 挡下（实测 ImportError → 500）。
     """
     try:
         (TASKS_DIR / f"{task_id}.boards.json").unlink(missing_ok=True)
@@ -280,7 +306,9 @@ def load_tasks_from_disk() -> None:
                     task_file.unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
-                    _purge_board_files(task_id)
+                    (TASKS_DIR / f"{task_id}.formal.json").unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.rewrites.jsonl").unlink(missing_ok=True)
+                    purge_board_files(task_id)
                     orphan_recording += 1
                     continue
                 # 清理历史遗留的无内容 failed 任务（之前重启标记的孤儿，无音频/对话/摘要） / Cleanup legacy empty failed tasks (orphans from prior restarts; no audio/dialogue/summary)
@@ -292,7 +320,9 @@ def load_tasks_from_disk() -> None:
                     task_file.unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.joblog.jsonl").unlink(missing_ok=True)
                     (TASKS_DIR / f"{task_id}.insights.json").unlink(missing_ok=True)
-                    _purge_board_files(task_id)
+                    (TASKS_DIR / f"{task_id}.formal.json").unlink(missing_ok=True)
+                    (TASKS_DIR / f"{task_id}.rewrites.jsonl").unlink(missing_ok=True)
+                    purge_board_files(task_id)
                     orphan_recording += 1
                     continue
                 set_task(task_id, task)

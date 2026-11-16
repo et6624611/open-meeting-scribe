@@ -21,6 +21,8 @@ import { notifyTaskWritten } from '@/composables/useTaskWrites'
 export interface NotesProposal {
   baseline: string
   proposed: string
+  /** ASSET_SYNC P3：工作区导入时检测到双侧改动冲突，预览头部展示裁决提示 */
+  conflict?: boolean
 }
 
 /* ─── 模块级单例状态 / Module-level singleton state ─── */

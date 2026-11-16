@@ -663,6 +663,8 @@
 .gen-prop-bar-btn:hover { background: var(--accent); color: var(--accent-fg); }
 .gen-prop-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
 .gen-prop-preview-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--surface-2); flex-shrink: 0; }
+/* ASSET_SYNC P3：双侧改动冲突徽标（外部文件与应用内编辑同时变更，需用户裁决） */
+.gen-prop-conflict { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.6; white-space: nowrap; color: var(--warn, #8a5800); background: var(--warn-soft, #fdf3df); border: 1px solid var(--warn-border); }
 .gen-prop-preview-title { font-size: var(--fs-12); font-weight: 600; color: var(--fg); }
 .gen-prop-preview-stats { font-size: var(--fs-11); color: var(--muted); }
 .gen-prop-diff { flex: 1; min-height: 0; overflow-y: auto; font-family: var(--font-mono); font-size: var(--fs-13); line-height: 1.8; padding: var(--s-2) 0; }
@@ -705,19 +707,7 @@
 .db-content { margin-top: var(--s-2); position: relative; }
 .db-dot { background: var(--db-status-color, var(--muted)); }
 
-/* ═══ 决策卡 ⋯ 动作按钮 + 弹出菜单（usePopMenu 以 fixed 定位，z-index 取全局阶梯） ═══ */
-.db-action-wrap { position: relative; display: inline-flex; }
-.db-action-btn {
-  width: 22px; height: 22px; border-radius: var(--radius-sm); margin-right: 2px;
-  display: grid; place-items: center;
-  color: var(--subtle); opacity: 0; border: none; background: transparent;
-  cursor: pointer; transition: all 0.12s;
-}
-.db-node:hover .db-action-btn,
-.db-action-btn[aria-expanded="true"],
-.db-action-btn:focus-visible { opacity: 1; }
-.db-action-btn:hover { color: var(--fg); background: var(--surface-2); }
-.db-action-btn svg { width: 13px; height: 13px; }
+/* ═══ 决策卡弹出菜单（usePopMenu 以 fixed 定位，z-index 取全局阶梯） ═══ */
 .db-menu {
   display: none; position: fixed; min-width: 156px;
   background: var(--surface); border: 1px solid var(--border-strong);
@@ -749,16 +739,10 @@
   transition: border-color 0.12s;
 }
 .db-edit-area { resize: vertical; min-height: 60px; }
+/* 标题编辑框：改 textarea 支持软换行，高度随内容走，不出内部滚动条 */
+.db-edit-input { resize: none; overflow: hidden; min-height: 32px; }
 .db-edit-input:focus, .db-edit-area:focus { border-color: var(--accent); }
 .db-edit-input::placeholder, .db-edit-area::placeholder { color: var(--subtle); }
-.db-edit-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
-.db-edit-btn {
-  padding: 5px 12px; font-size: var(--fs-12); border-radius: var(--radius-sm); cursor: pointer;
-  border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all 0.12s;
-}
-.db-edit-btn:hover { color: var(--fg); border-color: var(--border-strong); }
-.db-edit-btn.is-primary { border: none; background: var(--accent); color: var(--accent-fg); font-weight: 500; }
-.db-edit-btn.is-primary:hover { opacity: 0.9; }
 
 /* ─── 决策流容器 ─── */
 .db-flow { display: flex; flex-direction: column; gap: var(--s-3); width: 100%; }
@@ -768,9 +752,10 @@
 .db-node:hover { border-color: var(--border-strong); }
 /* 已存档（闭档）不降权：存档内容是沉淀下来的智慧，与开放决策同等可读。
    状态归属由状态点配色 + 平铺状态芯片 + 沉底折叠分组表达，is-done 只作语义标记 */
-.db-row1 { display: flex; align-items: center; gap: var(--s-2); }
+.db-row1 { display: flex; align-items: flex-start; gap: var(--s-2); }
+.db-row1 .db-dot { margin-top: 4px; }
 .db-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-title { flex: 1; min-width: 0; font-size: var(--fs-13); font-weight: 500; line-height: 1.4; color: var(--fg); white-space: pre-wrap; overflow-wrap: break-word; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; font-family: inherit; }
 /* 平铺状态行：状态芯片平铺；「等待中」为父芯片，caret 弹层选等待方 */
 .db-tiles-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) 10px; margin-top: var(--s-2); }
 .db-tile-group { display: flex; flex-wrap: wrap; gap: 5px; }

@@ -48,23 +48,39 @@ def get_chat_engine_status(engine: str | None = None):
         probe_engine_id = engine
 
     def _engine_info(eid: str) -> dict:
-        """引擎枚举项：只读 manifest 元信息 + 快速安装判断（不跑完整探针）。"""
+        """引擎枚举项：manifest 元信息 + icon/recommended + 已安装时完整探针结果。"""
         try:
             m = load_manifest(eid)
         except FileNotFoundError:
             return {"engine_id": eid, "display_name": eid, "name_key": "",
+                    "icon": "wrench", "icon_color": "#6B7280", "recommended": False,
                     "binary": "", "min_version": "", "capabilities": {}, "installed": False}
         binary = m.get("binary", "")
-        return {
+        installed = bool(shutil.which(binary))
+        item = {
             "engine_id": eid,
             "display_name": m.get("display_name", eid),
             "name_key": m.get("name_key", ""),
+            "icon": m.get("icon", "bot"),
+            "icon_color": m.get("icon_color", "#6B7280"),
+            "recommended": bool(m.get("recommended", False)),
             "binary": binary,
             "min_version": m.get("min_version", ""),
             "install_url": m.get("install_url", ""),
             "capabilities": m.get("capabilities", {}) or {},
-            "installed": bool(shutil.which(binary)),
+            "installed": installed,
         }
+        if installed:
+            pr = probe_engine(m)
+            item.update({
+                "path": pr.get("path"),
+                "version": pr.get("version"),
+                "logged_in": pr.get("logged_in"),
+                "available": pr.get("available", False),
+                "failed_stage": pr.get("failed_stage"),
+                "login_skipped": pr.get("login_skipped", False),
+            })
+        return item
 
     engines = [_engine_info(eid) for eid in sorted(
         p.stem for p in MANIFEST_DIR.glob("*.json")) if eid in set(available_engines())]

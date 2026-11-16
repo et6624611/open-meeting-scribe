@@ -63,7 +63,7 @@ export function useGeneratingData(
           icon: 'refresh' as const,
           iconClass: 'is-transient',
           message: t('task.failure.transient'),
-          suggestion,
+          suggestion: t('task.failure.transient_hint'),
           rawError: errorText,
         }
       case 'api_config':

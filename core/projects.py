@@ -287,9 +287,10 @@ def _build_sync_markdown(task: dict, content_types: list[str]) -> str:
     lines.append("")
 
     # 会议纪要区块 / Summary section
-    # 优先使用用户编辑版本，回退到 LLM 原始输出 / Prefer user-edited version, fallback to LLM original
+    # G3：定稿口径收口（user_summary 存在即优先，含空串），与前端纪要 Tab / AI 基线逐字节一致
     if "summary" in content_types:
-        summary = task.get("user_summary") or task.get("summary", "")
+        from core.chat_context import task_final_summary
+        summary = task_final_summary(task)
         if summary:
             lines.append("## 会议纪要")
             lines.append("")

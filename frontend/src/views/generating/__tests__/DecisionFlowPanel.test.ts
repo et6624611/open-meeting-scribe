@@ -16,8 +16,8 @@ if (!globalThis.CSS) {
 // ── 打桩：状态字典与演变归属（facade 级 mock，不碰真实 HTTP） ──
 const { STATUSES, EVOLUTION, TODOS } = vi.hoisted(() => {
   const statuses = [
-    { id: 'to_decide', name: '待决策', name_en: 'To decide', color: 'var(--x)', closing: false, system: true },
-    { id: 'in_progress', name: '进行中', name_en: 'In progress', color: 'var(--x)', closing: false, system: false },
+    { id: 'to_decide', name: '待决策', name_en: 'To decide', color: 'var(--accent)', closing: false, system: true },
+    { id: 'in_progress', name: '进行中', name_en: 'In progress', color: 'var(--accent)', closing: false, system: false },
     { id: 'superseded', name: '已替代', name_en: 'Superseded', color: 'var(--subtle)', closing: true, system: true },
     { id: 'done', name: '完成', name_en: 'Done', color: 'var(--ok)', closing: true, system: true },
   ]

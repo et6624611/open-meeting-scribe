@@ -107,16 +107,13 @@ def markdown_to_docx(md_text: str, out_path: str | Path) -> str:
 
 
 def export_task_docx(task: dict, out_path: str | Path) -> str:
-    """按任务记录导出 docx：优先读取已落盘纪要 md，回退任务 summary 字段。
+    """从 SSOT 按需导出 docx（ASSET_SYNC P1）：定稿口径 + 原始对话稿附录。
 
+    不再读 data/output 冻结 md——修复用户编辑后下载仍是旧版（G1/G2）。
     抛 FileNotFoundError（调用方转 404）当纪要尚不存在。
     """
-    output_path = task.get("output_path")
-    if output_path and Path(output_path).exists():
-        md_text = Path(output_path).read_text(encoding="utf-8")
-    else:
-        summary = task.get("summary")
-        if not summary:
-            raise FileNotFoundError("Minutes file not found")
-        md_text = summary
+    from core.minutes_render import render_minutes_md
+    md_text = render_minutes_md(task)
+    if not md_text.strip():
+        raise FileNotFoundError("Minutes file not found")
     return markdown_to_docx(md_text, out_path)

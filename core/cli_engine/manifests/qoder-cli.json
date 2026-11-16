@@ -1,6 +1,10 @@
 {
   "engine_id": "qoder-cli",
   "display_name": "Qoder CLI",
+  "name_key": "cliengine_engine_qoder_cli",
+  "icon": "bot",
+  "icon_color": "#3B82F6",
+  "recommended": true,
   "binary": "qoder",
   "install_url": "https://qoder.com/cli",
   "min_version": "1.1.0",

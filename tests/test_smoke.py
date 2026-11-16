@@ -76,6 +76,80 @@ class TestGetTaskNotFound:
         assert resp.status_code == 404
 
 
+class TestDeleteTask:
+    """DELETE /api/tasks/{id} 删除任务并清掉全部旁路文件
+
+    回归背景：删除端点曾从 app.task_store 兼容层导入下划线私有的 _purge_board_files
+    （实现已下沉 core），ImportError → 500 → 前端弹「删除失败，请重试」，但任务其实
+    已从内存与磁盘移除，重试变 404。该端点此前无任何用例，缺陷潜伏到真机才暴露。
+    """
+
+    def test_delete_removes_task_and_all_sidecars(self, client, tmp_path, monkeypatch):
+        import json
+        import uuid
+
+        import app.routers.tasks as tasks_router
+        import core.task_store as task_store
+
+        monkeypatch.setattr(tasks_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
+
+        task_id = str(uuid.uuid4())
+        # 任务 JSON + 音频 + 纪要输出 + 洞察/板旁路，逐个落盘后验证全部清除
+        audio = tmp_path / f"{task_id}.wav"
+        audio.write_bytes(b"fake audio")
+        output = tmp_path / f"{task_id}.md"
+        output.write_text("# 纪要", encoding="utf-8")
+        for name in [f"{task_id}.json", f"{task_id}.joblog.jsonl", f"{task_id}.insights.json",
+                     f"{task_id}.boards.json", f"{task_id}.board.html", f"{task_id}.board.k1.html"]:
+            (tmp_path / name).write_text(json.dumps({"x": 1}), encoding="utf-8")
+        task_store.tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "audio_path": str(audio),
+            "output_path": str(output),
+        }
+
+        resp = client.delete(f"/api/tasks/{task_id}")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"deleted": True}
+        assert task_id not in task_store.tasks
+        for leftover in [audio, output] + [tmp_path / f"{task_id}{s}"
+                                           for s in [".json", ".joblog.jsonl", ".insights.json",
+                                                    ".boards.json", ".board.html", ".board.k1.html"]]:
+            assert not leftover.exists(), f"旁路文件残留: {leftover.name}"
+
+    def test_delete_task_not_found(self, client):
+        resp = client.delete("/api/tasks/nonexistent-id")
+        assert resp.status_code == 404
+
+    def test_delete_succeeds_even_when_artifact_cleanup_raises(self, client, tmp_path, monkeypatch):
+        """旁路清理抛异常不得改写删除结果：否则用户看到“删除失败”但会议已没（幽灵列表项）。"""
+        import uuid
+
+        import app.routers.tasks as tasks_router
+        import core.task_store as task_store
+
+        monkeypatch.setattr(tasks_router, "TASKS_DIR", tmp_path)
+        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
+        # 模拟本次故障形态：清理阶段抛非 OSError（ImportError 同属此类）
+        monkeypatch.setattr(tasks_router, "purge_board_files",
+                            lambda _task_id: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        task_id = str(uuid.uuid4())
+        (tmp_path / f"{task_id}.json").write_text("{}", encoding="utf-8")
+        task_store.tasks[task_id] = {"task_id": task_id, "status": "completed", "audio_path": None}
+
+        resp = client.delete(f"/api/tasks/{task_id}")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"deleted": True}
+        assert task_id not in task_store.tasks
+        # 任务主 JSON 在报错前已清除，不留孤儿
+        assert not (tmp_path / f"{task_id}.json").exists()
+
+
 class TestRetranscribeNotFound:
     """POST /api/tasks/{id}/retranscribe 不存在时返回 404"""
 
@@ -448,7 +522,7 @@ class TestDecisionsNotFound:
 # ============================================================
 
 class TestInsightMessagesPersistence:
-    """洞察消息按会议持久化"""
+    """会中实时消息端点退役后保持空响应兼容"""
 
     def test_get_messages_not_found(self, client):
         """不存在的会议返回空列表"""
@@ -456,23 +530,19 @@ class TestInsightMessagesPersistence:
         assert resp.status_code == 200
         assert resp.json()["messages"] == []
 
-    def test_save_and_load_messages(self, client, tmp_path, monkeypatch):
-        """保存后加载应返回相同消息"""
-        import core.task_store as task_store
-        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
+    def test_save_is_noop_and_load_returns_empty(self, client):
+        """实时消息写入静默忽略，读取始终为空"""
         task_id = "test-task-123"
         messages = [
             {"id": "msg-1", "title": "测试洞察", "body": "内容", "timestamp": 1234567890},
         ]
         resp = client.post(f"/api/insights/messages/{task_id}", json={"messages": messages})
         assert resp.status_code == 200
-        assert resp.json()["ok"] is True
-        # 加载
+        assert resp.json() == {"ok": True, "count": 0, "messages": []}
+
         resp = client.get(f"/api/insights/messages/{task_id}")
         assert resp.status_code == 200
-        loaded = resp.json()["messages"]
-        assert len(loaded) == 1
-        assert loaded[0]["title"] == "测试洞察"
+        assert resp.json()["messages"] == []
 
 
 # ============================================================

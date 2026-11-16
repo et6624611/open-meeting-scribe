@@ -18,14 +18,17 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, field_validator
 
+from core import notes_service
 from core.audio import get_stream_recording_info, is_stream_recording
 from core.fs_atomic import stream_save_upload
 from core.i18n import _
 from core.pipeline_runner import run_pipeline_task, run_stage2_task
 from core.settings_store import get_transcript_config
 from core.task_store import (
+    OUTPUT_DIR,
     TASKS_DIR,
     UPLOAD_DIR,
+    purge_board_files,
     save_task_to_disk,
     tasks,
 )
@@ -415,21 +418,26 @@ def download_summary(task_id: str, format: str = "md"):
         raise HTTPException(404, _("Task not found"))
 
     task = tasks[task_id]
-    output_path = task.get("output_path")
-    if not output_path or not Path(output_path).exists():
+    # ASSET_SYNC P1：下载件从 SSOT 按需渲染，不再读 data/output 冻结快照（修复 G1：编辑后下载过期）
+    from core.minutes_render import docx_cache_name, minutes_download_name, render_minutes_md
+
+    content = render_minutes_md(task)
+    if not content.strip():
         raise HTTPException(404, _("Minutes file not found"))
 
     if format == "md":
-        return FileResponse(
-            output_path,
+        from urllib.parse import quote
+        filename = minutes_download_name(task)
+        return Response(
+            content=content,
             media_type="text/markdown",
-            filename=Path(output_path).name,
+            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(filename)}"},
         )
 
     from core.docx_export import export_task_docx
 
-    stem = Path(output_path).stem
-    docx_path = Path(output_path).parent / f"{stem}.docx"
+    # docx 为按需临时缓存件（data/output/，retention 到期可清，任务删除联动清理）
+    docx_path = OUTPUT_DIR / docx_cache_name(task_id)
     try:
         export_task_docx(task, docx_path)
     except Exception as e:
@@ -486,6 +494,18 @@ def delete_task(task_id: str):
     if task is None:
         raise HTTPException(404, _("Task not found"))
 
+    # 产物清理是 best-effort：进到这里任务已从索引和磁盘移除，再抛异常只会让前端
+    # 弹“删除失败”、列表留下幽灵项（实测 500 后重试变 404）；残留文件靠启动孤儿清理兜底。
+    try:
+        _purge_task_artifacts(task_id, task)
+    except Exception as e:  # noqa: BLE001 - 删除结果不受旁路 I/O 影响，但必须留可排查日志
+        logger.warning("[任务删除] %s 已删除，但产物清理未完成: %s", task_id[:8], e, exc_info=True)
+
+    return {"deleted": True}
+
+
+def _purge_task_artifacts(task_id: str, task: dict) -> None:
+    """删除任务的全部落盘产物（音频 / 纪要 / JSON / 洞察与板旁路） / Remove every on-disk artifact."""
     # 清理原始音频文件 / Clean up original audio file
     audio_path = task.get("audio_path")
     if audio_path and Path(audio_path).exists():
@@ -509,25 +529,33 @@ def delete_task(task_id: str):
         if raw_candidate.exists():
             raw_candidate.unlink(missing_ok=True)
 
-    # 清理纪要输出文件 / Clean up summary output file
+    # 清理纪要输出文件（存量冻结快照兼容；P1 后新任务不再产生） / Clean up summary output file (legacy)
     output_path = task.get("output_path")
     if output_path and Path(output_path).exists():
         Path(output_path).unlink()
-    # 清理按需生成的 docx 伴生文件（DEF-QA-R1-02：下载时写入同目录同名 .docx）
+    # 清理按需生成的 docx 伴生文件（DEF-QA-R1-02：旧版下载时写入同目录同名 .docx）
     if output_path:
         Path(output_path).with_suffix(".docx").unlink(missing_ok=True)
+    # 清理 P1 按需 docx 临时缓存件（data/output/{task_id}_*_纪要.docx）
+    for f in OUTPUT_DIR.glob(f"{task_id}_*_纪要.docx"):
+        f.unlink(missing_ok=True)
 
-    # 删除持久化文件：任务 JSON、作业日志、AI 洞察消息 / Delete persisted files: task JSON, job log, AI insights
-    for suffix in [".json", ".joblog.jsonl", ".insights.json"]:
+    # 删除持久化文件：任务 JSON、作业日志、AI 洞察消息、书面版与写回快照 sidecar /
+    # Delete persisted files: task JSON, job log, insights, formal & rewrite-snapshot sidecars (G5)
+    for suffix in [".json", ".joblog.jsonl", ".insights.json", ".formal.json", ".rewrites.jsonl"]:
         f = TASKS_DIR / f"{task_id}{suffix}"
         if f.exists():
             f.unlink()
 
     # 洞察板旁路（manifest + 多板 HTML + 旧单文件形态）——不留无人引用的残留文件
-    from app.task_store import _purge_board_files
-    _purge_board_files(task_id)
+    purge_board_files(task_id)
 
-    return {"deleted": True}
+    # ASSET_SYNC P2：资产工作区会议目录联动清理（应用拥有 _preview；知识库副本用户拥有不删）
+    try:
+        from core.cli_engine.projection import purge_meeting_workspace
+        purge_meeting_workspace(task)
+    except Exception as e:  # noqa: BLE001 - 旁路清理不阻断删除结果
+        logger.warning("[任务删除] %s 资产工作区清理未完成: %s", task_id[:8], e)
 
 
 @router.post("/api/tasks/{task_id}/retranscribe")
@@ -564,6 +592,12 @@ def retranscribe_task(
         from core.cloud_client import is_cloud_enabled
         if not is_cloud_enabled():
             raise HTTPException(400, _("Cloud service is not configured. Connect to cloud or configure an API Key before retrying in the cloud."))
+
+    # G4：重置前清理旧纪要导出件，避免 output_path 置空后旧 md/docx 成孤儿文件
+    old_output = task.get("output_path")
+    if old_output:
+        Path(old_output).unlink(missing_ok=True)
+        Path(old_output).with_suffix(".docx").unlink(missing_ok=True)
 
     # 重置任务状态 / Reset task state
     tasks[task_id]["status"] = "processing"
@@ -695,8 +729,8 @@ def update_task(task_id: str, data: TaskUpdate):
             # 洞察改档立即重排卡集可见层（纯展示侧搬家，不耗 LLM 配额）
             _rebalance_insight_budget(task_id, new.get("insights", 1))
     if changed:
-        # 标记内容已修改，用于知识库同步脏检测 / Mark content as modified for KB sync dirty detection
-        tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+        # [状态同步] 脏标记收口入口：rev 递增 + 资产投影（含目录改名跟随）+ 知识库脏检测（ASSET_SYNC P2）
+        notes_service.mark_modified(task_id)
         save_task_to_disk(task_id)
 
     return tasks[task_id]
@@ -730,9 +764,9 @@ def correct_task_text_endpoint(task_id: str, data: CorrectTextRequest):
         raise HTTPException(500, _("Text correction failed: {error}").format(error=e))
 
     if result["hits"]["task"]:
-        # 任务主体确实变了才落盘；顺带置脏，让知识库同步提示跟上手改
-        # Persist only when the task body actually changed; mark dirty for KB sync.
-        tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+        # 任务主体确实变了才落盘；脏标记收口入口：rev 递增 + 资产投影 + 知识库脏检测（ASSET_SYNC P2）
+        # Persist only when the task body actually changed; mark dirty for KB sync + projection.
+        notes_service.mark_modified(task_id)
         save_task_to_disk(task_id)
     if result["residual"]:
         # 白名单没覆盖到的位置：不静默，留条痕供补录 REWRITE_KEYS
@@ -789,6 +823,8 @@ def archive_task(task_id: str):
         raise HTTPException(404, _("Task not found"))
     tasks[task_id]["archived_at"] = datetime.now().isoformat()
     save_task_to_disk(task_id)
+    from core.cli_engine.projection import set_archived
+    set_archived(task_id, True)
     logger.info(f"[{task_id[:8]}] 任务已归档")
     return tasks[task_id]
 
@@ -800,6 +836,8 @@ def unarchive_task(task_id: str):
         raise HTTPException(404, _("Task not found"))
     tasks[task_id]["archived_at"] = None
     save_task_to_disk(task_id)
+    from core.cli_engine.projection import set_archived
+    set_archived(task_id, False)
     logger.info(f"[{task_id[:8]}] 任务已取消归档")
     return tasks[task_id]
 
@@ -812,6 +850,8 @@ def batch_archive_tasks(data: BatchArchiveRequest):
         if task_id in tasks:
             tasks[task_id]["archived_at"] = datetime.now().isoformat()
             save_task_to_disk(task_id)
+            from core.cli_engine.projection import set_archived
+            set_archived(task_id, True)
             archived.append(task_id)
     logger.info(f"批量归档 {len(archived)}/{len(data.task_ids)} 个任务")
     return {"archived": len(archived)}

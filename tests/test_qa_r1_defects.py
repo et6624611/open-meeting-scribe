@@ -412,13 +412,14 @@ class TestDocxExport:
     def test_download_endpoint_format(self, tmp_path, monkeypatch):
         import app.routers.tasks as tr
 
-        out_md = tmp_path / "minutes.md"
-        out_md.write_text(_SAMPLE_MD, encoding="utf-8")
         tid = "t-docx-1"
-        tr.tasks[tid] = {"task_id": tid, "status": "completed", "output_path": str(out_md)}
+        # ASSET_SYNC P1：下载件从 SSOT 按需渲染，不再依赖落盘 md（契约变更）
+        tr.tasks[tid] = {"task_id": tid, "status": "completed", "summary": _SAMPLE_MD}
+        monkeypatch.setattr(tr, "OUTPUT_DIR", tmp_path)
 
         md_resp = tr.download_summary(tid, format="md")
         assert md_resp.media_type == "text/markdown"
+        assert md_resp.body.decode("utf-8") == _SAMPLE_MD
 
         docx_resp = tr.download_summary(tid, format="docx")
         assert "wordprocessingml" in docx_resp.media_type

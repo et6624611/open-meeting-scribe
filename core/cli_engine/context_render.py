@@ -52,10 +52,34 @@ def _write_md_with_meta(ctx_dir: Path, filename: str, meta: dict, body: str) -> 
 
     meta 字段：task_id/meeting_title/generated_at/source/version + 各文件特定字段。
     body 是正文（含标题行，函数在 frontmatter 与 body 之间加空行）。
+
+    ASSET_SYNC P2：注入 content_hash 正文锚点；hash 未变幂等跳过（增量投影）；
+    原子写（要么完整要么不写，不留半截文件）。
     """
+    from core.fs_atomic import atomic_write_text
+
+    from .projection import body_hash
+
+    digest = body_hash(body)
+    meta = {**meta, "content_hash": digest}
+    target = ctx_dir / filename
+    # 幂等：正文 hash 未变跳过重写（generated_at 等易变字段不参与判定）
+    if target.exists():
+        try:
+            old = target.read_text(encoding="utf-8")
+            if old.startswith("---"):
+                end = old.find("---", 3)
+                if end > 0:
+                    for line in old[3:end].split("\n"):
+                        if line.strip().startswith("content_hash:"):
+                            if line.split(":", 1)[1].strip().strip('"') == digest:
+                                return
+                            break
+        except OSError:
+            pass
     frontmatter = _format_yaml_frontmatter(meta)
     content = f"{frontmatter}\n\n{body}"
-    (ctx_dir / filename).write_text(content, encoding="utf-8")
+    atomic_write_text(target, content)
 
 
 def _base_meta(task_id: str | None, task: dict | None, source: str) -> dict:
@@ -69,6 +93,9 @@ def _base_meta(task_id: str | None, task: dict | None, source: str) -> dict:
         "generated_at": _now_iso(),
         "source": source,
         "version": 1,
+        # ASSET_SYNC P2：内容版本号 + 只读派生标记（回流冲突判定与外部 AI 权限提示用）
+        "content_rev": int((task or {}).get("content_rev") or 0),
+        "projection": "readonly",
     }
 
 
@@ -217,7 +244,7 @@ def _build_permission_section(auth_tier: str | None) -> str:
             "再逐条调 update_decision_node（status 只取字典里的 id）；已有节点不得用 inject_items 重复追加。\n"
             "- 随记（notes）是用户原创区：改写必须调用 propose_notes 产出待确认提案，由用户在前端点「接受」后才落盘；"
             "未经接受，严禁声称已写入或修改随记。也不要把随记内容当纪要写（纪要走 propose_summary）。\n"
-            "- 改写前先读基线（洞察板读工作区 `context/boards/<board_id>.html` 与 `context/boards/index.md`，"
+            "- 改写前先读基线（洞察板读工作区 `context/boards/main.md` 与 `context/boards/index.md`，"
             "落盘时带上读到的 expected_revision；纪要覆盖前先从工作区读回原文）。\n"
             "- 落盘成功后，回复中必须明确告知用户改了哪个域、对应版本/条数；"
             "工具回执中 restorable=false 表示本轮未能建立撤销快照，需如实告知用户改动不可一键回退。\n"
@@ -351,21 +378,18 @@ def _summary_line(task: dict, limit: int = 60) -> str:
 
 
 def _write_board_files(ctx: Path, task_id: str | None, written: list[str]) -> None:
-    """把洞察板 HTML 原样拷进工作区 / Copy board HTML into context/boards/.
+    """把单份洞察板 Markdown 正文拷进工作区 / Copy board Markdown into context/boards/.
 
-    【基线而非重建】拷的是消毒后实际展示的字节（board_html_load 的落盘版本），
-    不是 CLI 提交的原文：应用侧清洗（on*/危险 scheme/禁用标签）会改字节，
-    所以下一轮共创必须看到与用户所看一致的那一版，否则每轮都是从零重写。
+    【基线而非重建】拷的是清洗后实际展示的 Markdown（board_md_load 的正文），
+    不是 CLI 提交的原文：应用侧清洗会改字节，下一轮共创必须看到同一基线。
+    front-matter 中的 revision 单独写入 index.md，供 expected_revision 乐观锁使用。
 
-    走**文件**而非 prompt 注入：工作区文件模式对 token 预算宽松（insights.md 全量不截断
-    即为既有证据），板不进 brief，由 CLI 按需 Read——边际成本只在真打开时发生。
-    超上限只留 index.md 并标 truncated=true，不允许静默截断。
-    已删除的板不得残留：每次先清空 boards/ 再写。
+    超上限只留 index.md 并标 truncated=true，不允许静默截断；每次先清理旧基线。
     """
     if not task_id:
         return
     try:  # 局部 import：避免 core.cli_engine 模块级依赖洞察板
-        from core.insight_board import BOARD_HTML_CAP, board_html_load, boards_manifest
+        from core.insight_board import BOARD_MD_CAP, board_md_load, board_md_meta
     except Exception:  # noqa: BLE001 - 洞察板模块缺席不阻断其余上下文导出
         return
     boards_dir = ctx / "boards"
@@ -377,53 +401,49 @@ def _write_board_files(ctx: Path, task_id: str | None, written: list[str]) -> No
     except OSError:
         pass
     try:
-        manifest = boards_manifest(task_id)
+        meta = board_md_meta(task_id)
+        artifact = board_md_load(task_id) or {}
     except Exception:  # noqa: BLE001
         return
-    boards = manifest.get("boards") or []
+
+    markdown = artifact.get("markdown") or ""
+    n_bytes = len(markdown.encode("utf-8")) if markdown else 0
+    title = str(meta.get("title") or artifact.get("title") or "主看板").replace("|", "\\|").replace("\n", " ")
+    rev = int(meta.get("revision") or 0)
+    upd = meta.get("updated_at") or "-"
+    copied, truncated = False, False
+    if markdown and n_bytes <= BOARD_MD_CAP:
+        try:
+            boards_dir.mkdir(parents=True, exist_ok=True)
+            (boards_dir / "main.md").write_text(markdown, encoding="utf-8")
+            copied = True
+            written.append("context/boards/main.md")
+        except OSError as e:
+            logger.warning("[CLI引擎] 洞察板拷贝失败 task=%s: %s", task_id, e)
+    elif markdown:
+        truncated = True
+
     lines = [
-        "# 洞察板清单（基线索引）",
+        "# 洞察板基线（一场会议一份）",
         "",
-        "> 本目录下的 `.html` 与 `data/tasks/` 展示版本逐字节一致：那就是用户当前看到的板。",
-        "> 修订前先 Read 对应文件拿到基线，落盘时把读到的 revision 原样填到",
-        "> revise_insight_board(board_id, html, expected_revision)；收到 `stale_baseline`",
-        "> 说明基线已过期，重读后再改，不要硬写覆盖。",
-        "> 版式（含 `<style>` / 硬编码色 / `<script>`）完全由你负责；",
-        "> 图片与字体资源必须 data URI 内联，相对路径在渲染出口不保证可解析。",
-        "> 建板权属于用户：需要新板请先向用户提议（create_insight_board），不要直接写新 board_id。",
+        "> `main.md` 是 `data/tasks/{task_id}.insight.md` 的 Markdown 正文基线，版本以本索引为准。",
+        "> 修订前先 Read `main.md`；文件不存在表示首版，revision=0。",
+        "> 落盘调用 revise_insight_board(markdown=<完整新版>, expected_revision=<读到的版本号>)；",
+        "> MCP 引擎下务必用全名 mcp__oms-tools__revise_insight_board，裸名会报 Tool not found。",
+        "> 收到 `stale_baseline` 说明基线已过期，重读后再改，不要硬写覆盖。",
+        "> 正文使用 GFM；图解放在 ```mermaid fence 中；保留 <!-- section-id: ... --> 节锚点。",
         "",
         "| board_id | 标题 | revision | 字节数 | 更新时间 | 已拷贝 | truncated |",
         "|---|---|---|---|---|---|---|",
+        f"| main | {title} | {rev} | {n_bytes} | {upd} | "
+        f"{'是' if copied else '否'} | {'true' if truncated else 'false'} |",
     ]
-    for b in boards:
-        bid = str(b.get("board_id") or "")
-        title = str(b.get("title") or "").replace("|", "\\|").replace("\n", " ")
-        rev = int(b.get("revision") or 0)
-        upd = b.get("updated_at") or "-"
-        artifact = board_html_load(task_id, bid) or {}
-        html = artifact.get("html") or ""
-        n_bytes = len(html.encode("utf-8")) if html else 0
-        copied, truncated = False, False
-        if html and n_bytes <= BOARD_HTML_CAP:
-            try:
-                boards_dir.mkdir(parents=True, exist_ok=True)
-                (boards_dir / f"{bid}.html").write_text(html, encoding="utf-8")
-                copied = True
-                written.append(f"context/boards/{bid}.html")
-            except OSError as e:
-                logger.warning("[CLI引擎] 洞察板拷贝失败 task=%s board=%s: %s", task_id, bid, e)
-        elif html:
-            truncated = True
-        lines.append(f"| {bid} | {title} | {rev} | {n_bytes} | {upd} | "
-                     f"{'是' if copied else '否'} | {'true' if truncated else 'false'} |")
-    if not boards:
-        lines.append("| （尚无板） | | | | | | |")
     try:
-        (ctx / "boards").mkdir(parents=True, exist_ok=True)
-        (ctx / "boards" / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        boards_dir.mkdir(parents=True, exist_ok=True)
+        (boards_dir / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         written.append("context/boards/index.md")
     except OSError as e:
-        logger.warning("[CLI引擎] 洞察板清单写入失败 task=%s: %s", task_id, e)
+        logger.warning("[CLI引擎] 洞察板索引写入失败 task=%s: %s", task_id, e)
 
 
 def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
@@ -486,8 +506,9 @@ def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
 
         decisions = task.get("decisions") or []
         if decisions:
-            (ctx / "decisions.json").write_text(
-                json.dumps(decisions, ensure_ascii=False, indent=2), encoding="utf-8")
+            from core.fs_atomic import atomic_write_text
+            atomic_write_text(ctx / "decisions.json",
+                              json.dumps(decisions, ensure_ascii=False, indent=2))
             written.append("context/decisions.json")
 
     insights_md = _render_insights(task_id)
@@ -505,7 +526,7 @@ def _write_context_md_files(ctx: Path, task: dict, task_id: str | None,
         }, insights_md)
         written.append("context/insights.md")
 
-    # 洞察板 HTML 基线（与正式会话工作区同口径，两个出口保持一致）
+    # 洞察板 Markdown 基线（与正式会话工作区同口径，两个出口保持一致）
     _write_board_files(ctx, str(task_id or ""), written)
 
     history_md = _render_history(history)

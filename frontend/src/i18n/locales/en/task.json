@@ -26,6 +26,7 @@
   "failure": {
     "unknown": "Unknown error",
     "transient": "Temporary error, retryable",
+    "transient_hint": "Service temporarily unavailable, please try again later.",
     "transient_action": "Retry",
     "api_config": "API configuration error",
     "api_config_action": "Check Settings",

@@ -599,6 +599,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     meeting_time=meeting_time,
                     user_notes=task_store.tasks[task_id].get("user_notes"),
                     one_page_factor=one_page_factor,
+                    emit_file=False,  # ASSET_SYNC P1：Web 管线不落盘导出件，下载按需渲染
                 )
             except Exception as e:
                 # D018a：纪要/决策合体调用超时不连坐已成功的转写——以"仅正文纪要"+
@@ -623,6 +624,7 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     one_page_factor=one_page_factor,
                     summary_mode="body_only",
                     summary_timeout=summary_retry_timeout_seconds(),
+                    emit_file=False,  # ASSET_SYNC P1：降级重试同口径不落盘
                 )
 
             task_store.tasks[task_id]["status"] = "completed"
@@ -696,6 +698,13 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                     )
             except Exception as e:
                 logger.warning(f"[{task_id[:8]}] 首次完成自动同步失败（不影响主流程）: {e}")
+
+            # ASSET_SYNC P2：纪要生成完成后投影到资产工作区（失败仅日志，不影响会议产物）
+            try:
+                from core.cli_engine.projection import project_task
+                project_task(task_id)
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 资产投影钩子异常（不影响产物）: {e}")
 
             stage2_elapsed = time.perf_counter() - stage2_start
             logger.info(f"[PERF] {task_id[:8]} 纪要任务总计: {stage2_elapsed:.3f}s")

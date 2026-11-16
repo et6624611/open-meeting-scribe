@@ -52,7 +52,7 @@ const { t } = useI18n()
 const route = useRoute()
 
 const taskId = String(route.params.taskId || '')
-const emptyArtifact: BoardArtifact = { html: null, revision: 0, updated_at: null }
+const emptyArtifact: BoardArtifact = { markdown: null, revision: 0, updated_at: null }
 const board = ref<BoardArtifact>(emptyArtifact)
 const boards = ref<BoardSummary[]>([])
 const activeBoardId = ref(String(route.query.board_id || ''))
@@ -71,7 +71,7 @@ async function load() {
     if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
       activeBoardId.value = manifest.default_board_id
     }
-    board.value = await loadBoard(taskId, activeBoardId.value)
+    board.value = await loadBoard(taskId)
     loadError.value = ''
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -85,7 +85,7 @@ async function onSwitchBoard(id: string) {
   activeBoardId.value = id
   loading.value = true
   try {
-    board.value = await loadBoard(taskId, id)
+    board.value = await loadBoard(taskId)
   } finally {
     loading.value = false
   }
@@ -94,7 +94,7 @@ async function onSwitchBoard(id: string) {
 
 /** 建板权在用户：本页的「＋ 新建板」就是显式动作，与会议页走同一个 POST */
 async function onCreateBoard(title: string) {
-  const created = await createBoard(taskId, title, undefined, 'ui')
+  const created = await createBoard(taskId, title, undefined)
   await load()
   if (created?.board_id) await onSwitchBoard(created.board_id)
 }

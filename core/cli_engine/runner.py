@@ -25,6 +25,7 @@ import logging
 import os
 import signal
 import time
+from collections import deque
 from contextlib import contextmanager
 
 from anyio import CancelScope
@@ -60,6 +61,29 @@ class _UserCancelledError(Exception):
 _TYPEWRITER_SIZE = 18
 _TYPEWRITER_DELAY = 0.02
 
+# stderr 诊断预算：只留尾部若干行，且最终只带 500 字符进错误提示
+_STDERR_KEEP_LINES = 20
+_STDERR_DETAIL_CHARS = 500
+
+
+async def _drain_stderr(stream, sink: deque) -> None:
+    """持续排空 stderr 管道；失败只记不抛，绝不影响主流程。"""
+    try:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", "replace").strip()
+            if text:
+                sink.append(text)
+    except Exception:  # noqa: BLE001 - 排空异常不影响事件流
+        pass
+
+
+def _stderr_detail(lines: deque) -> str:
+    """把 stderr 尾部压成一行可展示的诊断串。"""
+    return " | ".join(lines)[-_STDERR_DETAIL_CHARS:].strip()
+
 
 class CliAgentError(RuntimeError):
     """引擎不可用/启动失败，供上层回退内置链路。 / Engine unavailable; caller should fall back.
@@ -85,6 +109,7 @@ async def run_cli_agent(
     model: str | None = None,
     session_id: str | None = None,
     resume: bool = False,
+    use_separator: bool = True,
     mcp_config: str | None = None,
     allowed_tools: list[str] | None = None,
     first_event_timeout: float | None = None,
@@ -99,6 +124,11 @@ async def run_cli_agent(
 
     on_write_success：可选回调，参数为工具全名。当 tool_call 名字命中写工具（含 MCP 前缀
     mcp__<server>__<tool>）且其 tool_result 成功时触发（完成护栏 §5.4 的 rewritten 事实源）。
+
+    use_separator：prompt 前是否保留 manifest 声明的分隔符（如 "--"）。少数环境里
+    CLI 外面套了一层包装脚本，会把自己的选项追加到 argv 末尾——追加项落在 "--" 之后
+    就成了位置参数被拒（unknown option）。上层在首帧前失败时可置 False 重试一次，
+    让后置选项重新被正常解析。
     """
     manifest = load_manifest(engine_id)
     argv = manifest.get("argv", {})
@@ -155,7 +185,7 @@ async def run_cli_agent(
         if sp_flag:
             cmd += [sp_flag, brief]
     # prompt 置于末尾；分隔符（如 "--"）由 manifest 声明，Claude 等直接尾传位置参数
-    separator = argv.get("prompt_separator")
+    separator = argv.get("prompt_separator") if use_separator else None
     if separator:
         cmd += [separator]
     cmd += [brief]
@@ -170,7 +200,7 @@ async def run_cli_agent(
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.DEVNULL,
             cwd=proc_cwd,
             start_new_session=True,  # 独立进程组，cancel 可整组 kill（§3.9-5）
@@ -180,6 +210,12 @@ async def run_cli_agent(
         raise CliAgentError(f"无法启动 CLI 引擎：{e}", hint_key="cli_engine_start_failed", detail=str(e)) from e
 
     _ACTIVE[stream_id] = proc
+    # stderr 必须持续排空：既防止管道写满把子进程卡死，也留住尾部几行——
+    # 「参数不认、会话不存在、直接崩」这三类首帧前失败原本长得一模一样，全靠它区分。
+    stderr_lines: deque[str] = deque(maxlen=_STDERR_KEEP_LINES)
+    stderr_task: asyncio.Task | None = None
+    if getattr(proc, "stderr", None) is not None:
+        stderr_task = asyncio.create_task(_drain_stderr(proc.stderr, stderr_lines))
     owns_cancel = stream_id not in _CANCELLED
     _CANCELLED.setdefault(stream_id, False)
     terminal: dict | None = None
@@ -251,7 +287,7 @@ async def run_cli_agent(
                                 # 读写双语义工具：只有带了"写"的关键字段才算真落盘
                                 if short in bidirectional_tools:
                                     tool_spec = next((t for t in _CATALOG if t["name"] == short), None)
-                                    write_arg = (tool_spec or {}).get("write_arg", "html")
+                                    write_arg = (tool_spec or {}).get("write_arg", "markdown")
                                     if write_arg not in (info.get("args") or {}):
                                         pass  # 读语义，不触发
                                     else:
@@ -281,6 +317,11 @@ async def run_cli_agent(
             # ASGI 断连会持续取消 await；屏蔽清理阶段的取消，先确认子进程退出再回收桥。
             with CancelScope(shield=True):
                 await _reap(proc)
+            if stderr_task is not None:
+                try:
+                    await asyncio.wait_for(stderr_task, timeout=1)
+                except Exception:  # noqa: BLE001 - 排空超时/失败不阻断收尾
+                    stderr_task.cancel()
         finally:
             _ACTIVE.pop(stream_id, None)
             if _CANCELLED.get(stream_id):
@@ -289,10 +330,24 @@ async def run_cli_agent(
                 _CANCELLED.pop(stream_id, None)
 
     if terminal is not None:
+        detail = _stderr_detail(stderr_lines)
+        returncode = getattr(proc, "returncode", None)
+        if detail:
+            terminal["engine_stderr"] = detail
+        if returncode is not None:
+            terminal["engine_returncode"] = returncode
+        # 首帧前就死掉（无任何事件）时，把引擎自己的报错顶到用户可见处，
+        # 不再让「参数不认 / 会话不存在 / 直接崩」共用一句无信息量的兜底文案。
+        if detail and terminal.get("engine_error") == "missing_result":
+            terminal["hint_key"] = "cli_engine_incomplete_detail"
+            terminal.setdefault("hint_params", {})["detail"] = detail
+            terminal["content"] = f"引擎连接已结束，但未收到完成结果（引擎输出：{detail}）。已写入的内容不会自动撤销。"
         terminal.setdefault("hint_params", {"engine": manifest.get("display_name", "CLI")})
         logger.info("[CLI引擎] 结束 stream=%s status=%s reason=%s last_event=%s elapsed=%.3f returncode=%s",
                     stream_id, terminal.get("status"), terminal.get("engine_error", ""), last_event,
                     time.monotonic() - started, proc.returncode)
+        if detail:
+            logger.info("[CLI引擎] stderr 尾部 stream=%s %s", stream_id, detail)
         # 回收后只发送一个权威终态；错误/EOF 绝不再补成功 done。
         yield terminal
 

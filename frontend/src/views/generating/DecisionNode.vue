@@ -4,7 +4,13 @@
     <!-- 第一行：状态点 + 标题（状态在下方平铺；等待方收进「等待中」父芯片的 caret 弹层） -->
     <div class="db-row1">
       <span class="db-dot"></span>
-      <span class="db-title" v-if="!editing" :title="fullText">{{ displayTitle }}</span>
+      <button
+        type="button"
+        class="db-title"
+        v-if="!editing"
+        :title="fullText"
+        @click="startEdit"
+      >{{ displayTitle }}</button>
       <span class="db-title-spacer" v-else></span>
       <!-- 待确认提案徽标：与已定结论共用 to_decide 态，靠 pending_confirmation 区分 -->
       <span v-if="!editing && decision.pending_confirmation" class="db-pending-badge">{{ t('generating.decisions.pending_badge') }}</span>
@@ -76,19 +82,20 @@
     </div>
 
     <!-- ⋯ 菜单进入的行内编辑态：编辑「标题 + 主文本」；正文(why)仍由下方常驻 textarea 维护 -->
-    <div class="db-edit" v-if="editing">
+    <div class="db-edit" v-if="editing" @focusout="onEditFocusOut">
       <label class="db-edit-field">
         <span class="db-edit-label">{{ t('generating.decisions.edit_title_label') }}</span>
-        <input
+        <textarea
           ref="editTitleRef"
           class="db-edit-input"
-          type="text"
+          rows="1"
           maxlength="200"
           v-model="editTitle"
           :placeholder="t('generating.decisions.edit_title_placeholder')"
+          @input="autoGrowTitle"
           @keydown.meta.enter.prevent="saveEdit"
           @keydown.ctrl.enter.prevent="saveEdit"
-        />
+        ></textarea>
       </label>
       <label class="db-edit-field">
         <span class="db-edit-label">{{ t('generating.decisions.edit_content_label') }}</span>
@@ -107,10 +114,6 @@
           @select="editMenu.select" @hover="editMenu.setActive"
         />
       </label>
-      <div class="db-edit-actions">
-        <button type="button" class="db-edit-btn" @click="cancelEdit">{{ t('generating.decisions.edit_cancel') }}</button>
-        <button type="button" class="db-edit-btn is-primary" @click="saveEdit">{{ t('generating.decisions.edit_save') }}</button>
-      </div>
     </div>
 
     <!-- 第二行：Markdown textarea / Row 2: Markdown textarea -->
@@ -140,31 +143,6 @@
     <!-- 底部：操作 / Footer: actions -->
     <div class="db-footer">
       <span class="db-footer-spacer"></span>
-      <!-- ⋯ 动作菜单：进入「编辑决策文本」态（编辑态下隐藏，避免重复入口） -->
-      <div class="db-action-wrap" v-if="!editing">
-        <button
-          ref="actionBtnRef"
-          type="button"
-          class="db-action-btn"
-          v-bind="actionTriggerAttrs"
-          @click="toggleActionMenu"
-          :title="t('generating.decisions.edit_menu')"
-          :aria-label="t('generating.decisions.edit_menu')"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
-        </button>
-        <div
-          ref="actionMenuRef"
-          class="db-menu"
-          v-bind="actionMenuAttrs"
-          :class="{ 'is-open': actionMenuVisible }"
-        >
-          <button type="button" class="db-menu-item" role="menuitem" @click="startEdit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            {{ t('generating.decisions.edit_text') }}
-          </button>
-        </div>
-      </div>
       <button class="db-delete-btn" :title="t('generating.decisions.delete')" @click="emit('delete')" :aria-label="t('generating.decisions.delete')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
       </button>
@@ -353,22 +331,34 @@ const editing = ref(false)
 const editingHasTitle = ref(false)
 const editTitle = ref('')
 const editText = ref('')
-const editTitleRef = ref<HTMLInputElement | null>(null)
-const actionBtnRef = ref<HTMLElement | null>(null)
-const actionMenuRef = ref<HTMLElement | null>(null)
-const {
-  visible: actionMenuVisible,
-  toggle: toggleActionMenu,
-  close: closeActionMenu,
-  triggerAttrs: actionTriggerAttrs,
-  menuAttrs: actionMenuAttrs,
-} = usePopMenu(actionMenuRef, actionBtnRef)
+const editTitleRef = ref<HTMLTextAreaElement | null>(null)
+// 进入编辑时的快照：退出时据此判断是否真改动，避免仅聚焦后点走也发一次 patch
+const originalTitle = ref('')
+const originalText = ref('')
 
 // 编辑态 ESC 取消：退回只读、不发请求（各自仅在自身可见时挂载，与下拉 ESC 不冲突）
 useEscClose(editing, () => cancelEdit())
 
+// 改写即存：焦点离开编辑区（点卡片其他位置或页面任意处）即自动保存并退出，无需按钮
+function onEditFocusOut(e: FocusEvent) {
+  if (!editing.value) return
+  const next = e.relatedTarget as Node | null
+  if (next && (e.currentTarget as HTMLElement)?.contains(next)) return
+  saveEdit()
+}
+
+// 标题编辑框高度随内容自适应：单行起步，长标题软换行后框体跟着长，不出现内部滚动
+function autoGrowTitle() {
+  const el = editTitleRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  const cs = getComputedStyle(el)
+  const borderY = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth)
+  el.style.height = el.scrollHeight + borderY + 'px'
+}
+watch(editTitle, () => { if (editing.value) void nextTick(autoGrowTitle) })
+
 function startEdit() {
-  closeActionMenu()
   const t = props.decision
   editingHasTitle.value = Boolean(t.title && t.title.trim())
   if (editingHasTitle.value) {
@@ -381,8 +371,13 @@ function startEdit() {
     editTitle.value = t.text || ''
     editText.value = t.why || ''
   }
+  originalTitle.value = editTitle.value.trim()
+  originalText.value = editText.value.trim()
   editing.value = true
-  void nextTick(() => editTitleRef.value?.focus())
+  void nextTick(() => {
+    autoGrowTitle()
+    editTitleRef.value?.focus()
+  })
 }
 
 function saveEdit() {
@@ -391,10 +386,12 @@ function saveEdit() {
   // 保证 bodyContent 优先读 why 时能拿到用户最新编辑内容，不被残留 why 老值覆盖
   const title = editTitle.value.trim()
   const body = editText.value.trim()
+  const dirty = title !== originalTitle.value || body !== originalText.value
+  editing.value = false
+  if (!dirty) return
   emit('patch', editingHasTitle.value
     ? { title, text: body, why: body }
     : { text: title, why: body })
-  editing.value = false
 }
 
 function cancelEdit() {

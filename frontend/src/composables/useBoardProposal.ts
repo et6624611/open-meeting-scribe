@@ -33,7 +33,7 @@ async function acceptBoardProposal(): Promise<boolean> {
   const taskId = taskStore.currentTaskId
   if (!p || !taskId) return false
   try {
-    const created = await createBoard(taskId, p.title, p.board_id || undefined, 'proposal')
+    const created = await createBoard(taskId, p.title, p.board_id || undefined)
     boardProposal.value = null
     notifyBoardsChanged({ board_id: created.board_id })
     showToast(tt('ai-panel.board_proposal_applied'), 'success')

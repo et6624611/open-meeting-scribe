@@ -217,6 +217,36 @@ export function useLibrarySelection() {
     return n > SPK_MAX_SHOWN ? n - (SPK_MAX_SHOWN - 1) : 0
   }
 
+  // ─── 手工参会人（与音频绑定人区分展示） / Manual roster participants ───
+  const MANUAL_MAX_SHOWN = 2
+
+  /** 手工添加的参会人：排除已绑定到音频的名字与重复项 / Manual roster names excluding bound and duplicates */
+  function getManualSpeakerNames(task: Task): string[] {
+    const bound = new Set(
+      Object.values(task.speaker_mapping || {})
+        .map(v => String(v).trim())
+        .filter(n => n && !isPlaceholderName(n))
+    )
+    const seen = new Set<string>()
+    const list: string[] = []
+    for (const raw of task.roster || []) {
+      const name = String(raw).trim()
+      if (!name || bound.has(name) || seen.has(name)) continue
+      seen.add(name)
+      list.push(name)
+    }
+    return list
+  }
+
+  function visibleManualSpeakers(task: Task): string[] {
+    return getManualSpeakerNames(task).slice(0, MANUAL_MAX_SHOWN)
+  }
+
+  function extraManualCount(task: Task): number {
+    const n = getManualSpeakerNames(task).length
+    return n > MANUAL_MAX_SHOWN ? n - MANUAL_MAX_SHOWN : 0
+  }
+
   function getSpeakerList(task: Task): SpeakerInfo[] {
     const mapping = task.speaker_mapping
     if (!mapping || Object.keys(mapping).length === 0) return []
@@ -277,5 +307,6 @@ export function useLibrarySelection() {
     openTask,
     statusDotClass, highlightLibTitle, formatDuration, formatDateTime,
     visibleSpeakers, extraSpeakerCount, getSpeakerList,
+    visibleManualSpeakers, extraManualCount,
   }
 }

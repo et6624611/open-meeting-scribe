@@ -17,6 +17,8 @@ import { diffLines, diffStats, type DiffLine } from '@/utils/textDiff'
 export interface SummaryProposal {
   baseline: string
   proposed: string
+  /** ASSET_SYNC P3：工作区导入时检测到双侧改动冲突，预览头部展示裁决提示 */
+  conflict?: boolean
 }
 
 /** diff 行 + 原文行索引（渲染键） */

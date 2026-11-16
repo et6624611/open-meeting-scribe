@@ -14,6 +14,7 @@
       <div class="gen-prop-bar" v-if="proposal && !previewMode">
         <svg class="gen-prop-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span class="gen-prop-bar-text">{{ t('generating.summary.proposal_pending', { hunks: stats.hunks, added: stats.added, removed: stats.removed }) }}</span>
+        <span v-if="proposal.conflict" class="gen-prop-conflict">{{ t('generating.summary.proposal_conflict') }}</span>
         <button class="gen-prop-bar-btn" @click="emit('open-preview')">{{ t('generating.summary.proposal_view') }}</button>
       </div>
       <!-- 原位 diff 预览态（Layer 1）：IDE 式锁定编辑，接受/拒绝在文内操作条完成 /
@@ -21,6 +22,7 @@
       <div class="gen-prop-preview" v-if="proposal && previewMode">
         <div class="gen-prop-preview-header">
           <span class="gen-prop-preview-title">{{ t('generating.summary.proposal_label') }}</span>
+          <span v-if="proposal.conflict" class="gen-prop-conflict">{{ t('generating.summary.proposal_conflict') }}</span>
           <span class="gen-prop-preview-stats">{{ t('generating.summary.proposal_stats', { hunks: stats.hunks, added: stats.added, removed: stats.removed }) }}</span>
         </div>
         <div class="gen-prop-diff">

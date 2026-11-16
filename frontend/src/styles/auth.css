@@ -196,7 +196,7 @@
 .reg-guidance-icon {
   width: 20px;
   height: 20px;
-  color: var(--ann-icon, var(--accent));
+  color: var(--ann-icon);
   flex-shrink: 0;
 }
 .reg-guidance-text {
@@ -206,13 +206,13 @@
   line-height: 1.5;
 }
 .reg-guidance-text strong {
-  color: var(--ann-text-strong, var(--fg));
+  color: var(--ann-text-strong);
   font-weight: 600;
 }
 .reg-guidance-cta {
   padding: 6px 16px;
-  background: var(--ann-cta-bg, var(--accent));
-  color: var(--ann-cta-fg, var(--accent-fg));
+  background: var(--ann-cta-bg);
+  color: var(--ann-cta-fg);
   border: none;
   border-radius: var(--radius-sm);
   font-size: var(--fs-13);
@@ -239,7 +239,7 @@
   flex-shrink: 0;
 }
 .reg-guidance-dismiss:hover {
-  background: var(--ann-dismiss-hover, var(--surface-3));
+  background: var(--ann-dismiss-hover);
   color: var(--fg);
 }
 .reg-guidance-dismiss svg {

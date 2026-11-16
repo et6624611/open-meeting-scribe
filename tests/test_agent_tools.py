@@ -213,9 +213,22 @@ class TestInvokeEndpoint:
         assert "propose_summary" not in trigger and "propose_notes" not in trigger
         assert {"update_decision_node", "delete_decision_node", "inject_items"} <= trigger
 
-    # ── 洞察共创板工具（读写双语义） / Insight board co-create tool ──
+    # ── 洞察共创板工具（单份 Markdown，读写双语义） ──
+    _BOARD_MD = """<!-- section-id: s1 section-title: 执行回传 -->
+## 执行回传
+
+困境：人工同步造成数据延迟。
+
+```mermaid
+flowchart LR
+  A[人工表单] --> B[CDC 捕获]
+```
+
+外部最优解法：采用 CDC 事件流，消费端幂等处理。
+落地步骤：先对齐字段，再上线对账。
+取舍：引入中间件成本，换取低耦合与高时效。"""
+
     def test_board_read_allowed_in_readonly(self, client, monkeypatch, tmp_path):
-        # 不带 html = 读基线，只读档放行（写档门控的例外）
         import core.insight_board as ib
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
         ctx = self._issue("readonly", task_id="t1")
@@ -223,14 +236,23 @@ class TestInvokeEndpoint:
                         json={"name": "revise_insight_board", "arguments": {}},
                         headers={"Authorization": f"Bearer {ctx.token}"})
         assert r.status_code == 200
-        assert r.json()["result"]["html"] is None and r.json()["result"]["revision"] == 0
+        assert r.json()["result"]["markdown"] is None and r.json()["result"]["revision"] == 0
 
     def test_board_write_denied_in_readonly(self, client, monkeypatch, tmp_path):
         import core.insight_board as ib
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
         ctx = self._issue("readonly", task_id="t1")
         r = client.post("/api/agent-tools/invoke",
-                        json={"name": "revise_insight_board", "arguments": {"html": "<p>x</p>"}},
+                        json={"name": "revise_insight_board", "arguments": {"markdown": self._BOARD_MD}},
+                        headers={"Authorization": f"Bearer {ctx.token}"})
+        assert r.status_code == 403
+
+    def test_legacy_html_write_also_denied_in_readonly(self, client, monkeypatch, tmp_path):
+        import core.insight_board as ib
+        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
+        ctx = self._issue("readonly", task_id="t1")
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": "revise_insight_board", "arguments": {"html": self._BOARD_MD}},
                         headers={"Authorization": f"Bearer {ctx.token}"})
         assert r.status_code == 403
 
@@ -239,63 +261,47 @@ class TestInvokeEndpoint:
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
         ctx = self._issue("full_task", task_id="t1")
         w = client.post("/api/agent-tools/invoke",
-                        json={"name": "revise_insight_board", "arguments": {"html": "<h1>板</h1>"}},
+                        json={"name": "revise_insight_board",
+                              "arguments": {"markdown": self._BOARD_MD, "expected_revision": 0}},
                         headers={"Authorization": f"Bearer {ctx.token}"})
         assert w.status_code == 200 and w.json()["result"]["revision"] == 1
         rd = client.post("/api/agent-tools/invoke",
                          json={"name": "revise_insight_board", "arguments": {}},
                          headers={"Authorization": f"Bearer {ctx.token}"})
-        assert rd.json()["result"]["html"] == "<h1>板</h1>"
-
-    def test_board_unknown_board_id_rejected(self, client, monkeypatch, tmp_path):
-        # 写一个未知 board_id 不会隐式建板（建板权在用户）
-        import core.insight_board as ib
-        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
-        ctx = self._issue("full_task", task_id="t1")
-        r = client.post("/api/agent-tools/invoke",
-                        json={"name": "revise_insight_board",
-                              "arguments": {"html": "<h1>x</h1>", "board_id": "ghost"}},
-                        headers={"Authorization": f"Bearer {ctx.token}"})
-        assert r.json()["result"]["error"] == "unknown_board_id"
-        assert not (tmp_path / "t1.board.ghost.html").exists()
+        assert rd.json()["result"]["markdown"] == self._BOARD_MD
+        assert "html" not in rd.json()["result"]
+        assert (tmp_path / "t1.insight.md").exists()
+        assert not list(tmp_path.glob("t1.board*.html"))
 
     def test_board_stale_baseline_via_tool(self, client, monkeypatch, tmp_path):
         import core.insight_board as ib
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
         ctx = self._issue("full_task", task_id="t1")
         client.post("/api/agent-tools/invoke",
-                    json={"name": "revise_insight_board", "arguments": {"html": "<p>v1</p>"}},
+                    json={"name": "revise_insight_board", "arguments": {"markdown": self._BOARD_MD}},
                     headers={"Authorization": f"Bearer {ctx.token}"})
         r = client.post("/api/agent-tools/invoke",
                         json={"name": "revise_insight_board",
-                              "arguments": {"html": "<p>v2</p>", "expected_revision": 99}},
+                              "arguments": {"markdown": self._BOARD_MD.replace("CDC", "变更捕获"),
+                                            "expected_revision": 99}},
                         headers={"Authorization": f"Bearer {ctx.token}"})
         res = r.json()["result"]
         assert res["error"] == "stale_baseline" and res["current_revision"] == 1
 
-    def test_create_board_is_proposal_not_persist(self, client, monkeypatch, tmp_path):
-        # create_insight_board 名义 write、实际不落盘（只回提案）；建板靠用户接受后的 POST
-        import core.insight_board as ib
-        monkeypatch.setattr(ib, "BOARD_TASKS_DIR", tmp_path)
+    def test_board_tool_schema_is_single_markdown(self):
+        tool = TOOLS_BY_NAME["revise_insight_board"]
+        assert tool["write_arg"] == "markdown"
+        assert set(tool["input_schema"]["properties"]) == {"markdown", "expected_revision"}
+        retired = {"create_insight_board", "list_insight_boards", "revise_insight_board_section"}
+        assert retired.isdisjoint(TOOLS_BY_NAME)
+        assert retired.isdisjoint({spec["name"] for spec in mcp_tool_specs()})
+
+    def test_retired_create_board_tool_returns_404(self, client):
         ctx = self._issue("full_task", task_id="t1")
         r = client.post("/api/agent-tools/invoke",
-                        json={"name": "create_insight_board",
-                              "arguments": {"title": "专项分析", "reason": "内容超量"}},
+                        json={"name": "create_insight_board", "arguments": {"title": "专项"}},
                         headers={"Authorization": f"Bearer {ctx.token}"})
-        assert r.status_code == 200
-        assert r.json()["result"]["proposed"] is True
-        # 未落盘：既无新板文件也无额外 manifest 条目
-        assert not list(tmp_path.glob("t1.board.*.html"))
-        assert ib.boards_manifest("t1")["boards"] == [] or all(
-            b["board_id"] == "main" for b in ib.boards_manifest("t1")["boards"])
-
-    def test_create_board_denied_in_readonly(self, client, monkeypatch, tmp_path):
-        # create_insight_board 不属只读档例外（区别于 revise 的读语义）：只读档连提议权也不给
-        ctx = self._issue("readonly", task_id="t1")
-        r = client.post("/api/agent-tools/invoke",
-                        json={"name": "create_insight_board", "arguments": {"title": "x"}},
-                        headers={"Authorization": f"Bearer {ctx.token}"})
-        assert r.status_code == 403
+        assert r.status_code == 404
 
 
 # ============================================================

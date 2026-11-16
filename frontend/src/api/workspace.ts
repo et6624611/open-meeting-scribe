@@ -83,6 +83,8 @@ export interface WorkspaceRefreshResult {
 export interface ProposalChange {
   baseline: string
   proposed: string
+  /** ASSET_SYNC P3：双侧改动冲突（外部文件与应用内编辑同时变更），需用户裁决 */
+  conflict?: boolean
 }
 
 export interface WorkspaceImportResult {

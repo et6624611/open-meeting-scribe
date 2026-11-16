@@ -156,20 +156,20 @@
    挡不住"占位"）。按钮在横幅出现/消失时会因此"点了没反应"。
    Banners are in-flow rows of .frame; hiding them via opacity left the row
    occupying space and swallowing clicks on the topmost left-rail buttons. */
-.reg-guidance-banner { position: relative; background: var(--ann-bg, var(--surface-2)); border-bottom: 1px solid var(--ann-border, var(--border)); padding: 10px 24px; overflow: hidden; }
+.reg-guidance-banner { position: relative; background: var(--ann-bg); border-bottom: 1px solid var(--ann-border); padding: 10px 24px; overflow: hidden; }
 .reg-guidance-banner.is-hidden { display: none; }
 .reg-guidance-content { display: flex; align-items: center; gap: 12px; max-width: 1400px; margin: 0 auto; }
-.reg-guidance-icon { width: 20px; height: 20px; color: var(--ann-icon, var(--accent)); flex-shrink: 0; }
+.reg-guidance-icon { width: 20px; height: 20px; color: var(--ann-icon); flex-shrink: 0; }
 .reg-guidance-text { flex: 1; font-size: var(--fs-13); color: var(--fg); line-height: 1.5; }
-.reg-guidance-text :deep(strong) { color: var(--ann-text-strong, var(--fg)); font-weight: 600; }
-.reg-guidance-cta { padding: 6px 16px; background: var(--ann-cta-bg, var(--accent)); color: var(--ann-cta-fg, var(--accent-fg)); border: none; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.reg-guidance-text :deep(strong) { color: var(--ann-text-strong); font-weight: 600; }
+.reg-guidance-cta { padding: 6px 16px; background: var(--ann-cta-bg); color: var(--ann-cta-fg); border: none; border-radius: var(--radius-sm); font-size: var(--fs-13); font-weight: 500; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
 .reg-guidance-cta:hover { opacity: 0.85; }
 .reg-guidance-dismiss { width: 24px; height: 24px; padding: 0; background: none; border: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; border-radius: 4px; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
-.reg-guidance-dismiss:hover { background: var(--ann-dismiss-hover, var(--surface-3)); color: var(--fg); }
+.reg-guidance-dismiss:hover { background: var(--ann-dismiss-hover); color: var(--fg); }
 .reg-guidance-dismiss svg { width: 16px; height: 16px; }
 
 /* ─── 版本更新横幅（复用公告横幅样式，微调配色） ─── */
-.update-banner .reg-guidance-icon { color: var(--ann-icon, var(--accent)); }
+.update-banner .reg-guidance-icon { color: var(--ann-icon); }
 .update-content .reg-guidance-cta { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* ─── 语言切换器 ─── */

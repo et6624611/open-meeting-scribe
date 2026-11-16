@@ -321,6 +321,23 @@ class TestAgentSystemPromptInsightContract:
         from app.routers.chat import CHAT_QA_SYSTEM_PROMPT
         assert "board_is_recap" not in CHAT_QA_SYSTEM_PROMPT
 
+    def test_chat_prompt_strips_analyzer_json_contract(self):
+        # learning-tutor 的 insights.md 含洞察台分析器的「仅返回 JSON」契约，
+        # 注入对话必须剥离，否则聊天回复会退化为裸 JSON
+        from app.routers.chat import _agent_system_prompt
+        prompt = _agent_system_prompt("learning-tutor")
+        assert "认知盲点" in prompt  # 职责与观察角度保留
+        assert "仅返回 JSON" not in prompt
+        assert "has_finding" not in prompt
+
+    def test_analyzer_prompt_keeps_json_contract(self):
+        # 洞察台分析器读取同一文件全文，JSON 输出契约必须完整保留
+        from core.agent_workspace import get_role_insight_prompt
+        prompt = get_role_insight_prompt("learning-tutor")
+        assert prompt is not None
+        assert "仅返回 JSON" in prompt
+        assert "has_finding" in prompt
+
 
 class TestListModels:
     """GET /api/models 返回模型列表"""

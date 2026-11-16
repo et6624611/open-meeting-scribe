@@ -251,11 +251,16 @@ recognition.stop()  # 阻塞直到所有结果返回
 - 响应：`{"status": "processing", "message": "..."}`（与现状一致）。
 - 消费方：`frontend/src/api/tasks.ts retranscribe(taskId, { engineOverride: 'cloud' })` → GeneratingView 失败卡片「切云端重试」。
 
-### GET /api/download/{task_id}?format=docx|md（DEF-QA-R1-02 改造）
+### GET /api/download/{task_id}?format=docx|md（DEF-QA-R1-02 改造；ASSET_SYNC P1 按需化）
 
 - 查询参数 `format`：`docx` | `md`；**缺省 `md`**（与现状行为一致，向后兼容）。
-- `format=docx`：由 md 纪要生成 Word 文档（标题/说话人段落/时间戳映射为 Word 结构，中文不乱码），`Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`。
-- 任务无 `output_path` 时返回 404（现状不变）。
+- **内容来源（P1 变更）**：从 SSOT 按需渲染（`core/minutes_render.render_minutes_md`：
+  定稿口径 `task_final_summary` + 原始对话稿附录），不再读 `data/output/` 冻结快照；
+  用户编辑后下载即新鲜。md 直接作响应返回（零落盘）；docx 为临时缓存件
+  `data/output/{task_id}_{ts}_纪要.docx`（启动 retention sweep 与任务删除联动清理）。
+- `format=docx`：由渲染后的 md 生成 Word 文档（标题/说话人段落/时间戳映射为 Word 结构，中文不乱码），`Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`。
+- 定稿纪要与对话稿均为空时返回 404（旧契约「无 output_path 返 404」的等价替代）。
+- Web 管线不再写 `output_path`（`run_pipeline_stage2(emit_file=False)`）；CLI `transcribe -o` 保留文件输出。存量任务的 `output_path` 仅作删除清理兼容。
 - 消费方：`frontend/src/api/tasks.ts downloadSummaryUrl(taskId, format)` → LibraryView 批量导出弹窗。
 
 ### 任务 JSON 失败字段（已有落盘语义，前端自本批次开始消费）
@@ -570,7 +575,7 @@ recognition.stop()  # 阻塞直到所有结果返回
 ### POST /api/tasks/{task_id}/correct-text
 
 - 请求体：`{"old": "误识别写法", "new": "正确文本"}`（两侧均 `strip()`）。
-- 语义：把一条 `错误识别→正确文本` 映射**全量回溯**应用到本场会议的**四份产物**——任务对象（转写原文 / 纪要 / 随记 / 章节 / 决策）、`<task_id>.insights.json`、**该会议 manifest 内的全部洞察板 HTML**（`<task_id>.board.<board_id>.html`）、`output_path` 指向的导出纪要 md。每份板走 `board_html_save(content_floor=False)` 保留清洗防线与 revision+1；`residual` 扫描同样按 manifest 展开。
+- 语义：把一条 `错误识别→正确文本` 映射**全量回溯**应用到本场会议的**四份产物**——任务对象（转写原文 / 纪要 / 随记 / 章节 / 决策）、`<task_id>.insights.json`、**该会议 manifest 内的全部洞察板 HTML**（`<task_id>.board.<board_id>.html`）、`output_path` 指向的导出纪要 md（ASSET_SYNC P1 后新任务无此文件，该份自动 no-op；下载件从 SSOT 渲染天然新鲜）。每份板走 `board_html_save(content_floor=False)` 保留清洗防线与 revision+1；`residual` 扫描同样按 manifest 展开。任务主体命中后经 `notes_service.mark_modified` 置脏（rev 递增 + 资产投影 + 知识库脏检测）。
 - 匹配口径与转写链路**同源**（复用 `core.hotwords.sub_term` 与 `ascii_term_pattern`）：纯 ASCII 词按**ASCII 邻接边界**匹配（`(?<![A-Za-z0-9])词(?![A-Za-z0-9])`，大小写不敏感），含中文串走子串替换。
   不用 `\b`：Python Unicode 语义下汉字也算 `\w`，「与ES（」里汉字与字母之间不存在 `\b`，中文会议里最常见的「英文编码紧贴汉字」形态会全部匹配不上（ES→EAS 配了不生效）；而邻接边界既不误伤 `FILES` / `ESB` / `CH2O`。
 - 改写范围按 **键名白名单** `core.text_correction.REWRITE_KEYS` 递归判定（非按路径枚举）：新增名为 `text` 的字段自动被覆盖，而 `task_id` / `audio_path` / `*_at` / `speaker_mapping` 等标识与路径永不触碰。

@@ -168,7 +168,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick, true))
 
 .kb-combo-pop {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 220px;
-  border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface-1, var(--bg, #fff));
+  border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--dropdown-bg);
   box-shadow: var(--dropdown-shadow); padding: var(--s-2);
 }
 .kb-combo-search-wrap { position: relative; display: flex; align-items: center; }

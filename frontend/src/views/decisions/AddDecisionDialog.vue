@@ -249,7 +249,7 @@ defineExpose({ setSubmitting: (v: boolean) => { submitting.value = v } })
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ad-select, .ad-textarea, .ad-input {
   width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: var(--fs-13, 13px);
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1, transparent); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg);
   font-family: inherit;
 }
 .ad-select:focus, .ad-textarea:focus, .ad-input:focus { outline: none; border-color: var(--accent); }

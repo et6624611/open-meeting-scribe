@@ -385,6 +385,10 @@ def _agent_system_prompt(role_name: str | None) -> str:
     prompt = role["agent_md"]
     insight_prompt = (role.get("extra_files") or {}).get("insights.md")
     if insight_prompt:
+        # insights.md 同时供洞察台分析器使用（get_role_insight_prompt 读全文）；
+        # 其「输出格式」节是分析器的 JSON 返回契约，注入对话会让聊天回复退化为裸 JSON，
+        # 对话链路只保留职责与观察角度，剥离该节（无此节的角色文件原样注入）。
+        insight_prompt = insight_prompt.split("\n## 输出格式", 1)[0]
         prompt += "\n\n---\n\n" + insight_prompt
     return prompt
 OPTIMIZE_SYSTEM_PROMPT = """你是一位专业的中文文稿润色助手。请对用户提供的文本进行优化，遵循以下原则：
@@ -418,6 +422,40 @@ TITLE_SYSTEM_PROMPT = """你为一段简短的 AI 对话生成一个会话标题
 4. 如果内容涉及会议，直接提取主题（如"项目排期"、"预算评审"）
 5. 严禁使用"关于"、"针对"等前缀，不要用"问题"、"话题"等泛化词结尾
 6. 仅返回一行标题，不要换行"""
+
+
+async def build_web_reference_block(data: ChatRequest, is_qa_mode: bool) -> str:
+    """联网检索增强（内置问答路径）：讨论涉及会外专业知识时先行检索并注入「外部参考」块。
+
+    复用 core.insights._augment_with_web_search（预判-注入式，与洞察卡分析同口径）。
+    内置问答为单轮补全、无工具循环，故以注入块而非工具调用提供外部知识；
+    CLI 智能体路径不经此函数（其工具循环可直接调 web_search）。
+    问答模式 / 无任务 / 未配置搜索 key / 任一环节失败一律返回空串，绝不阻断问答主流程。
+    """
+    if is_qa_mode or not data.task_id or data.task_id not in tasks:
+        return ""
+    try:
+        task = tasks[data.task_id]
+        recent_lines: list[dict] = []
+        for item in task.get("dialogue") or []:
+            for s in item.get("sentences") or []:
+                text = (s.get("text") or "").strip()
+                if text:
+                    recent_lines.append({"text": text, "begin_time": s.get("begin_time", 0)})
+        recent_lines = recent_lines[-30:]
+        if not recent_lines:
+            return ""
+        chapter_titles = [
+            str(c.get("title", "")).strip()
+            for c in (task.get("chapters") or []) if c.get("title")
+        ]
+        from core.insights import _augment_with_web_search
+        return await _augment_with_web_search(recent_lines, chapter_titles)
+    except Exception as e:
+        logger.warning("[AI对话] 联网检索增强失败（退化为无检索问答）: %s", e)
+        return ""
+
+
 def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[list[str], list[dict]]:
     """为聊天请求构建上下文块（供 /api/chat 和 /api/chat/stream 共用）。
     Build context blocks for chat request (shared by /api/chat and /api/chat/stream).

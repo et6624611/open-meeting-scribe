@@ -547,11 +547,11 @@ function onBoardCoCreate() {
   }))
 }
 
-/** 单节共创起跳：预填带板 id/节锈点 id与标题的定向修订请求，引导 AI 用 revise_insight_board_section 只改这一节 */
-function onBoardCoCreateSection(sec: { id: string; title: string; boardId: string }) {
+/** 单节共创起跳：预填节锈点 id与标题的定向修订请求，引导 AI 用 revise_insight_board_section 只改这一节 */
+function onBoardCoCreateSection(sec: { id: string; title: string }) {
   const label = sec.title || sec.id
   const prefill = t('generating.insights.board.co_create_section_msg', {
-    title: label, id: sec.id, board_id: sec.boardId || activeBoardId.value,
+    title: label, id: sec.id, board_id: activeBoardId.value,
   })
   window.dispatchEvent(new CustomEvent('quote-to-ai', {
     detail: { prefill, coCreate: true },

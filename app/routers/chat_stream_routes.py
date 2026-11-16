@@ -59,6 +59,7 @@ from .chat_shared import (
     _generate_mermaid_diagram,
     _model_usage_meta,
     _modify_mermaid_diagram,
+    build_web_reference_block,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,26 @@ async def _board_retry(*, original_brief: str, prior_output: str, run_options: d
     logger.info("[洞察板补全] 结束 stream=%s written=%s status=%s",
                 run_options["stream_id"], written, terminal.get("status"))
     yield terminal
+
+
+def _retry_attempt_args(terminal: dict | None) -> dict | None:
+    """首帧前失败的一次性自适应重试，只认环境可归因的两种形态。
+
+    - 包装脚本把自选参数追加到 "--" 之后 → 去掉分隔符再试（后置选项重新被解析）
+    - 续用了一个 CLI 侧并不存在的会话（退出码 42）→ 改为新建会话
+    其它失败不重试：重跑只会把同一个错误再演一遍。
+    """
+    if not terminal:
+        return None
+    blob = f"{terminal.get('engine_stderr') or ''} {terminal.get('content') or ''}".lower()
+    if terminal.get("engine_returncode") == 42 or (
+            "session" in blob and ("not found" in blob or "no such session" in blob)):
+        return {"resume": False}
+    if "unknown option" in blob or "unrecognized option" in blob:
+        return {"use_separator": False}
+    return None
+
+
 async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_project_id: str | None,
                                base_url: str = "http://127.0.0.1:8000", auto_selected: bool = False):
     """
@@ -255,26 +276,46 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
         mcp_config=mcp_config_path, allowed_tools=allowed_tools,
         on_write_success=lambda tool_name: written_tools.append(str(tool_name).rsplit("__", 1)[-1]),
     )
+    use_resume = bool(data.resume_session and session_id)
+    emitted_turn = False
+
+    async def _attempt(*, use_separator: bool = True, resume: bool = True):
+        """跑一次 CLI；只转发过程事件，终态交给调用方统一裁决。"""
+        nonlocal terminal, emitted_turn, _did_search, retry_blocked, prior_output
+        terminal = None
+        async with aclosing(cli_runner.run_cli_agent(
+            **run_options, brief=export["brief"], session_id=session_id,
+            resume=use_resume and resume, use_separator=use_separator,
+        )) as events:
+            async for evt in events:
+                if evt.get("type") in ("done", "error"):
+                    terminal = evt
+                    break
+                if evt.get("type") in ("token", "tool_call", "tool_result"):
+                    emitted_turn = True
+                if evt.get("type") == "tool_call":
+                    name = str(evt.get("name") or "").rsplit("__", 1)[-1].lower()
+                    if name in ("web_search", "web_fetch", "get_meeting_transcript"):
+                        _did_search = True
+                if (evt.get("type") == "tool_result" and not evt.get("success")) or evt.get("hint_key") == "cli_engine_permission_denied":
+                    retry_blocked = True
+                if evt.get("type") in ("token", "tool_result"):
+                    # 仅公开答复和工具返回，不把内部思考转存为补写上下文。
+                    part = str(evt.get("output", evt.get("summary", evt.get("content", ""))))
+                    prior_output = (prior_output + part + ("\n" if evt.get("type") == "tool_result" else ""))[-24000:]
+                yield evt
+
     try:
         with stream_scope(stream_id):
-            async with aclosing(cli_runner.run_cli_agent(
-                **run_options, brief=export["brief"], session_id=session_id,
-                resume=bool(data.resume_session and session_id),
-            )) as events:
-                async for evt in events:
-                    if evt.get("type") in ("done", "error"):
-                        terminal = evt
-                        break
-                    if evt.get("type") == "tool_call":
-                        name = str(evt.get("name") or "").rsplit("__", 1)[-1].lower()
-                        if name in ("web_search", "web_fetch", "get_meeting_transcript"):
-                            _did_search = True
-                    if (evt.get("type") == "tool_result" and not evt.get("success")) or evt.get("hint_key") == "cli_engine_permission_denied":
-                        retry_blocked = True
-                    if evt.get("type") in ("token", "tool_result"):
-                        # 仅公开答复和工具返回，不把内部思考转存为补写上下文。
-                        part = str(evt.get("output", evt.get("summary", evt.get("content", ""))))
-                        prior_output = (prior_output + part + ("\n" if evt.get("type") == "tool_result" else ""))[-24000:]
+            async for evt in _attempt():
+                yield evt
+            # 首帧前就死（一帧过程事件都没有）才重试：这是环境/参数问题，不是模型跑偏。
+            # 已产出任何 token/工具事件后绝不重跑，避免重复执行写操作。
+            retry_args = None if emitted_turn else _retry_attempt_args(terminal)
+            if retry_args is not None:
+                logger.info("[智能体模式] 首帧前失败，按 %s 重试一次 stream=%s reason=%s",
+                            retry_args, stream_id, terminal.get("engine_error"))
+                async for evt in _attempt(**retry_args):
                     yield evt
             if terminal is None:
                 terminal = {"type": "error", "status": "incomplete", "content": "引擎未返回完成结果",
@@ -391,6 +432,11 @@ async def chat(data: ChatRequest):
     context_blocks.extend(ctx_blocks)
     source_files = src_files
 
+    # 联网检索增强（内置问答路径）：讨论涉及会外专业知识时注入「外部参考」块；未配置/失败静默跳过
+    web_reference = await build_web_reference_block(data, is_qa_mode)
+    if web_reference:
+        context_blocks.append(web_reference)
+
     if context_blocks:
         system_prompt += "\n\n" + "\n\n---\n\n".join(context_blocks)
 
@@ -490,6 +536,11 @@ async def chat_stream(data: ChatRequest, request: Request):
     # 使用共享函数构建上下文并注入系统提示词 / Use shared function to build context and inject into system prompt
     context_blocks, source_files = _build_chat_context_blocks(data, is_qa_mode)
 
+    # 联网检索增强（内置问答路径）：讨论涉及会外专业知识时注入「外部参考」块；未配置/失败静默跳过
+    web_reference = await build_web_reference_block(data, is_qa_mode)
+    if web_reference:
+        context_blocks.append(web_reference)
+
     # @附件：校验引用存在性/数量，展开内容 parts + 系统说明块（仅当前轮，不进 history）
     attachment_refs = data.attachments or []
     attachment_parts: list[dict] = []
@@ -518,7 +569,14 @@ async def chat_stream(data: ChatRequest, request: Request):
 
     async def event_generator():
         # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
-        if settings_store.get_chat_engine_config()["enabled"] and data.engine == "agent":
+        engine_cfg = settings_store.get_chat_engine_config()
+        if data.engine == "agent" and not engine_cfg["enabled"]:
+            # 用户明确要求智能体轮，但总开关是关的：内置链路没有工具，只会把"已落盘"说成事实。
+            # 宁可直接报错，也不静默降级。
+            logger.info("[智能体模式] 未启用，拒绝静默降级 task=%s", data.task_id)
+            yield f"data: {json.dumps({'type': 'error', 'status': 'error', 'content': '智能体模式未启用：请到 设置 → 智能体 打开本机 CLI 引擎后再试（内置问答没有工具，无法落盘）。', 'hint_key': 'agent_mode_disabled'}, ensure_ascii=False)}\n\n"
+            return
+        if engine_cfg["enabled"] and data.engine == "agent":
             need_fallback = False
             async with aclosing(_agent_engine_events(data, user_message, resolved_project_id,
                                                        base_url=str(request.base_url).rstrip("/"))) as events:

@@ -37,8 +37,8 @@ audit_logger = logging.getLogger("audit")
 
 
 def _mark_modified(task_id: str) -> None:
-    """标记任务内容已修改，用于知识库同步脏检测 / Mark task content as modified for KB sync dirty detection."""
-    tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+    """脏标记收口入口（ASSET_SYNC P2）：委托 notes_service（rev 递增 + 资产投影）。"""
+    notes_service.mark_modified(task_id)
 
 # 决策流状态与推进方类型 / Decision-flow status and owner types
 # DC-UNIFY-01：status 不再是封闭枚举，合法性由状态字典校验（core.decision_status）

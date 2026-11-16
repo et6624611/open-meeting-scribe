@@ -276,7 +276,7 @@ watch(locale, () => { list.value = props.statuses.map(s => ({ ...s })) })
 
 <style scoped>
 .sm-dialog { width: 620px; max-width: 94vw; max-height: 86vh; overflow: auto; border-radius: var(--radius-lg); border: none; box-shadow: var(--dropdown-shadow); }
-.sm-header { display: flex; align-items: center; justify-content: space-between; padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface-1, var(--bg)); }
+.sm-header { display: flex; align-items: center; justify-content: space-between; padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
 .sm-header h3 { font-size: var(--fs-15, 15px); font-weight: 600; margin: 0; }
 .sm-close { border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); }
 .sm-close:hover { background: var(--surface-2); color: var(--fg); }

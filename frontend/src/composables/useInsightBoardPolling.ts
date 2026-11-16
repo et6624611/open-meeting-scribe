@@ -12,7 +12,7 @@ export function useInsightBoardPolling(opts: {
   const { t } = useI18n()
   const BOARD_POLL_MS = 10_000
 
-  const board = ref<BoardArtifact>({ html: null, revision: 0, updated_at: null })
+  const board = ref<BoardArtifact>({ markdown: null, revision: 0, updated_at: null })
   const boards = ref<BoardSummary[]>([])
   const activeBoardId = ref('')
   const boardFetched = ref(false)
@@ -32,7 +32,7 @@ export function useInsightBoardPolling(opts: {
 
   function tabDotClass(tabId: string): string {
     const base = opts.dotClass(tabId)
-    if (tabId === 'insights') return board.value.html ? 'is-done' : base
+    if (tabId === 'insights') return board.value.markdown ? 'is-done' : base
     return base
   }
 
@@ -46,7 +46,7 @@ export function useInsightBoardPolling(opts: {
       if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
         activeBoardId.value = manifest.default_board_id || 'main'
       }
-      board.value = await loadBoard(opts.taskId, activeBoardId.value)
+      board.value = await loadBoard(opts.taskId)
     } catch {
       /* load failure silent */
     } finally {
@@ -67,7 +67,7 @@ export function useInsightBoardPolling(opts: {
       if (changed && (!current || current.board_id !== activeBoardId.value)) {
         activeBoardId.value = meta.default_board_id || list[0]?.board_id || 'main'
       }
-      if (changed || (meta.exists && !board.value.html)) await loadBoardData()
+      if (changed || (meta.exists && !board.value.markdown)) await loadBoardData()
     } catch { /* probe failure silent */ }
   }
 
@@ -83,7 +83,7 @@ export function useInsightBoardPolling(opts: {
   function onBoardSwitch(bid: string) {
     if (!bid || bid === activeBoardId.value) return
     activeBoardId.value = bid
-    board.value = { html: null, revision: 0, updated_at: null, board_id: bid }
+    board.value = { markdown: null, revision: 0, updated_at: null, board_id: bid }
     void loadBoardData()
   }
 
@@ -91,7 +91,7 @@ export function useInsightBoardPolling(opts: {
     try {
       // lazy import to avoid circular dep with @/api/board — actually direct import above; createBoard from api/board
       const { createBoard } = await import('@/api/board')
-      const created = await createBoard(opts.taskId, title, undefined, 'ui')
+      const created = await createBoard(opts.taskId, title, undefined)
       activeBoardId.value = created.board_id
       await loadBoardData()
       notifyBoardsChanged({ board_id: created.board_id })
@@ -104,7 +104,7 @@ export function useInsightBoardPolling(opts: {
 
   async function onBoardOpenInBrowser() {
     try {
-      const ok = await openBoardInBrowser(opts.taskId, activeBoardId.value, board.value.revision)
+      const ok = await openBoardInBrowser(opts.taskId)
       if (!ok) showToast(t('generating.insights.board.toast_open_failed'), 'warn')
     } catch {
       showToast(t('generating.insights.board.toast_open_failed'), 'error')

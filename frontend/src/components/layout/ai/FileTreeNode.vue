@@ -78,14 +78,14 @@ function formatSize(bytes: number): string {
   padding-right: 8px;
   border-radius: 6px;
   cursor: pointer;
-  color: var(--text-secondary, #6b7280);
+  color: var(--muted, #6b7280);
   font-size: 12px;
   line-height: 1.4;
   transition: background 0.12s, color 0.12s;
 }
-.ws-node-row:hover { background: var(--hover-bg, rgba(0,0,0,0.04)); color: var(--text-primary, #111827); }
+.ws-node-row:hover { background: var(--surface-2, rgba(0,0,0,0.04)); color: var(--fg, #111827); }
 .ws-node-row.is-active { background: var(--accent-soft, rgba(59,130,246,0.12)); color: var(--accent, #3b82f6); }
-.ws-node-row.is-dir { font-weight: 500; color: var(--text-primary, #111827); }
+.ws-node-row.is-dir { font-weight: 500; color: var(--fg, #111827); }
 .ws-tw {
   width: 12px; height: 12px;
   flex-shrink: 0;
@@ -96,5 +96,5 @@ function formatSize(bytes: number): string {
 .ws-ic { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.8; }
 .ws-ic.is-open { color: var(--accent, #3b82f6); }
 .ws-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-size { font-size: 10px; color: var(--text-tertiary, #9ca3af); flex-shrink: 0; }
+.ws-size { font-size: 10px; color: var(--subtle, #9ca3af); flex-shrink: 0; }
 </style>

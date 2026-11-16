@@ -216,7 +216,9 @@ const timeStr = computed(() => {
   if (!raw) return ''
   const d = new Date(raw.length <= 10 ? raw + 'T00:00:00' : raw)
   if (isNaN(d.getTime())) return ''
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return `${date} ${time}`
 })
 
 const dotClass = computed(() => {

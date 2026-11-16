@@ -192,13 +192,13 @@ function onPick(value: string) {
 .lib-speaker-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; }
 .lib-speaker-trigger-text.is-placeholder { color: var(--muted); }
 .lib-speaker-caret { flex-shrink: 0; color: var(--muted); transition: transform 0.15s; }
-.lib-speaker-menu { position: fixed; z-index: var(--z-popover); min-width: 200px; max-width: 280px; background: var(--popover-bg, var(--bg)); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); overflow: hidden; display: flex; flex-direction: column; }
+.lib-speaker-menu { position: fixed; z-index: var(--z-popover); min-width: 200px; max-width: 280px; background: var(--dropdown-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); overflow: hidden; display: flex; flex-direction: column; }
 .lib-speaker-search { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--muted); }
 .lib-speaker-search-input { flex: 1; border: none; background: transparent; color: var(--fg); font-size: 13px; outline: none; min-width: 0; }
 .lib-speaker-search-input::placeholder { color: var(--subtle); }
 .lib-speaker-list { max-height: 240px; overflow-y: auto; padding: 4px 0; }
 .lib-speaker-item { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: var(--fg); font-size: 13px; cursor: pointer; transition: background-color 0.1s; }
-.lib-speaker-item:hover, .lib-speaker-item:focus-visible { background: var(--hover-bg, rgba(128, 128, 128, 0.12)); outline: none; }
+.lib-speaker-item:hover, .lib-speaker-item:focus-visible { background: var(--surface-2); outline: none; }
 .lib-speaker-item.is-active { color: var(--accent); font-weight: 500; }
 .lib-speaker-empty { padding: 16px 12px; text-align: center; color: var(--muted); font-size: 12px; }
 .lib-filter-actions { display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }

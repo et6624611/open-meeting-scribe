@@ -189,12 +189,22 @@ export interface ChatEngineEngineInfo {
   engine_id: string
   display_name: string
   name_key?: string
+  icon?: string
+  icon_color?: string
+  recommended?: boolean
   binary: string
   min_version?: string
   install_url?: string
   capabilities?: Record<string, boolean>
   /** 本机 PATH 中可执行（快速判断，不含版本/登录态） */
   installed: boolean
+  /** 已安装时由完整探针回显 */
+  path?: string | null
+  version?: string | null
+  logged_in?: boolean | null
+  available?: boolean
+  failed_stage?: 'path' | 'version' | 'login' | null
+  login_skipped?: boolean
 }
 
 /** 智能体引擎配置 + 探针状态（详情层 CLI 卡与对话面板前置回显共用） */

@@ -427,8 +427,8 @@ class TestContextExport:
         assert "错峰" in md
         assert "```mermaid" in md
 
-    def test_export_copies_board_html_baseline(self, monkeypatch, tmp_path):
-        """回归原始 HTML R2：板逐字节拷进 context/boards/ + index.md 基线索引。"""
+    def test_export_copies_board_markdown_baseline(self, monkeypatch, tmp_path):
+        """单份 Markdown 正文拷入 main.md，版本与写回契约留在 index.md。"""
         import core.insight_board as ib
         from core.cli_engine import context_export as ce
         from core.cli_engine import context_paths
@@ -436,19 +436,29 @@ class TestContextExport:
         board_dir = tmp_path / "tasks"
         board_dir.mkdir()
         monkeypatch.setattr(ib, "BOARD_TASKS_DIR", board_dir)
-        # 落盘一份含外壳的原始 HTML（验证不再剥壳、逐字节一致）
-        src = '<!DOCTYPE html><html><head><style>:root{--a:1}</style></head><body><svg/></body></html>'
-        saved = ib.board_html_save("t1", src, board_id=None)
+        src = """<!-- section-id: s1 section-title: 执行回传 -->
+## 执行回传
+
+```mermaid
+flowchart LR
+  A[人工同步] --> B[CDC 捕获]
+```
+"""
+        saved = ib.board_md_save("t1", src, content_floor=False)
         assert saved["ok"] is True
-        ce.export_context(engine_id="qoder-cli", task={"dialogue": [], "summary": "", "decisions": []},
-                          task_id="t1", user_message="修订洞察板")
+        exported = ce.export_context(
+            engine_id="qoder-cli", task={"dialogue": [], "summary": "", "decisions": []},
+            task_id="t1", user_message="修订洞察板")
         base = tmp_path / "agent-workspace" / "qoder-cli" / "t1" / "context" / "boards"
-        copied = base / "main.html"
+        copied = base / "main.md"
         assert copied.is_file()
-        # 工作区基线 = 磁盘展示版本（逐字节一致，不重建）
-        assert copied.read_text(encoding="utf-8") == ib.board_html_load("t1")["html"]
+        assert not (base / "main.html").exists()
+        # 工作区基线 = 清洗后的 Markdown 正文；front-matter 版本由索引承载
+        assert copied.read_text(encoding="utf-8") == ib.board_md_load("t1")["markdown"]
         idx = (base / "index.md").read_text(encoding="utf-8")
         assert "main" in idx and "expected_revision" in idx
+        assert "context/boards/main.md" in exported["brief"]
+        assert "revise_insight_board(markdown=" in exported["brief"]
 
     def test_export_skips_insights_when_absent(self, monkeypatch, tmp_path):
         from core.cli_engine import context_export as ce
@@ -527,8 +537,8 @@ class TestOnWriteSuccess:
         """直接验证配对逻辑的单元切片：工具名集来自 catalog，mcp__ 前缀剥除后命中。"""
         from core.agent_tools.catalog import TOOL_CATALOG
         write_names = {t["name"] for t in TOOL_CATALOG if t.get("kind") == "write"}
-        assert {"update_summary", "inject_items", "revise_insight_board",
-                "revise_insight_board_section"} <= write_names
+        assert {"update_summary", "inject_items", "revise_insight_board"} <= write_names
+        assert "revise_insight_board_section" not in write_names
         assert "revise_insight_board" == "mcp__oms-tools__revise_insight_board".rsplit("__", 1)[-1]
         assert "get_hotwords" not in write_names
 
@@ -690,6 +700,7 @@ def cli_process(monkeypatch):
     script = []
     budgets = []
     reaped = []
+    spawned = []
 
     async def readline():
         delay, line = script.pop(0) if script else (0, "")
@@ -698,7 +709,17 @@ def cli_process(monkeypatch):
 
     proc = SimpleNamespace(stdout=SimpleNamespace(readline=readline), returncode=None)
 
+    def attach_stderr(lines):
+        """挂一段假 stderr：验证首帧前失败的诊断回传。"""
+        queue = list(lines)
+
+        async def stderr_readline():
+            return queue.pop(0).encode() if queue else b""
+
+        proc.stderr = SimpleNamespace(readline=stderr_readline)
+
     async def spawn(*args, **kwargs):
+        spawned.append(list(args))
         return proc
 
     async def wait_for(coro, timeout):
@@ -738,7 +759,8 @@ def cli_process(monkeypatch):
         assert reaped
         return events
 
-    return SimpleNamespace(collect=collect, proc=proc, budgets=budgets, clock=clock, runner=runner)
+    return SimpleNamespace(collect=collect, proc=proc, budgets=budgets, clock=clock, runner=runner,
+                           spawned=spawned, attach_stderr=attach_stderr)
 
 
 class TestCliLifecycle:
@@ -793,7 +815,7 @@ class TestCliLifecycle:
         import asyncio
         writes = []
         call = json.dumps({"type": "assistant", "message": {"content": [{
-            "type": "tool_use", "id": "call_1", "name": "mcp__oms__revise_insight_board", "input": {"html": "<section>内容</section>"},
+            "type": "tool_use", "id": "call_1", "name": "mcp__oms__revise_insight_board", "input": {"markdown": "## 内容"},
         }]}})
         events = asyncio.run(cli_process.collect(
             [(0, call), (0, LINE_TOOL_RESULT_1), (181, LINE_DONE)], on_write_success=writes.append))
@@ -883,6 +905,34 @@ class TestCliLifecycle:
         assert "gap" not in runner._CANCELLED
 
 
+class TestFirstFrameDiagnostics:
+    """首帧前失败：stderr 必须回传，分隔符可退让。"""
+
+    def test_stderr_tail_surfaces_when_engine_dies_before_first_event(self, cli_process):
+        import asyncio
+        cli_process.attach_stderr(["error: unknown option '--model'"])
+        cli_process.proc.returncode = 1
+        events = asyncio.run(cli_process.collect([]))
+        term = events[-1]
+        assert term["status"] == "incomplete" and term["engine_error"] == "missing_result"
+        assert term["engine_returncode"] == 1
+        assert "unknown option" in term["engine_stderr"]
+        assert term["hint_key"] == "cli_engine_incomplete_detail"
+        assert "unknown option" in term["content"]
+
+    def test_default_keeps_prompt_separator(self, cli_process):
+        import asyncio
+        asyncio.run(cli_process.collect([(1, LINE_DONE)]))
+        argv = cli_process.spawned[-1]
+        assert argv[-2:] == ["--", "离线测试"]
+
+    def test_use_separator_false_puts_prompt_last(self, cli_process):
+        import asyncio
+        asyncio.run(cli_process.collect([(1, LINE_DONE)], use_separator=False))
+        argv = cli_process.spawned[-1]
+        assert argv[-1] == "离线测试" and "--" not in argv
+
+
 @pytest.fixture
 def agent_route(monkeypatch):
     from types import SimpleNamespace
@@ -939,8 +989,66 @@ def agent_route(monkeypatch):
 
 _SEARCH_EVENT = {"type": "tool_call", "id": "c1", "name": "web_search", "args": {}}
 _SUCCESS_EVENT = {"type": "done", "status": "completed", "metadata": {"model": "test"}}
-_BOARD_CALL = {"type": "tool_call", "id": "c1", "name": "revise_insight_board", "args": {"html": "<section>内容</section>"}}
+_BOARD_CALL = {"type": "tool_call", "id": "c1", "name": "revise_insight_board", "args": {"markdown": "## 内容"}}
 _BOARD_RESULT = {"type": "tool_result", "tool_use_id": "c1", "success": True, "summary": "revision=1", "_write": True}
+_BAD_ARGS_TERMINAL = {"type": "error", "status": "incomplete", "engine_error": "missing_result",
+                      "engine_returncode": 1, "engine_stderr": "error: unknown option '--model'"}
+
+
+class TestFirstFrameRetry:
+    """首帧前失败的一次性自适应重试：只对环境可归因的形态放行。"""
+
+    def test_unknown_option_retries_without_separator(self, agent_route):
+        import asyncio
+        agent_route.setup([dict(_BAD_ARGS_TERMINAL)],
+                          [{"type": "token", "content": "补跑"}, _SUCCESS_EVENT])
+        events = asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 2
+        assert agent_route.calls[0]["use_separator"] is True
+        assert agent_route.calls[1]["use_separator"] is False
+        assert events[-1]["status"] == "completed"
+
+    def test_missing_session_retries_without_resume(self, agent_route):
+        import asyncio
+        agent_route.cfg.update(session_persistence=True)
+        agent_route.data.resume_session = True
+        bad = {**_BAD_ARGS_TERMINAL, "engine_returncode": 42, "engine_stderr": ""}
+        agent_route.setup([bad], [_SUCCESS_EVENT])
+        asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 2
+        assert agent_route.calls[0]["resume"] is True
+        assert agent_route.calls[1]["resume"] is False
+
+    def test_no_retry_after_any_output(self, agent_route):
+        import asyncio
+        agent_route.setup([{"type": "token", "content": "半截"}, dict(_BAD_ARGS_TERMINAL)])
+        asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 1
+
+    def test_other_failures_not_retried(self, agent_route):
+        import asyncio
+        agent_route.setup([{"type": "error", "status": "error", "engine_error": "first_event_timeout"}])
+        events = asyncio.run(agent_route.collect())
+        assert len(agent_route.calls) == 1
+        assert events[-1]["engine_error"] == "first_event_timeout"
+
+
+class TestAgentModeDisabled:
+    def test_agent_round_errors_instead_of_silent_builtin_fallback(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        from app.server import app
+        from core import settings_store
+        monkeypatch.setattr(settings_store, "get_chat_engine_config", lambda: {
+            "enabled": False, "engine_id": "qoder-cli", "model": None,
+            "auth_tier": "readonly", "auth_tier_explicit": False,
+            "session_persistence": True, "retention_days": 7, "cli_path_override": None})
+        with TestClient(app) as client:
+            resp = client.post("/api/chat/stream", json={
+                "message": "生成洞察板", "engine": "agent", "mode": "agent"})
+        assert "agent_mode_disabled" in resp.text
+        assert '"type": "token"' not in resp.text
+
 
 
 class TestBoardRetryLifecycle:

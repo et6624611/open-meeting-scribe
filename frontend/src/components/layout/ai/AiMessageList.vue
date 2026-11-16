@@ -673,33 +673,33 @@ defineExpose({ feedRef })
 /* ── 回复尾部消费方/计费回显 ── */
 .ai-usage-echo { font-size: 12px; color: var(--muted, #888); margin: 2px 0 0; padding: 1px 8px; border-left: 2px solid var(--border, #ddd); }
 /* ── 本轮改写事实 ── */
-.rewrite-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 4px; padding: 6px 10px; font-size: 12px; line-height: 1.5; color: var(--ok, #1c6b45); background: var(--ok-soft, #e7f4ec); border: 1px solid var(--ok-border, rgba(28, 107, 69, 0.22)); border-radius: var(--radius-sm, 6px); }
+.rewrite-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 4px; padding: 6px 10px; font-size: 12px; line-height: 1.5; color: var(--ok, #1c6b45); background: var(--ok-soft, #e7f4ec); border: 1px solid var(--ok-border); border-radius: var(--radius-sm, 6px); }
 .rewrite-notice .rewrite-text { flex: 1 1 auto; }
-.rewrite-notice .rewrite-undo { border: 1px solid var(--ok-border, rgba(28, 107, 69, 0.3)); background: transparent; color: inherit; font: inherit; font-weight: 600; border-radius: var(--radius-sm, 6px); padding: 2px 10px; cursor: pointer; }
-.rewrite-notice .rewrite-undo:hover:not(:disabled) { background: var(--ok-border, rgba(28, 107, 69, 0.12)); }
+.rewrite-notice .rewrite-undo { border: 1px solid var(--ok-border); background: transparent; color: inherit; font: inherit; font-weight: 600; border-radius: var(--radius-sm, 6px); padding: 2px 10px; cursor: pointer; }
+.rewrite-notice .rewrite-undo:hover:not(:disabled) { background: var(--ok-soft); }
 .rewrite-notice .rewrite-undo:disabled { opacity: 0.55; cursor: default; }
 .rewrite-notice.is-undone { color: var(--muted, #888); background: transparent; border-color: var(--border, rgba(0, 0, 0, 0.12)); }
 /* ── 完成护栏横幅 ── */
-.guard-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; padding: 7px 10px; border-radius: var(--radius-sm, 6px); font-size: 12px; line-height: 1.5; color: var(--warn, #8a5800); background: var(--warn-soft, #fdf3df); border: 1px solid var(--warn-border, rgba(138,88,0,0.25)); }
+.guard-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; padding: 7px 10px; border-radius: var(--radius-sm, 6px); font-size: 12px; line-height: 1.5; color: var(--warn, #8a5800); background: var(--warn-soft, #fdf3df); border: 1px solid var(--warn-border); }
 .guard-notice .guard-text { flex: 1 1 auto; }
-.guard-notice .guard-retry { border: 1px solid var(--warn-border, rgba(138,88,0,0.35)); background: transparent; color: inherit; font: inherit; font-weight: 600; border-radius: var(--radius-sm, 6px); padding: 2px 10px; cursor: pointer; }
-.guard-notice .guard-retry:hover { background: var(--warn-border, rgba(138,88,0,0.12)); }
+.guard-notice .guard-retry { border: 1px solid var(--warn-border); background: transparent; color: inherit; font: inherit; font-weight: 600; border-radius: var(--radius-sm, 6px); padding: 2px 10px; cursor: pointer; }
+.guard-notice .guard-retry:hover { background: var(--warn-soft); }
 .guard-notice .guard-dismiss { border: none; background: transparent; color: var(--muted, #888); font: inherit; cursor: pointer; padding: 2px 4px; }
 /* ── 纪要提案入口卡 ── */
 .sum-prop-view { margin-top: var(--s-2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .sum-prop-summary { margin: 0; padding: 8px 10px; font-size: 12px; line-height: 1.5; color: var(--fg); }
 /* ── 授权档位拒绝卡 ── */
-.tier-deny-card { margin: 6px 0 4px; padding: 10px 12px; border-radius: var(--radius-lg, 12px); border: 1px solid var(--err-border, #eccaca); background: var(--err-soft, #fbeaea); color: var(--err, #c23a3a); font-size: 12px; line-height: 1.5; }
+.tier-deny-card { margin: 6px 0 4px; padding: 10px 12px; border-radius: var(--radius-lg, 12px); border: 1px solid var(--error-border); background: var(--error-soft); color: var(--error); font-size: 12px; line-height: 1.5; }
 .tdc-head { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12.5px; }
 .tdc-head svg { width: 15px; height: 15px; flex: 0 0 auto; }
 .tdc-body { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
-.tdc-tool, .tdc-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--surface, #fff); border: 1px solid var(--err-border, #eccaca); color: var(--err, #c23a3a); }
+.tdc-tool, .tdc-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--surface, #fff); border: 1px solid var(--error-border); color: var(--error); }
 .tdc-hint { margin-top: 7px; color: var(--muted, #8a6a6a); }
 .tdc-actions { display: flex; gap: 8px; margin-top: 9px; }
-.tdc-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: var(--radius-sm, 6px); border: 1px solid var(--err-border, #eccaca); background: var(--surface, #fff); color: var(--err, #c23a3a); cursor: pointer; transition: background 0.12s ease; }
-.tdc-btn:hover { background: color-mix(in srgb, var(--err, #c23a3a) 8%, #fff); }
-.tdc-btn.is-pri { background: var(--err, #c23a3a); border-color: var(--err, #c23a3a); color: #fff; }
-.tdc-btn.is-pri:hover { background: color-mix(in srgb, var(--err, #c23a3a) 88%, #000); }
+.tdc-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: var(--radius-sm, 6px); border: 1px solid var(--error-border); background: var(--surface, #fff); color: var(--error); cursor: pointer; transition: background 0.12s ease; }
+.tdc-btn:hover { background: color-mix(in oklch, var(--error) 8%, var(--surface)); }
+.tdc-btn.is-pri { background: var(--error); border-color: var(--error); color: var(--surface); }
+.tdc-btn.is-pri:hover { background: color-mix(in oklch, var(--error) 88%, black); }
 
 /* ── 编辑卡 ── */
 .composer-card { display: flex; flex-direction: column; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--radius, 10px); background: var(--surface); transition: border-color 0.15s ease, box-shadow 0.15s ease; }

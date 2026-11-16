@@ -340,6 +340,8 @@ def get_feature_flags() -> dict:
         "voiceprint_v2": ff.get("voiceprint_v2", True),
         "chrome_autohide": ff.get("chrome_autohide", True),
         "workspace_explorer": ff.get("workspace_explorer", True),
+        # ASSET_SYNC P2：SSOT → 资产工作区自动投影（本地、可重建、可关；回流仍走提案确认）
+        "asset_projection": ff.get("asset_projection", True),
     }
 
 

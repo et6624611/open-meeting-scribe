@@ -60,14 +60,15 @@ def invoke_tool(payload: ToolInvoke, request: Request,
     if not tool:
         raise HTTPException(404, {"error": "unknown_tool", "message": f"未知工具: {payload.name}"})
 
-    # 授权档位：写工具要求可写档；例外：revise_insight_board 不带 html 时为读语义（取基线），只读档放行
-    # （create_insight_board 不属例外：它是写档的提案动作，只读档连提议权也不给）
+    # 授权档位：写工具要求可写档；revise_insight_board 无正文时为读语义，只读档放行。
+    # html 是过渡兼容字段，也必须参与写操作判定，避免只读档绕过门禁。
+    args = payload.arguments or {}
     if tool["kind"] == "write" and not ctx.writable:
-        if not (payload.name == "revise_insight_board" and "html" not in (payload.arguments or {})):
+        has_board_content = any(str(args.get(key) or "").strip() for key in ("markdown", "html"))
+        is_board_read = payload.name == "revise_insight_board" and not has_board_content
+        if not is_board_read:
             raise HTTPException(403, {"error": "read_only",
                                       "message": f"当前授权档（{ctx.auth_tier}）为只读，禁止写操作 {payload.name}"})
-
-    args = payload.arguments or {}
 
     # ── 读工具：会议域工具唯一实现（core/agent_tools/impl.py） ──
     if tool["kind"] == "read":
@@ -241,13 +242,14 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                            "note": "已作为待确认建板提案展示给用户，未经用户点「接受」不会新建任何板"}}
 
     if name == "revise_insight_board":
-        # 洞察共创 HTML 产物：唯一实现与内置引擎共享（core.insight_board.invoke_revise_board）
+        # 洞察共创 Markdown：唯一实现与内置引擎共享（core.insight_board.invoke_revise_board）
         from core.insight_board import invoke_revise_board
         result = invoke_revise_board(ctx.task_id, args)
-        if args.get("html") and result.get("ok"):
+        board_content = args.get("markdown") or args.get("html")
+        if board_content and result.get("ok"):
             audit_logger.info("[agent-engine] revise_insight_board task=%s tier=%s board=%s chars=%d rev=%s removed=%s",
                               ctx.task_id, ctx.auth_tier, result.get("board_id"),
-                              len(str(args.get("html"))), result.get("revision"),
+                              len(str(board_content)), result.get("revision"),
                               result.get("removed") or "-")
         return {"ok": bool(result.get("ok")), "tool": name, "result": result}
 

@@ -3,7 +3,7 @@ title: 迭代日志
 description: 版本迭代记录，配合 git tag
 author: et6624611
 created_at: 2026-09-03
-updated_at: "2026-10-29"
+updated_at: "2026-11-11"
 status: published
 ---
 
@@ -12,6 +12,27 @@ status: published
 > 每版一条，配合 git tag。分类：新增 / 变更 / 决策 / 修复。最新的在最上面。
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
+
+## [未发布] - 2026-11-11 — 会议纪要两层存在形式收敛与资产同步（ASSET_SYNC P0-P3）
+
+### 决策
+- **纪要只保留两种存在形式**（方案 `docs/design/ASSET_SYNC_ARCHITECTURE.md`）：机器可读 SSOT（任务 JSON + sidecar）与资产化工作区（`agent-workspace/_preview/`）。`data/output/` 导出 md 退化为纯按需临时下载产物，不再是独立存在形式；知识库副本定位为单向出口投影（用户拥有、不回流、不传播删除）。纪要原稿（summary）不可变保底：一切编辑落 user_summary，外部 AI 改写仍走提案确认。
+
+### 新增
+- **资产工作区单向投影**（`core/cli_engine/projection.py`）：SSOT → `_preview` 增量投影，幂等（正文 sha256 未变零重写）、原子写、per-task 锁；每会议 `.oms/projection.json` 清单记投影 hash + 定稿基线 base_hash + content_rev。触发点：纪要生成完成、应用内编辑（脏标记收口 `notes_service.mark_modified`：rev 递增 + 投影）、重命名/改日期/改项目、热词回溯修正；归档打标不移动文件；任务删除联动清理工作区目录。开关 `feature_flags.asset_projection`（默认开）。
+- **回流三方冲突判定**：`import_from_workspace` 升级为 S/P/F 三方 hash 决策表——F==P 防回环；纯外部改动出提案；双侧同改标 `conflict=True` 由用户裁决（绝不自动合并）；manifest 缺失降级旧行为。前端纪要/随记 diff 预览新增「双方均已修改，请裁决」冲突徽标与导入警告 toast（zh-CN/en）。
+- **下载按需渲染**（`core/minutes_render.py`）：md/docx 从 SSOT 定稿口径渲染 + 原始对话稿附录；docx 临时缓存件启动 retention sweep 与任务删除联动清理。
+- **验证**：新增 `tests/test_asset_sync_p0~p3.py` 38 例（口径一致性/purge 覆盖/下载新鲜度/零落盘/CLI 兼容/幂等/增量/决策表四象限/防回环）。
+
+### 变更
+- **`GET /api/download/{task_id}`**：URL/参数/文件名规则不变；内容来源改为 SSOT 按需渲染（修复编辑后下载过期）；404 条件改为「定稿与对话稿均空」。Web 管线 `run_pipeline_stage2(emit_file=False)` 不再写 md；CLI `transcribe -o` 保留文件输出。
+- **frontmatter 契约扩展**：工作区 .md 新增 `content_hash`/`content_rev`/`projection: readonly` 锚点字段（additive，旧代码忽略）。
+
+### 修复
+- **G1/G2**：用户编辑纪要后下载 md/docx 仍是旧版；docx 回退读 AI 初稿而非定稿——下载链路整体收口 `task_final_summary()`。
+- **G3**：知识库同步渲染 `user_summary or summary` 空串语义偏差，统一为「存在即优先」（与前端纪要 Tab 逐字节同口径）。
+- **G4**：retranscribe 重置 output_path 不删旧 md/docx 的孤儿文件。
+- **G5**：任务删除不清理 `.formal.json`/`.rewrites.jsonl` sidecar（含启动孤儿清理两处）。
 
 ## [未发布] - 2026-10-29 — 洞察板回归原始 HTML（版式归 CLI）+ 多板
 

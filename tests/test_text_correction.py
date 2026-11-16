@@ -4,7 +4,7 @@ tests/test_text_correction.py — 划词映射全量回溯修正的行为契约
 覆盖 core/text_correction 的四条承诺：
   1. 中文串走子串全量替换，ASCII 串走词边界（不被 FILES 之类误伤）
   2. 标识符 / 路径 / 时间戳 / 枚举值永不被改写（白名单按键名判定）
-  3. 旁路产物（洞察 JSON、洞察板 HTML、导出纪要 md）一并落盘
+  3. 旁路产物（洞察 JSON、洞察板 Markdown、导出纪要 md）一并落盘
   4. residual 归零，作为「REWRITE_KEYS 漏项」的自动告警信号
 """
 
@@ -111,8 +111,8 @@ def test_side_artifacts_and_residual_corrected(sample_task, tmp_path, monkeypatc
         {"id": "i1", "title": f"{OLD}的定位", "body": "…", "diagram": f"A[{OLD}] --> B",
          "actions": [{"key": "acknowledge", "label": f"{OLD} 收到"}]}
     ]}, ensure_ascii=False), encoding="utf-8")
-    # 多板模型：以 manifest 为准建档（走 board_html_save content_floor=False 避免底线拒收）
-    ib.board_html_save("t-1", f'<section data-ib-id="z1"><p>{OLD} 讨论</p></section>', content_floor=False)
+    # 单份 Markdown：机械回溯不走共创期的复述/文字墙底线
+    ib.board_md_save("t-1", f"## 讨论\n\n{OLD} 讨论", content_floor=False)
 
     result = correct_task_text(sample_task, "t-1", OLD, NEW)
 
@@ -121,7 +121,7 @@ def test_side_artifacts_and_residual_corrected(sample_task, tmp_path, monkeypatc
     # speaker_mapping 的值被故意不改，因此 residual 恰好报出这 1 处 —— 这就是漏项告警本应长成的样子
     assert result["residual"] == 1, count_term(json.dumps(sample_task, ensure_ascii=False), OLD)
     assert OLD not in insights_file.read_text(encoding="utf-8")
-    assert OLD not in (board_dir / "t-1.board.main.html").read_text(encoding="utf-8")
+    assert OLD not in (board_dir / "t-1.insight.md").read_text(encoding="utf-8")
     assert OLD not in Path(sample_task["output_path"]).read_text(encoding="utf-8")
     # 无命中时不得留下半成品：旁路产物也不应被重写
     sample_task["speaker_mapping"] = {"0": "spk-0"}
@@ -130,21 +130,20 @@ def test_side_artifacts_and_residual_corrected(sample_task, tmp_path, monkeypatc
 
 
 def test_board_rewritten_through_sanitizer_and_revision_bumped(sample_task, tmp_path, monkeypatch):
-    """洞察板必须走 board_html_save 落盘：保留清洗防线与 revision 协议（多板下 revision 存 manifest）。"""
+    """洞察板必须走 board_md_save 落盘：保留安全清洗与 front-matter revision 协议。"""
     import core.insight_board as ib
 
     board_dir = tmp_path / "board"
     board_dir.mkdir()
     monkeypatch.setattr(ib, "BOARD_TASKS_DIR", board_dir)
     monkeypatch.setattr(tc, "TASKS_DIR", tmp_path)
-    ib.board_html_save("t-1", f'<section data-ib-id="z1"><p>{OLD} 讨论</p></section>', content_floor=False)
-    # 人工把 main 的 revision 抬到 3（模拟已经共创过多轮）
-    m = ib._read_manifest("t-1")
-    m["boards"][0]["revision"] = 3
-    ib._write_manifest("t-1", m)
+    markdown = f"<!-- section-id: z1 section-title: 讨论 -->\n## 讨论\n\n{OLD} 讨论"
+    assert ib.board_md_save("t-1", markdown, content_floor=False)["revision"] == 1
+    # 连续保存到 revision=3，模拟已经共创过多轮
+    assert ib.board_md_save("t-1", markdown, content_floor=False, expected_revision=1)["revision"] == 2
+    assert ib.board_md_save("t-1", markdown, content_floor=False, expected_revision=2)["revision"] == 3
 
     correct_task_text(sample_task, "t-1", OLD, NEW)
 
-    manifest = json.loads((board_dir / "t-1.boards.json").read_text(encoding="utf-8"))
-    main = next(b for b in manifest["boards"] if b["board_id"] == "main")
-    assert main["revision"] == 4, "改写洞察板应升 revision，否则前端缓存判定会失效"
+    assert ib.board_md_meta("t-1")["revision"] == 4, "改写洞察板应升 revision，否则前端缓存判定会失效"
+    assert NEW in ib.board_md_load("t-1")["markdown"]

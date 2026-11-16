@@ -7,14 +7,13 @@ app/routers/speakers.py — 说话人 CRUD + 会议级绑定/纪要生成 / Spea
 """
 
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
-from core import joblog, speakers, voiceprint
+from core import joblog, notes_service, speakers, voiceprint
 from core import users as user_module
 from core.i18n import _
 from core.pipeline_runner import run_stage2_task
@@ -29,8 +28,8 @@ router = APIRouter(tags=["speakers"])
 
 
 def _mark_modified(task_id: str) -> None:
-    """标记任务内容已修改，用于知识库同步脏检测 / Mark task content as modified for KB sync dirty detection."""
-    tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+    """脏标记收口入口（ASSET_SYNC P2）：委托 notes_service（rev 递增 + 资产投影）。"""
+    notes_service.mark_modified(task_id)
 
 
 class SpeakerCreate(BaseModel):
@@ -370,15 +369,8 @@ def apply_speaker_names_endpoint(
     _mark_modified(task_id)
     save_task_to_disk(task_id)
 
-    # 5) 重写输出文件 + 知识库同步（尽力而为，失败不影响主链路） / Rewrite output file + KB sync (best-effort)
-    try:
-        output_path = task.get("output_path")
-        if output_path and Path(output_path).exists():
-            from core.summarize import save_summary
-            display = new_user_summary if new_user_summary is not None else new_summary
-            save_summary(display, output_path, new_dialogue or None)
-    except Exception as e:
-        logger.warning(f"[{task_id[:8]}] 原地替换后重写纪要文件失败（不影响）: {e}")
+    # 5) 知识库同步（尽力而为，失败不影响主链路） / KB sync (best-effort)
+    # ASSET_SYNC P1：data/output 冻结 md 已取消，下载从 SSOT 按需渲染，无需重写导出件
     try:
         from core.projects import sync_meeting_to_folders
         sync_meeting_to_folders(tasks[task_id])

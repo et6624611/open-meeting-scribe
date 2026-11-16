@@ -5,6 +5,7 @@
     <div class="gen-prop-bar" v-if="proposal && !previewMode">
       <svg class="gen-prop-bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       <span class="gen-prop-bar-text">{{ t('generating.notes.proposal_pending', { hunks: statsSafe.hunks, added: statsSafe.added, removed: statsSafe.removed }) }}</span>
+      <span v-if="proposal.conflict" class="gen-prop-conflict">{{ t('generating.notes.proposal_conflict') }}</span>
       <button class="gen-prop-bar-btn" @click="emit('open-preview')">{{ t('generating.notes.proposal_view') }}</button>
     </div>
     <!-- 原位 diff 预览态：IDE 式锁定编辑，接受/拒绝在文内操作条完成；
@@ -12,6 +13,7 @@
     <div class="gen-prop-preview" v-if="proposal && previewMode">
       <div class="gen-prop-preview-header">
         <span class="gen-prop-preview-title">{{ t('generating.notes.proposal_label') }}</span>
+        <span v-if="proposal.conflict" class="gen-prop-conflict">{{ t('generating.notes.proposal_conflict') }}</span>
         <span class="gen-prop-preview-stats">{{ t('generating.notes.proposal_stats', { hunks: statsSafe.hunks, added: statsSafe.added, removed: statsSafe.removed }) }}</span>
       </div>
       <div class="gen-prop-diff">
@@ -88,8 +90,8 @@ const props = defineProps<{
   visible: boolean
   markdown: string
   notesSaved: boolean
-  /** 随记改写提案（propose_notes，未落盘）：baseline=当前随记，proposed=AI 建议全文 */
-  proposal?: { baseline: string; proposed: string } | null
+  /** 随记改写提案（propose_notes，未落盘）：baseline=当前随记，proposed=AI 建议全文；conflict=双侧改动冲突 */
+  proposal?: { baseline: string; proposed: string; conflict?: boolean } | null
   /** 原位 diff 预览态（锁定编辑） */
   previewMode?: boolean
   /** diff 渲染段（由 useNotesProposal 派生，与纪要预览同一构造器） */

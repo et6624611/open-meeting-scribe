@@ -355,7 +355,7 @@
   flex-shrink: 0;
 }
 .ai-attach-remove svg { width: 14px; height: 14px; }
-.ai-attach-remove:hover { background: var(--surface-3); color: var(--text); }
+.ai-attach-remove:hover { background: var(--surface-3); color: var(--fg); }
 
 /* ══ 用户气泡内附件 ══ */
 .ai-msg-attachments {
@@ -386,7 +386,7 @@
   border-radius: var(--radius-md, 8px);
   background: var(--surface-2);
   font-size: var(--fs-12, 12px);
-  color: var(--text);
+  color: var(--fg);
   text-decoration: none;
 }
 .ai-msg-file svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
@@ -495,7 +495,7 @@
   gap: 2px;
   padding: 2px;
   margin-bottom: var(--s-2);
-  background: var(--badge-bg, rgba(0,0,0,0.05));
+  background: var(--surface-2, rgba(0,0,0,0.05));
   border-radius: 6px;
 }
 .ctx-view-switch button {
@@ -505,18 +505,18 @@
   background: transparent;
   border-radius: 4px;
   font-size: 11px;
-  color: var(--text-tertiary, #9ca3af);
+  color: var(--subtle, #9ca3af);
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
 .ctx-view-switch button.is-active {
   background: var(--glass-bg, rgba(255,255,255,0.96));
-  color: var(--text-primary, #111827);
+  color: var(--fg, #111827);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .ctx-view-switch button:not(.is-active):hover {
-  color: var(--text-secondary, #6b7280);
+  color: var(--muted, #6b7280);
 }
 
 /* 上下文来源归属 */

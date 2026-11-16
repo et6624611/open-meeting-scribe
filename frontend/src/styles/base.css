@@ -127,6 +127,20 @@ button:focus-visible, [role="button"]:focus-visible, a:focus-visible {
   --error: oklch(48% 0.2 20);
   --error-soft: color-mix(in oklch, var(--error) 10%, transparent);
 
+  /* ── 状态边框色：由主题主色派生，明暗主题共用 ── */
+  --ok-border: color-mix(in oklch, var(--ok) 25%, transparent);
+  --warn-border: color-mix(in oklch, var(--warn) 25%, transparent);
+  --error-border: color-mix(in oklch, var(--error) 25%, transparent);
+
+  /* ── 公告栏可选覆盖色：默认跟随主题，仍允许局部覆写 ── */
+  --ann-bg: var(--surface-2);
+  --ann-border: var(--border);
+  --ann-icon: var(--accent);
+  --ann-cta-bg: var(--accent);
+  --ann-cta-fg: var(--accent-fg);
+  --ann-text-strong: var(--fg);
+  --ann-dismiss-hover: var(--surface-3);
+
   /* ── 蒙版体系 token ── */
   --overlay-bg: oklch(0% 0 0 / 0.4);        /* 标准 Modal 蒙版背景（硬阻断） */
   --overlay-enter: 0.2s ease;               /* 蒙版淡入时长 */

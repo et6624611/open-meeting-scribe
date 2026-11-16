@@ -75,7 +75,7 @@
             <span v-else class="cell-muted">—</span>
           </div>
           <div class="cell-speakers" role="cell">
-            <template v-if="getSpeakerList(task).length > 0">
+            <template v-if="getSpeakerList(task).length > 0 || visibleManualSpeakers(task).length > 0">
               <span
                 v-for="sp in visibleSpeakers(task)"
                 :key="sp.id"
@@ -86,6 +86,17 @@
                 <span class="lib-spk-bar"><span class="lib-spk-bar-fill" :style="{ width: sp.pct + '%', background: sp.color }"></span></span>
               </span>
               <span v-if="extraSpeakerCount(task) > 0" class="lib-spk-more">+{{ extraSpeakerCount(task) }}</span>
+              <!-- 手工参会人：以竖线与音频绑定人隔离 / Manual participants, separated by a divider -->
+              <template v-if="visibleManualSpeakers(task).length > 0">
+                <span v-if="getSpeakerList(task).length > 0" class="lib-spk-sep" aria-hidden="true">｜</span>
+                <span
+                  v-for="name in visibleManualSpeakers(task)"
+                  :key="'m-' + name"
+                  class="lib-spk-manual"
+                  :title="t('library.speaker_manual_tip', { name })"
+                >{{ name }}</span>
+                <span v-if="extraManualCount(task) > 0" class="lib-spk-more">+{{ extraManualCount(task) }}</span>
+              </template>
             </template>
             <span v-else class="cell-muted">—</span>
           </div>
@@ -132,6 +143,8 @@ defineProps<{
   visibleSpeakers: (task: Task) => SpeakerInfo[]
   extraSpeakerCount: (task: Task) => number
   getSpeakerList: (task: Task) => SpeakerInfo[]
+  visibleManualSpeakers: (task: Task) => string[]
+  extraManualCount: (task: Task) => number
   isContentOnlyMatch: (task: Task) => boolean
   getStatusLabel: (status: TaskStatus) => string
 }>()
@@ -203,6 +216,8 @@ defineEmits<{
 .lib-spk-bar { display: block; width: 44px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
 .lib-spk-bar-fill { display: block; height: 100%; border-radius: 2px; }
 .lib-spk-more { align-self: center; font-size: 11px; color: var(--subtle); font-family: var(--font-mono); }
+.lib-spk-sep { align-self: center; font-size: 11px; color: var(--border-strong); user-select: none; }
+.lib-spk-manual { align-self: center; font-size: var(--fs-12); font-weight: 500; color: var(--muted); max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-actions { display: flex; align-items: center; justify-content: center; }
 .cell-actions-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--subtle); transition: all 0.15s; }
 .cell-actions-btn:hover { background: var(--border); color: var(--fg); }

@@ -38,10 +38,16 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { LayerView } from '@/utils/transcriptLayers'
 
 const { t } = useI18n()
+
+// 模板 ref 声明：字符串 ref 必须在 setup 作用域有同名绑定才会被赋值，且需经 defineExpose 暴露给父组件
+// Template refs must be declared as same-name bindings to receive the element, then exposed via defineExpose
+const layerPickerBtn = ref<HTMLElement | null>(null)
+const layerPickerMenu = ref<HTMLElement | null>(null)
 
 interface Tab {
   id: string
@@ -67,8 +73,8 @@ defineEmits<{
   'select-layer': [layer: LayerView]
 }>()
 
-defineExpose<{
-  layerPickerBtn: HTMLElement | null
-  layerPickerMenu: HTMLElement | null
-}>()
+defineExpose({
+  layerPickerBtn,
+  layerPickerMenu,
+})
 </script>

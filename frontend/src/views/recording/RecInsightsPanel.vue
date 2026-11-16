@@ -33,7 +33,7 @@
       <!-- 洞察板产物优先：会话「画入洞察台」落板的 HTML 直接呈现，卡片流降为后备
            Board artifact takes priority: the co-created HTML renders here; card stream is the fallback -->
       <InsightBoard
-        v-if="board.html"
+        v-if="board.markdown"
         :artifact="board"
         :loading="boardLoading"
         :boards="boards"
@@ -281,7 +281,7 @@ defineEmits<{
    板唯一写入点在后端会话工具；本面板只读重拉——挂载即拉、board-written 即时重拉 、
    10s 轻量版本探测盖住「写板发生在其它窗口」的缝隙（与 GeneratingView 洞察 Tab 同机制）。
    多板：清单（manifest）是权威，tab 轨与轮询都读它；建板只由用户在这里发起。 */
-const EMPTY_BOARD: BoardArtifact = { html: null, revision: 0, updated_at: null }
+const EMPTY_BOARD: BoardArtifact = { markdown: null, revision: 0, updated_at: null }
 const board = ref<BoardArtifact>({ ...EMPTY_BOARD })
 const boards = ref<BoardSummary[]>([])
 const activeBoardId = ref('')
@@ -306,7 +306,7 @@ async function loadBoardData() {
     if (!activeBoardId.value || !manifest.boards.some(b => b.board_id === activeBoardId.value)) {
       activeBoardId.value = manifest.default_board_id || 'main'
     }
-    board.value = await loadBoard(props.taskId, activeBoardId.value)
+    board.value = await loadBoard(props.taskId)
   } catch {
     // 读板失败静默降级卡片视图 / Load failure silently falls back to cards
   } finally {
@@ -324,7 +324,7 @@ async function probeBoardRevision() {
     const changed = sig !== boardSig
     boardSig = sig
     if (list.length) boards.value = list
-    if (changed || (meta.exists && !board.value.html)) await loadBoardData()
+    if (changed || (meta.exists && !board.value.markdown)) await loadBoardData()
   } catch { /* 探测失败静默跳过 / Probe failure is silent */ }
 }
 
@@ -338,7 +338,7 @@ function onBoardSwitch(bid: string) {
 async function onBoardCreate(title: string) {
   if (!props.taskId) return
   try {
-    const created = await createBoard(props.taskId, title, undefined, 'ui')
+    const created = await createBoard(props.taskId, title, undefined)
     activeBoardId.value = created.board_id
     await loadBoardData()
     notifyBoardsChanged({ board_id: created.board_id })
@@ -347,7 +347,7 @@ async function onBoardCreate(title: string) {
 
 async function onBoardOpen() {
   if (!props.taskId) return
-  try { await openBoardInBrowser(props.taskId, activeBoardId.value, board.value.revision) } catch { /* 忽略 */ }
+  try { await openBoardInBrowser(props.taskId) } catch { /* 忽略 */ }
 }
 
 /** 全文共创起跳：预填修订请求到 AI 面板输入框（与纪要页同文案） */

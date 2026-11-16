@@ -3,13 +3,17 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 
 作者 / Author: Yongliang Wang
 创建 / Created: 2026-09-12
-更新 / Updated: 2026-09-28
-版本 / Version: 5.2.0
+更新 / Updated: 2026-11-11
+版本 / Version: 5.3.0
 
 洞察台定位为绘图面板：以受约束 Mermaid（workflow 阶段卡画布）为主要输出，
 文字分析降级为图注。图定位为「思考支架而非结论」，三个观察角度以
 「盲点揭示」为首要，其余（上下文关联、共识与决策）作为次要补充，
 共同充当「画什么图」的内容选择指引，而非独立的分析类型。
+
+联网检索增强（v5.3）：讨论涉及会外专业知识（政策/法规/行业标准/外部方案）时，
+复用 agent 工具面的 web_search（Brave）先行检索并注入「外部参考」块；
+未配置 API key 或任一环节失败一律静默降级为无检索分析，不阻断主流程。
 
 设计理念 / Design philosophy：LLM 的核心优势在于对更大上下文的感知 / LLM's core advantage lies in perceiving larger context.
 会议中探讨的共识 / Consensus explored in meetings 应基于更大的上下文环境，而非局限于某人的局部认知 / Should be based on larger context, not limited to someone's local awareness.
@@ -19,8 +23,10 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 仅影响提示词输入，不改动写入模型与持久化契约。
 """
 
+import asyncio
 import json
 import logging
+import re
 
 from core.llm import async_chat_completion
 
@@ -91,7 +97,7 @@ flowchart LR
 - 节点标签尾部用「 @@<毫秒数>」携带转写定位时间（取该步骤对应转写行的 begin_time；无对应时间戳则省略整个标记）；
 - 阶段之间用 ---（无箭头）连接不同 subgraph 内的节点；禁止使用 -->；
 - 阶段 2-5 个，每阶段节点 1-4 个，总节点不超过 12；
-- 阶段描述：在 body（图注）中按「阶段名：一句话」逐段给出（「阶段名」必须替换为实际阶段标题，不要保留字面占位符），前端按阶段名匹配填入卡片描述。
+- 阶段描述：在 body（图注）中按「实际阶段标题：完整句子」逐段给出，前端按阶段标题匹配填入卡片描述（「阶段名」只是此处对占位称呼的说明，绝不允许作为字面词出现在输出里）。
 
 #### 内容视角
 
@@ -107,9 +113,20 @@ flowchart LR
 
 ### 辅助文字（body 字段）
 
-用 1-3 句话点出图中最关键的盲区或缺口，并以启发式提问引导用户继续思考——这是图的说明文字，不是独立分析。
-采用画布格式时，另按「阶段名：一句话」逐段给出阶段描述（可与提问式图注合并）。
-避免替用户下结论；用"这里是否缺了……？""这条依赖由谁确认？"这样的追问，帮助用户自己发现问题。
+body 固定为两段式结构：
+① 总括图注（1-3 句）：点出图中最关键的盲区或缺口，并以启发式提问引导用户继续思考——这是图的说明文字，不是独立分析。避免替用户下结论；用"这里是否缺了……？""这条依赖由谁确认？"这样的追问，帮助用户自己发现问题。
+② 阶段描述行（采用画布格式时逐行给出）：每行格式为「实际阶段标题：完整句子」。句子必须含主体、动作与结果（发生了什么 / 缺失了什么、谁被卡住），不少于 15 字；禁止只重复阶段标题，更禁止把「阶段名」三个字当作前缀原样输出。
+
+正例（对应上文「数据核对/差异讨论」示例图）：
+"最关键的盲区是口径未对齐就先对数。数据核对：双方各自拉取费控数据，但统计口径未事先确认，隐藏假设未经验证。差异讨论：差旅超支仅归因到部门层面，未追问审批链路本身，这条依赖由谁确认？"
+
+反例（禁止这样写）：
+"阶段名：数据核对\n阶段名：差异讨论"
+——「阶段名」占位符被原样保留、且只列标题没有描述句子，双重违规；前端将无法为阶段卡回填任何实质描述。
+
+### 行动建议（solution 字段）
+
+给出可执行的建议，而不是方向性口号：1-3 条步骤，每条指明做什么、由谁做或向谁核实、怎么验证。对没有把握的结论，给出具体求证指向（如"向税务大厅确认代扣代缴后是否免推开票二维码"），而不是"建议梳理全链路""重点验证"这类泛化表述。无合适建议时 solution 设为空字符串，不得为凑字段写空话。
 
 ### 备查注释（note 字段）
 
@@ -119,7 +136,7 @@ flowchart LR
 
 ## 返回 JSON
 
-{"title": "一句话概括", "body": "图注（1-3 句话，画布格式时附「阶段名：一句话」描述）", "solution": "行动建议（可选）", "note": "备查明细（≤60字，可选）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
+{"title": "一句话概括", "body": "1-3 句图注 + 逐行『实际阶段标题：完整句子』阶段描述", "solution": "1-3 条可执行步骤（做什么/谁来做/怎么验证）", "note": "备查明细（≤60字，可选）", "has_finding": true/false, "diagram": "Mermaid 语法或空字符串"}
 
 仅返回 JSON。"""
 
@@ -133,6 +150,105 @@ def _fmt_ms(ms: int) -> str:
     """毫秒转 mm:ss 展示格式 / Format milliseconds as mm:ss display."""
     total_sec = int(ms) // 1000
     return f"{total_sec // 60:02d}:{total_sec % 60:02d}"
+
+
+# ============================================================
+# 联网检索增强（复用 agent 工具面 web_search，Brave 默认）
+# ============================================================
+
+# 判定调用输出预算：仅 need + queries 的极小 JSON
+_WEB_SEARCH_JUDGE_MAX_TOKENS = 200
+# 检索词与单查询结果条数上限：控制注入块体积与延迟
+_WEB_SEARCH_QUERIES_MAX = 2
+_WEB_SEARCH_RESULTS_PER_QUERY = 4
+# 判定 prompt 注入的转写尾部预算（字符）
+_WEB_SEARCH_TAIL_CHARS = 2000
+
+_WEB_SEARCH_JUDGE_PROMPT = (
+    "你是会议讨论的外部知识判定器。判断这场讨论是否涉及**会外专业知识**"
+    "（政策法规、税务/法务规则、行业标准、外部产品或技术方案、行业基准实践等）"
+    "——即参会者凭会议内容无法自答、需要查外部资料才能给出可靠结论的主题。\n"
+    "仅返回 JSON：{\"need\": true/false, \"queries\": [\"搜索词1\", \"搜索词2\"]}\n"
+    "need=false 时 queries 为空数组；need=true 时 queries 给不超过 2 条中文搜索词"
+    "（聚焦待查的具体规则或做法，避免泛词）。"
+)
+
+# body 占位符退化检测（提示词契约未被遵循时的排查线索）
+_PLACEHOLDER_BODY_RE = re.compile(r"^阶段名\s*[：:]", re.MULTILINE)
+
+
+async def _augment_with_web_search(
+    recent_lines: list[dict],
+    chapter_titles: list[str],
+) -> str:
+    """联网检索增强：判定讨论是否涉及会外专业知识，是则检索并构建「外部参考」块。
+
+    依赖设置页的联网搜索 API key（web_search 命名空间）；未配置 / 判定失败 / 检索失败
+    一律返回空串，绝不阻断主分析流程（与洞察板链路的静默降级口径一致）。
+    """
+    try:
+        from core.agent_tools.impl import _get_web_search_config
+        if not _get_web_search_config():
+            return ""
+    except Exception as e:
+        logger.warning("[洞察台] 联网检索配置读取失败（跳过检索增强）: %s", e)
+        return ""
+
+    # ① 轻量判定：是否需要会外知识 + 搜索词
+    try:
+        tail = "\n".join(
+            str(line.get("text", "")) for line in recent_lines[-30:]
+        )[:_WEB_SEARCH_TAIL_CHARS]
+        titles = "、".join(chapter_titles[:8])
+        reply = await async_chat_completion(
+            [
+                {"role": "system", "content": _WEB_SEARCH_JUDGE_PROMPT},
+                {"role": "user", "content": f"会议章节：{titles}\n\n讨论片段：\n{tail}"},
+            ],
+            model=None,
+            temperature=0.0,
+            max_tokens=_WEB_SEARCH_JUDGE_MAX_TOKENS,
+        )
+        cleaned = reply.strip()
+        if cleaned.startswith("```"):
+            cleaned = "\n".join(
+                ln for ln in cleaned.split("\n") if not ln.strip().startswith("```")
+            ).strip()
+        judge = json.loads(cleaned)
+        if not judge.get("need"):
+            return ""
+        queries = [str(q).strip() for q in (judge.get("queries") or []) if str(q).strip()]
+        queries = queries[:_WEB_SEARCH_QUERIES_MAX]
+        if not queries:
+            return ""
+    except Exception as e:
+        logger.warning("[洞察台] 联网检索判定失败（退化为无检索分析）: %s", e)
+        return ""
+
+    # ② 检索：execute_tool 为同步 requests 实现，线程池执行避免阻塞事件循环
+    from core.agent_tools.impl import execute_tool
+    items: list[str] = []
+    for q in queries:
+        try:
+            raw = await asyncio.to_thread(execute_tool, "web_search", {"query": q})
+            data = json.loads(raw)
+            for r in (data.get("results") or [])[:_WEB_SEARCH_RESULTS_PER_QUERY]:
+                title = str(r.get("title", "")).strip()
+                desc = str(r.get("description", "")).strip()
+                url = str(r.get("url", "")).strip()
+                if title or desc:
+                    items.append(f"- {title}——{desc}（{url}）" if url else f"- {title}——{desc}")
+        except Exception as e:
+            logger.warning("[洞察台] 联网检索查询 %r 失败（跳过该条）: %s", q[:60], e)
+            continue
+    if not items:
+        return ""
+    logger.info(
+        "[洞察台] 联网检索增强生效：%d 条外部参考（%d 组查询）", len(items), len(queries))
+    return (
+        "## 外部参考（联网检索，供分析佐证，非会议事实）\n"
+        + "\n".join(items)
+    )
 
 
 # 已有洞察摘要注入预算（字符）：防上下文膨胀挤占转写块
@@ -180,21 +296,22 @@ def _build_user_message(
     recent_lines: list[dict],
     chapter_titles: list[str],
     existing_insights: list[dict] | None = None,
+    web_reference: str = "",
 ) -> str:
-    """构建用户消息（可选携带已有洞察摘要，实现只读累进视角）"""
+    """构建用户消息（可选携带已有洞察摘要与联网外部参考块，实现只读累进视角）"""
     transcript_text = "\n".join(
         f"[说话人{line.get('speaker_id', 0) + 1}] ({_fmt_ms(line.get('begin_time', 0))}) {line.get('text', '')}"
         for line in recent_lines
     )
     titles_text = "\n".join(f"- {t}" for t in chapter_titles)
 
-    parts = [
-        f"## 会议章节主题\n{titles_text}",
-        f"## 最近讨论内容（{len(recent_lines)} 条）\n{transcript_text}",
-    ]
+    parts = [f"## 会议章节主题\n{titles_text}"]
+    if web_reference:
+        parts.append(web_reference)
     insights_block = _format_existing_insights(existing_insights)
     if insights_block:
-        parts.insert(1, insights_block)
+        parts.append(insights_block)
+    parts.append(f"## 最近讨论内容（{len(recent_lines)} 条）\n{transcript_text}")
     parts.append("请基于以上讨论内容进行综合洞察分析。")
     return "\n\n".join(parts)
 
@@ -208,6 +325,11 @@ def _parse_analysis_result(reply: str) -> dict:
         cleaned = "\n".join(lines).strip()
 
     result = json.loads(cleaned)
+    body = str(result.get("body", ""))
+    # 占位符退化检测：模型把「阶段名」当字面前缀时留排查线索（前端 matchPhaseDescriptions
+    # 已有位置兜底，此处不改写返回内容） / Detect placeholder degradation for diagnostics only.
+    if _PLACEHOLDER_BODY_RE.search(body):
+        logger.warning("[洞察台] body 出现占位符退化（提示词契约未被遵循）: %s", body[:80])
     # graph 字段透传（兼容历史数据） / Pass through legacy graph field (historical data compatibility)
     # 新提示词已不再要求输出 graph；仅旧会话重载时可能携带，前端据此渲染旧版图谱。
     # New prompt no longer requests graph; only legacy session reloads may carry it, rendered by the legacy graph view.
@@ -237,7 +359,7 @@ def _parse_analysis_result(reply: str) -> dict:
             }
     return {
         "title": str(result.get("title", "")),
-        "body": str(result.get("body", "")),
+        "body": body,
         "solution": str(result.get("solution", "")),
         # 备查注释层：旧契约无此字段，缺省降级空串 / note layer: absent in legacy contracts, defaults to ""
         "note": str(result.get("note") or "").strip()[:INSIGHT_NOTE_MAX_CHARS],
@@ -273,11 +395,13 @@ async def run_analysis(
                  非空时在 system prompt 追加卡位约束块（含角色覆盖路径）。
 
     返回：
-      {"title": str, "body": str, "solution": str, "note": str, "has_finding": bool, "diagram": str, "graph": dict|None}
+      {"title": str, "body": str, "solution": str, "note": str, "has_finding": bool, "diagram": str, "graph": dict|None, "web_searched": bool}
+      web_searched：本轮分析是否注入了联网外部参考（可选能力，未配置 key 时恒为 False）；
+      不进持久化契约，仅供日志与测试断言。
       失败时返回 has_finding=False
     """
     if not recent_lines or not chapter_titles:
-        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None, "web_searched": False}
 
     # 角色感知：优先使用角色专属 prompt，回退到内置默认 / Role-aware: prefer role-specific prompt, fallback to built-in default
     system_prompt = None
@@ -299,7 +423,11 @@ async def run_analysis(
         system_prompt += budget_block(
             int(card_budget.get("slots", 0)), int(card_budget.get("active", 0)))
 
-    user_message = _build_user_message(recent_lines, chapter_titles, existing_insights)
+    # 联网检索增强：讨论涉及会外专业知识（政策/法规/行业标准/外部方案）时先检索注入外部参考；
+    # 未配置 key 或任一环节失败均静默降级为无检索分析
+    web_reference = await _augment_with_web_search(recent_lines, chapter_titles)
+
+    user_message = _build_user_message(recent_lines, chapter_titles, existing_insights, web_reference)
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -314,16 +442,17 @@ async def run_analysis(
             max_tokens=1500,
         )
         parsed = _parse_analysis_result(reply)
+        parsed["web_searched"] = bool(web_reference)
 
         logger.info(
-            "[洞察台] 分析完成: has_finding=%s title=%s",
-            parsed["has_finding"], parsed["title"][:60],
+            "[洞察台] 分析完成: has_finding=%s web_searched=%s title=%s",
+            parsed["has_finding"], parsed["web_searched"], parsed["title"][:60],
         )
         return parsed
 
     except json.JSONDecodeError:
         logger.warning("[洞察台] 分析返回非 JSON: %s", reply[:200])
-        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None, "web_searched": False}
     except Exception as e:
         logger.warning("[洞察台] 分析失败: %s", e)
-        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None}
+        return {"title": "", "body": "", "solution": "", "note": "", "has_finding": False, "diagram": "", "graph": None, "web_searched": False}

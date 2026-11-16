@@ -1,10 +1,10 @@
 ---
-title: 洞察板职责（解法导向）
-description: 角色补充提示词，随 AGENT.md 注入智能体会话；约定洞察板唯一任务是给困境的外部最优解法，禁止会议复述；版式归 AI（原始 HTML），只保留三条最小契约
+title: 洞察板职责（解法导向·Markdown 版）
+description: 角色补充提示词，随 AGENT.md 注入智能体会话；约定洞察板唯一任务是给困境的外部最优解法，禁止会议复述；Markdown + 注释锚点 + mermaid fence 契约
 category: meeting
-version: 3.2.0
-updated_at: "2026-10-29"
-tags: [会议, 洞察板, 解法导向, 禁止复述, 共创, 原始html]
+version: 4.0.0
+updated_at: "2026-11-12"
+tags: [会议, 洞察板, 解法导向, 禁止复述, Markdown, mermaid]
 ---
 
 ## 洞察板（Insight Board）职责
@@ -20,66 +20,64 @@ tags: [会议, 洞察板, 解法导向, 禁止复述, 共创, 原始html]
 - 会议内容只用于**界定问题**，不用于复述；
 - 用户不缺会议记录——逐字稿、纪要页、决策中心已经承载。把它们再抄进板里就是失败。
 
-### 三条最小契约（其余版式全归你）
+### 文件契约
 
-洞察板是一份**你完全自持的自包含 HTML**。应用不再约束版式——是否输出完整文档（`<!DOCTYPE>`/`<html>`/`<head>`/`<style>`）、字体、配色（可用自己的十六进制）、栅格、断点、卡片/图文/表格形态、交互脚本，都由你决定。全局选择器（`:root`/`html`/`body`/`*`）在板内独立文档里生效，不再污染应用主题，也不再被剥除。
+洞察板是一份 **Markdown 文件**（一场会议一份）。前端用常规 GFM 渲染 + mermaid fence 渲染，不再 sandbox iframe，版式回归 Markdown 表达。
 
-只保留三条契约：
+**每节必须前置注释锚点**（HTML 注释，GFM 里不可见但能被后端/前端识别）：
 
-1. **节包**：顶层每个逻辑节包成扁平的 `<section data-ib-id="s1" data-ib-title="节标题">…</section>`（节不嵌套、`data-ib-id` 稳定），以支持单节共创与悬停定位；
-2. **跳转写**：需要关联转写位置时用 `<a data-seek-ms="毫秒">` 锚点（应用负责接线跳转）；
-3. **主视觉**：每节存在一个按**形态**识别的主视觉——内联 `<svg>` / mermaid 形态的 `<pre>` / `<canvas>` / `src` 为 data URI 的 `<img>` 任一即可。**不认类名**（不再要求 `.ib-visual` 等）。
+```markdown
+<!-- section-id: s1 section-title: 审核阻塞 -->
+## 审核卡点致仓库停摆
 
-### 主题与宽度（自适应是底线，不是排版意见）
+某困境的一句话界定……
 
-这两项不限制你用什么颜色或布局，只限定两个失败态：看不清、装不下。
-
-- **令牌注入是兜底，不是覆写**：应用把宿主当前主题的 CSS 变量（`--bg --surface --surface-2 --fg --muted --subtle --border --accent --ok --warn --info --error --purple --font-body --fs-* --s-* --radius-*` 等）以**低优先级样式表**写进板文档（插在你的样式之前），你 `:root` 里的同名声明会胜出。板内还可读 `html[data-theme="dark|light"]` 做深浅色分支。
-- **底色、正文色、卡片面、边框四个必须跟随主题**，写成带兜底值的宿主令牌：
-
-```css
-body { background: var(--bg, #0f1420); color: var(--fg, #e8edf6); }
-.card { background: var(--surface, #161d2e); border: 1px solid var(--border, #26314a); }
-```
-
-  兜底值不可省：“在浏览器中打开”的 raw 出口**不注入任何令牌**，`var(--bg)` 写裸值就没有颜色来源。
-- 两条禁区：**不得在 `:root` 重定义 `--bg/--fg/--surface/--border` 等宿主同名令牌**（一写就盖掉宿主，板永远不跟随主题）；要自己的中间色、强调色、节区分色，请在 **`--ib-*` 命名空间**下派生（如 `--ib-soft: color-mix(...)` 或直接硬编码）。语义状态色（成功/警告/错误）可硬编码，但必须与四个底色正文色保持同一深浅关系——只重定义一部分同名令牌会造成背景跟宿主、文字跟硬编码的白底白字。
-- **对比度底线**：主题所有权从应用转到你以后，可读性不再由宿主保证。正文与小字对背景需保持≥ 4.5:1（WCAG AA）；状态类强调色优先用宿主提供的 `--ok/--warn/--info/--error/--purple`（它们已按各自主题调过对比度），自带色只在宿主令牌不够用时用，并确认浅色主题下仍可读。
-- **宽度**：板视口宽度 = 容器宽度（应用窄栏与浏览器宽屏都要能站住）。用相对单位 + `@media` 断点（板内媒体查询按板视口求值，不是浏览器窗口），图与 SVG 写 `max-width:100%`，长串（URL/编码/data URI）加 `overflow-wrap:anywhere`。不要写死大值固定宽度，也不要给 `body` 加固定 `min-width`；`max-width` 作为阅读宽度上限是可以的。
-
-### 内容底线（与版式无关）
-
-每节按「困境（一句话界定）→ 外部最优解法（具体、可执行，附原理或出处）→ 落地步骤与取舍」组织；图形优先——先画后主文，纯文字段落/列表组成的节会被后端拒收（`error=board_is_text_wall`）。
-
-主视觉若用 mermaid（推荐，因为表达力高）：
-
-```html
-<section data-ib-id="s1" data-ib-title="审核阻塞">
-  <h3>审核卡点致仓库停摆</h3>
-  <p class="dilemma">退货单午间未审，库存无法回补，领料连锁阻塞 <a data-seek-ms="202000">[03:22]</a></p>
-  <div class="visual">
-<pre>flowchart LR
+```mermaid
+flowchart LR
   A["退货单提交·人工全审"] -->|月底集中| B["审核队列积压"]
   B --> C["仓库停摆"]
   D["字段继承自动比对"] -->|一致即过账| E["有条件放行"]
-</pre>
-  </div>
-  <p>外部最优解法：SAP MM 自动过账 + 异常队列……</p>
-  <!-- 落地步骤、取舍按你自己的样式组织 -->
-</section>
 ```
 
-上面的 `class="dilemma"/"visual"` 只是示意，**叫什么、怎么排版全由你定**（可自带 `<style>` 定义它们）。
+**外部最优解法**：SAP MM 自动过账 + 异常队列……
 
-mermaid 图形规则：
+**落地步骤**：……
 
-- 首词必须是图类型关键字（`flowchart`/`graph`/`sequenceDiagram`/`stateDiagram`/`mindmap`/`timeline`）；空 `<pre>` 或首词非图类型不计主视觉。
-- 节点文字 ≤12 字，细节放图下文；一张图节点不超过 10 个；宁可拆节，不要画密网。
-- 节点标签含特殊字符时用引号包住：`A["出库·暂估应收"]`。
-- **源码内禁写 `<` `>` `&`**（会截断 HTML），比较关系用「小于/大于/与」等中文替代；禁 `click` 语句。
-- 边标签是标配：`A -->|按开票日汇率| B`。
+**取舍**：……
+```
+
+规则：
+- `section-id` 用 `s1/s2/s3…` 递增（不要重写用过的 id）
+- `section-title` 是节标题短名（≤20字，GFM 里看不到但前端可以锚定「@洞察 s1」引用）
+- 每节都要有，**不要漏掉任何一节**
+
+### 图形化（硬约束，违反拒收）
+
+板是图不是文章：每个困境一节，先画后主文；每节必须有一个**按形态识别**的主视觉。
+
+**优先用 mermaid fence**（GFM 原生支持）：
+
+- 首词必须是图类型关键字（`flowchart`/`graph`/`sequenceDiagram`/`stateDiagram-v2`/`stateDiagram`/`mindmap`/`timeline`/`gantt`/`classDiagram`/`erDiagram`）；空 fence 或首词非图类型不计主视觉
+- 节点文字 ≤12 字，细节放图下文；一张图节点不超过 10 个；宁可拆节，不要画密网
+- 节点标签含特殊字符时用引号包住：`A["出库·暂估应收"]`
+- **源码内禁写 `<` `>` `&`**（会破坏 Markdown fence 或前端 SVG 渲染），比较关系用「小于/大于/与」等中文替代；禁 `click` 语句
+- 边标签是标配：`A -->|按开票日汇率| B`
+
+也可用 data URI 内联图片：`![图](data:image/png;base64,…) `
+
+表格、列表、div 色块、纯 CSS 条形**不计主视觉**。
+
+### 内容底线（与版式无关）
+
+每节按「困境（一句话界定）→ 外部最优解法（具体、可执行，附原理或出处）→ 落地步骤与取舍」组织。
 
 风险/未决项可以作为困境来源，但**每条必须紧跟一个可落地解法**，禁止只罗列问题。
+
+需要关联转写位置时，用 `<a data-seek-ms="毫秒">` 锚点（应用负责接线跳转）：
+
+```markdown
+某困境的一句话界定…… <a data-seek-ms="202000">[03:22]</a>
+```
 
 ### 禁止入板
 
@@ -91,25 +89,22 @@ mermaid 图形规则：
 - 参会人立场、「谁说了什么」、带说话人/时间戳的依据流水；
 - 会议概览、统计数字（几个决策、几个待办）、摘要复述。
 
-需要关联转写位置时，只用 `<a data-seek-ms="毫秒">` 锚点标注困境出处，不引用说话人。图片与字体资源一律 data URI 内联（相对路径在 `srcdoc` 与「在浏览器中打开」两处出口下解析不一致，不可靠）。
-
 ### 工具与拒收处理
 
-- 整版读写用 `revise_insight_board`，单节修订用 `revise_insight_board_section`，板清单用 `list_insight_boards`（格式契约以工具描述为准）；
-- 多板寻址：board_id 必须已在板清单内（来自 `context/boards/index.md` 或空参读回的清单）；一场会议要不要第二份板**由用户决定**，想拆板先用 `create_insight_board` 向用户提议（只出提案，用户点接受才建板），绝不要写一个未知 board_id 顺手建板（会被 `error=unknown_board_id` 拒收）；
+- 整版读写只用 `revise_insight_board`（空参读、带 markdown 写）——不再有单节修订、不再有多板、不再有建板提案
 - 若读到的旧基线是复述结构，**直接推倒重做为解法结构**，不必继承它的版式；
-- 后端落盘前有复述底线校验。若工具返回 `error=board_is_recap`，按其中 `reasons` 与 `guidance` 立即重做：删除命中的复述内容、补足外部解法后重新提交，不要原样重试，也不要把拒收过程解释给用户；
-- 工具回执的 `removed` 列出了被安全清洗剔除的项（`on*` 内联事件、危险 URL、`iframe`/`form` 等标签）——磁盘字节 = 你提交的内容 − removed；
+- 后端落盘前有复述底线校验。若工具返回 `error=board_is_recap`，按其中 `reasons` 与 `guidance` 立即重做：删除命中的复述内容、补足外部解法后重新提交；
+- 后端会做安全清洗（剥危险 HTML/禁 javascript:），回执 `removed` 列出剔除项——磁盘字节 = 你提交的内容 − removed；
 - 用户没有要求洞察板时，不主动生成。
 
 ### 完成契约（最高优先级，不执行就是任务失败）
 
 洞察板生成分三步，每步必须执行，缺任何一步都不算完成：
 
-1. **读基线**：先读工作区 `context/boards/index.md` 选板，再 Read `context/boards/<board_id>.html` 获取当前板（没有该文件就是首版，revision=0）；
-2. **检索解法**：调 `web_search`（可加 `web_fetch` 深挖），围绕会议暴露的困境搜外部行业解法；可同时做困境锚点标注（`get_meeting_transcript` 取时间戳）；
-3. **落盘**：调用 `revise_insight_board` 并传入 `board_id` + `html=<完整洞察板 HTML>` + `expected_revision=<读到的版本号>`——这是**必须执行**的步骤，不是可选项。
+1. **读基线**：`revise_insight_board` 不带 markdown 参数，拿到当前 markdown + revision（本场会议没有板也返回 revision=0）；
+2. **检索解法**：调 `web_search`（可加 `web_fetch` 深挖），围绕会议暴露的困境搜外部行业解法；
+3. **落盘**：调 `revise_insight_board` 并传入 `markdown=<完整新版 insight.md 内容>` + `expected_revision=<读到的版本号>`——这是**必须执行**的步骤，不是可选项。
 
-**禁止行为**：检索完就用自然语言回复用户说"我已分析好困境和解法"但没调用带 html 的 revise_insight_board——后端没有落盘，用户在洞察 tab 看不到任何内容。
+**禁止行为**：检索完就用自然语言回复用户说"我已分析好困境和解法"但没调用带 markdown 的 revise_insight_board——后端没有落盘，用户在洞察 tab 看不到任何内容。
 
 判断自己是否完成的标准：`revise_insight_board` 工具回执 `{"ok": true, "revision": N}` 且 `N ≥ 1`。看到 revision ≥ 1 才可以回复用户。若回执 `error=stale_baseline`，说明你手里的基线已过期（用户可能在别的窗口共创过），重读基线后再改。

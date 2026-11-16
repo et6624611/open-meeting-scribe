@@ -66,8 +66,14 @@ export function useLibraryFilters() {
     const names = new Set<string>()
     for (const task of taskStore.tasks) {
       const mapping = task.speaker_mapping
-      if (!mapping) continue
-      for (const name of Object.values(mapping)) {
+      if (mapping) {
+        for (const name of Object.values(mapping)) {
+          const trimmed = String(name).trim()
+          if (trimmed) names.add(trimmed)
+        }
+      }
+      // 手工添加的参会人（roster）与音频关联人员一并纳入筛选 / Include manually added roster participants
+      for (const name of task.roster || []) {
         const trimmed = String(name).trim()
         if (trimmed) names.add(trimmed)
       }
@@ -102,12 +108,12 @@ export function useLibraryFilters() {
       // speaker filter
       if (spk) {
         const mapping = t.speaker_mapping
-        if (!mapping) return false
         if (spk === UNID_FILTER) {
-          if (!hasUnidentified(mapping)) return false
+          if (!mapping || !hasUnidentified(mapping)) return false
         } else {
-          const values = Object.values(mapping).map(v => v.trim())
-          if (!values.includes(spk)) return false
+          const boundNames = mapping ? Object.values(mapping).map(v => String(v).trim()) : []
+          const rosterNames = (t.roster || []).map(v => String(v).trim())
+          if (!boundNames.includes(spk) && !rosterNames.includes(spk)) return false
         }
       }
 

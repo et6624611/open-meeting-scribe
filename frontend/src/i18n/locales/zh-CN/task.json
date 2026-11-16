@@ -26,6 +26,7 @@
   "failure": {
     "unknown": "未知错误",
     "transient": "临时错误，可重试",
+    "transient_hint": "服务暂时不可用，请稍后重试。",
     "transient_action": "重试",
     "api_config": "API 配置异常",
     "api_config_action": "检查设置",

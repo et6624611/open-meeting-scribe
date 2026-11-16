@@ -49,6 +49,8 @@
       :visible-speakers="visibleSpeakers"
       :extra-speaker-count="extraSpeakerCount"
       :get-speaker-list="getSpeakerList"
+      :visible-manual-speakers="visibleManualSpeakers"
+      :extra-manual-count="extraManualCount"
       :is-content-only-match="isContentOnlyMatch"
       :get-status-label="(status) => taskStore.getStatusLabel(status)"
       @toggle-sort="toggleSort"
@@ -140,6 +142,7 @@ const {
   openTask,
   statusDotClass, highlightLibTitle, formatDuration, formatDateTime,
   visibleSpeakers, extraSpeakerCount, getSpeakerList,
+  visibleManualSpeakers, extraManualCount,
 } = selection
 </script>
 

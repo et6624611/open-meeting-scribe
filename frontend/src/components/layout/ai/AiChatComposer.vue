@@ -259,7 +259,7 @@ defineExpose({ inputRef, resizeInput })
   padding: 6px 10px; border-radius: var(--radius-sm, 6px);
   font-size: 12px; line-height: 1.5;
   color: var(--warn, #8a5800); background: var(--warn-soft, #fdf3df);
-  border: 1px solid var(--warn-border, rgba(138,88,0,0.25));
+  border: 1px solid var(--warn-border);
 }
 .ai-cli-probe-warn svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: 2px; }
 .ai-cli-probe-warn .cpw-switch {

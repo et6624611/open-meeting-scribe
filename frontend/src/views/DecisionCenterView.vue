@@ -80,7 +80,7 @@
             </div>
           </div>
 
-          <!-- 状态：字典驱动 chips 多选（含用户新增项）；默认只看非闭档 / Status: dict-driven multi-select -->
+          <!-- 状态：字典驱动 chips 多选（含用户新增项）；默认全量 / Status: dict-driven multi-select -->
           <div class="dfp-section">
             <div class="dfp-label-row">
               <span class="dfp-label">{{ t('decisions.filter_status') }}</span>
@@ -318,7 +318,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 // ─── 筛选器：状态字典驱动（DC-R2-c D6/D7 + DC-UNIFY-01） ───
-// 默认选中 = 全部非闭档（未完成）状态；「查看全部」一键放宽。
+// 默认选中 = 全部状态（含闭档）；用户取消勾选后可用「全选」一键恢复。
 const TIME_OPTIONS = ['7d', '30d', 'all'] as const
 type TimeRange = typeof TIME_OPTIONS[number]
 
@@ -365,8 +365,9 @@ async function markSuperseded(h: FlowNode, main: FlowNode) {
   if (evoBusy.value.has(h.id)) return
   evoBusy.value = new Set(evoBusy.value).add(h.id)
   try {
-    await supersedeDecision(h.task_id, h.id, { taskId: main.task_id, decisionId: main.id })
-    await load()
+    const updated = await supersedeDecision(h.task_id, h.id, { taskId: main.task_id, decisionId: main.id })
+    // 就地 patch：用后端返回的完整 superseded_by 快照，不触发全量 load
+    patchNodeInLists(h, { superseded_by: updated.superseded_by || null })
     showToast(t('decisions.evo_mark_ok'), 'success')
   } catch (e) {
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
@@ -379,8 +380,9 @@ async function undoSupersede(h: FlowNode) {
   if (evoBusy.value.has(h.id)) return
   evoBusy.value = new Set(evoBusy.value).add(h.id)
   try {
-    await revertSupersede(h.task_id, h.id)
-    await load()
+    const updated = await revertSupersede(h.task_id, h.id)
+    // 就地 patch：后端已清掉 superseded_by
+    patchNodeInLists(h, { superseded_by: updated.superseded_by || null })
     showToast(t('decisions.evo_undo_ok'), 'success')
   } catch (e) {
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
@@ -402,9 +404,9 @@ function applyTopicAnchor() {
   })
 }
 
-/** 默认选中集 = 非闭档状态全集 */
+/** 默认选中集 = 全量状态 */
 function defaultSelection(): Set<string> {
-  return new Set(statuses.value.filter(s => !s.closing).map(s => s.id))
+  return new Set(statuses.value.map(s => s.id))
 }
 
 /** 当前可见的状态 id */
@@ -417,7 +419,7 @@ function toggleStatus(key: string) {
   selected.value = next
 }
 
-/** 全选所有状态（含闭档）；与「重置」构成默认口径的两个出口 */
+/** 全选所有状态；手动取消勾选后一键回到全量口径 */
 function selectAllStatuses() {
   selected.value = new Set(statuses.value.map(s => s.id))
 }
@@ -427,7 +429,7 @@ const filterBtnEl = ref<HTMLElement | null>(null)
 const filterPopEl = ref<HTMLElement | null>(null)
 const filterOpen = ref(false)
 
-/** 状态集是否偏离默认口径（非闭档全集） */
+/** 状态集是否偏离默认口径（全量状态） */
 const statusDirty = computed(() => {
   const def = defaultSelection()
   if (def.size !== selected.value.size) return true
@@ -496,7 +498,7 @@ function toggleFilter() {
   filterOpen.value ? closeFilter() : openFilter()
 }
 
-/** 重置为默认口径：全部知识库 + 非闭档状态 */
+/** 重置为默认口径：全部知识库 + 全量状态 */
 function resetFilters() {
   kbId.value = ''
   selected.value = defaultSelection()
@@ -513,13 +515,13 @@ onBeforeUnmount(closeFilter)
 /** 上一次状态字典的 id 集，用于区分「新新增」与「用户手动取消勾选」 */
 const selectedBefore = ref<Set<string>>(new Set())
 
-/** 状态字典变更后的选中集修正：删掉已不存在的项、新增的非闭档项自动露出（D7 默认可见） */
+/** 状态字典变更后的选中集修正：删掉已不存在的项、新增项自动露出（默认全量口径） */
 function syncSelection(nextList: DecisionStatusItem[]) {
   const ids = new Set(nextList.map(s => s.id))
   const next = new Set<string>()
   for (const k of selected.value) if (ids.has(k)) next.add(k)
   const before = selectedBefore.value
-  for (const s of nextList) if (!s.closing && !before.has(s.id)) next.add(s.id)
+  for (const s of nextList) if (!before.has(s.id)) next.add(s.id)
   selected.value = next
   selectedBefore.value = ids
 }
@@ -560,8 +562,15 @@ async function load() {
     loading.value = false
   }
 }
-async function loadPool() {
-  try { pool.value = await fetchFlowNodes() } catch { /* 池加载失败不阻断主列表 / pool failure never blocks the list */ }
+
+/** 保存滚动位置 → load → 下一帧恢复。结构变更场景（增/删/字典变）走这条，避免锚点归零。 */
+async function loadPreservingScroll(): Promise<void> {
+  const scroller = document.querySelector<HTMLElement>('#mainContent') ?? null
+  const y = scroller ? scroller.scrollTop : window.scrollY
+  await load()
+  await nextTick()
+  if (scroller) scroller.scrollTop = y
+  else window.scrollTo(0, y)
 }
 
 watch([timeRange, kbId], () => { void load() })
@@ -572,7 +581,7 @@ watch(keyword, () => {
 onBeforeUnmount(() => window.clearTimeout(debounceTimer))
 
 onMounted(async () => {
-  // 状态字典先到位：默认「非闭档」过滤依赖它，否则议题锚点定位时簇尚未渲染
+  // 状态字典先到位：默认全量过滤依赖它，否则议题锚点定位时簇尚未渲染
   try {
     statuses.value = await fetchStatuses()
     selected.value = defaultSelection()
@@ -605,7 +614,7 @@ const visibleGroups = computed<MeetingGroup[]>(() => {
   return [...map.values()]
 })
 
-// 议题视图可见集：主记录状处于可见状态集才展示（与按会议一致的“只看非闭档”默认口径）
+// 议题视图可见集：主记录状处于可见状态集才展示（与按会议一致的全量默认口径）
 const visibleTopics = computed<TopicGroup[]>(() =>
   topics.value.filter(g => visibleStatusIds.value.has(g.main?.status || '')),
 )
@@ -642,7 +651,27 @@ function toggleIneff(key: string) {
   openIneff.value = next
 }
 
-// ─── 行内操作：直接落到决策流节点（与纪要页同一套端点） ───
+// ─── 行内操作：就地 patch（不触发全量 load，滚动/编辑态保留） ───
+/** 在 rows / topics 中定位并同步变更字段；找不到则静默跳过 */
+function patchNodeInLists(d: FlowNode, patch: Partial<FlowNode>) {
+  const uidMatch = (n: { task_id: string; id?: string }) => n.task_id === d.task_id && n.id === d.id
+  let hit = false
+  for (let i = 0; i < rows.value.length; i++) {
+    if (uidMatch(rows.value[i])) { rows.value[i] = { ...rows.value[i], ...patch }; hit = true; break }
+  }
+  for (const t of topics.value) {
+    if (t.main && uidMatch(t.main)) { t.main = { ...t.main, ...patch }; hit = true }
+    if (t.history?.length) {
+      const hi = t.history.findIndex(uidMatch)
+      if (hi >= 0) {
+        t.history = [...t.history.slice(0, hi), { ...t.history[hi], ...patch } as FlowNode, ...t.history.slice(hi + 1)]
+        hit = true
+      }
+    }
+  }
+  return hit
+}
+
 async function saveStatus(d: FlowNode, status: string) {
   await savePatch(d, { status })
 }
@@ -650,7 +679,11 @@ async function saveStatus(d: FlowNode, status: string) {
 async function savePatch(d: FlowNode, patch: DecisionPatch) {
   try {
     await updateDecision(d.task_id, d.id, patch)
-    await Promise.all([load(), loadPool()])
+    // 就地 patch：不触发 load，保留滚动位置与焦点
+    if (!patchNodeInLists(d, patch)) {
+      // 极端情况节点不在当前可见集 → 回退全量刷新
+      await loadPreservingScroll()
+    }
   } catch (e) {
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
   }
@@ -660,7 +693,8 @@ async function removeNode(d: FlowNode) {
   try {
     await deleteDecision(d.task_id, d.id)
     showToast(t('decisions.toast_delete_ok'), 'success')
-    await Promise.all([load(), loadPool()])
+    // 结构变更：节点被移除 → 全量 load + 滚动恢复
+    await loadPreservingScroll()
   } catch (e) {
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
   }
@@ -674,7 +708,8 @@ async function onAddSubmit(taskId: string, payload: DecisionCreatePayload) {
     await createDecision(taskId, payload)
     showToast(t('decisions.toast_add_ok'), 'success')
     showAdd.value = false
-    await Promise.all([load(), loadPool()])
+    // 结构变更：新增节点 → 全量 load + 滚动恢复
+    await loadPreservingScroll()
   } catch (e) {
     addDialogRef.value?.setSubmitting(false)
     showToast(t('decisions.toast_op_failed', { reason: extractErrorMessage(e) }), 'error')
@@ -686,7 +721,8 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
   statuses.value = next
   syncSelection(next)
   await refreshDecisionStatuses()
-  await Promise.all([load(), loadPool()])
+  // 结构变更：状态字典变 → 筛选逻辑可能变，全量 load + 滚动恢复
+  await loadPreservingScroll()
 }
 </script>
 
@@ -710,7 +746,7 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 .dc-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 /* 筛选栏：单行（时间 + 筛选触发 + 搜索）/ Single-row filter bar */
-.dc-filter-bar { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-4); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface-1, transparent); margin-bottom: var(--s-5); }
+.dc-filter-bar { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-4); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface); margin-bottom: var(--s-5); }
 .dc-filter-pop-wrap { display: inline-flex; }
 .dc-grow { flex: 1; min-width: 180px; }
 
@@ -721,7 +757,7 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 .dc-filter-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; font-weight: 600; line-height: 1; border-radius: 999px; background: var(--accent); color: var(--surface, #fff); }
 
 /* 筛选浮层：fixed + 定位真源 popoverPosition / Filter popover */
-.dc-filter-pop { position: fixed; z-index: var(--z-popover); width: 280px; box-sizing: border-box; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface-1, var(--bg, #fff)); box-shadow: var(--dropdown-shadow); }
+.dc-filter-pop { position: fixed; z-index: var(--z-popover); width: 280px; box-sizing: border-box; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--dropdown-bg); box-shadow: var(--dropdown-shadow); }
 .dfp-section + .dfp-section { margin-top: var(--s-3); }
 .dfp-label { display: block; font-size: var(--fs-12, 12px); color: var(--muted); margin-bottom: 6px; }
 .dfp-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
@@ -776,7 +812,7 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 /* 议题 = 容器分组：边框+淡底明确边界，议题间不再靠纯留白 */
 .dc-topics { display: flex; flex-direction: column; gap: var(--s-4); }
 .dc-topic-hint { font-size: var(--fs-12, 12px); color: var(--muted); margin: 0 0 var(--s-2); line-height: 1.5; }
-.dc-topic { padding: var(--s-3) var(--s-4) var(--s-4); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface-1, transparent); }
+.dc-topic { padding: var(--s-3) var(--s-4) var(--s-4); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); background: var(--surface); }
 .dc-topic-head { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 0 0 var(--s-2); }
 .dc-topic-title { font-size: var(--fs-14); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .dc-topic-badge { flex-shrink: 0; font-size: var(--fs-11, 11px); color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
@@ -788,7 +824,7 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 .dc-evo-list::before { content: ''; position: absolute; left: 3px; top: 10px; bottom: 8px; width: 2px; border-radius: 1px; background: var(--border-strong); opacity: 0.7; }
 .dc-evo-item { position: relative; padding: 0 0 var(--s-3) 20px; }
 .dc-evo-item:last-child { padding-bottom: 2px; }
-.dc-evo-dot { position: absolute; left: 0; top: 5px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface-1, var(--bg, #fff)); }
+.dc-evo-dot { position: absolute; left: 0; top: 5px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
 .dc-evo-entry { min-width: 0; }
 .dc-evo-row { display: flex; align-items: center; gap: var(--s-2); }
 .dc-evo-title { flex: 1; min-width: 0; color: var(--subtle); font-size: var(--fs-12, 12px); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

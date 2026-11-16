@@ -202,136 +202,53 @@ TOOL_CATALOG: list[dict] = [
         },
     },
     {
-        # 洞察共创 HTML 产物（会话驱动唯一写入路径）；实现在 core.insight_board.invoke_revise_board，
+        # 洞察共创 Markdown（单份整板覆盖）；实现在 core.insight_board.invoke_revise_board，
         # schema 变更需同步工具描述消费方（自建 agent_loop 已退役，此处为唯一工具定义来源）。
-        # 【版式归 CLI】描述只保留三件事：内容底线、三条最小契约、基线/版本协议。
         "name": "revise_insight_board", "kind": "write", "needs_task": True,
-        # 读写双语义：空参/无 html = 读（只回板清单）；带 html = 整版落盘
-        "bidirectional": True, "write_arg": "html",
+        # 读写双语义：空参/无 markdown = 读；带 markdown = 整板覆盖
+        "bidirectional": True, "write_arg": "markdown",
         "description": (
-                "读取或修订当前会议的洞察板（一份由你完全自持的自包含 HTML 文档）。"
-                "【调用契约·必读】① 先读基线：工作区 `context/boards/index.md` 选板，再 Read "
-                "`context/boards/<board_id>.html`（没有该文件就是首版，revision=0）；"
-                "② 需要外部知识时 web_search ≤2 次；"
-                "③ 本工具传 board_id + html + expected_revision（读到的版本号）落盘，"
-                "回执 revision≥1 才算完成——只读只搜索就回复用户算失败。"
-                "不带 html = 读：空参只回板清单（board_id/title/revision/exists），带 board_id 才回正文。"
-                "收到 error=stale_baseline 说明你手里的基线已过期（用户可能在别的窗口共创过），"
-                "重读基线后再改，不要硬写覆盖。"
-                "【内容底线·违反会被整份拒收 error=board_is_recap】"
-                "洞察板唯一任务：针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法。"
-                "你被授权调用外部行业知识、标准实践、成熟架构来构造解法；会议内容只用于界定问题，不用于复述。"
-                "每节按「困境（一句话界定）→ 外部最优解法（具体、可执行，附原理或出处）→ 落地步骤与取舍」组织；"
-                "风险/未决项必须每条紧跟一个可落地解法，禁止只罗列问题。"
-                "严禁入板：决策清单（含 DC-1 类编号）、议题/章节归类、决策与人员分工（谁做什么、截止日期）、"
-                "参会人立场与「谁说了什么」、带说话人/时间戳的依据流水、会议概览与摘要复述"
-                "——这些已由逐字稿、纪要页、决策中心承载，再写一遍就是失败。"
-                "若读到的旧基线是上述复述结构，允许且应当推倒重做为解法结构。"
-                "【图形化·硬约束 error=board_is_text_wall】板是图不是文章：每个困境一节，先画后主文；"
-                "每节必须有一个按**形态**识别的主视觉：内联 <svg> / mermaid 形态的 <pre> / <canvas> / "
-                "src 为 data URI 的 <img>。表格、div 色块、纯 CSS 条形不计主视觉；"
-                "用 ol/ul/p 文字列表冒充主视觉同样被拒收。"
-                "mermaid 首词必须是图类型关键字（flowchart/graph/sequenceDiagram/stateDiagram/mindmap/timeline），"
-                "边标签是标配：A -->|按开票日汇率| B；节点文字≤12 字、每图≤10 节点；"
-                "源码内禁写 < > &（用中文替代，防止截断 HTML）、禁 click 语句。"
-                "【三条最小契约·其余版式全归你】"
-                "① 顶层每个逻辑节包成扁平的 <section data-ib-id=\"s1\" data-ib-title=\"节标题\">…</section>"
-                "（节不嵌套、id 稳定），以支持单节共创与悬停定位；"
-                "② 需关联转写位置时用 <a data-seek-ms=\"毫秒\"> 锚点（应用负责接线跳转）；"
-                "③ 每节存在一个主视觉（判据见上）。"
-                "除此之外应用不提任何排版意见：可以输出完整文档（doctype/<html>/<head>/<style>）或片段，"
-                "可以用 :root/html/body 等全局选择器与硬编码色（渲染在独立文档里，影响不到宿主主题）；"
-                "字体、配色、栅格、断点、卡片形态、交互脚本均由你自定。"
-                "只有三条硬约束，且都与排版审美无关、只决定板能不能看清："
-                "① 资源不靠相对路径：图片/字体一律 data URI 内联——同一份 HTML 还要经 raw 端点在"
-                "浏览器里打开，两处 base 解析不一致；"
-                "② 底色与正文色默认跟随宿主主题：应用把宿主当前主题的令牌以**低优先级样式表**注入"
-                "板文档（插在你的样式之前），因此 **底色、正文色、卡片面、边框四个必须写成带兜底值的"
-                "宿主令牌**：background:var(--bg,#0f1420); color:var(--fg,#e8edf6) 与 "
-                "var(--surface,#161d2e)、var(--border,#26314a)——带兜底是因为 raw 端点不注入任何令牌。"
-                "两条禁区：**不得重定义宿主同名令牌**（你在 :root 里写 --bg 就会盖掉宿主值，"
-                "板将永远不跟随主题；要自己的中间色请在 --ib-* 命名空间下派生），"
-                "**不得只依赖宿主令牌而不写兜底值**；语义状态色（成功/警告/错误等）"
-                "可硬编码，但必须与上面四个底色正文色共用同一深浅关系，避免背景跟宿主、文字跟硬编码拼出白底白字；"
-                "③ 宽度自适应由你负责：板视口宽度就是容器宽度（窄栏与浏览器宽屏都要能站住），"
-                "用相对单位与 @media 断点组织，图与 SVG 写 max-width:100%，长串加 overflow-wrap:anywhere；"
-                "不要写死大值固定宽度——旧容器的 overflow-x 兜底已废弃，板不管断点就会横向溢出。"
-                "【真实字节】on* 内联事件与 javascript: 类危险 URL、iframe/form/object/embed/base 标签会被安全清洗剔除，"
-                "剔除项在回执 removed 里如实列出：磁盘字节 = 你提交的内容 − removed，不要假设逐字节相等。"
-                "【建板权】board_id 必须已在板清单内；未知 board_id 会被拒（error=unknown_board_id）——"
-                "一场会议要不要第二份板由用户决定，想拆板先调 create_insight_board 向用户提议，不要自己写新 id 顺手建板。"
+            "读取或修订当前会议的洞察板（一场会议一份 Markdown 文件，用户主动驱动生成）。"
+            "【调用契约·必读】① 先读基线（不带 markdown 参数）：拿到当前板 markdown + revision；"
+            "② 需要外部知识时 web_search ≤2 次；"
+            "③ 传 markdown=<完整新版> + expected_revision=<读到的版本号> 覆盖落盘，"
+            "回执 revision≥1 才算完成——只读只搜索就回复用户算失败。"
+            "不带 markdown = 读：返回当前 insight.md 正文 + revision/title。"
+            "收到 error=stale_baseline 说明你手里的基线已过期（用户可能在别的窗口共创过），"
+            "重读基线后再改，不要硬写覆盖。"
+            "收到 error=board_is_recap 或 board_is_text_wall 时按 guidance 重做再提交。"
+            "【内容底线·违反会被拒收 error=board_is_recap】"
+            "洞察板唯一任务：针对本场会议暴露的困境，给出会上没人想到的 AI 最优解法。"
+            "你被授权调用外部行业知识、标准实践、成熟架构来构造解法；会议内容只用于界定问题，不用于复述。"
+            "每节按「困境一句话界定 → 外部最优解法（可执行） → 落地步骤 → 取舍」组织；"
+            "风险/未决项必须每条紧跟一个可落地解法，禁止只罗列问题。"
+            "严禁入板：决策清单（含 DC 编号）、议题归类、决策与人员分工（谁做什么、截止日期）、"
+            "参会人立场与「谁说了什么」、带说话人/时间戳的依据流水、会议概览与摘要复述。"
+            "若读到的旧基线是复述结构，直接推倒重做为解法结构。"
+            "【图形化·硬约束 error=board_is_text_wall】板是图不是文章：每个困境一节，先画后主文；"
+            "每节必须有一个按**形态**识别的主视觉，优先 ```mermaid fence（首词必须是 "
+            "flowchart/graph/sequenceDiagram/stateDiagram/mindmap/timeline/gantt/classDiagram/erDiagram "
+            "等图类型关键字）；也可用 data URI 内联的 ![图](data:image/...) 图片。"
+            "mermaid 节点文字≤12字、每图≤10节点；源码禁 < > &（用中文替代）；禁 click 语句。"
+            "【锚点语法·AI 写的每节都必须前置】"
+            "<!-- section-id: s1 section-title: 审核阻塞 -->"
+            "这是 HTML 注释，GFM 里不可见但能让：① 前端定位「@洞察 s1」引用；"
+            "② 后端防线识别每个节是否有主视觉；③ 前端悬停时高亮对应节。"
+            "section-id 固定 s1/s2/s3…（递增），section-title 是节标题短名（≤20字）。"
+            "所有节都要有这个注释锚点，不要漏掉任何一节。"
+            "【转写跳转】保留 <a data-seek-ms=毫秒> 锚点（应用负责接线跳转）。"
+            "【front-matter·你不写也行】系统会从正文第一个 h1 猜 title、自动写 revision/updated_at。"
+            "如果想显式写可以开头加："
+            "---\ntitle: 餐饮供应链困境最优解法\n---"
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "board_id": {"type": "string",
-                             "description": "目标板 id（来自 context/boards/index.md 或空参读回的清单）；缺省取默认板"},
-                "html": {"type": "string",
-                         "description": "完整的新版洞察板 HTML（整份替换语义）；缺省则读取当前板"},
+                "markdown": {"type": "string",
+                             "description": "完整的新版洞察板 Markdown（整份覆盖语义）；缺省则读取当前板"},
                 "expected_revision": {"type": "integer",
-                                      "description": "你读到的基线版本号；从 context/boards/ 读到的是哪一版就带哪一版"},
+                                      "description": "你读到的基线版本号；读到的是哪一版就带哪一版"},
             },
-        },
-    },
-    {
-        # 单节共创：只替换板内指定 data-ib-id 的一节，其余节硬隔离。
-        "name": "revise_insight_board_section", "kind": "write", "needs_task": True,
-        # 读写双语义：需同时带 section_id 和 html 才算真落盘
-        "bidirectional": True, "write_arg": "html",
-        "description": (
-            "只修订洞察板中某一节（按节锈点 id 定位替换），其余节逐字节不动。"
-            "需先读到当前板（工作区 context/boards/<board_id>.html，或本工具带 board_id 空参读），"
-            "定位目标节的 data-ib-id。"
-            "html 传入修订后的完整节块（<section data-ib-id=“…”>…</section>，保持同一 id）；"
-            "可传 board_id 指定哪份板（缺省取默认板）、expected_revision 标记基线版本。"
-            "版式仍归你（节内可自带 <style>，但注意节块不独立渲染，全局选择器请写在整版里）；"
-            "资源仍须 data URI 内联。"
-            "内容底线与整版相同：该节必须是「困境一句话界定 → 一个按形态识别的主视觉（内联 SVG / "
-            "mermaid 形态 pre / canvas / data URI 图片）→ 简短图文 → 落地步骤 → 取舍与兜底」结构，"
-            "禁止把一节写成决策/议题/分工清单、发言人记录或纯文字墙，"
-            "否则整版落盘会被后端拒收（error=board_is_recap / board_is_text_wall）。"
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "board_id": {"type": "string", "description": "目标板 id；缺省取默认板"},
-                "section_id": {"type": "string", "description": "目标节的 data-ib-id 值"},
-                "html": {"type": "string", "description": "修订后的完整节块（<section data-ib-id=…>…</section>）"},
-                "expected_revision": {"type": "integer", "description": "读到的基线版本号"},
-            },
-            "required": ["section_id", "html"],
-        },
-    },
-    {
-        # 板清单（只读）：多板下让 CLI 先看到全景再选目标板，避免盲写默认板。
-        "name": "list_insight_boards", "kind": "read", "needs_task": True,
-        "description": (
-            "列出当前会议的全部洞察板（board_id / 标题 / revision / 是否已有内容）。"
-            "与空白板写入前先用本工具确认目标；需要第二份板时走 create_insight_board 提案，"
-            "而不是直接往新 board_id 写。"
-        ),
-        "input_schema": {"type": "object", "properties": {}},
-    },
-    {
-        # 建板提案（不落盘）：与 propose_summary/propose_notes 同构——
-        # “要不要多一份板”会改变用户工作区结构，因此执行权收回用户侧（AI 只保留提议权）。
-        "name": "create_insight_board", "kind": "write", "needs_task": True, "persists": False,
-        "description": (
-            "向用户提议新建一份洞察板（提案式，**不会直接建板**）。"
-            "使用场景：内容已超出单份板的承载力、或用户提出了与现有板不同主题的第二份分析。"
-            "禁止在未经用户点「接受」前声称已建板，也禁止用 revise_insight_board 写一个未知 board_id 来“顺手建板”"
-            "（会被 error=unknown_board_id 拒收）。"
-            "board_id 可缺省（由服务端生成 board-2/board-3…）；title 必填且短（≤ 60 字）。"
-            "提案被接受后，用户确认的那一份板 revision=0，你再调 revise_insight_board 写入首版内容。"
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "board_id": {"type": "string", "description": "期望的新板 id（[\\w-]{1,48}）；缺省由服务端生成"},
-                "title": {"type": "string", "description": "新板标题（必填，建议 ≤ 20 字）"},
-                "reason": {"type": "string", "description": "为什么要多一份板（给用户看的一句话理由）"},
-            },
-            "required": ["title"],
         },
     },
 ]

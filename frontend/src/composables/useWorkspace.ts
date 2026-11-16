@@ -146,17 +146,21 @@ export function useWorkspace() {
       // summary 变更 → setSummaryProposal（模块级单例，自动起跳纪要 Tab diff 预览）
       if (r.summary) {
         const { setSummaryProposal } = useSummaryProposal()
-        setSummaryProposal({ baseline: r.summary.baseline, proposed: r.summary.proposed })
+        setSummaryProposal({ baseline: r.summary.baseline, proposed: r.summary.proposed, conflict: r.summary.conflict })
       }
       // notes 变更 → setNotesProposal（模块级单例，自动起跳随记 Tab diff 预览）
       if (r.notes) {
         const { notesProposal } = useNotesProposal()
-        notesProposal.value = { baseline: r.notes.baseline, proposed: r.notes.proposed }
+        notesProposal.value = { baseline: r.notes.baseline, proposed: r.notes.proposed, conflict: r.notes.conflict }
       }
       const parts: string[] = []
       if (r.summary) parts.push(t('ai-panel.context.workspace_summary_changes'))
       if (r.notes) parts.push(t('ai-panel.context.workspace_notes_changes'))
       showToast(t('ai-panel.context.workspace_imported', { parts: parts.join('、') }), 'success')
+      // [状态同步] 双侧改动冲突：外部文件与应用内编辑同时变更，提醒用户在 diff 中裁决（ASSET_SYNC P3）
+      if (r.summary?.conflict || r.notes?.conflict) {
+        showToast(t('ai-panel.context.workspace_import_conflict'), 'warn')
+      }
       return true
     } catch (err) {
       showToast(extractErrorMessage(err, '导入失败'), 'error')

@@ -96,10 +96,15 @@ flowchart TD
     H2 -- 无注册 --> H4[等待手动绑定]
     H3 --> I[summarize.py<br/>通义千问生成纪要<br/>结论 + 待办]
     H4 -- 用户确认绑定 --> I
-    I --> J[Markdown 纪要<br/>data/output/]
+    I --> J[任务 JSON SSOT<br/>data/tasks/ + 资产投影<br/>agent-workspace/_preview/]
+    J -. 按需渲染 .-> J1[下载 md/docx<br/>临时产物可清理]
     I --> K[voiceprint.py<br/>按确认绑定补录注册表]
     K -. 供后续会议自动匹配 .-> H2
 ```
+
+> 纪要存在形式（ASSET_SYNC，详见 `docs/design/ASSET_SYNC_ARCHITECTURE.md`）：
+> 机器可读 SSOT（任务 JSON + sidecar）与资产化工作区两种；`data/output/` 不再是
+> 管线落盘产物，仅作按需下载的临时缓存（CLI `transcribe -o` 除外）。
 
 ## 三、关键设计约束（详见 API_CONTRACTS）
 1. **只认公网 URL**：本地/内录文件必须先上传换 `oss://` URL。

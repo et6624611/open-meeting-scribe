@@ -13,12 +13,15 @@ T-24：原实现散在 notes 路由端点里，agent-tools 写通道只能 `from
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 
 from core import task_store, users
 from core.decision_flow import make_decision_node, resolve_owner
 from core.decision_status import StatusError, is_closing, validate_status_id
+
+logger = logging.getLogger(__name__)
 
 # 与路由层 Pydantic 约束保持一致（agent-tools 通道不经过 Pydantic，需在此兜底）
 _FIELD_LIMITS = {
@@ -50,8 +53,21 @@ def _require_task(task_id: str) -> dict:
 
 
 def mark_modified(task_id: str) -> None:
-    """标记任务内容已修改，用于知识库同步脏检测。"""
-    task_store.tasks[task_id]["last_modified_at"] = datetime.now().isoformat()
+    """内容脏标记唯一收口入口（ASSET_SYNC P2）。
+
+    三件事：last_modified_at（知识库同步脏检测）+ content_rev 单调递增
+    （投影/回流冲突判定锚点）+ 资产工作区增量投影。
+    投影失败不阻断业务写入（容错不降级：清单记 errors 标 dirty 待重试）。
+    """
+    task = task_store.tasks[task_id]
+    task["last_modified_at"] = datetime.now().isoformat()
+    task["content_rev"] = int(task.get("content_rev") or 0) + 1
+    # [状态同步] 内容变更后必须投影到资产工作区，否则外部 AI 读到过期基线
+    try:
+        from core.cli_engine.projection import project_task
+        project_task(task_id)
+    except Exception as e:  # noqa: BLE001 - 投影异常不阻断受控写主链路
+        logger.warning("[资产投影] task=%s 脏标记钩子异常（不影响写入）: %s", task_id[:8], e)
 
 
 def _apply_status(decision: dict, status: str) -> None:

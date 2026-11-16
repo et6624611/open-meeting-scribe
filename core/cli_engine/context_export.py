@@ -167,8 +167,9 @@ def export_context(
 
         decisions = task.get("decisions") or []
         if decisions:
-            (ctx / "decisions.json").write_text(
-                json.dumps(decisions, ensure_ascii=False, indent=2), encoding="utf-8")
+            from core.fs_atomic import atomic_write_text
+            atomic_write_text(ctx / "decisions.json",
+                              json.dumps(decisions, ensure_ascii=False, indent=2))
             written.append("context/decisions.json")
 
     # 洞察台观察结论（持久化文件，工作区文件模式对 token 预算宽松，全量不截断）
@@ -188,7 +189,7 @@ def export_context(
         }, insights_md)
         written.append("context/insights.md")
 
-    # 洞察板 HTML 基线：多轮共创不从零重写的根因修复（见 _write_board_files）
+    # 洞察板 Markdown 基线：多轮共创不从零重写的根因修复（见 _write_board_files）
     _write_board_files(ctx, task_id, written)
 
     # 对话历史（保障多轮上下文连续性，防止 session resume 失败时上下文割裂）
@@ -273,12 +274,13 @@ def export_context(
         brief_lines += [
             "",
             "【强制执行】洞察板共创三步：",
-            "① 读工作区 context/boards/index.md 选板，再 Read context/boards/<board_id>.html 拿基线（无此文件=首版，revision=0）",
-            "   → ② web_search ×最多2次 → ③ revise_insight_board(board_id, html=<完整HTML>, expected_revision=<读到的版本号>) 落盘",
+            "① 读工作区 context/boards/index.md，再 Read context/boards/main.md 拿基线（无 main.md=首版，revision=0）",
+            "   → ② web_search ×最多2次 → ③ revise_insight_board(markdown=<完整Markdown>, expected_revision=<读到的版本号>) 落盘",
+            "   工具名以引擎工具列表为准：MCP 引擎下全名是 mcp__oms-tools__revise_insight_board，裸名会报 Tool not found。",
             "缺第③步就是任务失败——后端没有板文件，用户洞察 tab 是空的。",
             "收到 error=stale_baseline 说明基线已过期，重读后再改；不要把旧基线直接覆盖上去。",
             "不要在搜索后直接回复用户。必须看到工具回执 revision≥1 再回复。",
-            "版式（doctype / <style> / 配色 / 脚本）由你负责；图片字体一律 data URI 内联。",
+            "提交完整 GFM，不要提交 HTML 或单个节；图解使用 ```mermaid fence，并保留 <!-- section-id: ... section-title: ... --> 节锚点。",
         ]
     brief = "\n".join(brief_lines)
 
@@ -361,6 +363,13 @@ def export_preview_context(*, task_id: str, task: dict,
         **_base_meta(task_id, task, "related"),
     }, "\n".join(related_parts))
     written.append("related.md")
+
+    # ASSET_SYNC P2：全量导出同步刷新投影清单（回流冲突判定的 hash 锚点）
+    try:
+        from .projection import rebuild_manifest
+        rebuild_manifest(ws, task)
+    except Exception as e:  # noqa: BLE001 - 清单失败不阻断导出
+        logger.warning("[CLI引擎] 投影清单刷新失败 task=%s: %s", task_id, e)
 
     logger.info("[CLI引擎] 预览工作区生成 task=%s ws=%s files=%d", task_id, ws, len(written))
     return {"workspace": str(ws), "file_count": len(written)}
@@ -531,17 +540,25 @@ def refresh_workspace(task_id: str) -> dict:
 def import_from_workspace(task_id: str) -> dict:
     """解析工作区 .md frontmatter，返回可导入的 summary/notes 变更（propose 格式）。
     只解析 summary.md 和 notes.md；frontmatter 的 task_id 必须匹配，否则拒收。
-    返回 {has_changes, summary: {baseline, proposed}|null, notes: {baseline, proposed}|null, source_mtime, task_id}。
+
+    ASSET_SYNC P3 三方 hash 冲突判定（S=SSOT 定稿 / P=投影清单 / F=文件实际）：
+      F==P → 无外部改动（防回环：即使 S 已前进，那是待投影不是外部编辑）；
+      F!=P 且 S==P → 纯外部改动提案（conflict=False）；
+      F!=P 且 S!=P → 双侧改动冲突提案（conflict=True，用户裁决，绝不自动合并）；
+      manifest 缺失（旧工作区）→ 降级为旧行为（body≠基线即提案）。
     baseline = 当前定稿口径（user_summary/user_notes 优先），proposed = 工作区 .md body；
-    两者不同才标记为变更，走 propose 通道（不直接覆盖，用户在前端接受才落盘）。"""
+    走 propose 通道（不直接覆盖，用户在前端接受才落盘）。"""
     from core.chat_context import task_final_summary, task_notes
     from core.task_store import tasks
+
+    from .projection import body_hash, read_manifest
     task = tasks.get(task_id)
     if not task:
         return {"error": "task_not_found"}
     project_id = task.get("project_id")
     ws = preview_workspace_dir(task_id, project_id, task)
     ctx = ws / "context"
+    projected = read_manifest(ws).get("files") or {}
     result: dict = {"has_changes": False, "summary": None, "notes": None,
                     "source_mtime": None, "task_id": task_id}
 
@@ -556,7 +573,7 @@ def import_from_workspace(task_id: str) -> dict:
                 end = content.find("---", 3)
                 if end > 0:
                     frontmatter = content[3:end].strip()
-                    body = content[end + 3:].lstrip("\n")
+                    raw_body = content[end + 3:].lstrip("\n")
                     for line in frontmatter.split("\n"):
                         if line.strip().startswith("task_id:"):
                             fm_task_id = line.split(":", 1)[1].strip().strip('"')
@@ -566,13 +583,22 @@ def import_from_workspace(task_id: str) -> dict:
                     key = filename.replace(".md", "")
                     # notes.md body 含固定头部声明（# 会议随记 + > 随记是...），剥掉取用户实际 notes，
                     # 与 baseline（task_notes）口径一致；外部 IDE 改头部声明不算用户内容变更。
+                    body = raw_body
                     if key == "notes" and body.startswith("# 会议随记"):
                         parts = body.split("\n\n", 2)
                         if len(parts) >= 3:
                             body = parts[2]
                     baseline = baselines[filename]
+                    # 三方判定：F 用完整 body（含头部声明）与投影 hash 同口径
+                    entry = projected.get(f"context/{filename}") or {}
+                    p_hash = entry.get("hash")
+                    if p_hash and body_hash(raw_body) == p_hash:
+                        continue  # 无外部改动（防回环）
                     if body != baseline:
-                        result[key] = {"baseline": baseline, "proposed": body}
+                        p_base = entry.get("base_hash")
+                        conflict = bool(p_base) and body_hash(baseline) != p_base
+                        result[key] = {"baseline": baseline, "proposed": body,
+                                       "conflict": conflict}
                         result["has_changes"] = True
                     mtime = f.stat().st_mtime
                     if result["source_mtime"] is None or mtime > result["source_mtime"]:

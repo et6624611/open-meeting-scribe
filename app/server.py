@@ -662,6 +662,9 @@ async def startup():
         # AI 写回快照 sidecar 与工作区同一保留期口径（PROPOSAL §5.3）
         from core.rewrite_snapshots import sweep_expired_snapshots
         sweep_expired_snapshots(_retention)
+        # 按需 docx 临时缓存件同一保留期口径（ASSET_SYNC P1：可清理、不参与同步）
+        from core.task_store import sweep_expired_docx_cache
+        sweep_expired_docx_cache(_retention)
     except Exception as e:
         logger.warning(f"启动清理智能体工作区失败（不影响服务）: {e}")
 

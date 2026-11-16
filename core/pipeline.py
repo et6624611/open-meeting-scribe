@@ -194,6 +194,7 @@ def run_pipeline_stage2(
     one_page_factor: float = 1.0,
     summary_mode: str = "full",
     summary_timeout: float | None = None,
+    emit_file: bool = True,
 ) -> dict:
     """
     管线第二阶段：对话稿 → 纪要 / Pipeline stage 2: dialogue → summary.
@@ -212,6 +213,8 @@ def run_pipeline_stage2(
         meeting_time: 会议时间（来自音频采集时间） / Meeting time (from audio capture time), e.g. "2026-09-03 14:30"
         user_notes: 用户录音期间输入的笔记，作为纪要生成的上下文 / User notes during recording, used as context for summary generation
         one_page_factor: 一页纸系数（会议级篇幅预算，透传给 generate_summary） / Per-meeting one-page factor
+        emit_file: 是否落盘 Markdown 导出件（ASSET_SYNC P1：Web 管线传 False，
+            下载改为从 SSOT 按需渲染；CLI transcribe 保持默认 True，文件即交付物）
 
     Returns:
         {
@@ -290,21 +293,26 @@ def run_pipeline_stage2(
 
     # 7. 保存 / Save
     progress("save", "保存纪要...", 98)
-    if audio_path:
-        audio_path = Path(audio_path)
-        output_dir = Path(cfg["output_dir"])
-        output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = output_dir / f"{audio_path.stem}_{timestamp}_纪要.md"
-    else:
-        output_dir = Path(cfg["output_dir"])
-        output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = output_dir / f"meeting_{timestamp}_纪要.md"
+    if emit_file:
+        if audio_path:
+            audio_path = Path(audio_path)
+            output_dir = Path(cfg["output_dir"])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = output_dir / f"{audio_path.stem}_{timestamp}_纪要.md"
+        else:
+            output_dir = Path(cfg["output_dir"])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = output_dir / f"meeting_{timestamp}_纪要.md"
 
-    saved_path = save_summary(summary, output_path, dialogue)
-    result["output_path"] = saved_path
-    progress("done", f"完成！纪要已保存: {saved_path}", 100)
+        saved_path = save_summary(summary, output_path, dialogue)
+        result["output_path"] = saved_path
+        progress("done", f"完成！纪要已保存: {saved_path}", 100)
+    else:
+        # ASSET_SYNC P1：Web 管线不再写 data/output 冻结快照，下载从 SSOT 按需渲染
+        result["output_path"] = None
+        progress("done", "完成！纪要已生成（可随时下载）", 100)
 
     stage2_elapsed = time.perf_counter() - stage2_start
     logger.info(f"[PERF] 管线第二阶段总计: {stage2_elapsed:.3f}s")
