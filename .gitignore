@@ -38,6 +38,11 @@ samples/*.mp3
 samples/*.wav
 samples/*.m4a
 samples/*.mp4
+# 仓库根目录的临时录音/测试音频
+/*.wav
+
+# 设置文件本地备份（含密钥，不入库）
+data/settings.json.bak-*
 
 # Python
 __pycache__/
