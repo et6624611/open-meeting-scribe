@@ -166,7 +166,7 @@
           <DynamicScrollerItem
             :item="item"
             :active="active"
-            :size-dependencies="[item.type === 'chapter' && expandedChapters.has(item.chapterIdx), showTranscript, markerMode, layerView, cleanupEnabled, item.type === 'line' && peeked.has(item.lineIdx), item.type === 'line' && editingNoteIdx === item.lineIdx, item.type === 'line' && notesByLine[item.lineIdx]]"
+            :size-dependencies="[item.type === 'chapter' && expandedChapters.has(item.chapterIdx), showTranscript, markerMode, layerView, cleanupEnabled, item.type === 'line' && peeked.has(item.lineIdx), item.type === 'line' && isEditingAt(item.lineIdx), item.type === 'line' && notesByLine[item.lineIdx]?.length]"
             :data-index="index"
           >
             <div class="rec-transcript-item">
@@ -214,23 +214,25 @@
                     <div class="rec-peek-text">{{ lineOf(item).text }}</div>
                     <div v-if="cleanupRuleText(lineOf(item).clean_ops)" class="rec-peek-rule">{{ cleanupRuleText(lineOf(item).clean_ops) }}</div>
                   </div>
-                  <!-- 已发送随记：点击文本原地编辑（Enter 保存 · Shift+Enter 换行 · Esc 取消 · 清空即删除） -->
-                  <div v-if="notesByLine[item.lineIdx]" class="note-inline-card">
-                    <textarea
-                      v-if="editingNoteIdx === item.lineIdx"
-                      ref="noteEditRef"
-                      class="note-inline-edit"
-                      rows="2"
-                      :value="noteDraft"
-                      @input="noteDraft = ($event.target as HTMLTextAreaElement).value"
-                      @keydown.enter.exact="onNoteEditEnter"
-                      @keydown.esc.stop.prevent="cancelNoteEdit"
-                      @blur="saveNoteEdit"
-                    ></textarea>
-                    <template v-else>
-                      <span class="note-inline-text" role="button" tabindex="0" :title="t('recording.notes.edit')" @click.stop="startNoteEdit(item.lineIdx)" @keydown.enter.prevent="startNoteEdit(item.lineIdx)">{{ notesByLine[item.lineIdx] }}</span>
-                      <button class="note-inline-delete" @click.stop="$emit('deleteNote', item.lineIdx)" :title="t('recording.notes.delete')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                    </template>
+                  <!-- 已发送随记：同一行可多条，逐条点击文本原地编辑（Enter 保存 · Shift+Enter 换行 · Esc 取消 · 清空即删除） -->
+                  <div v-if="notesByLine[item.lineIdx]?.length" class="note-inline-list">
+                    <div v-for="note in notesByLine[item.lineIdx]" :key="note.id" class="note-inline-card">
+                      <textarea
+                        v-if="editingNoteId === note.id"
+                        :ref="(el) => setNoteEditRef(el)"
+                        class="note-inline-edit"
+                        rows="2"
+                        :value="noteDraft"
+                        @input="noteDraft = ($event.target as HTMLTextAreaElement).value"
+                        @keydown.enter.exact="onNoteEditEnter"
+                        @keydown.esc.stop.prevent="cancelNoteEdit"
+                        @blur="saveNoteEdit"
+                      ></textarea>
+                      <template v-else>
+                        <span class="note-inline-text" role="button" tabindex="0" :title="t('recording.notes.edit')" @click.stop="startNoteEdit(note)" @keydown.enter.prevent="startNoteEdit(note)">{{ note.text }}</span>
+                        <button class="note-inline-delete" @click.stop="$emit('deleteNote', note.id)" :title="t('recording.notes.delete')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                      </template>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -271,6 +273,7 @@ import RecTimeline from './RecTimeline.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEngineStore } from '@/stores/engine'
 import type { TranscriptLine } from '@/composables/useWebSocket'
+import type { RecordingNote } from '@/composables/useRecordingNotes'
 import type { SupportedLanguage } from '@/composables/useTranslation'
 import { fetchSettings, saveSettings } from '@/api/settings'
 import { cleanupRuleText as formatCleanupRule, segKeydownHandler } from '@/utils/transcriptLayers'
@@ -377,7 +380,7 @@ const props = defineProps<{
   chapters: Array<{ id?: number; title: string; start_ms: number; end_ms?: number; key_points?: string[]; summary?: string }>
   showTranscript: boolean
   markerMode: boolean
-  notesByLine: Record<number, string>
+  notesByLine: Record<number, RecordingNote[]>
   compressedCount: number
   expandedChapters: Set<number>
   locateId: number | null
@@ -401,8 +404,8 @@ const emit = defineEmits<{
   (e: 'toggleChapter', idx: number): void
   (e: 'openBind', asrId: number): void
   (e: 'toggleLocate', id: number): void
-  (e: 'deleteNote', idx: number): void
-  (e: 'updateNote', idx: number, text: string): void
+  (e: 'deleteNote', id: string): void
+  (e: 'updateNote', id: string, text: string): void
   (e: 'toggleTranslate'): void
   (e: 'setTranslateLang', lang: string): void
 }>()
@@ -413,15 +416,26 @@ const scrollerRef = ref<InstanceType<typeof DynamicScroller> | null>(null)
 const timelineRef = ref<InstanceType<typeof RecTimeline> | null>(null)
 
 // ── 已发送随记的原地编辑 / In-place editing of a sent note ──
-const editingNoteIdx = ref<number | null>(null)
+// 按随记 id 定位（同一行可能有多条），不再用行号
+// Keyed by note id (a line may hold several notes), not by line index
+const editingNoteId = ref<string | null>(null)
 const noteDraft = ref('')
 const noteEditRef = ref<HTMLTextAreaElement | null>(null)
 let noteEditCancelled = false
 
-function startNoteEdit(idx: number) {
+function isEditingAt(idx: number): boolean {
+  const list = props.notesByLine[idx]
+  return !!list && list.some(n => n.id === editingNoteId.value)
+}
+
+function setNoteEditRef(el: unknown) {
+  if (el) noteEditRef.value = el as HTMLTextAreaElement
+}
+
+function startNoteEdit(note: RecordingNote) {
   noteEditCancelled = false
-  noteDraft.value = props.notesByLine[idx] ?? ''
-  editingNoteIdx.value = idx
+  noteDraft.value = note.text
+  editingNoteId.value = note.id
   nextTick(() => {
     const el = noteEditRef.value
     if (!el) return
@@ -431,17 +445,17 @@ function startNoteEdit(idx: number) {
 }
 
 function saveNoteEdit() {
-  const idx = editingNoteIdx.value
-  if (idx === null) return
-  editingNoteIdx.value = null
+  const id = editingNoteId.value
+  if (id === null) return
+  editingNoteId.value = null
   if (noteEditCancelled) { noteEditCancelled = false; return }
-  emit('updateNote', idx, noteDraft.value)
+  emit('updateNote', id, noteDraft.value)
 }
 
 function cancelNoteEdit() {
   noteEditCancelled = true
   noteDraft.value = ''
-  editingNoteIdx.value = null
+  editingNoteId.value = null
 }
 
 /** Enter 保存，组字中的回车（输入法确认候选）与 Shift+Enter 不保存 */
@@ -497,9 +511,11 @@ function estimateLineHeight(idx: number): number {
     }
   }
 
-  // 内联笔记卡片（编辑态为两行文本框）/ Inline note card (two-row textarea while editing)
-  if (props.notesByLine[idx]) {
-    h += editingNoteIdx.value === idx ? 4 + 12 + 58 : 4 + 12 + 18
+  // 内联笔记卡片（同一行可多条；编辑态为两行文本框）/ Inline note cards (several per line; two-row textarea while editing)
+  const notes = props.notesByLine[idx]
+  if (notes?.length) {
+    const editingHere = notes.some(n => n.id === editingNoteId.value)
+    h += notes.length * (4 + 12 + (editingHere ? 58 : 18))
   }
 
   // content 列 padding-bottom(--s-4 = 16px) / Content column padding-bottom(--s-4 = 16px)

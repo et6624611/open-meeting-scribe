@@ -33,10 +33,12 @@ export function useRecordingNotes(
   const userNotes = ref<RecordingNote[]>([])
   const noteCount = computed(() => userNotes.value.length)
 
+  // 同一转写行可挂多条随记（连续发送时行号不变），按行聚合为列表，避免互相覆盖
+  // Multiple notes can attach to the same line (consecutive sends share a line index); group by line
   const notesByLine = computed(() => {
-    const map: Record<number, string> = {}
+    const map: Record<number, RecordingNote[]> = {}
     for (const n of userNotes.value) {
-      if (n.lineIndex >= 0) map[n.lineIndex] = n.text
+      if (n.lineIndex >= 0) (map[n.lineIndex] ??= []).push(n)
     }
     return map
   })
@@ -113,19 +115,18 @@ export function useRecordingNotes(
     _scheduleSync()
   }
 
-  function deleteNote(idx: number) {
-    userNotes.value = userNotes.value.filter(n => n.lineIndex !== idx)
+  function deleteNote(id: string) {
+    userNotes.value = userNotes.value.filter(n => n.id !== id)
     saveToStorage()
     _scheduleSync()
   }
 
   /** 修改已发送的随记（清空即删除，与内联卡片编辑共用口径）
    *  Edit a sent note in place (blank text deletes it) */
-  function updateNote(idx: number, text: string) {
+  function updateNote(id: string, text: string) {
     const next = text.trim()
-    if (!next) { deleteNote(idx); return }
-    // 与 notesByLine 口径一致：同一行多条时显示的是最后一条，编辑也落在它上面
-    const note = [...userNotes.value].reverse().find(n => n.lineIndex === idx)
+    if (!next) { deleteNote(id); return }
+    const note = userNotes.value.find(n => n.id === id)
     if (!note || note.text === next) return
     note.text = next
     saveToStorage()
