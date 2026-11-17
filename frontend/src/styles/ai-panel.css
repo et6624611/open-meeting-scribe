@@ -641,33 +641,28 @@
   line-height: 1;
 }
 
-/* 分区标题逐字显现 + 微光扫过 + 呼吸光晕 */
+/* 分区标题逐字显现 + 静态光晕
+   只保留一次性入场；光晕由静态 text-shadow 承担，常驻呼吸上移到标题容器，
+   全段一条 opacity 动画走合成器。旧实现对每个字符做 filter: brightness 与
+   text-shadow 的 infinite 动画，浏览器无法合成，会逐帧重算样式（同底栏语录）。
+   One-shot reveal only; the glow is a static text-shadow and the persistent
+   breathing runs once on the container as a compositor-friendly opacity
+   animation. The old per-character filter/text-shadow loops forced per-frame
+   style recalc. */
 .ctx-title-char {
   display: inline-block;
   opacity: 0;
   transform: translateY(3px);
+  text-shadow: 0 0 6px oklch(from var(--accent) l c h / 0.15);
   animation: ctx-char-in 0.35s ease forwards;
 }
 @keyframes ctx-char-in {
   to { opacity: 1; transform: translateY(0); }
 }
-
-/* 微光扫过（逐字显现完成后启动） */
-.ctx-title-char {
-  animation: ctx-char-in 0.35s ease forwards, ctx-wave 5s ease-in-out 1.5s infinite;
-}
-@keyframes ctx-wave {
-  0%, 25%, 100% { filter: brightness(1); }
-  12.5% { filter: brightness(1.4); }
-}
-
-/* 呼吸光晕 */
-.ctx-title-char {
-  animation: ctx-char-in 0.35s ease forwards, ctx-wave 5s ease-in-out 1.5s infinite, ctx-glow 4s ease-in-out 2s infinite;
-}
+.ctx-section-title { animation: ctx-glow 4s ease-in-out 2s infinite; will-change: opacity; }
 @keyframes ctx-glow {
-  0%, 100% { text-shadow: 0 0 0 transparent; }
-  50% { text-shadow: 0 0 6px oklch(from var(--accent) l c h / 0.15); }
+  0%, 100% { opacity: 0.88; }
+  50% { opacity: 1; }
 }
 
 /* 无障碍：减弱动效 */

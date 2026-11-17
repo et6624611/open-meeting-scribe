@@ -53,21 +53,17 @@ async function fetchPhilosophy(page?: string, tab?: string): Promise<Record<stri
   }
 }
 
-/** 触发动画效果 / Trigger reveal animation */
+/** 触发逐字入场动画 / Trigger per-character reveal animation */
 function triggerAnimation() {
   setTimeout(() => {
     const el = document.getElementById('philosophyText')
     if (el) {
-      el.classList.remove('is-visible', 'is-shimmer')
+      el.classList.remove('is-visible')
       // 强制回流以重启动画 / Force reflow to restart animation
       void el.offsetWidth
       el.classList.add('is-visible')
     }
   }, 100)
-  setTimeout(() => {
-    const el = document.getElementById('philosophyText')
-    if (el) el.classList.add('is-shimmer')
-  }, 100 + text.value.length * 80 + 800)
 }
 
 /** 初始加载（应用启动时调用） / Initial load (called on app startup) */

@@ -228,21 +228,24 @@
 /* ─── Philosophy (inside status bar) ─── */
 .status .philosophy-text { font-size: 11px; color: var(--subtle); letter-spacing: 0.02em; font-family: var(--font-body); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; }
 
-/* 逐字显现 */
-.status .philosophy-char { display: inline-block; opacity: 0; transform: translateY(4px); }
+/* 逐字显现 + 呼吸光晕
+   入场逐字（一次性，0.4s）；常驻呼吸上移到容器，全段只有一条 opacity 动画，
+   走合成器、不触发重排与逐帧样式重算。光晕质感由静态 text-shadow 承担。
+   旧实现用 text-shadow / filter: brightness 对每个字符做 infinite 动画，浏览器
+   无法合成，只能每帧重算样式与布局（实测 60 次/秒、永久运行），是长期空转主因。
+   Reveal is per-character and one-shot; the persistent breathing runs on the
+   container as a single opacity animation (compositor-friendly, no per-frame
+   style/layout recalc). A static text-shadow keeps the glow. */
+.status .philosophy-char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(4px);
+  text-shadow: 0 0 8px oklch(from var(--accent) l c h / 0.18);
+}
+.status .philosophy-text.is-visible { animation: phil-glow 4s ease-in-out 2s infinite; will-change: opacity; }
 .status .philosophy-text.is-visible .philosophy-char { animation: phil-char-in 0.4s ease forwards; }
 @keyframes phil-char-in { to { opacity: 1; transform: translateY(0); } }
-
-/* 微光扫过（逐字显现完成后启动，周期性循环） */
-.status .philosophy-text.is-shimmer .philosophy-char { animation: phil-char-in 0.4s ease forwards, phil-wave 5s ease-in-out 3s infinite; }
-@keyframes phil-wave { 0%, 25%, 100% { filter: brightness(1); } 12.5% { filter: brightness(1.5); } }
-
-/* 呼吸光晕 */
-.status .philosophy-text.is-visible .philosophy-char { text-shadow: 0 0 0 transparent; animation: phil-char-in 0.4s ease forwards, phil-glow 4s ease-in-out 2s infinite; }
-@keyframes phil-glow { 0%, 100% { text-shadow: 0 0 0 transparent; } 50% { text-shadow: 0 0 8px oklch(from var(--accent) l c h / 0.2); } }
-
-/* 微光 + 光晕合并（is-shimmer 优先级高于 is-visible） */
-.status .philosophy-text.is-shimmer .philosophy-char { animation: phil-char-in 0.4s ease forwards, phil-wave 5s ease-in-out 3s infinite, phil-glow 4s ease-in-out 2s infinite; }
+@keyframes phil-glow { 0%, 100% { opacity: 0.86; } 50% { opacity: 1; } }
 
 /* 无障碍：减弱动效 */
 @media (prefers-reduced-motion: reduce) {
