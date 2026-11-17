@@ -8,7 +8,7 @@ core/insight_board_store.py — 洞察板存储入口（Markdown 版）
 - board_md_load / board_md_save / board_md_meta  —— 转发到 insight_board_md
 - 多板接口（boards_manifest / invoke_create_board / board_html_save_section）
   保留为 NoOp 或返回固定值，避免上游 import 报错；逐步淘汰中。
-- migrate_legacy_html_to_md  —— 存量迁移
+- migrate_legacy_html_to_md  —— 统一由 core.insight_board_md 提供（聚合层转发）
 """
 
 from __future__ import annotations
@@ -17,12 +17,9 @@ import logging
 import re
 
 from core.insight_board_md import (
-    BOARD_MD_CAP,
-    _valid_task_id,
     board_md_load,
     board_md_meta,
     board_md_save,
-    migrate_legacy_html_to_md,
 )
 
 logger = logging.getLogger(__name__)

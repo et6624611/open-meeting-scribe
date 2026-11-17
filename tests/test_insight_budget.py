@@ -4,7 +4,8 @@ tests/test_insight_budget.py — 洞察台一页纸系数：卡位换算、预�
 覆盖：
 1. card_slots / diagram_slots 换算表与非法值兜底
 2. apply_budget：降级顺序（最旧未确认优先）、acknowledged 保护、图卡上限、纯函数无副作用
-3. 端点：POST messages 写盘前重排；PATCH task one_page.insights 改档立即重排落盘；非法档位 422
+3. 端点：PATCH task one_page.insights 改档立即重排落盘；非法档位 422；
+   messages 端点已退役（写入静默忽略、读取返回空数组）
 4. chat 上下文两处读取过滤 deferred
 """
 
@@ -113,30 +114,20 @@ class TestApplyBudget:
         assert "卡位已满" not in block2
 
 
-class TestSaveEndpointRebalance:
-    def test_save_applies_budget_and_returns_messages(self, client, tmp_path, monkeypatch):
-        import app.routers.insights as insights_router
-        monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
-        monkeypatch.setattr(insights_router, "tasks", {"t-b1": {"task_id": "t-b1", "one_page": {"insights": 0.5}}})
-        msgs = [_msg(i) for i in range(1, 4)]
-        resp = client.post("/api/insights/messages/t-b1", json={"messages": msgs})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["count"] == 3
-        # 0.5 页 = 1 个卡位：仅最新一张有效
-        assert [m["deferred"] for m in body["messages"]] == [True, True, False]
-        stored = json.loads((tmp_path / "t-b1.insights.json").read_text(encoding="utf-8"))
-        assert [m["deferred"] for m in stored["messages"]] == [True, True, False]
+class TestSaveEndpointRetired:
+    """messages 端点已退役（会中实时链路关闭）：写入静默忽略、读取始终返回空数组。"""
 
-    def test_save_unknown_task_defaults_to_one_page(self, client, tmp_path, monkeypatch):
-        import app.routers.insights as insights_router
+    def test_post_messages_is_noop(self, client, tmp_path, monkeypatch):
         monkeypatch.setattr(task_store, "TASKS_DIR", tmp_path)
-        monkeypatch.setattr(insights_router, "tasks", {})
-        msgs = [_msg(i) for i in range(1, 5)]
-        resp = client.post("/api/insights/messages/t-ghost", json={"messages": msgs})
+        resp = client.post("/api/insights/messages/t-b1", json={"messages": [_msg(i) for i in range(1, 4)]})
         assert resp.status_code == 200
-        # 缺省系数 1 → 2 个卡位
-        assert [m["deferred"] for m in resp.json()["messages"]] == [True, True, False, False]
+        assert resp.json() == {"ok": True, "count": 0, "messages": []}
+        assert not (tmp_path / "t-b1.insights.json").exists()
+
+    def test_get_messages_returns_empty(self, client):
+        resp = client.get("/api/insights/messages/t-b1")
+        assert resp.status_code == 200
+        assert resp.json() == {"messages": []}
 
 
 class TestPatchOnePage:

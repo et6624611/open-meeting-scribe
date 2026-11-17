@@ -20,7 +20,6 @@ app/routers/insights.py — AI 洞察路由端点 / AI insights route endpoints
 
 import logging
 import webbrowser
-from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 

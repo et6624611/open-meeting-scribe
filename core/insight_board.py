@@ -20,8 +20,8 @@ core/insight_board.py — 洞察板引擎（聚合入口） / Insight Board engi
 
 from __future__ import annotations
 
-from . import insight_board_md as _md
 from . import insight_board_html as _html
+from . import insight_board_md as _md
 from . import insight_board_spec as _spec
 from . import insight_board_store as _store
 

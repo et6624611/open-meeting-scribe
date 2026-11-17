@@ -262,9 +262,11 @@ class TestChatEditVerification:
             return _llm_result("相关决策责任人改为钱乙。")
 
         # 意图解析在 core.chat_edits 内调用，需 patch 其模块级引用
+        from app.routers import chat_stream_routes as chat_routes
         from core import chat_edits as chat_edits_mod
         monkeypatch.setattr(chat_edits_mod, "async_chat_completion", fake_intent)
-        monkeypatch.setattr(chat_mod, "async_chat_completion_full", fake_full)
+        # 端点由 chat_stream_routes 直接调用 core.llm 同名符号，打桩须落在该模块
+        monkeypatch.setattr(chat_routes, "async_chat_completion_full", fake_full)
         resp = client.post("/api/chat", json={"message": "决策中赵甲应该是钱乙", "task_id": "unit-edit-0004"})
         assert resp.status_code == 200
         data = resp.json()
@@ -520,8 +522,8 @@ class TestChatWithCurrentPage:
         async def fake_full(messages, **kwargs):
             return _llm_result("你好，我在首页可以帮你开始录音或上传音频。")
 
-        from app.routers import chat as chat_mod
-        monkeypatch.setattr(chat_mod, "async_chat_completion_full", fake_full)
+        from app.routers import chat_stream_routes as chat_routes
+        monkeypatch.setattr(chat_routes, "async_chat_completion_full", fake_full)
 
         resp = client.post("/api/chat", json={
             "message": "我能做什么",
