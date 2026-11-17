@@ -140,8 +140,9 @@
       {{ t('generating.decisions.evidence_prefix') }}{{ decision.evidence.text }}
     </div>
 
-    <!-- 底部：操作 / Footer: actions -->
+    <!-- 底部：时间足迹 + 操作（时间与删除钮同为 hover 显隐） / Footer: timestamps + actions -->
     <div class="db-footer">
+      <span class="db-meta" v-if="!editing && timeMeta">{{ timeMeta }}</span>
       <span class="db-footer-spacer"></span>
       <button class="db-delete-btn" :title="t('generating.decisions.delete')" @click="emit('delete')" :aria-label="t('generating.decisions.delete')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
@@ -214,6 +215,20 @@ const fullText = computed(() => {
   const body = strip(bodyContent.value || props.decision.text)
   const title = strip(props.decision.title || '')
   return body ? `${title}：${body}` : title
+})
+
+// ── 时间足迹：创建/更新时间，格式 月-日 时:分；无独立改动时只显示创建 ──
+function fmtMetaTime(raw?: string): string {
+  if (!raw) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(raw)
+  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : ''
+}
+const timeMeta = computed(() => {
+  const created = fmtMetaTime(props.decision.created_at)
+  const updated = fmtMetaTime(props.decision.updated_at)
+  if (!created) return updated ? t('generating.decisions.meta_updated', { time: updated }) : ''
+  if (!updated || updated === created) return t('generating.decisions.meta_created', { time: created })
+  return `${t('generating.decisions.meta_created', { time: created })} · ${t('generating.decisions.meta_updated', { time: updated })}`
 })
 
 const content = ref(bodyContent.value)

@@ -267,6 +267,8 @@
     "owner_menu_head": "等待方 · 等待中的下一级",
     "owner_caret_label": "选择等待方（等待中的下一级）",
     "pending_badge": "待确认",
+    "meta_created": "创建 {time}",
+    "meta_updated": "更新 {time}",
     "evidence_prefix": "注：",
     "avatar_self": "我"
   },

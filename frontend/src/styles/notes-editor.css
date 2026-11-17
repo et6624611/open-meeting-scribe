@@ -695,6 +695,14 @@
 
 .db-footer { display: flex; align-items: center; justify-content: flex-end; margin-top: var(--s-1); }
 .db-footer-spacer { flex: 1; }
+/* 时间足迹：与删除按钮同一显隐模式（hover 出） */
+.db-meta {
+  font-size: 11px; color: var(--subtle);
+  opacity: 0; transition: opacity 0.12s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.db-node:hover .db-meta { opacity: 1; }
 .db-delete-btn {
   width: 22px; height: 22px; border-radius: var(--radius-sm);
   display: grid; place-items: center;

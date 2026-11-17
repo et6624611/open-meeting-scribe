@@ -266,6 +266,8 @@
     "owner_menu_head": "Waiting on · sub-level of Waiting",
     "owner_caret_label": "Choose who is being waited on",
     "pending_badge": "To confirm",
+    "meta_created": "Created {time}",
+    "meta_updated": "Updated {time}",
     "evidence_prefix": "Note: ",
     "avatar_self": "Me"
   },
