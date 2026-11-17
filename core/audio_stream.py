@@ -11,6 +11,7 @@ core/audio_stream.py — 流式录音控制（从 audio_recording.py 拆出）
   ffmpeg（系统已装）、BlackHole 2ch（虚拟声卡）
 """
 
+import atexit
 import logging
 import queue
 import struct
@@ -30,6 +31,11 @@ from .audio_devices import (
     _detect_windows_audio_device,
     _is_windows,
     _should_auto_detect_on_windows,
+)
+from .audio_record import (
+    MAX_RECORD_SECONDS,
+    start_record_guard,
+    terminate_ffmpeg_proc,
 )
 
 _stream_process: subprocess.Popen | None = None      # 单进程：直接写 WAV，无 pipe
@@ -56,6 +62,17 @@ _stream_cb_dropped: int = 0
 # 队列上限：200 块 × 200ms ≈ 40 秒积压，足够吸收推理抖动；超出说明回调持续跑不动
 # Queue cap: 200 chunks × 200ms ≈ 40s backlog, enough to absorb inference jitter.
 _CB_QUEUE_MAXSIZE = 200
+
+
+def _exit_cleanup_stream() -> None:
+    """进程正常退出时收尾流式录音，避免留下孤儿 ffmpeg。"""
+    proc = _stream_process
+    if proc is not None and proc.poll() is None:
+        logger.warning(f"进程退出，终止残留 ffmpeg 录音 pid={proc.pid}")
+        terminate_ffmpeg_proc(proc)
+
+
+atexit.register(_exit_cleanup_stream)
 
 
 def _input_args(device: str) -> list[str]:
@@ -85,6 +102,7 @@ def _build_ffmpeg_wav_cmd(device: str, wav_path: Path) -> list[str]:
         "ffmpeg", "-y",
         *_input_args(device),
         "-ar", "16000", "-ac", "1",
+        "-t", str(MAX_RECORD_SECONDS),
         "-flush_packets", "1",
         str(wav_path),
     ]
@@ -261,6 +279,7 @@ def start_recording_with_stream(
     _stream_running = True
     _stream_cb_stop.clear()
     _stream_cb_dropped = 0
+    start_record_guard(proc, wav_path)
 
     # 回调消费线程（无回调时不启动，避免无谓线程）
     # Start consumer thread (skip when there is no callback)

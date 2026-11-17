@@ -15,14 +15,26 @@ core/audio_recording.py — macOS 系统内录与流式录音控制
   ffmpeg（系统已装）、BlackHole 2ch（虚拟声卡）
 """
 
+import atexit
 import logging
+import os
 import subprocess
+import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# 单个录音进程的硬时长上限：防止 ffmpeg 卡死后无限空转（真实会议不会超过该时长）
+# Hard cap per recording process, preventing runaway ffmpeg from spinning for days
+MAX_RECORD_SECONDS = 12 * 3600
+
+# 录制看门狗参数：巡检间隔、停增判定、起录宽限
+_RECORD_GUARD_INTERVAL = 2.0
+_RECORD_STALL_TIMEOUT = 120.0
+_RECORD_STALL_GRACE = 60.0
 
 
 
@@ -37,6 +49,130 @@ _record_process: subprocess.Popen | None = None
 _record_task_id: str | None = None
 _record_output_path: Path | None = None
 _record_start_time: float | None = None
+_atexit_registered = False
+
+
+def terminate_ffmpeg_proc(proc: subprocess.Popen) -> None:
+    """终止 ffmpeg 录音进程：先 SIGTERM 让文件收尾，超时再 SIGKILL。"""
+    if proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        proc.kill()
+        proc.wait(timeout=5)
+    except Exception as e:
+        logger.warning(f"终止 ffmpeg 录音进程失败: {e}")
+
+
+def sweep_orphan_ffmpeg(output_dir: str | Path = "data/recordings") -> int:
+    """清扫父进程已退出的遗留 ffmpeg 录音进程，返回清理数量。
+
+    macOS 无 PDEATHSIG，父进程（反复重启的服务）退出后 ffmpeg 会变孤儿，
+    且可能卡在 avfoundation 采集上一直占满单核。启动时调用一次即可兜底。
+    Only orphans (ppid == 1) whose command matches this recordings dir are killed.
+    """
+    if _is_windows():
+        return 0
+
+    marker = f"{Path(output_dir).name}/"
+    try:
+        out = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except Exception as e:
+        logger.warning(f"扫描遗留 ffmpeg 进程失败: {e}")
+        return 0
+
+    killed = 0
+    for line in out.splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) < 3:
+            continue
+        pid_s, ppid_s, cmd = parts
+        if "ffmpeg" not in cmd or marker not in cmd or ".wav" not in cmd:
+            continue
+        if ppid_s != "1":
+            continue
+        try:
+            os.kill(int(pid_s), 9)  # SIGKILL：僵死的 ffmpeg 不响应 SIGTERM
+            killed += 1
+            logger.warning(f"清理遗留 ffmpeg 录音进程: pid={pid_s} cmd={cmd[:120]}")
+        except Exception as e:
+            logger.warning(f"清理遗留 ffmpeg 进程失败 pid={pid_s}: {e}")
+
+    if killed:
+        logger.warning(f"启动清扫：共清理 {killed} 个遗留 ffmpeg 录音进程")
+    return killed
+
+
+def start_record_guard(proc: subprocess.Popen, output_path: Path) -> None:
+    """录音看门狗：输出文件长时间不增长或父进程消失时收尾 ffmpeg。
+
+    - 停增：文件 120s 无增长 → 判定采集僵死（典型为设备热切换后忙等）
+    - 父进程消失：本进程已被 launchd 收养 → 立即停止录音，避免孤儿空转
+    """
+    parent_pid = os.getppid()
+    started = time.time()
+
+    def _loop() -> None:
+        last_size = -1
+        last_change = time.time()
+        while True:
+            time.sleep(_RECORD_GUARD_INTERVAL)
+            if proc.poll() is not None:
+                return
+
+            if os.getppid() != parent_pid:
+                logger.error(f"父进程已退出，终止 ffmpeg 录音进程 pid={proc.pid}")
+                terminate_ffmpeg_proc(proc)
+                return
+
+            if time.time() - started < _RECORD_STALL_GRACE:
+                continue
+
+            try:
+                size = output_path.stat().st_size
+            except OSError:
+                size = -1
+
+            if size != last_size:
+                last_size = size
+                last_change = time.time()
+                continue
+
+            if time.time() - last_change >= _RECORD_STALL_TIMEOUT:
+                logger.error(
+                    f"ffmpeg 录音僵死：输出 {time.time() - last_change:.0f}s 无增长"
+                    f"（{output_path.name}），强制终止 pid={proc.pid}"
+                )
+                terminate_ffmpeg_proc(proc)
+                return
+
+    threading.Thread(target=_loop, daemon=True, name="record-guard").start()
+
+
+def _cleanup_on_exit() -> None:
+    """进程正常退出时收尾录音，避免留下孤儿 ffmpeg。"""
+    proc = _record_process
+    if proc is not None and proc.poll() is None:
+        logger.warning(f"进程退出，终止残留 ffmpeg 录音 pid={proc.pid}")
+        terminate_ffmpeg_proc(proc)
+
+
+def _ensure_atexit_hook() -> None:
+    global _atexit_registered
+    if _atexit_registered:
+        return
+    atexit.register(_cleanup_on_exit)
+    _atexit_registered = True
 
 
 def _build_ffmpeg_record_cmd(device: str, wav_path: Path) -> list[str]:
@@ -53,6 +189,7 @@ def _build_ffmpeg_record_cmd(device: str, wav_path: Path) -> list[str]:
             "-i", f"audio={device}",
             "-ar", "16000",
             "-ac", "1",
+            "-t", str(MAX_RECORD_SECONDS),
             "-f", "wav",
             str(wav_path),
         ]
@@ -63,6 +200,7 @@ def _build_ffmpeg_record_cmd(device: str, wav_path: Path) -> list[str]:
             "-i", f":{device}",
             "-ar", "16000",
             "-ac", "1",
+            "-t", str(MAX_RECORD_SECONDS),
             "-f", "wav",
             str(wav_path),
         ]
@@ -183,6 +321,8 @@ def start_recording(
     _record_task_id = task_id
     _record_output_path = output_path
     _record_start_time = time.time()
+    start_record_guard(proc, output_path)
+    _ensure_atexit_hook()
 
     return {"output_path": output_path, "task_id": task_id}
 

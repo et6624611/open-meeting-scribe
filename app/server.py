@@ -659,6 +659,14 @@ async def startup():
     except Exception as e:
         logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
 
+    # 启动时清扫父进程已退出的遗留 ffmpeg 录音进程 / Sweep orphaned ffmpeg recorders
+    # macOS 无 PDEATHSIG，服务反复重启会把 ffmpeg 留成孤儿，卡死在采集上并持续占满单核
+    try:
+        from core.audio_record import sweep_orphan_ffmpeg
+        sweep_orphan_ffmpeg()
+    except Exception as e:
+        logger.warning(f"清扫遗留 ffmpeg 录音进程失败（不影响服务）: {e}")
+
     # 工作区根目录迁移：旧位置（仓库根/agent-workspace）→ 新位置（BASE_DIR/agent-workspace）
     # 仅在旧位置存在且新位置不存在时移动（一次性迁移，失败只 warn 不阻断） /
     # Migrate workspace root from old location (repo root) to new (BASE_DIR, exe-adjacent in PyInstaller)
