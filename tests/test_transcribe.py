@@ -175,6 +175,22 @@ class TestAssembleDialogue:
         assert t.assemble_dialogue({"transcripts": []}) == []
         assert t.assemble_dialogue({"transcripts": [{"sentences": []}]}) == []
 
+    def test_persisted_dialogue_has_no_word_timings(self, _no_hotwords):
+        """P2：words 只服务碎片合并，组装结果（即落盘形态）不再携带。"""
+        transcribed = {
+            "transcripts": [{"sentences": [
+                _mk("我们要优化", 0, 1000, sentence_id=0,
+                    words=[{"text": "我们", "begin_time": 0, "end_time": 400}]),
+                _mk("流程和成本。", 1050, 2000, sentence_id=1,
+                    words=[{"text": "流程", "begin_time": 1100, "end_time": 1400}]),
+            ]}]
+        }
+        result = t.assemble_dialogue(transcribed)
+        sentences = [s for block in result for s in block["sentences"]]
+        assert sentences
+        assert all("words" not in s for s in sentences)
+        assert "流程" in result[0]["text"]
+
     def test_groups_by_speaker_id(self, _no_hotwords):
         result = t.assemble_dialogue(SAMPLE_TRANSCRIPTION)
         # 两个 speaker_id → 2 条对话

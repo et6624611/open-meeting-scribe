@@ -691,6 +691,7 @@ def correct_speaker_ids(sentences: list[dict]) -> list[dict]:
 
 
 from .hotwords import apply_hotword_mappings
+from .transcript_slim import drop_word_timings
 
 
 def assemble_dialogue(transcription: dict) -> list[dict]:
@@ -726,4 +727,7 @@ def assemble_dialogue(transcription: dict) -> list[dict]:
 
     logger.info(f"组装对话稿: {len(result)} 条对话（{len(set(s.get('speaker_id', 0) for s in corrected))} 位说话人, "
                 f"共 {len(corrected)} 句合并后）")
+    # P2：词级时间戳只在合并阶段有用（merge_fragments 已消费），落盘前剔除
+    # P2: word timings are only needed while merging; strip before persistence.
+    drop_word_timings(result)
     return result

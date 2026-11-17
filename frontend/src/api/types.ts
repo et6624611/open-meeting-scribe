@@ -117,6 +117,9 @@ export interface DecisionItem {
   evidence?: { text: string; refs: { speaker?: string; time: string }[] }
   /** 演变链：已被另一决策替代时的关系快照（手动标记；null/缺省=未标记） */
   superseded_by?: SupersededBy | null
+  /** 时间足迹：创建/最近更新（ISO 字符串；存量节点可能缺省） */
+  created_at?: string
+  updated_at?: string
   // 后端随行下发的状态字典元信息（读侧只用于展示，不回写）
   status_name?: string
   status_name_en?: string
@@ -182,6 +185,11 @@ export interface Task {
   /** 转写分层信封（响应级，不入任务文件）：cleanup=true 表示 dialogue 已按当前设置富化 clean_text
    *  Transcript-layers envelope (response-level): cleanup=true means dialogue carries clean_text */
   transcript_layers?: { cleanup: boolean } | null
+  /** 列表视图（view=list）派生字段：是否有转写 / 各说话人累计秒数 / 转写总时长（秒）
+   *  Derived fields shipped by the list view (dialogue is absent there) */
+  has_dialogue?: boolean
+  speaker_share?: Record<string, number>
+  dialogue_duration?: number
 }
 
 // ─── 用户 / User ───

@@ -9,7 +9,8 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import { fetchTasks, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
+import { fetchTasks, searchTranscript, deleteTask as apiDeleteTask, archiveTask as apiArchiveTask, unarchiveTask as apiUnarchiveTask } from '@/api/tasks'
+import type { TaskListView } from '@/api/tasks'
 import client, { extractErrorMessage } from '@/api/client'
 import type { Task, TaskStatus } from '@/api/types'
 import { matchTask } from '@/utils/search'
@@ -75,6 +76,35 @@ export const useTaskStore = defineStore('task', () => {
     _sidebarDebounceTimer = setTimeout(() => { debouncedSidebarQuery.value = val }, 300)
   })
 
+  // ─── 转写维度检索 / Transcript search ───
+  // 列表视图不携带 dialogue，侧边栏"全文命中"由服务端补；本地仍负责标题/纪要/说话人/章节/决策。
+  /** 服务端命中的 task_id 集合 / task ids matching in the transcript */
+  const transcriptMatchIds = ref<Set<string>>(new Set())
+  /** 该集合对应的检索词（防止旧响应套用到新搜索词） / query the set was produced for */
+  const transcriptMatchQuery = ref('')
+  let _transcriptSeq = 0
+  watch(debouncedSidebarQuery, async (val) => {
+    const q = val.trim().toLowerCase()
+    const seq = ++_transcriptSeq
+    if (!q) {
+      transcriptMatchIds.value = new Set()
+      transcriptMatchQuery.value = ''
+      return
+    }
+    try {
+      const ids = await searchTranscript(q)
+      if (seq !== _transcriptSeq) return
+      transcriptMatchIds.value = new Set(ids)
+      transcriptMatchQuery.value = q
+    } catch {
+      // 检索失败降级为本地维度，不打断搜索 / degrade to local-only matching
+      if (seq === _transcriptSeq) {
+        transcriptMatchIds.value = new Set()
+        transcriptMatchQuery.value = q
+      }
+    }
+  })
+
   // ─── 计算属性 / Computed ───
   const currentTask = computed(() =>
     tasks.value.find(t => t.task_id === currentTaskId.value) ?? null,
@@ -90,7 +120,10 @@ export const useTaskStore = defineStore('task', () => {
   const filteredTasks = computed(() => {
     const q = debouncedSidebarQuery.value.trim().toLowerCase()
     if (!q) return activeTasks.value
-    return activeTasks.value.filter(t => matchTask(t, q))
+    const useTranscriptHits = transcriptMatchQuery.value === q
+    return activeTasks.value.filter(
+      t => matchTask(t, q) || (useTranscriptHits && transcriptMatchIds.value.has(t.task_id)),
+    )
   })
 
   /**
@@ -168,13 +201,14 @@ export const useTaskStore = defineStore('task', () => {
 
   /**
    * 从后端拉取任务列表 / Fetch task list from backend
-   * @param lite 仅合并状态字段（完成侦测器高频轮询）；不全量替换、不删任务、不翻 loading
-   *             lite: merge status fields only for frequent watcher polling
+   * @param view list=列表视图（默认，不含转写）；lite=只并状态字段（完成侦测器高频轮询）；
+   *             full=含转写全量（说话人统计等少数场景）
    */
-  async function loadTasks(lite = false) {
+  async function loadTasks(view: TaskListView = 'list') {
+    const lite = view === 'lite'
     if (!lite) loading.value = true
     try {
-      const incoming = await fetchTasks(lite)
+      const incoming = await fetchTasks(view)
       tasks.value = mergeTaskLists(tasks.value, incoming, lite)
       loadError.value = null
     } catch (e) {

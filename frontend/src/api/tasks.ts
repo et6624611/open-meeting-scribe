@@ -5,14 +5,30 @@ import client from './client'
 import type { Task } from './types'
 
 /**
- * 获取任务列表 / Fetch task list
- * @param lite 仅状态字段（完成侦测器高频轮询用，响应体小） / status fields only (small payload for watcher polling)
+ * 任务列表视图 / Task list view
+ *  - lite：仅状态字段（完成侦测器高频轮询用，响应体小）
+ *  - list：会议库/侧边栏用，不含 dialogue 与实时逐字稿，带 has_dialogue / speaker_share
+ *  - full：权威全量（含转写；会议详情走 getTask，一般不需要）
  */
-export async function fetchTasks(lite = false): Promise<Task[]> {
+export type TaskListView = 'lite' | 'list' | 'full'
+
+/**
+ * 获取任务列表 / Fetch task list
+ * @param view 视图档位，默认 list（列表页不需要逐字稿）
+ */
+export async function fetchTasks(view: TaskListView = 'list'): Promise<Task[]> {
   const { data } = await client.get<{ tasks: Task[] }>('/api/tasks', {
-    params: lite ? { view: 'lite' } : undefined,
+    params: view === 'full' ? undefined : { view },
   })
   return data.tasks
+}
+
+/** 转写维度检索（列表不含 dialogue，全文命中靠服务端） / Transcript-only search */
+export async function searchTranscript(q: string): Promise<string[]> {
+  const { data } = await client.get<{ task_ids: string[] }>('/api/tasks/search', {
+    params: { q },
+  })
+  return data.task_ids
 }
 
 /** 获取单个任务详情 / Fetch single task detail */

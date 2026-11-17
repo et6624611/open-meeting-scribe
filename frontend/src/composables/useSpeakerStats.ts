@@ -36,7 +36,8 @@ const isLoading = ref(false)
 export async function loadSpeakerStats(speakerIds: string[]) {
   isLoading.value = true
   try {
-    allTasks.value = await fetchTasks()
+    // 说话人页需要逐字稿流水，显式走全量视图（列表视图不含 dialogue）
+    allTasks.value = await fetchTasks('full')
     computeStats(speakerIds)
   } catch (e) {
     console.error('[speakerStats] 加载失败:', e)

@@ -354,7 +354,8 @@ const filteredMentions = computed<MentionSource[]>(() => {
   const recording = task?.status === 'recording' || task?.status === 'paused'
   // 可用性跟当前任务数据走：原文=已落盘对话或录音中；纪要/随记按上下文口径
   const availability: Record<string, boolean> = {
-    '@原文': (task?.dialogue?.length ?? 0) > 0 || !!recording,
+    // 列表视图不携带 dialogue，用 has_dialogue 兜底 / list view ships has_dialogue instead
+    '@原文': !!task?.has_dialogue || (task?.dialogue?.length ?? 0) > 0 || !!recording,
     '@纪要': ctx.hasSummary.value,
     '@随记': ctx.hasNotes.value,
     // 附件随时可上传，不依赖会议数据

@@ -6,6 +6,7 @@ import { showToast } from '@/composables/useToast'
 import { downloadSummaryUrl, type SummaryFormat } from '@/api/tasks'
 import { getSpeakerColor } from '@/utils/speakerColors'
 import { isPlaceholderName } from '@/utils/speakerDisplay'
+import { resolveSpeakerSeconds, speakerPct } from '@/utils/speakerShare'
 import { highlightText } from '@/utils/search'
 import type { Task, TaskStatus } from '@/api/types'
 
@@ -251,37 +252,27 @@ export function useLibrarySelection() {
     const mapping = task.speaker_mapping
     if (!mapping || Object.keys(mapping).length === 0) return []
 
-    const durMap: Record<string, number> = {}
-    let total = 0
-    if (task.dialogue) {
-      for (const line of task.dialogue) {
-        const sid = String(line.speaker_id)
-        for (const s of line.sentences) {
-          const d = s.end_time - s.begin_time
-          durMap[sid] = (durMap[sid] || 0) + d
-          total += d
-        }
-      }
-    }
+    // 列表视图无 dialogue：时长占比取后端 speaker_share（秒），缺失时回退转写
+    const { seconds, total } = resolveSpeakerSeconds(task)
 
     const UNID_FILTER = '__unidentified__'
 
     const list: SpeakerInfo[] = Object.entries(mapping)
       .filter(([, name]) => !isPlaceholderName(name))
       .map(([id, name]) => {
-        const dur = durMap[id] || 0
+        const dur = seconds[id] || 0
         return {
           id,
           name: (name as string).trim(),
           color: getSpeakerColor(id),
           duration: dur,
-          pct: total > 0 ? Math.round((dur / total) * 100) : 0,
+          pct: speakerPct(seconds, total, id),
         }
       })
 
     const unidEntries = Object.entries(mapping).filter(([, name]) => isPlaceholderName(name))
     if (unidEntries.length > 0) {
-      const unidDur = unidEntries.reduce((acc, [id]) => acc + (durMap[id] || 0), 0)
+      const unidDur = unidEntries.reduce((acc, [id]) => acc + (seconds[id] || 0), 0)
       list.push({
         id: UNID_FILTER,
         name: t('library.filter_speaker_unidentified'),

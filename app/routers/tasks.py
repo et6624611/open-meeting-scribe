@@ -24,6 +24,7 @@ from core.fs_atomic import stream_save_upload
 from core.i18n import _
 from core.pipeline_runner import run_pipeline_task, run_stage2_task
 from core.settings_store import get_transcript_config
+from core.speaker_share import get_speaker_share
 from core.task_store import (
     OUTPUT_DIR,
     TASKS_DIR,
@@ -34,6 +35,7 @@ from core.task_store import (
 )
 from core.tasks_repo import remove_task, set_task
 from core.transcript_cleanup import enrich_sentence
+from core.transcript_slim import drop_word_timings
 
 logger = logging.getLogger(__name__)
 
@@ -240,21 +242,26 @@ async def create_transcribe_task(
 
 def _with_transcript_layers(task: dict) -> dict:
     """响应级附加转写分层（PLAN-TRANSCRIPT-LAYERING）：深拷贝 dialogue 富化 clean_text，
-    加 transcript_layers 信封；绝不写回内存 task / 磁盘。列表与详情端点共用。"""
+    加 transcript_layers 信封；绝不写回内存 task / 磁盘。列表与详情端点共用。
+
+    词级时间戳（sentences[].words）占 dialogue 体积约 88% 且前端不消费，
+    两种清理版口径都先剔除再返回（P0 性能优化，见 docs/PERF-PLAN-20261117-task-list-memory.md）。"""
     try:
         cleanup_enabled = bool(get_transcript_config().get("cleanup", {}).get("enabled", True))
     except Exception:
         cleanup_enabled = True
     response = {"transcript_layers": {"cleanup": cleanup_enabled}}
+    # 清理版关闭时也要深拷贝，否则 words 会随原 task 泄漏进响应
+    enriched_dialogue = copy.deepcopy(task.get("dialogue") or [])
+    drop_word_timings(enriched_dialogue)
     if cleanup_enabled:
-        enriched_dialogue = copy.deepcopy(task.get("dialogue") or [])
         for block in enriched_dialogue:
             if not isinstance(block, dict):
                 continue
             for sentence in block.get("sentences") or []:
                 if isinstance(sentence, dict):
                     enrich_sentence(sentence)
-        response["dialogue"] = enriched_dialogue
+    response["dialogue"] = enriched_dialogue
     return {**task, **response}
 
 
@@ -265,6 +272,36 @@ _LIST_LITE_FIELDS = (
     "meeting_date", "created_at", "archived_at",
     "error", "error_category", "error_suggestion", "failed_stage", "retry_count",
 )
+
+# 列表视图（会议库/侧边栏）剔除的重字段：转写原文单独靠详情端点与检索端点按需提供
+# Fields dropped from the `view=list` payload; transcripts are served by the detail/search endpoints.
+_LIST_EXCLUDED_FIELDS = ("dialogue", "realtime_full_transcript")
+
+# 转写检索结果上限 / Upper bound for transcript search hits
+_SEARCH_LIMIT = 200
+
+
+def _list_item(task: dict) -> dict:
+    """列表视图单条：剔除重字段，补 has_dialogue / speaker_share / dialogue_duration。"""
+    item = {k: v for k, v in task.items() if k not in _LIST_EXCLUDED_FIELDS}
+    share = get_speaker_share(task)
+    item["has_dialogue"] = bool(task.get("dialogue"))
+    item["speaker_share"] = share
+    item["dialogue_duration"] = round(sum(share.values()), 2) if share else 0.0
+    return item
+
+
+def _dialogue_contains(dialogue: list, needle: str) -> bool:
+    """转写全文是否包含 needle（已小写）。块级 text 与句级 text 都查。"""
+    for block in dialogue or []:
+        if not isinstance(block, dict):
+            continue
+        if needle in (block.get("text") or "").lower():
+            return True
+        for sentence in block.get("sentences") or []:
+            if isinstance(sentence, dict) and needle in (sentence.get("text") or "").lower():
+                return True
+    return False
 
 
 def _json_default(obj):
@@ -280,6 +317,8 @@ def list_tasks(view: str = "full"):
 
     view=lite：仅状态字段（供高频状态轮询，响应体小、不做转写富化）。 /
     view=lite: status fields only (for frequent status polling; small payload, no transcript enrichment).
+    view=list：会议库/侧边栏用，剔除 dialogue 与实时逐字稿，补 has_dialogue / speaker_share。 /
+    view=list: library/sidebar payload without transcripts; adds has_dialogue & speaker_share.
     同步 def：重活（富化/序列化大对象）放线程池，不阻塞事件循环上的其他请求。 /
     sync def: heavy work runs in the worker threadpool instead of blocking the event loop.
     """
@@ -293,6 +332,8 @@ def list_tasks(view: str = "full"):
     )
     if view == "lite":
         payload = [{k: t.get(k) for k in _LIST_LITE_FIELDS if k in t} for t in task_list]
+    elif view == "list":
+        payload = [_list_item(t) for t in task_list]
     else:
         payload = [_with_transcript_layers(task) for task in task_list]
     # 预序列化直出：默认 FastAPI jsonable_encoder 会逐元素校验整棵转写树（实测 36MB/76 场耗时 3~8s），
@@ -301,6 +342,34 @@ def list_tasks(view: str = "full"):
         {"tasks": payload}, ensure_ascii=False, separators=(",", ":"), default=_json_default,
     ).encode("utf-8")
     return Response(content=body, media_type="application/json")
+
+
+@router.get("/api/tasks/search")
+def search_tasks(q: str = ""):
+    """转写维度检索（列表视图不含 dialogue，侧边栏全文搜索改由服务端补）。 /
+    Transcript-dimension search: the list view ships no dialogue, so full-text hits come from here.
+
+    只回 task_id，不回正文；标题/纪要/说话人/章节/决策仍由前端本地匹配。 /
+    Returns task ids only; cheap dimensions stay client-side.
+    """
+    needle = (q or "").strip().lower()
+    if not needle:
+        return {"query": "", "task_ids": [], "truncated": False}
+    task_list = sorted(
+        tasks.values(),
+        key=lambda x: (
+            x.get("meeting_date") or x.get("created_at", ""),
+            x.get("created_at", ""),
+        ),
+        reverse=True,
+    )
+    hit_ids = []
+    for task in task_list:
+        if _dialogue_contains(task.get("dialogue"), needle):
+            hit_ids.append(task["task_id"])
+            if len(hit_ids) >= _SEARCH_LIMIT:
+                return {"query": q, "task_ids": hit_ids, "truncated": True}
+    return {"query": q, "task_ids": hit_ids, "truncated": False}
 
 
 @router.get("/api/tasks/{task_id}")

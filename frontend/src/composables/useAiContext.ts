@@ -48,13 +48,13 @@ export function useAiContext() {
 
   const speakerCount = computed(() => {
     const lines = dialogueLines.value
-    if (!lines.length) return 0
+    if (!lines.length) return taskStore.currentTask?.speaker_count ?? 0
     return new Set(lines.map(d => d.speaker_id)).size
   })
 
   const chapterCount = computed(() => {
     const lines = dialogueLines.value
-    if (!lines.length) return 0
+    if (!lines.length) return taskStore.currentTask?.chapters?.length ?? 0
     const SPAN = 600000 // 10 分钟 / 10 minutes
     let count = 1
     let chapterStart = lines[0].begin_time

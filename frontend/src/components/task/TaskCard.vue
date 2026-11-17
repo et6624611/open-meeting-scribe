@@ -144,6 +144,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 import { highlightText } from '@/utils/search'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { resolveSpeakerSeconds, speakerPct } from '@/utils/speakerShare'
 
 const { t } = useI18n()
 const player = usePlayerStore()
@@ -249,18 +250,9 @@ const unidentifiedCount = computed(() => countUnidentified(props.task.speaker_ma
 const topSpeakers = computed((): CardSpeakerInfo[] => {
   const mapping = props.task.speaker_mapping
   if (!mapping || Object.keys(mapping).length === 0) return []
-  if (props.task.status !== 'completed' || !props.task.dialogue) return []
+  if (props.task.status !== 'completed') return []
 
-  const durMap: Record<string, number> = {}
-  let total = 0
-  for (const line of props.task.dialogue) {
-    const sid = String(line.speaker_id)
-    for (const s of line.sentences) {
-      const d = s.end_time - s.begin_time
-      durMap[sid] = (durMap[sid] || 0) + d
-      total += d
-    }
-  }
+  const { seconds, total } = resolveSpeakerSeconds(props.task)
   if (total === 0) return []
 
   return Object.entries(mapping)
@@ -269,7 +261,7 @@ const topSpeakers = computed((): CardSpeakerInfo[] => {
       id,
       name: (name as string).trim(),
       color: getSpeakerColor(id),
-      pct: Math.round((durMap[id] || 0) / total * 100),
+      pct: speakerPct(seconds, total, id),
     }))
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 3)
