@@ -103,7 +103,20 @@ cp .env.example .env
 
 > **关于 ASR 代理**：为保护 API Key 安全，转写请求通过代理服务中转，客户端不存储 DashScope Key。你可以自行部署 `asr-proxy/` 服务，或使用第三方提供的代理服务。
 
-#### 3. 安装后端依赖
+#### 3. 安装 ffmpeg
+
+录音采集、音频归一化、时长探测都依赖 ffmpeg，缺失时点录音会直接报错：
+
+```bash
+# macOS
+brew install ffmpeg
+# Windows
+winget install Gyan.FFmpeg
+```
+
+也可以把 `ffmpeg.exe` / `ffprobe.exe`（或 macOS 版二进制）放进项目根目录的 `ffmpeg/`，程序启动时会自动加入 PATH。装好后需重启 `python cli.py server` 才生效。Docker 镜像与正式安装包已内置，无需此步。
+
+#### 4. 安装后端依赖
 
 ```bash
 python3 -m venv venv
@@ -111,7 +124,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### 4. 构建前端
+#### 5. 构建前端
 
 ```bash
 cd frontend
@@ -120,7 +133,7 @@ npm run build
 cd ..
 ```
 
-#### 5. 启动服务
+#### 6. 启动服务
 
 ```bash
 python cli.py server

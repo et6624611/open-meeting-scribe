@@ -364,7 +364,7 @@ class TestBridgeConfig:
             cfg = json.loads(Path(path).read_text(encoding="utf-8"))
             server = cfg["mcpServers"]["oms-tools"]
             assert server["env"]["OMS_MCP_TOKEN"] == ctx.token
-            assert server["args"][0].endswith("mcp-bridge/server.py")
+            assert Path(server["args"][0]).as_posix().endswith("mcp-bridge/server.py")
             # 令牌在签发进程内可校验
             assert tk.verify_token(ctx.token) is not None
             # full_task 允许写工具 → 7 个工具全放行

@@ -70,7 +70,14 @@ _ensure_ffmpeg_in_path()
 
 
 def check_ffmpeg() -> bool:
-    """检查 ffmpeg 是否可用 / Check if ffmpeg is available"""
+    """检查 ffmpeg 是否可用 / Check if ffmpeg is available
+
+    每次调用都重试路径解析：服务先于 ffmpeg 就绪（例如事后才把 ffmpeg.exe
+    放进 ffmpeg/ 目录）时，无需重启进程也能恢复识别。
+    Re-resolve paths on every call so ffmpeg placed in ffmpeg/ after startup is
+    picked up without restarting the process.
+    """
+    _ensure_ffmpeg_in_path()
     return shutil.which("ffmpeg") is not None
 
 

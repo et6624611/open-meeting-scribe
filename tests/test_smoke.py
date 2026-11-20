@@ -463,24 +463,20 @@ class TestRecordStartNotHang:
     """
 
     def test_record_start_responds_within_timeout(self, client):
-        import signal
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as FutureTimeoutError
 
-        def timeout_handler(signum, frame):
-            raise TimeoutError("录音启动端点阻塞超过 5 秒！")
-
-        # macOS 支持 SIGALRM
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(5)
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(client.post, "/api/record/start")
         try:
-            resp = client.post("/api/record/start")
-            signal.alarm(0)  # 取消定时器
+            resp = future.result(timeout=5)
             # 可能成功（200）或因设备不可用失败（500），但必须在 5 秒内返回
             assert resp.status_code in (200, 400, 500)
-        except TimeoutError:
+        except FutureTimeoutError:
+            future.cancel()
             pytest.fail("录音启动端点阻塞超过 5 秒，事件循环可能被卡死")
         finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
+            executor.shutdown(wait=False, cancel_futures=True)
 
 
 # ============================================================

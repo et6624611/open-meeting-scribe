@@ -24,6 +24,7 @@ import asyncio
 import logging
 import os
 import signal
+import subprocess
 import time
 from collections import deque
 from contextlib import contextmanager
@@ -357,26 +358,67 @@ def _resolve(path: str):
     return Path(path).resolve()
 
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _terminate_windows_tree(proc) -> bool:
+    """终止指定 CLI 进程及其后代；失败时由调用方回退到根进程。"""
+    if proc.returncode is not None:
+        return True
+    try:
+        result = subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("[CLI引擎] Windows 进程树终止失败 pid=%s: %s", proc.pid, exc)
+        return False
+    if result.returncode != 0:
+        logger.warning("[CLI引擎] taskkill 返回失败 pid=%s returncode=%s", proc.pid, result.returncode)
+        return False
+    return True
+
+
 async def _reap(proc) -> None:
     """确保子进程与进程组回收，避免孤儿（§3.9-5）。 / Ensure the child process group is reaped."""
     if proc.returncode is None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError, OSError):
+        if _is_windows():
+            if not _terminate_windows_tree(proc):
+                try:
+                    proc.terminate()
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+        else:
             try:
-                proc.terminate()
-            except ProcessLookupError:
-                pass
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
     try:
         await asyncio.wait_for(proc.wait(), timeout=5)
     except (asyncio.TimeoutError, Exception):  # noqa: BLE001
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
+        if _is_windows():
+            if proc.returncode is None and not _terminate_windows_tree(proc):
+                try:
+                    proc.kill()
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+        else:
             try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
 
 
 def cancel_stream(stream_id: str) -> bool:
@@ -391,13 +433,20 @@ def cancel_stream(stream_id: str) -> bool:
     proc = _ACTIVE.get(stream_id)
     if not proc or proc.returncode is not None:
         return True
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
+    if _is_windows():
+        if not _terminate_windows_tree(proc):
+            try:
+                proc.kill()
+            except (ProcessLookupError, PermissionError, OSError):
+                return False
+    else:
         try:
-            proc.kill()
-        except ProcessLookupError:
-            return False
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                return False
     logger.info("[CLI引擎] 已取消 stream=%s", stream_id)
     return True
 

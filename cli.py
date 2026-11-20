@@ -214,16 +214,21 @@ def cmd_build(args):
         print("错误: frontend/ 目录不存在")
         return 1
 
+    npm = shutil.which("npm")
+    if not npm:
+        print("错误: 未找到 npm，请先安装 Node.js 并确保 npm 在 PATH 中")
+        return 1
+
     # 检查 node_modules / Check node_modules
     if not (frontend_dir / "node_modules").exists():
         print("安装前端依赖...")
-        result = subprocess.run(["npm", "install"], cwd=frontend_dir)
+        result = subprocess.run([npm, "install"], cwd=frontend_dir)
         if result.returncode != 0:
             print("错误: npm install 失败")
             return 1
 
     print("构建前端...")
-    result = subprocess.run(["npm", "run", "build"], cwd=frontend_dir)
+    result = subprocess.run([npm, "run", "build"], cwd=frontend_dir)
     if result.returncode != 0:
         print("错误: 构建失败")
         return 1

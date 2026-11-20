@@ -87,6 +87,10 @@ app/static/
 # Incremental type-check cache; produces a meaningless diff on every build
 *.tsbuildinfo
 
+# 本地下载的 ffmpeg 便携版（体积大，不入库）
+# Locally downloaded portable ffmpeg binaries
+/ffmpeg/
+
 # PyInstaller 打包产物
 dist/
 build_venv/
