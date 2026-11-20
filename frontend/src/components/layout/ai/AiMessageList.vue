@@ -313,8 +313,10 @@ import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
 import IconButton from '@/components/common/IconButton.vue'
 import EmptyHint from '@/components/common/EmptyHint.vue'
-import { escapeHtml } from '@/utils/sanitize'
 import AiExecutionTrace from './AiExecutionTrace.vue'
+import { renderMarkdownWithMermaid, postProcessMermaid, clearMermaidCache } from '@/utils/renderChatMarkdown'
+import { isDarkThemeId } from '@/utils/renderMermaid'
+import { useThemeStore } from '@/stores/theme'
 import ComposerBar from './ComposerBar.vue'
 import type { AuthTier } from '@/composables/useAiChat'
 import { useSummaryProposal } from '@/composables/useSummaryProposal'
@@ -325,6 +327,7 @@ import { restoreTaskRewrites } from '@/api/notes'
 import { extractErrorMessage } from '@/api/client'
 
 const { t } = useI18n()
+const themeStore = useThemeStore()
 
 /** 文件体积人类可读 */
 function formatBytes(bytes: number): string {
@@ -441,7 +444,10 @@ function syncActive() {
   activeIdx.value = active
 }
 watch(() => userEntries.value.length, () => void nextTick(syncActive))
-onMounted(() => { void nextTick(syncActive) })
+onMounted(() => {
+  void nextTick(syncActive)
+  void nextTick(applyMermaidPost)
+})
 
 /** 提案规模摘要（入口卡文案用） */
 const summaryProposalSingleton = useSummaryProposal()
@@ -608,9 +614,26 @@ function fmtTokens(meta: LlmMetadata): string {
 }
 
 function fmt(c: string): string {
-  const safe = escapeHtml(c)
-  return safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>').replace(/\n/g, '<br>')
+  return renderMarkdownWithMermaid(c)
 }
+
+/** mermaid 后处理：messages 变化 + 主题变化 → 扫占位符渲 SVG */
+async function applyMermaidPost() {
+  const feed = feedRef.value
+  if (!feed) return
+  await postProcessMermaid(feed, isDarkThemeId(themeStore.current))
+}
+
+// 主题切换：清缓存 + 重新渲（明暗主题 SVG 不同）
+watch(() => themeStore.current, () => {
+  clearMermaidCache()
+  void nextTick(applyMermaidPost)
+})
+
+// messages 变化：nextTick 后处理 mermaid 占位符
+watch(() => props.messages, () => {
+  void nextTick(applyMermaidPost)
+}, { deep: false })
 
 function shortText(text: string): string {
   return text.length > 80 ? text.slice(0, 80) + '…' : text
@@ -711,4 +734,44 @@ defineExpose({ feedRef })
 .composer-input:hover { scrollbar-color: oklch(0% 0 0 / 0.18) transparent; }
 .composer-input:hover::-webkit-scrollbar-thumb { background: oklch(0% 0 0 / 0.18); }
 .composer-input.is-edit-input { height: var(--composer-line); min-height: var(--composer-line); }
+
+/* ── Markdown 排版（v-html 渲染后的 GFM 元素） ── */
+.ai-bubble :deep(h1), .ai-bubble :deep(h2), .ai-bubble :deep(h3), .ai-bubble :deep(h4) {
+  font-weight: 600; line-height: 1.35; color: var(--fg); margin: 0.8em 0 0.4em;
+}
+.ai-bubble :deep(h1) { font-size: 17px; }
+.ai-bubble :deep(h2) { font-size: 15px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.ai-bubble :deep(h3) { font-size: 14px; }
+.ai-bubble :deep(p) { margin: 0.4em 0; }
+.ai-bubble :deep(ul), .ai-bubble :deep(ol) { padding-left: 1.6em; margin: 0.3em 0; }
+.ai-bubble :deep(li) { margin: 0.1em 0; }
+.ai-bubble :deep(a) { color: var(--accent); text-decoration: none; }
+.ai-bubble :deep(a:hover) { text-decoration: underline; }
+.ai-bubble :deep(blockquote) {
+  border-left: 3px solid var(--border-strong); padding: 2px 10px; margin: 0.5em 0;
+  color: var(--muted); background: var(--surface-2); border-radius: 0 4px 4px 0;
+}
+.ai-bubble :deep(code) {
+  background: var(--surface-2); padding: 1px 5px; border-radius: 3px; font-size: 0.88em;
+}
+.ai-bubble :deep(pre) {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px;
+  padding: 8px 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; margin: 0.5em 0;
+}
+.ai-bubble :deep(pre code) { background: none; padding: 0; }
+.ai-bubble :deep(table) { border-collapse: collapse; margin: 0.5em 0; font-size: 13px; }
+.ai-bubble :deep(th), .ai-bubble :deep(td) {
+  border: 1px solid var(--border); padding: 4px 8px; text-align: left;
+}
+.ai-bubble :deep(th) { background: var(--surface-2); font-weight: 600; }
+.ai-bubble :deep(hr) { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+
+/* ── Mermaid 图 ── */
+.ai-bubble :deep(.md-mermaid-box) {
+  margin: 8px 0; overflow-x: auto; text-align: center;
+}
+.ai-bubble :deep(.md-mermaid-box svg) { max-width: 100%; height: auto; }
+.ai-bubble :deep(pre.md-mermaid-error) {
+  border-color: var(--warn); color: var(--warn); background: var(--warn-soft);
+}
 </style>

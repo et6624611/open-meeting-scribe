@@ -63,7 +63,8 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { useI18n } from 'vue-i18n'
 import EmptyHint from '@/components/common/EmptyHint.vue'
-import { isDarkThemeId, renderMermaidToSvg } from '@/utils/renderMermaid'
+import { isDarkThemeId } from '@/utils/renderMermaid'
+import { renderMarkdownWithMermaid, postProcessMermaid } from '@/utils/renderChatMarkdown'
 import { useThemeStore } from '@/stores/theme'
 import type { BoardArtifact } from '@/api/board'
 
@@ -99,36 +100,10 @@ renderer.heading = ({ tokens, depth }: { tokens: any; depth: number }) => {
   const safeId = headingText.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-').replace(/^-|-$/g, '')
   return `<h${depth} id="${safeId}">${headingText}</h${depth}>`
 }
-// 保留 HTML 注释——marked 默认保留注释，我们在后处理里扫
 
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-})
-
-/** 把 mermaid fence 替换成占位 div，后处理时渲 SVG */
-const _MERMAID_FENCE_RE = /```mermaid\s*\n([\s\S]*?)```/g
-
+/** 渲染 markdown（委托共享管线 renderMarkdownWithMermaid，传自定义 heading renderer） */
 function renderMarkdown(md: string): string {
-  // 先把 mermaid fence 换占位
-  const placeholders: string[] = []
-  const withPlaceholder = md.replace(_MERMAID_FENCE_RE, (_m, inner) => {
-    const idx = placeholders.length
-    placeholders.push(String(inner))
-    return `\x00MMD_${idx}\x00`
-  })
-  // 渲染
-  let html = marked.parse(withPlaceholder) as string
-  // 占位符换回去：先收集所有注释锚点行（在 <p><!-- section-id... --></p> 里），
-  // 让它们在渲染后的 HTML 里仍然保留
-  html = html.replace(/\x00MMD_(\d+)\x00/g, (_m, idx) =>
-    `<pre class="ib-mermaid-src" data-mermaid-src="${escapeAttr(placeholders[Number(idx)])}"></pre>`
-  )
-  return html
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  return renderMarkdownWithMermaid(md, renderer)
 }
 
 const renderedHtml = computed(() => renderMarkdown(props.artifact.markdown || ''))
@@ -143,24 +118,9 @@ async function applyPostProcessing() {
   const el = mdEl.value
   if (!el) return
 
-  // 1. mermaid 渲 SVG
+  // 1. mermaid 渲 SVG（委托共享 postProcessMermaid，走源码缓存管线）
   const dark = isDarkThemeId(themeStore.activeTheme)
-  const mermaidNodes = el.querySelectorAll('pre.ib-mermaid-src')
-  for (const pre of Array.from(mermaidNodes)) {
-    const src = (pre.getAttribute('data-mermaid-src') || '').trim()
-    if (!src) continue
-    try {
-      const { svg } = await renderMermaidToSvg(src, dark)
-      if (!svg) continue
-      const container = document.createElement('div')
-      container.className = 'ib-mermaid-box'
-      container.dataset.mermaidSrc = src
-      container.innerHTML = svg
-      pre.replaceWith(container)
-    } catch (e) {
-      console.warn('[ib] mermaid render failed', e)
-    }
-  }
+  await postProcessMermaid(el, dark)
 
   // 2. 扫 HTML 注释锚点：<!-- section-id: s1 section-title: 审核阻塞 -->
   // marked 默认把注释留在 <p> 里，形态：<p><!-- section-id... --></p>
@@ -376,12 +336,12 @@ onUnmounted(() => {
 }
 
 /* ── mermaid 图 ── */
-.ib-mermaid-box {
+.ib-md .md-mermaid-box {
   margin: 10px 0;
   overflow-x: auto;
   text-align: center;
 }
-.ib-mermaid-box svg {
+.ib-md .md-mermaid-box svg {
   max-width: 100%;
   height: auto;
 }
