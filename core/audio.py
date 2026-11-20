@@ -365,6 +365,7 @@ def read_wav_float32(path: str | Path) -> tuple[int, np.ndarray]:
 # ============================================================
 
 from core.audio_recording import (  # noqa: E402,F401
+    get_last_pause_duration,
     get_recording_info,
     get_stream_recording_info,
     is_recording,

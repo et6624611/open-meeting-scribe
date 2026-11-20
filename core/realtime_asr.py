@@ -155,6 +155,14 @@ def _get_cloud_ws_url(
     return f"{ws_url}?{urlencode(params)}"
 
 
+# 会话失效自愈（2026-11-19）：DashScope 直连识别器在空闲超时（暂停录制约 23s）
+# 后会内部停止，此后 send_audio_frame 一直抛 "Speech recognition has stopped."。
+# 原实现只打日志、_started 仍为 True，导致整场后半段无转写且 UI 无感。
+# 现改为标记失效 + 一次性告知 + 后台自愈重建，连续自愈次数受上限保护。
+STALE_HEAL_MAX = 3          # 单场连续自愈次数上限
+STALE_HEAL_COOLDOWN = 30.0  # 两次自愈最小间隔（秒）
+
+
 class RealtimeTranscriber:
     """
     实时转写器（代理模式）。
@@ -212,11 +220,23 @@ class RealtimeTranscriber:
         self._connect_event = threading.Event()
         self._connect_error: str | None = None
 
+        # 直连识别器实例（直连模式专用）
+        self._recognition = None
+
+        # 会话失效自愈状态（见 STALE_HEAL_* 注释）
+        self._restart_lock = threading.Lock()
+        self._restarting = False
+        self._stopping = False
+        self._heal_attempts = 0
+        self._last_heal_at = 0.0
+        self._dead_notified = False
+
     def start(self) -> None:
         """启动实时转写（根据模式选择代理、云端或直连）"""
         if self._started:
             raise RuntimeError("实时转写已在运行中")
 
+        self._stopping = False
         mode = _get_asr_mode()
 
         if mode == "local":
@@ -570,11 +590,11 @@ class RealtimeTranscriber:
             return
 
         # 直连模式：通过 SDK 送入音频
-        if hasattr(self, '_recognition') and self._recognition:
+        if self._recognition:
             try:
                 self._recognition.send_audio_frame(pcm_data)
             except Exception as e:
-                logger.error(f"[实时转写] 送入音频失败: {e}")
+                self._handle_feed_failure(e)
             return
 
         # 代理模式：通过 WebSocket 送入
@@ -587,8 +607,103 @@ class RealtimeTranscriber:
         except Exception as e:
             logger.error(f"[实时转写] 送入音频失败: {e}")
 
+    def _handle_feed_failure(self, exc: Exception) -> None:
+        """送帧失败处置：识别会话可能已停止（如暂停导致云端空闲超时）。
+
+        原实现只打一行日志、_started 保持 True，前端仍然显示「转写中」，
+        实际整场后半段无转写。现改为标记失效 + 一次性告知 + 后台自愈。
+        """
+        msg = str(exc)
+        if "stopped" not in msg.lower():
+            # 偶发送帧异常不代表会话已死，保留会话继续送帧
+            logger.error(f"[实时转写] 送入音频失败: {msg}")
+            return
+        self._started = False
+        self._recognition = None
+        if self._dead_notified:
+            return
+        self._dead_notified = True
+        logger.error(f"[实时转写] 识别会话已失效（{msg}），尝试自动恢复")
+        if self._on_error:
+            self._on_error("实时转写连接已中断，正在自动恢复…")
+        self._try_self_heal()
+
+    def _try_self_heal(self) -> None:
+        """后台自愈重建（不阻塞 stream_reader 线程）。"""
+        now = time.time()
+        if self._stopping or self._restarting:
+            return
+        if self._heal_attempts >= STALE_HEAL_MAX:
+            logger.error("[实时转写] 自愈次数已达上限，停止重试（录音与声纹识别不受影响）")
+            return
+        if now - self._last_heal_at < STALE_HEAL_COOLDOWN:
+            return
+        self._last_heal_at = now
+        self._heal_attempts += 1
+        threading.Thread(
+            target=self.restart,
+            kwargs={"reason": "会话失效自愈", "force": False},
+            daemon=True,
+            name="realtime-asr-heal",
+        ).start()
+
+    def restart(self, reason: str = "", force: bool = True) -> bool:
+        """重建识别会话（暂停恢复 / 会话失效自愈）。
+
+        与 stop() 的区别：旧识别器直接丢弃、不调用其 stop()——已失效会话
+        stop 无意义，仍存活的会话调 stop 会触发 on_complete 误推 ended。
+        force=False 用于自愈：若已被其它路径重建成功（_started=True）则跳过。
+        """
+        with self._restart_lock:
+            if self._stopping:
+                return False
+            if not force and self._started:
+                return False
+            self._restarting = True
+            count = self._sentence_count
+            mode = "unknown"
+            try:
+                self._recognition = None
+                self._started = False
+                self._release_ws_session()
+                mode = _get_asr_mode()
+                if mode == "direct":
+                    self._start_direct()
+                elif mode == "cloud":
+                    self._start_cloud()
+                elif mode == "local":
+                    logger.warning("[实时转写] 当前为本地模式，跳过会话重建")
+                    return False
+                else:
+                    self._start_proxy()
+                self._sentence_count = count
+                self._dead_notified = False
+                if force:
+                    # 手动/暂停恢复重建成功，重新给予自愈额度
+                    self._heal_attempts = 0
+                    self._last_heal_at = 0.0
+                logger.info(
+                    f"[实时转写] 会话已重建（{reason or '手动'}），累计 {count} 句定稿"
+                )
+                return True
+            except Exception as e:
+                logger.error(f"[实时转写] 会话重建失败（{reason or '手动'}）: {e}")
+                self._started = False
+                # 直连模式 _start_direct 内部已推 on_error，避免重复
+                if mode != "direct" and self._on_error:
+                    self._on_error(f"实时转写恢复失败：{e}")
+                return False
+            finally:
+                self._restarting = False
+
+    def _release_ws_session(self) -> None:
+        """丢弃代理/云端旧 WebSocket 会话（直连模式无操作）。"""
+        if self._loop or self._thread:
+            self._cleanup()
+
     def stop(self) -> None:
         """停止实时转写"""
+        self._stopping = True
         if not self._started:
             return
 

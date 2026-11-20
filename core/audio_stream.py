@@ -48,6 +48,7 @@ _stream_paused: bool = False          # 暂停标志：暂停时仍 tail 文件�
 _stream_pcm_callback = None  # Callable[[bytes], None] | None
 _stream_paused_total: float = 0.0     # 累计暂停秒数（用于准确计算录制时长）
 _stream_pause_start: float | None = None  # 本次暂停开始时间
+_stream_last_pause: float = 0.0       # 最近一次暂停的实际时长（恢复时写入，供 ASR 重建判定）
 
 # PCM 回调解耦队列：读线程只做 read + 入队，回调在独立线程消费。
 # 目的：回调（尤其声纹 embedding 推理，单次可达 1s）绝不可反压 ffmpeg——
@@ -416,6 +417,7 @@ def stop_recording_with_stream() -> dict:
     global _stream_start_time, _stream_reader_thread, _stream_running
     global _stream_pcm_callback
     global _stream_paused, _stream_paused_total, _stream_pause_start
+    global _stream_last_pause
     global _stream_cb_queue, _stream_cb_thread, _stream_cb_dropped
 
     if not _stream_process:
@@ -518,6 +520,7 @@ def stop_recording_with_stream() -> dict:
     _stream_paused = False
     _stream_paused_total = 0.0
     _stream_pause_start = None
+    _stream_last_pause = 0.0
     _stream_cb_queue = None
     _stream_cb_thread = None
     _stream_cb_dropped = 0
@@ -541,6 +544,7 @@ def pause_recording_with_stream() -> None:
     但 tail 出的数据不再送入 pcm_callback（实时 ASR 停止接收）。
     """
     global _stream_paused, _stream_pause_start
+    global _stream_last_pause
 
     if not is_stream_recording():
         raise RuntimeError("未在流式录制中")
@@ -549,6 +553,7 @@ def pause_recording_with_stream() -> None:
 
     _stream_paused = True
     _stream_pause_start = time.time()
+    _stream_last_pause = 0.0
     logger.info("[stream] 录制已暂停")
 
 
@@ -559,6 +564,7 @@ def resume_recording_with_stream() -> None:
     累计暂停时长，恢复数据写入和 pcm_callback。
     """
     global _stream_paused, _stream_pause_start, _stream_paused_total
+    global _stream_last_pause
 
     if not _stream_process:
         raise RuntimeError("未在流式录制中")
@@ -567,11 +573,20 @@ def resume_recording_with_stream() -> None:
 
     # 累计本次暂停时长
     if _stream_pause_start:
-        _stream_paused_total += time.time() - _stream_pause_start
+        _stream_last_pause = time.time() - _stream_pause_start
+        _stream_paused_total += _stream_last_pause
 
     _stream_paused = False
     _stream_pause_start = None
-    logger.info(f"[stream] 录制已恢复，累计暂停 {_stream_paused_total:.1f}s")
+    logger.info(
+        f"[stream] 录制已恢复，累计暂停 {_stream_paused_total:.1f}s"
+        f"（本次 {_stream_last_pause:.1f}s）"
+    )
+
+
+def get_last_pause_duration() -> float:
+    """最近一次暂停的实际时长（秒）；未暂停过为 0。"""
+    return _stream_last_pause
 
 
 def _raw_to_wav(

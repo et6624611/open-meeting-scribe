@@ -44,6 +44,7 @@ __all__ = [
     "stop_recording_with_stream", "pause_recording_with_stream",
     "resume_recording_with_stream", "_raw_to_wav",
     "is_stream_recording", "get_stream_recording_info",
+    "get_last_pause_duration",
 ]
 
 

@@ -10,12 +10,14 @@
 创建 / Created: 2026-11-05（从 record.py 拆分）
 """
 
+import asyncio
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from core.audio import (
+    get_last_pause_duration,
     get_stream_recording_info,
     is_stream_recording,
     pause_recording_with_stream,
@@ -42,6 +44,12 @@ from core.tasks_repo import remove_task
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# 暂停时长超过该阈值后，恢复时必须重建实时 ASR 会话。
+# DashScope 直连识别器空闲约 23s 即被服务端超时关闭，而录音暂停期间不送音频，
+# 恢复后原识别器已停止（send_audio_frame 抛 "Speech recognition has stopped."），
+# 表现为「人物识别到有人说话，但转写没有发生」。留足余量取 8s。
+PAUSE_ASR_RESTART_SEC = 8.0
 
 
 @router.get("/api/record/status")
@@ -96,11 +104,31 @@ async def resume_record():
         # 通过访问器实时获取当前录制的 task_id（不可用按值导入的 _stream_task_id，其恒为 None） / Get current recording task_id via accessor (can't use _stream_task_id imported by value; always None)
         info = get_stream_recording_info()
         task_id = info["task_id"] if info else None
+        was_paused = bool(info.get("paused")) if info else False
         resume_recording_with_stream()
+        paused_sec = get_last_pause_duration() if was_paused else 0.0
         # 更新任务状态为 recording / Update task status to recording
         if task_id and task_id in tasks:
             tasks[task_id]["status"] = "recording"
             save_task_to_disk(task_id)
+        # 暂停过久后原 ASR 会话大概率已被云端超时关闭，恢复时必须重建
+        asr_restarted = False
+        if task_id and paused_sec >= PAUSE_ASR_RESTART_SEC:
+            transcriber = realtime_transcribers.get(task_id)
+            restart = getattr(transcriber, "restart", None)
+            if restart:
+                try:
+                    asr_restarted = bool(
+                        await asyncio.to_thread(
+                            restart, f"暂停 {paused_sec:.0f}s 后恢复"
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"[录制] 恢复时重建实时转写失败: {e}")
+                logger.info(
+                    f"[录制] 暂停 {paused_sec:.1f}s 后恢复，实时转写重建="
+                    f"{'成功' if asr_restarted else '失败'}: task={task_id[:8]}"
+                )
         # 联动恢复实时总结（仅当暂停是由录音触发时） / Cascade-resume realtime summary (only when pause was triggered by recording)
         summarizer = realtime_summarizers.get(task_id) if task_id else None
         summary_resumed = False
@@ -108,7 +136,7 @@ async def resume_record():
             summary_resumed = summarizer.auto_resume_for_recording()
         else:
             logger.warning(f"[录制] 恢复联动：未找到实时总结器 task={task_id}")
-        return {"status": "recording", "summary_resumed": summary_resumed}
+        return {"status": "recording", "summary_resumed": summary_resumed, "asr_restarted": asr_restarted}
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 
