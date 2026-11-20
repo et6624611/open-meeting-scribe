@@ -31,6 +31,57 @@ def admin_client():
 
 
 # ============================================================
+# CLI 构建域
+# ============================================================
+
+class TestCliBuild:
+    def test_build_uses_resolved_npm_executable(self, monkeypatch, tmp_path):
+        import shutil
+        import subprocess
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        import cli as cli_module
+
+        frontend = tmp_path / "frontend"
+        assets = frontend / "dist" / "assets"
+        assets.mkdir(parents=True)
+        (assets / "app.js").write_text("console.log('ok')", encoding="utf-8")
+        (frontend / "dist" / "index.html").write_text("<div id='app'></div>", encoding="utf-8")
+        npm = r"C:\Program Files\nodejs\npm.CMD"
+        run = Mock(return_value=SimpleNamespace(returncode=0))
+        monkeypatch.setattr(cli_module, "__file__", str(tmp_path / "cli.py"))
+        monkeypatch.setattr(shutil, "which", Mock(return_value=npm))
+        monkeypatch.setattr(subprocess, "run", run)
+
+        assert cli_module.cmd_build(SimpleNamespace()) == 0
+
+        assert run.call_count == 2
+        assert run.call_args_list[0].args[0] == [npm, "install"]
+        assert run.call_args_list[1].args[0] == [npm, "run", "build"]
+        assert all(item.kwargs["cwd"] == frontend for item in run.call_args_list)
+        assert (tmp_path / "app" / "static" / "assets" / "app.js").exists()
+
+    def test_build_reports_missing_npm(self, monkeypatch, tmp_path, capsys):
+        import shutil
+        import subprocess
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        import cli as cli_module
+
+        (tmp_path / "frontend").mkdir()
+        run = Mock()
+        monkeypatch.setattr(cli_module, "__file__", str(tmp_path / "cli.py"))
+        monkeypatch.setattr(shutil, "which", Mock(return_value=None))
+        monkeypatch.setattr(subprocess, "run", run)
+
+        assert cli_module.cmd_build(SimpleNamespace()) == 1
+        assert "未找到 npm" in capsys.readouterr().out
+        run.assert_not_called()
+
+
+# ============================================================
 # 错误分类域
 # ============================================================
 

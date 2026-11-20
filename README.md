@@ -103,7 +103,20 @@ Edit `.env` and fill in your API keys:
 
 > **About the ASR proxy**: To protect your API key, transcription requests are relayed through a proxy service. The client never stores the DashScope key directly. You can self-host the `asr-proxy/` service or use a third-party proxy.
 
-#### 3. Install backend dependencies
+#### 3. Install ffmpeg
+
+Recording capture, audio normalization, and duration probing all depend on ffmpeg; recording fails immediately without it:
+
+```bash
+# macOS
+brew install ffmpeg
+# Windows
+winget install Gyan.FFmpeg
+```
+
+Alternatively, drop `ffmpeg.exe` / `ffprobe.exe` (or the macOS binaries) into the project-root `ffmpeg/` directory — the app adds it to PATH on startup. Restart `python cli.py server` after installing. The Docker image and release packages already bundle it.
+
+#### 4. Install backend dependencies
 
 ```bash
 python3 -m venv venv
@@ -111,7 +124,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### 4. Build the frontend
+#### 5. Build the frontend
 
 ```bash
 cd frontend
@@ -120,7 +133,7 @@ npm run build
 cd ..
 ```
 
-#### 5. Start the server
+#### 6. Start the server
 
 ```bash
 python cli.py server

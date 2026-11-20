@@ -274,6 +274,12 @@ def _find_windows_audio_device() -> str:
             match = re.search(r'\[.*?\]\s+"(.+?)"', line)
             if match:
                 devices.append(match.group(1))
+                continue
+        # 新版 ffmpeg 不再输出分组标题，改为给每个设备行标注 (audio)/(video)
+        # Newer ffmpeg tags each device line with (audio) instead of printing group headers
+        tagged = re.search(r'\[.*?\]\s+"(.+?)"\s*\(audio\)', line)
+        if tagged:
+            devices.append(tagged.group(1))
 
     if not devices:
         return ""
@@ -392,15 +398,24 @@ def _list_windows_audio_devices_ffmpeg() -> list[dict]:
         if "DirectShow video devices" in line:
             in_audio = False
             continue
+        name = ""
         if in_audio:
             match = re.search(r'\[.*?\]\s+"(.+?)"', line)
             if match:
-                devices.append({
-                    "index": idx,
-                    "name": match.group(1),
-                    "type": "audio",
-                })
-                idx += 1
+                name = match.group(1)
+        if not name:
+            # 新版 ffmpeg 不再输出分组标题，改为给每个设备行标注 (audio)/(video)
+            # Newer ffmpeg tags each device line with (audio) instead of printing group headers
+            tagged = re.search(r'\[.*?\]\s+"(.+?)"\s*\(audio\)', line)
+            if tagged:
+                name = tagged.group(1)
+        if name:
+            devices.append({
+                "index": idx,
+                "name": name,
+                "type": "audio",
+            })
+            idx += 1
     return devices
 
 

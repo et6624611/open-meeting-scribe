@@ -905,6 +905,142 @@ class TestCliLifecycle:
         assert "gap" not in runner._CANCELLED
 
 
+class TestProcessCleanup:
+    def test_windows_cancel_terminates_exact_process_tree(self, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from core.cli_engine import runner
+
+        proc = SimpleNamespace(pid=4321, returncode=None, kill=Mock(), terminate=Mock())
+        run = Mock(return_value=SimpleNamespace(returncode=0))
+        monkeypatch.setattr(runner, "_is_windows", lambda: True)
+        monkeypatch.setattr(runner.subprocess, "run", run)
+        forbidden = Mock(side_effect=AssertionError("不应访问 POSIX 进程组 API"))
+        monkeypatch.setattr(runner.os, "getpgid", forbidden, raising=False)
+        monkeypatch.setattr(runner.os, "killpg", forbidden, raising=False)
+
+        with runner.stream_scope("win-cancel"):
+            runner._ACTIVE["win-cancel"] = proc
+            try:
+                assert runner.cancel_stream("win-cancel") is True
+            finally:
+                runner._ACTIVE.pop("win-cancel", None)
+
+        assert run.call_args.args[0] == ["taskkill", "/PID", "4321", "/T", "/F"]
+        assert run.call_args.kwargs["timeout"] == 5
+        assert run.call_args.kwargs["check"] is False
+        assert not run.call_args.kwargs.get("shell", False)
+        forbidden.assert_not_called()
+        proc.kill.assert_not_called()
+
+    @pytest.mark.parametrize("failure", ["missing", "timeout", "nonzero"])
+    def test_windows_cancel_falls_back_to_root_process(self, monkeypatch, failure):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from core.cli_engine import runner
+
+        proc = SimpleNamespace(pid=4321, returncode=None, kill=Mock())
+        if failure == "missing":
+            run = Mock(side_effect=FileNotFoundError("taskkill"))
+        elif failure == "timeout":
+            run = Mock(side_effect=runner.subprocess.TimeoutExpired("taskkill", 5))
+        else:
+            run = Mock(return_value=SimpleNamespace(returncode=1))
+        monkeypatch.setattr(runner, "_is_windows", lambda: True)
+        monkeypatch.setattr(runner.subprocess, "run", run)
+        stream_id = f"win-cancel-{failure}"
+
+        with runner.stream_scope(stream_id):
+            runner._ACTIVE[stream_id] = proc
+            try:
+                assert runner.cancel_stream(stream_id) is True
+            finally:
+                runner._ACTIVE.pop(stream_id, None)
+
+        proc.kill.assert_called_once_with()
+
+    def test_windows_reap_skips_tree_kill_for_exited_process(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, Mock
+
+        from core.cli_engine import runner
+
+        proc = SimpleNamespace(
+            pid=4321, returncode=None, wait=AsyncMock(return_value=0),
+            terminate=Mock(), kill=Mock(),
+        )
+        terminate_tree = Mock(return_value=True)
+        monkeypatch.setattr(runner, "_is_windows", lambda: True)
+        monkeypatch.setattr(runner, "_terminate_windows_tree", terminate_tree)
+
+        asyncio.run(runner._reap(proc))
+        assert terminate_tree.call_count == 1
+        proc.returncode = 0
+        asyncio.run(runner._reap(proc))
+        assert terminate_tree.call_count == 1
+        assert proc.wait.await_count == 2
+        proc.terminate.assert_not_called()
+        proc.kill.assert_not_called()
+
+    def test_windows_reap_wait_timeout_has_bounded_fallback(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, Mock
+
+        from core.cli_engine import runner
+
+        proc = SimpleNamespace(
+            pid=4321, returncode=None, wait=AsyncMock(side_effect=asyncio.TimeoutError()),
+            terminate=Mock(), kill=Mock(),
+        )
+        terminate_tree = Mock(side_effect=[True, False])
+        monkeypatch.setattr(runner, "_is_windows", lambda: True)
+        monkeypatch.setattr(runner, "_terminate_windows_tree", terminate_tree)
+
+        asyncio.run(runner._reap(proc))
+
+        assert terminate_tree.call_count == 2
+        proc.terminate.assert_not_called()
+        proc.kill.assert_called_once_with()
+
+    def test_posix_cleanup_keeps_process_group_signals(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, Mock, call
+
+        from core.cli_engine import runner
+
+        monkeypatch.setattr(runner, "_is_windows", lambda: False)
+        sigkill = getattr(runner.signal, "SIGKILL", 9)
+        monkeypatch.setattr(runner.signal, "SIGKILL", sigkill, raising=False)
+        monkeypatch.setattr(runner.os, "getpgid", Mock(return_value=777), raising=False)
+        killpg = Mock()
+        monkeypatch.setattr(runner.os, "killpg", killpg, raising=False)
+
+        proc = SimpleNamespace(pid=4321, returncode=None, wait=AsyncMock(return_value=0), kill=Mock())
+        asyncio.run(runner._reap(proc))
+        assert killpg.call_args_list == [call(777, runner.signal.SIGTERM)]
+
+        killpg.reset_mock()
+        proc.wait = AsyncMock(side_effect=asyncio.TimeoutError())
+        asyncio.run(runner._reap(proc))
+        assert killpg.call_args_list == [
+            call(777, runner.signal.SIGTERM), call(777, sigkill),
+        ]
+
+        killpg.reset_mock()
+        with runner.stream_scope("posix-cancel"):
+            runner._ACTIVE["posix-cancel"] = proc
+            try:
+                assert runner.cancel_stream("posix-cancel") is True
+            finally:
+                runner._ACTIVE.pop("posix-cancel", None)
+        killpg.assert_called_once_with(777, sigkill)
+
+
 class TestFirstFrameDiagnostics:
     """首帧前失败：stderr 必须回传，分隔符可退让。"""
 
