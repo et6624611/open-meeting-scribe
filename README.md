@@ -36,10 +36,10 @@ version: "1.0.0"
 > **Non-technical users**: this project is built with AI-assisted development, and it is designed to be usable by non-IT people with help from an AI coding assistant (setup, troubleshooting, and configuration). You don't need to be a developer to run it from source or Docker — but you should be comfortable pasting commands into a terminal.
 
 <p align="center">
-  <img src="docs/images/start-a-new-meeting.png" alt="Start a New Meeting — record with mic, import audio, or take manual notes" width="820">
+  <img src="assets/screenshots/product/en/start-a-new-meeting.png" alt="Start a New Meeting — record with mic, import audio, or take manual notes" width="820">
 </p>
 <p align="center">
-  <img src="docs/images/meeting-insights.png" alt="Meeting workspace — transcript, notes, minutes, decisions and insights in one place" width="820">
+  <img src="assets/screenshots/product/en/meeting-insights.png" alt="Meeting workspace — transcript, notes, minutes, decisions and insights in one place" width="820">
 </p>
 
 ## ✨ Features

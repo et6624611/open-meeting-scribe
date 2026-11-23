@@ -36,10 +36,10 @@ version: "1.0.0"
 > **面向非技术用户**：本项目由 AI 辅助开发，也面向「能在 AI 编程助手帮助下使用开源软件」的非 IT 人员。源码与 Docker 两条路径都不需要你是开发者，但需要能接受在终端里粘贴命令。
 
 <p align="center">
-  <img src="docs/images/start-a-new-meeting.png" alt="新建会议页——麦克风录音、导入音频或手动记录" width="820">
+  <img src="assets/screenshots/product/zh-CN/01-meetings.png" alt="新建会议页——麦克风录音、导入音频或手动记录" width="820">
 </p>
 <p align="center">
-  <img src="docs/images/meeting-insights.png" alt="会议工作台——转写、笔记、纪要、决策与洞察集中呈现" width="820">
+  <img src="assets/screenshots/product/zh-CN/03-insights.png" alt="洞察板——转写、笔记、纪要、决策与洞察集中呈现" width="820">
 </p>
 
 ## ✨ 功能特性

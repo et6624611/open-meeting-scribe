@@ -145,3 +145,6 @@ agent-workspace/
 
 # data 目录本地快照备份（一次性清理留档，含敏感会议上下文，不入库）
 data/_backup_*/
+
+# 落地页（含截图素材，仅本地维护，不入库）
+/landing/
