@@ -28,17 +28,22 @@ export interface SpeakerStats {
   decisions: DecisionStat[]
 }
 
+export interface SpeakerProfile {
+  id: string
+  name: string
+}
+
 const statsCache = ref<Record<string, SpeakerStats>>({})
 const allTasks = ref<Task[]>([])
 const isLoading = ref(false)
 
 /** 加载所有任务并计算统计 */
-export async function loadSpeakerStats(speakerIds: string[]) {
+export async function loadSpeakerStats(profiles: SpeakerProfile[]) {
   isLoading.value = true
   try {
     // 说话人页需要逐字稿流水，显式走全量视图（列表视图不含 dialogue）
     allTasks.value = await fetchTasks('full')
-    computeStats(speakerIds)
+    computeStats(profiles)
   } catch (e) {
     console.error('[speakerStats] 加载失败:', e)
   } finally {
@@ -66,12 +71,20 @@ function flattenDialogue(task: Task): FlatTranscriptLine[] {
 }
 
 /** 从任务列表计算每个说话人的统计 */
-function computeStats(speakerIds: string[]) {
+function computeStats(profiles: SpeakerProfile[]) {
   const stats: Record<string, SpeakerStats> = {}
+  // 姓名 → 档案 id：参会人名单（roster）只存姓名，手工添加的参会关系靠它反查
+  const idsByName = new Map<string, string[]>()
 
   // 初始化
-  speakerIds.forEach(id => {
+  profiles.forEach(({ id, name }) => {
     stats[id] = { meetings: [], totalDuration: 0, utteranceCount: 0, decisions: [] }
+    const trimmed = (name || '').trim()
+    if (trimmed) {
+      const ids = idsByName.get(trimmed) || []
+      ids.push(id)
+      idsByName.set(trimmed, ids)
+    }
   })
 
   // 遍历已完成的任务
@@ -96,11 +109,20 @@ function computeStats(speakerIds: string[]) {
       utterancesBySpeaker[sid].push(d)
     })
 
-    // 映射到 UUID
+    // 按 UUID 聚合发言：同一 uuid 可能被多个 speaker_id 命中，合并后只登记一场，避免重复
+    const utterancesByUuid: Record<string, FlatTranscriptLine[]> = {}
     Object.entries(utterancesBySpeaker).forEach(([sid, utterances]) => {
       const uuid = speakerMapping[sid]
       if (!uuid || !stats[uuid]) return
+      if (!utterancesByUuid[uuid]) utterancesByUuid[uuid] = []
+      utterancesByUuid[uuid].push(...utterances)
+    })
 
+    // 参与判定①：声纹标记 / 已绑定（speaker_uuid_mapping）——含无发言的有效绑定
+    const mappedUuids = Object.values(speakerMapping).filter(uuid => uuid && stats[uuid])
+    const voiceprintUuids = new Set<string>([...mappedUuids, ...Object.keys(utterancesByUuid)])
+    voiceprintUuids.forEach(uuid => {
+      const utterances = utterancesByUuid[uuid] || []
       const s = stats[uuid]
       s.meetings.push({
         task_id: taskId,
@@ -115,6 +137,24 @@ function computeStats(speakerIds: string[]) {
       s.utteranceCount += utterances.length
       if (totalLineCount > 0) {
         s.totalDuration += (utterances.length / totalLineCount) * taskDuration
+      }
+    })
+
+    // 参与判定②：手工添加的参会人（roster 姓名）——已按声纹登记过的名字不重复计入
+    const rosterNames = new Set((task.roster || []).map(n => (n || '').trim()).filter(Boolean))
+    rosterNames.forEach(name => {
+      for (const id of idsByName.get(name) || []) {
+        if (voiceprintUuids.has(id)) continue
+        stats[id].meetings.push({
+          task_id: taskId,
+          title: taskTitle,
+          date: taskDate,
+          duration: taskDuration,
+          utteranceCount: 0,
+          totalUtterances: totalLineCount,
+          excerpt: '',
+          utterances: [],
+        })
       }
     })
 

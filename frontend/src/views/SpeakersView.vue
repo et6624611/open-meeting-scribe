@@ -329,7 +329,7 @@ async function load() {
   // 列表已显示，后台并行加载统计数据与声纹注册表
   if (speakers.value.length > 0) {
     Promise.all([
-      loadSpeakerStats(speakers.value.map(s => s.id)),
+      loadSpeakerStats(speakers.value.map(s => ({ id: s.id, name: s.name }))),
       fetchVoiceprintRegistry().then(ids => { voiceprintIds.value = ids }),
     ]).catch(() => { /* 静默处理，不影响列表展示 */ })
   }
