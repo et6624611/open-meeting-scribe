@@ -28,29 +28,48 @@ from core.task_store import save_task_to_disk, tasks
 logger = logging.getLogger(__name__)
 
 
-def cleanup_zombie_recording() -> None:
-    """清理僵尸录音：ffmpeg 进程已崩溃但任务状态仍为 recording。
-    Clean up zombie recording: ffmpeg process crashed but task status is still 'recording'.
+def cleanup_zombie_recording(
+    task_id: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """清理僵尸录音：ffmpeg 进程已崩溃但任务状态仍为 recording 或 paused。
+    Clean up zombie recording: ffmpeg process crashed but task status is still
+    'recording' or 'paused'.
+
+    paused 任务同样可能僵尸：暂停期间休眠/设备停采触发看门狗强杀 ffmpeg，
+    若不清理任务会卡在假 paused，恢复按钮永远 400（2026-11-23 事故）。
 
     将任务状态更新为 failed，清理所有实时资源。
     Updates task status to 'failed', cleans up all realtime resources.
+
+    Args:
+        task_id: 指定要清理的任务；None 时扫描状态为 recording/paused 的任务
+        reason: 写入任务 error 字段的原因说明；None 时用默认文案
     """
-    # 查找处于 recording 状态但 ffmpeg 已死的任务 / Find tasks in 'recording' state but ffmpeg is dead
-    zombie_task_id = None
-    for tid, task in tasks.items():
-        if task.get("status") == "recording":
-            zombie_task_id = tid
-            break
+    # 定位僵尸任务 / Locate the zombie task
+    if task_id is not None:
+        zombie_task_id = task_id if task_id in tasks else None
+    else:
+        zombie_task_id = None
+        for tid, task in tasks.items():
+            if task.get("status") in ("recording", "paused"):
+                zombie_task_id = tid
+                break
 
     if not zombie_task_id:
         return
 
-    logger.warning(f"[录制] 检测到僵尸录音，正在清理: task={zombie_task_id[:8]}")
+    task_status = tasks.get(zombie_task_id, {}).get("status", "?")
+    logger.warning(
+        f"[录制] 检测到僵尸录音，正在清理: task={zombie_task_id[:8]} status={task_status}"
+    )
 
     # 更新任务状态 / Update task status
     if zombie_task_id in tasks:
         tasks[zombie_task_id]["status"] = "failed"
-        tasks[zombie_task_id]["error"] = "Recording process crashed (ffmpeg unavailable or device not found)"
+        tasks[zombie_task_id]["error"] = reason or (
+            "Recording process crashed (ffmpeg unavailable or device not found)"
+        )
         save_task_to_disk(zombie_task_id)
 
     # 清理实时资源 / Clean up realtime resources

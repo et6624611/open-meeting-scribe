@@ -130,6 +130,26 @@ def _wav_data_offset(path: Path) -> int | None:
     return None
 
 
+def _handle_guard_forced_stop(reason: str) -> None:
+    """看门狗强杀 ffmpeg 后的联动收尾。
+
+    1. 置 _stream_running=False 让 tail 线程退出，不留脏流状态；
+    2. 任务状态同步为 failed（含暂停态）——否则任务卡在假 paused，
+       恢复按钮永远 400（2026-11-23 事故：暂停期休眠停采被误杀）。
+    """
+    global _stream_running
+    _stream_running = False
+    task_id = _stream_task_id
+    if not task_id:
+        return
+    # 延迟导入：recording_recovery → silence_detection → core.audio（聚合层）
+    # 会反向 re-export 本模块符号，顶层导入成环
+    # Lazy import: recording_recovery reaches core.audio which re-exports this module
+    from core.recording_recovery import cleanup_zombie_recording
+
+    cleanup_zombie_recording(task_id=task_id, reason=reason)
+
+
 def start_recording_with_stream(
     device: str | None = None,
     output_dir: str | Path = "data/recordings",
@@ -280,7 +300,12 @@ def start_recording_with_stream(
     _stream_running = True
     _stream_cb_stop.clear()
     _stream_cb_dropped = 0
-    start_record_guard(proc, wav_path)
+    start_record_guard(
+        proc,
+        wav_path,
+        is_paused=lambda: _stream_paused,
+        on_force_terminate=_handle_guard_forced_stop,
+    )
 
     # 回调消费线程（无回调时不启动，避免无谓线程）
     # Start consumer thread (skip when there is no callback)
@@ -587,6 +612,19 @@ def resume_recording_with_stream() -> None:
 def get_last_pause_duration() -> float:
     """最近一次暂停的实际时长（秒）；未暂停过为 0。"""
     return _stream_last_pause
+
+
+def get_stream_paused_seconds() -> float:
+    """累计暂停秒数（含当前进行中的暂停段）；未暂停过为 0。
+
+    供静默检测等「以时间流逝为依据」的组件扣除暂停时长——
+    暂停期间数据链路冻结，时间流逝不等于用户离开
+    （2026-11-23 事故：暂停 8 分钟被静默检测按 user_presence_timeout 误关停）。
+    """
+    total = _stream_paused_total
+    if _stream_paused and _stream_pause_start:
+        total += time.time() - _stream_pause_start
+    return total
 
 
 def _raw_to_wav(

@@ -113,14 +113,37 @@ def sweep_orphan_ffmpeg(output_dir: str | Path = "data/recordings") -> int:
     return killed
 
 
-def start_record_guard(proc: subprocess.Popen, output_path: Path) -> None:
+def start_record_guard(
+    proc: subprocess.Popen,
+    output_path: Path,
+    is_paused=None,
+    on_force_terminate=None,
+) -> None:
     """录音看门狗：输出文件长时间不增长或父进程消失时收尾 ffmpeg。
 
     - 停增：文件 120s 无增长 → 判定采集僵死（典型为设备热切换后忙等）
     - 父进程消失：本进程已被 launchd 收养 → 立即停止录音，避免孤儿空转
+    - 暂停豁免：is_paused() 为 True 期间不计停增（暂停期文件无增长是预期，
+      典型如休眠唤醒后 avfoundation 停采——2026-11-23 事故：暂停态被误杀，
+      任务卡在假 paused，恢复按钮永远 400）。恢复后若采集确已死亡，
+      停增计时从恢复时刻重新起算，120s 内照常判定。
+
+    Args:
+        is_paused: 无参 callable，返回当前是否处于暂停态；None 表示无暂停概念
+        on_force_terminate: 强杀后的回调 on_force_terminate(reason)，用于联动
+            清理任务状态；回调异常不影响看门狗本身
     """
     parent_pid = os.getppid()
     started = time.time()
+
+    def _force_stop(reason: str) -> None:
+        logger.error(reason)
+        terminate_ffmpeg_proc(proc)
+        if on_force_terminate is not None:
+            try:
+                on_force_terminate(reason)
+            except Exception as e:
+                logger.warning(f"看门狗强杀回调异常: {e}")
 
     def _loop() -> None:
         last_size = -1
@@ -131,12 +154,23 @@ def start_record_guard(proc: subprocess.Popen, output_path: Path) -> None:
                 return
 
             if os.getppid() != parent_pid:
-                logger.error(f"父进程已退出，终止 ffmpeg 录音进程 pid={proc.pid}")
-                terminate_ffmpeg_proc(proc)
+                _force_stop(
+                    f"父进程已退出，终止 ffmpeg 录音进程 pid={proc.pid}"
+                )
                 return
 
             if time.time() - started < _RECORD_STALL_GRACE:
                 continue
+
+            if is_paused is not None:
+                try:
+                    if is_paused():
+                        # 暂停期文件无增长是预期行为，不计停增；
+                        # 刷新基线，恢复后停增窗口重新起算
+                        last_change = time.time()
+                        continue
+                except Exception as e:
+                    logger.warning(f"看门狗暂停态查询异常: {e}")
 
             try:
                 size = output_path.stat().st_size
@@ -149,11 +183,10 @@ def start_record_guard(proc: subprocess.Popen, output_path: Path) -> None:
                 continue
 
             if time.time() - last_change >= _RECORD_STALL_TIMEOUT:
-                logger.error(
+                _force_stop(
                     f"ffmpeg 录音僵死：输出 {time.time() - last_change:.0f}s 无增长"
                     f"（{output_path.name}），强制终止 pid={proc.pid}"
                 )
-                terminate_ffmpeg_proc(proc)
                 return
 
     threading.Thread(target=_loop, daemon=True, name="record-guard").start()

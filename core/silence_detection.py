@@ -22,7 +22,11 @@ from datetime import datetime
 from pathlib import Path
 
 from core import pipeline_hooks
-from core.audio import is_stream_recording, stop_recording_with_stream
+from core.audio import (
+    get_stream_paused_seconds,
+    is_stream_recording,
+    stop_recording_with_stream,
+)
 from core.i18n import _
 from core.realtime_store import (
     push_realtime_msg,
@@ -43,6 +47,9 @@ from core.settings_store import get_silence_detection_config
 from core.task_store import save_task_to_disk, tasks
 
 logger = logging.getLogger(__name__)
+
+# 监测轮询间隔（秒）；模块级常量便于测试加速
+_MONITOR_INTERVAL = 10.0
 
 
 def _log_pipeline_dispatch_result(task_id: str, future) -> None:
@@ -96,16 +103,20 @@ async def silence_monitor_loop(task_id: str) -> None:
 
     try:
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(_MONITOR_INTERVAL)
 
             if not is_stream_recording():
                 break
 
             now = time.time()
+            # 暂停时长整体扣除：暂停期数据链路冻结，时间流逝不代表用户离开。
+            # 不扣会导致「暂停态被静默检测自动关停」（2026-11-23 事故：
+            # 暂停 8 分钟后按 user_presence_timeout 关停）。
+            paused_sec = get_stream_paused_seconds()
 
             # 检查 1：心跳超时
             last_hb = realtime_last_heartbeat.get(task_id, now)
-            heartbeat_silent = now - last_hb
+            heartbeat_silent = max(0.0, now - last_hb - paused_sec)
             if heartbeat_silent > heartbeat_timeout:
                 logger.warning(
                     f"[静默检测] 心跳超时 ({heartbeat_silent:.0f}s > {heartbeat_timeout}s)，"
@@ -116,7 +127,7 @@ async def silence_monitor_loop(task_id: str) -> None:
 
             # 检查 2：ASR 无活动 + 存在性评分
             last_sent = realtime_last_sentence.get(task_id, now)
-            asr_silent = now - last_sent
+            asr_silent = max(0.0, now - last_sent - paused_sec)
             presence_score = realtime_presence_scores.get(task_id, 100.0)
 
             if asr_silent > asr_timeout and presence_score < threshold_warning:
