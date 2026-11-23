@@ -60,6 +60,7 @@
     :uploading-attachments="uploadingAttachments"
     :input-text="inputText"
     :chat-mode="chatMode"
+    :chat-scope="chatScope"
     :cli-probe="cliProbe"
     :session-tier="sessionTier"
     :pending-tier="pendingTier"
@@ -83,6 +84,7 @@
     @input-change="$emit('inputChange')"
     @update:input-text="$emit('update:inputText', $event)"
     @update:chat-mode="$emit('update:chatMode', $event)"
+    @update:chat-scope="$emit('update:chatScope', $event)"
     @update:pending-tier="$emit('update:pendingTier', $event)"
     @apply-new-session="$emit('applyNewSession')"
     @update:session-model="$emit('update:sessionModel', $event)"
@@ -92,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AttachmentMeta, ChatMessage, AgentStage } from '@/api/chat'
+import type { AttachmentMeta, ChatMessage, AgentStage, ChatScope } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import AiMessageList from './AiMessageList.vue'
 import AiChatComposer from './AiChatComposer.vue'
@@ -126,6 +128,7 @@ defineProps<{
   inputText: string
   formatChange: (change: any) => string
   chatMode: 'qa' | 'agent'
+  chatScope: ChatScope
   sessionTier: AuthTier
   pendingTier: AuthTier
   tierMenuSignal: number
@@ -172,13 +175,14 @@ defineEmits<{
   (e: 'inputChange'): void
   (e: 'update:inputText', val: string): void
   (e: 'update:chatMode', val: 'qa' | 'agent'): void
+  (e: 'update:chatScope', val: ChatScope): void
   (e: 'update:pendingTier', val: AuthTier): void
   (e: 'applyNewSession'): void
   (e: 'raiseTier'): void
   (e: 'raiseTierPreset'): void
   (e: 'update:sessionModel', val: string): void
   (e: 'update:agentModel', val: string): void
-  (e: 'editResend', index: number, text: string, override: { mode: 'qa' | 'agent'; model?: string; agentModel?: string }): void
+  (e: 'editResend', index: number, text: string, override: { mode: 'qa' | 'agent'; model?: string; agentModel?: string; scope?: ChatScope }): void
 }>()
 
 /** 对外暴露：feedRef（消息流滚动）、inputRef（聚焦/选点）、resizeInput（高度重算） */

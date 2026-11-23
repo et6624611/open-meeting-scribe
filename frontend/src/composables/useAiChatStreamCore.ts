@@ -5,7 +5,7 @@
  * 依赖通过 deps 对象注入，与 Vue 组件解耦（便于单测、减少 facade 体积）。
  */
 import { sendMessageStream, cancelStream } from '@/api/chat'
-import type { AttachmentMeta, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
+import type { AttachmentMeta, ChatExtractedItem, ChatMessage, AgentStage, ChatScope } from '@/api/chat'
 import type { AiSession } from '@/stores/aiSessions'
 
 /** 授权档位（与后端 _VALID_TIERS 对齐）：只读 / 提案写入 / 完全任务 */
@@ -16,6 +16,7 @@ export interface SendOverride {
   mode?: 'qa' | 'agent'
   model?: string
   agentModel?: string
+  scope?: ChatScope
 }
 
 const AI_MAX_CONTEXT = 20
@@ -69,6 +70,7 @@ interface Deps {
   followUps: { value: { text: string; icon: string }[] }
   // computed-like refs
   chatMode: { value: 'qa' | 'agent' }
+  chatScope: { value: ChatScope }
   sessionModel: { value: string }
   agentEngineModel: { value: string }
   sessionAuthTier: { value: AuthTier }
@@ -119,7 +121,7 @@ export function createStreamCore(deps: Deps): StreamCore {
     summaryProposal, notesProposal, boardProposal,
     activeEngine, tierDenial, injectPrompt, abortController,
     stages, followUps,
-    chatMode, sessionModel, agentEngineModel, sessionAuthTier, hasAgentSession,
+    chatMode, chatScope, sessionModel, agentEngineModel, sessionAuthTier, hasAgentSession,
     taskStore, realtimeStore, aiSessions, agentStore, insights,
     tt, getLocale, ensureSessionTier, maybeAutoTitle,
     showInjectPrompt, generateFollowUps,
@@ -136,6 +138,7 @@ export function createStreamCore(deps: Deps): StreamCore {
     const effectiveMode: 'qa' | 'agent' = override?.mode ?? chatMode.value
     const effectiveQaModel = override?.model ?? sessionModel.value
     const effectiveAgentModel = override?.agentModel ?? agentEngineModel.value
+    const effectiveScope: ChatScope = override?.scope ?? chatScope.value
     // 会话级授权快照：发送前确保本会话已锁定档位（同一场纪要不允许前后口径不一）
     if (effectiveMode === 'agent') ensureSessionTier()
     const effectiveTier = sessionAuthTier.value
@@ -152,6 +155,7 @@ export function createStreamCore(deps: Deps): StreamCore {
         mode: effectiveMode,
         model: effectiveMode === 'qa' ? effectiveQaModel : '',
         agentModel: effectiveMode === 'agent' ? effectiveAgentModel : '',
+        scope: effectiveScope,
       },
     })
     if (msgs.length > AI_MAX_CONTEXT * 2) {
@@ -243,6 +247,7 @@ export function createStreamCore(deps: Deps): StreamCore {
         chat_session_id: (aiSessions.currentBucket.activeSessionId as string | undefined) || undefined,
         resume_session: effectiveMode !== 'qa' && hasAgentSession.value,
         attachments,
+        scope: effectiveScope,
         signal: ctrl.signal,
       }, {
         onToken(token: string) {
@@ -410,6 +415,9 @@ export function createStreamCore(deps: Deps): StreamCore {
           msg.timestamp = new Date().toISOString()
           if (data.metadata) msg.metadata = data.metadata
           if (data.sources) msg.sources = data.sources
+          // 提问范围回显：范围与检索统计随消息落库，刷新/切会话仍可见
+          if (data.scope) msg.scope = data.scope
+          if (data.retrieval) msg.retrieval = data.retrieval
           // 回复尾部消费方/计费回显（与后端 routing 实际判定同源）
           if (data.model_usage) msg.modelUsage = data.model_usage
           if (data.latency_ms != null) {

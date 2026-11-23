@@ -7,6 +7,10 @@
         class="ai-msg" :class="{ 'is-user': msg.role === 'user' }"
         :ref="(el) => setMsgEl(el, i)"
       >
+        <!-- 用户提问回显：我 · 提问范围 X · 模式（明文让用户感知对话目的） -->
+        <div v-if="msg.role === 'user' && editingIdx !== i && msg.content" class="msg-who">
+          {{ t('ai-panel.scope_user_echo', { scope: scopeLabel(msg), mode: modeLabel(msg) }) }}
+        </div>
         <!-- 编辑态：点击用户消息就地展开完整 composer（文本 + 模式 + 模型 + 发送），Esc/点击外部取消 -->
         <div v-if="editingIdx === i" class="composer-card is-edit">
           <textarea
@@ -20,6 +24,7 @@
           ></textarea>
           <ComposerBar
             :chat-mode="editMode"
+            :chat-scope="editScope"
             :session-tier="sessionTier"
             :pending-tier="pendingTier"
             :tier-menu-signal="tierMenuSignal"
@@ -35,6 +40,7 @@
             :agent-models-reason="agentModelsReason"
             :agent-models-loading="agentModelsLoading"
             @update:chat-mode="editMode = $event"
+            @update:chat-scope="editScope = $event"
             @update:pending-tier="$emit('update:pendingTier', $event)"
             @apply-new-session="$emit('applyNewSession')"
             @update:session-model="editModel = $event"
@@ -64,6 +70,10 @@
               <span class="ai-msg-file-size">{{ formatBytes(a.size) }}</span>
             </a>
           </template>
+        </div>
+        <!-- 回复 trace：提问范围 · 是否检索 · 命中场次 · 耗时（仅新消息有快照时显示） -->
+        <div v-if="msg.role === 'assistant' && msg.content && (msg.scope || msg.retrieval)" class="ai-scope-trace">
+          {{ traceText(msg) }}
         </div>
         <!-- 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致） -->
         <div v-if="msg.role === 'assistant' && msg.modelUsage" class="ai-usage-echo">
@@ -307,7 +317,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { LlmMetadata, AgentStage, ChatMessage } from '@/api/chat'
+import type { LlmMetadata, AgentStage, ChatMessage, ChatScope } from '@/api/chat'
 import { attachmentUrl } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
@@ -381,7 +391,7 @@ const emit = defineEmits<{
   (e: 'update:pendingTier', val: AuthTier): void
   (e: 'applyNewSession'): void
   (e: 'stopGeneration'): void
-  (e: 'editResend', index: number, text: string, override: { mode: 'qa' | 'agent'; model?: string; agentModel?: string }): void
+  (e: 'editResend', index: number, text: string, override: { mode: 'qa' | 'agent'; model?: string; agentModel?: string; scope?: ChatScope }): void
   (e: 'raiseTier'): void
   (e: 'raiseTierPreset'): void
 }>()
@@ -459,12 +469,43 @@ const notesProposalStats = computed(() => notesProposalSingleton.notesProposalSt
 const editingIdx = ref<number | null>(null)
 const editText = ref('')
 const editMode = ref<'qa' | 'agent'>('qa')
+const editScope = ref<ChatScope>('meeting')
 const editModel = ref('')
 const editAgentModel = ref('')
 const editInputRef = ref<HTMLTextAreaElement | null>(null)
 
 function setEditRef(el: unknown) {
   editInputRef.value = (el as HTMLTextAreaElement | null) ?? null
+}
+
+/** 提问范围文案（旧消息无快照按本场会议兜底） */
+function scopeLabel(msg: ChatMessage): string {
+  const scope = msg.sendOptions?.scope ?? msg.scope ?? 'meeting'
+  return t('ai-panel.scope_' + scope)
+}
+
+/** 模式文案（旧消息无快照按问答兜底） */
+function modeLabel(msg: ChatMessage): string {
+  return t('ai-panel.mode_' + (msg.sendOptions?.mode ?? 'qa'))
+}
+
+/** 回复 trace：范围 · 是否检索 · 命中场次 · 耗时 */
+function traceText(msg: ChatMessage): string {
+  const scope = msg.scope ?? msg.retrieval?.scope ?? 'meeting'
+  const retrieval = msg.retrieval
+  const retrievalText = !retrieval || !retrieval.searched
+    ? t('ai-panel.scope_trace_off')
+    : retrieval.hits > 0
+      ? (retrieval.shown != null && retrieval.shown < retrieval.hits
+          ? t('ai-panel.scope_trace_hit_limited', { total: retrieval.hits, shown: retrieval.shown })
+          : t('ai-panel.scope_trace_hit', { count: retrieval.hits }))
+      : t('ai-panel.scope_trace_miss')
+  const latency = msg.performance?.latency_ms != null
+    ? `${(msg.performance.latency_ms / 1000).toFixed(1)}s`
+    : '—'
+  return t('ai-panel.scope_trace', {
+    scope: t('ai-panel.scope_' + scope), retrieval: retrievalText, latency,
+  })
 }
 
 function startEdit(i: number) {
@@ -477,6 +518,7 @@ function startEdit(i: number) {
   editingIdx.value = i
   editText.value = msg.content
   editMode.value = inferredMode
+  editScope.value = msg.sendOptions?.scope ?? 'meeting'
   editModel.value = msg.sendOptions?.model ?? (inferredMode === 'qa' ? props.sessionModel : '')
   editAgentModel.value = msg.sendOptions?.agentModel ?? (inferredMode === 'agent' ? props.agentEngineModel : '')
   void nextTick(() => {
@@ -499,6 +541,7 @@ function submitEdit(i: number) {
     mode: editMode.value,
     model: editMode.value === 'qa' ? editModel.value : undefined,
     agentModel: editMode.value === 'agent' ? editAgentModel.value : undefined,
+    scope: editScope.value,
   })
 }
 
@@ -773,5 +816,28 @@ defineExpose({ feedRef })
 .ai-bubble :deep(.md-mermaid-box svg) { max-width: 100%; height: auto; }
 .ai-bubble :deep(pre.md-mermaid-error) {
   border-color: var(--warn); color: var(--warn); background: var(--warn-soft);
+}
+
+/* ── 提问范围回显：用户侧 who 行 + AI 侧 trace ── */
+.msg-who {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--subtle);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.ai-scope-trace {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

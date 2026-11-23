@@ -1,24 +1,46 @@
 <template>
   <!-- Composer 控制行：模式 + 模型/引擎模型 + 发送/停止（底部输入区与消息编辑态共用） -->
   <div class="composer-bar" ref="barRef" :class="{ 'is-compact': compact }">
-    <!-- 对话模式触发器（会话级，与“角色”正交） -->
+    <!-- 提问范围（按问题检索）：本场会议 / 全部会议；与档位、模式正交 -->
     <div class="cb-trigger-wrap">
-      <button ref="modeTriggerEl" class="ac-trigger is-icon" :class="{ 'is-open': modeMenuVisible }" v-bind="modeTriggerAttrs" :aria-label="t('ai-panel.mode_label')" :data-tip="t('ai-panel.mode_' + chatMode)" @click="toggleModeMenu">
-        <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" v-html="modeIconBody"></svg>
+      <button
+        ref="scopeTriggerEl"
+        class="ac-trigger scope-trigger"
+        :class="{ 'is-open': scopeMenuVisible, 'is-wide': chatScope === 'all' }"
+        v-bind="scopeTriggerAttrs"
+        :aria-label="t('ai-panel.scope_label')"
+        :title="t('ai-panel.scope_' + chatScope)"
+        @click="toggleScopeMenu"
+      >
+        <svg class="ac-tr-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.4-3.4"/></svg>
+        <span class="scope-txt">{{ t('ai-panel.scope_' + chatScope) }}</span>
+        <svg class="ac-chev scope-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
-      <div ref="modeMenuEl" v-show="modeMenuVisible" class="ac-menu" style="width: 288px;" v-bind="modeMenuAttrs">
+      <div ref="scopeMenuEl" v-show="scopeMenuVisible" class="ac-menu" style="width: 288px;" v-bind="scopeMenuAttrs">
         <div class="ac-group">
-          <div class="ac-label"><span>{{ t('ai-panel.mode_label') }}</span><span>{{ MODE_LIST.length }}</span></div>
-          <button v-for="m in MODE_LIST" :key="m" class="ac-row" role="menuitem" :class="{ 'is-sel': chatMode === m }" :aria-label="t('ai-panel.mode_' + m)" @click="onPickMode(m)">
-            <span class="ac-badge"><svg class="ac-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" v-html="MODE_ICONS[m].body"></svg></span>
-            <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.mode_' + m) }}</span><span class="ac-it-sub">{{ t('ai-panel.mode_' + m + '_hint') }}</span></span>
+          <div class="ac-label"><span>{{ t('ai-panel.scope_label') }}</span><span>{{ t('ai-panel.scope_label_hint') }}</span></div>
+          <button v-for="s in SCOPE_LIST" :key="s" class="ac-row" role="menuitem" :class="{ 'is-sel': chatScope === s }" :aria-label="t('ai-panel.scope_' + s)" @click="onPickScope(s)">
+            <span class="ac-badge"><svg class="ac-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" v-html="SCOPE_ICONS[s].body"></svg></span>
+            <span class="ac-it"><span class="ac-it-name">{{ t('ai-panel.scope_' + s) }}</span><span class="ac-it-sub">{{ t('ai-panel.scope_' + s + '_hint') }}</span></span>
             <span class="ac-right">
-              <svg v-if="chatMode === m" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
+              <svg v-if="chatScope === s" class="ac-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4 10-10"/></svg>
             </span>
           </button>
+          <div class="ac-note">{{ t('ai-panel.scope_note') }}</div>
         </div>
       </div>
     </div>
+
+    <!-- 对话模式（明文分段，会话级，与“角色”正交） -->
+    <span class="mode-seg" role="group" :aria-label="t('ai-panel.mode_label')">
+      <button
+        v-for="m in MODE_LIST" :key="m"
+        :class="{ 'is-active': chatMode === m }"
+        :aria-pressed="chatMode === m"
+        :title="m === 'agent' ? t('ai-panel.mode_agent_cost_hint') : t('ai-panel.mode_' + m + '_hint')"
+        @click="onPickMode(m)"
+      >{{ t('ai-panel.mode_' + m) }}</button>
+    </span>
 
     <!-- 授权档位触发器（会话级；与模式正交）：模式管“能不能动手”，档位管“动手的上限”。
          问答模式下模型不调用工具，档位钮置灰但仍可查看/预选。 -->
@@ -167,6 +189,7 @@ import { useI18n } from 'vue-i18n'
 import type { ChatEngineProbe } from '@/api/settings'
 import { lucideIcon, type IconDef } from '@/utils/lucideIcons'
 import { usePopMenu } from '@/composables/usePopMenu'
+import type { ChatScope } from '@/api/chat'
 import type { AuthTier } from '@/composables/useAiChat'
 
 type ChatMode = 'qa' | 'agent'
@@ -174,6 +197,8 @@ type ModelSource = 'local' | 'trial' | 'byok'
 
 const props = defineProps<{
   chatMode: ChatMode
+  /** 提问范围（按问题检索）：本场会议 / 全部会议 */
+  chatScope: ChatScope
   /** 本会话锁定档（快照） */
   sessionTier: AuthTier
   /** 待生效档（会中预选，新会话应用） */
@@ -195,6 +220,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:chatMode', v: ChatMode): void
+  (e: 'update:chatScope', v: ChatScope): void
   (e: 'update:pendingTier', v: AuthTier): void
   (e: 'apply-new-session'): void
   (e: 'update:sessionModel', v: string): void
@@ -209,21 +235,23 @@ const router = useRouter()
 /** 智能体模式：模型位切换为 CLI 引擎模型语义 */
 const isAgentMode = computed(() => props.chatMode === 'agent')
 
-/** 对话模式清单（两态）与图标（内外同一套 lucide） */
+/** 对话模式清单（两态） */
 const MODE_LIST = ['qa', 'agent'] as const
-const MODE_ICONS: Record<ChatMode, IconDef> = {
-  qa: lucideIcon('help-circle')!,
-  agent: lucideIcon('terminal')!,
+
+/** 提问范围清单与图标（两档：本场会议 / 全部会议） */
+const SCOPE_LIST: ChatScope[] = ['meeting', 'all']
+const SCOPE_ICONS: Record<ChatScope, IconDef> = {
+  meeting: lucideIcon('file-text')!,
+  all: lucideIcon('search')!,
 }
-const modeIconBody = computed(() => MODE_ICONS[props.chatMode].body)
 
 // ── 弹出菜单：usePopMenu 统一开合/定位/隐式收起 ──
 const barRef = ref<HTMLElement | null>(null)
-const modeTriggerEl = ref<HTMLElement | null>(null)
-const modeMenuEl = ref<HTMLElement | null>(null)
+const scopeTriggerEl = ref<HTMLElement | null>(null)
+const scopeMenuEl = ref<HTMLElement | null>(null)
 const modelTriggerEl = ref<HTMLElement | null>(null)
 const modelMenuEl = ref<HTMLElement | null>(null)
-const { visible: modeMenuVisible, toggle: toggleModeMenu, close: closeModeMenu, triggerAttrs: modeTriggerAttrs, menuAttrs: modeMenuAttrs } = usePopMenu(modeMenuEl, modeTriggerEl, { align: 'start' })
+const { visible: scopeMenuVisible, toggle: toggleScopeMenu, close: closeScopeMenu, triggerAttrs: scopeTriggerAttrs, menuAttrs: scopeMenuAttrs } = usePopMenu(scopeMenuEl, scopeTriggerEl, { align: 'start' })
 const { visible: modelMenuVisible, toggle: toggleModelMenu, close: closeModelMenu, triggerAttrs: modelTriggerAttrs, menuAttrs: modelMenuAttrs } = usePopMenu(modelMenuEl, modelTriggerEl, { align: 'start' })
 
 // ── 授权档位菜单（同款 usePopMenu；会话级快照，会中改档仅待生效） ──
@@ -278,8 +306,11 @@ function srcLabel(source: ModelSource | ''): string {
 }
 
 function onPickMode(m: ChatMode) {
-  closeModeMenu()
   if (m !== props.chatMode) emit('update:chatMode', m)
+}
+function onPickScope(s: ChatScope) {
+  closeScopeMenu()
+  if (s !== props.chatScope) emit('update:chatScope', s)
 }
 function onPickModel(value: string, source: ModelSource | '') {
   // 智能体模式下内置组整组置灰，点击 no-op（不隐式切模式）
@@ -506,6 +537,35 @@ onBeforeUnmount(() => { composerRo?.disconnect(); composerRo = null })
   line-height: 1.5;
 }
 
+/* ── 提问范围触发器（本场会议 / 全部会议） ── */
+.scope-trigger { max-width: 150px; }
+.scope-trigger .scope-txt {
+  font-size: var(--fs-12, 12px); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scope-trigger.is-wide { border-color: var(--accent); background: var(--accent-soft); }
+.scope-trigger.is-wide .ac-tr-icon { color: var(--accent); }
+
+/* ── 模式明文分段（问答 / 智能体） ── */
+.mode-seg {
+  display: inline-flex; flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.mode-seg button {
+  height: calc(var(--composer-bar-h) - 2px);
+  padding: 0 9px;
+  border: none; background: transparent;
+  color: var(--muted);
+  font: inherit; font-size: var(--fs-11, 11px); font-weight: 500;
+  white-space: nowrap; cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.mode-seg button:hover { color: var(--fg); background: var(--surface-3); }
+.mode-seg button.is-active { background: var(--fg); color: var(--surface); font-weight: 600; }
+
 .cb-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex: 0 0 auto; flex-wrap: nowrap; }
 
 .composer-send {
@@ -537,6 +597,12 @@ onBeforeUnmount(() => { composerRo?.disconnect(); composerRo = null })
 .composer-bar.is-compact .ai-model-select .ac-chev { display: none; }
 .composer-bar.is-compact .ai-model-select { flex: 0 0 auto; width: var(--composer-bar-h); max-width: var(--composer-bar-h); padding: 0; justify-content: center; }
 .composer-bar.is-compact .cb-trigger-wrap:has(.ai-model-select) { flex: 0 0 auto; }
+
+/* 窄档：范围只留图标，模式分段收紧内边距 */
+.composer-bar.is-compact .scope-trigger { width: var(--composer-bar-h); max-width: var(--composer-bar-h); padding: 0; justify-content: center; }
+.composer-bar.is-compact .scope-trigger .scope-txt,
+.composer-bar.is-compact .scope-trigger .scope-chev { display: none; }
+.composer-bar.is-compact .mode-seg button { padding: 0 6px; }
 
 /* ── 授权档位：盾钮色随档（灰=只读 / 绿=提案 / 琥珀=全任务），蓝点=待生效未应用 ── */
 .tier-trigger { position: relative; }

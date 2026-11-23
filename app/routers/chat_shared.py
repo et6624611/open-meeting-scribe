@@ -34,6 +34,7 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
+from core.meeting_search import build_scope_context
 from core.llm import (  # noqa: F401
     async_chat_completion,
     async_chat_completion_full,
@@ -314,6 +315,8 @@ class ChatRequest(BaseModel):
     message: str
     project_id: Optional[str] = None
     task_id: Optional[str] = None
+    # 提问范围（按问题检索）：meeting=本场会议（默认）/ all=全部会议
+    scope: Optional[str] = None
     history: Optional[list[dict]] = None
     realtime_transcripts: Optional[list[dict]] = None
     mode: Optional[str] = None
@@ -456,12 +459,15 @@ async def build_web_reference_block(data: ChatRequest, is_qa_mode: bool) -> str:
         return ""
 
 
-def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[list[str], list[dict]]:
+def _build_chat_context_blocks(
+    data: ChatRequest, is_qa_mode: bool,
+) -> tuple[list[str], list[dict], dict]:
     """为聊天请求构建上下文块（供 /api/chat 和 /api/chat/stream 共用）。
     Build context blocks for chat request (shared by /api/chat and /api/chat/stream).
 
     Returns:
-        (context_blocks, source_files)
+        (context_blocks, source_files, retrieval)
+        retrieval 为提问范围检索统计，两条链路共用同一份结果。
     """
     user_message = data.message.strip()
     context_blocks: list[str] = []
@@ -635,13 +641,27 @@ def _build_chat_context_blocks(data: ChatRequest, is_qa_mode: bool) -> tuple[lis
                     for f in index.get("files", [])
                 ]
 
+    # ── 维度 3.5: 提问范围检索 / Scope retrieval ──
+    # 唯一检索器：问答注入上下文块，智能体复用同一份块（见 chat_stream_routes）。
+    # 范围只决定是否跨会议检索，不接管项目资料等常驻注入。
+    scope_block, retrieval = build_scope_context(
+        data.scope, user_message, exclude_task_id=data.task_id)
+    if scope_block:
+        context_blocks.append(scope_block)
+    for hit in retrieval.get("meetings") or []:
+        source_files.append({
+            "title": hit.get("title", ""),
+            "path": f"meeting/{hit.get('task_id', '')}",
+            "name": hit.get("title", ""),
+        })
+
     # ── 维度 4: 页面上下文 / Page context ──
     if data.current_page:
         page_ctx = build_page_context(data.current_page)
         if page_ctx:
             context_blocks.append(page_ctx)
 
-    return context_blocks, source_files
+    return context_blocks, source_files, retrieval
 def _chat_model_default() -> str:
     """会话未逐条指定 model 时的默认值：跟随详情 llm.model 设置（REQ-EXPERT-MODE §2.3）。
 

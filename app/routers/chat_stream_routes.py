@@ -45,6 +45,7 @@ from core.cli_engine import (
 from core.cli_engine.runner import stream_scope
 from core.i18n import _
 from core.llm import async_chat_completion_full, async_chat_completion_stream
+from core.meeting_search import SCOPE_BLOCK_HEADER
 
 from .chat_shared import (
     CHAT_QA_SYSTEM_PROMPT,
@@ -179,7 +180,8 @@ def _retry_attempt_args(terminal: dict | None) -> dict | None:
 
 
 async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_project_id: str | None,
-                               base_url: str = "http://127.0.0.1:8000", auto_selected: bool = False):
+                               base_url: str = "http://127.0.0.1:8000", auto_selected: bool = False,
+                               shared_context: str = "", retrieval: dict | None = None):
     """
     智能体模式事件生成器：探针 → 上下文导出 → CLI 流式事件。
     引擎不可用/启动失败时 yield ``{"type":"__fallback__"}`` 哨兵，由外层回退内置链路。
@@ -220,6 +222,9 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
     if role_prompt and role_insight_prompt:
         role_prompt += "\n\n---\n\n" + role_insight_prompt
     page_ctx = build_page_context(data.current_page) if data.current_page else ""
+    # 提问范围块与内置问答共用同一份检索结果，智能体不另跑一套检索
+    if shared_context:
+        page_ctx = "\n\n---\n\n".join(part for part in (page_ctx, shared_context) if part)
 
     # 模式即权限（PROPOSAL-AGENT-REWRITE-CHANNEL §5.1）：授权档优先级链落档
     resolved_tier = _resolve_agent_auth_tier(data.auth_tier, cfg)
@@ -342,6 +347,10 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
                 "rewritten_tools": sorted(set(written_tools)), "turn_id": stream_id,
                 "task_id": data.task_id or "", "auth_tier": resolved_tier,
             })
+            terminal["scope"] = (retrieval or {}).get("scope", "meeting")
+            terminal["retrieval"] = retrieval or {
+                "scope": "meeting", "searched": False, "hits": 0, "meetings": [], "latency_ms": 0,
+            }
             yield terminal
     except CliAgentError as e:
         logger.warning("[智能体模式] CLI 启动失败：%s，回退内置", e)
@@ -428,7 +437,7 @@ async def chat(data: ChatRequest):
                 )
 
     # ── 使用共享函数构建上下文 / Use shared function to build context ──
-    ctx_blocks, src_files = _build_chat_context_blocks(data, is_qa_mode)
+    ctx_blocks, src_files, retrieval = _build_chat_context_blocks(data, is_qa_mode)
     context_blocks.extend(ctx_blocks)
     source_files = src_files
 
@@ -485,6 +494,9 @@ async def chat(data: ChatRequest):
             "context_block_count": len(context_blocks),
             "message_count": len(messages),
             "sources": source_files,
+            # 提问范围回显：前端据此渲染 trace（是否检索、命中场次）
+            "scope": retrieval.get("scope"),
+            "retrieval": retrieval,
             "extracted_items": extracted_items,
             "verified_changes": edit_changes,
             "action": {
@@ -534,7 +546,7 @@ async def chat_stream(data: ChatRequest, request: Request):
         system_prompt = _agent_system_prompt(data.role)
 
     # 使用共享函数构建上下文并注入系统提示词 / Use shared function to build context and inject into system prompt
-    context_blocks, source_files = _build_chat_context_blocks(data, is_qa_mode)
+    context_blocks, source_files, retrieval = _build_chat_context_blocks(data, is_qa_mode)
 
     # 联网检索增强（内置问答路径）：讨论涉及会外专业知识时注入「外部参考」块；未配置/失败静默跳过
     web_reference = await build_web_reference_block(data, is_qa_mode)
@@ -567,6 +579,10 @@ async def chat_stream(data: ChatRequest, request: Request):
     if not resolved_project_id and data.task_id and data.task_id in task_store.tasks:
         resolved_project_id = task_store.tasks[data.task_id].get("project_id")
 
+    # 范围块只算一次：问答已注入 context_blocks，智能体复用同一文本（不二次检索）
+    scope_block = next(
+        (b for b in context_blocks if b.startswith(SCOPE_BLOCK_HEADER)), "")
+
     async def event_generator():
         # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
         engine_cfg = settings_store.get_chat_engine_config()
@@ -578,8 +594,11 @@ async def chat_stream(data: ChatRequest, request: Request):
             return
         if engine_cfg["enabled"] and data.engine == "agent":
             need_fallback = False
-            async with aclosing(_agent_engine_events(data, user_message, resolved_project_id,
-                                                       base_url=str(request.base_url).rstrip("/"))) as events:
+            async with aclosing(_agent_engine_events(
+                data, user_message, resolved_project_id,
+                base_url=str(request.base_url).rstrip("/"),
+                shared_context=scope_block, retrieval=retrieval,
+            )) as events:
                 async for evt in events:
                     if evt.get("type") == "__fallback__":
                         need_fallback = True

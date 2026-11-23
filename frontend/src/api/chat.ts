@@ -10,6 +10,21 @@ export interface SourceFile {
   name: string
 }
 
+/** 提问范围（按问题检索）：本场会议 / 全部会议 */
+export type ChatScope = 'meeting' | 'all'
+
+/** 提问范围检索统计（后端 done / 响应回显） */
+export interface RetrievalInfo {
+  scope: ChatScope
+  searched: boolean
+  /** 命中的会议总数 */
+  hits: number
+  /** 实际注入上下文的场次（受 4 场上限约束） */
+  shown?: number
+  meetings: Array<{ task_id: string; title: string; date: string; score: number }>
+  latency_ms: number
+}
+
 /** LLM 响应元数据 / LLM response metadata */
 export interface LlmMetadata {
   model: string
@@ -54,6 +69,10 @@ export interface ChatMessage {
   modelUsage?: ModelUsage
   /** 发送时快照（编辑再发送回填用）：模式 + 问答模型 + 智能体引擎模型 */
   sendOptions?: SendSnapshot
+  /** 本轮提问范围（assistant 消息落 done 回显） */
+  scope?: ChatScope
+  /** 本轮检索统计（assistant 消息落 done 回显） */
+  retrieval?: RetrievalInfo
   /** 用户本轮 @附件 上传的附件（仅用户消息） / Attachments uploaded with this turn (user messages only) */
   attachments?: AttachmentMeta[]
 }
@@ -73,6 +92,8 @@ export interface SendSnapshot {
   model?: string
   /** 智能体模式 CLI 引擎模型（'' = 引擎默认） */
   agentModel?: string
+  /** 提问范围（本场会议 / 全部会议） */
+  scope?: ChatScope
 }
 
 /** 回复尾部使用回显：模型 · 算力来源 · 计费口径 */
@@ -184,6 +205,8 @@ export interface ChatOptions {
   agentModel?: string
   /** 当前轮 @附件 引用，仅当前轮展开 / Attachments for this turn only */
   attachments?: AttachmentMeta[]
+  /** 提问范围（meeting=本场会议 / all=全部会议） */
+  scope?: ChatScope
   signal?: AbortSignal
 }
 
@@ -242,6 +265,9 @@ export interface StreamCallbacks {
     engine?: string
     /** 本轮消费方/计费回显（与 core/routing 实际判定一致） */
     model_usage?: ModelUsage
+    /** 本轮提问范围与检索统计 */
+    scope?: ChatScope
+    retrieval?: RetrievalInfo
     /** 完成护栏：写回事实（仅智能体链路；问答路径无此字段） */
     rewritten?: boolean
     permission_denials?: Array<{ tool_name?: string; tool_use_id?: string; decision_reason?: string }>
@@ -277,6 +303,7 @@ export async function sendMessageStream(
       chat_session_id: options?.chat_session_id,
       agent_model: options?.agentModel,
       attachments: options?.attachments,
+      scope: options?.scope,
     }),
     signal: options?.signal,
   })

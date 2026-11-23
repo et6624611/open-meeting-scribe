@@ -76,6 +76,7 @@
       <!-- Composer 栏 -->
       <ComposerBar
         :chat-mode="chatMode"
+        :chat-scope="chatScope"
         :session-tier="sessionTier"
         :pending-tier="pendingTier"
         :tier-menu-signal="tierMenuSignal"
@@ -91,6 +92,7 @@
         :agent-models-reason="agentModelsReason"
         :agent-models-loading="agentModelsLoading"
         @update:chat-mode="$emit('update:chatMode', $event)"
+        @update:chat-scope="$emit('update:chatScope', $event)"
         @update:pending-tier="$emit('update:pendingTier', $event)"
         @apply-new-session="$emit('applyNewSession')"
         @update:session-model="$emit('update:sessionModel', $event)"
@@ -104,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import type { AttachmentMeta } from '@/api/chat'
+import type { AttachmentMeta, ChatScope } from '@/api/chat'
 import { attachmentUrl } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
@@ -136,6 +138,7 @@ const props = defineProps<{
   uploadingAttachments: boolean
   inputText: string
   chatMode: 'qa' | 'agent'
+  chatScope: ChatScope
   cliProbe: ChatEngineProbe | null
   sessionTier: AuthTier
   pendingTier: AuthTier
@@ -162,6 +165,7 @@ defineEmits<{
   (e: 'inputChange'): void
   (e: 'update:inputText', val: string): void
   (e: 'update:chatMode', val: 'qa' | 'agent'): void
+  (e: 'update:chatScope', val: ChatScope): void
   (e: 'update:pendingTier', val: AuthTier): void
   (e: 'applyNewSession'): void
   (e: 'update:sessionModel', val: string): void

@@ -8,7 +8,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { injectItems, generateChatTitle } from '@/api/chat'
-import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage } from '@/api/chat'
+import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage, ChatScope } from '@/api/chat'
 import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
 import { useRealtimeStore } from '@/stores/realtime'
@@ -116,6 +116,18 @@ export function useAiChat() {
   function setChatMode(mode: ChatMode) {
     chatMode.value = mode
     localStorage.setItem('ai_chat_mode', mode)
+  }
+
+  // ── 提问范围（按问题检索）：本场会议 / 全部会议 ──
+  // 与档位、模式正交：范围只决定是否跨会议检索，不接管常驻注入。
+  const VALID_SCOPES: ChatScope[] = ['meeting', 'all']
+  const storedScope = localStorage.getItem('ai_chat_scope') as ChatScope | null
+  const chatScope = ref<ChatScope>(
+    storedScope && VALID_SCOPES.includes(storedScope) ? storedScope : 'meeting')
+  function setChatScope(scope: ChatScope) {
+    if (!VALID_SCOPES.includes(scope)) return
+    chatScope.value = scope
+    localStorage.setItem('ai_chat_scope', scope)
   }
 
   /** 取会话的首轮问答对（仅未被命名过的会话才有命名资格） */
@@ -427,7 +439,7 @@ export function useAiChat() {
     activeEngine, tierDenial, injectPrompt, abortController,
     stages, followUps,
     // computed-like
-    chatMode, sessionModel, agentEngineModel, sessionAuthTier, hasAgentSession,
+    chatMode, chatScope, sessionModel, agentEngineModel, sessionAuthTier, hasAgentSession,
     // stores
     taskStore, realtimeStore, aiSessions, agentStore, insights,
     // helpers
@@ -550,7 +562,7 @@ export function useAiChat() {
     messages, isLoading, isStreaming, thinkingElapsed, stages, followUps, displaySuggestions, injectPrompt, verifiedChanges, canSend, formatChangeDescription,
     sendRaw, sendWithQuote, stopGeneration, executeAction,
     doInjectAll, clearConversation, retryLast, editAndResend,
-    chatMode, setChatMode, activeEngine, hasAgentSession,
+    chatMode, setChatMode, chatScope, setChatScope, activeEngine, hasAgentSession,
     // 授权档位（会话快照；ComposerBar 档位菜单 + 403 拒绝卡）
     pendingAuthTier, sessionAuthTier, tierDenial, tierMenuSignal,
     setPendingAuthTier, startNewSession, requestTierMenu,
