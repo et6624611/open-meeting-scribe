@@ -108,8 +108,8 @@ def start_record(background_tasks: BackgroundTasks):
     queue: asyncio.Queue = asyncio.Queue()
     realtime_queues[task_id] = queue
 
-    # 创建声纹聚类器（实时说话人分离，根据用户订阅状态选择 provider） / Create diarizer (realtime speaker separation; provider chosen by subscription)
-    diarizer = diarization_cluster.create_realtime_diarizer()
+    # 创建说话人解析器（模型自带分离优先，缺失时本机聚类） / Speaker resolver (model labels first, local clustering as needed)
+    diarizer = diarization_cluster.create_realtime_speaker_resolver()
     realtime_diarizers[task_id] = diarizer
 
     # 初始化实时说话人绑定映射 / Initialize realtime speaker binding map
@@ -324,9 +324,10 @@ def start_record(background_tasks: BackgroundTasks):
             if not raw_text.strip():
                 logger.debug(f"[录制] 跳过空句子: speaker={s.get('begin_time')}")
                 return
-            speaker_id = diarizer.get_speaker(
-                begin_time=s.get("begin_time", 0) / 1000.0,
-                end_time=s.get("end_time", 0) / 1000.0,
+            speaker_id = diarizer.resolve_sentence(
+                s,
+                begin_sec=s.get("begin_time", 0) / 1000.0,
+                end_sec=s.get("end_time", 0) / 1000.0,
             )
             # 解析说话人姓名（从实时绑定映射中查找） / Resolve speaker name (from realtime binding map)
             speaker_name = resolve_realtime_speaker_name(task_id, speaker_id)
@@ -395,13 +396,17 @@ def start_record(background_tasks: BackgroundTasks):
             except Exception as e:
                 logger.warning(f"[录制] 读取分段增量配置失败（按未开启处理）: {e}")
 
-        _transcriber_callbacks = dict(
-            on_partial=lambda text: rt_store.push_realtime_msg(task_id, {
+        def _on_partial_text(text: str) -> None:
+            sid = diarizer.get_speaker()
+            rt_store.push_realtime_msg(task_id, {
                 "type": "partial",
                 "text": text,
-                "speaker_id": diarizer.get_speaker(),
-                "speaker_name": resolve_realtime_speaker_name(task_id, diarizer.get_speaker()),
-            }),
+                "speaker_id": sid,
+                "speaker_name": resolve_realtime_speaker_name(task_id, sid) if sid >= 0 else "",
+            })
+
+        _transcriber_callbacks = dict(
+            on_partial=_on_partial_text,
             on_sentence_end=_on_sentence_end,
             on_error=lambda msg: rt_store.push_realtime_msg(task_id, {
                 "type": "error", "message": msg
@@ -422,10 +427,12 @@ def start_record(background_tasks: BackgroundTasks):
 
         def _start_transcriber_bg():
             """后台启动实时转写（含重试逻辑） / Background start realtime transcription (with retry logic)"""
-            # ── 前置检查：proxy 模式下 token 缺失时直接跳过（优雅降级）──
+            # ── 前置检查：代理链路下 token 缺失时直接跳过（优雅降级）──
             # Pre-check: skip realtime transcription when proxy token is missing (graceful degradation)
             try:
-                _asr_mode = realtime_asr._get_asr_mode()
+                from core.settings_store import get_realtime_asr_config
+
+                _asr_mode = get_realtime_asr_config().get("resolved_provider")
                 if _asr_mode == "proxy" and not realtime_asr.ASR_PROXY_TOKEN:
                     logger.warning(f"[录制] ASR_PROXY_TOKEN 未配置，跳过实时转写（仅录音模式）: task={task_id[:8]}")
                     rt_store.push_realtime_msg(task_id, {
@@ -691,11 +698,15 @@ def stop_record(
         if user_notes:
             tasks[task_id]["user_notes"] = user_notes
 
-        # 用量计量：按录制时长记录实时转写用量 / Usage metering: record realtime transcription usage by recording duration
+        # 用量计量：按录制时长记录实时转写用量；自带 Key 的厂商不计平台分钟数
+        # Usage metering: platform minutes only for the default trail path; BYOK providers are not metered
         try:
             from core.metering import is_metered, record_usage
+            from core.settings_store import get_realtime_asr_config
             from core.users import get_current_user
-            if duration > 0 and is_metered():
+
+            rt_cfg = get_realtime_asr_config()
+            if duration > 0 and is_metered() and rt_cfg.get("provider") == "auto":
                 current_user = get_current_user()
                 if current_user:
                     record_usage(
@@ -703,7 +714,10 @@ def stop_record(
                         service="asr_realtime",
                         duration_seconds=duration,
                         task_id=task_id,
-                        metadata={"model": "qwen-audio-3.0-asr-flash-streaming"},
+                        metadata={
+                            "model": rt_cfg.get("model") or "qwen-audio-3.0-asr-flash-streaming",
+                            "provider": rt_cfg.get("resolved_provider", "dashscope"),
+                        },
                     )
         except Exception as e:
             logger.warning(f"[{task_id[:8]}] 实时用量记录失败（不影响主流程）: {e}")

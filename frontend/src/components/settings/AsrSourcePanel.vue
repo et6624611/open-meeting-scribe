@@ -177,6 +177,80 @@
       </div>
     </div>
 
+    <!-- 实时预览模型（独立于批处理） -->
+    <div class="cc-card asp-realtime" data-od-id="asr-realtime-panel">
+      <div class="cc-card-head">
+        <div>
+          <h2 class="cc-card-title">{{ t('settings.compute.realtime_title') }}</h2>
+          <p class="cc-card-desc">{{ t('settings.compute.realtime_desc') }}</p>
+        </div>
+        <span v-if="rtCaps.speaker_diarization" class="cc-pill cc-pill-ok">
+          <span class="cc-dot"></span>{{ t('settings.compute.realtime_cap_speaker') }}
+        </span>
+      </div>
+
+      <div class="cc-field">
+        <label class="cc-field-label">{{ t('settings.compute.realtime_provider') }}</label>
+        <select v-model="rtForm.provider" class="cc-input" data-od-id="asr-realtime-provider">
+          <option v-for="p in realtimeProviders" :key="p.key" :value="p.key" :disabled="!p.available">
+            {{ t(p.label_key) }}{{ p.available ? '' : ` · ${t('settings.compute.realtime_soon')}` }}
+          </option>
+        </select>
+      </div>
+
+      <div v-if="currentSpec" class="cc-grid-2">
+        <div class="cc-field">
+          <label class="cc-field-label">{{ t('settings.compute.realtime_model') }}</label>
+          <select v-if="currentSpec.models.length && !currentSpec.allow_custom_model" v-model="rtForm.model" class="cc-input">
+            <option v-for="m in currentSpec.models" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <input v-else v-model="rtForm.model" class="cc-input cc-input-mono" :placeholder="currentSpec.default_model" />
+        </div>
+        <div class="cc-field">
+          <label class="cc-field-label">{{ t('settings.compute.realtime_diarization') }}</label>
+          <select v-model="rtForm.diarization" class="cc-input">
+            <option value="auto">{{ t('settings.compute.realtime_diarization_auto') }}</option>
+            <option value="local">{{ t('settings.compute.realtime_diarization_local') }}</option>
+            <option value="off">{{ t('settings.compute.realtime_diarization_off') }}</option>
+          </select>
+        </div>
+      </div>
+
+      <template v-if="currentSpec">
+        <div v-for="f in currentSpec.credential_fields" :key="f.name" class="cc-field">
+          <label class="cc-field-label">
+            {{ t(f.label_key) }}
+            <span v-if="!f.required" class="cc-note"> · {{ t('settings.compute.optional') }}</span>
+          </label>
+          <select v-if="f.type === 'select'" v-model="rtForm.credentials[f.name]" class="cc-input">
+            <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ t(o.label_key) }}</option>
+          </select>
+          <div v-else class="cc-field-inline">
+            <input
+              v-model="rtForm.credentials[f.name]"
+              :type="f.secret && !rtKeyVisible[f.name] ? 'password' : 'text'"
+              class="cc-input cc-input-mono"
+              :placeholder="rtCredentialsSet[f.name] ? t('settings.compute.realtime_key_saved') : ''"
+            />
+            <button v-if="f.secret" class="cc-btn cc-btn-secondary cc-btn-sm" @click="rtKeyVisible[f.name] = !rtKeyVisible[f.name]">
+              {{ rtKeyVisible[f.name] ? t('settings.compute.hide') : t('settings.compute.show') }}
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <div class="cc-btn-row">
+        <button class="cc-btn cc-btn-secondary cc-btn-sm" :disabled="rtBusy" @click="saveRealtime">
+          {{ t('settings.compute.save_config') }}
+        </button>
+        <button class="cc-btn cc-btn-secondary cc-btn-sm" :disabled="rtTesting" @click="testRealtime">
+          {{ rtTesting ? t('settings.testing') : t('settings.test_connection') }}
+        </button>
+        <span v-if="rtMsg" class="cc-result-line" :class="{ 'is-error': rtErr, 'is-ok': !rtErr }">{{ rtMsg }}</span>
+      </div>
+      <p class="cc-note asp-realtime-note">{{ t('settings.compute.realtime_batch_note') }}</p>
+    </div>
+
     <p class="cc-note asp-foot-note" data-od-id="asr-foot-note">{{ t('settings.compute.asr_foot_note') }}</p>
   </div>
 </template>
@@ -194,7 +268,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { saveSettings, testApiConnection, type Settings } from '@/api/settings'
+import { saveSettings, testApiConnection, type Settings, type RealtimeProviderSpec } from '@/api/settings'
 import { useUserStore } from '@/stores/user'
 import { useEngineStore } from '@/stores/engine'
 import type { CapSource } from '@/api/access'
@@ -240,6 +314,109 @@ watch(() => props.settings.asr, (a) => {
 }, { immediate: true, deep: true })
 
 const byokReady = computed(() => !!props.settings.asr?.api_key_set)
+
+/* ── 实时预览模型（独立于批处理） ── */
+const realtimeProviders = computed<RealtimeProviderSpec[]>(() => props.settings.asr_realtime_providers || [])
+const rtForm = reactive({
+  provider: 'auto',
+  model: '',
+  language: 'zh',
+  diarization: 'auto' as 'auto' | 'local' | 'off',
+  base_url: '',
+  credentials: {} as Record<string, string>,
+})
+const rtKeyVisible = reactive<Record<string, boolean>>({})
+const rtBusy = ref(false)
+const rtTesting = ref(false)
+const rtMsg = ref('')
+const rtErr = ref(false)
+
+const currentSpec = computed(() => realtimeProviders.value.find(p => p.key === rtForm.provider))
+const rtCaps = computed<Record<string, boolean>>(
+  () => currentSpec.value?.capabilities || props.settings.asr?.realtime?.capabilities || {},
+)
+const rtCredentialsSet = computed<Record<string, boolean>>(
+  () => props.settings.asr?.realtime?.credentials_set || {},
+)
+
+watch(() => props.settings.asr?.realtime, (rt) => {
+  rtForm.provider = rt?.provider || 'auto'
+  rtForm.model = rt?.model || ''
+  rtForm.language = rt?.language || 'zh'
+  rtForm.diarization = (rt?.diarization as 'auto' | 'local' | 'off') || 'auto'
+  rtForm.base_url = rt?.base_url || ''
+  const next: Record<string, string> = {}
+  for (const [k, v] of Object.entries(rt?.credentials || {})) {
+    next[k] = typeof v === 'string' && v.includes('****') ? '' : String(v)
+  }
+  rtForm.credentials = next
+}, { immediate: true, deep: true })
+
+watch(() => rtForm.provider, (key) => {
+  const spec = realtimeProviders.value.find(p => p.key === key)
+  if (!spec) return
+  if (spec.models.length && !spec.models.includes(rtForm.model)) rtForm.model = spec.default_model
+  for (const f of spec.credential_fields) {
+    if (f.default && !rtForm.credentials[f.name]) rtForm.credentials[f.name] = f.default
+  }
+})
+
+async function saveRealtime() {
+  rtBusy.value = true
+  rtMsg.value = ''
+  try {
+    await saveSettings({
+      asr: {
+        ...props.settings.asr,
+        realtime: {
+          provider: rtForm.provider,
+          model: rtForm.model,
+          language: rtForm.language,
+          base_url: rtForm.base_url,
+          diarization: rtForm.diarization,
+          credentials: rtForm.credentials,
+        },
+      },
+    } as any)
+    rtErr.value = false
+    rtMsg.value = t('settings.compute.realtime_saved_hint')
+  } catch (e) {
+    console.error('[asr] save realtime failed:', e)
+    rtErr.value = true
+    rtMsg.value = t('settings.connection_failed')
+  } finally {
+    rtBusy.value = false
+    emit('refresh')
+  }
+}
+
+async function testRealtime() {
+  rtTesting.value = true
+  rtMsg.value = ''
+  try {
+    const res = await testApiConnection({
+      service_type: 'asr',
+      target: 'realtime',
+      asr: {
+        realtime: {
+          provider: rtForm.provider,
+          model: rtForm.model,
+          base_url: rtForm.base_url,
+          credentials: rtForm.credentials,
+        },
+      },
+    })
+    const ok = res.ok ?? res.success
+    rtErr.value = !ok
+    rtMsg.value = res.message || res.error || (ok ? t('settings.connection_success') : t('settings.connection_failed'))
+  } catch {
+    rtErr.value = true
+    rtMsg.value = t('settings.connection_failed')
+  } finally {
+    rtTesting.value = false
+  }
+}
+
 
 function asrEngineReady(): boolean {
   // 就绪单源 = /api/engine/status → local_ready（与导航引擎绿点、LocalEnginePanel 同源）
@@ -463,6 +640,8 @@ async function testProvider() {
 <style src="./compute.css"></style>
 <style scoped>
 .asp-tabpanel { animation: cc-fade .18s ease; }
+.asp-realtime { margin-top: var(--s-4); }
+.asp-realtime-note { margin-top: var(--s-3); }
 .cc-need-login { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); padding: var(--s-2) 0; }
 
 /* ── 当前生效来源状态条 ── */

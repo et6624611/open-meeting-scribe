@@ -13,6 +13,7 @@
           <button type="button" class="dc-seg-btn" :class="{ active: viewMode === 'meeting' }" @click="viewMode = 'meeting'">{{ t('decisions.view_by_meeting') }}</button>
           <button type="button" class="dc-seg-btn" :class="{ active: viewMode === 'topic' }" @click="viewMode = 'topic'">{{ t('decisions.view_by_topic') }}</button>
         </div>
+        <button class="dc-prompt-btn" @click="openPrompt">{{ t('decisions.prompt_view') }}</button>
         <button class="dc-add-btn" @click="showAdd = true">+ {{ t('decisions.add_manual') }}</button>
       </div>
     </div>
@@ -275,6 +276,29 @@
 
     <StatusManagerDialog v-model="showStatusMgr" :statuses="statuses" @changed="onStatusesChanged" />
     <AddDecisionDialog ref="addDialogRef" v-model="showAdd" @submit="onAddSubmit" />
+
+    <!-- 决策提示词查看（提示词显示化：决策提取规则可见、可追溯来源、可跳转编辑） -->
+    <div v-if="showPrompt" class="dc-prompt-overlay" @click.self="showPrompt = false">
+      <div class="dc-prompt-dialog" role="dialog" aria-modal="true" :aria-label="t('decisions.prompt_title')">
+        <div class="dc-prompt-head">
+          <h3>{{ t('decisions.prompt_title') }}</h3>
+          <span v-if="promptInfo" class="dc-prompt-badge" :class="`is-${promptInfo.source}`">
+            {{ promptInfo.source === 'role' ? t('decisions.prompt_source_role') : t('decisions.prompt_source_builtin') }}
+          </span>
+          <button class="dc-prompt-close" :aria-label="t('decisions.prompt_close')" @click="showPrompt = false">×</button>
+        </div>
+        <p class="dc-prompt-desc">{{ t('decisions.prompt_desc') }}</p>
+        <pre class="dc-prompt-body">{{ promptLoading ? t('decisions.prompt_loading') : (promptInfo?.prompt || promptError) }}</pre>
+        <div class="dc-prompt-foot">
+          <span class="dc-prompt-hint">
+            {{ promptInfo?.editable
+              ? t('decisions.prompt_editable')
+              : t('decisions.prompt_readonly', { role: promptInfo?.role_name || '' }) }}
+          </span>
+          <RouterLink class="dc-prompt-link" to="/agents" @click="showPrompt = false">{{ t('decisions.prompt_goto_edit') }}</RouterLink>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -287,6 +311,7 @@ import { fetchFlowNodes, fetchFlowTopics, type FlowNode, type TopicGroup } from 
 import { createDecision, deleteDecision, supersedeDecision, revertSupersede, updateDecision, type DecisionCreatePayload, type DecisionPatch } from '@/api/notes'
 import { meetingNodeLink, parseTopicKey } from '@/views/decisionEvolutionNav'
 import { fetchStatuses, statusLabel, type DecisionStatusItem } from '@/api/decisionStatuses'
+import { fetchDecisionPrompt, type DecisionPromptResponse } from '@/api/agent'
 import { refreshDecisionStatuses } from '@/composables/useDecisionStatuses'
 import { fetchProjects, type Project } from '@/api/projects'
 import { useTaskStore } from '@/stores/task'
@@ -724,6 +749,25 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
   // 结构变更：状态字典变 → 筛选逻辑可能变，全量 load + 滚动恢复
   await loadPreservingScroll()
 }
+
+// ─── 决策提示词查看（提示词显示化：展示生效规则与来源，可跳转角色管理编辑） ───
+const showPrompt = ref(false)
+const promptLoading = ref(false)
+const promptError = ref('')
+const promptInfo = ref<DecisionPromptResponse | null>(null)
+async function openPrompt() {
+  showPrompt.value = true
+  if (promptInfo.value) return  // 已加载则直接展示缓存
+  promptLoading.value = true
+  promptError.value = ''
+  try {
+    promptInfo.value = await fetchDecisionPrompt()
+  } catch (e) {
+    promptError.value = extractErrorMessage(e)
+  } finally {
+    promptLoading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -853,4 +897,23 @@ async function onStatusesChanged(next: DecisionStatusItem[]) {
 .dc-evo-undo { flex-shrink: 0; margin-left: 2px; padding: 0; border: none; background: transparent; color: var(--muted); font-size: var(--fs-11, 11px); cursor: pointer; }
 .dc-evo-undo:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
 .dc-evo-undo:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── 决策提示词弹层 / Decision prompt dialog ─── */
+.dc-prompt-btn { padding: 5px 12px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: var(--fs-12, 12px); cursor: pointer; border-radius: var(--radius-sm); white-space: nowrap; transition: all 0.12s; }
+.dc-prompt-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.dc-prompt-overlay { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.42); }
+.dc-prompt-dialog { display: flex; flex-direction: column; width: min(760px, 92vw); max-height: 84vh; padding: 18px 20px; background: var(--bg, #fff); border: 1px solid var(--border); border-radius: var(--radius-md, 10px); box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22); }
+.dc-prompt-head { display: flex; align-items: center; gap: 10px; }
+.dc-prompt-head h3 { margin: 0; font-size: var(--fs-15, 15px); font-weight: 600; color: var(--text); }
+.dc-prompt-badge { font-size: var(--fs-11, 11px); line-height: 1; padding: 3px 8px; border-radius: 999px; font-weight: 500; }
+.dc-prompt-badge.is-role { color: var(--accent); background: var(--accent-soft); }
+.dc-prompt-badge.is-builtin { color: var(--muted); background: var(--surface-2, rgba(0, 0, 0, 0.05)); }
+.dc-prompt-close { margin-left: auto; padding: 0 6px; border: none; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.dc-prompt-close:hover { color: var(--text); }
+.dc-prompt-desc { margin: 10px 0 12px; font-size: var(--fs-12, 12px); color: var(--muted); line-height: 1.6; }
+.dc-prompt-body { flex: 1; min-height: 0; margin: 0; padding: 14px 16px; overflow: auto; background: var(--surface-1, rgba(0, 0, 0, 0.03)); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-12, 12px); line-height: 1.65; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.dc-prompt-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.dc-prompt-hint { font-size: var(--fs-11, 11px); color: var(--muted); line-height: 1.5; }
+.dc-prompt-link { flex-shrink: 0; font-size: var(--fs-12, 12px); color: var(--accent); text-decoration: none; }
+.dc-prompt-link:hover { text-decoration: underline; }
 </style>

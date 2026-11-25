@@ -15,6 +15,7 @@ core/summarize.py — 纪要提示词与解析
 """
 
 import logging
+import re
 
 from core.i18n import _
 from core.speakers import normalize_speaker_name
@@ -47,7 +48,10 @@ def is_summary_refusal(summary: str | None, total_sentences: int) -> bool:
     text = (summary or "").strip()
     if not text:
         return True
-    return len(text) < _REFUSAL_MAX_LEN and any(m in text for m in _REFUSAL_MARKERS)
+    if _MINUTES_HEADING_RE.search(text):
+        return len(text) < _REFUSAL_MAX_LEN and any(m in text for m in _REFUSAL_MARKERS)
+    # 无纪要标题时，任何拒答话术都视为误拒（模型可能把分析+拒答写成千字长文）
+    return any(m in text for m in _REFUSAL_MARKERS)
 
 
 # 标题生成系统提示词
@@ -80,6 +84,149 @@ def _strip_wrapping_fence(text: str) -> str:
         return text or ""
     body = t[first_nl + 1:-3].strip("\n")
     return body if body and "```" not in body else (text or "")
+
+
+# ============================================================
+# 纪要净化（P0）：模型偶发把推理/自检过程写进成品，需要确定性剥离
+# ============================================================
+
+# 纪要本体标题：前缀内容一律视为模型前言
+_MINUTES_HEADING_RE = re.compile(
+    r"^[ \t]{0,3}#{1,3}[ \t]*\*{0,2}\s*会议纪要\s*\*{0,2}[ \t]*$", re.MULTILINE
+)
+# 元讨论/自检话术：出现在无标题输出的前段即判为"不是纪要"
+_META_TALK_MARKERS = (
+    "根据本AI助手",
+    "根据本 AI 助手",
+    "根据本纪要助手",
+    "经严格校验",
+    "必须如实输出",
+    "依据规则，必须",
+)
+# 纪要模板章节名：出现任意一个即认为模型确实在写纪要（而非纯分析/拒答）
+_MINUTES_SECTION_KEYWORDS = (
+    "会议概要",
+    "主要结论",
+    "决策事项",
+    "议题归类",
+    "会议信息",
+)
+# 章节标题漂移归一：解析侧按「决策事项」精确匹配，模型写成别的叫法会让解析降级
+_SECTION_ALIAS_MAP = {
+    "待办事项": "决策事项",
+    "待办": "决策事项",
+    "行动项": "决策事项",
+    "行动事项": "决策事项",
+    "后续任务": "决策事项",
+}
+_HEADING_LINE_RE = re.compile(
+    r"^(?P<lead>\s{0,3}#{1,6}\s*)(?P<num>[0-9一二三四五六七八九十]+[、.．]\s*)?"
+    r"(?P<title>[^#\n]{1,20}?)\s*$"
+)
+
+
+def strip_minutes_preface(text: str) -> str:
+    """去掉 `# 会议纪要` 之前的模型推理/自检前言；无纪要标题时原样返回。"""
+    t = text or ""
+    m = _MINUTES_HEADING_RE.search(t)
+    if not m:
+        return t
+    preface = t[:m.start()].strip()
+    if not preface:
+        return t
+    logger.warning(
+        f"纪要正文前存在 {len(preface)} 字非纪要内容（推理/自检），已截断: {preface[:50]}…"
+    )
+    return t[m.start():].strip()
+
+
+def is_summary_meta_polluted(text: str) -> bool:
+    """输出为模型自检/推理而非纪要：无纪要标题且前 800 字含多处元话术。"""
+    t = (text or "").strip()
+    if not t or _MINUTES_HEADING_RE.search(t):
+        return False
+    head = t[:800]
+    return sum(1 for marker in _META_TALK_MARKERS if marker in head) >= 2
+
+
+def is_summary_unusable(summary: str | None, total_sentences: int) -> bool:
+    """对话充足时，输出既无纪要标题也无模板章节名 → 不是可交付纪要。
+
+    覆盖模型把"会议诊断/拒答"写成长文的情况（无标题、无章节，纯分析）。
+    """
+    if total_sentences < _REFUSAL_MIN_SENTENCES:
+        return False
+    text = (summary or "").strip()
+    if not text:
+        return True
+    if _MINUTES_HEADING_RE.search(text):
+        return False
+    return not any(k in text for k in _MINUTES_SECTION_KEYWORDS)
+
+
+# 消极纪要：结构齐全但通篇"未形成结论/不适用议题"，对长对话等同废稿
+_THIN_SUMMARY_RE = re.compile(
+    r"(未形成[^。\n]{0,10}(结论|议题)|不适用议题归类|不能形成[^。\n]{0,8}(结论|议题))"
+)
+
+
+def is_summary_too_thin(summary: str | None, total_sentences: int) -> bool:
+    """长对话（≥60 句）却产出不足 900 字的全阴性纪要 → 判为过薄。"""
+    if total_sentences < 60:
+        return False
+    text = summary or ""
+    if not text.strip():
+        return True
+    body = re.sub(r"[（(]注[:：][^）)]*[）)]", "", text)
+    return len(body) < 900 and bool(_THIN_SUMMARY_RE.search(body))
+
+
+def normalize_section_headings(text: str) -> str:
+    """把漂移的「待办事项/行动项/后续任务」等章节标题归一回「决策事项」。"""
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        m = _HEADING_LINE_RE.match(line)
+        if m:
+            title = m.group("title").strip().strip("*").strip()
+            alias = _SECTION_ALIAS_MAP.get(title)
+            if alias:
+                logger.info(f"章节标题归一：「{title}」→「{alias}」")
+                line = f"{m.group('lead')}{m.group('num') or ''}{alias}"
+        out.append(line)
+    return "\n".join(out)
+
+
+# 对话本身无时间戳时，模型仍会照模板给注释编造 [MM:SS]，需确定性剥离
+_SPEAKER_TS_RE = re.compile(
+    r"((?:Speaker|说话人)\s*\d+)[ \t]*[（(\[]?[ \t]*\d{1,2}[:：]\d{2}[ \t]*[）)\]]?"
+)
+_NOTE_BLOCK_RE = re.compile(r"[（(]注[:：]([^）)]*)[）)]")
+_BARE_TS_RE = re.compile(r"\d{1,2}[:：]\d{2}")
+
+
+def dialogue_has_timestamps(dialogue: list[dict]) -> bool:
+    """对话稿是否带可用的时间戳（begin_time）。"""
+    for item in dialogue or []:
+        for s in item.get("sentences") or []:
+            try:
+                float(s.get("begin_time", s.get("begin")))
+                return True
+            except (TypeError, ValueError):
+                continue
+    return False
+
+
+def strip_fabricated_times(text: str) -> str:
+    """剥离注释/依据中模型编造的时间（对话无时间戳时调用）。"""
+    def _clean_note(m: re.Match) -> str:
+        inner = _BARE_TS_RE.sub("", m.group(1))
+        inner = re.sub(r"[ \t]{2,}", " ", inner)
+        inner = re.sub(r"[、；,]\s*(?=[、；,])", "", inner)
+        inner = inner.strip(" ；，、")
+        return f"（注：{inner}）" if inner else ""
+
+    t = _NOTE_BLOCK_RE.sub(_clean_note, text or "")
+    return _SPEAKER_TS_RE.sub(r"\1", t)
 
 
 def generate_title(
@@ -139,11 +286,11 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 ## 核心原则
 
 1. **忠于原文**：只基于提供的对话内容生成纪要，绝不编造、推测或补充对话中未出现的信息
-2. **内容不足时如实说明**：如果对话内容过短、不清晰或无法提取有效信息，直接说明"对话内容不足，无法生成完整纪要"，不要硬凑
+2. **内容不足时如实说明**：如果对话内容过短、不清晰或无法提取有效信息，直接说明"对话内容不足，无法生成完整纪要"，不要硬凑。**但只要对话中存在可辨识的业务/技术信息，就必须按结构正常生成纪要**——转录口语化、错别字、说话人未具名都不构成拒答理由，也不得输出分析过程或自检说明
 3. **专有名词存疑必须标注**：人名/系统名/机构名等专名若疑似语音识别错误（同音异形、不通顺，或同一对象多种写法），原样保留并紧跟标注 `[待确认]`；禁止将多个疑似错词合并成"标准名"或臆造别名关系
 4. **区分已定结论与待确认提案**：含"还需确认/回去定/发群敲定"等措辞的事项视为未敲定，前缀 `[待确认]`（加粗写法下置于标题内部），不用"已决定/已取消/明确"等完成口吻
 5. **用户笔记仅作辅助**：如提供「用户笔记」，仅用于消歧与补全背景；禁止把笔记原文抄入纪要，禁止替笔记添加"已被采纳/已形成结论"等未出现的定性
-6. **三层信息写作（标题-正文-注释）**：每个信息块按三层递进写作——标题只说结论，正文用完整句支撑标题，注释承载备查明细。注释层有严格的**内容资格**：仅以下三类素材可入注——① 依据（谁在什么时间说的，如「说话人2 07:34」）；② 构成明细（涉及数量、覆盖范围、清单）；③ 例外与存疑（`[待确认]` 异写变体、未敲定点、适用边界）。工程性元数据与正文重复的转述无资格入注；读者忽略注释不构成信息缺失，追问时它能给出答案
+6. **三层信息写作（标题-正文-注释）**：每个信息块按三层递进写作——标题只说结论，正文用完整句支撑标题，注释承载备查明细。注释层有严格的**内容资格**：仅以下三类素材可入注——① 依据（谁说的，如「说话人2」，**对话未提供时间戳时只写说话人、严禁推测或编造时间**）；② 构成明细（涉及数量、覆盖范围、清单）；③ 例外与存疑（`[待确认]` 异写变体、未敲定点、适用边界）。工程性元数据与正文重复的转述无资格入注；读者忽略注释不构成信息缺失，追问时它能给出答案
 
 ## 输出结构
 
@@ -167,7 +314,7 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 [如无明显结论，写"本次会议未形成明确结论"]
 
 1. **决策短标题**：该条决策的完整内容
-2. **决策短标题**：该条决策的完整内容（注：说话人2 07:34 提出；另有"圣一/新PMS"两种写法待确认）
+2. **决策短标题**：该条决策的完整内容（注：说话人2 提出；另有"圣一/新PMS"两种写法待确认）
 
 **格式硬约束（决策结构化抽取依赖）**：
 - 每条结论必须是独立的有序列表项（以 "1. "、"2. " 起头），一条一行
@@ -180,6 +327,7 @@ SYSTEM_PROMPT = """你是一位专业的会议纪要助手。你的任务是根�
 
 ## 三、决策事项
 [列出明确提到的后续任务]
+[本节只写后续要执行的具体任务（行动项/待办）；已达成共识的方向、规则、方案选择属「决策」，由独立模块提取，不得写入本节，避免与决策重复]
 [格式：- [ ] **负责人**：任务描述（截止日期）（注：…）]
 [内联注置句尾最后（截止日期之后），遵循核心原则 6 的注释资格：≤40 字、每条至多一个，无合格素材时省略]
 [如无决策，写"无明确决策事项"]
@@ -345,15 +493,39 @@ def generate_summary(
             speaker_order.append(sid)
         merged_texts[sid].append(text)
 
+    # 说话人展示名（真名优先，未具名降级为结构标签）
+    name_by_sid: dict[int, str] = {}
     for sid in speaker_order:
-        # BE-R3：取首个归一后非空真名；存量占位名视同未命名，降级为结构标签
-        name = next(
+        name_by_sid[sid] = next(
             (n for n in (normalize_speaker_name(item.get("speaker_name"))
                          for item in dialogue if item.get("speaker_id") == sid) if n),
             f"Speaker {sid + 1}"
         )
-        combined = "\n".join(merged_texts[sid])
-        user_content += f"**{name}**：{combined}\n\n"
+
+    # 长对话按原始时序逐句渲染：按人合并会把交错讨论压成几段独白，打断语义流转，
+    # 模型容易误判"内容弥散、未形成结论"（实测 816 句会议两次产出互相矛盾）。
+    turns: list[tuple[float, int, str]] = []
+    for idx, item in enumerate(dialogue):
+        sid = item.get("speaker_id", 0)
+        for s in (item.get("sentences") or []):
+            t = (s.get("text") or "").strip()
+            if not t:
+                continue
+            try:
+                key = float(s.get("begin_time", s.get("begin")))
+            except (TypeError, ValueError):
+                key = float(idx)
+            turns.append((key, sid, t))
+    use_chronological = total_sentences >= 80 and len(merged_texts) >= 2 and turns
+
+    if use_chronological:
+        turns.sort(key=lambda x: x[0])
+        for _key, sid, t in turns:
+            user_content += f"**{name_by_sid.get(sid, f'Speaker {sid + 1}')}**：{t}\n"
+    else:
+        for sid in speaker_order:
+            combined = "\n".join(merged_texts[sid])
+            user_content += f"**{name_by_sid.get(sid, f'Speaker {sid + 1}')}**：{combined}\n\n"
 
     # Agent 角色工作区：优先从 summary-template.md 加载，回退到硬编码常量 / Agent workspace: prefer role template, fallback to hardcoded
     from core.agent_workspace import get_role_summary_prompt
@@ -380,26 +552,38 @@ def generate_summary(
     ]
 
     logger.info(f"生成纪要: {unique_speaker_count} 位说话人（{len(dialogue)} 条对话）, 会议时间={meeting_time}")
-    summary = chat_completion(messages, model=model, timeout=timeout)
+    # 低温：纪要属事实归纳任务，高温会让同一对话产出"详细结论"与"完全无结论"两种极端
+    summary = chat_completion(messages, model=model, temperature=0.2, timeout=timeout)
 
-    if is_summary_refusal(summary, total_sentences):
-        # 误拒二次机会：模板「内容不足如实说明」出口被模型套用到转写不清晰的充足对话上
-        # （2026-10-01 实测 235 句对话 4/4 次稳定误拒）。显式声明句数并要求照常生成。
+    def _unusable(text: str) -> bool:
+        return (
+            is_summary_refusal(text, total_sentences)
+            or is_summary_meta_polluted(text)
+            or is_summary_unusable(text, total_sentences)
+            or is_summary_too_thin(text, total_sentences)
+        )
+
+    if _unusable(summary):
         logger.warning(
-            f"模型误拒纪要生成（{total_sentences} 句对话返回 {len(summary or '')} 字符），追加澄清重试: {(summary or '')[:60]}"
+            f"纪要输出不可用（{len(summary or '')} 字符，疑似误拒/自检/过薄），追加澄清重试"
         )
         retry_messages = messages + [
             {"role": "assistant", "content": summary or ""},
             {"role": "user", "content": _(
-                "The dialogue contains {count} sentences — the content is sufficient. "
-                "Even if some sentences are unclear due to transcription quality, "
-                "generate the minutes based on the recognizable content. Do not refuse."
+                "The dialogue has {count} sentences — content is sufficient. Even if some "
+                "sentences are unclear due to transcription quality, generate the minutes from "
+                "what is recognizable. Output ONLY the minutes, starting with \"# 会议纪要\" and "
+                "including all template sections. Do not output analysis, self-check or refusal, "
+                "and do not answer with \"no conclusions were reached\"."
             ).format(count=total_sentences)},
         ]
-        summary = chat_completion(retry_messages, model=model, timeout=timeout)
-
-    if is_summary_refusal(summary, total_sentences):
-        raise SummaryRefusalError(f"模型误判对话内容不足（实际 {total_sentences} 句）: {(summary or '')[:60]}")
+        retried = chat_completion(retry_messages, model=model, temperature=0.2, timeout=timeout)
+        if not _unusable(retried):
+            summary = retried
+        else:
+            raise SummaryRefusalError(
+                f"模型两次输出均非有效纪要（实际 {total_sentences} 句）: {(retried or '')[:60]}"
+            )
 
     # 后处理兜底：如果 LLM 仍输出"未提供"，用实际值替换
     if meeting_time and summary:
@@ -409,6 +593,15 @@ def generate_summary(
 
     # 剥掉模型把整篇纪要包进 ``` 围栏的外壳（工作区 summary.md 标题才能正常渲染）
     summary = _strip_wrapping_fence(summary)
+    # P0 净化：截断正文前的推理/自检前言；归一漂移的章节标题（否则决策解析降级）
+    summary = strip_minutes_preface(summary)
+    summary = normalize_section_headings(summary)
+    # 对话无时间戳时，剥离注释中被模型编造的时间（实测会写出并不存在的 11:05/19:41）
+    if not dialogue_has_timestamps(dialogue):
+        stripped = strip_fabricated_times(summary)
+        if stripped != summary:
+            logger.warning("对话无时间戳，已剥离纪要注释中模型编造的时间")
+        summary = stripped
 
     logger.info(f"纪要生成完成: {len(summary)} 字符")
 
@@ -597,7 +790,9 @@ def parse_decision_checklist(summary: str) -> list[dict]:
             continue
         seen_texts.add(dedup_key)
 
-        extra: dict = {}
+        # 语义分层：行动项/待办打 kind="action"，与决策（kind="decision"，
+        # 由 core.decision_extract 独立提取）区分，供前端分层展示与过滤
+        extra: dict = {"kind": "action"}
         if deadline:
             extra["deadline"] = deadline
         evidence = build_note_evidence(note_raw, note_count, context="决策")

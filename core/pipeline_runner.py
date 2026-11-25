@@ -24,7 +24,7 @@ from core.errors import classify_error, is_transient_error
 from core.i18n import _
 from core.pipeline import PipelineProgress, run_pipeline_stage1, run_pipeline_stage2
 from core.speaker_count import estimate_speaker_count
-from core.summarize import merge_flow_after_regen, parse_decision_checklist, parse_decisions_with_status
+from core.summarize import merge_flow_after_regen, parse_decision_checklist
 
 logger = logging.getLogger(__name__)
 
@@ -644,26 +644,48 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
 
             summary_text = result.get("summary", "")
             if summary_text:
-                # DC-UNIFY-01：行动项（checkbox）与结论（主要结论/决策）合流为唯一一条决策流，
-                # 后者以「待确认」态入盘；只覆盖 source=auto，手动/注入节点与墓碑均保留（DC-R2-BE）。
+                # 决策与行动项语义分层（专项优化，决策唯一来源 = core.decision_extract）：
+                #   - 行动项/待办：仍由纪要 checkbox 确定性解析（kind="action"），不受决策链路影响；
+                #   - 决策：由 core.decision_extract 独立 LLM 提取（kind="decision"），
+                #     纪要「主要结论」正文仅供阅读、不再解析入决策流；
+                #   - 只覆盖 source=auto，手动/注入节点与墓碑均保留（DC-R2-BE）。
+                #   - body_only 降级（D018a）或独立提取失败：决策待补录（decisions_pending），
+                #     不回退到纪要结论解析，不阻断行动项与任务完成。
                 try:
+                    from core.decision_extract import (
+                        decisions_to_nodes,
+                        extract_decisions,
+                        minutes_digest_for_decisions,
+                    )
+
                     checklist_nodes = parse_decision_checklist(summary_text)
-                    parsed_decisions, parse_status = parse_decisions_with_status(summary_text)
+                    decision_nodes: list[dict] = []
+                    decision_pending = (summary_mode == "body_only")
+                    if not decision_pending:
+                        try:
+                            extracted = extract_decisions(
+                                dialogue,
+                                meeting_time=meeting_time,
+                                minutes_hint=minutes_digest_for_decisions(summary_text),
+                            )
+                            decision_nodes = decisions_to_nodes(extracted)
+                        except Exception as de:
+                            decision_pending = True
+                            logger.warning(f"[{task_id[:8]}] 决策独立提取失败，标记待补录（不阻断）: {de}")
+                            joblog.append_event(
+                                task_id, joblog.STAGE_SUMMARY,
+                                f"决策独立提取失败，决策待补录（不影响行动项与任务状态）: {de}", level="warn",
+                            )
                     task_store.tasks[task_id]["decisions"] = merge_flow_after_regen(
                         task_store.tasks[task_id].get("decisions") or [],
-                        checklist_nodes + parsed_decisions,
+                        checklist_nodes + decision_nodes,
                         task_store.tasks[task_id].get("decision_deletions"),
                     )
-                    if checklist_nodes or parsed_decisions:
+                    if decision_pending:
+                        task_store.tasks[task_id]["decisions_pending"] = True
+                    if checklist_nodes or decision_nodes:
                         logger.info(
-                            f"[{task_id[:8]}] 自动提取决策流 {len(checklist_nodes) + len(parsed_decisions)} 条"
-                            f"（行动项 {len(checklist_nodes)} · 结论 {len(parsed_decisions)}）"
-                        )
-                    if parse_status:
-                        logger.warning(f"[{task_id[:8]}] 决策解析降级（{parse_status}），本轮 auto 结论置空")
-                        joblog.append_event(
-                            task_id, joblog.STAGE_SUMMARY,
-                            f"决策解析降级（{parse_status}）：本轮 auto 结论置空，不影响任务状态", level="warn",
+                            f"[{task_id[:8]}] 自动提取：行动项 {len(checklist_nodes)} · 决策 {len(decision_nodes)}"
                         )
                 except Exception as e:
                     kept = [t for t in (task_store.tasks[task_id].get("decisions") or []) if t.get("source") != "auto"]

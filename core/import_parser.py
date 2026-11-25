@@ -42,7 +42,7 @@ CONTENT_TYPE_UNKNOWN = "unknown"
 # ============================================================
 
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".mp4", ".webm"}
-DOCUMENT_EXTENSIONS = {".md", ".txt", ".srt", ".vtt"}
+DOCUMENT_EXTENSIONS = {".md", ".txt", ".srt", ".vtt", ".pdf"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
 

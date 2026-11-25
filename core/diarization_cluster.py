@@ -12,6 +12,7 @@ core/diarization_cluster.py — 实时说话人聚类器 / Realtime speaker diar
 """
 
 import logging
+import threading
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -495,3 +496,209 @@ def create_realtime_diarizer(**kwargs) -> SpeakerDiarizer:
 
     logger.info("[声纹聚类] 用户策略: 云端 CAM++ 192 维")
     return SpeakerDiarizer(**kwargs)
+
+
+# ============================================================
+# 实时说话人解析：模型标签优先，缺失时回退本机聚类
+# ============================================================
+
+class RealtimeSpeakerResolver:
+    """包装本机 diarizer，并提供「模型说话人优先」的解析入口。
+
+    - diarization=off：不标说话人，统一返回 -1。
+    - 模型声明支持且返回 speaker_label：直接映射为 0,1,2…，不跑本机聚类。
+    - 模型未返回标签：累计到阈值后启用本机聚类，并用滚动缓冲回放最近音频。
+    - 其余情况：委托本机 diarizer，行为与改造前一致。
+    """
+
+    BUFFER_MAX_SEC = 30.0
+    BYTES_PER_SEC = 16000 * 2
+    FALLBACK_SENTENCES = 3
+    FALLBACK_SECONDS = 20.0
+
+    def __init__(self, base=None, base_factory=None, model_mode: bool = False,
+                 diarization: str = "auto"):
+        self._diarization = diarization
+        self._off = diarization == "off"
+        self._model_mode = bool(model_mode) and diarization == "auto"
+        self._base_factory = base_factory
+        self._base = base if base is not None else None
+        if self._base is None and not self._model_mode and not self._off and base_factory:
+            self._base = base_factory()
+
+        self._lock = threading.RLock()
+        self._labels: dict[str, int] = {}
+        self._speech_sec: dict[int, float] = {}
+        self._last_id = -1
+        self._fallback = False
+        self._sentences = 0
+        self._buffer = bytearray()
+        self._buffer_max = int(self.BUFFER_MAX_SEC * self.BYTES_PER_SEC)
+
+    # ── 音频 ──────────────────────────────────────────────────
+
+    def feed_audio(self, pcm_bytes: bytes) -> None:
+        if self._off or not pcm_bytes:
+            return
+        with self._lock:
+            if self._model_mode and not self._fallback:
+                self._buffer.extend(pcm_bytes)
+                if len(self._buffer) > self._buffer_max:
+                    del self._buffer[: len(self._buffer) - self._buffer_max]
+                return
+            base = self._ensure_base()
+        if base is not None:
+            base.feed_audio(pcm_bytes)
+
+    # ── 句子解析 ──────────────────────────────────────────────
+
+    def resolve_sentence(self, sentence: dict, begin_sec: float, end_sec: float) -> int:
+        if self._off:
+            return -1
+
+        label = sentence.get("speaker_label")
+        with self._lock:
+            if self._model_mode and label is not None:
+                sid = self._labels.get(str(label))
+                if sid is None:
+                    sid = len(self._labels)
+                    self._labels[str(label)] = sid
+                self._buffer.clear()
+                self._record_speech(sid, begin_sec, end_sec)
+                self._last_id = sid
+                return sid
+
+            if self._model_mode and not self._fallback:
+                self._sentences += 1
+                buffered_sec = len(self._buffer) / self.BYTES_PER_SEC
+                if self._sentences >= self.FALLBACK_SENTENCES or buffered_sec >= self.FALLBACK_SECONDS:
+                    self._activate_fallback()
+                if not self._fallback:
+                    return -1
+
+            base = self._ensure_base()
+
+        if base is None:
+            return -1
+        sid = base.get_speaker(begin_sec, end_sec)
+        if self._model_mode:
+            sid += len(self._labels)
+        with self._lock:
+            self._record_speech(sid, begin_sec, end_sec)
+            self._last_id = sid
+        return sid
+
+    def get_speaker(self, begin_time: float = 0, end_time: float = 0) -> int:
+        if self._off:
+            return -1
+        with self._lock:
+            if self._model_mode and self._labels:
+                return self._last_id if self._last_id >= 0 else -1
+            base = self._base
+            if base is None:
+                return -1
+        if begin_time or end_time:
+            sid = base.get_speaker(begin_time, end_time)
+        else:
+            sid = self._last_id
+        return sid
+
+    # ── 统计 / 生命周期 ──────────────────────────────────────
+
+    def get_speaker_count(self) -> int:
+        if self._off:
+            return 0
+        with self._lock:
+            model_count = len(self._labels)
+            base = self._base
+        if self._model_mode:
+            return model_count + (base.get_speaker_count() if base else 0)
+        return base.get_speaker_count() if base else 0
+
+    def get_active_speaker_count(self, min_speech_sec: float = 2.0) -> int:
+        if self._off:
+            return 0
+        if not self._model_mode:
+            base = self._base
+            return base.get_active_speaker_count(min_speech_sec) if base else 0
+        with self._lock:
+            return sum(1 for sec in self._speech_sec.values() if sec >= min_speech_sec)
+
+    def get_active_speaker_ids(self, min_speech_sec: float = 2.0) -> list[int]:
+        if self._off:
+            return []
+        if not self._model_mode:
+            base = self._base
+            return base.get_active_speaker_ids(min_speech_sec) if base else []
+        with self._lock:
+            return sorted(sid for sid, sec in self._speech_sec.items() if sec >= min_speech_sec)
+
+    def finalize(self) -> int:
+        if self._off:
+            return 0
+        if not self._model_mode:
+            base = self._base
+            return base.finalize() if base else 0
+        with self._lock:
+            return len(self._speech_sec)
+
+    def get_vad_stats(self) -> dict:
+        base = self._base
+        if not self._model_mode and base is not None:
+            return base.get_vad_stats()
+        return {"speech_segments": 0, "silence_segments": 0, "speech_ratio": 0.0}
+
+    def stop(self) -> None:
+        base = self._base
+        if base is not None and hasattr(base, "stop"):
+            base.stop()
+
+    # ── 内部 ──────────────────────────────────────────────────
+
+    def _ensure_base(self):
+        with self._lock:
+            if self._base is None and not self._off and self._base_factory:
+                self._base = self._base_factory()
+            return self._base
+
+    def _activate_fallback(self) -> None:
+        """模型模式无标签：用缓冲音频启动本机聚类，后续走本机 id 偏移。"""
+        self._fallback = True
+        base = self._ensure_base()
+        if base is not None and self._buffer:
+            base.feed_audio(bytes(self._buffer))
+        self._buffer.clear()
+        logger.info("[实时说话人] 模型未返回说话人标签，改用本机聚类")
+
+    def _record_speech(self, speaker_id: int, begin_sec: float, end_sec: float) -> None:
+        duration = max(0.0, float(end_sec) - float(begin_sec))
+        self._speech_sec[speaker_id] = self._speech_sec.get(speaker_id, 0.0) + duration
+
+
+def create_realtime_speaker_resolver() -> RealtimeSpeakerResolver:
+    """按实时预览配置创建解析器：模型能力优先，缺失时回退本机。"""
+    from core.settings_store import get_realtime_asr_config
+
+    cfg = get_realtime_asr_config()
+    diarization = cfg.get("diarization", "auto")
+
+    capabilities: dict = {}
+    try:
+        from core.realtime_asr_providers.registry import get_spec
+        spec = get_spec(cfg.get("resolved_provider", ""))
+        if spec:
+            capabilities = spec.capabilities_for(cfg.get("model", ""))
+    except Exception:
+        pass
+
+    model_mode = (
+        bool(capabilities.get("speaker_diarization"))
+        and diarization == "auto"
+        and cfg.get("resolved_provider") != "local"
+    )
+    return RealtimeSpeakerResolver(
+        base_factory=create_realtime_diarizer,
+        model_mode=model_mode,
+        diarization=diarization,
+    )
+

@@ -58,6 +58,23 @@ export async function deleteRole(roleName: string) {
   return data
 }
 
+export interface DecisionPromptResponse {
+  /** 生效的决策提取提示词正文 / Effective decision-extraction prompt */
+  prompt: string
+  /** 来源：角色文件 / 内置兜底 / Source: role file vs builtin fallback */
+  source: 'role' | 'builtin'
+  role_name: string
+  filename: string
+  /** 当前角色是否可直接在角色管理中编辑 / Whether current role is editable */
+  editable: boolean
+}
+
+/** 获取当前生效的决策提取提示词 / Get the effective decision-extraction prompt */
+export async function fetchDecisionPrompt(): Promise<DecisionPromptResponse> {
+  const { data } = await client.get<DecisionPromptResponse>('/api/agent/decision-prompt')
+  return data
+}
+
 /** 获取当前激活的助手 / Get the currently active agent */
 export async function fetchActiveAgent(): Promise<{ active_agent: string }> {
   const { data } = await client.get<{ active_agent: string }>('/api/agent/active')

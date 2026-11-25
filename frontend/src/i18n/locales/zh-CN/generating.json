@@ -270,6 +270,11 @@
     "meta_created": "创建 {time}",
     "meta_updated": "更新 {time}",
     "evidence_prefix": "注：",
+    "kind_decision": "决策",
+    "kind_action": "行动项",
+    "ctx_initiator": "发起",
+    "ctx_rationale": "依据",
+    "ctx_scope": "范围",
     "avatar_self": "我"
   },
   "archive_dialog": {
@@ -359,6 +364,7 @@
     "cloud_retry_confirm_cancel": "取消",
     "cloud_retry_started": "已切换到云端引擎，重新转写中…",
     "cloud_retry_failed": "切云端重试失败，请稍后再试",
+    "summary_retry_failed": "重新生成纪要失败，请稍后再试",
     "cloud_retry_blocked_reason": "云端重试不可用：当前为纯内网部署，会议数据不允许出设备。请检查本地引擎后重试，或联系管理员。"
   },
   "roster": {

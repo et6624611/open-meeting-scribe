@@ -232,7 +232,7 @@ class RealtimeTranscriber:
         self._dead_notified = False
 
     def start(self) -> None:
-        """启动实时转写（根据模式选择代理、云端或直连）"""
+        """启动实时转写（根据配置选择代理、云端、SDK 或厂商客户端）"""
         if self._started:
             raise RuntimeError("实时转写已在运行中")
 
@@ -256,26 +256,51 @@ class RealtimeTranscriber:
                 can_fallback_cloud=False,
             )
 
-        if mode == "direct":
+        self._start_configured()
+
+    def _start_configured(self) -> None:
+        """按实时预览配置分派：显式厂商优先，否则沿用原有 mode 链路。"""
+        from core.settings_store import get_realtime_asr_config
+
+        cfg = get_realtime_asr_config()
+        if cfg.get("provider") == "auto":
+            mode = _get_asr_mode()
+            if mode == "direct":
+                self._start_direct()
+            elif mode == "cloud":
+                self._start_cloud()
+            else:
+                self._start_proxy()
+            return
+
+        resolved = cfg.get("resolved_provider", "auto")
+        if resolved in ("dashscope", "volcengine"):
             self._start_direct()
-        elif mode == "cloud":
+        elif resolved == "cloud":
             self._start_cloud()
         else:
             self._start_proxy()
 
     def _start_direct(self) -> None:
-        """直连模式：使用 DashScope SDK 直连"""
-        from core.settings_store import get_asr_config
-        cfg = get_asr_config()
-        api_key = cfg.get("api_key", "")
-        base_url = cfg.get("base_url", "https://dashscope.aliyuncs.com")
+        """直连模式：DashScope SDK，或按 provider 选择厂商客户端。"""
+        from core.settings_store import get_realtime_asr_config
+
+        cfg = get_realtime_asr_config()
+        resolved = cfg.get("resolved_provider", "dashscope")
+
+        if resolved == "volcengine":
+            self._start_provider("volcengine", cfg)
+            return
+
+        api_key = (cfg.get("credentials") or {}).get("api_key", "")
+        base_url = cfg.get("base_url") or "https://dashscope.aliyuncs.com"
 
         if not api_key:
             raise RuntimeError("未配置 ASR API Key，请在设置页面配置语音转写服务或通过 .env 配置 DASHSCOPE_API_KEY")
 
         try:
             import dashscope
-            from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+            from dashscope.audio.asr import Recognition, RecognitionCallback
 
             dashscope.base_websocket_api_url = f"{base_url.replace('https://', 'wss://').replace('http://', 'ws://')}/api-ws/v1/inference"
             dashscope.api_key = api_key
@@ -297,24 +322,20 @@ class RealtimeTranscriber:
             callback = RecognitionCallback()
 
             def _on_event(result):
+                from dashscope.audio.asr import RecognitionResult
+
                 sentence = result.get_sentence()
                 if not sentence or "text" not in sentence:
                     return
                 text = sentence["text"]
-                is_end = RecognitionResult.is_sentence_end(sentence)
-                if is_end:
-                    text = apply_hotword_mappings(text)
-                    self._sentence_count += 1
-                    if self._on_sentence_end:
-                        self._on_sentence_end({
-                            "text": text,
-                            "begin_time": sentence.get("begin_time", 0),
-                            "end_time": sentence.get("end_time", 0),
-                        })
+                if RecognitionResult.is_sentence_end(sentence):
+                    self._handle_sentence({
+                        "text": text,
+                        "begin_time": sentence.get("begin_time", 0),
+                        "end_time": sentence.get("end_time", 0),
+                    })
                 else:
-                    text = apply_hotword_mappings(text)
-                    if self._on_partial:
-                        self._on_partial(text)
+                    self._handle_partial(text)
 
             callback.on_event = _on_event
             callback.on_error = lambda result: self._on_error(f"实时转写错误: {result.message}") if self._on_error else None
@@ -338,6 +359,56 @@ class RealtimeTranscriber:
             if self._on_error:
                 self._on_error(error_msg)
             raise RuntimeError(error_msg)
+
+    def _start_provider(self, key: str, cfg: dict) -> None:
+        """启动厂商 WebSocket 客户端（当前仅火山）。"""
+        from core.realtime_asr_providers import create_provider
+        from core.realtime_asr_providers.registry import get_spec
+
+        spec = get_spec(key)
+        caps = spec.capabilities_for(cfg.get("model", "")) if spec else {}
+        enable_speaker = bool(caps.get("speaker_diarization")) and cfg.get("diarization") == "auto"
+        provider_cfg = dict(cfg)
+        provider_cfg["enable_speaker"] = enable_speaker
+
+        provider = create_provider(
+            key,
+            provider_cfg,
+            on_partial=self._handle_partial,
+            on_sentence_end=self._handle_sentence,
+            on_error=lambda msg: self._on_error(msg) if self._on_error else None,
+            on_complete=lambda: self._on_complete() if self._on_complete else None,
+            sample_rate=self._sample_rate,
+        )
+        try:
+            provider.start()
+        except Exception as e:
+            error_msg = f"{key} 实时转写启动失败: {e}"
+            logger.error(f"[实时转写] {error_msg}")
+            if self._on_error:
+                self._on_error(error_msg)
+            raise RuntimeError(error_msg)
+
+        self._recognition = provider
+        self._started = True
+        self._sentence_count = 0
+        logger.info(f"[实时转写] 已启动（{key}），说话人分离={'开' if enable_speaker else '关'}")
+
+    def _handle_partial(self, text: str) -> None:
+        if not text:
+            return
+        if self._on_partial:
+            self._on_partial(apply_hotword_mappings(text))
+
+    def _handle_sentence(self, sentence: dict) -> None:
+        text = sentence.get("text", "")
+        if not text:
+            return
+        self._sentence_count += 1
+        if self._on_sentence_end:
+            payload = dict(sentence)
+            payload["text"] = apply_hotword_mappings(text)
+            self._on_sentence_end(payload)
 
     def _start_proxy(self) -> None:
         """代理模式：通过 ASR 代理 WebSocket 中继"""
@@ -613,8 +684,10 @@ class RealtimeTranscriber:
         原实现只打一行日志、_started 保持 True，前端仍然显示「转写中」，
         实际整场后半段无转写。现改为标记失效 + 一次性告知 + 后台自愈。
         """
+        from core.realtime_asr_providers import RealtimeSessionClosed
+
         msg = str(exc)
-        if "stopped" not in msg.lower():
+        if not isinstance(exc, RealtimeSessionClosed) and "stopped" not in msg.lower():
             # 偶发送帧异常不代表会话已死，保留会话继续送帧
             logger.error(f"[实时转写] 送入音频失败: {msg}")
             return
@@ -663,19 +736,16 @@ class RealtimeTranscriber:
             count = self._sentence_count
             mode = "unknown"
             try:
+                from core.settings_store import get_realtime_asr_config
+
                 self._recognition = None
                 self._started = False
                 self._release_ws_session()
-                mode = _get_asr_mode()
-                if mode == "direct":
-                    self._start_direct()
-                elif mode == "cloud":
-                    self._start_cloud()
-                elif mode == "local":
+                mode = get_realtime_asr_config().get("resolved_provider", "auto")
+                if mode == "local":
                     logger.warning("[实时转写] 当前为本地模式，跳过会话重建")
                     return False
-                else:
-                    self._start_proxy()
+                self._start_configured()
                 self._sentence_count = count
                 self._dead_notified = False
                 if force:
@@ -689,8 +759,8 @@ class RealtimeTranscriber:
             except Exception as e:
                 logger.error(f"[实时转写] 会话重建失败（{reason or '手动'}）: {e}")
                 self._started = False
-                # 直连模式 _start_direct 内部已推 on_error，避免重复
-                if mode != "direct" and self._on_error:
+                # 直连/厂商客户端内部已推 on_error，避免重复
+                if mode not in ("dashscope", "volcengine") and self._on_error:
                     self._on_error(f"实时转写恢复失败：{e}")
                 return False
             finally:

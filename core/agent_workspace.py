@@ -292,6 +292,36 @@ def get_role_summary_prompt(role_name: str | None = None) -> str | None:
     return body.strip() or None
 
 
+def get_role_decision_prompt(role_name: str | None = None) -> str | None:
+    """
+    获取角色的决策提取提示词（decision-prompt.md 正文）。
+
+    决策提取与纪要生成、待办提取是三条独立链路，本文件只服务决策提取。
+    查找优先级 / Lookup priority:
+      1. 角色目录 decision-prompt.md / Role dir decision-prompt.md
+      2. None（调用方回退到 core.decision_extract 内置默认 prompt）
+
+    Args:
+        role_name: 角色标识，None 时使用默认角色。
+
+    Returns:
+        提示词正文（去除 front matter），或 None。
+    """
+    name = role_name or DEFAULT_ROLE
+    found = _find_role_dir(name)
+    if found is None:
+        return None
+
+    role_dir, _source = found
+    prompt_path = role_dir / "decision-prompt.md"
+    parsed = _read_md_file(prompt_path)
+    if parsed is None:
+        return None
+
+    _meta, body = parsed
+    return body.strip() or None
+
+
 def get_role_insight_prompt(role_name: str | None = None) -> str | None:
     """
     获取角色的综合洞察分析提示词（insights.md 正文）。

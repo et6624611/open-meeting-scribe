@@ -243,6 +243,39 @@ class TestRetrySummaryOk:
         finally:
             tasks.pop(task_id, None)
 
+    def test_retry_summary_without_audio(self, client, monkeypatch):
+        """原文导入（无音频文件）也允许重生成纪要：stage2 只依赖对话稿。"""
+        import uuid
+
+        import app.routers.tasks as tasks_router
+        from core.task_store import tasks
+
+        calls = []
+        monkeypatch.setattr(tasks_router, "run_stage2_task", lambda *a, **k: calls.append(a))
+
+        task_id = str(uuid.uuid4())
+        tasks[task_id] = {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": 100,
+            "message": "完成",
+            "audio_name": "原文.txt",
+            "audio_path": "",
+            "dialogue": [{"speaker_id": 0, "text": "测试文本", "sentences": [{"text": "测试文本"}]}],
+            "failed_stage": None,
+            "retry_count": 0,
+            "speaker_uuid_mapping": {},
+            "summary": "旧纪要",
+            "created_at": "2026-09-04T10:00:00",
+        }
+        try:
+            resp = client.post(f"/api/tasks/{task_id}/retry-summary")
+            assert resp.status_code == 200
+            assert calls, "应提交后台 stage2 任务"
+            assert tasks[task_id]["summary"] == "旧纪要"  # 旧产物在重生成期间保留
+        finally:
+            tasks.pop(task_id, None)
+
 
 # ============================================================
 # 归档域

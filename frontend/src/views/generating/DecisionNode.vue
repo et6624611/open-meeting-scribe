@@ -12,6 +12,8 @@
         @click="startEdit"
       >{{ displayTitle }}</button>
       <span class="db-title-spacer" v-else></span>
+      <!-- 语义分层徽标：决策 / 行动项（kind 缺省的历史节点不显示） -->
+      <span v-if="!editing && decision.kind" class="db-kind-badge" :class="`is-${decision.kind}`">{{ t('generating.decisions.kind_' + decision.kind) }}</span>
       <!-- 待确认提案徽标：与已定结论共用 to_decide 态，靠 pending_confirmation 区分 -->
       <span v-if="!editing && decision.pending_confirmation" class="db-pending-badge">{{ t('generating.decisions.pending_badge') }}</span>
     </div>
@@ -135,6 +137,12 @@
       />
     </div>
 
+    <!-- 决策上下文（独立决策提取）：发起方 / 共识依据 / 生效范围（只读） -->
+    <div class="db-ctx" v-if="!editing && hasDecisionCtx">
+      <span v-if="decision.initiator" class="db-ctx-item">{{ t('generating.decisions.ctx_initiator') }}：{{ decision.initiator }}</span>
+      <span v-if="decision.rationale" class="db-ctx-item">{{ t('generating.decisions.ctx_rationale') }}：{{ decision.rationale }}</span>
+      <span v-if="decision.scope" class="db-ctx-item">{{ t('generating.decisions.ctx_scope') }}：{{ decision.scope }}</span>
+    </div>
     <!-- 备查层证据注行：内联注已从正文剥离为 evidence，展示层在此还原（只读） -->
     <div class="db-evidence" v-if="!editing && decision.evidence?.text">
       {{ t('generating.decisions.evidence_prefix') }}{{ decision.evidence.text }}
@@ -206,6 +214,9 @@ const hasTitle = computed(() => Boolean(props.decision.title && props.decision.t
 // 决策内容（why 字段存 Markdown）；有独立标题且 why 为空时回退展示 text
 // / Decision content (Markdown in why); falls back to text when the body is empty
 const bodyContent = computed(() => props.decision.why || (hasTitle.value ? props.decision.text : ''))
+
+// 决策上下文（发起方/共识依据/生效范围）任一存在即展示只读元信息行
+const hasDecisionCtx = computed(() => Boolean(props.decision.initiator || props.decision.rationale || props.decision.scope))
 
 const displayTitle = computed(() => strip(props.decision.title || props.decision.text))
 // tooltip 与正文取同一来源，避免悬停时重现已被收起的旧 text 摘要
@@ -431,3 +442,36 @@ watch(editing, (v) => {
   })
 })
 </script>
+
+<style scoped>
+/* 语义分层徽标 / Kind badge */
+.db-kind-badge {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.db-kind-badge.is-decision {
+  color: var(--accent, #4f6ef7);
+  background: color-mix(in oklch, var(--accent, #4f6ef7) 12%, transparent);
+}
+.db-kind-badge.is-action {
+  color: var(--muted, #8a8f98);
+  background: color-mix(in oklch, var(--muted, #8a8f98) 12%, transparent);
+}
+/* 决策上下文只读行 / Decision context row */
+.db-ctx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted, #8a8f98);
+}
+.db-ctx-item {
+  white-space: pre-wrap;
+}
+</style>

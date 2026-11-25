@@ -218,19 +218,66 @@ async def _import_as_document(
     if not content_bytes:
         raise HTTPException(400, _("Empty file"))
 
-    # 尝试多种编码读取 / Try multiple encodings
-    text = None
-    for encoding in ("utf-8", "utf-8-sig", "gbk", "gb2312", "latin-1"):
-        try:
-            text = content_bytes.decode(encoding)
-            break
-        except (UnicodeDecodeError, LookupError):
-            continue
+    # PDF：用 PyPDF2 提取文本 / PDF: extract text with PyPDF2
+    is_pdf = Path(file.filename or "").suffix.lower() == ".pdf"
+    if is_pdf:
+        text = _extract_pdf_text(content_bytes)
+        if not text or len(text.strip()) < 10:
+            raise HTTPException(
+                400,
+                _("PDF text extraction failed. The file may be scanned (image-only) or encrypted.")
+            )
+    else:
+        # 尝试多种编码读取 / Try multiple encodings
+        text = None
+        for encoding in ("utf-8", "utf-8-sig", "gbk", "gb2312", "latin-1"):
+            try:
+                text = content_bytes.decode(encoding)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
 
-    if text is None:
-        raise HTTPException(400, _("Unable to decode file. Please use UTF-8 encoding."))
+        if text is None:
+            raise HTTPException(400, _("Unable to decode file. Please use UTF-8 encoding."))
 
     return _create_import_task(text, file.filename or "import.txt", title, project_id, background_tasks)
+
+
+def _extract_pdf_text(content_bytes: bytes) -> str:
+    """从 PDF 二进制中提取文本 / Extract text from PDF bytes.
+
+    处理加密/扫描版等情况：返回空串表示提取失败。
+    """
+    import io
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError:
+        logger.error("[import] PyPDF2 not installed")
+        return ""
+
+    try:
+        reader = PdfReader(io.BytesIO(content_bytes))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                # 尝试空密码解密 / Try empty password
+                reader.decrypt("")
+            except Exception:
+                logger.warning("[import] PDF is encrypted")
+                return ""
+
+        pages_text = []
+        for i, page in enumerate(reader.pages):
+            try:
+                t = page.extract_text() or ""
+                pages_text.append(t)
+            except Exception as e:
+                logger.warning(f"[import] PDF page {i+1} extract failed: {e}")
+        text = "\n".join(pages_text).strip()
+        logger.info(f"[import] PDF extracted: {len(reader.pages)} pages, {len(text)} chars")
+        return text
+    except Exception as e:
+        logger.warning(f"[import] PDF extract failed: {e}")
+        return ""
 
 
 def _create_import_task(

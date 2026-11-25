@@ -269,6 +269,11 @@
     "meta_created": "Created {time}",
     "meta_updated": "Updated {time}",
     "evidence_prefix": "Note: ",
+    "kind_decision": "Decision",
+    "kind_action": "Action",
+    "ctx_initiator": "Initiator",
+    "ctx_rationale": "Rationale",
+    "ctx_scope": "Scope",
     "avatar_self": "Me"
   },
   "archive_dialog": {
@@ -358,6 +363,7 @@
     "cloud_retry_confirm_cancel": "Cancel",
     "cloud_retry_started": "Switched to cloud engine, re-transcribing…",
     "cloud_retry_failed": "Cloud retry failed, please try again later",
+    "summary_retry_failed": "Failed to regenerate minutes, please try again later",
     "cloud_retry_blocked_reason": "Cloud retry unavailable: this is an intranet-only deployment and meeting data must not leave the device. Check the local engine and retry, or contact your administrator."
   },
   "roster": {

@@ -31,6 +31,7 @@ from core.agent_workspace import (
     resolve_agent_role,
     save_role_file,
 )
+from core.decision_extract import get_decision_prompt
 from core.i18n import _
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,39 @@ def get_agent_role_files(role_name: str):
     if result is None:
         raise HTTPException(404, _("Role not found: {name}").format(name=role_name))
     return result
+
+
+@router.get("/api/agent/decision-prompt")
+def get_agent_decision_prompt():
+    """
+    获取当前生效的决策提取提示词（前端「决策中心」展示用）。
+
+    Returns:
+        {
+            "prompt": str,            # 生效提示词正文
+            "source": "role"|"builtin",
+            "role_name": str,         # 生效角色
+            "filename": "decision-prompt.md",
+            "editable": bool,         # 是否可直接在角色管理中编辑（自定义角色为 True）
+        }
+    """
+    from app.settings_store import load_settings
+
+    role_name = load_settings().get("active_agent", DEFAULT_ACTIVE_AGENT)
+    prompt, source = get_decision_prompt(role_name)
+
+    editable = False
+    role = resolve_agent_role(role_name)
+    if role is not None and role.get("source") == "custom":
+        editable = True
+
+    return {
+        "prompt": prompt,
+        "source": source,
+        "role_name": role_name,
+        "filename": "decision-prompt.md",
+        "editable": editable,
+    }
 
 
 # ============================================================

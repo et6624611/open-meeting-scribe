@@ -32,6 +32,7 @@ from core.settings_store import (
     get_engine_config,
     get_feature_flags,
     get_llm_config,
+    get_realtime_asr_config,
     get_storage_config,
     get_transcript_config,
     get_web_search_config,
@@ -149,6 +150,34 @@ def get_settings():
         asr_response["proxy_url"] = asr.get("proxy_url", "")
         asr_response["api_key_managed_by_proxy"] = True
 
+    # 实时预览配置（独立块，不影响批处理）
+    rt = get_realtime_asr_config()
+    try:
+        from core.realtime_asr_providers.registry import get_spec, list_public_specs
+        rt_spec = get_spec(rt.get("resolved_provider", ""))
+        rt_caps = rt_spec.capabilities_for(rt.get("model", "")) if rt_spec else {}
+        rt_providers = list_public_specs()
+    except Exception:
+        rt_caps = {}
+        rt_providers = []
+
+    asr_response["realtime"] = {
+        "provider": rt["provider"],
+        "resolved_provider": rt["resolved_provider"],
+        "model": rt["model"],
+        "language": rt["language"],
+        "base_url": rt["base_url"],
+        "diarization": rt["diarization"],
+        "credentials": {
+            k: (mask_api_key(v) if v and k in ("api_key", "secret_key") else v)
+            for k, v in (rt.get("credentials") or {}).items()
+        },
+        "credentials_set": {
+            k: bool(v) for k, v in (rt.get("credentials") or {}).items()
+        },
+        "capabilities": rt_caps,
+    }
+
     return {
         "asr": asr_response,
         "llm": {
@@ -186,6 +215,7 @@ def get_settings():
             "api_key_set": web_search["api_key_set"],
         },
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
+        "asr_realtime_providers": rt_providers,
         "llm_provider_presets": PROVIDER_PRESETS,
     }
 
@@ -263,6 +293,48 @@ def _merge_web_search_config(incoming: dict | None, existing: dict | None) -> di
     return {"provider": provider, "api_key": final_key}
 
 
+_REALTIME_CRED_KEYS = ("api_key", "resource_id", "app_id", "secret_id", "secret_key")
+
+
+def _merge_realtime_asr(incoming: dict | None, existing: dict | None) -> dict:
+    """合并 asr.realtime（独立块）：白名单校验 + 密钥空值/掩码保留。"""
+    incoming = incoming if isinstance(incoming, dict) else {}
+    existing = existing if isinstance(existing, dict) else {}
+
+    try:
+        from core.realtime_asr_providers.registry import SPECS
+        valid_providers = set(SPECS)
+    except Exception:
+        valid_providers = {"auto", "dashscope", "volcengine"}
+
+    provider = str(incoming.get("provider") or existing.get("provider") or "auto")
+    if provider not in valid_providers:
+        provider = existing.get("provider") or "auto"
+
+    diarization = str(incoming.get("diarization") or existing.get("diarization") or "auto")
+    if diarization not in ("auto", "local", "off"):
+        diarization = existing.get("diarization") or "auto"
+
+    existing_creds = existing.get("credentials") or {}
+    incoming_creds = incoming.get("credentials") or {}
+    credentials = {}
+    for key in _REALTIME_CRED_KEYS:
+        value = str(incoming_creds.get(key) or "").strip()
+        if not value or "****" in value:
+            credentials[key] = str(existing_creds.get(key) or "")
+        else:
+            credentials[key] = value
+
+    return {
+        "provider": provider,
+        "model": str(incoming.get("model", existing.get("model", "")) or ""),
+        "language": str(incoming.get("language") or existing.get("language") or "zh"),
+        "base_url": str(incoming.get("base_url", existing.get("base_url", "")) or ""),
+        "diarization": diarization,
+        "credentials": credentials,
+    }
+
+
 @router.post("/api/settings")
 def save_settings(data: dict):
     """
@@ -321,6 +393,7 @@ def save_settings(data: dict):
             "base_url": new_asr.get("base_url", existing_asr.get("base_url", "https://dashscope.aliyuncs.com")),
             "api_key": final_asr_key,
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
+            "realtime": _merge_realtime_asr(new_asr.get("realtime"), existing_asr.get("realtime")),
         }
     else:
         # 代理模式：不回显但不删除 base_url 和 api_key / Proxy mode: hide, don't erase credentials.
@@ -331,6 +404,7 @@ def save_settings(data: dict):
             "provider": new_asr.get("provider", existing_asr.get("provider", "DashScope")),
             "model": new_asr.get("model", existing_asr.get("model", "paraformer-v2")),
             "api_key": existing_asr.get("api_key", ""),
+            "realtime": _merge_realtime_asr(new_asr.get("realtime"), existing_asr.get("realtime")),
         }
 
     # ── 声纹配置已整体下架（REQ-SETTINGS-IA 第 4 刀）：POST 不再接收 voiceprint 字段，

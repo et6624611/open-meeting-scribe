@@ -721,8 +721,10 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     if not task.get("dialogue"):
         raise HTTPException(400, _("Transcription result not found, please use Re-transcribe"))
 
+    # 导入原文（无音频）同样允许重生成：stage2 只消费对话稿，audio_path 仅用于
+    # 输出命名与会议时间兜底，不能因缺音频把纯文本导入挡在门外。
     audio_path = task.get("audio_path")
-    if not audio_path or not Path(audio_path).exists():
+    if audio_path and not Path(audio_path).exists():
         raise HTTPException(404, _("Recording file not found"))
 
     # 只重置 stage2 相关字段 / Only reset stage2-related fields
@@ -738,7 +740,7 @@ def retry_summary(task_id: str, background_tasks: BackgroundTasks):
     save_task_to_disk(task_id)
 
     # 恢复说话人映射，后台重新生成纪要 / Restore speaker mapping, regenerate summary in background
-    audio_path = Path(audio_path)
+    audio_path = Path(audio_path) if audio_path else Path("")
     mapping = {int(k): v for k, v in task.get("speaker_uuid_mapping", {}).items()}
     background_tasks.add_task(run_stage2_task, task_id, audio_path, mapping)
 

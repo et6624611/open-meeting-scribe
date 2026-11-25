@@ -228,6 +228,89 @@ def get_asr_config() -> dict:
     }
 
 
+# ── 实时预览 ASR（独立于批处理；仅影响录音过程中的上屏） ──────────────
+REALTIME_ASR_PROVIDERS = ("auto", "dashscope", "volcengine", "xfyun", "tencent")
+REALTIME_DIARIZATION_MODES = ("auto", "local", "off")
+
+
+def get_realtime_asr_config() -> dict:
+    """读取实时预览 ASR 配置。
+
+    asr.realtime 是独立块：不参与批处理 route / capability_source 判定。
+    auto 时按现有 asr.mode 解析，老配置零变化。
+    """
+    settings = load_settings()
+    asr = settings.get("asr", {}) or {}
+    rt = asr.get("realtime", {}) or {}
+
+    provider = str(rt.get("provider") or "auto")
+    if provider not in REALTIME_ASR_PROVIDERS:
+        provider = "auto"
+    diarization = str(rt.get("diarization") or "auto")
+    if diarization not in REALTIME_DIARIZATION_MODES:
+        diarization = "auto"
+
+    credentials = dict(rt.get("credentials") or {})
+    for key in ("api_key", "resource_id", "app_id", "secret_id", "secret_key"):
+        credentials[key] = str(credentials.get(key) or "")
+
+    batch = get_asr_config()
+    mode = batch.get("mode", "proxy")
+    model = str(rt.get("model") or "")
+    base_url = str(rt.get("base_url") or "")
+
+    local_engine = False
+    try:
+        local_engine = get_engine_config().get("mode") == "local"
+    except Exception:
+        pass
+
+    if local_engine:
+        resolved = "local"
+    elif provider == "auto":
+        resolved = "dashscope" if mode == "direct" else mode
+    else:
+        resolved = provider
+
+    # DashScope 实时与批处理共用同一把 Key 时允许缺省继承
+    if resolved == "dashscope":
+        if not credentials["api_key"]:
+            credentials["api_key"] = batch.get("api_key", "") or os.getenv("DASHSCOPE_API_KEY", "")
+        if not base_url:
+            base_url = batch.get("base_url") or "https://dashscope.aliyuncs.com"
+        if not model:
+            from core.realtime_asr_providers.dashscope import DEFAULT_MODEL
+            model = DEFAULT_MODEL
+
+    if resolved not in ("local", "proxy", "cloud", "auto") and not provider_of(resolved):
+        resolved = "auto"
+
+    # 不同厂商端点完全不同，base_url 只作为高级覆盖（必须是 ws(s)://）。
+    # 老配置里可能残留其他厂商的 HTTP base_url，这里清掉避免被误复用。
+    if base_url and not base_url.startswith(("ws://", "wss://")):
+        base_url = ""
+
+    return {
+        "provider": provider,
+        "resolved_provider": resolved,
+        "model": model,
+        "language": str(rt.get("language") or "zh"),
+        "base_url": base_url,
+        "diarization": diarization,
+        "credentials": credentials,
+        "byok": bool(credentials.get("api_key")),
+    }
+
+
+def provider_of(resolved: str) -> bool:
+    """resolved 是否为注册表中的实时厂商。"""
+    try:
+        from core.realtime_asr_providers.registry import get_spec
+        return get_spec(resolved) is not None
+    except Exception:
+        return False
+
+
 # 声纹配置 getter 已随 REQ-SETTINGS-IA 第 4 刀下架：voiceprint.provider / cloud_base_url /
 # cloud_api_key 字段在 schema/UI/后端三处不存在，声纹结构性零出网（仅本机 CAM++）。
 

@@ -133,7 +133,7 @@ const duplicateInfo = ref<DuplicateCheckResult | null>(null)
 // 支持的文件扩展名 / Supported file extensions
 const ACCEPT_EXTENSIONS = [
   'audio/*', 'video/*',
-  '.md', '.txt', '.srt', '.vtt',
+  '.md', '.txt', '.srt', '.vtt', '.pdf',
   '.png', '.jpg', '.jpeg',
 ].join(',')
 

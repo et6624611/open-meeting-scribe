@@ -6,6 +6,7 @@
  */
 import { ref, watch, type ComputedRef } from 'vue'
 import { updateRoster } from '@/api/speakers'
+import { useTaskStore } from '@/stores/task'
 import type { Task } from '@/api/types'
 
 export function useMeetingRoster(
@@ -51,6 +52,9 @@ export function useMeetingRoster(
     try {
       const result = await updateRoster(taskId, roster.value)
       roster.value = result.roster
+      // 同步回任务列表：否则离开页面再回来时 initRoster 仍读旧快照，刚添加的参会人会丢失
+      // Sync into the task store; otherwise initRoster re-reads the stale snapshot on remount
+      useTaskStore().patchTaskLocal(taskId, { roster: result.roster })
     } catch (e) {
       console.error('Failed to update roster:', e)
     }

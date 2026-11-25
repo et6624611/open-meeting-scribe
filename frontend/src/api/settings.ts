@@ -46,6 +46,48 @@ export interface LocalEngineProbeResult {
   detected: string[]
 }
 
+/** 实时 ASR 凭证字段（后端注册表驱动前端表单） */
+export interface RealtimeCredentialField {
+  name: string
+  label_key: string
+  type: 'text' | 'password' | 'select'
+  required?: boolean
+  secret?: boolean
+  options?: Array<{ value: string; label_key: string }>
+  default?: string
+}
+
+/** 实时 ASR 厂商描述 */
+export interface RealtimeProviderSpec {
+  key: string
+  label_key: string
+  available: boolean
+  transport: string
+  models: string[]
+  default_model: string
+  allow_custom_model?: boolean
+  credential_fields: RealtimeCredentialField[]
+  capabilities: Record<string, boolean>
+  model_capabilities?: Record<string, Record<string, boolean>>
+  sample_rate?: number
+  chunk_bytes?: number
+  docs_url?: string
+  speaker_label_paths?: string[]
+}
+
+/** 实时预览 ASR 配置（独立于批处理） */
+export interface RealtimeAsrConfig {
+  provider?: string
+  resolved_provider?: string
+  model?: string
+  language?: string
+  base_url?: string
+  diarization?: 'auto' | 'local' | 'off'
+  credentials?: Record<string, string>
+  credentials_set?: Record<string, boolean>
+  capabilities?: Record<string, boolean>
+}
+
 export interface Settings {
   asr?: {
     /** 接入模式（A2 投影旧字段；唯一写入口在接入方式详情层） / Legacy projection field */
@@ -58,7 +100,11 @@ export interface Settings {
     /** 代理模式下由服务器持有，前端仅展示 / Held by server in proxy mode; frontend displays only */
     api_key_managed_by_proxy?: boolean
     proxy_url?: string
+    /** 实时预览模型（独立块，不影响批处理） */
+    realtime?: RealtimeAsrConfig
   }
+  /** 后端返回的实时 ASR 厂商注册表 */
+  asr_realtime_providers?: RealtimeProviderSpec[]
   llm?: {
     provider?: string
     base_url?: string
@@ -137,7 +183,7 @@ export async function quitApp(): Promise<void> {
   await client.post('/api/app/quit')
 }
 
-export async function testApiConnection(params?: { service_type?: string; asr?: Record<string, unknown>; llm?: Record<string, unknown> }): Promise<{ success: boolean; message?: string; ok?: boolean; error?: string }> {
+export async function testApiConnection(params?: { service_type?: string; target?: string; asr?: Record<string, unknown>; llm?: Record<string, unknown> }): Promise<{ success: boolean; message?: string; ok?: boolean; error?: string }> {
   const { data } = await client.post<{ success: boolean; message?: string; ok?: boolean; error?: string }>('/api/settings/test', params || {})
   return data
 }

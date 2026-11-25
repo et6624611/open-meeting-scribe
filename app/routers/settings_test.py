@@ -39,9 +39,38 @@ def test_api_connection(data: dict = None):
     service_type = data.get("service_type", "llm")
 
     if service_type == "asr":
-        return _test_asr_connection(data.get("asr"))
+        asr_data = data.get("asr") or {}
+        if data.get("target") == "realtime" or asr_data.get("realtime"):
+            return _test_asr_realtime(asr_data.get("realtime"))
+        return _test_asr_connection(asr_data)
     else:
         return _test_ll_connection(data.get("llm"))
+
+
+def _test_asr_realtime(incoming: dict | None) -> dict:
+    """实时预览厂商连通性测试（不传音频）。"""
+    from core.realtime_asr_providers.probe import probe_realtime_asr
+
+    incoming = incoming or {}
+    cfg = settings_store.get_realtime_asr_config()
+    provider = str(incoming.get("provider") or cfg.get("provider") or "auto")
+    if provider == "auto":
+        provider = cfg.get("resolved_provider") or "dashscope"
+    if provider in ("proxy", "cloud", "local"):
+        return {"ok": True, "message": "跟随当前来源，无需单独配置"}
+
+    credentials = dict(cfg.get("credentials") or {})
+    for key, value in (incoming.get("credentials") or {}).items():
+        value = str(value or "")
+        if value and "****" not in value:
+            credentials[key] = value
+
+    return probe_realtime_asr(
+        provider,
+        credentials,
+        str(incoming.get("model") or cfg.get("model") or ""),
+        str(incoming.get("base_url") or cfg.get("base_url") or ""),
+    )
 
 
 def _test_asr_connection(asr_data: dict | None) -> dict:

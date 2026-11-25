@@ -115,6 +115,12 @@ export interface DecisionItem {
   pending_confirmation?: boolean  // 待确认提案（与已定结论共用 to_decide，靠此布尔区分）
   /** 备查层证据：条目内联注剥离而成（注原文 + 机读出处），正文不再内联 / Evidence note stripped from body */
   evidence?: { text: string; refs: { speaker?: string; time: string }[] }
+  /** 语义分层：决策 / 行动项（缺省为历史节点，不区分） / Semantic layer: decision vs action */
+  kind?: 'decision' | 'action'
+  /** 决策上下文（独立决策提取）：发起方 / 共识依据 / 生效范围 */
+  initiator?: string
+  rationale?: string
+  scope?: string
   /** 演变链：已被另一决策替代时的关系快照（手动标记；null/缺省=未标记） */
   superseded_by?: SupersededBy | null
   /** 时间足迹：创建/最近更新（ISO 字符串；存量节点可能缺省） */

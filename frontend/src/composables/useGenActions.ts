@@ -33,6 +33,7 @@ export function useGenActions(data: GenDataLike) {
       void taskStore.loadTasks()
     } catch (e) {
       console.error('retry summary failed:', e)
+      showToast(t('generating.failure.summary_retry_failed'), 'error')
       try {
         taskStore.patchTaskLocal(data.taskId, await fetchTask(data.taskId))
       } catch { /* optimistic state preserved; next polling will self-correct */ }
