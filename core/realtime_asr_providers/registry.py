@@ -70,7 +70,8 @@ def _volcengine_spec() -> RealtimeProviderSpec:
         sample_rate=16000,
         chunk_bytes=6400,
         docs_url="https://docs.volcengine.com/docs/doubao-voice/large-model-streaming-automatic-speech-recognition-api-1",
-        speaker_label_paths=["speaker", "speaker_id", "spk"],
+        # 豆包大模型流式把说话人放在 utterances[].additions.speaker_id
+        speaker_label_paths=["additions.speaker_id", "speaker", "speaker_id", "spk"],
     )
 
 

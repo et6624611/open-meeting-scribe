@@ -14,6 +14,7 @@
     "locate": "Locate this person",
     "me_suffix": " (Me)",
     "default_name": "Unidentified",
+    "numbered_name": "Speaker {n}",
     "unid_initial": "?"
   },
   "tab": {

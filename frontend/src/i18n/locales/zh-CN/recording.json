@@ -14,6 +14,7 @@
     "locate": "定位此人员",
     "me_suffix": "（我）",
     "default_name": "未识别",
+    "numbered_name": "说话人{n}",
     "unid_initial": "未"
   },
   "tab": {

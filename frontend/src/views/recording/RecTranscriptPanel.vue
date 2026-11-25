@@ -189,10 +189,10 @@
               </div>
               <!-- 转写行 / Transcript line -->
               <div v-else-if="item.type === 'line'" class="rec-line" :class="{ 'is-me': isMe(lineOf(item).speaker_id), 'is-located': locateId === lineOf(item).speaker_id, 'is-dimmed': locateId !== null && locateId !== lineOf(item).speaker_id }">
-                <div class="rec-line-avatar" :style="{ background: speakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(getSpeakerName(lineOf(item)), lineOf(item).speaker_id) }}</div>
+                <div class="rec-line-avatar" :style="{ background: speakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(lineOf(item)) }}</div>
                 <div class="rec-line-content">
                   <div class="rec-line-head">
-                    <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ getSpeakerName(lineOf(item)) }}</span>
+                    <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ lineSpeakerLabel(lineOf(item)) }}</span>
                     <button v-if="!locateId || locateId === lineOf(item).speaker_id" class="rec-line-locate-btn" @click.stop="$emit('toggleLocate', lineOf(item).speaker_id)" :title="t('recording.speaker.locate')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
                     <!-- 清理视图：已清理行的原文回览入口 / Clean view: peek-verbatim entry on cleaned lines -->
                     <button
@@ -688,10 +688,20 @@ function lineOf(item: MixedItem): TranscriptLine {
 
 function speakerColor(sid: string | number): string { return getSpeakerColor(sid) }
 
-/** 头像首字：真名取首字符；未识别取中性符（REQ-SPK-RN D5：禁用编号数字） */
-function avatarInitial(name: string, _speakerId: number): string {
-  if (name && name.trim()) return name.trim()[0]
-  return t('recording.speaker.unid_initial')
+/** 行首说话人文案：已绑定用真名；未绑定按编号展示（D5 已推翻，仅转写原文区生效） */
+function lineSpeakerLabel(line: TranscriptLine): string {
+  const name = props.getSpeakerName(line)
+  if (name !== t('recording.speaker.default_name')) return name
+  const n = Number(line.speaker_id)
+  return Number.isFinite(n) ? t('recording.speaker.numbered_name', { n: n + 1 }) : name
+}
+
+/** 头像首字：真名取首字符；未绑定取编号（与行首编号一致） */
+function avatarInitial(line: TranscriptLine): string {
+  const name = props.getSpeakerName(line)
+  if (name !== t('recording.speaker.default_name')) return name.trim().charAt(0).toUpperCase()
+  const n = Number(line.speaker_id)
+  return Number.isFinite(n) ? String(n + 1) : t('recording.speaker.unid_initial')
 }
 
 function formatTime(ms: number): string {

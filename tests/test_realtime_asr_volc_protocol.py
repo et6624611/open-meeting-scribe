@@ -44,6 +44,30 @@ def test_final_frame_is_negative_sequence():
     assert struct.unpack(">I", frame[8:12])[0] == 0
 
 
+def test_registry_paths_decode_additions_speaker_id():
+    """豆包真实返回把说话人放在 utterances[].additions.speaker_id。"""
+    from core.realtime_asr_providers.registry import get_spec
+
+    p = VolcengineProvider(
+        credentials={"api_key": "k", "resource_id": "volc.seedasr.sauc.duration"},
+        options={"speaker_label_paths": get_spec("volcengine").speaker_label_paths},
+    )
+    payload = json.dumps({
+        "result": {
+            "text": "你好",
+            "utterances": [
+                {"text": "你好", "start_time": 120, "end_time": 900,
+                 "definite": True, "additions": {"speaker_id": "2"}},
+            ],
+        },
+    }).encode("utf-8")
+    raw = _frame(
+        MSG_SERVER_RESPONSE, 0, gzip.compress(payload),
+        serial=SERIAL_JSON, compress=COMPRESS_GZIP,
+    )
+    assert p.decode_message(raw)[0]["speaker_label"] == "2"
+
+
 def test_decode_definite_sentence_with_speaker():
     payload = json.dumps({
         "result": {
