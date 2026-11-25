@@ -83,6 +83,7 @@ ignore = [
     "N806",  # Variable in function should be lowercase（函数级常量用大写是团队约定）
     "N801",  # Class name should use CapWords（perf_timer 装饰器式类名是刻意设计）
     "N812",  # Lowercase imported as non-lowercase（kaldi 声纹库别名 K 是行业惯例）
+    "N818",  # Exception name should end with Error（RealtimeSessionClosed 表示状态信号，非错误语义）
     "N999",  # Invalid module name（voiceprint-service 目录名是服务命名约定）
 ]
 
