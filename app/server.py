@@ -37,6 +37,7 @@ import os
 import re
 import sys
 import time
+from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -138,14 +139,96 @@ logger = logging.getLogger(__name__)
 # T-25：向 core 注入管线执行钩子（core 存储/检测层不再反向 import pipeline_runner）
 pipeline_hooks.register(run_pipeline_task=run_pipeline_task, run_stage2_task=run_stage2_task)
 
+
 # ============================================================
-# 应用实例 / Application Instance
+# 生命周期 / Lifecycle（lifespan context manager，替代已废弃的 @app.on_event）
 # ============================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan：启动逻辑在 yield 前，关闭逻辑在 yield 后。/ Startup logic before yield, cleanup after yield."""
+    # ── startup ──
+    import core.realtime_store as rt_store
+    rt_store.event_loop = asyncio.get_running_loop()
+
+    # 从 settings.json 同步 API Key 到环境变量（确保重启后仍有效） / Sync API Key from settings.json to env var (ensure validity after restart)
+    try:
+        from app.settings_store import get_active_api_key
+        api_key = get_active_api_key()
+        if api_key:
+            os.environ["DASHSCOPE_API_KEY"] = api_key
+    except Exception:
+        pass
+
+    # 逐能力迁移：把存量 access_mode 映射为 capability_source 并移除该字段（旧字段投影保留支持回滚）
+    try:
+        from app.settings_store import run_percap_migration
+        run_percap_migration()
+    except Exception as e:
+        logger.warning(f"启动逐能力迁移失败（不影响服务）: {e}")
+
+    load_tasks_from_disk()
+    recover_interrupted_tasks()
+
+    # 启动时清理冗余/孤儿中间文件 / Cleanup orphaned intermediate files on startup
+    try:
+        cleanup_orphaned_intermediate_files()
+    except Exception as e:
+        logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
+
+    # 启动时清扫父进程已退出的遗留 ffmpeg 录音进程 / Sweep orphaned ffmpeg recorders
+    # macOS 无 PDEATHSIG，服务反复重启会把 ffmpeg 留成孤儿，卡死在采集上并持续占满单核
+    try:
+        from core.audio_record import sweep_orphan_ffmpeg
+        sweep_orphan_ffmpeg()
+    except Exception as e:
+        logger.warning(f"清扫遗留 ffmpeg 录音进程失败（不影响服务）: {e}")
+
+    # 工作区根目录迁移：旧位置（仓库根/agent-workspace）→ 新位置（BASE_DIR/agent-workspace）
+    # 仅在旧位置存在且新位置不存在时移动（一次性迁移，失败只 warn 不阻断） /
+    # Migrate workspace root from old location (repo root) to new (BASE_DIR, exe-adjacent in PyInstaller)
+    try:
+        from core.cli_engine.context_export import WORKSPACE_ROOT
+        old_root = Path(__file__).resolve().parents[1] / "agent-workspace"
+        if old_root.is_dir() and not WORKSPACE_ROOT.is_dir():
+            import shutil
+            WORKSPACE_ROOT.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_root), str(WORKSPACE_ROOT))
+            logger.info(f"工作区已迁移: {old_root} → {WORKSPACE_ROOT}")
+    except Exception as e:
+        logger.warning(f"工作区迁移失败（不影响服务）: {e}")
+
+    # 智能体引擎过期工作区按保留期清理（含会议上下文，R7/§3.10；不影响服务）
+    try:
+        from app.settings_store import get_chat_engine_config
+        from core.cli_engine import sweep_expired_workspaces
+        _retention = get_chat_engine_config().get("retention_days", 7)
+        sweep_expired_workspaces(_retention)
+        # AI 写回快照 sidecar 与工作区同一保留期口径（PROPOSAL §5.3）
+        from core.rewrite_snapshots import sweep_expired_snapshots
+        sweep_expired_snapshots(_retention)
+        # 按需 docx 临时缓存件同一保留期口径（ASSET_SYNC P1：可清理、不参与同步）
+        from core.task_store import sweep_expired_docx_cache
+        sweep_expired_docx_cache(_retention)
+    except Exception as e:
+        logger.warning(f"启动清理智能体工作区失败（不影响服务）: {e}")
+
+    # 启动自动归档定时任务（每 24 小时检查一次） / Start auto-archive scheduled task (check once per 24h)
+    asyncio.create_task(_auto_archive_loop())
+
+    yield  # ── shutdown 从这里开始 ──
+
+    # ── shutdown ──
+    await close_async_client()
+
+
+
 
 app = FastAPI(
     title="Open Meeting Scribe",
     description="会议纪要生成工具",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -624,91 +707,7 @@ def _run_auto_archive():
 
 
 # ============================================================
-# 生命周期 / Lifecycle
-# ============================================================
-
-
-@app.on_event("startup")
-async def startup():
-    """捕获主事件循环引用；从磁盘恢复任务；自动恢复中断的任务；同步 API Key / Capture main event loop ref; restore tasks from disk; auto-recover interrupted tasks; sync API Key."""
-    import core.realtime_store as rt_store
-    rt_store.event_loop = asyncio.get_running_loop()
-
-    # 从 settings.json 同步 API Key 到环境变量（确保重启后仍有效） / Sync API Key from settings.json to env var (ensure validity after restart)
-    try:
-        from app.settings_store import get_active_api_key
-        api_key = get_active_api_key()
-        if api_key:
-            os.environ["DASHSCOPE_API_KEY"] = api_key
-    except Exception:
-        pass
-
-    # 逐能力迁移：把存量 access_mode 映射为 capability_source 并移除该字段（旧字段投影保留支持回滚）
-    try:
-        from app.settings_store import run_percap_migration
-        run_percap_migration()
-    except Exception as e:
-        logger.warning(f"启动逐能力迁移失败（不影响服务）: {e}")
-
-    load_tasks_from_disk()
-    recover_interrupted_tasks()
-
-    # 启动时清理冗余/孤儿中间文件 / Cleanup orphaned intermediate files on startup
-    try:
-        cleanup_orphaned_intermediate_files()
-    except Exception as e:
-        logger.warning(f"启动清理中间文件失败（不影响服务）: {e}")
-
-    # 启动时清扫父进程已退出的遗留 ffmpeg 录音进程 / Sweep orphaned ffmpeg recorders
-    # macOS 无 PDEATHSIG，服务反复重启会把 ffmpeg 留成孤儿，卡死在采集上并持续占满单核
-    try:
-        from core.audio_record import sweep_orphan_ffmpeg
-        sweep_orphan_ffmpeg()
-    except Exception as e:
-        logger.warning(f"清扫遗留 ffmpeg 录音进程失败（不影响服务）: {e}")
-
-    # 工作区根目录迁移：旧位置（仓库根/agent-workspace）→ 新位置（BASE_DIR/agent-workspace）
-    # 仅在旧位置存在且新位置不存在时移动（一次性迁移，失败只 warn 不阻断） /
-    # Migrate workspace root from old location (repo root) to new (BASE_DIR, exe-adjacent in PyInstaller)
-    try:
-        from core.cli_engine.context_export import WORKSPACE_ROOT
-        old_root = Path(__file__).resolve().parents[1] / "agent-workspace"
-        if old_root.is_dir() and not WORKSPACE_ROOT.is_dir():
-            import shutil
-            WORKSPACE_ROOT.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(old_root), str(WORKSPACE_ROOT))
-            logger.info(f"工作区已迁移: {old_root} → {WORKSPACE_ROOT}")
-    except Exception as e:
-        logger.warning(f"工作区迁移失败（不影响服务）: {e}")
-
-    # 智能体引擎过期工作区按保留期清理（含会议上下文，R7/§3.10；不影响服务）
-    try:
-        from app.settings_store import get_chat_engine_config
-        from core.cli_engine import sweep_expired_workspaces
-        _retention = get_chat_engine_config().get("retention_days", 7)
-        sweep_expired_workspaces(_retention)
-        # AI 写回快照 sidecar 与工作区同一保留期口径（PROPOSAL §5.3）
-        from core.rewrite_snapshots import sweep_expired_snapshots
-        sweep_expired_snapshots(_retention)
-        # 按需 docx 临时缓存件同一保留期口径（ASSET_SYNC P1：可清理、不参与同步）
-        from core.task_store import sweep_expired_docx_cache
-        sweep_expired_docx_cache(_retention)
-    except Exception as e:
-        logger.warning(f"启动清理智能体工作区失败（不影响服务）: {e}")
-
-    # 启动自动归档定时任务（每 24 小时检查一次） / Start auto-archive scheduled task (check once per 24h)
-    asyncio.create_task(_auto_archive_loop())
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """应用关闭时清理异步资源 / Cleanup async resources on application shutdown."""
-    await close_async_client()
-
-
-# ============================================================
 # PyInstaller 兼容路径 / PyInstaller compatible paths
-# ============================================================
 
 # PyInstaller 打包后，资源文件解压到临时目录 sys._MEIPASS /
 # After packaging, resource files are extracted to temp dir sys._MEIPASS

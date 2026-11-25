@@ -182,11 +182,12 @@ def cmd_tasks_show(args):
             print(result["summary"][:2000])
             if len(result["summary"]) > 2000:
                 print(f"\n... (共 {len(result['summary'])} 字)")
-        if result.get("todos"):
-            print(f"\n待办事项 ({len(result['todos'])} 条):")
-            for todo in result["todos"]:
-                done = "x" if todo.get("done") else " "
-                print(f"  [{done}] {todo['text']}")
+        if result.get("decisions"):
+            print(f"\n决策事项 ({len(result['decisions'])} 条):")
+            for d in result["decisions"]:
+                status = d.get("status", "")
+                text = d.get("text") or d.get("summary") or "(无文本)"
+                print(f"  [{status}] {text}")
         return 0
     except RuntimeError as e:
         print(f"错误: {e}")
