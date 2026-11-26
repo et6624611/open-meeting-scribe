@@ -17,6 +17,7 @@ import { fetchProjects, createProject, type Project } from '@/api/projects'
 import { useQuoteRef } from '@/composables/useQuoteRef'
 import { useAiInsights } from '@/composables/useAiInsights'
 import { showToast } from '@/composables/useToast'
+import { getChapterIdxAtTime } from '@/utils/transcriptView'
 import type { DialogueLine, DecisionItem, Chapter, FlatTranscriptLine, Task } from '@/api/types'
 
 export function useGeneratingData(
@@ -152,13 +153,6 @@ export function useGeneratingData(
     }
     return items
   })
-
-  function getChapterIdxAtTime(chs: Chapter[], ms: number): number {
-    for (let i = chs.length - 1; i >= 0; i--) {
-      if (ms >= chs[i].start_ms) return i
-    }
-    return -1
-  }
 
   // ─── 章节状态 / Chapter state ───
   const visibleChapterIndices = reactive(new Set<number>())

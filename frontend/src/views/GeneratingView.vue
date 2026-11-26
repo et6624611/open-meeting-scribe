@@ -390,7 +390,7 @@ const panel = useSpeakerPanel(
 const playback = usePlaybackFollow(
   data.player, data.taskId, data.flatTranscript, data.chapters,
   data.visibleChapterIndices, transcriptPanelRef,
-  data.activeTab, data.switchTab, data.getChapterIdxAtTime,
+  data.activeTab, data.switchTab,
 )
 
 const notes = useNotesAndDecisions(

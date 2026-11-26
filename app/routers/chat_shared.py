@@ -34,12 +34,12 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
-from core.meeting_search import build_scope_context
 from core.llm import (  # noqa: F401
     async_chat_completion,
     async_chat_completion_full,
     async_chat_completion_stream,
 )
+from core.meeting_search import build_scope_context
 from core.realtime_store import (  # noqa: F401
     REALTIME_BUFFER_MAX,
     realtime_transcript_buffers,

@@ -177,8 +177,8 @@
                   <div class="chapter-info">
                     <div class="chapter-title">{{ chapters[item.chapterIdx].title }}</div>
                     <div class="chapter-meta">
-                      <span>{{ formatTime(chapters[item.chapterIdx].start_ms) }}</span>
-                      <template v-if="chapters[item.chapterIdx].end_ms"><span class="sep">–</span><span>{{ formatTime(chapters[item.chapterIdx].end_ms || 0) }}</span></template>
+                      <span>{{ formatTimeMs(chapters[item.chapterIdx].start_ms) }}</span>
+                      <template v-if="chapters[item.chapterIdx].end_ms"><span class="sep">–</span><span>{{ formatTimeMs(chapters[item.chapterIdx].end_ms || 0) }}</span></template>
                       <template v-if="(chapters[item.chapterIdx].key_points || []).length"><span class="sep">·</span><span>{{ t('recording.chapter.key_points_count', { count: (chapters[item.chapterIdx].key_points || []).length }) }}</span></template>
                     </div>
                     <div v-if="chapters[item.chapterIdx].summary" class="chapter-summary-text">{{ chapters[item.chapterIdx].summary }}</div>
@@ -189,10 +189,10 @@
               </div>
               <!-- 转写行 / Transcript line -->
               <div v-else-if="item.type === 'line'" class="rec-line" :class="{ 'is-me': isMe(lineOf(item).speaker_id), 'is-located': locateId === lineOf(item).speaker_id, 'is-dimmed': locateId !== null && locateId !== lineOf(item).speaker_id }">
-                <div class="rec-line-avatar" :style="{ background: speakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(lineOf(item)) }}</div>
+                <div class="rec-line-avatar" :style="{ background: getSpeakerColor(lineOf(item).speaker_id) }">{{ avatarInitial(lineOf(item)) }}</div>
                 <div class="rec-line-content">
                   <div class="rec-line-head">
-                    <span class="rec-line-speaker" :style="{ '--spk-color': speakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ lineSpeakerLabel(lineOf(item)) }}</span>
+                    <span class="rec-line-speaker" :style="{ '--spk-color': getSpeakerColor(lineOf(item).speaker_id) }" @click.stop="$emit('openBind', lineOf(item).speaker_id)">{{ lineSpeakerLabel(lineOf(item)) }}</span>
                     <button v-if="!locateId || locateId === lineOf(item).speaker_id" class="rec-line-locate-btn" @click.stop="$emit('toggleLocate', lineOf(item).speaker_id)" :title="t('recording.speaker.locate')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
                     <!-- 清理视图：已清理行的原文回览入口 / Clean view: peek-verbatim entry on cleaned lines -->
                     <button
@@ -269,6 +269,8 @@ import { useI18n } from 'vue-i18n'
 import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
 import { getSpeakerColor } from '@/utils/speakerColors'
+import { avatarInitial as initialOf } from '@/utils/speakerDisplay'
+import { formatTimeMs } from '@/utils/transcriptView'
 import RecTimeline from './RecTimeline.vue'
 import { usePopMenu } from '@/composables/usePopMenu'
 import { useEngineStore } from '@/stores/engine'
@@ -686,8 +688,6 @@ function lineOf(item: MixedItem): TranscriptLine {
   return props.lines[item.lineIdx] ?? { speaker_id: 0, speaker_name: '', text: '', isFinal: true }
 }
 
-function speakerColor(sid: string | number): string { return getSpeakerColor(sid) }
-
 /** 行首说话人文案：已绑定用真名；未绑定按编号展示（D5 已推翻，仅转写原文区生效） */
 function lineSpeakerLabel(line: TranscriptLine): string {
   const name = props.getSpeakerName(line)
@@ -696,18 +696,12 @@ function lineSpeakerLabel(line: TranscriptLine): string {
   return Number.isFinite(n) ? t('recording.speaker.numbered_name', { n: n + 1 }) : name
 }
 
-/** 头像首字：真名取首字符；未绑定取编号（与行首编号一致） */
+/** 头像首字：已绑定取真名首字（与 utils 同规则）；未绑定取编号（与行首编号一致） */
 function avatarInitial(line: TranscriptLine): string {
   const name = props.getSpeakerName(line)
-  if (name !== t('recording.speaker.default_name')) return name.trim().charAt(0).toUpperCase()
+  if (name !== t('recording.speaker.default_name')) return initialOf(name, t('recording.speaker.unid_initial'))
   const n = Number(line.speaker_id)
   return Number.isFinite(n) ? String(n + 1) : t('recording.speaker.unid_initial')
-}
-
-function formatTime(ms: number): string {
-  const sec = Math.floor(ms / 1000)
-  const m = Math.floor(sec / 60), s = sec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 // ── 时间轴跳转 / Timeline jump ──

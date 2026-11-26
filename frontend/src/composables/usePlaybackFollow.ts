@@ -4,6 +4,7 @@
 import { ref, computed, watch, nextTick, type ComputedRef, type Ref } from 'vue'
 import type { FlatTranscriptLine, Chapter } from '@/api/types'
 import type { usePlayerStore } from '@/stores/player'
+import { getChapterIdxAtTime } from '@/utils/transcriptView'
 
 export function usePlaybackFollow(
   player: ReturnType<typeof usePlayerStore>,
@@ -14,7 +15,6 @@ export function usePlaybackFollow(
   transcriptPanelRef: Ref<any>,
   activeTab: Ref<string>,
   switchTab: (tabId: string) => void,
-  getChapterIdxAtTime: (chs: Chapter[], ms: number) => number,
 ) {
   const playingLineIdx = ref(-1)
   const followPlayback = ref(true)
