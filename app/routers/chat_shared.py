@@ -34,6 +34,7 @@ from core.chat_edits import (  # noqa: F401
     has_edit_intent,
     parse_edit_intent,
 )
+from core.insights import sanitize_mermaid_diagram
 from core.llm import (  # noqa: F401
     async_chat_completion,
     async_chat_completion_full,
@@ -282,6 +283,8 @@ async def _modify_mermaid_diagram(user_message: str, current_diagram: str, model
             lines = cleaned.split("\n")
             lines = [ln for ln in lines if not ln.strip().startswith("```")]
             cleaned = "\n".join(lines).strip()
+        # 非 Mermaid 语法（模型返回说明文字等）直接降级为空串，避免前端渲染必失败 / Degrade non-Mermaid output to empty
+        cleaned = sanitize_mermaid_diagram(cleaned)
         logger.info("[Mermaid] 修改完成 len=%d", len(cleaned))
         return cleaned
     except Exception as e:
@@ -304,6 +307,8 @@ async def _generate_mermaid_diagram(user_message: str, model: str) -> str:
             lines = cleaned.split("\n")
             lines = [ln for ln in lines if not ln.strip().startswith("```")]
             cleaned = "\n".join(lines).strip()
+        # 非 Mermaid 语法（模型返回说明文字等）直接降级为空串，避免前端渲染必失败 / Degrade non-Mermaid output to empty
+        cleaned = sanitize_mermaid_diagram(cleaned)
         logger.info("[Mermaid] 生成完成 len=%d", len(cleaned))
         return cleaned
     except Exception as e:
@@ -374,7 +379,7 @@ CHAT_QA_SYSTEM_PROMPT = """<role>
 3. 简单问题 1-2 句；复杂问题用精简列表
 4. 不确定时诚实说明
 </output_format>
-"""
+""" + "\n\n" + prompts.RETRIEVAL_DISCIPLINE
 def _agent_system_prompt(role_name: str | None) -> str:
     """组装智能体模式系统提示词：角色 AGENT.md + 角色洞察板职责补充（insights.md）。
 

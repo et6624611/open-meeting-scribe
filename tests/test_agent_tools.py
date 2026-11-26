@@ -395,6 +395,77 @@ class TestBridgeConfig:
 
 
 # ============================================================
+# 跨会议下钻工具（渐进式披露第 1/2 级）：不吃会话 task 绑定
+# ============================================================
+
+class TestCrossMeetingTools:
+    def _issue(self, task_id=None):
+        return tk.issue_token(task_id=task_id, project_id=None, auth_tier="readonly")
+
+    def _invoke(self, client, token, name, arguments):
+        r = client.post("/api/agent-tools/invoke",
+                        json={"name": name, "arguments": arguments},
+                        headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, r.text
+        return json.loads(r.json()["result"])
+
+    def test_registered_as_read_tools(self):
+        for name in ("search_meetings", "get_meeting_detail"):
+            tool = TOOLS_BY_NAME.get(name)
+            assert tool and tool["kind"] == "read" and tool["needs_task"] is False
+            assert any(spec["name"] == name for spec in mcp_tool_specs())
+
+    def test_search_meetings_works_without_task_binding(self, client, monkeypatch):
+        """回归：无会议绑定时不再只能回「当前没有关联的会议」。"""
+        import core.meeting_search as ms
+        monkeypatch.setattr(ms, "tasks", {
+            "cm-1": {"title": "会计事件库口径确认会", "summary": "会计事件库口径确认",
+                     "dialogue": [], "decisions": [], "meeting_date": "2026-11-17"},
+        })
+        ctx = self._issue(task_id=None)
+        try:
+            body = self._invoke(client, ctx.token, "search_meetings",
+                                {"query": "会计事件库", "limit": 10})
+        finally:
+            tk.revoke_token(ctx.token)
+        assert body["total"] == 1
+        assert body["items"][0]["task_id"] == "cm-1"
+
+    def test_get_meeting_detail_reads_arbitrary_meeting(self, client, monkeypatch):
+        from core.task_store import tasks
+        tid = "cm-detail-1"
+        tasks[tid] = {
+            "title": "财务知识库周会", "summary": "会计事件库口径确认",
+            "user_summary": "会计事件库口径确认", "meeting_date": "2026-11-17",
+            "decisions": [{"id": "d1", "text": "会计事件库先行试点", "status": "to_decide"}],
+            "user_notes": "试点范围：华东",
+        }
+        ctx = self._issue(task_id=None)
+        try:
+            body = self._invoke(client, ctx.token, "get_meeting_detail", {"task_id": tid})
+        finally:
+            tk.revoke_token(ctx.token)
+            tasks.pop(tid, None)
+        assert body["task_id"] == tid
+        assert body["decision_count"] == 1
+        assert body["decisions"][0]["id"] == "d1"
+        assert "华东" in body["notes"]
+
+    def test_get_meeting_detail_rejects_missing_and_deleted(self, client, monkeypatch):
+        from core.task_store import tasks
+        tasks["cm-deleted"] = {"title": "已删会议", "deleted": True}
+        ctx = self._issue(task_id=None)
+        try:
+            missing = self._invoke(client, ctx.token, "get_meeting_detail", {"task_id": "nope"})
+            deleted = self._invoke(client, ctx.token, "get_meeting_detail", {"task_id": "cm-deleted"})
+        finally:
+            tk.revoke_token(ctx.token)
+            tasks.pop("cm-deleted", None)
+        assert missing["error"] == "task_not_found"
+        assert deleted["error"] == "task_deleted"
+
+
+# ============================================================
 # 会中实时转写回退（2026-09-29 会中问答复盘：dialogue 落盘前工具面/工作区不得谎报"无转写"）
 # ============================================================
 

@@ -6,16 +6,21 @@ import logging
 import time
 from contextlib import aclosing
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from app import chat_attachment_store
 from core import agent_workspace, chat_context, joblog, settings_store, task_store
 from core.chat_actions import detect_action, execute_action
 from core.chat_context import (
     build_page_context,
-    extract_injectable_items,
+)
+from core.decision_extract import (
+    decisions_to_injectable_items,
+    extract_decisions_from_reply,
 )
 from core.chat_edits import (
     audit_reply_claims,
@@ -45,7 +50,7 @@ from core.cli_engine import (
 from core.cli_engine.runner import stream_scope
 from core.i18n import _
 from core.llm import async_chat_completion_full, async_chat_completion_stream
-from core.meeting_search import SCOPE_BLOCK_HEADER
+from core.meeting_search import FACTS_BLOCK_HEADER, SCOPE_BLOCK_HEADER
 
 from .chat_shared import (
     CHAT_QA_SYSTEM_PROMPT,
@@ -349,7 +354,12 @@ async def _agent_engine_events(data: ChatRequest, user_message: str, resolved_pr
             })
             terminal["scope"] = (retrieval or {}).get("scope", "meeting")
             terminal["retrieval"] = retrieval or {
-                "scope": "meeting", "searched": False, "hits": 0, "meetings": [], "latency_ms": 0,
+                "scope": "meeting", "status": "disabled", "query_kind": "retrieval",
+                "searched": False, "time_range": "none", "time_label": "未限定",
+                "filters": {}, "candidates": 0, "matched": 0, "injected": 0,
+                "truncated": False, "dropped_reason": "none",
+                "hits": 0, "shown": 0, "meetings": [], "verified_facts": [],
+                "latency_ms": 0,
             }
             yield terminal
     except CliAgentError as e:
@@ -469,7 +479,20 @@ async def chat(data: ChatRequest):
         llm_latency_ms = round((time.perf_counter() - llm_start) * 1000)
         reply = audit_reply_claims(llm_result.content, edit_changes)
         existing_decisions = task_store.tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
-        extracted_items = [] if edit_changes else extract_injectable_items(reply, existing_decisions)
+        extracted_items: list[dict] = []
+        if not edit_changes and data.task_id:
+            try:
+                decided = await asyncio.to_thread(
+                    extract_decisions_from_reply,
+                    reply,
+                    existing_decisions,
+                    chat_model,
+                    None,
+                    data.role,
+                )
+                extracted_items = decisions_to_injectable_items(decided)
+            except Exception as e:  # noqa: BLE001 - 提取失败不得阻断对话回复
+                logger.warning("回复决策提取失败（降级为空）: %s", e)
 
         # 图形化意图检测：用户要求画图或修改当前图时，生成 Mermaid 代码
         diagram = ""
@@ -520,6 +543,40 @@ async def chat(data: ChatRequest):
     except Exception as e:
         logger.error("AI 对话失败: %s", e)
         raise HTTPException(500, _("AI conversation failed: {err}").format(err=e))
+
+
+class ExtractDecisionsRequest(BaseModel):
+    task_id: str
+    reply: str = Field(..., max_length=20000)
+    role: Optional[str] = None
+    model: Optional[str] = None
+
+
+@router.post("/api/chat/extract-decisions")
+async def extract_decisions_route(req: ExtractDecisionsRequest):
+    """从 AI 回复中提取可注入决策（decision-prompt 口径，独立 LLM 判定）。
+
+    流式对话在 done 之后单独调用，避免决策判定拖慢回复收尾；
+    提取失败一律返回空清单，不影响对话本身。
+    """
+    task = task_store.tasks.get(req.task_id)
+    if not task:
+        raise HTTPException(404, _("Task not found"))
+    try:
+        decided = await asyncio.to_thread(
+            extract_decisions_from_reply,
+            req.reply,
+            task.get("decisions", []),
+            req.model or _chat_model_default(),
+            None,
+            req.role,
+        )
+    except Exception as e:  # noqa: BLE001 - 提取失败不得影响对话
+        logger.warning("回复决策提取失败（降级为空）: %s", e)
+        return {"items": []}
+    return {"items": decisions_to_injectable_items(decided)}
+
+
 @router.post("/api/chat/stream")
 async def chat_stream(data: ChatRequest, request: Request):
     """AI 对话流式端点（SSE）。 / AI chat streaming endpoint (SSE).
@@ -579,9 +636,11 @@ async def chat_stream(data: ChatRequest, request: Request):
     if not resolved_project_id and data.task_id and data.task_id in task_store.tasks:
         resolved_project_id = task_store.tasks[data.task_id].get("project_id")
 
-    # 范围块只算一次：问答已注入 context_blocks，智能体复用同一文本（不二次检索）
-    scope_block = next(
-        (b for b in context_blocks if b.startswith(SCOPE_BLOCK_HEADER)), "")
+    # 范围块只算一次：问答已注入 context_blocks，智能体复用同一文本（不二次检索）。
+    # 聚合查询只有 verified_facts 块，与检索块一并交给智能体。
+    scope_block = "\n\n".join(
+        b for b in context_blocks
+        if b.startswith(SCOPE_BLOCK_HEADER) or b.startswith(FACTS_BLOCK_HEADER))
 
     async def event_generator():
         # ── 引擎选择：agent=强制（§3.5/D4；auto 规则分流已退役，用户选择即意图）；不可用时回退内置单轮流式问答 ──
@@ -638,10 +697,6 @@ async def chat_stream(data: ChatRequest, request: Request):
                 "metadata": {"model": chat_model},
                 "latency_ms": round((time.perf_counter() - start_time) * 1000),
             }
-            # 后处理：提取可注入项 / Post-processing: extract injectable items
-            existing_decisions = task_store.tasks.get(data.task_id, {}).get("decisions", []) if data.task_id else []
-            extracted_items = extract_injectable_items(full_content, existing_decisions)
-            event["extracted_items"] = extracted_items
             # 回复尾部消费方/计费回显（REQ-EXPERT-MODE §2.3：与 routing 实际判定一致）
             event["model_usage"] = _model_usage_meta(chat_model)
 

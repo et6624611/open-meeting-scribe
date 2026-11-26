@@ -177,6 +177,40 @@ body.is-divider-dragging .ai { transition: none !important; }
 .sb-hover-card .hc-speakers { display: flex; flex-wrap: wrap; gap: 4px; }
 .sb-hover-card .hc-speaker-tag { background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; font-size: 11px; color: var(--fg); }
 
+/* ─── 已标记参会人 / Focused speakers ─── */
+.sb-hover-card .hc-speakers-focused { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sb-hover-card .hc-avatar {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  border: 1.5px solid var(--border);
+  transition: transform 0.15s;
+}
+.sb-hover-card .hc-avatar:hover { transform: scale(1.12); }
+.sb-hover-card .hc-more-btn {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--surface-2); border: 1.5px solid var(--border-strong); color: var(--subtle);
+  font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer;
+  display: grid; place-items: center; transition: all 0.12s;
+}
+.sb-hover-card .hc-more-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.sb-hover-card .hc-speakers-names { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 2px; }
+.sb-hover-card .hc-speaker-chip {
+  font-size: 11px; font-weight: 500; line-height: 1.5;
+  border-bottom: 1px dotted var(--border); padding: 0 2px 0 0;
+}
+
+/* ─── 参会人全量列表（纯展示，全名 chip） ─── */
+.sb-hover-card .hc-attendees-list {
+  display: flex; flex-wrap: wrap; gap: 4px 6px;
+}
+.sb-hover-card .hc-attendee-chip {
+  font-size: 11px; font-weight: 500; line-height: 1.5;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid transparent; background: var(--surface-2);
+  white-space: nowrap;
+}
+.sb-hover-card .hc-attendee-sep { color: transparent; }
+
 /* ─── 任务上下文菜单（贴侧边栏右边缘）─── */
 /* position: fixed 作为基线兼底：即使行内定位尚未写入（updatePosition 早退失败），
    菜单也固定在视口而非滞到文档流底部隐去 / position: fixed baseline so the menu is

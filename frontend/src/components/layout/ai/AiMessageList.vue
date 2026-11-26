@@ -213,10 +213,32 @@
           </div>
         </div>
         <!-- 数据注入提示 / Data injection prompt -->
-        <div v-if="injectPrompt && i === messages.length - 1 && msg.role === 'assistant'" class="inject-prompt">
-          <span>{{ t('ai-panel.inject_detected', { desc: injectPrompt.desc }) }}</span>
-          <button class="btn-inject-all" @click="$emit('injectAll')">{{ t('ai-panel.inject_all') }}</button>
-          <button class="btn-dismiss" @click="$emit('dismissInject')">{{ t('ai-panel.inject_dismiss') }}</button>
+        <div v-if="injectPrompt && i === messages.length - 1 && msg.role === 'assistant'" class="inject-block">
+          <div class="inject-prompt">
+            <button
+              type="button"
+              class="inject-toggle"
+              :aria-expanded="injectExpanded"
+              @click="injectExpanded = !injectExpanded"
+            >
+              <span class="inject-caret" :class="{ 'is-open': injectExpanded }">▶</span>
+              <span>{{ t('ai-panel.inject_detected', { desc: injectPrompt.desc }) }}</span>
+            </button>
+            <button class="btn-inject-all" @click="$emit('injectAll')">{{ t('ai-panel.inject_all') }}</button>
+            <button class="btn-dismiss" @click="$emit('dismissInject')">{{ t('ai-panel.inject_dismiss') }}</button>
+          </div>
+          <div v-if="injectExpanded" class="inject-items">
+            <div v-for="(item, idx) in injectPrompt.items" :key="idx" class="inject-item">
+              <div class="inject-item-title">{{ item.title || item.content }}</div>
+              <div v-if="item.title && item.content" class="inject-item-text">{{ item.content }}</div>
+              <div v-if="item.initiator || item.scope || item.status" class="inject-item-meta">
+                <span v-if="item.initiator">{{ t('ai-panel.inject_initiator', { name: item.initiator }) }}</span>
+                <span v-if="item.scope">{{ t('ai-panel.inject_scope', { scope: item.scope }) }}</span>
+                <span v-if="item.status">{{ t(item.status === 'pending' ? 'ai-panel.inject_pending' : 'ai-panel.inject_confirmed') }}</span>
+              </div>
+              <div v-if="item.rationale" class="inject-item-rationale">{{ t('ai-panel.inject_rationale', { text: item.rationale }) }}</div>
+            </div>
+          </div>
         </div>
       </div>
       <!-- 无执行记录时保留轻量等待提示；执行过程已归属各条答复。 -->
@@ -265,6 +287,19 @@
         </EmptyHint>
       </div>
     </div>
+
+    <!-- 锁定态悬浮按钮：用户上翻后出现，点击回到底部并恢复跟随 -->
+    <button
+      v-if="smart.showJump.value"
+      class="ai-jump-bottom"
+      type="button"
+      :aria-label="t('ai-panel.jump_to_bottom')"
+      :title="t('ai-panel.unread_messages', { count: smart.unread.value })"
+      @click="smart.jumpToBottom()"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+      <span v-if="smart.unread.value" class="ai-jump-badge">{{ smart.unread.value > 99 ? '99+' : smart.unread.value }}</span>
+    </button>
 
     <!-- 左侧中部聚集点状导航 -->
     <nav
@@ -317,7 +352,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { LlmMetadata, AgentStage, ChatMessage, ChatScope } from '@/api/chat'
+import type { LlmMetadata, AgentStage, ChatMessage, ChatExtractedItem, ChatScope } from '@/api/chat'
 import { attachmentUrl } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import { useI18n } from 'vue-i18n'
@@ -335,6 +370,7 @@ import type { BoardProposal } from '@/composables/useBoardProposal'
 import { showToast } from '@/composables/useToast'
 import { restoreTaskRewrites } from '@/api/notes'
 import { extractErrorMessage } from '@/api/client'
+import { useSmartScroll } from '@/composables/useSmartScroll'
 
 const { t } = useI18n()
 const themeStore = useThemeStore()
@@ -354,7 +390,7 @@ const props = defineProps<{
   stages: AgentStage[]
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
-  injectPrompt: { desc: string } | null
+  injectPrompt: { items: ChatExtractedItem[]; desc: string } | null
   formatChange: (change: any) => string
   rewriteNotPersisted: { text: string } | null
   tierDenial: { tool: string; summary: string } | null
@@ -397,6 +433,22 @@ const emit = defineEmits<{
 }>()
 
 const feedRef = ref<HTMLElement | null>(null)
+
+// ── 智能滚动：流式输出期间允许用户上翻查看历史，回到底部再恢复跟随 ──
+const smart = useSmartScroll(() => feedRef.value)
+/** 内容版本号：消息条数 + 末条内容长度 + 执行阶段数 + 流式/加载态，任一变化即视为内容增长 */
+const feedVersion = computed(() => {
+  const msgs = props.messages
+  const last = msgs[msgs.length - 1]
+  return `${msgs.length}|${last?.content?.length ?? 0}|${props.stages?.length ?? 0}|${props.isStreaming ? 1 : 0}|${props.isLoading ? 1 : 0}`
+})
+watch(feedVersion, () => {
+  // 用户展开执行详情时不被流式滚动拉走（沿用原保护）
+  const feed = feedRef.value
+  if (feed && feed.querySelector('.ai-execution-step[open]')) return
+  smart.onContentGrow()
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocPointer, true)
 })
@@ -423,6 +475,9 @@ function setMsgEl(el: unknown, i: number) {
 }
 const activeIdx = ref(-1)
 const navOpen = ref(false)
+/** 注入提示展开态：换一批条目时收起 */
+const injectExpanded = ref(false)
+watch(() => props.injectPrompt, () => { injectExpanded.value = false })
 let navCloseTimer: ReturnType<typeof setTimeout> | null = null
 function openNav() {
   if (navCloseTimer) { clearTimeout(navCloseTimer); navCloseTimer = null }
@@ -457,6 +512,7 @@ watch(() => userEntries.value.length, () => void nextTick(syncActive))
 onMounted(() => {
   void nextTick(syncActive)
   void nextTick(applyMermaidPost)
+  void nextTick(() => { smart.attach(); smart.reset() })
 })
 
 /** 提案规模摘要（入口卡文案用） */
@@ -489,23 +545,44 @@ function modeLabel(msg: ChatMessage): string {
   return t('ai-panel.mode_' + (msg.sendOptions?.mode ?? 'qa'))
 }
 
-/** 回复 trace：范围 · 是否检索 · 命中场次 · 耗时 */
+/** 回复 trace：范围 · 时间 · 相关/注入（或已统计）· 耗时（后端字段直出，不自行推算） */
 function traceText(msg: ChatMessage): string {
   const scope = msg.scope ?? msg.retrieval?.scope ?? 'meeting'
   const retrieval = msg.retrieval
-  const retrievalText = !retrieval || !retrieval.searched
-    ? t('ai-panel.scope_trace_off')
-    : retrieval.hits > 0
-      ? (retrieval.shown != null && retrieval.shown < retrieval.hits
-          ? t('ai-panel.scope_trace_hit_limited', { total: retrieval.hits, shown: retrieval.shown })
-          : t('ai-panel.scope_trace_hit', { count: retrieval.hits }))
-      : t('ai-panel.scope_trace_miss')
-  const latency = msg.performance?.latency_ms != null
-    ? `${(msg.performance.latency_ms / 1000).toFixed(1)}s`
-    : '—'
-  return t('ai-panel.scope_trace', {
-    scope: t('ai-panel.scope_' + scope), retrieval: retrievalText, latency,
-  })
+  const parts: string[] = []
+  const push = (value: string) => {
+    if (value) parts.push(value)
+  }
+  const ms = retrieval?.latency_ms ? `${retrieval.latency_ms}ms` : ''
+
+  // 旧响应无 status：按 searched 映射为 ok/disabled，不反向捏造错误
+  const status = retrieval?.status ?? (retrieval?.searched ? 'ok' : 'disabled')
+  if (!retrieval || status === 'disabled') {
+    push(t('ai-panel.scope_trace_off'))
+    push(ms)
+  } else if (status === 'error') {
+    push(retrieval.error_kind === 'aggregation'
+      ? t('ai-panel.scope_trace_agg_failed')
+      : t('ai-panel.scope_trace_failed'))
+    push(t('ai-panel.scope_trace_retry'))
+  } else {
+    const label = retrieval.time_label
+    if (label && label !== '未限定') push(label)
+    if (retrieval.query_kind === 'aggregate') {
+      push(t('ai-panel.scope_trace_aggregated'))
+    } else {
+      // error 之外的旧响应用 hits/shown 兜底
+      const matched = retrieval.matched ?? retrieval.hits ?? 0
+      const injected = retrieval.injected ?? retrieval.shown ?? 0
+      push(t('ai-panel.scope_trace_matched', { count: matched }))
+      push(injected > 0
+        ? t('ai-panel.scope_trace_injected', { count: injected })
+        : t('ai-panel.scope_trace_not_injected'))
+    }
+    push(ms)
+  }
+  return t('ai-panel.scope_trace_prefix', { scope: t('ai-panel.scope_' + scope) })
+    + ' · ' + parts.filter(Boolean).join(' · ')
 }
 
 function startEdit(i: number) {
@@ -695,7 +772,7 @@ function billingLabel(billing: string): string {
   return ''
 }
 
-defineExpose({ feedRef })
+defineExpose({ feedRef, scrollToBottom: smart.reset, jumpToBottom: smart.jumpToBottom })
 </script>
 
 <style scoped>
@@ -839,5 +916,24 @@ defineExpose({ feedRef })
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── 回到底部悬浮按钮（智能滚动锁定态） ── */
+.ai-feed-wrap { position: relative; }
+.ai-jump-bottom {
+  position: absolute; right: 14px; bottom: 14px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.ai-jump-bottom:hover { color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
+.ai-jump-bottom svg { width: 16px; height: 16px; }
+.ai-jump-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 8px; background: var(--accent); color: #fff;
+  font-size: 10px; line-height: 16px; text-align: center; font-weight: 600;
 }
 </style>

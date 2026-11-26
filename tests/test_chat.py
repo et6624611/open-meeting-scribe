@@ -278,6 +278,77 @@ class TestChatEditVerification:
         assert data["action"] is None
 
 
+class TestChatExtractDecisions:
+    """POST /api/chat/extract-decisions：decision-prompt 口径的独立 LLM 判定"""
+
+    _REPLY = (
+        "根据本次讨论，会议形成以下结论：发票平台统一选型百望，涉及财务核心数据的"
+        "AI 应用一律本地化部署。后续由张三梳理接口文档，并安排下周联调排期。"
+    )
+
+    def test_items_carry_decision_prompt_fields(self, client, monkeypatch):
+        import core.task_store as _core_ts
+        fake_tasks = {"ex-0001": {"task_id": "ex-0001", "status": "completed", "decisions": []}}
+        monkeypatch.setattr(_core_ts, "tasks", fake_tasks)
+        monkeypatch.setattr("core.llm.chat_completion", lambda *a, **k: (
+            '[{"title":"统一选型百望","text":"发票平台统一选型百望","initiator":"张三",'
+            '"rationale":"百望覆盖更全","scope":"发票系统","evidence_speaker":"张三",'
+            '"evidence_time":"[07:34]","status":"confirmed"}]'
+        ))
+        resp = client.post("/api/chat/extract-decisions", json={
+            "task_id": "ex-0001", "reply": self._REPLY,
+        })
+        assert resp.status_code == 200
+        item = resp.json()["items"][0]
+        assert item["type"] == "decision"
+        assert item["title"] == "统一选型百望"
+        assert item["initiator"] == "张三"
+        assert item["rationale"] == "百望覆盖更全"
+        assert item["scope"] == "发票系统"
+        assert item["status"] == "confirmed"
+
+    def test_unknown_task_404(self, client, monkeypatch):
+        import core.task_store as _core_ts
+        monkeypatch.setattr(_core_ts, "tasks", {})
+        resp = client.post("/api/chat/extract-decisions", json={
+            "task_id": "no-such", "reply": self._REPLY,
+        })
+        assert resp.status_code == 404
+
+    def test_inject_accepts_decision_fields(self, client, monkeypatch):
+        """注入端点透传 decision-prompt 字段并落到决策流节点。"""
+        import core.task_store as _core_ts
+        from app.routers import notes as notes_mod
+        fake_tasks = {
+            "inj-0001": {
+                "task_id": "inj-0001", "status": "completed",
+                "decisions": [], "injections": [],
+            },
+        }
+        monkeypatch.setattr(_core_ts, "tasks", fake_tasks)
+        monkeypatch.setattr(notes_mod, "tasks", fake_tasks)
+        monkeypatch.setattr(_core_ts, "save_task_to_disk", lambda tid: None)
+        monkeypatch.setattr(notes_mod, "save_task_to_disk", lambda tid: None)
+        resp = client.post("/api/tasks/inj-0001/inject", json={
+            "type": "decision",
+            "content": "财务核心数据强制本地化部署",
+            "title": "高敏数据本地化",
+            "initiator": "张三",
+            "rationale": "合规与防泄密",
+            "scope": "所有财务AI应用",
+            "evidence_speaker": "张三",
+            "evidence_time": "[07:34]",
+            "status": "pending",
+        })
+        assert resp.status_code == 200
+        node = fake_tasks["inj-0001"]["decisions"][0]
+        assert node["title"] == "高敏数据本地化"
+        assert node["assignee"] == "张三"
+        assert node["rationale"] == "合规与防泄密"
+        assert node["evidence"]["refs"][0] == {"speaker": "张三", "time": "07:34"}
+        assert node["pending_confirmation"] is True
+
+
 # ============================================================
 # AI 对话路由（chat）
 # ============================================================

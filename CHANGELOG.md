@@ -13,6 +13,17 @@ status: published
 >
 > **记录门槛**：仅记录影响用户行为、API 契约、架构决策或跨模块的变更；单文件修复、注释修改、内部重构不单独记录。
 
+## [未发布] - 2026-11-26 — 气泡决策候选改用 LLM 判定（对齐 decision-prompt）
+
+### 变更
+- **AI 回复的可注入候选由正则改为 LLM 判定**（`core/decision_extract.extract_decisions_from_reply`）：复用决策提取专属提示词（角色 `decision-prompt.md` 优先），与纪要管线同一「什么是决策」口径，行动项不再被判为决策；候选字段与 decision-prompt 输出对齐（title/initiator/rationale/scope/evidence/status），并按决策流现有节点去重。
+- **流式对话不再在 done 内嵌 `extracted_items`**：改为 done 后由前端调 `POST /api/chat/extract-decisions`（`{task_id, reply, role?, model?}` → `{items}`），不拖慢回复收尾；非流式 `/api/chat` 仍返回 `extracted_items`，改由同一 LLM 口径产出。
+- **注入落库对齐字段**：`POST /api/tasks/{id}/inject` 支持上述可选字段；`initiator` 作为执行人快照、出处归一 `evidence.refs`、`status=pending` 打 `pending_confirmation`，缺省保持旧的纯文本行为。
+- **气泡提示条可展开**：点击提示条查看候选条目及发起方/生效范围/共识依据/确认态。
+
+### 修复
+- 关键词正则把「需要/后续/跟进/完成/处理/负责/尽快」等行动项特征词当作决策命中，导致气泡把待办灌入决策流（与 decision-prompt 的排除规则直接冲突）。
+
 ## [未发布] - 2026-11-11 — 会议纪要两层存在形式收敛与资产同步（ASSET_SYNC P0-P3）
 
 ### 决策

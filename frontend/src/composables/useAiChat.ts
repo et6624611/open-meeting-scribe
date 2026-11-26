@@ -7,7 +7,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { injectItems, generateChatTitle } from '@/api/chat'
+import { injectItems, generateChatTitle, extractDecisions } from '@/api/chat'
 import type { ChatAction, ChatExtractedItem, ChatMessage, AgentStage, ChatScope } from '@/api/chat'
 import { fetchChatEngineStatus, fetchChatEngineModels, fetchSettings, probeLocalEngine, saveSettings, type ChatEngineProbe } from '@/api/settings'
 import { useTaskStore } from '@/stores/task'
@@ -397,6 +397,23 @@ export function useAiChat() {
     injectPrompt.value = { items, desc }
   }
 
+  /** LLM 判定回复中的决策（decision-prompt 口径，done 之后后台进行） */
+  async function requestInjectables(reply: string) {
+    const taskId = taskStore.currentTaskId
+    if (!taskId || !reply.trim()) return
+    try {
+      const items = await extractDecisions(
+        taskId, reply, (agentStore.activeAgent as string | undefined) || undefined,
+      )
+      if (!items.length) return
+      // 判定期间已切场或已开新一轮：提示条归属已变，丢弃
+      if (taskStore.currentTaskId !== taskId || isLoading.value) return
+      showInjectPrompt(items)
+    } catch {
+      // 决策判定失败不打扰对话
+    }
+  }
+
   /** 生成跟进建议 / Generate follow-up suggestions */
   function generateFollowUps(text: string): FollowUpSuggestion[] {
     const t = (text || '').toLowerCase()
@@ -444,7 +461,7 @@ export function useAiChat() {
     taskStore, realtimeStore, aiSessions, agentStore, insights,
     // helpers
     tt, getLocale, ensureSessionTier, maybeAutoTitle,
-    showInjectPrompt, generateFollowUps,
+    showInjectPrompt, requestInjectables, generateFollowUps,
     notifyBoardWritten, boardIdOf, isBoardWriteCall, isBoardWriteResult,
     notifyTaskWritten, writeDomainsOf, fetchNotes,
   })

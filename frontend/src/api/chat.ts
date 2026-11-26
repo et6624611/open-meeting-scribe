@@ -13,15 +13,65 @@ export interface SourceFile {
 /** 提问范围（按问题检索）：本场会议 / 全部会议 */
 export type ChatScope = 'meeting' | 'all'
 
+/** 检索状态：未检索 / 检索完成 / 失败（失败不得伪装成零命中） */
+export type RetrievalStatus = 'disabled' | 'ok' | 'error'
+/** 查询种类：检索 / 统计 / 混合 */
+export type RetrievalQueryKind = 'retrieval' | 'aggregate' | 'mixed'
+
+/** 最小证据锚点：每个实际注入片段一条 */
+export interface EvidenceInfo {
+  evidence_id: string
+  task_id: string
+  asset_type: 'title' | 'summary' | 'decision' | 'dialogue'
+  asset_id: string
+  excerpt: string
+  locator: Record<string, string | number>
+  status?: string
+  status_name?: string
+  status_closing?: boolean
+  is_current?: boolean
+  superseded_by?: Record<string, string>
+}
+
+/** 后端已核验的用户统计事实（只能原值引用） */
+export interface VerifiedFact {
+  kind: 'meeting_count' | 'decision_count'
+  value: number
+  unit: 'meeting' | 'decision'
+  status: 'ok'
+  time_range: string
+  time_label: string
+  filters: Record<string, string>
+  groups?: Array<{ status: string; status_name: string; value: number }>
+}
+
 /** 提问范围检索统计（后端 done / 响应回显） */
 export interface RetrievalInfo {
   scope: ChatScope
+  status?: RetrievalStatus
+  query_kind?: RetrievalQueryKind
   searched: boolean
-  /** 命中的会议总数 */
+  error_kind?: 'access' | 'retrieval' | 'aggregation'
+  /** 兼容：= matched；error 下不展示 */
   hits: number
-  /** 实际注入上下文的场次（受 4 场上限约束） */
+  /** 兼容：= injected；error 下不展示 */
   shown?: number
-  meetings: Array<{ task_id: string; title: string; date: string; score: number }>
+  candidates?: number | null
+  matched?: number | null
+  injected?: number | null
+  time_range?: string
+  time_label?: string
+  filters?: Record<string, string>
+  truncated?: boolean
+  dropped_reason?: 'none' | 'limit' | 'budget'
+  meetings: Array<{
+    task_id: string
+    title: string
+    date: string
+    score: number
+    evidence?: EvidenceInfo[]
+  }>
+  verified_facts?: VerifiedFact[]
   latency_ms: number
 }
 
@@ -137,6 +187,14 @@ export interface ChatAction {
 export interface ChatExtractedItem {
   type: string
   content: string
+  /** decision-prompt 口径的决策上下文（LLM 判定后回填） */
+  title?: string
+  initiator?: string
+  rationale?: string
+  scope?: string
+  evidence_speaker?: string
+  evidence_time?: string
+  status?: 'confirmed' | 'pending'
 }
 
 export interface ChatResponse {
@@ -449,6 +507,27 @@ export async function injectItems(
       type: item.type,
       content: item.content,
       source_message: '',
+      title: item.title || '',
+      initiator: item.initiator || '',
+      rationale: item.rationale || '',
+      scope: item.scope || '',
+      evidence_speaker: item.evidence_speaker || '',
+      evidence_time: item.evidence_time || '',
+      status: item.status || '',
     })
   }
+}
+
+/** 从 AI 回复中提取决策（decision-prompt 口径，LLM 判定） / Extract decisions from an AI reply */
+export async function extractDecisions(
+  taskId: string,
+  reply: string,
+  role?: string,
+): Promise<ChatExtractedItem[]> {
+  const { data } = await client.post<{ items: ChatExtractedItem[] }>('/api/chat/extract-decisions', {
+    task_id: taskId,
+    reply,
+    role: role || undefined,
+  })
+  return data.items || []
 }

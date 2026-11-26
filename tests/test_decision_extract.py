@@ -279,3 +279,111 @@ def test_empty_retry_includes_minutes_hint(monkeypatch):
     monkeypatch.setattr("core.llm.chat_completion", fake)
     de.extract_decisions(long_dial, minutes_hint="## 二、主要结论\n选定百望平台")
     assert any("选定百望平台" in c for c in seen[1:]), "复核应携带纪要线索"
+
+
+# ---------- 回复文本的决策提取（气泡注入，decision-prompt 口径） ----------
+
+_REPLY = (
+    "根据讨论，会议形成了以下结论：发票平台统一选型百望，"
+    "涉及财务核心数据的 AI 应用一律本地化部署。后续由张三梳理接口文档并安排排期。"
+)
+
+
+def _mock_reply_llm(monkeypatch, output: str, captured: dict | None = None):
+    def fake(messages, *a, **k):
+        if captured is not None:
+            captured["messages"] = messages
+        return output
+
+    monkeypatch.setattr("core.llm.chat_completion", fake)
+
+
+def test_extract_from_reply_uses_decision_prompt(monkeypatch):
+    captured: dict = {}
+    _mock_reply_llm(
+        monkeypatch,
+        '[{"title":"统一选型百望","text":"发票平台统一选型百望","status":"confirmed"}]',
+        captured,
+    )
+    items = de.extract_decisions_from_reply(_REPLY)
+    assert len(items) == 1 and items[0]["title"] == "统一选型百望"
+    # system 与纪要管线同一份 decision-prompt，user 含回复正文
+    expected_prompt, _ = de.get_decision_prompt()
+    assert captured["messages"][0]["content"] == expected_prompt
+    assert "选型百望" in captured["messages"][1]["content"]
+
+
+def test_extract_from_reply_short_circuit(monkeypatch):
+    called = {"v": False}
+
+    def fake(*a, **k):
+        called["v"] = True
+        return "[]"
+
+    monkeypatch.setattr("core.llm.chat_completion", fake)
+    assert de.extract_decisions_from_reply("好的，已处理。") == []
+    assert called["v"] is False  # 过短回复不触网
+
+
+def test_extract_from_reply_dedup_existing(monkeypatch):
+    _mock_reply_llm(
+        monkeypatch,
+        '[{"title":"统一选型百望","text":"发票平台统一选型百望","status":"confirmed"}]',
+    )
+    existing = [{"text": "发票平台统一选型百望。"}]
+    assert de.extract_decisions_from_reply(_REPLY, existing) == []
+
+
+def test_injectable_items_align_decision_prompt_fields():
+    items = de.parse_decisions_json(
+        '[{"title":"高敏数据本地化","text":"财务核心数据强制本地化部署",'
+        '"initiator":"张三","rationale":"合规与防泄密","scope":"所有财务AI应用",'
+        '"evidence_speaker":"张三","evidence_time":"[07:34]","status":"confirmed"}]'
+    )
+    out = de.decisions_to_injectable_items(items)
+    assert out[0] == {
+        "type": "decision",
+        "content": "财务核心数据强制本地化部署",
+        "title": "高敏数据本地化",
+        "initiator": "张三",
+        "rationale": "合规与防泄密",
+        "scope": "所有财务AI应用",
+        "evidence_speaker": "张三",
+        "evidence_time": "[07:34]",
+        "status": "confirmed",
+    }
+
+
+def test_inject_item_persists_decision_context(monkeypatch):
+    """注入口径落库：发起方/依据/范围/出处/待确认与自动提取同构。"""
+    from core import notes_service
+    from core.task_store import tasks
+
+    monkeypatch.setattr("core.task_store.save_task_to_disk", lambda tid: None)
+    monkeypatch.setattr("core.notes_service.mark_modified", lambda tid: None)
+    tasks["inj-0001"] = {"task_id": "inj-0001", "decisions": [], "injections": []}
+    try:
+        item = notes_service.inject_item(
+            "inj-0001", "decision", "财务核心数据强制本地化部署",
+            fields={
+                "title": "高敏数据本地化",
+                "initiator": "张三",
+                "rationale": "合规与防泄密",
+                "scope": "所有财务AI应用",
+                "evidence_speaker": "张三",
+                "evidence_time": "[07:34]",
+                "status": "pending",
+            },
+        )
+        node = tasks["inj-0001"]["decisions"][0]
+        assert node["id"] == item["id"]
+        assert node["title"] == "高敏数据本地化"
+        assert node["assignee"] == "张三"
+        assert node["kind"] == "decision"
+        assert node["rationale"] == "合规与防泄密"
+        assert node["scope"] == "所有财务AI应用"
+        assert node["evidence"]["refs"][0] == {"speaker": "张三", "time": "07:34"}
+        assert node["pending_confirmation"] is True
+    finally:
+        tasks.pop("inj-0001", None)
+

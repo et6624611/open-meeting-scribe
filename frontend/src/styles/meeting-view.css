@@ -98,10 +98,13 @@
 .gen-tab .tab-label { display: inline; }
 .gen-tabs { position: relative; }
 
-/* Tab 降级：极窄时文本→图标（音频条已迁至原文面板底部，此处不再为其让空间） */
-.main.is-narrow .gen-tab { padding: 0 var(--s-2); gap: 0; }
-.main.is-narrow .gen-tab .tab-icon { display: block; }
-.main.is-narrow .gen-tab .tab-label { display: none; }
+/* Tab 降级：仅在 main ≤480px（is-xnarrow）时文本→图标。
+   断点从 is-narrow(≤640px) 下调到 is-xnarrow(≤480px)：
+   5 个中文 tab 仅需 ~270px + layer picker ~100px + 两侧 padding 40px ≈ 410px，
+   640px 时仍有充足空间，原断点过早触发。 */
+.main.is-xnarrow .gen-tab { padding: 0 var(--s-2); gap: 0; }
+.main.is-xnarrow .gen-tab .tab-icon { display: block; }
+.main.is-xnarrow .gen-tab .tab-label { display: none; }
 
 /* 对话底栏自适应 */
 .conv-bottom-bar.is-compact .conv-model-selector .model-label { display: none; }

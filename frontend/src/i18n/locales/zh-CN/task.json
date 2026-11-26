@@ -59,5 +59,10 @@
   "speakers_more": "更多{count}人",
   "speakers_total": "{count}人参会",
   "speakers_unidentified": "未识别 {count}",
-  "speakers_unid_title": "{count} 位人员尚未关联身份"
+  "speakers_unid_title": "{count} 位人员尚未关联身份",
+  "focused_speakers_label": "重点参会人",
+  "attendees_label": "参会人",
+  "focused_expand": "展开查看另外 {count} 人",
+  "focused_collapse": "折叠",
+  "focused_fewer": "收起"
 }

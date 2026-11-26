@@ -340,6 +340,10 @@ recognition.stop()  # 阻塞直到所有结果返回
 
 `POST /api/tasks/{task_id}/inject` 当 `type` 为 `decision` 时，向 `task["decisions"]` 追加一条决策流节点（`id` 与注入记录同值、`source="injection"`、默认落 `to_decide` 态），并拆 `**标题**：正文` 到 `title`；`conclusion` 只进注入区。删除注入记录时级联删除该节点。
 
+请求体可选携带 decision-prompt 口径的决策上下文：`title` / `initiator` / `rationale` / `scope` / `evidence_speaker` / `evidence_time` / `status`（`confirmed|pending`）。带 `title` 时不再从 content 拆标题；`initiator` 作为 `assignee` 快照；出处归一为 `evidence.refs`；`status=pending` 打 `pending_confirmation`。字段缺省时保持旧的纯文本行为。
+
+气泡侧的候选条目由 `POST /api/chat/extract-decisions` 产出（`{task_id, reply, role?, model?}` → `{items: [...]}`）：复用决策提取专属提示词做独立 LLM 判定，与纪要管线的 `kind=decision` 口径一致，并剔除已存在于决策流的重复项；回复过短直接返回空清单。
+
 ### 12.3 跨会议聚合 `GET /api/decisions`（决策中心数据源）
 
 查询参数（全部可选，可叠加）：

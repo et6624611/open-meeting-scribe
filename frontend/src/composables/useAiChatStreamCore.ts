@@ -98,6 +98,7 @@ interface Deps {
   ensureSessionTier: () => void
   maybeAutoTitle: (session: AiSession | undefined) => void
   showInjectPrompt: (items: ChatExtractedItem[]) => void
+  requestInjectables: (reply: string) => Promise<void>
   generateFollowUps: (text: string) => { text: string; icon: string }[]
   notifyBoardWritten: (args: { tool?: string; board_id?: string }) => void
   boardIdOf: (obj: unknown) => string
@@ -124,7 +125,7 @@ export function createStreamCore(deps: Deps): StreamCore {
     chatMode, chatScope, sessionModel, agentEngineModel, sessionAuthTier, hasAgentSession,
     taskStore, realtimeStore, aiSessions, agentStore, insights,
     tt, getLocale, ensureSessionTier, maybeAutoTitle,
-    showInjectPrompt, generateFollowUps,
+    showInjectPrompt, requestInjectables, generateFollowUps,
     notifyBoardWritten, boardIdOf, isBoardWriteCall, isBoardWriteResult,
     notifyTaskWritten, writeDomainsOf, fetchNotes,
   } = deps
@@ -466,6 +467,9 @@ export function createStreamCore(deps: Deps): StreamCore {
 
           if (data.extracted_items?.length) {
             showInjectPrompt(data.extracted_items)
+          } else if (!data.metadata?.engine) {
+            // 内置问答：决策判定走独立 LLM 请求（decision-prompt 口径），不阻塞回复收尾
+            void requestInjectables(msg.content)
           }
           // 图形化内容转发到洞察面板 / Forward diagram to insights panel
           if (data.diagram) {

@@ -94,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { AttachmentMeta, ChatMessage, AgentStage, ChatScope } from '@/api/chat'
+import type { AttachmentMeta, ChatMessage, ChatExtractedItem, AgentStage, ChatScope } from '@/api/chat'
 import type { ChatEngineProbe } from '@/api/settings'
 import AiMessageList from './AiMessageList.vue'
 import AiChatComposer from './AiChatComposer.vue'
@@ -114,7 +114,7 @@ defineProps<{
   stages: AgentStage[]
   rewritePending: { source: string; originalText: string } | null
   verifiedChanges: Array<{ verified: boolean; [key: string]: any }>
-  injectPrompt: { desc: string } | null
+  injectPrompt: { items: ChatExtractedItem[]; desc: string } | null
   quoteText: string
   quoteSource: string
   cmdOpen: boolean
@@ -190,5 +190,7 @@ defineExpose({
   get feedRef() { return messageListRef.value?.feedRef },
   get inputRef() { return composerRef.value?.inputRef },
   resizeInput: () => composerRef.value?.resizeInput?.(),
+  scrollToBottom: () => messageListRef.value?.scrollToBottom?.(),
+  jumpToBottom: () => messageListRef.value?.jumpToBottom?.(),
 })
 </script>

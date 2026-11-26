@@ -59,5 +59,10 @@
   "speakers_more": "{count} more",
   "speakers_total": "{count} participants",
   "speakers_unidentified": "{count} unidentified",
-  "speakers_unid_title": "{count} people not yet linked to an identity"
+  "speakers_unid_title": "{count} people not yet linked to an identity",
+  "focused_speakers_label": "Key Attendees",
+  "attendees_label": "Attendees",
+  "focused_expand": "Expand to see {count} more",
+  "focused_collapse": "Collapse",
+  "focused_fewer": "Fewer"
 }

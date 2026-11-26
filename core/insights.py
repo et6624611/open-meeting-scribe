@@ -176,6 +176,37 @@ _WEB_SEARCH_JUDGE_PROMPT = (
 # body 占位符退化检测（提示词契约未被遵循时的排查线索）
 _PLACEHOLDER_BODY_RE = re.compile(r"^阶段名\s*[：:]", re.MULTILINE)
 
+# Mermaid 图表类型首关键字白名单：diagram 必须以图表类型开头，否则前端渲染必抛错
+# Mermaid diagram-type keywords; diagram must start with one or the frontend render always throws
+_MERMAID_TYPE_RE = re.compile(
+    r"^(?:flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey"
+    r"|gantt|pie|mindmap|timeline|quadrantChart|gitGraph|C4\w*|sankey-beta|block-beta"
+    r"|packet-beta|xychart-beta|architecture-beta|kanban|radar-beta|treemap-beta"
+    r"|requirementDiagram)\b"
+)
+
+
+def sanitize_mermaid_diagram(raw: object) -> str:
+    """校验 diagram 是否为 Mermaid 源码，非图表语法（模型塞进来的说明文字）降级为空串 /
+
+    Validate diagram is Mermaid source; degrade non-diagram text (e.g. the model putting an
+    explanation into the field) to an empty string so the frontend skips rendering instead of failing.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    body = text
+    # 跳过 YAML frontmatter / Skip leading YAML frontmatter
+    if body.startswith("---"):
+        end = body.find("\n---", 3)
+        if end != -1:
+            body = body[end + 4:].strip()
+    first_line = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    if body.startswith("%%{") or _MERMAID_TYPE_RE.match(first_line):
+        return text
+    logger.warning("[洞察台] diagram 非 Mermaid 语法，已降级为空串: %s", text[:80])
+    return ""
+
 
 async def _augment_with_web_search(
     recent_lines: list[dict],
@@ -364,7 +395,7 @@ def _parse_analysis_result(reply: str) -> dict:
         # 备查注释层：旧契约无此字段，缺省降级空串 / note layer: absent in legacy contracts, defaults to ""
         "note": str(result.get("note") or "").strip()[:INSIGHT_NOTE_MAX_CHARS],
         "has_finding": bool(result.get("has_finding", False)),
-        "diagram": str(result.get("diagram", "")),
+        "diagram": sanitize_mermaid_diagram(result.get("diagram", "")),
         "graph": graph,
     }
 

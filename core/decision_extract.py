@@ -452,6 +452,102 @@ def extract_decisions(
 # 适配为统一决策流节点（kind="decision"）
 # ============================================================
 
+def _norm_text(text: str) -> str:
+    return re.sub(r"\s+", "", text or "").lower()
+
+
+def is_duplicate_of_existing(content: str, existing_decisions: list[dict] | None) -> bool:
+    """待注入决策是否已存在于会议决策流（互含或 Jaccard 相似度 > 60%）。"""
+    content_norm = _norm_text(content)
+    if not content_norm:
+        return True
+    for t in existing_decisions or []:
+        existing = _norm_text(t.get("text", ""))
+        if not existing:
+            continue
+        if content_norm in existing or existing in content_norm:
+            return True
+        if len(content_norm) > 10 and len(existing) > 10:
+            common = len(set(content_norm) & set(existing))
+            union = len(set(content_norm) | set(existing))
+            if union > 0 and common / union > 0.6:
+                return True
+    return False
+
+
+# 回复过短时几乎不可能含方向性结论，跳过 LLM 调用（成本与延迟保护）
+REPLY_MIN_CHARS = 40
+
+
+def extract_decisions_from_reply(
+    reply: str,
+    existing_decisions: list[dict] | None = None,
+    model: str = "qwen-plus",
+    timeout: float | None = None,
+    role_name: str | None = None,
+) -> list[dict]:
+    """从会议助手的回复文本中提取决策（复用决策专属提示词，独立 LLM 判定）。
+
+    与纪要实现共用 `get_decision_prompt` 的口径：判定什么是决策、什么是行动项
+    完全一致，杜绝"关键词命中即决策"的宽口径误报。
+
+    Returns:
+        归一决策清单（见 normalize_decision_item），并剔除已存在于决策流的重复项。
+        无决策/解析失败返回 []。
+    """
+    text = (reply or "").strip()
+    if len(text) < REPLY_MIN_CHARS:
+        return []
+    # 回复是 AI 生成文本，截断上限防超长输入抬高判定成本
+    text = text[:12000]
+
+    system_prompt, prompt_source = get_decision_prompt(role_name)
+    logger.info(f"回复决策提取：生效提示词来源={prompt_source}（角色={role_name or 'default'}）")
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": (
+            "以下是会议助手刚刚给出的回复，请从中提取决策类信息（只输出 JSON 数组）。\n"
+            "执行动作/待办不算决策；回复未体现的内容不得编造。\n\n"
+            f"---\n{text}\n---"
+        )},
+    ]
+
+    from core.llm import chat_completion
+    raw = chat_completion(messages, model=model, temperature=0.2, timeout=timeout)
+
+    items = parse_decisions_json(raw or "")
+    return [it for it in items if not is_duplicate_of_existing(it["text"], existing_decisions)]
+
+
+def decision_extra(item: dict) -> dict:
+    """决策上下文 → 决策流节点 extra（发起方/共识依据/生效范围/出处/待确认标记）。
+
+    自动提取与对话注入共用同一口径，避免两处字段名漂移。
+    """
+    extra: dict = {"kind": DECISION_KIND}
+    if item.get("initiator"):
+        extra["initiator"] = item["initiator"]
+    if item.get("rationale"):
+        extra["rationale"] = item["rationale"]
+    if item.get("scope"):
+        extra["scope"] = item["scope"]
+    # 出处：说话人 + 时间戳（剥方括号入 refs.time，与既有 evidence.refs 口径一致）
+    spk = item.get("evidence_speaker") or ""
+    ts = (item.get("evidence_time") or "").strip().strip("[]")
+    if spk or ts:
+        ref: dict = {}
+        if spk:
+            ref["speaker"] = spk
+        if ts:
+            ref["time"] = ts
+        note_text = " ".join(x for x in [spk, f"[{ts}]" if ts else ""] if x).strip()
+        extra["evidence"] = {"text": note_text, "refs": [ref] if ref else []}
+    if item.get("status") == "pending":
+        extra["pending_confirmation"] = True
+    return extra
+
+
 def decisions_to_nodes(items: list[dict]) -> list[dict]:
     """把归一决策清单适配为决策流节点（make_decision_node 形状）。
 
@@ -462,34 +558,31 @@ def decisions_to_nodes(items: list[dict]) -> list[dict]:
     """
     nodes: list[dict] = []
     for it in items:
-        extra: dict = {"kind": DECISION_KIND}
-        if it.get("initiator"):
-            extra["initiator"] = it["initiator"]
-        if it.get("rationale"):
-            extra["rationale"] = it["rationale"]
-        if it.get("scope"):
-            extra["scope"] = it["scope"]
-        # 出处：说话人 + 时间戳（剥方括号入 refs.time，与既有 evidence.refs 口径一致）
-        spk = it.get("evidence_speaker") or ""
-        ts = (it.get("evidence_time") or "").strip().strip("[]")
-        if spk or ts:
-            ref: dict = {}
-            if spk:
-                ref["speaker"] = spk
-            if ts:
-                ref["time"] = ts
-            note_text = " ".join(x for x in [spk, f"[{ts}]" if ts else ""] if x).strip()
-            extra["evidence"] = {"text": note_text, "refs": [ref] if ref else []}
-        if it.get("status") == "pending":
-            extra["pending_confirmation"] = True
-
         # 发起方作为执行人快照（决策的"负责人"语义弱于行动项，仅作归属参考）
         node = make_decision_node(
             it["text"],
             title=it.get("title") or "",
             assignee=it.get("initiator") or "",
             source="auto",
-            extra=extra,
+            extra=decision_extra(it),
         )
         nodes.append(node)
     return nodes
+
+
+def decisions_to_injectable_items(items: list[dict]) -> list[dict]:
+    """把归一决策清单适配为前端注入项（字段与 decision-prompt 输出对齐）。"""
+    return [
+        {
+            "type": DECISION_KIND,
+            "content": it["text"],
+            "title": it.get("title") or "",
+            "initiator": it.get("initiator") or "",
+            "rationale": it.get("rationale") or "",
+            "scope": it.get("scope") or "",
+            "evidence_speaker": it.get("evidence_speaker") or "",
+            "evidence_time": it.get("evidence_time") or "",
+            "status": it.get("status") or "pending",
+        }
+        for it in items
+    ]

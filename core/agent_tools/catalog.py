@@ -49,6 +49,43 @@ TOOL_CATALOG: list[dict] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        # 跨会议清单（spec §4 第 5 级「原文回捞」的入口）：不受当前会话 task 绑定，
+        # 否则「把 11 月所有涉及 X 的会议列全」这类需求只能靠注入样本抽样作答。
+        "name": "search_meetings", "kind": "read", "needs_task": False,
+        "description": (
+            "跨全部会议检索（不只当前这场）。返回紧凑清单：标题、日期、相关度、一句摘录、task_id。"
+            "用 offset 翻页取全；要看某场全文再调 get_meeting_detail。"
+            "用户要求「所有/全部/汇总/列清单」时，必须翻页到 has_more=false 再作答，"
+            "不得只凭系统注入的少量片段下结论，也不得编造未返回的会议。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "检索词，可含时间词（如「11月」）与项目名"},
+                "limit": {"type": "integer", "description": "每页条数，默认 20，最大 50"},
+                "offset": {"type": "integer", "description": "分页偏移，从 0 开始；翻页时按上次 returned 递增"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        # 任意会议详情的只读入口：与写工具不同，不绑定当前会话 task_id。
+        "name": "get_meeting_detail", "kind": "read", "needs_task": False,
+        "description": (
+            "按 task_id 读取任意一场会议的详情（元信息、纪要、决策列表、随记）。只读。"
+            "task_id 来自 search_meetings 结果或检索证据锚点；"
+            "用户问某一场会议「定了什么」时用它取全文，而不是靠清单里的摘录猜测。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "会议 id（来自 search_meetings）"},
+                "transcript_limit": {"type": "integer", "description": "附带转写句数，默认 0（不返回逐字稿）"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
         "name": "search_project_files", "kind": "read", "needs_task": False,
         "description": "在关联项目知识库中按关键词检索文档内容。",
         "input_schema": {

@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 # 随记读工具正文上限（字符）：用户手写区，超长截断并标注
 _NOTES_MAX_CHARS = 6000
+# 任意会议详情的纪要/随记正文上限（字符）与附带转写句数上限
+_DETAIL_TEXT_MAX = 3000
+_DETAIL_TRANSCRIPT_MAX = 50
 
 # 工具名 → 中文标签（供前端显示） / Tool name → Chinese label for frontend display
 TOOL_LABELS = {
@@ -40,6 +43,8 @@ TOOL_LABELS = {
     "get_meeting_transcript": "读取会议转写",
     "get_meeting_notes": "读取会议随记",
     "get_meeting_decisions": "查询决策事项",
+    "search_meetings": "跨会议检索",
+    "get_meeting_detail": "读取会议详情",
     "search_project_files": "搜索项目资料",
     "get_hotwords": "获取热词列表",
     "get_system_settings": "获取系统设置",
@@ -60,6 +65,8 @@ TOOL_ICONS = {
     "get_meeting_transcript": "💬",
     "get_meeting_notes": "📝",
     "get_meeting_decisions": "✅",
+    "search_meetings": "🗂️",
+    "get_meeting_detail": "📄",
     "search_project_files": "📂",
     "get_hotwords": "🔤",
     "get_system_settings": "⚙️",
@@ -92,6 +99,14 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             return _tool_get_meeting_notes(task_id)
         elif name == "get_meeting_decisions":
             return _tool_get_meeting_decisions(task_id)
+        elif name == "search_meetings":
+            # 跨会议清单：不吃 task_id 闭包，任何页面/会话都能用
+            return _tool_search_meetings(arguments)
+        elif name == "get_meeting_detail":
+            # 任意会议详情：只读下钻入口，写工具仍锁当前会议
+            return _tool_get_meeting_detail(
+                str(arguments.get("task_id") or ""),
+                arguments.get("transcript_limit", 0))
         elif name == "search_project_files":
             return _tool_search_project_files(project_id, arguments.get("query", ""))
         elif name == "get_hotwords":
@@ -153,11 +168,36 @@ def _tool_get_meeting_info(task_id: str | None) -> str:
     if not task_id or task_id not in tasks:
         return json.dumps({"info": "当前没有关联的会议"}, ensure_ascii=False)
     task = tasks[task_id]
+    # roster：已绑定姓名 + 手工录入名单 + 统计
+    from core.speakers import normalize_speaker_mapping
+    _map = normalize_speaker_mapping(task.get("speaker_mapping"))
+    bound_names = [name for name in _map.values() if name]
+    manual_roster = [str(n).strip() for n in (task.get("roster") or []) if str(n).strip()]
+    # 合并去重（bound 优先保留顺序，manual 补充 bound 没有的）
+    seen: set[str] = set()
+    all_names: list[str] = []
+    for name in bound_names + manual_roster:
+        if name not in seen:
+            seen.add(name)
+            all_names.append(name)
+    total_ids: set = set()
+    for item in task.get("dialogue") or []:
+        if isinstance(item, dict) and item.get("speaker_id") is not None:
+            total_ids.add(str(item.get("speaker_id")))
+    total_speaker_count = len(total_ids) if total_ids else len(_map)
     info = {
         "title": task.get("title") or task.get("audio_name") or "未命名会议",
         "status": task.get("status", "未知"),
         "audio_duration_seconds": task.get("audio_duration"),
-        "speaker_count": task.get("speaker_count"),
+        "roster": {
+            "bound": bound_names,
+            "manual": manual_roster,
+            "all": all_names,
+            "bound_count": len(bound_names),
+            "manual_count": len(manual_roster),
+            "total_speaker_count": total_speaker_count,
+            "unbounded_count": max(0, total_speaker_count - len(bound_names)),
+        },
         "created_at": task.get("created_at", ""),
     }
     # 纪要预览取定稿口径（与前端纪要 Tab 同源）：只读 AI 产物会让改写基线落在用户手改之前
@@ -295,6 +335,105 @@ def _tool_get_meeting_decisions(task_id: str | None) -> str:
                        "status_note": "改写状态时 status 只能取 available_statuses 中的 id；"
                                       "用户已拍板的决策应推进到 closing=true 的状态"},
                       ensure_ascii=False)
+
+
+def _tool_search_meetings(arguments: dict) -> str:
+    """跨全部会议薄清单检索（分页）。不依赖当前会话 task 绑定。"""
+    from core.meeting_search import search_meeting_list
+
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        return json.dumps({"error": "empty_query", "message": "检索词不能为空"},
+                          ensure_ascii=False)
+    try:
+        limit = int(arguments.get("limit") or 20)
+    except (TypeError, ValueError):
+        limit = 20
+    try:
+        offset = int(arguments.get("offset") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    return json.dumps(search_meeting_list(query, limit=limit, offset=offset),
+                      ensure_ascii=False)
+
+
+def _tool_get_meeting_detail(task_id: str, transcript_limit: object = 0) -> str:
+    """按 task_id 读取任意一场会议的详情（只读）。写操作不在此通道。"""
+    tid = str(task_id or "").strip()
+    if not tid:
+        return json.dumps({"error": "task_id_required", "message": "必须提供会议的 task_id"},
+                          ensure_ascii=False)
+    task = tasks.get(tid)
+    if not isinstance(task, dict):
+        return json.dumps({"error": "task_not_found", "message": f"没有找到会议 {tid}"},
+                          ensure_ascii=False)
+    if (task.get("deleted") or task.get("trashed") or task.get("is_trash")
+            or task.get("deleted_at") or task.get("trashed_at")):
+        return json.dumps({"error": "task_deleted", "message": "该会议已删除，不提供内容"},
+                          ensure_ascii=False)
+
+    summary = task_final_summary(task).strip()
+    notes = task_notes(task).strip()
+    decisions = []
+    for node in task.get("decisions") or []:
+        if not isinstance(node, dict):
+            continue
+        superseded = node.get("superseded_by")
+        decisions.append({
+            "id": node.get("id", ""),
+            "title": node.get("title", ""),
+            "text": node.get("text", ""),
+            "status": status_of(node),
+            "superseded_by": superseded if isinstance(superseded, dict) else None,
+        })
+
+    # roster：已绑定姓名 + 手工录入名单 + 总说话人数（从 dialogue 去重 speaker_id 现算）
+    from core.speakers import normalize_speaker_mapping
+    _map = normalize_speaker_mapping(task.get("speaker_mapping"))
+    bound_names = [name for name in _map.values() if name]
+    manual_roster = [str(n).strip() for n in (task.get("roster") or []) if str(n).strip()]
+    seen: set[str] = set()
+    all_names: list[str] = []
+    for name in bound_names + manual_roster:
+        if name not in seen:
+            seen.add(name)
+            all_names.append(name)
+    # 从 dialogue 算总 speaker_id 数
+    total_ids: set = set()
+    for item in task.get("dialogue") or []:
+        if isinstance(item, dict) and item.get("speaker_id") is not None:
+            total_ids.add(str(item.get("speaker_id")))
+    total_speaker_count = len(total_ids) if total_ids else len(_map)
+
+    out = {
+        "task_id": tid,
+        "title": task.get("title") or task.get("audio_name") or "未命名会议",
+        "date": str(task.get("meeting_date") or task.get("created_at") or "")[:10],
+        "project_id": task.get("project_id") or "",
+        "summary": summary[:_DETAIL_TEXT_MAX],
+        "summary_truncated": len(summary) > _DETAIL_TEXT_MAX,
+        "decisions": decisions,
+        "decision_count": len(decisions),
+        "notes": notes[:_DETAIL_TEXT_MAX],
+        "notes_truncated": len(notes) > _DETAIL_TEXT_MAX,
+        "roster": {
+            "bound": bound_names,
+            "manual": manual_roster,
+            "all": all_names,
+            "bound_count": len(bound_names),
+            "manual_count": len(manual_roster),
+            "total_speaker_count": total_speaker_count,
+            "unbounded_count": max(0, total_speaker_count - len(bound_names)),
+        },
+    }
+    try:
+        limit = max(0, min(int(transcript_limit or 0), _DETAIL_TRANSCRIPT_MAX))
+    except (TypeError, ValueError):
+        limit = 0
+    if limit:
+        witness = json.loads(_tool_get_meeting_transcript(tid, limit))
+        out["transcript_lines"] = witness.get("transcript_lines") or []
+    return json.dumps(out, ensure_ascii=False)
 
 
 def _tool_search_project_files(project_id: str | None, query: str) -> str:

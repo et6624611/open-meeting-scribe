@@ -378,10 +378,10 @@ const quoteSourceLabel = computed(() => {
 
 // ── 会话管理 / Session management ──
 // 新建即锁定当前待生效档位（chat.startNewSession 内 createNewSession(pendingTier)）
-function onNewSession() { chat.startNewSession(); nextTick(() => scrollFeed()) }
+function onNewSession() { chat.startNewSession(); nextTick(() => chatPanelRef.value?.scrollToBottom()) }
 /** 档位弹层「开新会话应用」：与头部新建同一路径 */
 function onTierApplyNewSession() { onNewSession() }
-function onSwitchSession(id: string) { chat.followUps.value = []; chat.injectPrompt.value = null; aiSessions.switchTo(id); nextTick(() => scrollFeed()) }
+function onSwitchSession(id: string) { chat.followUps.value = []; chat.injectPrompt.value = null; aiSessions.switchTo(id); nextTick(() => chatPanelRef.value?.scrollToBottom()) }
 // 重命名的聚焦/全选由 AiSessionPopover 内部完成
 function startRename(id: string) {
   const s = aiSessions.sessions.find(s => s.id === id); if (!s) return
@@ -390,8 +390,8 @@ function startRename(id: string) {
 function confirmRename() { if (renamingId.value && renameInput.value.trim()) aiSessions.renameSession(renamingId.value, renameInput.value.trim()); renamingId.value = null }
 function cancelRename() { renamingId.value = null }
 /** 清空当前会话（弹层顶行的内联确认已保证不会误触） */
-function onClearCurrent() { chat.clearConversation(); nextTick(() => scrollFeed()) }
-function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); void cleanupAgentWorkspace(id, taskStore.currentTaskId || undefined); nextTick(() => scrollFeed()) }
+function onClearCurrent() { chat.clearConversation(); nextTick(() => chatPanelRef.value?.scrollToBottom()) }
+function onDeleteSession(id: string) { if (renamingId.value === id) renamingId.value = null; aiSessions.deleteSession(id); void cleanupAgentWorkspace(id, taskStore.currentTaskId || undefined); nextTick(() => chatPanelRef.value?.scrollToBottom()) }
 
 /**
  * 斜杠串统一执行入口：精确解析（含行内参数，如 /speakers add 张三）→ 面板高亮候选 → 未知拦截。
@@ -418,7 +418,7 @@ async function onSend() {
   let fullText = text
   const qctx = quoteRef.getQuoteContext()
   if (qctx) fullText = text ? qctx.context + '\n' + t('ai-panel.user_instruction') + text : qctx.context + '\n' + t('ai-panel.process_quote')
-  await chat.sendRaw(fullText, undefined, attachments); await scrollFeed()
+  await chat.sendRaw(fullText, undefined, attachments); nextTick(() => chatPanelRef.value?.scrollToBottom())
 }
 
 // ── 输入处理 / Input handling ──
@@ -501,13 +501,6 @@ function autoResize() {
   chatPanelRef.value?.resizeInput?.()
 }
 
-async function scrollFeed() {
-  await nextTick()
-  const feed = chatPanelRef.value?.feedRef
-  // 用户正在阅读执行详情时，不被流式回复的定时滚动拉走。
-  if (feed && !feed.querySelector('.ai-execution-step[open]')) feed.scrollTop = feed.scrollHeight
-}
-
 function runCommand(cmd: AiCommand, args?: string) { cmds.close(); inputText.value = ''; autoResize(); cmd.action(args) }
 
 // ── 引用操作 / Quote operations ──
@@ -554,14 +547,4 @@ function onQuoteToAiEvent(e: Event) {
     }
   })
 }
-watch(() => chat.messages.value.length, () => scrollFeed())
-// 流式输出时自动滚动 / Auto-scroll during streaming
-watch(() => chat.isStreaming.value, (streaming) => {
-  if (streaming) {
-    const interval = setInterval(() => scrollFeed(), 200)
-    const stop = watch(() => chat.isStreaming.value, (v) => {
-      if (!v) { clearInterval(interval); stop() }
-    })
-  }
-})
 </script>

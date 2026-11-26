@@ -11,7 +11,7 @@ core/chat_context.py — AI 对话上下文构建与注入内容提取 / AI chat
   - 定稿纪要口径（task_final_summary） / Final summary resolution (user_summary over generated)
   - 说话人名称映射（build_speaker_name_map） / Speaker name mapping (build_speaker_name_map)
   - 洞察台注入块（build_insights_context_block） / Insight Deck injection block (build_insights_context_block)
-  - 注入内容提取（extract_injectable_items） / Injectable content extraction (extract_injectable_items)
+  - 注入内容提取 → 已迁移至 core/decision_extract.py（LLM 判定，decision-prompt 口径）
   - 作业日志意图检测（is_joblog_intent） / Job log intent detection (is_joblog_intent)
 
 从 app/routers/chat.py 拆分而来 / Split from app/routers/chat.py.
@@ -19,7 +19,6 @@ core/chat_context.py — AI 对话上下文构建与注入内容提取 / AI chat
 
 import json
 import logging
-import re
 from pathlib import Path
 
 from core import hotwords, projects, speakers
@@ -208,50 +207,3 @@ def build_page_context(page: str) -> str | None:
         return f"## 当前页面：会议库\n共 {total} 个会议（{status_line}）。\n最近会议：\n" + "\n".join(recent_lines)
 
     return None
-
-
-# ============================================================
-# 注入内容提取
-# ============================================================
-
-
-def _is_duplicate_decision(content: str, existing_decisions: list[dict]) -> bool:
-    """检查提取的决策是否已存在（模糊匹配）。"""
-    content_norm = content.strip()
-    for t in existing_decisions:
-        existing = t.get("text", "").strip()
-        if content_norm in existing or existing in content_norm:
-            return True
-        if len(content_norm) > 10 and len(existing) > 10:
-            common = len(set(content_norm) & set(existing))
-            union = len(set(content_norm) | set(existing))
-            if union > 0 and common / union > 0.6:
-                return True
-    return False
-
-
-def extract_injectable_items(reply: str, existing_decisions: list[dict] | None = None) -> list[dict]:
-    """从 AI 回复中提取可注入的结构化内容（决策/结论/决策）。"""
-    items = []
-    existing_decisions = existing_decisions or []
-
-    # 提取决策（Markdown checkbox 格式）
-    for m in re.finditer(r'^\s*-\s*\[\s*\]\s*(.+)$', reply, re.MULTILINE):
-        content = m.group(1).strip()
-        if content and len(content) > 4 and not _is_duplicate_decision(content, existing_decisions):
-            items.append({"type": "decision", "content": content})
-
-    # 提取带关键词的列表项
-    for m in re.finditer(r'^\s*[-•·]\s*(?:.*?(?:决策|需要|后续|跟进|完成|处理|负责|尽快)).*$', reply, re.MULTILINE):
-        content = m.group(0).strip().lstrip('-•· ').strip()
-        if content and len(content) > 4 and not any(i["content"] == content for i in items) and not _is_duplicate_decision(content, existing_decisions):
-            items.append({"type": "decision", "content": content})
-
-    # 提取结论/决策段落
-    for m in re.finditer(r'(?:^|\n)\s*(?:\d+[.、]|\*\*|•)\s*(?:.*?(?:结论|决定|确认|决策|方案|选择|确定).*)$', reply, re.MULTILINE):
-        content = m.group(0).strip().lstrip('*').strip()
-        if content and len(content) > 6 and not any(i["content"] == content for i in items):
-            item_type = "decision" if any(kw in content for kw in ["决策", "方案", "选择"]) else "conclusion"
-            items.append({"type": item_type, "content": content})
-
-    return items

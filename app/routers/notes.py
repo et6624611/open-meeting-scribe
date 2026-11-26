@@ -98,6 +98,14 @@ class InjectRequest(BaseModel):
     type: str = Field(..., max_length=50)  # decision | conclusion | decision  注入类型 / Injection type
     content: str = Field(..., max_length=10000)
     source_message: str = Field(default="", max_length=10000)
+    # 决策上下文（decision-prompt 字段；缺省时按纯文本条目处理）
+    title: str = Field(default="", max_length=200)
+    initiator: str = Field(default="", max_length=200)
+    rationale: str = Field(default="", max_length=2000)
+    scope: str = Field(default="", max_length=2000)
+    evidence_speaker: str = Field(default="", max_length=200)
+    evidence_time: str = Field(default="", max_length=50)
+    status: Literal["", "confirmed", "pending"] = ""
 
 
 class DecisionToggleRequest(BaseModel):
@@ -118,7 +126,15 @@ def inject_content(task_id: str, req: InjectRequest):
     """注入一条 AI 识别内容 / Inject an AI-identified item."""
     if not tasks.get(task_id):
         raise HTTPException(404, _("Task not found"))
-    item = notes_service.inject_item(task_id, req.type, req.content, req.source_message)
+    fields = {
+        key: value for key in (
+            "title", "initiator", "rationale", "scope",
+            "evidence_speaker", "evidence_time", "status",
+        ) if (value := getattr(req, key))
+    }
+    item = notes_service.inject_item(
+        task_id, req.type, req.content, req.source_message, fields or None,
+    )
     return {"item": item}
 
 

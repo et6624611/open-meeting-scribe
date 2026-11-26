@@ -1,0 +1,155 @@
+{
+  "now": "2026-11-26",
+  "filler_count": 180,
+  "projects": [
+    { "id": "p_xinghan", "name": "星瀚" },
+    { "id": "p_haiwai", "name": "海外" }
+  ],
+  "hidden_task_ids": ["g_4"],
+  "meetings": [
+    {
+      "task_id": "g_1",
+      "title": "星瀚项目需求评审",
+      "meeting_date": "2026-11-03",
+      "project": "星瀚",
+      "summary": "评审星瀚项目方案，确认本月上线的关键决策。",
+      "decisions": [
+        { "id": "gd_2", "text": "星瀚项目采用方案A", "status": "superseded", "superseded_by": { "decision_id": "gd_1" } },
+        { "id": "gd_1", "text": "星瀚项目采用方案B", "status": "in_progress" }
+      ],
+      "dialogue": ["星瀚项目本月先上灰度"]
+    },
+    {
+      "task_id": "g_2",
+      "title": "星瀚项目十月复盘",
+      "meeting_date": "2026-10-12",
+      "project": "星瀚",
+      "summary": "星瀚项目十月复盘，继续推进。",
+      "decisions": [
+        { "id": "gd_3", "text": "星瀚项目十月继续推进", "status": "in_progress" }
+      ],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_3",
+      "title": "星瀚项目九月启动",
+      "meeting_date": "2026-09-08",
+      "project": "星瀚",
+      "summary": "星瀚项目九月立项启动。",
+      "decisions": [
+        { "id": "gd_4", "text": "星瀚项目九月立项", "status": "done" }
+      ],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_4",
+      "title": "星瀚项目十一月预算（无权）",
+      "meeting_date": "2026-11-09",
+      "project": "星瀚",
+      "summary": "星瀚项目预算内部会议。",
+      "decisions": [],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_5",
+      "title": "海外项目十一月评审",
+      "meeting_date": "2026-11-10",
+      "project": "海外",
+      "summary": "海外项目评审。",
+      "decisions": [
+        { "id": "gd_5", "text": "海外项目采用方案C", "status": "done" }
+      ],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_6",
+      "title": "无日期周会",
+      "meeting_date": "",
+      "project": null,
+      "summary": "例行周会。",
+      "decisions": [],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_7",
+      "title": "星瀚项目十一月归档会",
+      "meeting_date": "2026-11-18",
+      "project": "星瀚",
+      "archived_at": "2026-11-20T10:00:00",
+      "summary": "星瀚项目归档会，只读可查。",
+      "decisions": [],
+      "dialogue": []
+    },
+    {
+      "task_id": "g_8",
+      "title": "星瀚项目已删除会议",
+      "meeting_date": "2026-11-12",
+      "project": "星瀚",
+      "deleted": true,
+      "summary": "星瀚项目已删除内容。",
+      "decisions": [],
+      "dialogue": []
+    }
+  ],
+  "queries": [
+    {
+      "query": "本月与星瀚项目相关有哪些关键决策？",
+      "must_include": ["g_1"],
+      "must_exclude": ["g_2", "g_3", "g_4", "g_5", "g_8"],
+      "expected_top": ["g_1"],
+      "max_candidates": 30,
+      "max_matched": 10,
+      "expected_facts": []
+    },
+    {
+      "query": "本月几场",
+      "must_include": [],
+      "must_exclude": [],
+      "expected_top": [],
+      "expected_facts": [
+        { "kind": "meeting_count", "value": 3 }
+      ]
+    },
+    {
+      "query": "本月星瀚几场",
+      "must_include": [],
+      "must_exclude": [],
+      "expected_top": [],
+      "expected_facts": [
+        { "kind": "meeting_count", "value": 2 }
+      ]
+    },
+    {
+      "query": "有多少条决策",
+      "must_include": [],
+      "must_exclude": [],
+      "expected_top": [],
+      "expected_facts": [
+        { "kind": "decision_count", "value": 5 }
+      ]
+    },
+    {
+      "query": "多少待决策",
+      "must_include": [],
+      "must_exclude": [],
+      "expected_top": [],
+      "expected_facts": [
+        { "kind": "decision_count", "value": 0 }
+      ]
+    },
+    {
+      "query": "8月呢",
+      "must_include": [],
+      "must_exclude": ["g_1", "g_2", "g_3", "g_4", "g_5", "g_7", "g_8"],
+      "expected_top": [],
+      "expected_facts": []
+    },
+    {
+      "query": "当前星瀚决策怎么定",
+      "must_include": ["g_1"],
+      "must_exclude": ["g_4", "g_8"],
+      "expected_top": ["g_1"],
+      "expected_facts": []
+    }
+  ]
+}

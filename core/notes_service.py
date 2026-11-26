@@ -96,8 +96,18 @@ def update_summary(task_id: str, summary: str) -> str:
     return summary
 
 
-def inject_item(task_id: str, item_type: str, content: str, source_message: str = "") -> dict:
-    """注入一条 AI 识别内容；decision 类型同时进入决策流。"""
+def inject_item(
+    task_id: str,
+    item_type: str,
+    content: str,
+    source_message: str = "",
+    fields: dict | None = None,
+) -> dict:
+    """注入一条 AI 识别内容；decision 类型同时进入决策流。
+
+    fields 为 decision-prompt 口径的决策上下文（title/initiator/rationale/scope/
+    evidence_speaker/evidence_time/status），缺省时按纯文本条目处理，保持旧行为。
+    """
     task = _require_task(task_id)
     injections = task.setdefault("injections", [])
     item = {
@@ -113,18 +123,27 @@ def inject_item(task_id: str, item_type: str, content: str, source_message: str 
     # 决策条目注入即入决策流（conclusion 只进注入区）
     if item_type == "decision":
         decisions = task.setdefault("decisions", [])
-        user = users.get_current_user()
-        assignee = user["name"] if user else ""
+        from core.decision_extract import decision_extra
         from core.summarize import split_decision_title
 
-        title, body = split_decision_title(content)
+        f = fields or {}
+        initiator = str(f.get("initiator") or "").strip()
+        if f.get("title"):
+            title, body = str(f["title"]).strip(), content
+        else:
+            title, body = split_decision_title(content)
+        # 发起方作为执行人快照（与自动提取同口径）
+        user = users.get_current_user()
+        assignee = initiator or (user["name"] if user else "")
+        extra = decision_extra(f)
+        extra["injection_id"] = item["id"]
         decisions.append(make_decision_node(
             body or content,
             assignee=assignee,
             title=title,
             source="injection",
             node_id=item["id"],
-            extra={"injection_id": item["id"]},
+            extra=extra,
         ))
 
     mark_modified(task_id)

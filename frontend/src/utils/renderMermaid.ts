@@ -37,6 +37,8 @@ async function ensureMermaid(isDark: boolean): Promise<MermaidApi> {
   // htmlLabels 必须关闭：HTML 标签不随 viewBox 缩放，放大后文字溢出裁切 / htmlLabels off: HTML labels clip after enlargement
   mermaid.initialize({
     startOnLoad: false,
+    // 关闭 mermaid 自带的错误图形：解析失败时它会把炸弹 SVG 画进 body 尾部残留且不清理 / Disable built-in error graphic: on parse failure it leaves a bomb SVG in body
+    suppressErrorRendering: true,
     theme: isDark ? 'dark' : 'default',
     securityLevel: 'loose',
     flowchart: { htmlLabels: false, curve: 'basis' },

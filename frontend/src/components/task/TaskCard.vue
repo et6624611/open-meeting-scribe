@@ -33,8 +33,10 @@
     <!-- 元数据：时间 + 状态 + 时长 / Metadata: time + status + duration -->
     <div class="sb-tl-meta">
       <span v-if="timeStr" class="sb-tl-time">{{ timeStr }}</span>
-      <span class="sb-tl-dot" :class="dotClass"></span>
-      <span class="sb-tl-status">{{ statusLabel }}</span>
+      <template v-if="task.status !== 'completed'">
+        <span class="sb-tl-dot" :class="dotClass"></span>
+        <span class="sb-tl-status">{{ statusLabel }}</span>
+      </template>
       <DurationDial v-if="task.audio_duration" class="sb-tl-dur" :seconds="task.audio_duration" />
     </div>
 
@@ -112,6 +114,19 @@
           <span>{{ hoverDate }}</span>
           <span>{{ durationStr }}</span>
         </div>
+        <!-- 参会人（纯展示，全量全名，speaker_mapping + roster 合并去重） -->
+        <div v-if="allAttendees.length > 0" class="hc-section">
+          <div class="hc-label">{{ t('task.attendees_label') }}（{{ allAttendees.length }}）</div>
+          <div class="hc-attendees-list">
+            <span
+              v-for="(at, idx) in allAttendees"
+              :key="at.id"
+              class="hc-attendee-chip"
+              :style="{ background: at.bgColor, color: at.textColor, borderColor: at.borderColor }"
+              :title="at.name"
+            >{{ at.name }}<span v-if="idx < allAttendees.length - 1" class="hc-attendee-sep">、</span></span>
+          </div>
+        </div>
         <div v-if="task.summary" class="hc-section">
           <div class="hc-label">{{ t('task.summary_label') }}</div>
           <div class="hc-summary">{{ task.summary.slice(0, 200) }}…</div>
@@ -143,7 +158,7 @@ import DurationDial from '@/components/common/DurationDial.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 import { highlightText } from '@/utils/search'
-import { getSpeakerColor } from '@/utils/speakerColors'
+import { getSpeakerColor, getSpeakerBg, getSpeakerTextColor } from '@/utils/speakerColors'
 import { resolveSpeakerSeconds, speakerPct } from '@/utils/speakerShare'
 
 const { t } = useI18n()
@@ -180,6 +195,53 @@ const showDeleteConfirm = ref(false)
 const sidebarEl = ref<HTMLElement | null>(null)
 const buttonRect = ref<DOMRect | null>(null)
 const hoverStyle = ref<Record<string, string>>({})
+
+// ─── hover card 全量参会人（只读，合并 speaker_mapping 已绑定姓名 + roster 手工添加，按姓名去重） / Full attendee list for hover card, read-only ───
+interface HoverAttendee {
+  id: string
+  name: string
+  bgColor: string
+  textColor: string
+  borderColor: string
+}
+
+const allAttendees = computed<HoverAttendee[]>(() => {
+  const mapping = props.task.speaker_mapping || {}
+  const roster = (props.task.roster || []).map(n => String(n).trim()).filter(Boolean)
+
+  const result: HoverAttendee[] = []
+  const seenNames = new Set<string>()
+
+  // 顺序 1：speaker_mapping 已绑定且非占位名
+  for (const [id, rawName] of Object.entries(mapping)) {
+    if (!rawName || isPlaceholderName(rawName as string)) continue
+    const name = String(rawName).trim()
+    if (seenNames.has(name)) continue
+    seenNames.add(name)
+    result.push({
+      id, name,
+      bgColor: getSpeakerBg(id),
+      textColor: getSpeakerTextColor(id),
+      borderColor: getSpeakerColor(id),
+    })
+  }
+  // 顺序 2：手工 roster（去重同名）
+  for (const name of roster) {
+    if (seenNames.has(name)) continue
+    seenNames.add(name)
+    const hashKey = name.length + name.charCodeAt(0)
+    result.push({
+      id: name,
+      name,
+      bgColor: getSpeakerBg(hashKey),
+      textColor: getSpeakerTextColor(hashKey),
+      borderColor: getSpeakerColor(hashKey),
+    })
+  }
+
+  return result
+})
+
 
 // ─── 标题内联重命名（E2E T-021） / Inline title rename ───
 const titleRename = useTitleRename()
