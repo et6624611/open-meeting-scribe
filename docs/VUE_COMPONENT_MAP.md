@@ -3,8 +3,8 @@ title: "Vue 组件页面映射清单"
 description: "列出所有 Vue 组件与页面/区域的对应关系，方便快速定位需要修改的文件。"
 tags: ["vue", "frontend", "component_map", "ui"]
 created_at: "2026-09-12"
-updated_at: 2026-09-25
-version: "1.7.0"
+updated_at: 2026-11-26
+version: "1.9.0"
 author: "wangyongliang"
 status: "published"
 category: "technical"
@@ -14,6 +14,7 @@ category: "technical"
 
 > 调整页面时，根据本文快速定位需要修改的 `.vue` 文件。
 > 所有路径相对于 `frontend/src/`。
+> 带数字后缀的 `xxx 2.vue` 是云盘同步副本，不是源码，见[第十二节](#十二云同步副本)。
 
 ## 整体布局结构
 
@@ -42,6 +43,7 @@ category: "technical"
 | `/hotwords` | `views/HotwordsView.vue` | 热词管理 | 热词组 CRUD + 词条编辑 |
 | `/settings` | `views/SettingsView.vue` | 设置 | API Key、模型选择、语言等配置项 |
 | `/decisions` | `views/DecisionCenterView.vue` | 决策中心 | 跨会议全量决策：筛选（日期/知识库/状态/关键词）+ 补录 + 取代/撤销（REQ-DECISION-CENTER R3） |
+| `/board/:taskId` | `views/BoardViewerView.vue` | 洞察板浏览 | 「在浏览器中打开」落点；跑桥接脚本与主题令牌，不用 raw HTML 直开 |
 
 ## 二、全局布局组件（始终可见）
 
@@ -83,24 +85,37 @@ GeneratingView 是会议纪要的顶层编排组件，自身包含以下内联�
 | 划词工具栏（SelectionToolbar） | 浮动选中条：引用到 AI / 改写 / 总结 / 提取待办 |
 | 行间改写输入（InlineEditInput） | 划词改写后弹出的指令输入框（快捷指令 chips + 自定义指令） |
 
-### 4.2 子组件（views/generating/）
+### 4.2 子组件（views/ 各功能目录）
 
 | 文件 | 对应区域 | 说明 |
 |------|----------|------|
-| `generating/TranscriptPanel.vue` | 原文 Tab | 转写全文 + 章节分隔卡片 + 说话人侧面板 + 聚焦模式 + 播放跟随高亮 |
+| `generating/TranscriptPanel.vue` | 原文 Tab | 转写全文 + 章节分隔卡片 + 聚焦模式 + 播放跟随高亮；说话人侧栏与书面版状态卡已拆出到下面两个子组件 |
+| `generating/TranscriptSpeakerPanel.vue` | 原文 Tab·右侧说话人栏 | 说话人列表、搜索框、统计与定位按钮；只渲染，筛选/聚焦逻辑仍在 `useSpeakerPanel`，`searchInputEl` 经 `defineExpose` 回传给面板 |
+| `generating/FormalVersionCard.vue` | 原文 Tab·书面版状态卡 | 书面版 absent/running/error/stale/done 五态展示；只渲染，轮询与设置读写在同目录 `useFormalVersion.ts` |
 | `generating/SummaryPanel.vue` | 纪要 Tab | Markdown 纪要 + 章节回顾卡片 + 行动项入口 + 生成中状态展示 |
 | `generating/NotesPanel.vue` | 随记 Tab | Markdown 编辑器 + 工具栏（加粗/斜体/代码/标题/列表/引用） |
 | `generating/DecisionFlowPanel.vue` | 行动项 Tab（原「决策」Tab，2026-09-25 更名） | 行动项面板：点阵图进度可视化 + 文字摘要 + 添加按钮 + 已完成沉底分组；含结构化决策只读区（展示层剥除成对强调符号，RF-F1） |
 | `recording/RecInsightsPanel.vue`（复用） | 洞察 Tab（会后只读态） | 纪要页以 `:readonly="true"` 复用洞察台面板：隐藏开关/频率/扩展控件、消息始终可见 + 「分析本场会议」补分析入口 + 会后徽标（REQ-INSIGHT-DECK-POSTMEETING R1） |
 | `generating/DecisionNode.vue` | 行动项节点 | 单个行动项卡片：两行布局（标题 + 元信息）+ 左侧 40px rail 状态圆点 + 展开详情（why/how/outcome）+ 状态菜单 + 负责人轮转 |
-| `decisions/DecisionCard.vue` | 决策中心卡片 | 单条决策：剥除符号后的纯文本展示（stripDecisionEmphasis）+ 来源会议跳转（dq 携带原始文本）+ pending/superseded/revoked 态 |
-| `decisions/AddDecisionDialog.vue` | 决策中心·补录 | 手动补录决策（text 1..2000 前端前置校验 + 待确认开关） |
-| `decisions/SupersedeDialog.vue` | 决策中心·取代 | 跨会议 supersede 选择：检索双命中原始/剥除文本，结果行剥除后展示 |
+| `decisions/AddDecisionDialog.vue` | 决策中心·补录 | 手动补录决策（text 1..2000 前端前置校验 + 待确认开关）；纪要页「添加行动项」复用同一弹层 |
+| `decisions/StatusManagerDialog.vue` | 决策中心·状态管理 | 决策状态字典的新增/重命名/排序 |
+| `decisions/KbFilterCombobox.vue` | 决策中心·知识库筛选 | 知识库筛选下拉（搜索 + 多选） |
 | `generating/GeneratingSpeakerZone.vue` | 说话人区（三态合并） | 只读名单 / 绑定提示 / 绑定完成三态一体，名字+占比条+身份关联横幅 + Teleport 下拉框（搜索/新建/键盘导航） |
-| `generating/OnboardingDialog.vue` | 引导弹窗 | 首次进入时的说话人绑定功能演示动画 |
+| `generating/GenToolbar.vue` | 顶部工具栏 | 面包屑、IDE 入口、复制/导出/全屏、更多菜单 |
+| `generating/GenMetaBar.vue` | 元信息行 | 时长、说话人数、日期改期、知识库绑定与新建 |
+| `generating/GenTabs.vue` | Tab 切换栏 | 五个 Tab + 三层视图下拉 + 音频播放控制条 |
+| `generating/FailurePage.vue` | 失败态整页 | 失败分类展示、重试、切云端显式确认 |
+| `generating/InsightBoard.vue` | 洞察 Tab | 会后洞察板 HTML 产物渲染、切板/新建/共创/在浏览器打开 |
+| `generating/VoiceprintResultBar.vue` | 声纹识别结果条 | 批量识别结果展示与采纳/忽略 |
+| `generating/MeetingRosterZone.vue` | 参会人区 | 参会人名单编辑（与说话人绑定自动同步） |
+| `generating/ProgressDialog.vue` | 统一进度面板 | 转写/章节 backfill 进度展示 |
+| `generating/decisionFlowLogic.ts` | 行动项纯逻辑 | 点阵图分组与排序规则（可单测） |
 | `generating/ArchiveDialog.vue` | 归档弹窗 | 归档确认对话框 |
 | `generating/DeleteDialog.vue` | 删除弹窗 | 删除会议确认对话框（含 ESC 快捷键标识） |
-| `generating/ProjectOnboardingDialog.vue` | 知识库引导弹窗 | 知识库关联功能引导动画弹窗（空知识库 → 文档 + 纪要回写演示） |
+| `library/LibraryTable.vue` | 会议库表格 | 列表主体（分页、批量选择） |
+| `library/LibraryToolbar.vue` | 会议库工具栏 | 搜索、筛选、视图切换 |
+| `library/LibraryBatchBar.vue` | 会议库批量条 | 批量归档/删除操作条 |
+| `projects/FolderBrowserDialog.vue` | 项目·文件夹浏览 | 选择项目目录（桌面端） |
 
 ## 五、Composable（composables/）
 
@@ -114,8 +129,17 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useSpeakerBinding.ts` | 说话人身份绑定：映射、下拉框、增量保存、确认/跳过 |
 | `composables/useSpeakerPanel.ts` | 右侧面板：搜索、筛选、聚焦模式、上下条导航 |
 | `composables/usePlaybackFollow.ts` | 播放跟随：播放进度 → 原文自动滚动定位 |
-| `composables/useNotesAndTodos.ts` | 随记/决策 CRUD：自动保存、新增/删除/勾选、决策流状态同步 |
-| `composables/useOnboarding.ts` | 引导弹窗：动画循环、localStorage 持久化 |
+| `composables/useNotesAndDecisions.ts` | 随记/决策 CRUD：自动保存、新增/删除/勾选、决策流状态同步 |
+| `composables/useSummaryProposal.ts` | 纪要改写提案：原位 diff 预览、接受/拒绝落盘 |
+| `composables/useNotesProposal.ts` | 随记改写提案：与纪要同机制，随记 Tab 原位预览 |
+| `composables/useMeetingRoster.ts` | 参会人名单：增删、手动/自动来源区分、持久化 |
+| `composables/useVoiceprintMatch.ts` | 声纹匹配：运行/重跑、结果采纳与忽略 |
+| `composables/useTextCorrection.ts` | 划词改写动作：选中文本 → 指令 → AI 改写 |
+| `composables/useGenActions.ts` | 纪要页动作集合：重试、重新转写、归档、删除、导出 |
+| `composables/useInsightBoardPolling.ts` | 洞察板：拉取、轮询、Tab 圆点、切板/新建 |
+| `composables/useIdeLauncher.ts` | IDE 入口：作用域菜单、打开文档、面板尺寸拖拽 |
+| `composables/useTitleRename.ts` | 标题内联重命名：草稿与全局面包屑同步 |
+| `generating/useFormalVersion.ts` | 书面版状态机：2s 轮询、settings 读写、错误映射、`formalizeSelection`（从 TranscriptPanel 拆出） |
 
 ### 5.2 全局/跨页 Composable
 
@@ -132,7 +156,7 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useContainerSize.ts` | 容器宽度档位检测（ResizeObserver → 标准化 tier） |
 | `composables/useDivider.ts` | 缝隙拉手拖拽：侧边栏/AI 面板宽度调整 |
 | `composables/useEscClose.ts` | ESC 键关闭弹窗（比模板 @keydown.esc 更可靠） |
-| `composables/useHotwordGroups.ts` | 热词分组管理：分组/词条 CRUD、AI 自动分组、搜索筛选 |
+| `composables/useHotwords.ts` | 热词管理：分组/词条 CRUD、AI 自动分组、搜索筛选 |
 | `composables/useInlineEdit.ts` | 行间编辑：划词改写 → AI 改写 → diff 展示 → 采纳/拒绝 |
 | `composables/useKeyboardShortcuts.ts` | 全局键盘快捷键（ESC/Cmd+B/Cmd+J/Cmd+K 等） |
 | `composables/usePageBack.ts` | 页面返回：router.back() + ESC 键触发 + 兑底首页 |
@@ -141,7 +165,8 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/usePopMenu.ts` | 弹出菜单统一封装：智能定位/点击外部关闭/滚动跟随 |
 | `composables/usePresenceDetection.ts` | 存在性检测：交互事件 + 页面可见性 → 存在性评分 → 心跳 |
 | `composables/usePrivacyDisclaimer.ts` | 隐私免责声明确认状态（双层留痕：localStorage + 服务端） |
-| `composables/useProjectOnboarding.ts` | 知识库关联引导弹窗：动画与展示控制 |
+| `composables/useDecisionStatuses.ts` | 决策状态字典缓存：拉取、刷新、文案映射 |
+| `composables/useComputeSource.ts` | 算力来源展示：本地/云端状态与提示 |
 | `composables/useQuoteRef.ts` | 划词引用/改写状态管理 |
 | `composables/useRecorder.ts` | 录音控制：API 调用封装（开始/暂停/停止） |
 | `composables/useRecordingNotes.ts` | 录音随记持久化：localStorage + 笔记-转写行自动关联 |
@@ -149,6 +174,8 @@ GeneratingView 的业务逻辑拆分为以下 composable：
 | `composables/useToast.ts` | Toast 通知：全局轻量反馈（warn/success/error/info） |
 | `composables/useTranslation.ts` | 实时翻译：启用/关闭、语言选择、译文映射、WebSocket 通信 |
 | `composables/useWebSocket.ts` | 实时转写 WebSocket：连接/消息接收/说话人信息 |
+
+> 以上为页面直接依赖的部分；完整清单以 `composables/` 目录为准（58 个文件，不含测试）。
 
 ## 六、AI 面板子组件（components/layout/ai/）
 
@@ -176,6 +203,12 @@ AIPanel 内部按职责拆分为以下子组件：
 | `components/common/DurationDial.vue` | 录音页 | 时长选择旋钮 |
 | `components/common/PlayingEq.vue` | 顶栏、录音页 | 播放状态均衡器动画（3 条竖线跳动） |
 
+### 7.1 工具函数（utils/）
+
+| 文件 | 使用场景 | 说明 |
+|------|----------|------|
+| `utils/transcriptView.ts` | 录音页、纪要页、纪要 Tab | 转写显示纯函数：`formatTimeMs`（`mm:ss`，无小时位）、`getChapterIdxAtTime`（早于首章返回 -1）；单测见 `utils/__tests__/transcriptView.test.ts` |
+
 ## 八、前端状态管理（stores/）
 
 基于 Vue 3 `defineStore` 的 Pinia 状态管理：
@@ -190,6 +223,8 @@ AIPanel 内部按职责拆分为以下子组件：
 | `stores/user.ts` | 当前登录用户信息 |
 | `stores/aiSessions.ts` | AI 对话会话列表与活跃会话 |
 | `stores/watermark.ts` | 水印氛围层开关与透明度偏好 |
+| `stores/engine.ts` | 引擎状态：本地/云端模式、实时分段能力 |
+| `stores/agent.ts` | 智能体运行态：当前任务与工具调用状态 |
 
 ## 九、API 层（api/）
 
@@ -213,7 +248,14 @@ AIPanel 内部按职责拆分为以下子组件：
 | `api/insights.ts` | 洞察台分析与消息持久化 |
 | `api/voiceprint.ts` | 声纹相关 |
 | `api/decisions.ts` | 决策中心 CRUD + 跨会议聚合（契约 API_CONTRACTS §12；status 单值过滤，多状态 fetchDecisionsMulti 拆分合并） |
-| `api/decisionsMock.ts` | 决策 mock 通道（仅 VITE_DECISIONS_MOCK=1 启用，默认走真实接口） |
+| `api/decisionStatuses.ts` | 决策状态字典读写 |
+| `api/agent.ts` | 智能体动作与决策提取提示词 |
+| `api/board.ts` | 洞察板产物读写与共创 |
+| `api/engine.ts` | 引擎模式与本地端点探测 |
+| `api/import.ts` | 音频/文件导入 |
+| `api/transcriptLayers.ts` | 转写分层与书面版动作 |
+| `api/update.ts` | 版本更新检查 |
+| `api/access.ts` | 访问模式与能力开关 |
 | `api/types.ts` | 共享 TypeScript 类型定义 |
 
 ## 十、样式文件（styles/ + 组件 scoped）
@@ -222,17 +264,20 @@ AIPanel 内部按职责拆分为以下子组件：
 
 ### 10.1 主题变量（themes/）
 
-7 套主题共享同一组变量名（`--bg`、`--surface`、`--accent` 等），通过 `html[data-theme]` 选择器生效，默认主题由 `:root` 提供。
+10 套主题共享同一组变量名（`--bg`、`--surface`、`--accent` 等），通过 `html[data-theme]` 选择器生效，默认主题由 `:root` 提供。主题清单以 `stores/theme.ts` 的 `THEMES` 为唯一真源，css 文件名与主题 id 一致。
 
 | 文件 | 主题名称 | 说明 |
 |------|----------|------|
-| `themes/default.css` | 默认 | 蓝色主色调，亮色基础 |
+| `themes/standard-light.css` | 标准浅色 | 标准亮色基础 |
+| `themes/standard-dark.css` | 标准深色 | 标准暗色 |
+| `themes/default.css` | 晨曦 | 蓝色主色调 |
 | `themes/dark.css` | 夜色 | 深色模式 |
-| `themes/warm.css` | 暖阳 | 珊瑚/橙色暖调 |
+| `themes/warm.css` | 晚霞 | 珊瑚/橙色暖调 |
 | `themes/forest.css` | 森林 | 深绿色调 |
-| `themes/ocean.css` | 海洋 | 深青/蓝色调 |
-| `themes/lavender.css` | 薰衣草 | 柔和紫色调 |
-| `themes/rose.css` | 玫瑰 | 粉红色调 |
+| `themes/mist.css` | 薄雾 | 低饱和灰蓝 |
+| `themes/moss.css` | 苔藓 | 黄绿中性调 |
+| `themes/wheat.css` | 麦浪 | 暖黄调 |
+| `themes/moonlight.css` | 月白 | 冷白低对比 |
 
 ### 10.2 基础与布局
 
@@ -344,3 +389,13 @@ AIPanel 内部按职责拆分为以下子组件：
 | API 请求层 | [api/](../frontend/src/api/) |
 | 国际化配置 | [i18n/index.ts](../frontend/src/i18n/index.ts) |
 | 工具函数 | [utils/](../frontend/src/utils/)（platform / sanitize / search / speakerColors / decisionText 决策文本展示剥除） |
+
+## 十二、云同步副本
+
+`.gitignore` 中的 `* [0-9]` 与 `* [0-9].*` 会忽略云盘同步产生的重名副本（如 `DecisionNode 2.vue`、`locales 2/`）。这类文件：
+
+- 未被 git 跟踪，删除后无法从版本库恢复；
+- 可能随云同步再次出现，不适合作为提交内容；
+- 不代表任何功能，定位代码时一律以无后缀的同名文件为准。
+
+当前已知：`views/generating/DecisionNode 2.vue` 是 `DecisionNode.vue` 的旧副本；`views/generating/ProjectOnboardingDialog 2.vue` 无对应正式文件且无任何引用；`components/layout/ai 2/`、`i18n/locales 2/` 为空目录。以上均由开发者按需在本地清理。

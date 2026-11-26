@@ -129,6 +129,7 @@ import ProgressDialog from './ProgressDialog.vue'
 import PageBudgetBadge from '@/components/common/PageBudgetBadge.vue'
 import { buildDiffSegments, useSummaryProposal as useSharedSummaryProposal, type DiffSegment, type SummaryProposal } from '@/composables/useSummaryProposal'
 import { diffLines, diffStats } from '@/utils/textDiff'
+import { formatTimeMs } from '@/utils/transcriptView'
 import type { Chapter, Task } from '@/api/types'
 
 const { t } = useI18n()
@@ -187,12 +188,6 @@ const segments = computed<DiffSegment[]>(() => {
   if (!p) return []
   return buildDiffSegments(diffLines(p.baseline, p.proposed), 3, shared.expandedGaps.value)
 })
-
-function formatTimeMs(ms: number): string {
-  const sec = Math.floor(ms / 1000)
-  const m = Math.floor(sec / 60), s = sec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
 
 const loading = computed(() => props.processing)
 

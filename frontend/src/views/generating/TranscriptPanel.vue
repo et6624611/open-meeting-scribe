@@ -5,64 +5,21 @@
       <div class="spk-transcript-area">
         <!-- 三层视图（书面版/清理版/原文）选择器在 tab 栏右侧下拉（GeneratingView），本面板只消费 layerView -->
         <!-- 书面版状态卡（WP-2）/ Formal-version state card -->
-        <div v-if="layerView === 'formal'" class="gen-formal-panel">
-          <!-- 生成中 / Running -->
-          <div v-if="formalState === 'running'" class="rec-formal-lock gen-formal-card is-running">
-            <div class="gen-formal-spinner"></div>
-            <div class="rec-formal-lock-title">{{ t('generating.layer.formal_running_title') }}</div>
-            <div class="rec-formal-lock-desc">{{ t('generating.layer.formal_progress', { done: formalProgress.done, total: formalProgress.total }) }}</div>
-            <div class="gen-formal-bar"><div class="gen-formal-bar-fill" :style="{ width: formalPercent + '%' }"></div></div>
-          </div>
-          <!-- 失败 / Error -->
-          <div v-else-if="formalState === 'error'" class="rec-formal-lock gen-formal-card is-error">
-            <div class="rec-formal-lock-title">{{ t('generating.layer.formal_error_title') }}</div>
-            <div class="rec-formal-lock-desc">{{ formalVersion?.error || 'error' }}</div>
-            <button type="button" class="gen-formal-btn" @click="() => startFormal()">{{ t('generating.layer.formal_retry') }}</button>
-          </div>
-          <!-- 失效 / Stale -->
-          <div v-else-if="formalState === 'stale'" class="rec-formal-lock gen-formal-card is-stale">
-            <div class="rec-formal-lock-title">{{ t('generating.layer.formal_stale_title') }}</div>
-            <div class="rec-formal-lock-desc">{{ t('generating.layer.formal_stale_desc') }}</div>
-            <button type="button" class="gen-formal-btn" @click="() => startFormal()">{{ t('generating.layer.formal_regenerate') }}</button>
-          </div>
-          <!-- 未生成 / Absent -->
-          <template v-else-if="formalState === 'absent'">
-            <div class="rec-formal-lock gen-formal-idle">
-              <div class="rec-formal-lock-title">{{ t('generating.layer.formal_idle_title') }}</div>
-              <div class="rec-formal-lock-desc">{{ t('generating.layer.formal_idle_desc') }}</div>
-              <div class="gen-formal-estimate">
-                {{ t('generating.layer.formal_estimate', { tokens: estimatedTokens }) }}
-                <span class="gen-formal-cost-note">{{ costNote }}</span>
-              </div>
-              <div v-if="formalActionError" class="gen-formal-action-err" role="alert">{{ formalActionError }}</div>
-              <button type="button" class="gen-formal-btn is-primary" :disabled="formalStarting" @click="() => startFormal()">
-                {{ formalStarting ? t('generating.layer.formal_starting') : t('generating.layer.formal_generate') }}
-              </button>
-            </div>
-            <label class="gen-formal-auto">
-              <input type="checkbox" :checked="autoFormalEnabled" @change="onToggleAutoFormal" />
-              <span>{{ t('generating.layer.formal_auto') }}</span>
-            </label>
-          </template>
-          <!-- 完成留痕条 / Done meta bar -->
-          <div v-else-if="formalState === 'done'" class="gen-formal-meta">
-            <span class="gen-formal-meta-item">{{ formalVersion?.model || 'AI' }}</span>
-            <span class="gen-formal-meta-sep">·</span>
-            <span class="gen-formal-meta-item">{{ t('generating.layer.formal_meta_tokens', { tokens: formalVersion?.usage.total_tokens ?? 0 }) }}</span>
-            <span class="gen-formal-meta-sep">·</span>
-            <span class="gen-formal-meta-item">{{ formatFormalTime(formalVersion?.finished_at) }}</span>
-            <template v-if="toneCount > 0">
-              <span class="gen-formal-meta-sep">·</span>
-              <span class="gen-formal-meta-tone">{{ t('generating.layer.formal_tone_count', { n: toneCount }) }}</span>
-            </template>
-            <button type="button" class="gen-formal-regen" :disabled="formalStarting" @click="() => startFormal()">{{ t('generating.layer.formal_regenerate') }}</button>
-            <label class="gen-formal-auto is-inline">
-              <input type="checkbox" :checked="autoFormalEnabled" @change="onToggleAutoFormal" />
-              <span>{{ t('generating.layer.formal_auto_short') }}</span>
-            </label>
-          </div>
-          <div v-if="formalActionError && formalState !== 'absent'" class="gen-formal-action-err is-banner" role="alert">{{ formalActionError }}</div>
-        </div>
+        <FormalVersionCard
+          v-if="layerView === 'formal'"
+          :state="formalState"
+          :progress="formalProgress"
+          :percent="formalPercent"
+          :version="formalVersion"
+          :starting="formalStarting"
+          :action-error="formalActionError"
+          :auto-enabled="autoFormalEnabled"
+          :estimated-tokens="estimatedTokens"
+          :cost-note="costNote"
+          :tone-count="toneCount"
+          @start="startFormal()"
+          @toggle-auto="onToggleAutoFormal"
+        />
         <template v-if="layerView !== 'formal' || formalState === 'done'">
           <!-- 章节导航条（放在 transcript-area 内部，宽度跟随说话人面板展开/折叠） / Chapter overview bar (inside transcript-area, width adapts to speaker panel) -->
           <div class="chapter-overview" v-if="chapterOverviewVisible" id="chapterOverview">
@@ -199,7 +156,7 @@
                   :data-sentence-id="flatTranscript[item.lineIdx].sentence_id"
                   @click="emit('seek', flatTranscript[item.lineIdx].begin_time)"
                 >
-                  <div class="ts-line-avatar" :style="{ background: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }">{{ avatarInitial(getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id), flatTranscript[item.lineIdx].speaker_id) }}</div>
+                  <div class="ts-line-avatar" :style="{ background: getSpeakerColor(String(flatTranscript[item.lineIdx].speaker_id)) }">{{ avatarInitial(getBindingSpeakerName(flatTranscript[item.lineIdx].speaker_id), t('generating.speaker_unid_initial')) }}</div>
                   <div class="ts-line-content">
                     <div class="ts-line-head">
                       <span class="spk-wrapper" @click.stop>
@@ -318,84 +275,42 @@
         {{ t('generating.speaker_solo.back_to_playback') }}
       </button>
 
-      <!-- 右侧说话人面板 / Right speaker panel -->
-      <div class="spk-panel" v-if="speakerPanelVisible">
-        <div class="spk-panel-head">
-          <span class="spk-panel-title">
-            {{ t('generating.speaker_panel.title') }}
-          </span>
-          <div class="spk-panel-head-actions">
-            <button class="spk-panel-btn spk-search-trigger" :class="{ 'is-active': searchExpanded }" @click="emit('toggle-search')" :title="t('generating.speaker_panel.search')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </button>
-            <button class="spk-panel-btn" :title="t('generating.speaker_panel.collapse')" @click="emit('toggle-panel')">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="spk-search" v-show="searchExpanded || speakerPanelSearch">
-          <div class="spk-search-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" class="spk-search-input" :placeholder="t('generating.speaker_panel.search_placeholder')" v-model="speakerPanelSearchVal" @blur="emit('search-blur')" ref="searchInputEl">
-          </div>
-        </div>
-        <div class="spk-list">
-          <div
-            v-for="sp in panelSpeakerList" :key="sp.speakerId"
-            class="spk-item"
-            :class="{ 'is-on': speakerFilterSet.has(sp.speakerId), 'is-active': locateSpeakerId === sp.speakerId, 'is-playing': playingSpeakerId === sp.speakerId }"
-            @click="emit('toggle-speaker', sp.speakerId)"
-          >
-            <div class="spk-item-check">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div class="spk-item-info">
-              <span class="spk-item-name" :style="{ color: sp.color }">{{ sp.name }}</span>
-              <span class="spk-item-role" :class="{ 'is-me-label': sp.isMe }">{{ sp.isMe ? t('generating.speaker_panel.me_label') : (sp.role || '') }}</span>
-              <button
-                class="spk-item-locate"
-                :class="{ 'is-active': locateSpeakerId === sp.speakerId }"
-                @click.stop="emit('toggle-locate', sp.speakerId)"
-                :title="locateSpeakerId === sp.speakerId ? t('generating.speaker_solo.exit_focus_all') : t('generating.binding.locate')"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>
-              </button>
-            </div>
-            <div class="spk-item-stats">
-              <span class="spk-item-dur">{{ sp.durationStr }}</span>
-              <span class="spk-item-sep">|</span>
-              <span class="spk-item-turns">{{ sp.turns }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="spk-panel-footer">
-          <span class="spk-footer-summary">
-            {{ t('generating.speaker_panel.total', { duration: panelTotalDuration, turns: panelTotalTurns }) }}
-          </span>
-        </div>
-      </div>
-
-      <!-- 面板收起时的展开按钮 / Expand button when panel is collapsed -->
-      <button class="spk-panel-toggle" v-if="!speakerPanelVisible" @click="emit('toggle-panel')" :title="t('generating.speaker_panel.expand')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        <span>{{ t('generating.speaker_panel.expand') }}</span>
-      </button>
+      <TranscriptSpeakerPanel
+        ref="speakerPanelRef"
+        :visible="speakerPanelVisible"
+        :search-expanded="searchExpanded"
+        v-model:search="speakerPanelSearchVal"
+        :speakers="panelSpeakerList"
+        :total-duration="panelTotalDuration"
+        :total-turns="panelTotalTurns"
+        :filter-set="speakerFilterSet"
+        :locate-speaker-id="locateSpeakerId"
+        :playing-speaker-id="playingSpeakerId"
+        @toggle-search="emit('toggle-search')"
+        @toggle-panel="emit('toggle-panel')"
+        @toggle-speaker="(id) => emit('toggle-speaker', id)"
+        @toggle-locate="(id) => emit('toggle-locate', id)"
+        @search-blur="emit('search-blur')"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { getSpeakerColor } from '@/utils/speakerColors'
-import { normalizeSpeakerName } from '@/utils/speakerDisplay'
+import { normalizeSpeakerName, avatarInitial } from '@/utils/speakerDisplay'
+import { formatTimeMs, getChapterIdxAtTime } from '@/utils/transcriptView'
 import ProgressDialog from './ProgressDialog.vue'
-import type { FlatTranscriptLine, Chapter, Task, FormalVersion } from '@/api/types'
+import FormalVersionCard from './FormalVersionCard.vue'
+import TranscriptSpeakerPanel from './TranscriptSpeakerPanel.vue'
+import { useFormalVersion } from './useFormalVersion'
+import type { FlatTranscriptLine, Chapter, Task } from '@/api/types'
 import type { Speaker } from '@/api/speakers'
 import { cleanupRuleText as formatCleanupRule } from '@/utils/transcriptLayers'
-import { getFormal, formalize } from '@/api/transcriptLayers'
-import { fetchSettings, saveSettings } from '@/api/settings'
+import type { LayerView } from '@/utils/transcriptLayers'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -403,7 +318,6 @@ const userStore = useUserStore()
 // ── 转写三层视图（PLAN-TRANSCRIPT-LAYERING WP-1） ──
 // 会后：清理版按 get_task 响应信封 transcript_layers.cleanup 决定可用性；书面版 WP-2 才生成
 // layerView 真源在 GeneratingView（tab 栏右侧下拉选择器），此处 prop 读 + emit 写
-import type { LayerView } from '@/utils/transcriptLayers'
 const peeked = ref<Set<number>>(new Set())
 
 function isCleanedView(line: FlatTranscriptLine): boolean {
@@ -473,141 +387,20 @@ const props = defineProps<{
 
 const layerView = computed(() => props.layerView)
 
-// ── WP-2 书面版：sidecar 状态机（结果独立于 dialogue，绝不回写） ──
-type FormalState = 'absent' | 'running' | 'done' | 'stale' | 'error'
-const formalVersion = ref<FormalVersion | null>(null)
-const formalStarting = ref(false)
-const formalActionError = ref('')
-const autoFormalEnabled = ref(false)
-let formalTimer: number | null = null
-
-/** 只有会后（completed）才可读写书面版 / Formal version is post-meeting only */
-const formalTaskId = computed<string | null>(() =>
-  props.taskStatus === 'completed' ? props.task?.task_id ?? null : null)
-const formalState = computed<FormalState>(() => {
-  const v = formalVersion.value
-  if (!v) return 'absent'
-  if (v.status === 'running') return 'running'
-  if (v.status === 'stale') return 'stale'
-  if (v.status === 'error') return 'error'
-  return 'done'
+// ── WP-2 书面版：状态机在 useFormalVersion，状态卡在 FormalVersionCard ──
+const {
+  formalVersion, formalState, formalProgress, formalPercent, toneCount,
+  estimatedTokens, costNote, formalItem, isFormalView, isToneFlagged,
+  formalStarting, formalActionError, autoFormalEnabled,
+  startFormal, formalizeSelection, onToggleAutoFormal,
+} = useFormalVersion({
+  taskStatus: () => props.taskStatus,
+  taskId: () => props.task?.task_id ?? null,
+  lines: () => props.flatTranscript,
+  layerView: () => props.layerView,
+  visible: () => props.visible,
+  onEnterFormal: () => emit('update:layerView', 'formal'),
 })
-const formalMap = computed(() => {
-  const m = new Map<number, FormalItem>()
-  for (const it of formalVersion.value?.items ?? []) m.set(it.sentence_id, it)
-  return m
-})
-const toneCount = computed(() =>
-  (formalVersion.value?.items ?? []).filter(i => i.tone_flag === 'weakened').length)
-const formalProgress = computed(() => {
-  const total = props.flatTranscript.length || formalVersion.value?.progress?.total || 0
-  return { done: formalVersion.value?.progress?.done ?? 0, total }
-})
-const formalPercent = computed(() => {
-  const { done, total } = formalProgress.value
-  return total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
-})
-/** 预估值：原文字符数 / 1.6，仅作提示 / Token estimate for the cost hint only */
-const estimatedTokens = computed(() => {
-  const chars = props.flatTranscript.reduce((n, l) => n + l.text.length, 0)
-  return Math.max(1, Math.round(chars / 1.6))
-})
-/** 本机算力不耗云额度（方案 §7 遗留 4）/ Local-endpoint runs do not consume cloud quota */
-const costNote = computed(() =>
-  formalVersion.value?.source === 'local_endpoint'
-    ? t('generating.layer.formal_cost_local')
-    : t('generating.layer.formal_cost_cloud'))
-
-function formalItem(line: FlatTranscriptLine): FormalItem | undefined {
-  return formalMap.value.get(line.sentence_id)
-}
-function isFormalView(line: FlatTranscriptLine): boolean {
-  return layerView.value === 'formal' && formalState.value === 'done' && formalMap.value.has(line.sentence_id)
-}
-function isToneFlagged(line: FlatTranscriptLine): boolean {
-  return formalItem(line)?.tone_flag === 'weakened'
-}
-function formatFormalTime(s: string | undefined): string {
-  if (!s) return ''
-  const d = new Date(s)
-  if (Number.isNaN(d.getTime())) return ''
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-async function fetchFormal(id: string) {
-  try {
-    formalVersion.value = await getFormal(id)
-  } catch {
-    // 读取失败保持现状，不打断当前视图 / Keep current state on transient fetch errors
-  }
-}
-async function startFormal(sentenceIds?: number[]) {
-  const id = formalTaskId.value
-  if (!id || formalStarting.value) return
-  formalStarting.value = true
-  formalActionError.value = ''
-  try {
-    await formalize(id, sentenceIds)
-    await fetchFormal(id)
-  } catch (e: unknown) {
-    const detail = (e as { response?: { data?: { detail?: { reason?: string } } } })?.response?.data?.detail
-    const reason = detail?.reason
-    formalActionError.value = reason
-      ? t('generating.layer.formal_blocked', { reason: t(`generating.layer.formal_block_reason.${reason}`, reason) })
-      : t('generating.layer.formal_blocked_generic')
-    await fetchFormal(id)
-  } finally {
-    formalStarting.value = false
-  }
-}
-/** WP-3 选区书面化入口（SelectionToolbar → GeneratingView 转发）：切书面视图并复用同一状态机
- *  Selection-scope formalize entry: switch to formal view, reuse the same state machine */
-function formalizeSelection(sentenceIds: number[]) {
-  if (!formalTaskId.value || !sentenceIds.length) return
-  emit('update:layerView', 'formal')
-  void startFormal(sentenceIds)
-}
-async function onToggleAutoFormal(ev: Event) {
-  const next = (ev.target as HTMLInputElement).checked
-  const prev = autoFormalEnabled.value
-  autoFormalEnabled.value = next
-  try {
-    await saveSettings({ transcript: { formal: { auto_generate: next } } })
-  } catch {
-    autoFormalEnabled.value = prev
-  }
-}
-
-watch(formalTaskId, (id) => {
-  if (id) void fetchFormal(id)
-  else formalVersion.value = null
-}, { immediate: true })
-// 面板重新可见时拉一次（后台自动生成可能已完成）/ Refresh when panel becomes visible
-watch(() => props.visible, (v) => {
-  if (v && formalTaskId.value) void fetchFormal(formalTaskId.value)
-})
-// running 时 2s 轮询，落定即停 / Poll every 2s while running
-watch(formalState, (s) => {
-  if (formalTimer) { window.clearInterval(formalTimer); formalTimer = null }
-  if (s === 'running') {
-    formalTimer = window.setInterval(() => {
-      if (formalTaskId.value) void fetchFormal(formalTaskId.value)
-    }, 2000)
-  }
-})
-onMounted(async () => {
-  try {
-    const s = await fetchSettings()
-    autoFormalEnabled.value = s.transcript?.formal?.auto_generate === true
-  } catch { /* 设置不可达时保持默认关 */ }
-})
-onBeforeUnmount(() => {
-  if (formalTimer) window.clearInterval(formalTimer)
-})
-
-// 类型别名（与 @/api/types 的 FormalItem 同形）
-type FormalItem = import('@/api/types').FormalItem
 
 const emit = defineEmits<{
   (e: 'update:layerView', v: LayerView): void
@@ -644,7 +437,9 @@ watch(cleanupAvailable, (ok) => {
 // 模板 refs / Template refs
 const transcriptAreaEl = ref<HTMLElement | null>(null)
 const transcriptListEl = ref<HTMLElement | null>(null)
-const searchInputEl = ref<HTMLInputElement | null>(null)
+const speakerPanelRef = ref<InstanceType<typeof TranscriptSpeakerPanel> | null>(null)
+/** 搜索框在子组件内，透传给父页面用于聚焦 */
+const searchInputEl = computed(() => speakerPanelRef.value?.searchInputEl ?? null)
 
 // v-model for speaker panel search
 const speakerPanelSearchVal = computed({
@@ -653,19 +448,6 @@ const speakerPanelSearchVal = computed({
 })
 
 // ─── 工具函数 / Utility functions ───
-
-function formatTimeMs(ms: number): string {
-  const sec = Math.floor(ms / 1000)
-  const m = Math.floor(sec / 60), s = sec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function getChapterIdxAtTime(chs: Chapter[], ms: number): number {
-  for (let i = chs.length - 1; i >= 0; i--) {
-    if (ms >= chs[i].start_ms) return i
-  }
-  return -1
-}
 
 function isChapterVisible(chapterIdx: number): boolean {
   if (chapterIdx < 0) return true
@@ -687,12 +469,6 @@ function getBindingSpeakerName(speakerId: number): string {
   const spk = props.speakers.find(s => s.id === uuid)
   // REQ-SPK-RN：存量占位档案名（speakers.json 污染）同样收敛为空，行首走未识别态
   return normalizeSpeakerName(spk?.name)
-}
-
-/** 头像首字：真名取首字符；未识别取中性符（D5：禁用编号数字） */
-function avatarInitial(name: string, _speakerId: number): string {
-  if (name && name.trim()) return name.trim()[0]
-  return t('generating.speaker_unid_initial')
 }
 
 function isMeSpeakerId(speakerId: number): boolean {
