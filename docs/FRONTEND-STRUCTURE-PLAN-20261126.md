@@ -234,7 +234,7 @@ P0-1 文档 ──→ P0-2 工具去重 ──→ P1-1 书面版拆分 ──→
 | P1-2 | 完成 | 新增 `TranscriptSpeakerPanel.vue`（116 行）；侧栏模板与搜索焦点迁移，`searchInputEl` 经 ref 转发 |
 | 验证 | 通过 | `vue-tsc -b`、`vitest`（15 文件 / 90 用例）、`npm run build`、`npm run lint` 全绿 |
 | 复查补漏 | 完成 | `SummaryPanel.vue` 第三份 `formatTimeMs` 接上 `utils/transcriptView.ts`；`docs/VUE_COMPONENT_MAP.md` 补录 4 个新文件（`transcriptView.ts`、`useFormalVersion.ts`、`FormalVersionCard.vue`、`TranscriptSpeakerPanel.vue`）并修订 `TranscriptPanel` 条目；第 2、3 节标注改造前口径 |
-| 提交 | 待办 | 本轮全部改动仍在工作区（7 改 + 5 新增未跟踪），尚未按第 4 节拆分提交 |
+| 提交 | 完成 | 单条提交 `refactor(frontend): 前端结构治理 P0-P1`（14 文件，+862 / -330，含方案文档与产品截图 05）；`--no-ff` 合入 `main` 并推送，分支已删除 |
 
 改造后规模：84 个 `.vue`、123 个 `.ts`（不含测试）、15 个测试文件。第 2 节的 82 / 121 / 13 为改造前数字，行号亦为改造前位置。
 
@@ -243,3 +243,4 @@ P0-1 文档 ──→ P0-2 工具去重 ──→ P1-1 书面版拆分 ──→
 1. P1-2 未减少 `TranscriptPanel` 的 props 数量（37 个依旧；数据仍由 `GeneratingView` 下发，面板再转发给侧栏组件）。该项收益是模板与职责分离，不是接口面积收缩。
 2. `RecTranscriptPanel` 已绑定名的头像改走 `normalizeSpeakerName`：若某人真名形似占位名（如 `Speaker 1`），会退回 `unid_initial` 的 `?`，而旧实现显示 `S`。占位名判定与绑定流程同源，实际触发概率极低，未额外加固。
 3. `TranscriptPanel` 的 `searchInputEl` 改为 `computed` 转发子组件 `defineExpose`，父级拿到的是 DOM 元素而非 ref；`useSpeakerPanel` 的 `?.focus()` 行为不变。
+4. 未按第 4 节拆成 4 条提交：`TranscriptPanel.vue` 单个文件内交叉含 P0-2 / P1-1 / P1-2 三类改动，纯文件级拆分不可行，逐 hunk 拆分成本高于收益。改为单条提交，回滚粒度由「分项」降为「整轮」。
