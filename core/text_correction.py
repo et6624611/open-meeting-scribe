@@ -50,6 +50,7 @@ REWRITE_KEYS = frozenset({
     "body",              # 洞察正文
     "solution",          # 洞察建议
     "why",               # 决策依据
+    "rationale",         # 决策依据（decision-prompt 口径）
     "how",               # 决策进展（list[str]）
     "key_points",        # 章节要点（list[str]）
     "assignee",          # 决策执行人

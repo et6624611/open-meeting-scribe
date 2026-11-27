@@ -35,7 +35,6 @@ from core.settings_store import (
     get_realtime_asr_config,
     get_storage_config,
     get_transcript_config,
-    get_web_search_config,
     mask_api_key,
 )
 
@@ -117,7 +116,6 @@ def get_settings():
     llm = get_llm_config()
     asr = get_asr_config()
     feature_flags = get_feature_flags()
-    web_search = get_web_search_config()
 
     # 声纹偏好：根据用户订阅状态决定 / Voiceprint preference: based on user subscription status
     from core.users import get_current_user, should_use_local_diarization
@@ -208,12 +206,6 @@ def get_settings():
         "disabled_commands": settings.get("disabled_commands", []),
         "active_agent": settings.get("active_agent", "meeting-minutes"),
         "chat_engine": get_chat_engine_config(),
-        # 联网搜索配置（Brave 默认，provider 预留）
-        "web_search": {
-            "provider": web_search["provider"],
-            "api_key": mask_api_key(web_search["api_key"]),
-            "api_key_set": web_search["api_key_set"],
-        },
         "asr_provider_presets": ASR_PROVIDER_PRESETS,
         "asr_realtime_providers": rt_providers,
         "llm_provider_presets": PROVIDER_PRESETS,
@@ -275,22 +267,6 @@ def _merge_engine_config(incoming: dict | None, existing_engine: dict, existing_
             "component_url": component_url.strip(),
         },
     }
-
-
-def _merge_web_search_config(incoming: dict | None, existing: dict | None) -> dict:
-    """合并联网搜索配置（provider + api_key）。
-
-    API key 脱敏回显（含 ****）或空值时保留存量 key，否则用新值覆盖。
-    """
-    incoming = incoming or {}
-    existing = existing or {}
-    provider = str(incoming.get("provider") or existing.get("provider") or "brave").strip() or "brave"
-    incoming_key = str(incoming.get("api_key") or "").strip()
-    if not incoming_key or "****" in incoming_key:
-        final_key = str(existing.get("api_key") or "").strip()
-    else:
-        final_key = incoming_key
-    return {"provider": provider, "api_key": final_key}
 
 
 _REALTIME_CRED_KEYS = ("api_key", "resource_id", "app_id", "secret_id", "secret_key")
@@ -430,6 +406,9 @@ def save_settings(data: dict):
             # 默认开、显式 false 为逃生通道（与 get_feature_flags 口径一致）
             "voiceprint_v2": data.get("feature_flags", {}).get("voiceprint_v2", existing_ff.get("voiceprint_v2", True)),
             "chrome_autohide": data.get("feature_flags", {}).get("chrome_autohide", existing_ff.get("chrome_autohide", True)),
+            # 长期记忆：默认开；会后巩固默认关（与 get_feature_flags 口径一致）
+            "agent_memory": data.get("feature_flags", {}).get("agent_memory", existing_ff.get("agent_memory", True)),
+            "agent_memory_consolidate": data.get("feature_flags", {}).get("agent_memory_consolidate", existing_ff.get("agent_memory_consolidate", False)),
         },
         "disabled_commands": data.get("disabled_commands", existing.get("disabled_commands", [])),
         "active_agent": data.get("active_agent", existing.get("active_agent", "meeting-minutes")),
@@ -437,9 +416,10 @@ def save_settings(data: dict):
             "auto_clean_intermediate": data.get("storage", {}).get("auto_clean_intermediate", existing.get("storage", {}).get("auto_clean_intermediate", True)),
             "auto_archive_days": data.get("storage", {}).get("auto_archive_days", existing.get("storage", {}).get("auto_archive_days", 0)),
         },
-        # ── 联网搜索配置 / Web search config ──
-        "web_search": _merge_web_search_config(data.get("web_search"), existing.get("web_search")),
     }
+
+    # 联网搜索已改为免密实现，随保存丢弃存量 web_search 配置（含 Brave key）
+    merged.pop("web_search", None)
 
     # ── 逐能力算力来源（唯一真相源）/ Per-capability compute source handling ──
     # capability_source.{llm,asr} 由「API 配置 / ASR 配置」逐能力写入；非法值拒绝。

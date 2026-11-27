@@ -266,7 +266,113 @@ def _dispatch_write(name: str, args: dict, ctx) -> dict:
                               result.get("revision"))
         return {"ok": bool(result.get("ok")), "tool": name, "result": result}
 
+    if name == "remember":
+        from core.agent_memory import schema as memory_schema
+        from core.agent_memory import store as memory_store
+
+        text = str(args.get("text") or "").strip()
+        if not text:
+            raise HTTPException(400, {"error": "text_required",
+                                      "message": "记忆正文不能为空"})
+        quote = str(args.get("quote") or "").strip()
+        source = _memory_source(ctx.task_id, args, text)
+        if source is None:
+            raise HTTPException(422, {
+                "error": "no_source",
+                "message": "无法补齐来源锚点：请在 quote 里给出用户原话或逐字稿原句",
+            })
+        namespace = str(args.get("namespace") or "").strip() or f"task:{ctx.task_id}"
+        try:
+            parsed = memory_schema.parse_namespace(namespace)
+        except ValueError as exc:
+            raise HTTPException(422, {"error": "bad_namespace", "message": str(exc)})
+        if parsed["kind"] == "task" and parsed["id"] != ctx.task_id:
+            raise HTTPException(422, {"error": "bad_namespace",
+                                      "message": "task 作用域只能写当前会议"})
+        item = {
+            "namespace": namespace,
+            "kind": str(args.get("kind") or "fact"),
+            "subject": str(args.get("subject") or ""),
+            "relation": str(args.get("relation") or ""),
+            "object": str(args.get("object") or ""),
+            "text": text,
+            "tags": args.get("tags") or [],
+            "importance": args.get("importance", 0.5),
+            "source": source,
+        }
+        try:
+            outcome = memory_store.upsert(item, require_source=True)
+        except memory_store.MemoryWriteError as exc:
+            raise HTTPException(422, {"error": exc.code, "message": str(exc)})
+        except ValueError as exc:
+            raise HTTPException(422, {"error": "bad_memory", "message": str(exc)})
+        stored = outcome["item"]
+        logger.info("[agent-tools] remember task=%s id=%s action=%s",
+                    ctx.task_id, stored.get("id"), outcome["action"])
+        audit_logger.info("[agent-engine] remember task=%s tier=%s id=%s action=%s ns=%s",
+                          ctx.task_id, ctx.auth_tier, stored.get("id"),
+                          outcome["action"], stored.get("namespace"))
+        return {"ok": True, "tool": name,
+                "result": {"id": stored.get("id"), "action": outcome["action"],
+                           "closed": outcome["closed"], "namespace": stored.get("namespace"),
+                           "quote": quote[:200]},
+                "echo": {"memory": stored}}
+
+    if name == "forget":
+        from core.agent_memory import store as memory_store
+
+        memory_id = str(args.get("memory_id") or "").strip()
+        if not memory_id:
+            raise HTTPException(400, {"error": "memory_id_required",
+                                      "message": "需要 memory_id"})
+        try:
+            removed = memory_store.delete(memory_id)
+        except memory_store.MemoryWriteError as exc:
+            raise HTTPException(404, {"error": exc.code, "message": str(exc)})
+        logger.info("[agent-tools] forget task=%s id=%s", ctx.task_id, memory_id)
+        audit_logger.info("[agent-engine] forget task=%s tier=%s id=%s reason=%s",
+                          ctx.task_id, ctx.auth_tier, memory_id,
+                          str(args.get("reason") or "")[:200])
+        return {"ok": True, "tool": name,
+                "result": {"deleted": True, "id": removed.get("id")}}
+
     raise HTTPException(404, {"error": "unhandled_write", "message": f"未实现的写工具: {name}"})
+
+
+def _memory_source(task_id: str, args: dict, text: str) -> dict | None:
+    """补齐记忆来源：quote + 逐字稿锚点。补不出返回 None（调用方拒收）。"""
+    from core.task_store import tasks
+
+    task = tasks.get(task_id) or {}
+    quote = str(args.get("quote") or "").strip()
+    anchor: dict = {}
+    found = False
+
+    for di, item in enumerate(task.get("dialogue") or []):
+        if not isinstance(item, dict):
+            continue
+        for si, sentence in enumerate(item.get("sentences") or []):
+            if not isinstance(sentence, dict):
+                continue
+            sentence_text = str(sentence.get("text") or "").strip()
+            if not sentence_text:
+                continue
+            if quote:
+                if quote in sentence_text or sentence_text in quote:
+                    anchor = {"dialogue_index": di, "sentence_index": si}
+                    found = True
+                    break
+            elif len(text) >= 6 and text[:12] in sentence_text:
+                quote = sentence_text
+                anchor = {"dialogue_index": di, "sentence_index": si}
+                found = True
+                break
+        if found:
+            break
+
+    if not quote:
+        return None
+    return {"task_id": task_id, "quote": quote[:200], "anchor": anchor}
 
 
 @router.post("/api/agent-tools/cleanup")

@@ -57,6 +57,7 @@
       <!-- ═══ API 配置 / AI compute source ═══ -->
       <div v-show="activeCategory === 'ai'">
         <AiSourcePanel :settings="settings" @refresh="reloadSettings" />
+        <MemoryOverviewPanel :settings="settings" @refresh="reloadSettings" />
       </div>
 
       <!-- ═══ ASR 配置 / ASR compute source ═══ -->
@@ -534,6 +535,7 @@ import { useTaskStore } from '@/stores/task'
 import { useEngineStore } from '@/stores/engine'
 import AccountPanel from '@/components/settings/AccountPanel.vue'
 import AiSourcePanel from '@/components/settings/AiSourcePanel.vue'
+import MemoryOverviewPanel from '@/components/settings/MemoryOverviewPanel.vue'
 import AsrSourcePanel from '@/components/settings/AsrSourcePanel.vue'
 import LocalEnginePanel from '@/components/settings/LocalEnginePanel.vue'
 import { useComputeSource } from '@/composables/useComputeSource'

@@ -275,7 +275,7 @@ def export_context(
             "",
             "【强制执行】洞察板共创三步：",
             "① 读工作区 context/boards/index.md，再 Read context/boards/main.md 拿基线（无 main.md=首版，revision=0）",
-            "   → ② web_search ×最多2次 → ③ revise_insight_board(markdown=<完整Markdown>, expected_revision=<读到的版本号>) 落盘",
+            "   → ② 联网检索 ×最多2次（优先原生 WebSearch，否则 web_search；均免密）→ ③ revise_insight_board(markdown=<完整Markdown>, expected_revision=<读到的版本号>) 落盘",
             "   工具名以引擎工具列表为准：MCP 引擎下全名是 mcp__oms-tools__revise_insight_board，裸名会报 Tool not found。",
             "缺第③步就是任务失败——后端没有板文件，用户洞察 tab 是空的。",
             "收到 error=stale_baseline 说明基线已过期，重读后再改；不要把旧基线直接覆盖上去。",

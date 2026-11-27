@@ -40,11 +40,10 @@ def _seed_task(monkeypatch, dialogue=True):
 
 
 def _patch_search_on(monkeypatch, judge_reply=JUDGE_REPLY):
-    """联网前置全开（配置 key + mock execute_tool + mock 判定调用），返回调用捕获。"""
-    monkeypatch.setattr(
-        "core.agent_tools.impl._get_web_search_config",
-        lambda: {"provider": "brave", "api_key": "test-key"},
-    )
+    """联网前置全开（mock execute_tool + mock 判定调用），返回调用捕获。
+
+    联网检索已改为免密实现（Bing/DuckDuckGo），不再需要 API key 前置。
+    """
     monkeypatch.setattr(
         "core.agent_tools.impl.execute_tool",
         lambda name, kwargs: BRAVE_REPLY if name == "web_search" else json.dumps({"error": "unknown"}),
@@ -116,26 +115,8 @@ class TestBuildWebReferenceBlock:
         assert await build_web_reference_block(data, is_qa_mode=False) == ""
         assert calls == []
 
-    async def test_not_configured_skips_judge(self, monkeypatch):
-        _seed_task(monkeypatch)
-        monkeypatch.setattr("core.agent_tools.impl._get_web_search_config", lambda: None)
-        calls = []
-
-        async def fake_chat(messages, model=None, temperature=0.7, max_tokens=4096):
-            calls.append(1)
-            return JUDGE_REPLY
-
-        monkeypatch.setattr("core.insights.async_chat_completion", fake_chat)
-        data = ChatRequest(message="x", task_id=TASK_ID)
-        assert await build_web_reference_block(data, is_qa_mode=False) == ""
-        assert calls == []
-
     async def test_judge_failure_degrades(self, monkeypatch):
         _seed_task(monkeypatch)
-        monkeypatch.setattr(
-            "core.agent_tools.impl._get_web_search_config",
-            lambda: {"provider": "brave", "api_key": "test-key"},
-        )
 
         async def fake_chat(messages, model=None, temperature=0.7, max_tokens=4096):
             raise RuntimeError("judge down")

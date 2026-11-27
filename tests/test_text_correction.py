@@ -77,6 +77,16 @@ def test_identity_and_path_fields_never_touched(sample_task):
         assert sample_task[key] == value, f"{key} 被误改，白名单应只覆盖内容字段"
 
 
+def test_decision_rationale_is_content_field(sample_task):
+    """rationale 是用户可见的决策依据，必须与 why/how 同列白名单。"""
+    sample_task["decisions"][0]["rationale"] = f"因为{OLD}覆盖更全"
+
+    fields = rewrite_task_payload(sample_task, OLD, NEW)
+
+    assert sample_task["decisions"][0]["rationale"] == f"因为{NEW}覆盖更全"
+    assert fields.get("rationale") == 1
+
+
 def test_residual_surfaces_whitelist_gaps(sample_task, tmp_path, monkeypatch):
     """residual 的设计目的：白名单漏项 / 受保护字段含词时不静默，而是把残数报出来。"""
     monkeypatch.setattr(tc, "TASKS_DIR", tmp_path)   # 旁路文件均不存在，只看任务主体

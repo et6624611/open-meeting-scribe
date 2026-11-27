@@ -366,16 +366,16 @@ CHAT_QA_SYSTEM_PROMPT = """<role>
 <constraints>
 ## 严格限制
 - 你**不能执行任何操作**：不能修改设置、不能编辑纪要、不能控制录音、不能创建主题
-- 你**只能基于提供的上下文回答**：包括会议转写、会议纪要、项目资料
-- 如果上下文中没有相关信息，诚实告知用户「当前会议资料中未找到相关内容」
-- 不要猜测或编造上下文中不存在的信息
+- 你**优先基于提供的上下文回答**：包括会议转写、会议纪要、项目资料
+- 会议上下文没有、但问题涉及会外知识时，**可以调用 web_search / web_fetch 联网检索**，并在答复中标注「外部来源」与链接；不得把外部资料说成会议事实
+- 如果会议资料与联网检索都没有相关信息，诚实告知用户，不要猜测或编造
 - 如果用户要求执行操作（如「帮我修改」「开始录音」），告知用户当前处于智能问答模式，建议切换到智能体模式
 </constraints>
 
 <output_format>
 ## 回复规范
 1. 直击要点，不铺垫
-2. 引用上下文中的具体内容，标注来源
+2. 引用上下文或外部检索的具体内容，标注来源；外部资料单独标明
 3. 简单问题 1-2 句；复杂问题用精简列表
 4. 不确定时诚实说明
 </output_format>
@@ -398,6 +398,16 @@ def _agent_system_prompt(role_name: str | None) -> str:
         # 对话链路只保留职责与观察角度，剥离该节（无此节的角色文件原样注入）。
         insight_prompt = insight_prompt.split("\n## 输出格式", 1)[0]
         prompt += "\n\n---\n\n" + insight_prompt
+    # 角色级长期记忆（core 通道）：拼在角色文件之后，随会话全程可见。
+    try:
+        from core.settings_store import get_feature_flags
+        if get_feature_flags().get("agent_memory", True):
+            from core.agent_memory import inject as memory_inject
+            core_block = memory_inject.build_core_prompt(role_name)
+            if core_block:
+                prompt += "\n\n---\n\n" + core_block
+    except Exception as e:  # noqa: BLE001 - 记忆注入失败不阻断智能体会话
+        logger.warning("[AI对话] 角色记忆注入失败（跳过）: %s", e)
     return prompt
 OPTIMIZE_SYSTEM_PROMPT = """你是一位专业的中文文稿润色助手。请对用户提供的文本进行优化，遵循以下原则：
 
@@ -436,9 +446,10 @@ async def build_web_reference_block(data: ChatRequest, is_qa_mode: bool) -> str:
     """联网检索增强（内置问答路径）：讨论涉及会外专业知识时先行检索并注入「外部参考」块。
 
     复用 core.insights._augment_with_web_search（预判-注入式，与洞察卡分析同口径）。
-    内置问答为单轮补全、无工具循环，故以注入块而非工具调用提供外部知识；
-    CLI 智能体路径不经此函数（其工具循环可直接调 web_search）。
-    问答模式 / 无任务 / 未配置搜索 key / 任一环节失败一律返回空串，绝不阻断问答主流程。
+    非流式 /api/chat 为单轮补全，故以注入块而非工具调用提供外部知识；
+    流式内置问答已走云端 ReAct 循环，可直接调 web_search，不经此函数；
+    CLI 智能体路径亦不经此函数（其工具循环可直接调 web_search）。
+    问答模式 / 无任务 / 任一环节失败一律返回空串，绝不阻断问答主流程。
     """
     if is_qa_mode or not data.task_id or data.task_id not in tasks:
         return ""
@@ -627,6 +638,23 @@ def _build_chat_context_blocks(
             joblog_ctx = joblog.build_context(data.task_id, user_message)
             if joblog_ctx:
                 context_blocks.append(joblog_ctx)
+
+    # ── 维度 2.5: 长期记忆 / Long-term memory ──
+    # 记忆只做背景，与当前会议冲突时以会议为准；feature flag 关闭时两块均不出现。
+    try:
+        from core.settings_store import get_feature_flags
+        if get_feature_flags().get("agent_memory", True):
+            from core.agent_memory import inject as memory_inject
+            current_task = tasks.get(data.task_id) if data.task_id else None
+            space_id = data.project_id or (current_task or {}).get("project_id")
+            context_blocks.extend(memory_inject.build_blocks(
+                user_message,
+                task_id=data.task_id,
+                space_id=space_id,
+                role_name=data.role,
+            ))
+    except Exception as e:  # noqa: BLE001 - 记忆注入失败不阻断对话
+        logger.warning("[AI对话] 长期记忆注入失败（跳过）: %s", e)
 
     # ── 维度 3: 关联项目资料 / Linked project materials ──
     resolved_project_id = data.project_id

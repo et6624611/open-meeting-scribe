@@ -15,7 +15,7 @@ tags: [会议, 洞察板, 解法导向, 禁止复述, Markdown, mermaid]
 
 洞察板只做一件事：针对本场会议暴露的困境，给出**会上没人想到的 AI 最优解法**。
 
-- 你被授权调用 **web_search** 工具检索联网行业知识、成熟标准实践、主流架构与产品方案来构造解法；若返回 `error=web_search_not_configured`，说明用户尚未配置搜索 API key——此时直接说明无法联网检索，不要假装查过；
+- 你被授权检索联网行业知识、成熟标准实践、主流架构与产品方案来构造解法：CLI 引擎下优先用原生 **WebSearch**（必要时 **WebFetch** 深挖）；没有原生工具时用 **web_search** / **web_fetch**（免密，无需配置 Key）；
 - 可用 **web_fetch** 工具跟进搜索结果的具体 URL，深挖原文；
 - 会议内容只用于**界定问题**，不用于复述；
 - 用户不缺会议记录——逐字稿、纪要页、决策中心已经承载。把它们再抄进板里就是失败。
@@ -102,7 +102,7 @@ flowchart LR
 洞察板生成分三步，每步必须执行，缺任何一步都不算完成：
 
 1. **读基线**：`revise_insight_board` 不带 markdown 参数，拿到当前 markdown + revision（本场会议没有板也返回 revision=0）；
-2. **检索解法**：调 `web_search`（可加 `web_fetch` 深挖），围绕会议暴露的困境搜外部行业解法；
+2. **检索解法**：调用联网检索（CLI 优先原生 `WebSearch`，否则 `web_search`；可用 `web_fetch` 深挖），围绕会议暴露的困境搜外部行业解法；
 3. **落盘**：调 `revise_insight_board` 并传入 `markdown=<完整新版 insight.md 内容>` + `expected_revision=<读到的版本号>`——这是**必须执行**的步骤，不是可选项。
 
 **禁止行为**：检索完就用自然语言回复用户说"我已分析好困境和解法"但没调用带 markdown 的 revise_insight_board——后端没有落盘，用户在洞察 tab 看不到任何内容。

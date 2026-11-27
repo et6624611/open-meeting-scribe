@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 记忆 · 交互原型</title>
+<style>
+/* ─── 主题 token（对齐 frontend/src/styles/themes/default.css） ─── */
+:root {
+  --bg: oklch(97% 0.006 250);
+  --surface: oklch(99% 0.004 250);
+  --surface-2: oklch(95% 0.008 250);
+  --surface-3: oklch(93% 0.012 250);
+  --fg: oklch(20% 0.02 260);
+  --muted: oklch(55% 0.02 250);
+  --border: oklch(90% 0.01 250);
+  --border-strong: oklch(84% 0.014 250);
+  --accent: oklch(72% 0.10 55);
+  --accent-soft: oklch(72% 0.10 55 / 0.10);
+  --accent-mid: oklch(72% 0.10 55 / 0.25);
+  --accent-fg: oklch(20% 0.02 55);
+  --ok: oklch(64% 0.16 155);
+  --ok-soft: oklch(64% 0.16 155 / 0.10);
+  --info: oklch(55% 0.15 220);
+  --info-soft: oklch(55% 0.15 220 / 0.10);
+  --warn: oklch(72% 0.16 55);
+  --warn-soft: oklch(72% 0.16 55 / 0.10);
+  --glass-bg: oklch(97% 0.006 250 / 0.72);
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-15: 15px; --fs-18: 18px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px;
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --shadow-float: 0 4px 16px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  --shadow-focus: 0 0 0 3px oklch(72% 0.10 55 / 0.18);
+}
+html[data-theme="dark"] {
+  --bg: oklch(19% 0.012 260);
+  --surface: oklch(23% 0.014 260);
+  --surface-2: oklch(26% 0.016 260);
+  --surface-3: oklch(30% 0.018 260);
+  --fg: oklch(93% 0.006 260);
+  --muted: oklch(66% 0.012 260);
+  --border: oklch(32% 0.014 260);
+  --border-strong: oklch(40% 0.016 260);
+  --accent: oklch(74% 0.11 55);
+  --accent-soft: oklch(74% 0.11 55 / 0.14);
+  --accent-mid: oklch(74% 0.11 55 / 0.28);
+  --accent-fg: oklch(96% 0.02 55);
+  --ok: oklch(70% 0.15 155);
+  --ok-soft: oklch(70% 0.15 155 / 0.14);
+  --info: oklch(66% 0.13 220);
+  --info-soft: oklch(66% 0.13 220 / 0.14);
+  --warn: oklch(78% 0.15 55);
+  --warn-soft: oklch(78% 0.15 55 / 0.14);
+  --glass-bg: oklch(19% 0.012 260 / 0.72);
+  --shadow-float: 0 4px 16px rgba(0,0,0,0.40), 0 1px 4px rgba(0,0,0,0.24);
+  --shadow-focus: 0 0 0 3px oklch(74% 0.11 55 / 0.24);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 var(--fs-14)/20px var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input { font: inherit; color: inherit; }
+
+/* ─── 原型外壳 ─── */
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+.rail {
+  width: 56px; flex: none;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) 0;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid var(--border);
+  z-index: 10;
+}
+.rail-btn {
+  width: 36px; height: 36px; border-radius: var(--radius);
+  display: grid; place-items: center; color: var(--muted);
+}
+.rail-btn:hover { background: var(--surface-2); color: var(--fg); }
+.rail-btn.is-active { background: var(--accent-soft); color: var(--accent); }
+.rail-btn svg { width: 18px; height: 18px; }
+.rail-sep { width: 24px; height: 1px; background: var(--border); margin: var(--s-1) 0; }
+
+.work { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* 原型控制条（非产品 UI） */
+.devbar {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  background: var(--surface-2);
+  border-bottom: 1px dashed var(--border-strong);
+  font: 400 var(--fs-11)/16px var(--font-mono);
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.devbar-tag { letter-spacing: .04em; text-transform: uppercase; }
+.devbar .sp { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { padding: 3px 10px; font: 400 var(--fs-11)/16px var(--font-mono); color: var(--muted); }
+.seg button.is-on { background: var(--fg); color: var(--bg); }
+.dev-btn { padding: 3px 10px; border: 1px solid var(--border); border-radius: var(--radius); font: 400 var(--fs-11)/16px var(--font-mono); color: var(--muted); }
+.dev-btn:hover { border-color: var(--border-strong); color: var(--fg); }
+
+/* 模拟顶栏 */
+.topbar {
+  height: 48px; flex: none;
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 0 var(--s-5);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-title { font-size: var(--fs-14); font-weight: 500; }
+.topbar-sub { font-size: var(--fs-11); color: var(--muted); font-family: var(--font-mono); }
+
+.viewport { flex: 1; overflow: auto; padding: var(--s-6) var(--s-7); }
+.page { max-width: 1080px; margin: 0 auto; }
+.hidden { display: none !important; }
+
+/* ─── 设置页概览 ─── */
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+  max-width: 620px;
+}
+.sc-title { font-size: var(--fs-15); font-weight: 500; margin-bottom: var(--s-1); }
+.sc-desc { font-size: var(--fs-12); color: var(--muted); margin-bottom: var(--s-4); }
+.sc-row {
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: var(--s-3) 0; border-top: 1px solid var(--border);
+  font-size: var(--fs-13);
+}
+.sc-label { width: 72px; flex: none; color: var(--muted); font-size: var(--fs-12); }
+.sc-value { flex: 1; min-width: 0; }
+.sc-value.mono { font-family: var(--font-mono); font-size: var(--fs-12); }
+.switch { width: 36px; height: 20px; border-radius: var(--radius-pill); background: var(--surface-3); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .14s; }
+.switch.is-on { background: var(--ok); }
+.switch.is-on::after { transform: translateX(16px); }
+.link { color: var(--info); cursor: pointer; }
+.btn {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: var(--fs-12); color: var(--fg); background: var(--surface);
+}
+.btn:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.danger { color: var(--warn); }
+.btn:focus-visible, .chip:focus-visible, .item:focus-visible, .rail-btn:focus-visible {
+  outline: none; box-shadow: var(--shadow-focus);
+}
+
+/* ─── 记忆面板 ─── */
+.mp-head { display: flex; align-items: baseline; gap: var(--s-3); margin-bottom: var(--s-4); }
+.mp-title { font-size: var(--fs-18); font-weight: 500; }
+.mp-stats { font-size: var(--fs-12); color: var(--muted); }
+.mp-stats b { font-weight: 500; color: var(--fg); }
+.mp-head-actions { margin-left: auto; display: flex; gap: var(--s-2); }
+
+.mp-tools { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-4); }
+.search {
+  flex: 1; display: flex; align-items: center; gap: var(--s-2);
+  padding: 7px var(--s-3);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.search:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
+.search input { flex: 1; border: none; outline: none; background: none; font-size: var(--fs-13); }
+.search input::placeholder { color: var(--muted); }
+.kbd {
+  font: 400 var(--fs-11)/16px var(--font-mono);
+  padding: 0 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  font-size: var(--fs-12); color: var(--muted); white-space: nowrap;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.chip.is-on { background: var(--accent-soft); border-color: var(--accent-mid); color: var(--fg); }
+.chip .n { font-family: var(--font-mono); font-size: var(--fs-11); opacity: .8; }
+
+.mp-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: var(--s-4); align-items: start; }
+
+.list { display: flex; flex-direction: column; gap: var(--s-2); }
+.list-empty {
+  padding: var(--s-6) var(--s-4); text-align: center;
+  border: 1px dashed var(--border); border-radius: var(--radius-lg);
+  color: var(--muted); font-size: var(--fs-12);
+}
+.item {
+  text-align: left; width: 100%;
+  padding: var(--s-3);
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid transparent; border-radius: var(--radius);
+  transition: border-color .12s, background .12s;
+}
+.item:hover { border-color: var(--border-strong); }
+.item.is-active { border-left-color: var(--accent); background: var(--accent-soft); }
+.item.is-closed { opacity: .55; }
+.item.is-proposed { border-left-color: var(--warn); }
+.item-top { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-1); }
+.kind {
+  padding: 0 7px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  font-size: var(--fs-11); line-height: 17px; color: var(--muted); background: var(--surface-2);
+}
+.kind.k-preference { color: var(--info); border-color: var(--info); background: var(--info-soft); }
+.kind.k-fact { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
+.kind.k-proposed { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.item-time { margin-left: auto; font-size: var(--fs-11); color: var(--muted); font-family: var(--font-mono); }
+.item-text {
+  font-size: var(--fs-12); line-height: 17px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.item-ns { margin-top: var(--s-1); font: 400 var(--fs-11)/16px var(--font-mono); color: var(--muted); }
+
+.banner {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 9px var(--s-3); margin-bottom: var(--s-2);
+  background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--radius);
+  font-size: var(--fs-12); color: var(--warn);
+}
+.banner .sp { flex: 1; }
+.banner button { font-size: var(--fs-12); color: var(--warn); text-decoration: underline; }
+
+.detail {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: var(--s-5); min-height: 280px;
+}
+.d-title { font-size: var(--fs-15); font-weight: 500; line-height: 24px; margin-bottom: var(--s-3); }
+.d-title[contenteditable="true"] {
+  outline: none; border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 6px 8px; box-shadow: var(--shadow-focus);
+}
+.d-row { display: flex; gap: var(--s-3); padding: 9px 0; border-top: 1px solid var(--border); font-size: var(--fs-12); }
+.d-label { width: 64px; flex: none; color: var(--muted); }
+.d-value { flex: 1; min-width: 0; line-height: 18px; }
+.d-value.mono { font-family: var(--font-mono); font-size: var(--fs-11); }
+.d-ops { display: flex; gap: var(--s-2); margin-top: var(--s-4); }
+.d-empty { display: grid; place-items: center; height: 240px; color: var(--muted); font-size: var(--fs-12); }
+
+.skeleton { background: var(--surface-2); border-radius: var(--radius); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: .55 } 50% { opacity: .9 } }
+.sk-item { height: 74px; }
+.sk-line { height: 14px; margin-bottom: var(--s-2); }
+
+.error-box {
+  padding: var(--s-5); border: 1px solid var(--warn); border-radius: var(--radius-lg);
+  background: var(--warn-soft); color: var(--warn); font-size: var(--fs-13);
+  display: flex; align-items: center; gap: var(--s-3);
+}
+.error-box .sp { flex: 1; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%) translateY(8px);
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 9px var(--s-4);
+  background: var(--fg); color: var(--bg);
+  border-radius: var(--radius-pill); font-size: var(--fs-12);
+  box-shadow: var(--shadow-float); opacity: 0; pointer-events: none;
+  transition: opacity .16s, transform .16s;
+  z-index: 1000;
+}
+.toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.toast button { color: var(--bg); text-decoration: underline; font-size: var(--fs-12); }
+
+/* 筛选 popover */
+.pop-anchor { position: relative; }
+.popover {
+  position: absolute; top: calc(100% + 6px); right: 0; width: 260px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float); padding: var(--s-3);
+  z-index: 500;
+}
+.pop-title { font-size: var(--fs-11); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: var(--s-2); }
+.pop-group { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--s-3); }
+.pop-group:last-child { margin-bottom: 0; }
+.pop-opt { padding: 4px 9px; border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: var(--fs-11); color: var(--muted); }
+.pop-opt.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+
+@media (max-width: 900px) {
+  .viewport { padding: var(--s-4); }
+  .mp-grid { grid-template-columns: 1fr; }
+  .mp-tools { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- 左侧导航轨 -->
+  <nav class="rail" aria-label="主导航">
+    <button class="rail-btn" title="会议"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h8M8 14h5"/></svg></button>
+    <button class="rail-btn" title="决策"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></button>
+    <button class="rail-btn" title="洞察"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg></button>
+    <div class="rail-sep"></div>
+    <button class="rail-btn is-active" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></button>
+  </nav>
+
+  <div class="work">
+    <!-- 原型控制条 -->
+    <div class="devbar">
+      <span class="devbar-tag">原型控制</span>
+      <div class="seg" id="viewSeg">
+        <button data-view="panel" class="is-on">记忆面板</button>
+        <button data-view="settings">设置页概览</button>
+      </div>
+      <div class="seg" id="stateSeg">
+        <button data-state="normal" class="is-on">正常</button>
+        <button data-state="loading">加载</button>
+        <button data-state="empty">空态</button>
+        <button data-state="error">错误</button>
+      </div>
+      <span class="sp"></span>
+      <button class="dev-btn" id="themeBtn">切换暗色</button>
+    </div>
+
+    <!-- 模拟顶栏 -->
+    <div class="topbar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--muted)"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="topbar-title" id="topTitle">AI 记忆</span>
+      <span class="topbar-sub" id="topSub">/memory</span>
+    </div>
+
+    <div class="viewport">
+      <!-- 视图一：设置页概览 -->
+      <section class="page hidden" id="settingsView">
+        <div class="settings-card">
+          <div class="sc-title">AI 记忆</div>
+          <div class="sc-desc">跨会话记住偏好与事实，本地存储，可随时清除</div>
+          <div class="sc-row">
+            <span class="sc-label">状态</span>
+            <span class="sc-value">开放 <b id="scOpen">42</b> · 已闭合 <b id="scClosed">17</b> · 待确认 <b id="scProposed">3</b></span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-label">存储</span>
+            <span class="sc-value mono">~/…/data/memory/</span>
+            <span class="link">打开目录</span>
+          </div>
+          <div class="sc-row">
+            <span class="sc-label">记忆启用</span>
+            <span class="sc-value" style="color:var(--muted);font-size:var(--fs-12)">跨会话注入偏好与事实</span>
+            <button class="switch is-on" aria-label="记忆启用"></button>
+          </div>
+          <div class="sc-row">
+            <span class="sc-label">会后巩固</span>
+            <span class="sc-value" style="color:var(--muted);font-size:var(--fs-12)">产出待确认条目，需人工采纳</span>
+            <button class="switch" aria-label="会后巩固"></button>
+          </div>
+          <div class="sc-row">
+            <span class="sc-label">操作</span>
+            <span class="sc-value"><button class="btn primary" data-goto-panel>管理记忆</button></span>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:16px;max-width:620px">
+          设置页只放概览与入口：统计、开关、存储路径。条目正文、编辑、闭合、删除都在独立面板完成。
+        </p>
+      </section>
+
+      <!-- 视图二：记忆面板 -->
+      <section class="page" id="panelView">
+        <div class="mp-head">
+          <div class="mp-title">AI 记忆</div>
+          <div class="mp-stats">开放 <b id="stOpen">42</b> · 已闭合 <b id="stClosed">17</b> · 待确认 <b id="stProposed">3</b></div>
+          <div class="mp-head-actions">
+            <button class="btn">导出</button>
+          </div>
+        </div>
+
+        <div class="mp-tools">
+          <div class="search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--muted)"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="q" type="text" placeholder="搜索记忆内容、来源会议…" aria-label="搜索记忆">
+            <span class="kbd">/</span>
+          </div>
+          <button class="chip is-on" data-status="open">开放 <span class="n" id="cOpen">42</span></button>
+          <button class="chip" data-status="closed">已闭合 <span class="n" id="cClosed">17</span></button>
+          <button class="chip" data-status="proposed">待确认 <span class="n" id="cProposed">3</span></button>
+          <button class="chip" data-status="archived">已归档 <span class="n" id="cArchived">5</span></button>
+          <div class="pop-anchor">
+            <button class="chip" id="filterBtn" aria-haspopup="dialog" aria-expanded="false">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              筛选
+            </button>
+            <div class="popover hidden" id="filterPop" role="dialog" aria-label="筛选条件">
+              <div class="pop-title">作用域</div>
+              <div class="pop-group">
+                <button class="pop-opt is-on">全部</button>
+                <button class="pop-opt">全局</button>
+                <button class="pop-opt">空间</button>
+                <button class="pop-opt">角色</button>
+              </div>
+              <div class="pop-title">类型</div>
+              <div class="pop-group">
+                <button class="pop-opt">偏好</button>
+                <button class="pop-opt">事实</button>
+                <button class="pop-opt">纠正</button>
+                <button class="pop-opt">术语</button>
+              </div>
+              <div class="pop-title">时间</div>
+              <div class="pop-group">
+                <button class="pop-opt is-on">全部</button>
+                <button class="pop-opt">近 7 天</button>
+                <button class="pop-opt">近 30 天</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="normalPane">
+          <div class="mp-grid">
+            <div class="list" id="list" role="listbox" aria-label="记忆列表"></div>
+            <div class="detail" id="detail"></div>
+          </div>
+        </div>
+
+        <div id="loadingPane" class="hidden">
+          <div class="mp-grid">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div class="skeleton sk-item"></div>
+              <div class="skeleton sk-item"></div>
+              <div class="skeleton sk-item"></div>
+              <div class="skeleton sk-item"></div>
+            </div>
+            <div class="detail">
+              <div class="skeleton sk-line" style="width:60%;height:20px"></div>
+              <div class="skeleton sk-line" style="width:40%;margin-top:16px"></div>
+              <div class="skeleton sk-line" style="width:80%"></div>
+              <div class="skeleton sk-line" style="width:70%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="emptyPane" class="hidden">
+          <div class="list-empty" style="padding:56px 24px">
+            <div style="font-size:13px;color:var(--fg);margin-bottom:6px">还没有记忆</div>
+            在对话中说「记住…」，或会后自动提炼。采纳后会出现在这里。
+          </div>
+        </div>
+
+        <div id="errorPane" class="hidden">
+          <div class="error-box">
+            记忆加载失败，请检查后端服务是否在运行。
+            <span class="sp"></span>
+            <button class="btn" onclick="setState('normal')">重试</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <span id="toastMsg"></span>
+  <button id="toastUndo">撤销</button>
+</div>
+
+<script>
+/* ─── 示例数据 ─── */
+const items = [
+  { id:'m1', kind:'preference', kindLabel:'偏好', ns:'role:pm', text:'汇报材料统一三段式，不要长段落', status:'open',
+    source:{ task:'项目周会', date:'2026-10-12', turn:3 }, from:'2026-10-12', to:null, used:'被检索 7 次 · 最近 2 天前' },
+  { id:'m2', kind:'fact', kindLabel:'事实', ns:'space:proj-a', text:'项目A 负责人 2026-05 起由李四接任', status:'open',
+    source:{ task:'周会', date:'2026-05-14', turn:12 }, from:'2026-05-14', to:null, used:'被检索 3 次 · 最近 5 天前' },
+  { id:'m3', kind:'fact', kindLabel:'事实', ns:'space:proj-a', text:'项目A 负责人为张三', status:'closed',
+    source:{ task:'启动会', date:'2025-03-01', turn:2 }, from:'2025-03-01', to:'2026-05-14', used:'被检索 11 次 · 最近 6 个月前', by:'《周会》2026-05-14' },
+  { id:'m4', kind:'proposed', kindLabel:'待确认', ns:'task:913942e9', text:'客户偏好周五前交付周报', status:'proposed',
+    source:{ task:'客户对齐会', date:'2026-11-26', turn:8 }, from:'2026-11-26', to:null, used:'尚未使用' },
+  { id:'m5', kind:'correction', kindLabel:'纠正', ns:'global', text:'项目代号是「苍穹」，不是「苍琼」', status:'open',
+    source:{ task:'内部同步', date:'2026-09-18', turn:4 }, from:'2026-09-18', to:null, used:'被检索 2 次 · 最近 1 个月前' },
+  { id:'m6', kind:'glossary', kindLabel:'术语', ns:'global', text:'PMS 指项目管理系统，非排班系统', status:'open',
+    source:{ task:'术语对齐', date:'2026-08-02', turn:1 }, from:'2026-08-02', to:null, used:'被检索 5 次 · 最近 3 周前' },
+  { id:'m7', kind:'preference', kindLabel:'偏好', ns:'role:pm', text:'会议纪要要给出待决策项，不要只写讨论', status:'open',
+    source:{ task:'复盘会', date:'2026-11-03', turn:6 }, from:'2026-11-03', to:null, used:'被检索 1 次 · 最近 1 周前' },
+  { id:'m8', kind:'fact', kindLabel:'事实', ns:'space:proj-a', text:'项目A 每月最后一个周五对齐', status:'archived',
+    source:{ task:'月度会', date:'2026-04-25', turn:3 }, from:'2026-04-25', to:null, used:'被检索 0 次 · 已归档' }
+];
+
+const state = { status:'open', q:'', selected:'m1', view:'panel', mode:'normal', editing:false };
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function counts() {
+  return {
+    open: items.filter(i => i.status === 'open').length,
+    closed: items.filter(i => i.status === 'closed').length,
+    proposed: items.filter(i => i.status === 'proposed').length,
+    archived: items.filter(i => i.status === 'archived').length
+  };
+}
+
+function filtered() {
+  const q = state.q.trim().toLowerCase();
+  return items.filter(i => i.status === state.status)
+    .filter(i => !q || i.text.toLowerCase().includes(q) || i.ns.toLowerCase().includes(q) || i.source.task.includes(q));
+}
+
+function renderStats() {
+  const c = counts();
+  $('#stOpen').textContent = c.open; $('#stClosed').textContent = c.closed; $('#stProposed').textContent = c.proposed;
+  $('#scOpen').textContent = c.open; $('#scClosed').textContent = c.closed; $('#scProposed').textContent = c.proposed;
+  $('#cOpen').textContent = c.open; $('#cClosed').textContent = c.closed;
+  $('#cProposed').textContent = c.proposed; $('#cArchived').textContent = c.archived;
+}
+
+function renderList() {
+  const rows = filtered();
+  const el = $('#list');
+
+  if (state.status === 'proposed' && rows.length) {
+    el.innerHTML = `
+      <div class="banner">
+        <span>${rows.length} 条记忆待确认</span><span class="sp"></span>
+        <button data-reject-all>全部忽略</button>
+      </div>`;
+  } else {
+    el.innerHTML = '';
+  }
+
+  if (!rows.length) {
+    const tip = document.createElement('div');
+    tip.className = 'list-empty';
+    tip.innerHTML = state.q
+      ? '没有匹配的记忆<br><button class="link" style="margin-top:6px" data-clear-q>清除搜索条件</button>'
+      : '该状态下暂无记忆';
+    el.appendChild(tip);
+    return;
+  }
+
+  rows.forEach(it => {
+    const b = document.createElement('button');
+    b.className = 'item' + (it.id === state.selected ? ' is-active' : '')
+      + (it.status === 'closed' ? ' is-closed' : '')
+      + (it.status === 'proposed' ? ' is-proposed' : '');
+    b.setAttribute('role', 'option');
+    b.setAttribute('aria-selected', it.id === state.selected ? 'true' : 'false');
+    b.dataset.id = it.id;
+    b.innerHTML = `
+      <div class="item-top">
+        <span class="kind k-${it.kind}">${it.kindLabel}</span>
+        <span class="item-time">${it.status === 'closed' ? '已闭合' : it.source.date.slice(5)}</span>
+      </div>
+      <div class="item-text">${esc(it.text)}</div>
+      <div class="item-ns">${esc(it.ns)}</div>`;
+    b.addEventListener('click', () => { state.selected = it.id; state.editing = false; render(); });
+    el.appendChild(b);
+  });
+}
+
+function renderDetail() {
+  const el = $('#detail');
+  const it = items.find(x => x.id === state.selected && x.status === state.status)
+    || filtered()[0];
+
+  if (!it) {
+    el.innerHTML = '<div class="d-empty">选择左侧条目查看详情</div>';
+    return;
+  }
+  state.selected = it.id;
+
+  const validText = it.to
+    ? `${it.from} 闭合（${it.to}）`
+    : `${it.from} 起 · 未闭合`;
+
+  const ops = it.status === 'proposed'
+    ? `<button class="btn primary" data-accept>采纳</button><button class="btn" data-reject>忽略</button>`
+    : state.editing
+      ? `<button class="btn primary" data-save>保存</button><button class="btn" data-cancel>取消</button>`
+      : `<button class="btn" data-edit>编辑</button>`
+        + (it.status === 'open' ? '<button class="btn" data-close>闭合</button>' : '')
+        + '<button class="btn danger" data-del>删除</button>';
+
+  el.innerHTML = `
+    <div class="d-title" ${state.editing ? 'contenteditable="true"' : ''}>${esc(it.text)}</div>
+    <div class="d-row"><span class="d-label">类型</span><span class="d-value">${esc(it.kindLabel)} · <span style="font-family:var(--font-mono);font-size:11px">${esc(it.ns)}</span></span></div>
+    <div class="d-row"><span class="d-label">来源</span><span class="d-value"><span class="link" data-goto-source>《${esc(it.source.task)}》${it.source.date}</span> · 第 ${it.source.turn} 轮</span></div>
+    <div class="d-row"><span class="d-label">有效期</span><span class="d-value">${validText}${it.by ? `<br><span class="link" data-goto-new>被 ${esc(it.by)} 新记录替代</span>` : ''}</span></div>
+    <div class="d-row"><span class="d-label">使用</span><span class="d-value">${esc(it.used)}</span></div>
+    <div class="d-ops">${ops}</div>`;
+
+  if (state.editing) {
+    const t = el.querySelector('.d-title');
+    t.focus();
+    const r = document.createRange(); r.selectNodeContents(t); r.collapse(false);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+
+  el.querySelector('[data-edit]')?.addEventListener('click', () => { state.editing = true; renderDetail(); });
+  el.querySelector('[data-cancel]')?.addEventListener('click', () => { state.editing = false; renderDetail(); });
+  el.querySelector('[data-save]')?.addEventListener('click', () => {
+    const txt = el.querySelector('.d-title').textContent.trim();
+    if (txt) it.text = txt;
+    state.editing = false;
+    render(); toast('已保存');
+  });
+  el.querySelector('[data-close]')?.addEventListener('click', () => {
+    const snapshot = { to: it.to, by: it.by };
+    it.to = new Date().toISOString().slice(0, 10);
+    it.by = '手动闭合';
+    state.status = 'closed';
+    render();
+    toast('已闭合', () => { it.to = snapshot.to; it.by = snapshot.by; state.status = 'open'; render(); });
+  });
+  el.querySelector('[data-del]')?.addEventListener('click', () => {
+    if (!confirm('删除后不可恢复，确定删除这条记忆？\n\n' + it.text.slice(0, 40))) return;
+    const idx = items.indexOf(it);
+    items.splice(idx, 1);
+    state.selected = filtered()[0]?.id || '';
+    render(); toast('已删除');
+  });
+  el.querySelector('[data-accept]')?.addEventListener('click', () => {
+    it.status = 'open'; it.kind = 'fact'; it.kindLabel = '事实';
+    state.selected = it.id; render(); toast('已采纳');
+  });
+  el.querySelector('[data-reject]')?.addEventListener('click', () => {
+    const idx = items.indexOf(it); items.splice(idx, 1);
+    state.selected = filtered()[0]?.id || '';
+    render(); toast('已忽略');
+  });
+  el.querySelectorAll('[data-goto-source], [data-goto-new]').forEach(n =>
+    n.addEventListener('click', () => toast('原型：跳转来源会议')));
+}
+
+function render() {
+  renderStats();
+  renderList();
+  renderDetail();
+  document.querySelectorAll('[data-status]').forEach(b =>
+    b.classList.toggle('is-on', b.dataset.status === state.status));
+}
+
+/* ─── 控制条 ─── */
+function setView(v) {
+  state.view = v;
+  $('#panelView').classList.toggle('hidden', v !== 'panel');
+  $('#settingsView').classList.toggle('hidden', v !== 'settings');
+  $('#topTitle').textContent = v === 'panel' ? 'AI 记忆' : '设置 · AI';
+  $('#topSub').textContent = v === 'panel' ? '/memory' : '/settings?cat=ai';
+  document.querySelectorAll('#viewSeg button').forEach(b =>
+    b.classList.toggle('is-on', b.dataset.view === v));
+}
+
+function setState(m) {
+  state.mode = m;
+  $('#normalPane').classList.toggle('hidden', m !== 'normal');
+  $('#loadingPane').classList.toggle('hidden', m !== 'loading');
+  $('#emptyPane').classList.toggle('hidden', m !== 'empty');
+  $('#errorPane').classList.toggle('hidden', m !== 'error');
+  document.querySelectorAll('#stateSeg button').forEach(b =>
+    b.classList.toggle('is-on', b.dataset.state === m));
+}
+
+let toastTimer = null;
+function toast(msg, undo) {
+  const t = $('#toast');
+  $('#toastMsg').textContent = msg;
+  const btn = $('#toastUndo');
+  btn.style.display = undo ? '' : 'none';
+  btn.onclick = undo ? () => { undo(); t.classList.remove('is-on'); } : null;
+  t.classList.add('is-on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('is-on'), undo ? 5000 : 2400);
+}
+
+/* ─── 事件绑定 ─── */
+document.querySelectorAll('#viewSeg button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+document.querySelectorAll('#stateSeg button').forEach(b => b.addEventListener('click', () => setState(b.dataset.state)));
+document.querySelectorAll('[data-goto-panel]').forEach(b => b.addEventListener('click', () => setView('panel')));
+
+document.querySelectorAll('[data-status]').forEach(b => b.addEventListener('click', () => {
+  state.status = b.dataset.status;
+  state.editing = false;
+  state.selected = filtered()[0]?.id || '';
+  render();
+}));
+
+$('#q').addEventListener('input', (e) => {
+  state.q = e.target.value;
+  state.selected = filtered()[0]?.id || state.selected;
+  render();
+});
+
+$('#filterBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const p = $('#filterPop');
+  const open = p.classList.toggle('hidden');
+  $('#filterBtn').setAttribute('aria-expanded', open ? 'false' : 'true');
+});
+$('#filterPop').addEventListener('click', (e) => {
+  const opt = e.target.closest('.pop-opt');
+  if (opt) opt.classList.toggle('is-on');
+  e.stopPropagation();
+});
+document.addEventListener('click', () => { $('#filterPop').classList.add('hidden'); $('#filterBtn').setAttribute('aria-expanded', 'false'); });
+
+$('#list').addEventListener('click', (e) => {
+  if (e.target.closest('[data-clear-q]')) { state.q = ''; $('#q').value = ''; render(); }
+  if (e.target.closest('[data-reject-all]')) {
+    items.filter(i => i.status === 'proposed').forEach(i => items.splice(items.indexOf(i), 1));
+    state.selected = ''; render(); toast('已忽略全部');
+  }
+});
+
+$('#themeBtn').addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  $('#themeBtn').textContent = dark ? '切换暗色' : '切换亮色';
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && !state.editing) {
+    e.preventDefault(); $('#q').focus();
+  }
+  if (e.key === 'Escape') {
+    if (document.activeElement === $('#q')) { $('#q').value = ''; state.q = ''; render(); }
+    else if (state.editing) { state.editing = false; renderDetail(); }
+    else if (!$('#filterPop').classList.contains('hidden')) { $('#filterPop').classList.add('hidden'); }
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (document.activeElement.tagName === 'INPUT' || state.editing) return;
+    const rows = filtered();
+    const i = rows.findIndex(x => x.id === state.selected);
+    if (i < 0) return;
+    e.preventDefault();
+    const next = e.key === 'ArrowDown' ? Math.min(i + 1, rows.length - 1) : Math.max(i - 1, 0);
+    state.selected = rows[next].id;
+    render();
+  }
+});
+
+render();
+setState('normal');
+</script>
+</body>
+</html>

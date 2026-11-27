@@ -45,7 +45,12 @@ def manifest_has_mcp(engine_id: str) -> bool:
 
 
 def _tool_allowlist(auth_tier: str) -> list[str]:
-    """按授权档返回要预授权的 MCP 工具全名（--allowed-tools）。"""
+    """按授权档返回要预授权的工具名（--allowed-tools）。
+
+    除 MCP 工具外，把 CLI 原生联网工具一并预授权：
+    qoder-cli 等引擎自带 WebSearch/WebFetch，不应因未预授权而弹窗或拒绝。
+    不声明 allowed-tools 的引擎不会消费该列表，多余项无副作用。
+    """
     from core.agent_tools.catalog import TOOL_CATALOG
     writable = auth_tier in ("workspace_write", "full_task")
     names = []
@@ -53,6 +58,7 @@ def _tool_allowlist(auth_tier: str) -> list[str]:
         if t["kind"] == "write" and not writable:
             continue
         names.append(f"mcp__{BRIDGE_SERVER_NAME}__{t['name']}")
+    names.extend(["WebSearch", "WebFetch"])
     return names
 
 

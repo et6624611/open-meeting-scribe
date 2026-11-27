@@ -129,28 +129,7 @@
       <input id="cli-path-input" v-model="form.cli_path_override" class="cc-input cc-input-mono" :placeholder="selectedBinary || 'qoder'" />
     </div>
 
-    <!-- 联网搜索 -->
-    <div class="cc-subcard">
-      <div class="cc-subcard-head">
-        <h3 class="cc-subcard-title">{{ t('settings.web_search_title') }}</h3>
-        <span class="cc-pill" :class="webSearchConfigured ? 'cc-pill-ok' : ''">
-          {{ webSearchConfigured ? t('settings.web_search_configured') : t('settings.web_search_not_configured') }}
-        </span>
-      </div>
-      <p class="cc-note cli-note-block">{{ t('settings.web_search_desc') }}</p>
-      <div class="cc-field">
-        <label class="cc-field-label" for="ws-api-key">{{ t('settings.web_search_api_key') }}</label>
-        <input
-          id="ws-api-key" v-model="webSearchForm.api_key" class="cc-input cc-input-mono" type="password"
-          :placeholder="existingWebSearchKey ? maskKey(existingWebSearchKey) : t('settings.web_search_api_key_placeholder')"
-          autocomplete="off"
-        />
-      </div>
-      <div class="ws-actions">
-        <span class="cc-note cli-note-block ws-free-hint">{{ t('settings.web_search_brave_free') }}</span>
-        <a href="https://brave.com/search/api/" target="_blank" rel="noopener" class="cc-link">{{ t('settings.web_search_get_key') }} →</a>
-      </div>
-    </div>
+    <!-- 联网搜索：免密实现（Bing/DuckDuckGo），无需配置 -->
 
     <div class="cc-btn-row">
       <button class="cc-btn cc-btn-primary cc-btn-sm" :disabled="saving" @click="onSave">{{ saving ? t('settings.engine_saving') : t('settings.save') }}</button>
@@ -172,7 +151,7 @@
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { fetchChatEngineStatus, fetchSettings, saveSettings, type ChatEngineEngineInfo, type ChatEngineProbe } from '@/api/settings'
+import { fetchChatEngineStatus, saveSettings, type ChatEngineEngineInfo, type ChatEngineProbe } from '@/api/settings'
 
 const { t, te } = useI18n()
 
@@ -190,16 +169,6 @@ const form = reactive({
   engine_id: 'qoder-cli',
   cli_path_override: '',
 })
-
-const webSearchForm = reactive({ api_key: '' })
-const existingWebSearchKey = ref('')
-const wsIsSet = ref(false)
-const webSearchConfigured = computed(() => wsIsSet.value)
-
-function maskKey(key: string): string {
-  if (!key || key.length < 8) return '****'
-  return `${key.slice(0, 3)}****${key.slice(-4)}`
-}
 
 /** 已安装引擎（按 recommended 优先 + 名称排序） */
 const installedEngines = computed(() => engines.value
@@ -286,13 +255,6 @@ async function load() {
       form.cli_path_override = c.cli_path_override || ''
     }
   } catch { /* 静默 */ }
-  try {
-    const s = await fetchSettings()
-    const ws = s.web_search
-    existingWebSearchKey.value = ws?.api_key || ''
-    wsIsSet.value = !!ws?.api_key_set
-    webSearchForm.api_key = ''
-  } catch { /* 静默 */ }
 }
 
 async function onRescan() {
@@ -337,10 +299,6 @@ async function onSave() {
         enabled: form.enabled,
         engine_id: form.engine_id,
         cli_path_override: form.cli_path_override || null,
-      },
-      web_search: {
-        provider: 'brave',
-        api_key: webSearchForm.api_key || '',
       },
     } as any)
     await load()

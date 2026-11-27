@@ -367,9 +367,10 @@ class TestBridgeConfig:
             assert Path(server["args"][0]).as_posix().endswith("mcp-bridge/server.py")
             # 令牌在签发进程内可校验
             assert tk.verify_token(ctx.token) is not None
-            # full_task 允许写工具 → 7 个工具全放行
-            assert len(allow) == len(TOOLS_BY_NAME)
+            # full_task 放行全部 MCP 工具 + CLI 原生联网工具（WebSearch/WebFetch）
+            assert len(allow) == len(TOOLS_BY_NAME) + 2
             assert any(a.startswith("mcp__oms-tools__") for a in allow)
+            assert "WebSearch" in allow and "WebFetch" in allow
         finally:
             mb.teardown_bridge(path, ctx.token)
         assert tk.verify_token(ctx.token) is None
@@ -669,98 +670,110 @@ class TestWebToolsCatalog:
 
 
 class TestWebSearchTool:
-    """web_search 实现层（impl._tool_web_search）。"""
+    """web_search 实现层（免密：Bing 优先、DuckDuckGo 兜底）。"""
+
+    BING_HTML = (
+        '<li class="b_algo"><h2><a href="https://tallyfy.com">Tallyfy</a></h2>'
+        "<p>审批流与工作流平台</p></li>"
+        '<li class="b_algo"><h2><a href="https://kissflow.com">Kissflow</a></h2>'
+        "<p>低代码 BPM</p></li>"
+    )
+    BAIDU_HTML = (
+        '<h3 class="t"><a href="http://www.baidu.com/link?url=abc">财务应收单字段介绍</a></h3>'
+        '<span class="content-right_x">应收单据字段说明</span>'
+        '<h3 class="t"><a href="http://www.baidu.com/link?url=def">应收单 - 金蝶云产品手册</a></h3>'
+    )
+    DDG_HTML = (
+        '<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa">'
+        "Example A</a><a class=\"result__snippet\">示例摘要 A</a>"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self, monkeypatch):
+        import core.agent_tools.impl as impl
+        impl._SEARCH_CACHE.clear()
+        yield
+        impl._SEARCH_CACHE.clear()
 
     def _call(self, **kwargs):
         from core.agent_tools.impl import execute_tool
         return json.loads(execute_tool("web_search", kwargs))
 
-    def test_no_key_returns_configured_error(self):
-        """未配置 API key 时返回明确错误，不是静默失败。"""
-        r = self._call(query="会计事件库")
-        assert r["error"] == "web_search_not_configured"
-        assert "API key" in r["message"]
+    @staticmethod
+    def _fake_resp(text="", status_code=200):
+        class _FakeResp:
+            pass
+        resp = _FakeResp()
+        resp.text = text
+        resp.status_code = status_code
+        return resp
 
     def test_empty_query_rejected(self):
         r = self._call(query="")
         assert r["error"] == "empty_query"
 
-    def test_query_truncated(self):
-        """超长 query 被截到 200 字。"""
-        r = self._call(query="x" * 500)
-        # 未配置 key 仍应被拦住（比截断优先级高），但不会 crash
-        assert r.get("error") in ("web_search_not_configured", "web_search_network")
+    def test_baidu_primary(self, monkeypatch):
+        """百度优先：解析结果并还原跳转链接。"""
+        import core.agent_tools.impl as impl
+        monkeypatch.setattr(impl.http_requests, "get",
+                            lambda *a, **kw: self._fake_resp(self.BAIDU_HTML))
+        monkeypatch.setattr(impl, "_resolve_baidu_link", lambda href: href + "-real")
+        r = self._call(query="金蝶 应收单 字段")
+        assert "error" not in r
+        assert r["provider"] == "baidu"
+        assert r["count"] == 2
+        assert r["results"][0]["title"] == "财务应收单字段介绍"
+        assert r["results"][0]["url"].endswith("-real")
 
-    def test_mock_brave_success(self, monkeypatch):
-        """mock requests.get 成功返回时，解析出 results。"""
-        import requests as http
-
-        class _FakeResp:
-            status_code = 200
-            headers = {"content-type": "application/json"}
-
-            def json(self):
-                return {
-                    "web": {
-                        "results": [
-                            {"title": "Tallyfy", "description": "审批流", "url": "https://tallyfy.com"},
-                            {"title": "Kissflow", "description": "低代码 BPM", "url": "https://kissflow.com"},
-                        ],
-                    }
-                }
-
-        monkeypatch.setattr(http, "get", lambda *a, **kw: _FakeResp())
-
-        # 先写入一个 fake API key
-        settings_store.save_settings_to_disk(
-            {"web_search": {"provider": "brave", "api_key": "fake-test-key-1234567890"}}
-        )
-
+    def test_bing_success(self, monkeypatch):
+        """百度无结果时，Bing 解析出标题/摘要/链接。"""
+        import core.agent_tools.impl as impl
+        monkeypatch.setattr(impl.http_requests, "get",
+                            lambda *a, **kw: self._fake_resp(self.BING_HTML))
         r = self._call(query="workflow approval bpm")
         assert "error" not in r
+        assert r["provider"] == "bing"
         assert r["count"] == 2
         assert r["results"][0]["title"] == "Tallyfy"
         assert r["results"][1]["url"] == "https://kissflow.com"
 
-    def test_mock_brave_401(self, monkeypatch):
-        """API key 无效（401）返回 web_search_auth。"""
-        import requests as http
+    def test_falls_back_to_duckduckgo(self, monkeypatch):
+        """Bing 无结果时切到 DuckDuckGo，并还原跳转链接。"""
+        import core.agent_tools.impl as impl
 
-        class _Fake401:
-            status_code = 401
-            headers = {}
+        def fake_get(url, *a, **kw):
+            if "bing.com" in url:
+                return self._fake_resp("<html>no results</html>")
+            return self._fake_resp(self.DDG_HTML)
 
-        monkeypatch.setattr(http, "get", lambda *a, **kw: _Fake401())
-        settings_store.save_settings_to_disk(
-            {"web_search": {"provider": "brave", "api_key": "bad-key"}}
-        )
+        monkeypatch.setattr(impl.http_requests, "get", fake_get)
+        r = self._call(query="测试")
+        assert "error" not in r
+        assert r["provider"] == "duckduckgo"
+        assert r["results"][0]["url"] == "https://example.com/a"
 
+    def test_all_sources_fail_returns_network_error(self, monkeypatch):
+        """三个源都异常时返回可读错误，不抛异常。"""
+        import core.agent_tools.impl as impl
+        monkeypatch.setattr(impl.http_requests, "get",
+                            lambda *a, **kw: self._fake_resp("", status_code=503))
         r = self._call(query="test")
-        assert r["error"] == "web_search_auth"
+        assert r["error"] == "web_search_network"
+        assert "baidu" in r["message"] and "bing" in r["message"]
 
-    def test_mock_brave_429(self, monkeypatch):
-        """配额耗尽（429）返回 web_search_rate_limited。"""
-        import requests as http
+    def test_query_truncated(self, monkeypatch):
+        """超长 query 截到 200 字后再请求。"""
+        import core.agent_tools.impl as impl
+        captured = {}
 
-        class _Fake429:
-            status_code = 429
-            headers = {}
+        def fake_get(url, params=None, **kw):
+            captured.update(params or {})
+            return self._fake_resp(self.BAIDU_HTML)
 
-        monkeypatch.setattr(http, "get", lambda *a, **kw: _Fake429())
-        settings_store.save_settings_to_disk(
-            {"web_search": {"provider": "brave", "api_key": "ok-but-rate-limited"}}
-        )
-
-        r = self._call(query="test")
-        assert r["error"] == "web_search_rate_limited"
-
-    def test_unknown_provider(self, monkeypatch):
-        """未知 provider 返回明确错误。"""
-        settings_store.save_settings_to_disk(
-            {"web_search": {"provider": "google", "api_key": "some-key"}}
-        )
-        r = self._call(query="test")
-        assert r["error"] == "web_search_unknown_provider"
+        monkeypatch.setattr(impl.http_requests, "get", fake_get)
+        monkeypatch.setattr(impl, "_resolve_baidu_link", lambda href: href)
+        self._call(query="x" * 500)
+        assert len(captured.get("wd", "")) == 200
 
 
 class TestWebFetchTool:
@@ -890,9 +903,19 @@ class TestWebFetchTool:
 class TestWebToolsViaRouter:
     """通过 /api/agent-tools/invoke 路由调用（完整链路，含授权）。"""
 
-    def test_readonly_can_call_web_search(self, client):
-        """readonly 档也能调联网工具（它们不写磁盘）。"""
+    def test_readonly_can_call_web_search(self, client, monkeypatch):
+        """readonly 档也能调联网工具（它们不写磁盘），且免密可用。"""
         from core.agent_tools.tokens import issue_token
+        import core.agent_tools.impl as impl
+
+        class _FakeResp:
+            status_code = 200
+            text = (
+                '<li class="b_algo"><h2><a href="https://example.com">Example</a></h2>'
+                "<p>示例结果</p></li>"
+            )
+
+        monkeypatch.setattr(impl.http_requests, "get", lambda *a, **kw: _FakeResp())
 
         ctx = issue_token(task_id=None, project_id=None, auth_tier="readonly")
         r = client.post(
@@ -904,8 +927,8 @@ class TestWebToolsViaRouter:
         data = r.json()
         assert data["ok"] is True
         parsed = json.loads(data["result"])
-        # 未配置 key → 返回明确错误，但调用本身是成功的 200
-        assert parsed.get("error") in ("web_search_not_configured",)
+        assert "error" not in parsed
+        assert parsed["results"][0]["url"] == "https://example.com"
 
     def test_unknown_tool_404(self, client):
         from core.agent_tools.tokens import issue_token

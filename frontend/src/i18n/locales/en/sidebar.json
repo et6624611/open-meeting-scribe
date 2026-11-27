@@ -37,5 +37,6 @@
   "date_this_month": "This Month",
   "date_last_month": "Last Month",
   "date_earlier": "Earlier",
-  "rail_decisions": "Decision Center"
+  "rail_decisions": "Decision Center",
+  "rail_memory": "AI Memory"
 }

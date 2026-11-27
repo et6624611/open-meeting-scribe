@@ -100,15 +100,31 @@ TOOL_CATALOG: list[dict] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
-        # 联网搜索：调用 Brave Search API（默认）或用户配置的 provider，
-        # 需在设置页填入对应 API key；未配置时返回明确错误而非静默失败。
+        # 长期记忆检索：跨会话读取用户偏好、项目事实、历史结论。
+        # 与 search_meetings 分开——记忆是已提炼的稳定结论，不是逐字稿证据。
+        "name": "search_memory", "kind": "read", "needs_task": False,
+        "description": (
+            "检索长期记忆（跨会话保留的偏好、项目事实、决策与历史结论）。"
+            "当用户提到「我之前说过」「按我的习惯」「这个项目之前定的」时先用它；"
+            "记忆只作背景，与当前会议冲突时以当前会议为准。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "检索关键词"},
+                "top_k": {"type": "integer", "description": "最多返回条数，默认 8"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        # 联网搜索：百度优先，Bing/DuckDuckGo 兜底，均不需要 API Key。
         # kind=read 但涉及外部网络调用，readonly 档也可用（无本地落盘副作用）。
         "name": "web_search", "kind": "read", "needs_task": False,
         "description": (
             "联网搜索外部信息。当会议涉及会上没人提到的行业知识、标准实践、竞品方案、外部产品时调用，"
             "用搜索结果补足你训练数据可能缺的实时信息。返回标题、摘要、URL（取前 8 条）。"
-            "注意：若返回 error=web_search_not_configured，说明用户尚未在设置页填入搜索 API key，"
-            "此时直接说明无法联网搜索，不要假装查过。"
+            "CLI 引擎若自带原生 WebSearch，优先用原生工具；本工具作为跨引擎统一入口。"
         ),
         "input_schema": {
             "type": "object",
@@ -286,6 +302,44 @@ TOOL_CATALOG: list[dict] = [
                 "expected_revision": {"type": "integer",
                                       "description": "你读到的基线版本号；读到的是哪一版就带哪一版"},
             },
+        },
+    },
+    {
+        # 长期记忆写入：显式「记住」才写；服务端补齐来源锚点，补不出即拒收。
+        "name": "remember", "kind": "write", "needs_task": True,
+        "description": (
+            "把一条跨会话稳定的信息写入长期记忆（用户偏好、项目事实、决策、纠正、习惯、术语）。"
+            "仅当用户明确说「记住…」或确认某结论需要长期保留时调用；会议内的普通讨论不要写。"
+            "source 由服务端按当前会议补齐：quote 传用户原话或逐字稿中的原句，"
+            "补不出锚点会返回 error=no_source 并拒收。"
+            "同一 subject+relation 的新结论会自动闭合旧值，不要自行删除旧记忆。"
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "记忆正文（≤200 字，陈述句）"},
+                "kind": {"type": "string", "enum": ["preference", "fact", "decision", "correction", "habit", "glossary"]},
+                "subject": {"type": "string", "description": "主体（如 项目A）"},
+                "relation": {"type": "string", "description": "关系（如 负责人）"},
+                "object": {"type": "string", "description": "客体（如 李四）"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "importance": {"type": "number", "description": "重要度 0–1，默认 0.5"},
+                "quote": {"type": "string", "description": "来源原句（用于回溯锚点）"},
+                "namespace": {"type": "string", "description": "缺省 task:<当前会议>；也可 space:<id> / role:<name> / global"},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "forget", "kind": "write", "needs_task": True,
+        "description": "软删除一条长期记忆（仅当用户明确要求忘记/删除）。闭合与删除不同：只是想更新结论时不要删，直接 remember 新值。",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "memory_id": {"type": "string", "description": "记忆 id（mem_xxx）"},
+                "reason": {"type": "string", "description": "删除原因"},
+            },
+            "required": ["memory_id"],
         },
     },
 ]

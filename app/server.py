@@ -106,6 +106,7 @@ from app.routers import (
     hotwords,
     import_tasks,
     insights,
+    memory,
     models,
     notes,
     philosophy,
@@ -215,6 +216,13 @@ async def lifespan(app: FastAPI):
 
     # 启动自动归档定时任务（每 24 小时检查一次） / Start auto-archive scheduled task (check once per 24h)
     asyncio.create_task(_auto_archive_loop())
+
+    # 长期记忆：启动时跑一次巩固/生命周期，之后每 24 小时一次
+    try:
+        await asyncio.to_thread(_run_memory_lifecycle)
+    except Exception as e:
+        logger.warning(f"记忆生命周期启动执行失败（不影响服务）: {e}")
+    asyncio.create_task(_memory_lifecycle_loop())
 
     yield  # ── shutdown 从这里开始 ──
 
@@ -583,6 +591,7 @@ app.include_router(workspace.router)
 app.include_router(ws_transcript.router)
 app.include_router(import_tasks.router)
 app.include_router(models.router)
+app.include_router(memory.router)
 app.include_router(engine_component.router)
 
 # ============================================================
@@ -704,6 +713,40 @@ def _run_auto_archive():
 
     if archived_count:
         logger.info(f"[自动归档] 已归档 {archived_count} 个超过 {archive_days} 天的已完成任务的音频文件")
+
+
+_MEMORY_LIFECYCLE_INTERVAL = 24 * 3600  # 24 小时 / 24 hours
+
+
+async def _memory_lifecycle_loop():
+    """长期记忆：每日巩固待处理会议并执行衰减归档/清理。"""
+    while True:
+        try:
+            await asyncio.sleep(_MEMORY_LIFECYCLE_INTERVAL)
+            await asyncio.to_thread(_run_memory_lifecycle)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"记忆生命周期任务失败: {e}")
+
+
+def _run_memory_lifecycle():
+    """执行一次记忆巩固 + 生命周期（开关关闭时跳过）。"""
+    from core.settings_store import get_feature_flags
+    if not get_feature_flags().get("agent_memory", True):
+        return
+    try:
+        from core.agent_memory.consolidate import consolidate_recent
+        summary = consolidate_recent()
+        logger.info(f"[记忆] 巩固完成: {summary}")
+    except Exception as e:
+        logger.warning(f"[记忆] 巩固失败（不影响服务）: {e}")
+    try:
+        from core.agent_memory.lifecycle import run_lifecycle
+        result = run_lifecycle()
+        logger.info(f"[记忆] 生命周期完成: {result}")
+    except Exception as e:
+        logger.warning(f"[记忆] 生命周期执行失败（不影响服务）: {e}")
 
 
 # ============================================================

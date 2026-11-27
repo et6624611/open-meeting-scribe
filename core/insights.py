@@ -12,7 +12,7 @@ core/insights.py — 洞察台引擎核心 / Insight Deck engine core
 共同充当「画什么图」的内容选择指引，而非独立的分析类型。
 
 联网检索增强（v5.3）：讨论涉及会外专业知识（政策/法规/行业标准/外部方案）时，
-复用 agent 工具面的 web_search（Brave）先行检索并注入「外部参考」块；
+复用 agent 工具面的 web_search（免密：Bing/DuckDuckGo）先行检索并注入「外部参考」块；
 未配置 API key 或任一环节失败一律静默降级为无检索分析，不阻断主流程。
 
 设计理念 / Design philosophy：LLM 的核心优势在于对更大上下文的感知 / LLM's core advantage lies in perceiving larger context.
@@ -153,7 +153,7 @@ def _fmt_ms(ms: int) -> str:
 
 
 # ============================================================
-# 联网检索增强（复用 agent 工具面 web_search，Brave 默认）
+# 联网检索增强（复用 agent 工具面 web_search，免密实现）
 # ============================================================
 
 # 判定调用输出预算：仅 need + queries 的极小 JSON
@@ -217,14 +217,7 @@ async def _augment_with_web_search(
     依赖设置页的联网搜索 API key（web_search 命名空间）；未配置 / 判定失败 / 检索失败
     一律返回空串，绝不阻断主分析流程（与洞察板链路的静默降级口径一致）。
     """
-    try:
-        from core.agent_tools.impl import _get_web_search_config
-        if not _get_web_search_config():
-            return ""
-    except Exception as e:
-        logger.warning("[洞察台] 联网检索配置读取失败（跳过检索增强）: %s", e)
-        return ""
-
+    # 检索源为免密实现（Bing/DuckDuckGo），无需 API key；失败时静默降级
     # ① 轻量判定：是否需要会外知识 + 搜索词
     try:
         tail = "\n".join(

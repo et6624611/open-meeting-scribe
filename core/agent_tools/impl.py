@@ -17,8 +17,10 @@ import json
 import logging
 import re
 import socket
+import time
+from html import unescape as _html_unescape
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests as http_requests  # 统一重命名，避免 _tool_web_fetch 内 import 重名冲突
 
@@ -111,6 +113,8 @@ def execute_tool(name: str, arguments: dict, task_id: str | None = None, project
             return _tool_search_project_files(project_id, arguments.get("query", ""))
         elif name == "get_hotwords":
             return _tool_get_hotwords()
+        elif name == "search_memory":
+            return _tool_search_memory(task_id, project_id, arguments)
         elif name == "web_search":
             return _tool_web_search(arguments.get("query", ""))
         elif name == "web_fetch":
@@ -337,6 +341,41 @@ def _tool_get_meeting_decisions(task_id: str | None) -> str:
                       ensure_ascii=False)
 
 
+def _tool_search_memory(task_id: str | None, project_id: str | None, arguments: dict) -> str:
+    """检索长期记忆（跨会话）。作用域链 task → space → global。"""
+    from core.agent_memory import retrieve, schema
+
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        return json.dumps({"error": "empty_query", "message": "检索词不能为空"},
+                          ensure_ascii=False)
+    try:
+        top_k = int(arguments.get("top_k") or 8)
+    except (TypeError, ValueError):
+        top_k = 8
+    chain = schema.namespace_chain(task_id, project_id, None)
+    hits = retrieve.search(query, chain, top_k=top_k, touch=False)
+    return json.dumps({
+        "query": query,
+        "returned": len(hits),
+        "items": [
+            {
+                "id": item.get("id"),
+                "kind": item.get("kind"),
+                "text": item.get("text"),
+                "subject": item.get("subject"),
+                "relation": item.get("relation"),
+                "object": item.get("object"),
+                "valid_from": item.get("valid_from"),
+                "valid_to": item.get("valid_to"),
+                "source_task_id": (item.get("source") or {}).get("task_id"),
+                "score": item.get("_score"),
+            }
+            for item in hits
+        ],
+    }, ensure_ascii=False)
+
+
 def _tool_search_meetings(arguments: dict) -> str:
     """跨全部会议薄清单检索（分页）。不依赖当前会话 task 绑定。"""
     from core.meeting_search import search_meeting_list
@@ -480,9 +519,19 @@ _PRIVATE_IP_RANGES = (
     (0xAC100000, 0xAC1FFFFF),   # 172.16.0.0 - 172.31.255.255
 )
 
-# Brave Search API（默认 provider）
-_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
-_BRAVE_TIMEOUT = 10
+# 免密搜索源：百度优先（中文覆盖面最好），Bing/DuckDuckGo 兜底；不需要 API Key
+_BAIDU_SEARCH_URL = "https://www.baidu.com/s"
+_BING_SEARCH_URL = "https://cn.bing.com/search"
+_DDG_SEARCH_URL = "https://html.duckduckgo.com/html/"
+_SEARCH_TIMEOUT = 10
+_SEARCH_CACHE_TTL = 300
+_SEARCH_CACHE_MAX = 32
+_BAIDU_RESOLVE_LIMIT = 5  # 只还原前 5 条真实链接，控制额外请求量
+_SEARCH_CACHE: dict[str, tuple[float, str]] = {}
+_SEARCH_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 
 
 def _ip_in_private_range(ip_str: str) -> bool:
@@ -540,87 +589,165 @@ def _url_safety_check(url: str) -> str | None:
     return None
 
 
-def _get_web_search_config() -> dict | None:
-    """取联网搜索配置；未配置返回 None。"""
-    from core.settings_store import load_settings
-    settings = load_settings()
-    ns = settings.get("web_search") or {}
-    api_key = str(ns.get("api_key") or "").strip()
-    if not api_key:
-        return None
-    return {"provider": str(ns.get("provider") or "brave").strip(), "api_key": api_key}
+def _clean_inline(text: str) -> str:
+    """去标签 + 反转义 + 压缩空白。"""
+    return re.sub(r"\s+", " ", _html_unescape(_strip_html(text))).strip()
+
+
+_DDG_REDIRECT_HOSTS = ("duckduckgo.com", "www.duckduckgo.com", "html.duckduckgo.com")
+
+
+def _decode_ddg_url(url: str) -> str:
+    """还原 DuckDuckGo 跳转链接（//duckduckgo.com/l/?uddg=<encoded>）。"""
+    u = url.strip()
+    if u.startswith("//"):
+        u = "https:" + u
+    try:
+        parsed = urlparse(u)
+        if any(parsed.netloc.endswith(h) for h in _DDG_REDIRECT_HOSTS) and parsed.path.startswith("/l/"):
+            target = parse_qs(parsed.query).get("uddg")
+            if target:
+                return unquote(target[0])
+    except Exception:
+        pass
+    return u
+
+
+def _parse_bing_results(page: str, limit: int = 8) -> list[dict]:
+    """解析 Bing 搜索结果页的 b_algo 列表。"""
+    results: list[dict] = []
+    for block in page.split('class="b_algo"')[1:]:
+        m = re.search(r'<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
+        if not m:
+            continue
+        url = _html_unescape(m.group(1)).strip()
+        title = _clean_inline(m.group(2))
+        snippet = re.search(r"<p[^>]*>(.*?)</p>", block, re.S)
+        desc = _clean_inline(snippet.group(1)) if snippet else ""
+        if title and url.startswith(("http://", "https://")):
+            results.append({"title": title, "description": desc, "url": url})
+        if len(results) >= limit:
+            break
+    return results
+
+
+def _parse_ddg_results(page: str, limit: int = 8) -> list[dict]:
+    """解析 DuckDuckGo HTML 结果的标题/摘要/链接。"""
+    titles = re.findall(
+        r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', page, re.S)
+    snippets = re.findall(
+        r'<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', page, re.S)
+    results: list[dict] = []
+    for i, (url, title_html) in enumerate(titles[:limit]):
+        url = _decode_ddg_url(_html_unescape(url))
+        title = _clean_inline(title_html)
+        desc = _clean_inline(snippets[i]) if i < len(snippets) else ""
+        if title and url.startswith(("http://", "https://")):
+            results.append({"title": title, "description": desc, "url": url})
+    return results
+
+
+_BAIDU_LINK_RE = re.compile(
+    r'<h3[^>]*>\s*<a[^>]+href="(https?://www\.baidu\.com/link\?url=[^"]+)"[^>]*>(.*?)</a>',
+    re.S,
+)
+
+
+def _resolve_baidu_link(href: str) -> str:
+    """把百度跳转链还原成真实 URL；失败则保留原链。"""
+    try:
+        resp = http_requests.get(
+            href, headers={"User-Agent": _SEARCH_UA}, timeout=5, allow_redirects=False)
+        location = (resp.headers.get("Location") or "").strip()
+        if location.startswith(("http://", "https://")):
+            host = urlparse(location).hostname or ""
+            if host and not _is_private_ip(host):
+                return location
+    except Exception:
+        pass
+    return href
+
+
+def _parse_baidu_results(page: str, limit: int = 8) -> list[dict]:
+    """解析百度结果页；标题/链接必取，摘要尽力提取。"""
+    matches = list(_BAIDU_LINK_RE.finditer(page))[:limit]
+    results: list[dict] = []
+    for i, m in enumerate(matches):
+        title = _clean_inline(m.group(2))
+        if not title:
+            continue
+        end = matches[i + 1].start() if i + 1 < len(matches) else min(len(page), m.end() + 3000)
+        block = page[m.end():end]
+        snippet = re.search(
+            r'<span[^>]+class="[^"]*(?:content-right|abstract)[^"]*"[^>]*>(.*?)</span>',
+            block, re.S,
+        )
+        desc = _clean_inline(snippet.group(1)) if snippet else ""
+        href = _html_unescape(m.group(1))
+        results.append({
+            "title": title,
+            "description": desc[:300],
+            "url": _resolve_baidu_link(href) if i < _BAIDU_RESOLVE_LIMIT else href,
+        })
+    return results
+
+
+def _search_web_page(url: str, params: dict, parser, limit: int = 8) -> list[dict]:
+    """抓取免密搜索页并解析；非 200 直接抛错，交给上层切换下一个源。"""
+    resp = http_requests.get(
+        url,
+        params=params,
+        headers={
+            "User-Agent": _SEARCH_UA,
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        },
+        timeout=_SEARCH_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP {resp.status_code}")
+    return parser(resp.text, limit)
 
 
 def _tool_web_search(query: str) -> str:
-    """联网搜索（Brave Search API 默认）。"""
+    """联网搜索：百度优先，Bing/DuckDuckGo 兜底，均不需要 API Key。"""
     q = str(query or "").strip()[:200]
     if not q:
         return json.dumps({"error": "empty_query", "message": "搜索关键词不能为空"}, ensure_ascii=False)
 
-    cfg = _get_web_search_config()
-    if not cfg:
-        return json.dumps({
-            "error": "web_search_not_configured",
-            "message": "联网搜索尚未配置 API key。请在设置 → 智能体 → 联网搜索 中填入 Brave Search API Key。",
-            "note": "未配置搜索 key，无法联网检索。可以依赖模型自身知识继续。",
-        }, ensure_ascii=False)
+    cached = _SEARCH_CACHE.get(q)
+    if cached and time.monotonic() - cached[0] < _SEARCH_CACHE_TTL:
+        return cached[1]
 
-    provider = cfg["provider"]
-    api_key = cfg["api_key"]
-
-    if provider == "brave":
+    sources = (
+        ("baidu", _BAIDU_SEARCH_URL, {"wd": q, "rn": 10}, _parse_baidu_results),
+        ("bing", _BING_SEARCH_URL, {"q": q, "count": 10}, _parse_bing_results),
+        ("duckduckgo", _DDG_SEARCH_URL, {"q": q}, _parse_ddg_results),
+    )
+    errors: list[str] = []
+    for provider, url, params, parser in sources:
         try:
-            resp = http_requests.get(
-                _BRAVE_SEARCH_URL,
-                params={"q": q, "count": 8, "search_lang": "zh", "ui_lang": "zh-CN"},
-                headers={
-                    "Accept": "application/json",
-                    "Accept-Encoding": "gzip",
-                    "X-Subscription-Token": api_key,
-                },
-                timeout=_BRAVE_TIMEOUT,
-            )
-        except http_requests.RequestException as e:
-            return json.dumps({"error": "web_search_network",
-                               "message": f"搜索请求失败（{e.__class__.__name__}）：{e}"},
-                              ensure_ascii=False)
+            results = _search_web_page(url, params, parser, limit=8)
+        except Exception as e:
+            errors.append(f"{provider}: {e.__class__.__name__}: {e}")
+            continue
+        if results:
+            payload = json.dumps({
+                "query": q,
+                "provider": provider,
+                "count": len(results),
+                "results": results,
+            }, ensure_ascii=False)
+            if len(_SEARCH_CACHE) >= _SEARCH_CACHE_MAX:
+                _SEARCH_CACHE.clear()
+            _SEARCH_CACHE[q] = (time.monotonic(), payload)
+            return payload
+        errors.append(f"{provider}: 0 results")
 
-        if resp.status_code == 401:
-            return json.dumps({"error": "web_search_auth",
-                               "message": "API Key 无效（401），请检查设置中的联网搜索 Key"},
-                              ensure_ascii=False)
-        if resp.status_code == 429:
-            return json.dumps({"error": "web_search_rate_limited",
-                               "message": "搜索配额已耗尽（429），请稍后再试或升级套餐"},
-                              ensure_ascii=False)
-        if resp.status_code != 200:
-            return json.dumps({"error": "web_search_http",
-                               "message": f"搜索 API 返回 {resp.status_code}"},
-                              ensure_ascii=False)
-
-        try:
-            data = resp.json()
-        except ValueError:
-            return json.dumps({"error": "web_search_parse",
-                               "message": "搜索 API 返回无法解析的 JSON"},
-                              ensure_ascii=False)
-
-        results = []
-        for item in (data.get("web") or {}).get("results", [])[:8]:
-            results.append({
-                "title": item.get("title", ""),
-                "description": item.get("description", ""),
-                "url": item.get("url", ""),
-            })
-        return json.dumps({
-            "query": q,
-            "count": len(results),
-            "results": results,
-        }, ensure_ascii=False)
-    else:
-        return json.dumps({"error": "web_search_unknown_provider",
-                           "message": f"未知搜索 provider: {provider}（当前仅支持 brave）"},
-                          ensure_ascii=False)
+    return json.dumps({
+        "error": "web_search_network",
+        "message": "搜索源均不可用：" + "；".join(errors),
+    }, ensure_ascii=False)
 
 
 def _tool_web_fetch(url: str) -> str:

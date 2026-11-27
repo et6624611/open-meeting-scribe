@@ -1,0 +1,97 @@
+{
+  "title": "AI 记忆",
+  "subtitle": "跨会话记住偏好与事实，本地存储，可随时清除",
+  "stats": "开放 {open} · 已闭合 {closed} · 待确认 {proposed}",
+  "search_ph": "搜索记忆",
+  "filter": "筛选",
+  "export": "导出",
+  "add": "新增",
+  "status": {
+    "open": "开放",
+    "closed": "已闭合",
+    "proposed": "待确认",
+    "archived": "已归档",
+    "active": "开放中",
+    "deleted": "已删除"
+  },
+  "kind": {
+    "preference": "偏好",
+    "fact": "事实",
+    "decision": "决策",
+    "correction": "纠正",
+    "habit": "习惯",
+    "glossary": "术语"
+  },
+  "action": {
+    "edit": "编辑",
+    "close": "闭合",
+    "reopen": "重新打开",
+    "delete": "删除",
+    "export": "导出",
+    "save": "保存",
+    "cancel": "取消",
+    "accept": "采纳",
+    "reject": "忽略",
+    "retry": "重试",
+    "clear_filters": "清除条件",
+    "back": "返回",
+    "undo": "撤销",
+    "more": "加载更多"
+  },
+  "fields": {
+    "origin": "出身",
+    "lifecycle": "生命周期",
+    "namespace": "作用域",
+    "kind": "类型",
+    "source": "来源",
+    "valid": "有效期",
+    "usage": "使用情况",
+    "text": "正文",
+    "scope": "作用域",
+    "manual": "手动",
+    "open_ended": "未闭合",
+    "closed": "已闭合",
+    "not_used": "未使用",
+    "used": "使用 {count} 次"
+  },
+  "source_goto": "前往来源会议",
+  "banner": {
+    "pending": "{count} 条记忆待确认",
+    "process": "逐条处理",
+    "ignore_all": "全部忽略"
+  },
+  "empty": {
+    "title": "还没有记忆",
+    "desc": "在对话中说“记住…”，或会后自动提炼"
+  },
+  "search_empty": "没有匹配的记忆",
+  "confirm": {
+    "delete_title": "删除这条记忆",
+    "delete_desc": "确认删除「{text}」？",
+    "ignore_all_desc": "将忽略本批 {count} 条待确认记忆。",
+    "cancel": "取消",
+    "delete": "删除"
+  },
+  "toast": {
+    "closed": "已闭合",
+    "undone": "已撤销",
+    "deleted": "已删除",
+    "all_ignored": "已忽略本批待确认",
+    "batch_done": "本批待确认处理完毕",
+    "saved": "已保存"
+  },
+  "filter_panel": {
+    "namespace": "作用域",
+    "kind": "类型",
+    "all": "全部",
+    "reset": "重置"
+  },
+  "new_form": {
+    "title": "新增记忆",
+    "text_ph": "一句话，≤200 字",
+    "required": "正文必填",
+    "too_long": "正文最多 200 字"
+  },
+  "loading": "加载中",
+  "scope_global": "全局"
+}

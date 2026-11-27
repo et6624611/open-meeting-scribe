@@ -1,0 +1,97 @@
+{
+  "title": "AI Memory",
+  "subtitle": "Remember preferences and facts across sessions. Stored locally, clearable anytime.",
+  "stats": "{open} open · {closed} closed · {proposed} pending",
+  "search_ph": "Search memory",
+  "filter": "Filter",
+  "export": "Export",
+  "add": "New",
+  "status": {
+    "open": "Open",
+    "closed": "Closed",
+    "proposed": "Pending",
+    "archived": "Archived",
+    "active": "Open",
+    "deleted": "Deleted"
+  },
+  "kind": {
+    "preference": "Preference",
+    "fact": "Fact",
+    "decision": "Decision",
+    "correction": "Correction",
+    "habit": "Habit",
+    "glossary": "Glossary"
+  },
+  "action": {
+    "edit": "Edit",
+    "close": "Close",
+    "reopen": "Reopen",
+    "delete": "Delete",
+    "export": "Export",
+    "save": "Save",
+    "cancel": "Cancel",
+    "accept": "Accept",
+    "reject": "Ignore",
+    "retry": "Retry",
+    "clear_filters": "Clear filters",
+    "back": "Back",
+    "undo": "Undo",
+    "more": "Load more"
+  },
+  "fields": {
+    "origin": "Origin",
+    "lifecycle": "Lifecycle",
+    "namespace": "Scope",
+    "kind": "Type",
+    "source": "Source",
+    "valid": "Validity",
+    "usage": "Usage",
+    "text": "Text",
+    "scope": "Scope",
+    "manual": "Manual",
+    "open_ended": "open",
+    "closed": "closed",
+    "not_used": "Not used",
+    "used": "Used {count} times"
+  },
+  "source_goto": "Go to source meeting",
+  "banner": {
+    "pending": "{count} memories pending",
+    "process": "Review one by one",
+    "ignore_all": "Ignore all"
+  },
+  "empty": {
+    "title": "No memories yet",
+    "desc": "Say “remember…” in a conversation, or let it summarize after meetings"
+  },
+  "search_empty": "No matching memories",
+  "confirm": {
+    "delete_title": "Delete this memory",
+    "delete_desc": "Delete “{text}”?",
+    "ignore_all_desc": "This will ignore all {count} pending memories in this batch.",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "toast": {
+    "closed": "Closed",
+    "undone": "Undone",
+    "deleted": "Deleted",
+    "all_ignored": "Batch ignored",
+    "batch_done": "This batch is done",
+    "saved": "Saved"
+  },
+  "filter_panel": {
+    "namespace": "Scope",
+    "kind": "Type",
+    "all": "All",
+    "reset": "Reset"
+  },
+  "new_form": {
+    "title": "New memory",
+    "text_ph": "One sentence, up to 200 characters",
+    "required": "Text is required",
+    "too_long": "Up to 200 characters"
+  },
+  "loading": "Loading",
+  "scope_global": "Global"
+}

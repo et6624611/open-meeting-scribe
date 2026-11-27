@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import requests
 
@@ -409,3 +411,98 @@ class TestBuildDialogueFromRealtime:
     def test_empty_input(self):
         assert pr._build_dialogue_from_realtime([]) == []
         assert pr._build_dialogue_from_realtime(None) == []
+
+
+# ================================================================
+# Stage 2 入口归一化（热词映射，全来源共用）
+# ================================================================
+
+
+class TestStage2DialogueNormalization:
+    """热词映射收口到 Stage 2 入口：录音/上传/原文导入共用，且同一内容只施加一次。"""
+
+    @staticmethod
+    def _fake_stage2(seen):
+        def fake(**kwargs):
+            seen["dialogue"] = kwargs["dialogue"]
+            return {
+                "summary": "# 纪要",
+                "title": "会议",
+                "output_path": "",
+                "dialogue": kwargs["dialogue"],
+                "speaker_mapping": {},
+                "speaker_uuid_mapping": {},
+                "chapters": [],
+            }
+        return fake
+
+    @staticmethod
+    def _mk_task(tid, dialogue):
+        task_store.tasks[tid] = {"task_id": tid, "status": "processing", "dialogue": dialogue}
+
+    def test_imported_dialogue_gets_hotword_mapping(self, monkeypatch):
+        """导入原文路径此前无映射入口，应在 Stage 2 入口补齐。"""
+        import core.hotwords as hw
+        from core import decision_extract
+
+        monkeypatch.setattr(hw, "apply_hotword_mappings", lambda text: text.replace("万阳", "万洋"))
+        monkeypatch.setattr(decision_extract, "extract_decisions", lambda *a, **k: [])
+        seen: dict = {}
+        monkeypatch.setattr(pr, "run_pipeline_stage2", self._fake_stage2(seen))
+
+        tid = "tsk-norm-import"
+        self._mk_task(tid, [{"speaker_id": 0, "text": "万阳在西区。", "sentences": [{"text": "万阳在西区。"}]}])
+
+        pr._run_stage2_for_task(tid, Path(""), None)
+
+        task = task_store.tasks[tid]
+        assert task["dialogue"][0]["text"] == "万洋在西区。"
+        assert task["dialogue"][0]["sentences"][0]["text"] == "万洋在西区。"
+        assert seen["dialogue"][0]["text"] == "万洋在西区。"
+        assert task.get("dialogue_normalized_sig")
+
+    def test_same_content_applied_once(self, monkeypatch):
+        """映射非幂等（A→B、B→C 链）时，同一份内容重复跑也只施加一次。"""
+        import core.hotwords as hw
+        from core import decision_extract
+
+        calls: list[str] = []
+
+        def non_idempotent(text):
+            calls.append(text)
+            return text + "!"
+
+        monkeypatch.setattr(hw, "apply_hotword_mappings", non_idempotent)
+        monkeypatch.setattr(decision_extract, "extract_decisions", lambda *a, **k: [])
+        seen: dict = {}
+        monkeypatch.setattr(pr, "run_pipeline_stage2", self._fake_stage2(seen))
+
+        tid = "tsk-norm-once"
+        self._mk_task(tid, [{"speaker_id": 0, "text": "原句", "sentences": [{"text": "原句"}]}])
+
+        pr._run_stage2_for_task(tid, Path(""), None)
+        pr._run_stage2_for_task(tid, Path(""), None)
+
+        assert task_store.tasks[tid]["dialogue"][0]["text"] == "原句!"
+        assert len(calls) == 2  # 块 + 句，仅第一轮
+
+    def test_changed_dialogue_normalized_again(self, monkeypatch):
+        """重转写后内容变化，签名失效应重新归一化。"""
+        import core.hotwords as hw
+        from core import decision_extract
+
+        monkeypatch.setattr(hw, "apply_hotword_mappings", lambda text: text.replace("万阳", "万洋"))
+        monkeypatch.setattr(decision_extract, "extract_decisions", lambda *a, **k: [])
+        seen: dict = {}
+        monkeypatch.setattr(pr, "run_pipeline_stage2", self._fake_stage2(seen))
+
+        tid = "tsk-norm-re"
+        self._mk_task(tid, [{"speaker_id": 0, "text": "万阳在西区。", "sentences": []}])
+        pr._run_stage2_for_task(tid, Path(""), None)
+
+        task_store.tasks[tid]["dialogue"] = [
+            {"speaker_id": 0, "text": "万阳改到了东区。", "sentences": []}
+        ]
+        pr._run_stage2_for_task(tid, Path(""), None)
+
+        assert task_store.tasks[tid]["dialogue"][0]["text"] == "万洋改到了东区。"

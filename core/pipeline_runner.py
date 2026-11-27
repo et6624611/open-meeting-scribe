@@ -14,6 +14,7 @@ core/pipeline_runner.py — 管线编排（后台执行） / Pipeline orchestrat
   - core.realtime_store：全量实时转写缓冲 / Full realtime transcription buffer
 """
 
+import hashlib
 import logging
 import time
 from datetime import datetime
@@ -507,9 +508,68 @@ def run_pipeline_task(
     logger.info(f"[PERF] {task_id[:8]} 管线任务总计: {task_elapsed:.3f}s")
 
 
+def _dialogue_signature(dialogue: list[dict]) -> str:
+    """对话稿文本签名（只取内容，不含时间戳），用于归一化幂等标记。"""
+    h = hashlib.sha256()
+    for block in dialogue:
+        h.update(str(block.get("text") or "").encode("utf-8"))
+        h.update(b"\x1f")
+        for sentence in block.get("sentences") or []:
+            h.update(str(sentence.get("text") or "").encode("utf-8"))
+            h.update(b"\x1f")
+    return h.hexdigest()
+
+
+def _normalize_dialogue_for_stage2(task_id: str) -> int:
+    """Stage 2 入口统一归一化：对对话稿施加热词映射，全来源共用同一口径。
+
+    为什么收口在这里 / Why here:
+      热词映射是「原文 → 标准文本」的归一化，不专属任何一条转写实现。录音/上传路径
+      在转写时刻顺带做了映射，导入原文路径此前没有任何映射入口，导致映射表里的词
+      原样进入纪要。放进 Stage 2 入口后，两条来源在写摘要/章节/决策之前口径一致。
+
+    幂等 / Idempotence:
+      以归一化后的对话稿签名落盘标记，同一份内容只施加一次——映射表若出现 A→B、B→C
+      链，重复施加会多跳。转写重跑后内容变化，签名失效自动重施。
+
+    Returns:
+        本次被改写的文本块数（含句级），0 表示未改写 / 已归一化
+    """
+    task = task_store.tasks[task_id]
+    dialogue = task.get("dialogue") or []
+    if not dialogue:
+        return 0
+    if task.get("dialogue_normalized_sig") == _dialogue_signature(dialogue):
+        return 0
+
+    from core.hotwords import apply_hotword_mappings
+
+    hits = 0
+    for block in dialogue:
+        raw = block.get("text") or ""
+        normalized = apply_hotword_mappings(raw)
+        if normalized != raw:
+            block["text"] = normalized
+            hits += 1
+        for sentence in block.get("sentences") or []:
+            raw = sentence.get("text") or ""
+            normalized = apply_hotword_mappings(raw)
+            if normalized != raw:
+                sentence["text"] = normalized
+                hits += 1
+
+    task["dialogue_normalized_sig"] = _dialogue_signature(dialogue)
+    if hits:
+        logger.info(f"[{task_id[:8]}] Stage 2 入口归一化：热词映射改写 {hits} 个文本块")
+    return hits
+
+
 def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict = None):
     """为指定任务运行管线第二阶段（纪要生成）。含瞬时错误自动重试。"""
     stage2_start = time.perf_counter()
+
+    # 全来源统一口径：热词映射在进入摘要/章节/决策之前施加一次（录音、上传、原文导入共用）
+    _normalize_dialogue_for_stage2(task_id)
 
     def on_progress(p: PipelineProgress):
         task_store.tasks[task_id]["progress"] = p.percent
@@ -706,6 +766,16 @@ def _run_stage2_for_task(task_id: str, audio_path: Path, speaker_mapping: dict =
                 maybe_auto_formalize(task_id)
             except Exception as e:
                 logger.warning(f"[{task_id[:8]}] 自动书面化钩子异常（不影响产物）: {e}")
+
+            # 长期记忆：会后巩固（默认关，产出 proposed 待确认），守护线程，不阻塞主流程
+            try:
+                from core.settings_store import get_feature_flags
+                if get_feature_flags().get("agent_memory_consolidate", False):
+                    import threading
+                    from core.agent_memory.consolidate import consolidate_task
+                    threading.Thread(target=consolidate_task, args=(task_id,), daemon=True).start()
+            except Exception as e:
+                logger.warning(f"[{task_id[:8]}] 记忆巩固启动失败（不影响主流程）: {e}")
 
             # [管线] 首次完成后自动同步到知识库文件夹（仅当关联项目且启用同步时） /
             # Auto-sync to knowledge base folder on first completion (only when project linked and sync enabled)

@@ -315,41 +315,6 @@ def provider_of(resolved: str) -> bool:
 # cloud_api_key 字段在 schema/UI/后端三处不存在，声纹结构性零出网（仅本机 CAM++）。
 
 
-def get_web_search_config() -> dict:
-    """
-    获取联网搜索配置（从 settings.json 的 web_search 命名空间）。
-    Get the web-search config (web_search namespace in settings.json).
-
-    返回 / Returns:
-      {
-        "provider": "brave",        # 当前仅支持 brave
-        "api_key": "",              # 明文（仅内部使用）
-        "api_key_set": False,       # 是否已填入（前端只读回显）
-      }
-    未配置 api_key 时 api_key_set=False（web_search/web_fetch 工具会返回明确错误）。
-    """
-    settings = load_settings()
-    ws = settings.get("web_search", {}) or {}
-    api_key = str(ws.get("api_key") or "").strip()
-    return {
-        "provider": str(ws.get("provider") or "brave").strip() or "brave",
-        "api_key": api_key,
-        "api_key_set": bool(api_key),
-    }
-
-
-def save_web_search_config(provider: str, api_key: str) -> None:
-    """持久化联网搜索配置到 settings.json。"""
-    settings = load_settings()
-    ws = settings.get("web_search", {}) or {}
-    if provider:
-        ws["provider"] = provider.strip()
-    if api_key is not None:
-        ws["api_key"] = str(api_key).strip()
-    settings["web_search"] = ws
-    save_settings_to_disk(settings)
-
-
 def get_chat_engine_config() -> dict:
     """
     获取"智能体模式"引擎配置（从 settings.json 的 chat_engine 命名空间）。
@@ -425,6 +390,9 @@ def get_feature_flags() -> dict:
         "workspace_explorer": ff.get("workspace_explorer", True),
         # ASSET_SYNC P2：SSOT → 资产工作区自动投影（本地、可重建、可关；回流仍走提案确认）
         "asset_projection": ff.get("asset_projection", True),
+        # 长期记忆：默认开启注入与写入；会后巩固默认关闭（产出 proposed 条目待确认）
+        "agent_memory": ff.get("agent_memory", True),
+        "agent_memory_consolidate": ff.get("agent_memory_consolidate", False),
     }
 
 

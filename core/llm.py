@@ -587,6 +587,59 @@ async def async_chat_completion_full(
 
 
 # ============================================================
+# 异步工具调用版（供云端 ReAct 循环使用）
+# ============================================================
+
+
+async def async_chat_completion_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    model: str = None,
+    temperature: float = 0.5,
+    max_tokens: int = 2048,
+    tool_choice: str = "auto",
+) -> dict:
+    """异步调用 LLM，返回 assistant message（content + tool_calls）。
+
+    云端代理链路不支持 tools 参数时自动退化为纯文本回复（tool_calls 为空），
+    保证 ReAct 循环在体验配额下也能工作。
+    """
+    if _should_use_cloud():
+        content = await asyncio.to_thread(
+            _try_cloud_llm, messages, model, temperature, max_tokens
+        )
+        return {"content": content, "tool_calls": []}
+
+    base_url = _get_base_url()
+    client = _get_async_client()
+    headers = _get_headers()
+    body = _build_request_body(messages, model, temperature, max_tokens)
+    body["tools"] = tools
+    body["tool_choice"] = tool_choice
+
+    try:
+        resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
+        if resp.status_code >= 400 and tools:
+            # 端点不支持 function calling：去掉 tools 重试一次
+            logger.info("LLM 端点不支持 tools，退化为纯文本回复: HTTP %s", resp.status_code)
+            body.pop("tools", None)
+            body.pop("tool_choice", None)
+            resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=body)
+        resp.raise_for_status()
+        message = (resp.json().get("choices") or [{}])[0].get("message") or {}
+        return {
+            "content": message.get("content") or "",
+            "tool_calls": message.get("tool_calls") or [],
+        }
+    except httpx.TimeoutException:
+        raise RuntimeError("LLM 调用超时")
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"LLM 调用失败: HTTP {e.response.status_code}")
+    except Exception as e:
+        raise RuntimeError(f"LLM 调用失败: {e}")
+
+
+# ============================================================
 # 流式版（同步，供 CLI 或后台线程使用）
 # ============================================================
 

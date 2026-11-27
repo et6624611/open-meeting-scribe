@@ -48,6 +48,7 @@ from core.cli_engine import (
     runner as cli_runner,
 )
 from core.cli_engine.runner import stream_scope
+from core.cloud_agent_loop import run_cloud_agent
 from core.i18n import _
 from core.llm import async_chat_completion_full, async_chat_completion_stream
 from core.meeting_search import FACTS_BLOCK_HEADER, SCOPE_BLOCK_HEADER
@@ -605,10 +606,16 @@ async def chat_stream(data: ChatRequest, request: Request):
     # 使用共享函数构建上下文并注入系统提示词 / Use shared function to build context and inject into system prompt
     context_blocks, source_files, retrieval = _build_chat_context_blocks(data, is_qa_mode)
 
-    # 联网检索增强（内置问答路径）：讨论涉及会外专业知识时注入「外部参考」块；未配置/失败静默跳过
-    web_reference = await build_web_reference_block(data, is_qa_mode)
-    if web_reference:
-        context_blocks.append(web_reference)
+    # 联网检索：直连模型走下方云端 ReAct 循环（模型自行调 web_search）；
+    # 体验配额代理不支持 function calling，退回前置注入，保证仍有外部参考。
+    try:
+        from core.routing import get_routing_decision
+        if get_routing_decision("llm").get("route") == "cloud":
+            web_reference = await build_web_reference_block(data, is_qa_mode)
+            if web_reference:
+                context_blocks.append(web_reference)
+    except Exception as e:  # noqa: BLE001 - 路由判定失败不阻断问答
+        logger.warning("[AI对话-流式] 联网检索前置判定失败: %s", e)
 
     # @附件：校验引用存在性/数量，展开内容 parts + 系统说明块（仅当前轮，不进 history）
     attachment_refs = data.attachments or []
@@ -667,7 +674,7 @@ async def chat_stream(data: ChatRequest, request: Request):
                 return
             # 需要回退：继续下方内置单轮流式问答（已构建的 system_prompt/context 复用）
 
-        # ── 内置问答：上下文注入 + 单轮流式补全（原 run_agent_loop 多轮工具循环已退役） ──
+        # ── 内置问答：云端 ReAct 多轮工具循环（联网检索 / 网页抓取 / 会议数据） ──
         full_content = ""
         start_time = time.perf_counter()
         try:
@@ -683,14 +690,24 @@ async def chat_stream(data: ChatRequest, request: Request):
             else:
                 messages.append({"role": "user", "content": user_message})
 
-            stage_evt = {"type": "stage", "stage": "generating", "label": "生成回复..."}
+            stage_evt = {"type": "stage", "stage": "thinking", "label": "分析问题..."}
             yield f"data: {json.dumps(stage_evt, ensure_ascii=False)}\n\n"
 
-            async for token in async_chat_completion_stream(
-                messages, model=chat_model, max_tokens=4096,
+            agent_error = ""
+            async for evt in run_cloud_agent(
+                messages=messages,
+                model=chat_model,
+                task_id=data.task_id,
+                project_id=resolved_project_id,
+                max_tokens=4096,
             ):
-                full_content += token
-                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+                if evt.get("type") == "error":
+                    agent_error = str(evt.get("content") or "云端模型调用失败")
+                if evt.get("type") == "token":
+                    full_content += str(evt.get("content") or "")
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            if agent_error and not full_content:
+                return
 
             event: dict = {
                 "type": "done",

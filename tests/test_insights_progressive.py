@@ -212,11 +212,10 @@ BRAVE_REPLY = json.dumps({
 
 
 def _patch_web_search_on(monkeypatch, judge_reply):
-    """联网前置全开（配置 key + mock execute_tool + mock async_chat_completion），返回调用捕获。"""
-    monkeypatch.setattr(
-        "core.agent_tools.impl._get_web_search_config",
-        lambda: {"provider": "brave", "api_key": "test-key"},
-    )
+    """联网前置全开（mock execute_tool + mock async_chat_completion），返回调用捕获。
+
+    联网检索已改为免密实现，不再需要 API key 前置。
+    """
     monkeypatch.setattr(
         "core.agent_tools.impl.execute_tool",
         lambda name, kwargs: BRAVE_REPLY if name == "web_search" else json.dumps({"error": "unknown"}),
@@ -257,27 +256,21 @@ class TestInsightWebSearchAugment:
         main_user = calls[1]["messages"][-1]["content"]
         assert "外部参考" not in main_user
 
-    async def test_not_configured_skips_judge_call(self, monkeypatch):
-        """未配置 key：判定调用也不发生，行为与旧版等价"""
-        monkeypatch.setattr("core.agent_tools.impl._get_web_search_config", lambda: None)
-        calls = []
-
-        async def fake_chat(messages, model=None, temperature=0.7, max_tokens=4096):
-            calls.append(1)
-            return ANALYSIS_REPLY
-
-        monkeypatch.setattr("core.insights.async_chat_completion", fake_chat)
+    async def test_search_failure_degrades(self, monkeypatch):
+        """检索源全部失败：不注入外部参考，主流程照常完成"""
+        calls = _patch_web_search_on(
+            monkeypatch, json.dumps({"need": True, "queries": ["代扣代缴 完税证明"]}))
+        monkeypatch.setattr(
+            "core.agent_tools.impl.execute_tool",
+            lambda name, kwargs: json.dumps({"error": "web_search_network", "message": "不可用"}),
+        )
         result = await run_analysis(LINES, TITLES)
         assert result["web_searched"] is False
         assert result["has_finding"] is True
-        assert len(calls) == 1
+        assert "外部参考" not in calls[1]["messages"][-1]["content"]
 
     async def test_judge_failure_degrades_gracefully(self, monkeypatch):
         """判定调用抛异常：静默降级为无检索分析，主流程照常完成"""
-        monkeypatch.setattr(
-            "core.agent_tools.impl._get_web_search_config",
-            lambda: {"provider": "brave", "api_key": "test-key"},
-        )
 
         async def fake_chat(messages, model=None, temperature=0.7, max_tokens=4096):
             if max_tokens == 200:
@@ -289,6 +282,9 @@ class TestInsightWebSearchAugment:
         assert result["has_finding"] is True
         assert result["web_searched"] is False
 
-    async def test_augment_empty_when_not_configured(self, monkeypatch):
-        monkeypatch.setattr("core.agent_tools.impl._get_web_search_config", lambda: None)
+    async def test_augment_empty_when_search_fails(self, monkeypatch):
+        monkeypatch.setattr(
+            "core.agent_tools.impl.execute_tool",
+            lambda name, kwargs: json.dumps({"error": "web_search_network"}),
+        )
         assert await _augment_with_web_search(LINES, TITLES) == ""
